@@ -550,6 +550,7 @@ export function buildGalleyDoc(
   schema: Schema,
   rawTokens: GalleyToken[],
   source: string,
+  sharedSrcMap?: WeakMap<PMNode, string>,
 ): GalleyDocBuild {
   const lines = source.split("\n");
   const specs = buildTokenSpecs(lines);
@@ -565,7 +566,7 @@ export function buildGalleyDoc(
   );
   const doc = parser.parse(source) as unknown as PMNode;
 
-  const srcMap = new WeakMap<PMNode, string>();
+  const srcMap = sharedSrcMap ?? new WeakMap<PMNode, string>();
   let preservable = 0;
   const attach = (parent: PMNode, spanChildren: SpanNode[]) => {
     if (parent.childCount !== spanChildren.length) return; // safe bail → canonical
@@ -754,6 +755,10 @@ function buildSerializer(
         false,
       );
     },
+    // Serialized per chapter by the editor; transparent if it appears inline.
+    chapterFile: (state, node) => {
+      (state as unknown as { renderContent(n: PMNode): void }).renderContent(node);
+    },
     defList: (state, node) => {
       (state as unknown as { renderContent(n: PMNode): void }).renderContent(node);
     },
@@ -817,7 +822,7 @@ function buildSerializer(
       nodes[name] = (state, node, parent, index) => {
         const parentName = parent?.type?.name;
         if (
-          (parentName === "doc" || parentName === "markerWrap") &&
+          (parentName === "doc" || parentName === "markerWrap" || parentName === "chapterFile") &&
           srcMap.has(node)
         ) {
           const st = state as unknown as {

@@ -46,8 +46,8 @@ import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" }
 // committed assets, embedded the same way as the vendored paged.polyfill.js.
 import engineViewerJs from "../assets/engine/gutterpress-viewer.js" with { type: "file" };
 import engineAgentJs from "../assets/engine/gutterpress-agent.js" with { type: "file" };
-// Inline-edit module (ADR 0010) — preview-only; never shipped in built books.
-import engineEditJs from "../assets/engine/gutterpress-edit.js" with { type: "file" };
+// Galley editor (ADR 0011) — preview-only; never shipped in built books.
+import engineGalleyJs from "../assets/engine/gutterpress-galley.js" with { type: "file" };
 
 // New-project starter templates (#25). Baked in so `gutterpress new` (compiled
 // binary) and the desktop wizard scaffold from one embedded source.
@@ -85,7 +85,7 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),
   "engine/gutterpress-viewer.js":           abs(filePath(engineViewerJs)),
   "engine/gutterpress-agent.js":            abs(filePath(engineAgentJs)),
-  "engine/gutterpress-edit.js":             abs(filePath(engineEditJs)),
+  "engine/gutterpress-galley.js":           abs(filePath(engineGalleyJs)),
   "templates/book/manifest.yaml":           abs(filePath(tplBookManifest)),
   "templates/book/chapter-01.md":           abs(filePath(tplBookChapter01)),
   "templates/zine/manifest.yaml":           abs(filePath(tplZineManifest)),

@@ -84,6 +84,40 @@ const GpAttrs = Extension.create({
   },
 });
 
+// ── chapter file wrapper ────────────────────────────────────────────────────
+
+/**
+ * One source file's content. Mirrors assemble.ts's incremental-preview
+ * wrapper (`div.gutterpress-chapter[data-chapter-src]`) so the book CSS and
+ * the viewer see the same shape they always did. Whole-file saves serialize
+ * each chapterFile's children independently.
+ */
+export const ChapterFile = Node.create({
+  name: "chapterFile",
+  group: "block",
+  content: "block*",
+  defining: true,
+  isolating: true,
+  addAttributes() {
+    return { src: { default: "" } };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "div.gutterpress-chapter[data-chapter-src]",
+        getAttrs: (el: HTMLElement) => ({ src: el.getAttribute("data-chapter-src") ?? "" }),
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    return [
+      "div",
+      { class: "gutterpress-chapter", "data-chapter-src": node.attrs.src as string },
+      0,
+    ];
+  },
+});
+
 // ── structural markers ──────────────────────────────────────────────────────
 
 /** [name, value] pairs exactly as the marker plugin attached them. */
@@ -231,6 +265,15 @@ export const RawBlock = Node.create({
         tag: "div[data-gp-raw-block]",
         getAttrs: (el: HTMLElement) => ({ src: el.getAttribute("data-gp-raw-block") ?? "" }),
       },
+      // Viewer chrome must NEVER parse into the document when ProseMirror
+      // re-reads DOM near it (spacers sit between content blocks inside the
+      // editable flow). These ignore rules ride along on this node's list.
+      { tag: "div.gp-layer", ignore: true },
+      { tag: "div.gp-sheet", ignore: true },
+      { tag: "div.gp-marginbox", ignore: true },
+      { tag: "div.gp-wrap-spacer", ignore: true },
+      { tag: "div.gp-column-break-spacer", ignore: true },
+      { tag: "div.gp-recto-spacer", ignore: true },
     ];
   },
   renderHTML({ node }) {
@@ -428,6 +471,7 @@ export function galleyExtensions(): Extensions {
       link: false,
     }),
     GpAttrs,
+    ChapterFile,
     MarkerWrap,
     MarkerAtom,
     ChapterOpener,

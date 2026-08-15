@@ -32,10 +32,11 @@ const DESKTOP_STATIC_ENGINE = resolve(PKG_ROOT, "..", "desktop", "static", "engi
 const TARGETS = [
   { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: VIEWER_BUNDLE, minify: false },
   { entry: join(ENGINE_SRC, "compiler", "agent.ts"), outName: "gutterpress-agent.js", minify: false },
-  // Inline-edit module (ADR 0010): a SEPARATE bundle so published books —
-  // which ship the viewer bundle — never carry edit code. Injected only by
-  // the preview server's injectPreviewScripts().
-  { entry: join(ENGINE_SRC, "edit", "index.ts"), outName: "gutterpress-edit.js", minify: false },
+  // Galley editor (ADR 0011): a SEPARATE bundle so published books — which
+  // ship the viewer bundle — never carry editor code. Injected only by the
+  // preview server's injectPreviewScripts(). Minified: it carries
+  // Tiptap/ProseMirror, so unlike the other bundles size matters.
+  { entry: join(ENGINE_SRC, "galley", "index.ts"), outName: "gutterpress-galley.js", minify: true },
 ];
 
 function newestSourceMtime(dir) {

@@ -660,44 +660,50 @@
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
     // {ref} form entirely — {chapter, range} is the only target shape now
     // (the native viewer never mints a ref — it never clones).
-    // v7 (ADR 0010): inline editing — setEditMode / ackEditPatches /
-    // verifyChapter / getSelectionState / flushEditState, delegating to the
-    // preview-only gutterpress-edit.js bundle (window.GutterpressEdit), plus
-    // the editPatches / editDrift / editStateChanged events.
-    getProtocolVersion: function () { return 7; },
+    // v7 (ADR 0010, superseded): the patch-proposal edit lifecycle
+    // (ackEditPatches / verifyChapter / flushEditState + editPatches /
+    // editDrift events) — removed with the edit module it drove.
+    // v8 (ADR 0011): the Galley editor — one ProseMirror editor over the
+    // whole book (window.GutterpressGalley, preview-only bundle). Commands
+    // setEditMode / getSelectionState / applyInlineFormat carry over with
+    // their v7 shapes; galleyInsertMarkdown / galleySetOpaqueSource /
+    // galleySaveNow / galleyTargetAt are new; events editSelection /
+    // editStateChanged carry over, galleyContent / galleyOpaqueEdit are new.
+    getProtocolVersion: function () { return 8; },
 
-    // ── protocol v7: inline editing (ADR 0010) ─────────────────────────────
-    // All five delegate to window.GutterpressEdit; absent (a stale or
-    // published bundle set) they report inert results rather than throwing.
+    // ── protocol v8: galley editing (ADR 0011) ─────────────────────────────
+    // All delegate to window.GutterpressGalley; absent (a stale or published
+    // bundle set) they report inert results rather than throwing.
     setEditMode: function (spec) {
       spec = spec || {};
-      var edit = window.GutterpressEdit;
-      if (!edit) return { on: false };
-      if (spec.on) edit.enable(spec);
-      else edit.disable();
-      return { on: !!edit.isEnabled() };
-    },
-    ackEditPatches: function (spec) {
-      var edit = window.GutterpressEdit;
-      if (edit) edit.ackPatches(spec || {});
-      return { ok: !!edit };
-    },
-    verifyChapter: function (spec) {
-      var edit = window.GutterpressEdit;
-      if (!edit) return { healed: 0, mismatch: 'edit module unavailable' };
-      return edit.verifyChapter(spec || {});
+      var galley = window.GutterpressGalley;
+      if (!galley) return { on: false };
+      return galley.setEditMode({ on: !!spec.on });
     },
     getSelectionState: function () {
-      var edit = window.GutterpressEdit;
-      return edit ? edit.getSelectionState() : null;
+      var galley = window.GutterpressGalley;
+      return galley ? galley.getSelectionState() : null;
     },
     applyInlineFormat: function (spec) {
-      var edit = window.GutterpressEdit;
-      return edit ? edit.applyInlineFormat(spec || {}) : { applied: false };
+      var galley = window.GutterpressGalley;
+      return galley ? galley.applyInlineFormat(spec || {}) : { applied: false };
     },
-    flushEditState: function () {
-      var edit = window.GutterpressEdit;
-      return edit ? edit.flushPatches() : Promise.resolve();
+    galleyInsertMarkdown: function (spec) {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.insertMarkdown(spec || {}) : { inserted: false };
+    },
+    galleySetOpaqueSource: function (spec) {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.setOpaqueSource(spec || {}) : { ok: false };
+    },
+    galleySaveNow: function () {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.saveNow() : { flushed: false };
+    },
+    galleyTargetAt: function (spec) {
+      var galley = window.GutterpressGalley;
+      spec = spec || {};
+      return galley ? galley.targetAt({ x: spec.x, y: spec.y }) : null;
     },
 
     // Resolve the annotated element/selection at a viewport point (protocol

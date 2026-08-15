@@ -82,13 +82,14 @@
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
   });
-  // Inline-editing events (protocol v7, ADR 0010): patch proposals from the
-  // edit module, drift-heal reports, and the dirty indicator.
-  window.addEventListener('editPatches', function (e) {
-    post({ type: 'gutterpress:event', name: 'editPatches', detail: e.detail });
+  // Galley editing events (protocol v8, ADR 0011): whole-file save
+  // proposals, opaque-block edit requests, the selection stream for the
+  // formatting bubble, and the dirty indicator.
+  window.addEventListener('galleyContent', function (e) {
+    post({ type: 'gutterpress:event', name: 'galleyContent', detail: e.detail });
   });
-  window.addEventListener('editDrift', function (e) {
-    post({ type: 'gutterpress:event', name: 'editDrift', detail: e.detail });
+  window.addEventListener('galleyOpaqueEdit', function (e) {
+    post({ type: 'gutterpress:event', name: 'galleyOpaqueEdit', detail: e.detail });
   });
   window.addEventListener('editStateChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'editStateChanged', detail: e.detail });
