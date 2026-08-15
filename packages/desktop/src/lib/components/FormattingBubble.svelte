@@ -75,6 +75,9 @@
     z-index: 60;
   }
   .verb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 26px;
     height: 26px;
     padding: 0 6px;
@@ -82,8 +85,6 @@
     border-radius: 5px;
     background: transparent;
     color: var(--text-primary);
-    font-size: 13px;
-    line-height: 1;
     cursor: pointer;
   }
   .verb:hover {
@@ -92,10 +93,5 @@
   .verb.active {
     background: var(--accent-soft-bg, var(--hover-bg));
     color: var(--accent, var(--text-primary));
-  }
-  .verb {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
 </style>

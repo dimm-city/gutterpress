@@ -29,11 +29,13 @@
  *    The viewer never reloads or swaps during an editing session.
  */
 import {
+  CONTENT_BLOCK_TAGS,
   discoverContentBlocks,
   extractBlockModel,
   findBlockRangeAttr,
   modelsEqual,
-  serializeBlock,
+  parseSourceRange,
+  serializeBlockGroup,
   type BlockNode,
   type ElementLike,
   type SerializeFeatures,
@@ -126,16 +128,15 @@ function newlineSplit(text: string): string[] {
   return text.split(/\r\n?|\n/);
 }
 
-const CONTENT_TAGS = new Set([
-  "P", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "UL", "OL",
-  "TABLE", "PRE", "HR", "DL",
-]);
+const isContentTag = (el: Element): boolean =>
+  CONTENT_BLOCK_TAGS.has(el.tagName.toLowerCase());
+
+/** The element containing a node (the node itself when it is one). */
+const elementOf = (node: Node | null): Element | null =>
+  node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : node?.parentElement ?? null;
 
 function parseRangeAttr(el: Element): [number, number] | null {
-  const raw = findBlockRangeAttr(el as unknown as ElementLike);
-  if (!raw) return null;
-  const [a, b] = raw.split(":").map(Number);
-  return Number.isFinite(a) && Number.isFinite(b) ? [a!, b!] : null;
+  return parseSourceRange(findBlockRangeAttr(el as unknown as ElementLike));
 }
 
 /**
@@ -146,11 +147,9 @@ function parseRangeAttr(el: Element): [number, number] | null {
  */
 function commitUnitOf(node: Node | null): Element | null {
   let unit: Element | null = null;
-  let el: Element | null =
-    node && node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node?.parentElement ?? null;
-  for (; el; el = el.parentElement) {
+  for (let el = elementOf(node); el; el = el.parentElement) {
     if (el.classList.contains("gp-strip")) break;
-    if (CONTENT_TAGS.has(el.tagName) && parseRangeAttr(el)) unit = el;
+    if (isContentTag(el) && parseRangeAttr(el)) unit = el;
   }
   return unit;
 }
@@ -165,7 +164,7 @@ function chapterOf(el: Element): string | null {
 function extentOf(entry: DirtyEntry): Element[] {
   const sel = `[data-source-range="${entry.range[0]}:${entry.range[1]}"]` +
     `[data-chapter-src="${CSS.escape(entry.chapter)}"]`;
-  return [...document.querySelectorAll(sel)].filter((el) => CONTENT_TAGS.has(el.tagName));
+  return [...document.querySelectorAll(sel)].filter(isContentTag);
 }
 
 // ── caret capture/restore ───────────────────────────────────────────────────
@@ -233,19 +232,30 @@ function scheduleRelayout(): void {
 
 // ── source mirrors ──────────────────────────────────────────────────────────
 
+const mirrorFetches = new Map<string, Promise<string[] | null>>();
+
 async function mirrorOf(chapter: string): Promise<string[] | null> {
   const cached = mirrors.get(chapter);
   if (cached) return cached;
+  // Dedupe concurrent warm-ups: the first caller's fetch serves everyone.
+  const inflight = mirrorFetches.get(chapter);
+  if (inflight) return inflight;
   const url = opts.sourceUrl?.(chapter) ?? `/${chapter}`;
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const lines = newlineSplit(await res.text());
-    mirrors.set(chapter, lines);
-    return lines;
-  } catch {
-    return null;
-  }
+  const fetching = (async () => {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      const lines = newlineSplit(await res.text());
+      mirrors.set(chapter, lines);
+      return lines;
+    } catch {
+      return null;
+    } finally {
+      mirrorFetches.delete(chapter);
+    }
+  })();
+  mirrorFetches.set(chapter, fetching);
+  return fetching;
 }
 
 function sliceOf(lines: string[], range: [number, number]): string {
@@ -344,48 +354,15 @@ function scheduleAutosync(): void {
   autosyncTimer = setTimeout(() => void autosync(), opts.autosyncDelayMs);
 }
 
-/** Serialize one dirty entry against its source slice. A split block (extent
- *  length > 1) serializes each clone and joins with blank lines; the slice's
- *  trailing blank-line run is preserved exactly once. */
+/** Serialize one dirty entry's live extent (0 = deleted, 1 = ordinary,
+ *  n = split clones) — the boundary rules live in the codec. */
 function serializeEntry(entry: DirtyEntry, slice: string): SerializeResult {
-  const extent = extentOf(entry);
-  const options = { features: opts.features };
-  if (extent.length === 0) {
-    // The whole block was deleted; keep the boundary blanks so neighbors
-    // don't merge (serialize.ts's trailing-blank rule, inverted).
-    const run = /(?:\n[ \t]*)+$/.exec(slice);
-    return { kind: "replacement", text: run ? run[0].replace(/^\n/, "") : "" };
-  }
-  if (extent.length === 1) {
-    return serializeBlock({
-      edited: extent[0] as unknown as ElementLike,
-      pristineModel: entry.pristine,
-      originalSlice: slice,
-      options,
-    });
-  }
-  // Split: serialize each piece against a blank-stripped slice, re-append the
-  // original trailing run once. Footnote labels can't be attributed across
-  // pieces — refuse those.
-  if (/\[\^/.test(slice)) {
-    return { kind: "refused", reason: "split a block containing footnote refs" };
-  }
-  const bare = slice.replace(/(?:\n[ \t]*)+$/, "");
-  const parts: string[] = [];
-  for (let i = 0; i < extent.length; i++) {
-    const res = serializeBlock({
-      edited: extent[i] as unknown as ElementLike,
-      pristineModel: null,
-      originalSlice: i === 0 ? bare : "",
-      options,
-    });
-    if (res.kind !== "replacement") {
-      return res.kind === "refused" ? res : { kind: "refused", reason: "empty split piece" };
-    }
-    parts.push(res.text);
-  }
-  const run = /(?:\n[ \t]*)+$/.exec(slice);
-  return { kind: "replacement", text: parts.join("\n\n") + (run ? run[0] : "") };
+  return serializeBlockGroup(
+    extentOf(entry) as unknown as ArrayLike<ElementLike>,
+    entry.pristine,
+    slice,
+    { features: opts.features },
+  );
 }
 
 async function autosync(): Promise<void> {
@@ -476,7 +453,7 @@ export function ackPatches(spec: { batchId: number; results: PatchResult[] }): v
       const newEnd = patch.range[0] + replacementLines.length;
       for (const el of extent) {
         el.setAttribute("data-source-range", `${patch.range[0]}:${newEnd}`);
-        if (CONTENT_TAGS.has(el.tagName)) {
+        if (isContentTag(el)) {
           try {
             committedModels.set(
               el,
@@ -530,12 +507,17 @@ export async function verifyChapter(spec: {
 
   const fresh = new DOMParser().parseFromString(await res.text(), "text/html");
   const freshBlocks = discoverContentBlocks(fresh.body as unknown as ElementLike) as unknown as Element[];
-  const liveBlocks = (
-    discoverContentBlocks(document.body as unknown as ElementLike, {
-      skip: (el) =>
-        (el as unknown as Element).classList?.contains("gp-layer") ?? false,
-    }) as unknown as Element[]
-  ).filter((el) => chapterOf(el) === chapter);
+  // Scope the live walk to this chapter: prune decoration and any subtree
+  // annotated with a DIFFERENT chapter (wrappers and blocks both carry
+  // data-chapter-src, so foreign chapters prune at their roots).
+  const liveBlocks = discoverContentBlocks(document.body as unknown as ElementLike, {
+    skip: (elLike) => {
+      const el = elLike as unknown as Element;
+      if (el.classList?.contains("gp-layer")) return true;
+      const src = el.getAttribute("data-chapter-src");
+      return src != null && src !== chapter;
+    },
+  }) as unknown as Element[];
 
   if (freshBlocks.length !== liveBlocks.length) {
     const detail = { chapter, healed: 0, mismatch: "block count" };
@@ -571,12 +553,12 @@ export async function verifyChapter(spec: {
     }
     if (!same) {
       const imported = document.importNode(freshEl, true) as Element;
-      const healKey = freshRange ? keyOf(chapter, freshRange.split(":").map(Number) as [number, number]) : null;
+      const range = parseSourceRange(freshRange);
+      const healKey = range ? keyOf(chapter, range) : null;
       const heals = healKey ? (healCounts.get(healKey) ?? 0) + 1 : 1;
       if (healKey) healCounts.set(healKey, heals);
       if (heals >= DEGRADE_AFTER_HEALS) {
         imported.setAttribute(DEGRADED_ATTR, "");
-        const range = parseRangeAttr(imported);
         if (range) degraded.push({ chapter, range });
       }
       live.replaceWith(imported);
@@ -620,11 +602,7 @@ export function applyInlineFormat(spec: { format: InlineFormat }): { applied: bo
   // <code> toggle: unwrap when the selection sits inside one; else wrap the
   // extracted range. Plain-text the extraction — a code span holds no markup.
   const range = sel.getRangeAt(0);
-  const anchorEl =
-    sel.anchorNode?.nodeType === Node.ELEMENT_NODE
-      ? (sel.anchorNode as Element)
-      : sel.anchorNode?.parentElement ?? null;
-  const existing = anchorEl?.closest("code");
+  const existing = elementOf(sel.anchorNode)?.closest("code");
   ensureTracked(unit);
   if (existing && unit.contains(existing)) {
     const text = document.createTextNode(existing.textContent ?? "");
@@ -667,10 +645,7 @@ export function getSelectionState(): {
   if (!sel || sel.rangeCount === 0) return empty;
   const range = sel.getRangeAt(0);
   const unit = commitUnitOf(sel.anchorNode);
-  const anchorEl =
-    sel.anchorNode?.nodeType === Node.ELEMENT_NODE
-      ? (sel.anchorNode as Element)
-      : sel.anchorNode?.parentElement ?? null;
+  const anchorEl = elementOf(sel.anchorNode);
   const has = (selector: string) => anchorEl?.closest(selector) != null;
   return {
     collapsed: sel.isCollapsed,
@@ -705,7 +680,7 @@ function onKeyDown(ev: KeyboardEvent): void {
   if ((!forward && !backward) || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const sel = getSelection();
   if (!sel?.isCollapsed || !sel.anchorNode) return;
-  const strip = (sel.anchorNode.parentElement ?? (sel.anchorNode as Element))?.closest?.(".gp-strip");
+  const strip = elementOf(sel.anchorNode)?.closest(".gp-strip");
   if (!strip) return;
   const before = { node: sel.anchorNode, offset: sel.anchorOffset };
   setTimeout(() => {
@@ -734,10 +709,28 @@ function onKeyDown(ev: KeyboardEvent): void {
 }
 
 let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+let lastSelectionCollapsed = true;
 function onSelectionChange(): void {
   if (!enabled) return;
   clearTimeout(selectionTimer);
   selectionTimer = setTimeout(() => {
+    // Typing keeps the selection collapsed — the state that can never show
+    // the bubble. Skip the layout-forcing rect/format computation entirely
+    // and report only the expanded↔collapsed transition.
+    const collapsed = getSelection()?.isCollapsed ?? true;
+    if (collapsed) {
+      if (!lastSelectionCollapsed) {
+        lastSelectionCollapsed = true;
+        emit("editSelection", {
+          collapsed: true,
+          rects: [],
+          formats: { strong: false, em: false, s: false, code: false },
+          block: null,
+        });
+      }
+      return;
+    }
+    lastSelectionCollapsed = false;
     emit("editSelection", getSelectionState());
   }, 150);
 }

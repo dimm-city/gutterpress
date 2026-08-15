@@ -262,7 +262,7 @@ function inlineText(nodes: InlineNode[]): string {
       case "text":
       case "code":
       case "abbr":
-        out += n.t === "text" ? n.text : n.text;
+        out += n.text;
         break;
       case "em":
       case "strong":
@@ -284,7 +284,7 @@ function inlineText(nodes: InlineNode[]): string {
 }
 
 function extractInlineChildren(
-  el: ElementLike,
+  children: ArrayLike<ElementLike | TextLike>,
   features: SerializeFeatures,
 ): InlineNode[] {
   const out: InlineNode[] = [];
@@ -297,7 +297,6 @@ function extractInlineChildren(
     out.push(node);
   };
 
-  const children = el.childNodes;
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (!isElement(child)) {
@@ -341,7 +340,7 @@ function extractInlineChildren(
       }
       push({
         t: wrap,
-        children: extractInlineChildren(child, features),
+        children: extractInlineChildren(child.childNodes, features),
         attrs: authorAttrs(child),
       });
       continue;
@@ -369,7 +368,7 @@ function extractInlineChildren(
       const title = takeAttr(attrs, "title");
       if (href == null) throw new UnextractableBlock("<a> without href");
       const hadSourceToken = child.getAttribute("data-gp-source-token") != null;
-      const linkChildren = extractInlineChildren(child, features);
+      const linkChildren = extractInlineChildren(child.childNodes, features);
       const text = inlineText(linkChildren);
       const bare =
         !hadSourceToken &&
@@ -396,7 +395,7 @@ function extractInlineChildren(
     if (tag === "span") {
       // Attribute-free spans appear from contenteditable churn; unwrap.
       if (child.getAttributeNames().length === 0) {
-        for (const inner of extractInlineChildren(child, features)) push(inner);
+        for (const inner of extractInlineChildren(child.childNodes, features)) push(inner);
         continue;
       }
       throw new UnextractableBlock("<span> with attributes");
@@ -441,10 +440,14 @@ function blockChildren(el: ElementLike): ElementLike[] {
 
 const HEADING_RE = /^h([1-6])$/;
 
-const BLOCK_TAGS = new Set([
+/** The codec's closed set of block-level tags — the single source of truth
+ *  for what is extractable, discoverable, and inline-editable. Lower-case;
+ *  compare `tagName.toLowerCase()`. */
+export const CONTENT_BLOCK_TAGS = new Set([
   "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol",
   "table", "pre", "hr", "dl",
 ]);
+const BLOCK_TAGS = CONTENT_BLOCK_TAGS;
 
 /**
  * Extract the structural model of one block element.
@@ -461,7 +464,7 @@ export function extractBlockModel(
   if (tag === "p") {
     return {
       t: "p",
-      inline: trimInline(extractInlineChildren(el, features)),
+      inline: trimInline(extractInlineChildren(el.childNodes, features)),
       attrs: authorAttrs(el),
     };
   }
@@ -471,7 +474,7 @@ export function extractBlockModel(
     return {
       t: "h",
       level: Number(h[1]) as 1 | 2 | 3 | 4 | 5 | 6,
-      inline: trimInline(extractInlineChildren(el, features)),
+      inline: trimInline(extractInlineChildren(el.childNodes, features)),
       attrs: authorAttrs(el),
     };
   }
@@ -556,8 +559,7 @@ function extractListItem(li: ElementLike, options: SerializeOptions): ListItemNo
 
   if (firstBlockIdx === -1) {
     // Tight simple item: all-inline content.
-    const holder: ElementLike = li;
-    return { lead: trimInline(extractInlineChildren(holder, features)), blocks: null };
+    return { lead: trimInline(extractInlineChildren(li.childNodes, features)), blocks: null };
   }
 
   // Collect the inline lead (may be empty), then block children only.
@@ -574,15 +576,7 @@ function extractListItem(li: ElementLike, options: SerializeOptions): ListItemNo
         if (text.trim()) leadNodes.push({ t: "text", text });
         continue;
       }
-      // Inline element before the first block: extract via a synthetic pass.
-      const wrapper: ElementLike = {
-        nodeType: ELEMENT_NODE,
-        tagName: "li",
-        getAttribute: () => null,
-        getAttributeNames: () => [],
-        childNodes: [child],
-      };
-      leadNodes.push(...extractInlineChildren(wrapper, features));
+      leadNodes.push(...extractInlineChildren([child], features));
       continue;
     }
     if (!isBlockEl) {
@@ -637,7 +631,7 @@ function extractTable(el: ElementLike, options: SerializeOptions): BlockNode {
       else if (align[col] !== cellAlign) {
         throw new UnextractableBlock("inconsistent column alignment");
       }
-      cells.push(trimInline(extractInlineChildren(cell, features)));
+      cells.push(trimInline(extractInlineChildren(cell.childNodes, features)));
       col++;
     }
     if (!firstRow && cells.length !== align.length) {
@@ -678,7 +672,7 @@ function extractDeflist(el: ElementLike, options: SerializeOptions): BlockNode {
     const tag = tagOf(child);
     if (tag === "dt") {
       if (authorAttrs(child).length) throw new UnextractableBlock("attrs on <dt>");
-      current = { dt: trimInline(extractInlineChildren(child, features)), dds: [] };
+      current = { dt: trimInline(extractInlineChildren(child.childNodes, features)), dds: [] };
       groups.push(current);
     } else if (tag === "dd") {
       if (!current) throw new UnextractableBlock("<dd> before <dt>");
@@ -692,7 +686,7 @@ function extractDeflist(el: ElementLike, options: SerializeOptions): BlockNode {
           throw new UnextractableBlock("block content in <dd>");
         }
       }
-      current.dds.push(trimInline(extractInlineChildren(child, features)));
+      current.dds.push(trimInline(extractInlineChildren(child.childNodes, features)));
     } else {
       throw new UnextractableBlock(`<${tag}> inside <dl>`);
     }
@@ -704,10 +698,14 @@ function extractDeflist(el: ElementLike, options: SerializeOptions): BlockNode {
 // Content-block discovery
 // ────────────────────────────────────────────────────────────────────────────
 
-const CONTENT_BLOCK_TAGS = new Set([
-  "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol",
-  "table", "pre", "hr", "dl",
-]);
+/** Parse a `data-source-range` value ("start:end") into a finite half-open
+ *  tuple, or null — ADR 0009's fail-safe: a malformed range must never
+ *  resolve to a NaN-derived splice target. */
+export function parseSourceRange(raw: string | null): [number, number] | null {
+  if (!raw) return null;
+  const [a, b] = raw.split(":").map(Number);
+  return Number.isFinite(a) && Number.isFinite(b) ? [a!, b!] : null;
+}
 
 /** The block's `data-source-range` value — fences carry it on the inner
  *  `<code>` (markdown-it applies fence token attrs there, never `<pre>`). */
@@ -1001,10 +999,8 @@ function emitBlocks(blocks: BlockNode[], ctx: EmitContext): string {
 
 function emitList(node: BlockNode & { t: "list" }, ctx: EmitContext): string {
   const parts: string[] = [];
-  let n = node.start ?? 1;
   node.items.forEach((item, idx) => {
-    const marker = node.ordered ? `${n}.` : "-";
-    n++;
+    const marker = node.ordered ? `${(node.start ?? 1) + idx}.` : "-";
     const markerPad = `${marker} `;
     const cont = " ".repeat(markerPad.length);
     let body: string;
@@ -1058,22 +1054,14 @@ const REFERENCE_LINK_RE = /\[[^\]]*\]\s*\[[^\]]*\]/;
  *  model only covers the first paragraph. */
 const FOOTNOTE_CONTINUATION_RE = /\n[ \t]*\n?[ \t]{4}/;
 
-export interface RefusalScanResult {
-  refused: boolean;
-  reason?: string;
-}
-
-export function scanSliceForRefusals(slice: string): RefusalScanResult {
-  if (REFERENCE_LINK_RE.test(slice)) {
-    return { refused: true, reason: "reference-style link/image in source" };
-  }
-  if (/^[ \t]*\[(?!\^)[^\]]+\]:\s/m.test(slice)) {
-    return { refused: true, reason: "link reference definition in source" };
-  }
+/** Refusal reason for constructs the slice scan rules out, or null. */
+export function scanSliceForRefusals(slice: string): string | null {
+  if (REFERENCE_LINK_RE.test(slice)) return "reference-style link/image in source";
+  if (/^[ \t]*\[(?!\^)[^\]]+\]:\s/m.test(slice)) return "link reference definition in source";
   if (/^[ \t]*\[\^/.test(slice) && FOOTNOTE_CONTINUATION_RE.test(slice)) {
-    return { refused: true, reason: "multi-paragraph footnote definition" };
+    return "multi-paragraph footnote definition";
   }
-  return { refused: false };
+  return null;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1106,15 +1094,17 @@ function harvestContext(originalSlice: string): EmitContext {
 }
 
 /**
- * markdown-it block maps (lists especially) often include the blank line(s)
- * separating the block from its successor. The canonical emission has no
- * trailing blanks, so the original slice's exact trailing newline run is
- * re-appended — dropping it would merge the block with its neighbor (the
- * same boundary rule the block overlay ships, plan §5.5).
+ * The trailing blank-line run of a slice ("" when none). markdown-it block
+ * maps (lists especially) often include the blank line(s) separating a block
+ * from its successor; every rewrite must preserve that run exactly or the
+ * block merges with its neighbor (the block overlay's §5.5 boundary rule).
  */
+export function trailingBlankRun(slice: string): string {
+  return /(?:\n[ \t]*)+$/.exec(slice)?.[0] ?? "";
+}
+
 function preserveTrailingBlanks(originalSlice: string, text: string): string {
-  const run = /(?:\n[ \t]*)+$/.exec(originalSlice);
-  return run ? text + run[0] : text;
+  return text + trailingBlankRun(originalSlice);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1155,8 +1145,8 @@ export function serializeBlock(input: SerializeBlockInput): SerializeResult {
     return { kind: "unchanged" };
   }
 
-  const scan = scanSliceForRefusals(input.originalSlice);
-  if (scan.refused) return { kind: "refused", reason: scan.reason! };
+  const refusal = scanSliceForRefusals(input.originalSlice);
+  if (refusal) return { kind: "refused", reason: refusal };
 
   try {
     const ctx = harvestContext(input.originalSlice);
@@ -1170,6 +1160,51 @@ export function serializeBlock(input: SerializeBlockInput): SerializeResult {
     if (err instanceof UnextractableBlock) return { kind: "refused", reason: err.message };
     throw err;
   }
+}
+
+/**
+ * Serialize the LIVE ELEMENT GROUP of one committed source range back to
+ * markdown — the edit surface's entry point (ADR 0010). A range's live
+ * extent can be:
+ *   0 elements — the block was deleted; the boundary blank run is kept so
+ *     the neighbors don't merge;
+ *   1 element  — the ordinary {@link serializeBlock} path;
+ *   n elements — an Enter-split clone group; each piece serializes against
+ *     a blank-stripped slice and the original trailing run is re-appended
+ *     exactly once. Footnote labels cannot be attributed across pieces, so
+ *     a split of a ref-carrying slice refuses.
+ */
+export function serializeBlockGroup(
+  extent: ArrayLike<ElementLike>,
+  pristineModel: BlockNode | null,
+  originalSlice: string,
+  options: SerializeOptions = {},
+): SerializeResult {
+  if (extent.length === 0) {
+    const run = trailingBlankRun(originalSlice);
+    return { kind: "replacement", text: run.replace(/^\n/, "") };
+  }
+  if (extent.length === 1) {
+    return serializeBlock({ edited: extent[0]!, pristineModel, originalSlice, options });
+  }
+  if (/\[\^/.test(originalSlice)) {
+    return { kind: "refused", reason: "split a block containing footnote refs" };
+  }
+  const bare = originalSlice.replace(/(?:\n[ \t]*)+$/, "");
+  const parts: string[] = [];
+  for (let i = 0; i < extent.length; i++) {
+    const res = serializeBlock({
+      edited: extent[i]!,
+      pristineModel: null,
+      originalSlice: i === 0 ? bare : "",
+      options,
+    });
+    if (res.kind !== "replacement") {
+      return res.kind === "refused" ? res : { kind: "refused", reason: "empty split piece" };
+    }
+    parts.push(res.text);
+  }
+  return { kind: "replacement", text: parts.join("\n\n") + trailingBlankRun(originalSlice) };
 }
 
 /**

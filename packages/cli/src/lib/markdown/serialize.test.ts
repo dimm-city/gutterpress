@@ -12,7 +12,7 @@
  * The same harness logic runs at corpus scale in scripts/roundtrip-gate.ts.
  */
 import { describe, expect, test } from "bun:test";
-import { createMarkdownRenderer, BUILTIN_OPTIONAL_PLUGINS } from "./renderer";
+import { createMarkdownRenderer, BUILTIN_OPTIONAL_PLUGINS, SERIALIZER_FEATURE_BY_PLUGIN } from "./renderer";
 import {
   canonicalizeBlock,
   discoverContentBlocks,
@@ -35,7 +35,7 @@ import {
 // Round-trip harness
 // ────────────────────────────────────────────────────────────────────────────
 
-const FEATURE_PLUGINS = ["markdown-it-mark", "markdown-it-sub", "markdown-it-sup", "markdown-it-abbr"];
+const FEATURE_PLUGINS = Object.keys(SERIALIZER_FEATURE_BY_PLUGIN);
 
 function makeMd(withFeatures: boolean) {
   return createMarkdownRenderer(

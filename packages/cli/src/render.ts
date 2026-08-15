@@ -29,15 +29,19 @@ export type {
 export { MARKER_CSS } from "./lib/markdown/markers.js";
 
 // Block-scoped HTML→markdown serializer for the inline-editing previewer
-// (ADR 0010). Pure by construction; consumed by the preview-edit frame
-// bundle, the desktop SPA, and scripts/roundtrip-gate.ts.
+// (ADR 0010). Pure by construction. This subpath ships only the CONTRACT
+// surface a browser host needs to run the edit loop (the in-repo consumers —
+// the edit bundle and the roundtrip gate — import relatively); emitter
+// internals stay private.
 export {
-  canonicalizeBlock,
-  escapeTextRun,
+  CONTENT_BLOCK_TAGS,
+  discoverContentBlocks,
   extractBlockModel,
+  findBlockRangeAttr,
   modelsEqual,
-  scanSliceForRefusals,
+  parseSourceRange,
   serializeBlock,
+  serializeBlockGroup,
   UnextractableBlock,
 } from "./lib/markdown/serialize";
 export type {

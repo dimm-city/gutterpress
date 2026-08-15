@@ -14,13 +14,17 @@ function makeHarness(outcomes: CommitOutcome[]) {
       return outcomes[committed.length - 1] ?? { ok: true as const, flushed: true };
     },
   };
+  const listeners: Array<(e: { name: string; detail: unknown }) => void> = [];
   const client = {
     setEditMode: async () => ({ on: true }),
     ackEditPatches: async (spec: unknown) => {
       acks.push(spec);
       return {};
     },
-    flushEditState: async () => {},
+    on: (fn: (e: { name: string; detail: unknown }) => void) => {
+      listeners.push(fn);
+      return () => {};
+    },
   };
   const session = new InlineEditSession({
     client: () => client,
@@ -28,7 +32,8 @@ function makeHarness(outcomes: CommitOutcome[]) {
     enabled: () => true,
     onRefusal: (r) => refusals.push(r),
   });
-  return { session, committed, acks, refusals };
+  const emit = (name: string, detail: unknown) => listeners.forEach((fn) => fn({ name, detail }));
+  return { session, client, committed, acks, refusals, emit };
 }
 
 const patch = (n: number) => ({
@@ -86,10 +91,28 @@ describe("InlineEditSession", () => {
     expect(h.refusals).toEqual([{ chapter: "ch.md", range: [2, 3], reason: "raw html" }]);
   });
 
-  test("editStateChanged drives the dirty flag; unknown events are not consumed", () => {
+  test("editStateChanged drives the dirty flag", () => {
     const h = makeHarness([]);
-    expect(h.session.handleEvent("editStateChanged", { dirty: true })).toBe(true);
+    h.session.handleEvent("editStateChanged", { dirty: true });
     expect(h.session.dirty).toBe(true);
-    expect(h.session.handleEvent("pageChanged", {})).toBe(false);
+    h.session.handleEvent("editStateChanged", { dirty: false });
+    expect(h.session.dirty).toBe(false);
+  });
+
+  test("subscribe owns the event stream: routes patches, re-syncs on render passes", async () => {
+    const h = makeHarness([{ ok: true, flushed: true }]);
+    const selections: unknown[] = [];
+    let renderPasses = 0;
+    h.session.subscribe(h.client, {
+      onSelection: (d) => selections.push(d),
+      onRenderPass: () => renderPasses++,
+    });
+    h.emit("editPatches", { batchId: 2, patches: [patch(0)], refusals: [] });
+    h.emit("editSelection", { collapsed: true });
+    h.emit("renderingComplete", {});
+    await Bun.sleep(0);
+    expect(h.committed.length).toBe(1);
+    expect(selections).toEqual([{ collapsed: true }]);
+    expect(renderPasses).toBe(1);
   });
 });

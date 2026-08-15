@@ -1288,7 +1288,7 @@
   // frame's edit surface immediately, not just on the next render pass.
   const inlineEditingSink = settingsChangeGuard<boolean>(
     () => {
-      formatBubble = { ...formatBubble, visible: false };
+      hideBubble();
       void inlineEdit.syncEditMode();
     },
     () => !!client,
@@ -1969,6 +1969,10 @@
     formats: { strong: false, em: false, s: false, code: false },
   });
 
+  function hideBubble(): void {
+    formatBubble.visible = false;
+  }
+
   function handleEditSelection(detail: {
     collapsed: boolean;
     rects: Array<{ top: number; left: number; width: number; height: number }>;
@@ -1976,12 +1980,16 @@
     block: unknown;
   } | null): void {
     const rect = detail?.rects?.[0];
+    if (!detail || detail.collapsed || !detail.block || !rect ||
+        !settings.current.preview.inlineEditing) {
+      hideBubble();
+      return;
+    }
+    // Frame-viewport rect → window coordinates (same fixed-position frame of
+    // reference as the ContextMenu).
     const origin = previewFrameRef?.getIframe()?.getBoundingClientRect();
-    if (
-      !detail || detail.collapsed || !detail.block || !rect || !origin ||
-      !settings.current.preview.inlineEditing
-    ) {
-      if (formatBubble.visible) formatBubble = { ...formatBubble, visible: false };
+    if (!origin) {
+      hideBubble();
       return;
     }
     formatBubble = {
@@ -2084,18 +2092,13 @@
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     blockOverlay.subscribe(c);
-    // Inline editing (ADR 0010): route the v7 edit events and (re)enable the
-    // frame's edit surface on ready + after every rendering pass — the frame
-    // rebuilds its strips (and loses editability stamps) on each mount.
-    c.on((e) => {
-      inlineEdit.handleEvent(e.name, e.detail);
-      if (e.name === "editSelection") {
-        handleEditSelection(e.detail as Parameters<typeof handleEditSelection>[0]);
-      }
-      if (e.name === "ready" || e.name === "renderingComplete") {
-        formatBubble = { ...formatBubble, visible: false };
-        void inlineEdit.syncEditMode();
-      }
+    // Inline editing (ADR 0010): the session owns its slice of the event
+    // stream (commits, acks, drift, edit-mode re-sync) — the page keeps only
+    // bubble positioning, which needs the iframe rect.
+    inlineEdit.subscribe(c, {
+      onSelection: (detail) =>
+        handleEditSelection(detail as Parameters<typeof handleEditSelection>[0]),
+      onRenderPass: hideBubble,
     });
   }
 

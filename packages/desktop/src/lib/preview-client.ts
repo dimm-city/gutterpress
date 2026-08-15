@@ -333,8 +333,9 @@ export class PreviewClient {
    */
   // ── protocol v7: inline editing (ADR 0010) ────────────────────────────
 
-  /** Turn the in-frame edit surface on/off. */
-  setEditMode(spec: { on: boolean; features?: Record<string, boolean> }): Promise<{ on: boolean }> {
+  /** Turn the in-frame edit surface on/off. (Serializer feature flags are
+   *  not passed here — the preview server injects them from the manifest.) */
+  setEditMode(spec: { on: boolean }): Promise<{ on: boolean }> {
     return this.call<{ on: boolean }>("setEditMode", [spec]);
   }
 
@@ -350,16 +351,6 @@ export class PreviewClient {
     }>;
   }): Promise<{ ok: boolean }> {
     return this.call<{ ok: boolean }>("ackEditPatches", [spec]);
-  }
-
-  /** Converge-on-drift pass for one chapter (frame-side fetch + heal). */
-  verifyChapter(spec: { chapter: string }): Promise<{ healed: number; mismatch?: string }> {
-    return this.call<{ healed: number; mismatch?: string }>("verifyChapter", [spec]);
-  }
-
-  /** Force all sub-debounce dirty blocks into proposals (pre-swap flush). */
-  flushEditState(): Promise<void> {
-    return this.call<void>("flushEditState", []);
   }
 
   /** Toggle bold/italic/strike/code on the frame's current selection. */

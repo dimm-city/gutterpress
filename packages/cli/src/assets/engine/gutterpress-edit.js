@@ -149,7 +149,7 @@
         case "text":
         case "code":
         case "abbr":
-          out += n.t === "text" ? n.text : n.text;
+          out += n.text;
           break;
         case "em":
         case "strong":
@@ -169,7 +169,7 @@
     }
     return out;
   }
-  function extractInlineChildren(el, features) {
+  function extractInlineChildren(children, features) {
     const out = [];
     const push = (node) => {
       const prev = out[out.length - 1];
@@ -179,7 +179,6 @@
       }
       out.push(node);
     };
-    const children = el.childNodes;
     for (let i = 0;i < children.length; i++) {
       const child = children[i];
       if (!isElement(child)) {
@@ -213,7 +212,7 @@
         }
         push({
           t: wrap,
-          children: extractInlineChildren(child, features),
+          children: extractInlineChildren(child.childNodes, features),
           attrs: authorAttrs(child)
         });
         continue;
@@ -239,7 +238,7 @@
         if (href == null)
           throw new UnextractableBlock("<a> without href");
         const hadSourceToken = child.getAttribute("data-gp-source-token") != null;
-        const linkChildren = extractInlineChildren(child, features);
+        const linkChildren = extractInlineChildren(child.childNodes, features);
         const text = inlineText(linkChildren);
         const bare = !hadSourceToken && title == null && attrs.length === 0 && (href === text || href === `mailto:${text}` || href === `http://${text}`);
         push({ t: "link", href, title, children: linkChildren, attrs, bare });
@@ -259,7 +258,7 @@
       }
       if (tag === "span") {
         if (child.getAttributeNames().length === 0) {
-          for (const inner of extractInlineChildren(child, features))
+          for (const inner of extractInlineChildren(child.childNodes, features))
             push(inner);
           continue;
         }
@@ -302,7 +301,7 @@
     return out;
   }
   var HEADING_RE = /^h([1-6])$/;
-  var BLOCK_TAGS = new Set([
+  var CONTENT_BLOCK_TAGS = new Set([
     "p",
     "h1",
     "h2",
@@ -318,13 +317,14 @@
     "hr",
     "dl"
   ]);
+  var BLOCK_TAGS = CONTENT_BLOCK_TAGS;
   function extractBlockModel(el, options = {}) {
     const features = options.features ?? {};
     const tag = tagOf(el);
     if (tag === "p") {
       return {
         t: "p",
-        inline: trimInline(extractInlineChildren(el, features)),
+        inline: trimInline(extractInlineChildren(el.childNodes, features)),
         attrs: authorAttrs(el)
       };
     }
@@ -333,7 +333,7 @@
       return {
         t: "h",
         level: Number(h[1]),
-        inline: trimInline(extractInlineChildren(el, features)),
+        inline: trimInline(extractInlineChildren(el.childNodes, features)),
         attrs: authorAttrs(el)
       };
     }
@@ -419,8 +419,7 @@
       }
     }
     if (firstBlockIdx === -1) {
-      const holder = li;
-      return { lead: trimInline(extractInlineChildren(holder, features)), blocks: null };
+      return { lead: trimInline(extractInlineChildren(li.childNodes, features)), blocks: null };
     }
     const leadNodes = [];
     const blocks = [];
@@ -437,14 +436,7 @@
             leadNodes.push({ t: "text", text });
           continue;
         }
-        const wrapper = {
-          nodeType: ELEMENT_NODE,
-          tagName: "li",
-          getAttribute: () => null,
-          getAttributeNames: () => [],
-          childNodes: [child]
-        };
-        leadNodes.push(...extractInlineChildren(wrapper, features));
+        leadNodes.push(...extractInlineChildren([child], features));
         continue;
       }
       if (!isBlockEl) {
@@ -501,7 +493,7 @@
         else if (align[col] !== cellAlign) {
           throw new UnextractableBlock("inconsistent column alignment");
         }
-        cells.push(trimInline(extractInlineChildren(cell, features)));
+        cells.push(trimInline(extractInlineChildren(cell.childNodes, features)));
         col++;
       }
       if (!firstRow && cells.length !== align.length) {
@@ -546,7 +538,7 @@
       if (tag === "dt") {
         if (authorAttrs(child).length)
           throw new UnextractableBlock("attrs on <dt>");
-        current = { dt: trimInline(extractInlineChildren(child, features)), dds: [] };
+        current = { dt: trimInline(extractInlineChildren(child.childNodes, features)), dds: [] };
         groups.push(current);
       } else if (tag === "dd") {
         if (!current)
@@ -560,29 +552,19 @@
             throw new UnextractableBlock("block content in <dd>");
           }
         }
-        current.dds.push(trimInline(extractInlineChildren(child, features)));
+        current.dds.push(trimInline(extractInlineChildren(child.childNodes, features)));
       } else {
         throw new UnextractableBlock(`<${tag}> inside <dl>`);
       }
     }
     return { t: "dl", groups };
   }
-  var CONTENT_BLOCK_TAGS = new Set([
-    "p",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "blockquote",
-    "ul",
-    "ol",
-    "table",
-    "pre",
-    "hr",
-    "dl"
-  ]);
+  function parseSourceRange(raw) {
+    if (!raw)
+      return null;
+    const [a, b] = raw.split(":").map(Number);
+    return Number.isFinite(a) && Number.isFinite(b) ? [a, b] : null;
+  }
   function findBlockRangeAttr(el) {
     const own = el.getAttribute("data-source-range");
     if (own != null)
@@ -816,10 +798,8 @@ ${node.code ? `${node.code}
   }
   function emitList(node, ctx) {
     const parts = [];
-    let n = node.start ?? 1;
     node.items.forEach((item, idx) => {
-      const marker = node.ordered ? `${n}.` : "-";
-      n++;
+      const marker = node.ordered ? `${(node.start ?? 1) + idx}.` : "-";
       const markerPad = `${marker} `;
       const cont = " ".repeat(markerPad.length);
       let body;
@@ -863,16 +843,14 @@ ${emitBlocks(item.blocks, ctx)}`;
   var REFERENCE_LINK_RE = /\[[^\]]*\]\s*\[[^\]]*\]/;
   var FOOTNOTE_CONTINUATION_RE = /\n[ \t]*\n?[ \t]{4}/;
   function scanSliceForRefusals(slice) {
-    if (REFERENCE_LINK_RE.test(slice)) {
-      return { refused: true, reason: "reference-style link/image in source" };
-    }
-    if (/^[ \t]*\[(?!\^)[^\]]+\]:\s/m.test(slice)) {
-      return { refused: true, reason: "link reference definition in source" };
-    }
+    if (REFERENCE_LINK_RE.test(slice))
+      return "reference-style link/image in source";
+    if (/^[ \t]*\[(?!\^)[^\]]+\]:\s/m.test(slice))
+      return "link reference definition in source";
     if (/^[ \t]*\[\^/.test(slice) && FOOTNOTE_CONTINUATION_RE.test(slice)) {
-      return { refused: true, reason: "multi-paragraph footnote definition" };
+      return "multi-paragraph footnote definition";
     }
-    return { refused: false };
+    return null;
   }
   var FOOTNOTE_LABEL_RE = /\[\^([^\]\s]+)\](?!:)/g;
   var FOOTNOTE_DEF_RE = /^([ \t]*\[\^[^\]\s]+\]:[ \t]*)/;
@@ -893,9 +871,11 @@ ${emitBlocks(item.blocks, ctx)}`;
       fenceLen: fence ? fence[1].length : 3
     };
   }
+  function trailingBlankRun(slice) {
+    return /(?:\n[ \t]*)+$/.exec(slice)?.[0] ?? "";
+  }
   function preserveTrailingBlanks(originalSlice, text) {
-    const run = /(?:\n[ \t]*)+$/.exec(originalSlice);
-    return run ? text + run[0] : text;
+    return text + trailingBlankRun(originalSlice);
   }
   function serializeBlock(input) {
     let model;
@@ -909,9 +889,9 @@ ${emitBlocks(item.blocks, ctx)}`;
     if (input.pristineModel && modelsEqual(model, input.pristineModel)) {
       return { kind: "unchanged" };
     }
-    const scan = scanSliceForRefusals(input.originalSlice);
-    if (scan.refused)
-      return { kind: "refused", reason: scan.reason };
+    const refusal = scanSliceForRefusals(input.originalSlice);
+    if (refusal)
+      return { kind: "refused", reason: refusal };
     try {
       const ctx = harvestContext(input.originalSlice);
       const text = emitBlock(model, ctx);
@@ -926,6 +906,35 @@ ${emitBlocks(item.blocks, ctx)}`;
         return { kind: "refused", reason: err.message };
       throw err;
     }
+  }
+  function serializeBlockGroup(extent, pristineModel, originalSlice, options = {}) {
+    if (extent.length === 0) {
+      const run = trailingBlankRun(originalSlice);
+      return { kind: "replacement", text: run.replace(/^\n/, "") };
+    }
+    if (extent.length === 1) {
+      return serializeBlock({ edited: extent[0], pristineModel, originalSlice, options });
+    }
+    if (/\[\^/.test(originalSlice)) {
+      return { kind: "refused", reason: "split a block containing footnote refs" };
+    }
+    const bare = originalSlice.replace(/(?:\n[ \t]*)+$/, "");
+    const parts = [];
+    for (let i = 0;i < extent.length; i++) {
+      const res = serializeBlock({
+        edited: extent[i],
+        pristineModel: null,
+        originalSlice: i === 0 ? bare : "",
+        options
+      });
+      if (res.kind !== "replacement") {
+        return res.kind === "refused" ? res : { kind: "refused", reason: "empty split piece" };
+      }
+      parts.push(res.text);
+    }
+    return { kind: "replacement", text: parts.join(`
+
+`) + trailingBlankRun(originalSlice) };
   }
 
   // src/engine/edit/index.ts
@@ -952,36 +961,17 @@ ${emitBlocks(item.blocks, ctx)}`;
   function newlineSplit(text) {
     return text.split(/\r\n?|\n/);
   }
-  var CONTENT_TAGS = new Set([
-    "P",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-    "BLOCKQUOTE",
-    "UL",
-    "OL",
-    "TABLE",
-    "PRE",
-    "HR",
-    "DL"
-  ]);
+  var isContentTag = (el) => CONTENT_BLOCK_TAGS.has(el.tagName.toLowerCase());
+  var elementOf = (node) => node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement ?? null;
   function parseRangeAttr(el) {
-    const raw = findBlockRangeAttr(el);
-    if (!raw)
-      return null;
-    const [a, b] = raw.split(":").map(Number);
-    return Number.isFinite(a) && Number.isFinite(b) ? [a, b] : null;
+    return parseSourceRange(findBlockRangeAttr(el));
   }
   function commitUnitOf(node) {
     let unit = null;
-    let el = node && node.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement ?? null;
-    for (;el; el = el.parentElement) {
+    for (let el = elementOf(node);el; el = el.parentElement) {
       if (el.classList.contains("gp-strip"))
         break;
-      if (CONTENT_TAGS.has(el.tagName) && parseRangeAttr(el))
+      if (isContentTag(el) && parseRangeAttr(el))
         unit = el;
     }
     return unit;
@@ -992,7 +982,7 @@ ${emitBlocks(item.blocks, ctx)}`;
   }
   function extentOf(entry) {
     const sel = `[data-source-range="${entry.range[0]}:${entry.range[1]}"]` + `[data-chapter-src="${CSS.escape(entry.chapter)}"]`;
-    return [...document.querySelectorAll(sel)].filter((el) => CONTENT_TAGS.has(el.tagName));
+    return [...document.querySelectorAll(sel)].filter(isContentTag);
   }
   function captureCaret() {
     const sel = getSelection();
@@ -1035,21 +1025,31 @@ ${emitBlocks(item.blocks, ctx)}`;
     clearTimeout(relayoutTimer);
     relayoutTimer = setTimeout(safeRelayout, opts.relayoutDelayMs);
   }
+  var mirrorFetches = new Map;
   async function mirrorOf(chapter) {
     const cached = mirrors.get(chapter);
     if (cached)
       return cached;
+    const inflight = mirrorFetches.get(chapter);
+    if (inflight)
+      return inflight;
     const url = opts.sourceUrl?.(chapter) ?? `/${chapter}`;
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok)
+    const fetching = (async () => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok)
+          return null;
+        const lines = newlineSplit(await res.text());
+        mirrors.set(chapter, lines);
+        return lines;
+      } catch {
         return null;
-      const lines = newlineSplit(await res.text());
-      mirrors.set(chapter, lines);
-      return lines;
-    } catch {
-      return null;
-    }
+      } finally {
+        mirrorFetches.delete(chapter);
+      }
+    })();
+    mirrorFetches.set(chapter, fetching);
+    return fetching;
   }
   function sliceOf(lines, range) {
     return lines.slice(range[0], range[1]).join(`
@@ -1138,41 +1138,7 @@ ${emitBlocks(item.blocks, ctx)}`;
     autosyncTimer = setTimeout(() => void autosync(), opts.autosyncDelayMs);
   }
   function serializeEntry(entry, slice) {
-    const extent = extentOf(entry);
-    const options = { features: opts.features };
-    if (extent.length === 0) {
-      const run2 = /(?:\n[ \t]*)+$/.exec(slice);
-      return { kind: "replacement", text: run2 ? run2[0].replace(/^\n/, "") : "" };
-    }
-    if (extent.length === 1) {
-      return serializeBlock({
-        edited: extent[0],
-        pristineModel: entry.pristine,
-        originalSlice: slice,
-        options
-      });
-    }
-    if (/\[\^/.test(slice)) {
-      return { kind: "refused", reason: "split a block containing footnote refs" };
-    }
-    const bare = slice.replace(/(?:\n[ \t]*)+$/, "");
-    const parts = [];
-    for (let i = 0;i < extent.length; i++) {
-      const res = serializeBlock({
-        edited: extent[i],
-        pristineModel: null,
-        originalSlice: i === 0 ? bare : "",
-        options
-      });
-      if (res.kind !== "replacement") {
-        return res.kind === "refused" ? res : { kind: "refused", reason: "empty split piece" };
-      }
-      parts.push(res.text);
-    }
-    const run = /(?:\n[ \t]*)+$/.exec(slice);
-    return { kind: "replacement", text: parts.join(`
-
-`) + (run ? run[0] : "") };
+    return serializeBlockGroup(extentOf(entry), entry.pristine, slice, { features: opts.features });
   }
   async function autosync() {
     if (!enabled || composing) {
@@ -1250,7 +1216,7 @@ ${emitBlocks(item.blocks, ctx)}`;
         const newEnd = patch.range[0] + replacementLines.length;
         for (const el of extent) {
           el.setAttribute("data-source-range", `${patch.range[0]}:${newEnd}`);
-          if (CONTENT_TAGS.has(el.tagName)) {
+          if (isContentTag(el)) {
             try {
               committedModels.set(el, extractBlockModel(el, { features: opts.features }));
             } catch {
@@ -1288,8 +1254,14 @@ ${emitBlocks(item.blocks, ctx)}`;
     const fresh = new DOMParser().parseFromString(await res.text(), "text/html");
     const freshBlocks = discoverContentBlocks(fresh.body);
     const liveBlocks = discoverContentBlocks(document.body, {
-      skip: (el) => el.classList?.contains("gp-layer") ?? false
-    }).filter((el) => chapterOf(el) === chapter);
+      skip: (elLike) => {
+        const el = elLike;
+        if (el.classList?.contains("gp-layer"))
+          return true;
+        const src = el.getAttribute("data-chapter-src");
+        return src != null && src !== chapter;
+      }
+    });
     if (freshBlocks.length !== liveBlocks.length) {
       const detail2 = { chapter, healed: 0, mismatch: "block count" };
       emit("editDrift", detail2);
@@ -1319,13 +1291,13 @@ ${emitBlocks(item.blocks, ctx)}`;
       }
       if (!same) {
         const imported = document.importNode(freshEl, true);
-        const healKey = freshRange ? keyOf(chapter, freshRange.split(":").map(Number)) : null;
+        const range = parseSourceRange(freshRange);
+        const healKey = range ? keyOf(chapter, range) : null;
         const heals = healKey ? (healCounts.get(healKey) ?? 0) + 1 : 1;
         if (healKey)
           healCounts.set(healKey, heals);
         if (heals >= DEGRADE_AFTER_HEALS) {
           imported.setAttribute(DEGRADED_ATTR, "");
-          const range = parseRangeAttr(imported);
           if (range)
             degraded.push({ chapter, range });
         }
@@ -1357,8 +1329,7 @@ ${emitBlocks(item.blocks, ctx)}`;
       return { applied };
     }
     const range = sel.getRangeAt(0);
-    const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode?.parentElement ?? null;
-    const existing = anchorEl?.closest("code");
+    const existing = elementOf(sel.anchorNode)?.closest("code");
     ensureTracked(unit);
     if (existing && unit.contains(existing)) {
       const text = document.createTextNode(existing.textContent ?? "");
@@ -1395,7 +1366,7 @@ ${emitBlocks(item.blocks, ctx)}`;
       return empty;
     const range = sel.getRangeAt(0);
     const unit = commitUnitOf(sel.anchorNode);
-    const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode?.parentElement ?? null;
+    const anchorEl = elementOf(sel.anchorNode);
     const has = (selector) => anchorEl?.closest(selector) != null;
     return {
       collapsed: sel.isCollapsed,
@@ -1423,7 +1394,7 @@ ${emitBlocks(item.blocks, ctx)}`;
     const sel = getSelection();
     if (!sel?.isCollapsed || !sel.anchorNode)
       return;
-    const strip = (sel.anchorNode.parentElement ?? sel.anchorNode)?.closest?.(".gp-strip");
+    const strip = elementOf(sel.anchorNode)?.closest(".gp-strip");
     if (!strip)
       return;
     const before = { node: sel.anchorNode, offset: sel.anchorOffset };
@@ -1454,11 +1425,26 @@ ${emitBlocks(item.blocks, ctx)}`;
     }, 0);
   }
   var selectionTimer;
+  var lastSelectionCollapsed = true;
   function onSelectionChange() {
     if (!enabled)
       return;
     clearTimeout(selectionTimer);
     selectionTimer = setTimeout(() => {
+      const collapsed = getSelection()?.isCollapsed ?? true;
+      if (collapsed) {
+        if (!lastSelectionCollapsed) {
+          lastSelectionCollapsed = true;
+          emit("editSelection", {
+            collapsed: true,
+            rects: [],
+            formats: { strong: false, em: false, s: false, code: false },
+            block: null
+          });
+        }
+        return;
+      }
+      lastSelectionCollapsed = false;
       emit("editSelection", getSelectionState());
     }, 150);
   }

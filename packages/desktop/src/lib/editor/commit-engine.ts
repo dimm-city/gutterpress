@@ -32,10 +32,9 @@ export interface CommitEngineBuffer {
   externalChange: unknown | null;
   hasPendingSave: boolean;
   reconcileExternalChange(): Promise<void>;
-  flush(): Promise<void>;
+  /** `origin` marks the flushed saves as inline-edit projections (ADR 0010). */
+  flush(origin?: "inline-edit"): Promise<void>;
   edit(text: string): void;
-  /** See EditorBuffer.nextWriteOrigin — set around inline-edit flushes. */
-  nextWriteOrigin?: "inline-edit" | null;
 }
 
 export interface CommitEngineDeps {
@@ -285,7 +284,6 @@ export class CommitEngine {
     // its document holds this file (never infer from buffer.filePath alone) so
     // an editor showing something else never receives a transaction meant for
     // the buffer-only path.
-    if (patch.origin) buf.nextWriteOrigin = patch.origin;
     if (this.deps.editorHasFile(absPath)) {
       this.deps.applyRangeEdit(absPath, from, to, patch.replacement);
     } else {
@@ -298,10 +296,9 @@ export class CommitEngine {
     // 500ms — EditorBuffer's own `?? 500` class fallback is never reached by
     // the desktop app, which always passes an explicit saveDelayMs).
     try {
-      await buf.flush();
+      await buf.flush(patch.origin);
       return { ok: true, flushed: true };
     } catch {
-      buf.nextWriteOrigin = null;
       // flush() throws when performSave's live disk compare finds an
       // external change. The buffer's own onExternalConflict callback has
       // already surfaced the conflict banner; the patch stays in the buffer

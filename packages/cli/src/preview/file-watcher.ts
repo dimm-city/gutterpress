@@ -16,6 +16,7 @@ import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
+import { SERIALIZER_FEATURE_BY_PLUGIN } from '../lib/markdown/renderer';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
@@ -195,22 +196,15 @@ export async function generateAndWriteHtml(
   );
 }
 
-/** Bundled opt-in plugins → serializer feature flags (ADR 0010). Mirrors
- *  scripts/roundtrip-gate.ts's mapping; non-bundled plugins add no flags. */
-const FEATURE_BY_PLUGIN: Record<string, string> = {
-  "markdown-it-mark": "mark",
-  "markdown-it-sub": "sub",
-  "markdown-it-sup": "sup",
-  "markdown-it-abbr": "abbr",
-};
-
-export function editFeaturesOf(
+/** The manifest's bundled opt-in plugins as serializer feature flags
+ *  (ADR 0010); the mapping itself lives beside BUILTIN_OPTIONAL_PLUGINS. */
+function editFeaturesOf(
   plugins: ResolvedPluginConfig[] | undefined,
 ): Record<string, boolean> {
   const features: Record<string, boolean> = {};
   for (const plugin of plugins ?? []) {
     const name = typeof plugin === "string" ? plugin : plugin?.name;
-    const feature = name ? FEATURE_BY_PLUGIN[name] : undefined;
+    const feature = name ? SERIALIZER_FEATURE_BY_PLUGIN[name] : undefined;
     if (feature) features[feature] = true;
   }
   return features;

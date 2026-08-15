@@ -100,9 +100,6 @@ export class EditorBuffer {
     this.opts = opts;
   }
 
-  /** Set by the commit engine around inline-edit flushes; consumed per save. */
-  nextWriteOrigin: "inline-edit" | null = null;
-
   private get platform(): Platform {
     return this.opts.platform;
   }
@@ -242,9 +239,9 @@ export class EditorBuffer {
     }
   }
 
-  private doSave(): Promise<void> {
+  private doSave(origin?: "inline-edit"): Promise<void> {
     if (this.saveInFlight) return this.saveInFlight;
-    const save = this.performSave();
+    const save = this.performSave(origin);
     this.saveInFlight = save;
     const clear = (): void => {
       if (this.saveInFlight === save) this.saveInFlight = null;
@@ -253,7 +250,7 @@ export class EditorBuffer {
     return save;
   }
 
-  private async performSave(): Promise<void> {
+  private async performSave(origin?: "inline-edit"): Promise<void> {
     const filePath = this.filePath;
     if (!filePath) return;
     const snapshot = this.content;
@@ -280,14 +277,7 @@ export class EditorBuffer {
         return;
       }
 
-      const { mtimeMs } = await this.platform.writeFile(
-        filePath,
-        snapshot,
-        // Inline-edit commits mark their saves so the preview server skips
-        // the rebuild+swap (ADR 0010) — the DOM already shows this content.
-        this.nextWriteOrigin ?? undefined,
-      );
-      this.nextWriteOrigin = null;
+      const { mtimeMs } = await this.platform.writeFile(filePath, snapshot, origin);
       this.opts.onSaved?.(filePath);
       if (this.opts.recoveryEnabled !== false) {
         api.recovery.clear(filePath).catch(() => {});
@@ -315,8 +305,11 @@ export class EditorBuffer {
     }
   }
 
-  /** Force any pending save to run now and await it (close/navigate flush). */
-  async flush(): Promise<void> {
+  /** Force any pending save to run now and await it (close/navigate flush).
+   *  `origin: "inline-edit"` marks the flushed saves so the preview server
+   *  suppresses its rebuild (ADR 0010) — a parameter, not stored state, so
+   *  an unrelated later save can never inherit the marker. */
+  async flush(origin?: "inline-edit"): Promise<void> {
     if (this.recoveryTimer) {
       clearTimeout(this.recoveryTimer);
       this.recoveryTimer = null;
@@ -329,7 +322,7 @@ export class EditorBuffer {
         clearTimeout(this.saveTimer);
         this.saveTimer = null;
       }
-      await this.doSave();
+      await this.doSave(origin);
       if (this.externalChange) {
         throw new Error("The file changed on disk before the edit could be saved.");
       }

@@ -15,18 +15,18 @@
  */
 import type { CommitEngine } from "./commit-engine";
 
+/** One patch's commit outcome, acked back to the frame. */
+export interface PatchResult {
+  chapter: string;
+  range: [number, number];
+  status: "applied" | "refused" | "failed";
+  reason?: string;
+}
+
 export interface InlineEditClient {
-  setEditMode(spec: { on: boolean; features?: Record<string, boolean> }): Promise<{ on: boolean }>;
-  ackEditPatches(spec: {
-    batchId: number;
-    results: Array<{
-      chapter: string;
-      range: [number, number];
-      status: "applied" | "refused" | "failed";
-      reason?: string;
-    }>;
-  }): Promise<unknown>;
-  flushEditState(): Promise<void>;
+  setEditMode(spec: { on: boolean }): Promise<{ on: boolean }>;
+  ackEditPatches(spec: { batchId: number; results: PatchResult[] }): Promise<unknown>;
+  on(fn: (e: { name: string; detail: unknown }) => void): () => void;
 }
 
 export interface InlineEditSessionDeps {
@@ -52,12 +52,34 @@ interface EditPatchesDetail {
 }
 
 export class InlineEditSession {
-  /** Uncommitted edits exist in the frame (drives the save indicator). */
+  /** Uncommitted edits exist in the frame (test/telemetry hook — no UI
+   *  consumer yet; the save indicator wiring is future work). */
   dirty = false;
   /** Monotonic count of applied inline commits (test/telemetry hook). */
   applied = 0;
 
   constructor(private deps: InlineEditSessionDeps) {}
+
+  /**
+   * Own the edit slice of a client's event stream (the sibling-controller
+   * pattern — ContextMenuController/BlockOverlayController do the same):
+   * routes the v7 edit events and re-syncs edit mode on ready/render passes.
+   * `onSelection` is the one event the page keeps a hand in — bubble
+   * positioning needs the iframe rect, which only the page can read.
+   */
+  subscribe(
+    client: InlineEditClient,
+    hooks?: { onSelection?: (detail: unknown) => void; onRenderPass?: () => void },
+  ): () => void {
+    return client.on((e) => {
+      this.handleEvent(e.name, e.detail);
+      if (e.name === "editSelection") hooks?.onSelection?.(e.detail);
+      if (e.name === "ready" || e.name === "renderingComplete") {
+        hooks?.onRenderPass?.();
+        void this.syncEditMode();
+      }
+    });
+  }
 
   /** Turn the frame's edit surface on/off per the kill switch. Call on
    *  `ready`/`renderingComplete`. */
@@ -71,15 +93,15 @@ export class InlineEditSession {
     }
   }
 
-  /** Route a preview event; returns true when consumed. */
-  handleEvent(name: string, detail: unknown): boolean {
+  /** Route a preview event (also reachable directly for tests). */
+  handleEvent(name: string, detail: unknown): void {
     switch (name) {
       case "editPatches":
         void this.commitBatch(detail as EditPatchesDetail);
-        return true;
+        return;
       case "editStateChanged":
         this.dirty = Boolean((detail as { dirty?: boolean } | null)?.dirty);
-        return true;
+        return;
       case "editDrift": {
         const d = detail as {
           chapter: string;
@@ -92,20 +114,8 @@ export class InlineEditSession {
         for (const g of d?.degraded ?? []) {
           this.deps.onRefusal?.({ ...g, reason: "repeated drift — edit this block in the source view" });
         }
-        return true;
+        return;
       }
-      default:
-        return false;
-    }
-  }
-
-  /** Pre-swap flush: push sub-debounce keystrokes into proposals so an
-   *  external-change swap can't drop them. */
-  async flushBeforeSwap(): Promise<void> {
-    try {
-      await this.deps.client()?.flushEditState();
-    } catch {
-      // Best-effort — the swap proceeds either way.
     }
   }
 
@@ -119,12 +129,7 @@ export class InlineEditSession {
       return;
     }
 
-    const results: Array<{
-      chapter: string;
-      range: [number, number];
-      status: "applied" | "refused" | "failed";
-      reason?: string;
-    }> = [];
+    const results: PatchResult[] = [];
 
     // Sequential on purpose: patches in one batch may target the same
     // chapter, and each commit re-reads the buffer the next one validates

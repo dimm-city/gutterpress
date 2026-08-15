@@ -11,7 +11,7 @@
  *
  * Never imported by runtime code — the live preview uses real DOM.
  */
-import type { ElementLike, TextLike } from "./serialize";
+import { parseSourceRange, type ElementLike, type TextLike } from "./serialize";
 
 const VOID_TAGS = new Set([
   "area", "base", "br", "col", "embed", "hr", "img", "input",
@@ -23,10 +23,6 @@ export interface TestElement extends ElementLike {
   attrs: Map<string, string>;
   childNodes: Array<TestElement | TextLike>;
   parent: TestElement | null;
-}
-
-export function isTestElement(n: TestElement | TextLike): n is TestElement {
-  return n.nodeType === 1;
 }
 
 function makeElement(tag: string, parent: TestElement | null): TestElement {
@@ -110,6 +106,5 @@ export function substitute(src: string, range: [number, number], text: string): 
 }
 
 export function parseRange(raw: string): [number, number] {
-  const [a, b] = raw.split(":").map(Number);
-  return [a!, b!];
+  return parseSourceRange(raw)!;
 }

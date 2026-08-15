@@ -28,6 +28,7 @@ import { loadManifest, resolveConfig } from "../src/lib/manifest";
 import { resolveActiveMarkdownFiles } from "../src/lib/markdown/index";
 import {
   BUILTIN_OPTIONAL_PLUGINS,
+  SERIALIZER_FEATURE_BY_PLUGIN,
   createMarkdownRenderer,
   type LoadedPlugin,
 } from "../src/lib/markdown/renderer";
@@ -60,13 +61,7 @@ const BOOKS: Array<{ name: string; dir: string }> = [
   { name: "css-authoring-spike", dir: "docs/fixtures/css-authoring-spike/book" },
 ];
 
-/** Bundled opt-in plugins → serializer feature flags. */
-const FEATURE_BY_PLUGIN: Record<string, keyof NonNullable<SerializeOptions["features"]>> = {
-  "markdown-it-mark": "mark",
-  "markdown-it-sub": "sub",
-  "markdown-it-sup": "sup",
-  "markdown-it-abbr": "abbr",
-};
+
 
 interface Unsound {
   book: string;
@@ -98,7 +93,7 @@ async function gateBook(book: { name: string; dir: string }, unsound: Unsound[])
   const features: NonNullable<SerializeOptions["features"]> = {};
   const loaded: LoadedPlugin[] = [];
   for (const name of names) {
-    const feature = FEATURE_BY_PLUGIN[name];
+    const feature = SERIALIZER_FEATURE_BY_PLUGIN[name];
     const plugin = BUILTIN_OPTIONAL_PLUGINS[name];
     if (feature && plugin) {
       features[feature] = true;
