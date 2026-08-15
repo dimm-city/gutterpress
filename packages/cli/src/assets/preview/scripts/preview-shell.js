@@ -235,6 +235,16 @@
   }
 
   function scheduleSwap(instance, revision) {
+    // Inline editing (ADR 0010): a replacement is coming — push any
+    // sub-debounce keystrokes out as patch proposals NOW, before the live
+    // book document is retired. The postMessage batch survives the swap;
+    // the ack simply fails against the gone frame, which is harmless (the
+    // fresh document re-annotates from the re-rendered source).
+    try {
+      var bookWin = active && active.contentWindow;
+      var edit = bookWin && bookWin.GutterpressEdit;
+      if (edit && edit.isEnabled()) edit.flushPatches();
+    } catch (e) { /* cross-origin or teardown race — nothing to flush */ }
     pendingSwap = { instance: instance, revision: revision };
     armPendingSwap();
   }

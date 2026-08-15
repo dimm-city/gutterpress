@@ -53,6 +53,10 @@ Second paragraph stays untouched.
 - item two
 
 Raw <kbd>html</kbd> paragraph.
+
+Closing paragraph on the default page.
+
+Second-strip paragraph over here. {.on-two}
 `;
 
 function renderBookHtml(src: string): string {
@@ -62,7 +66,12 @@ function renderBookHtml(src: string): string {
 <html>
 <head>
 <meta charset="utf-8">
-<style>@page { size: 5in 4in; margin: 0.4in; } body { font: 11pt/1.4 Georgia, serif; margin: 0; }</style>
+<style>
+@page { size: 5in 4in; margin: 0.4in; }
+@page two { size: 5in 4in; margin: 0.4in; }
+body { font: 11pt/1.4 Georgia, serif; margin: 0; }
+.on-two { page: two; }
+</style>
 </head>
 <body>
 ${body}
@@ -284,6 +293,82 @@ testIf(
           // The raw-HTML paragraph carries uncommitted local edits — the
           // verifier must never heal over them.
           expect(heal.dirtyKept).toBe(true);
+
+          // ── 6. cross-strip caret hop: ArrowRight at the end of strip 1
+          //      lands in strip 2 (each strip is its own editable host) ────
+          const hop = await page.evaluate(async () => {
+            const strips = [...document.querySelectorAll(".gp-strip")];
+            if (strips.length < 2) return { strips: strips.length, hopped: false };
+            const firstStrip = strips[0]!;
+            const walker = document.createTreeWalker(firstStrip, NodeFilter.SHOW_TEXT, {
+              acceptNode: (n) => ((n as Text).data.trim() ? 1 : 2),
+            });
+            let last: Text | null = null;
+            for (let t = walker.nextNode(); t; t = walker.nextNode()) last = t as Text;
+            const sel = getSelection()!;
+            sel.setBaseAndExtent(last!, last!.length, last!, last!.length);
+            (firstStrip as HTMLElement).focus();
+            return { strips: strips.length, hopped: null };
+          });
+          expect(hop.strips).toBeGreaterThanOrEqual(2);
+          await page.keyboard.press("ArrowRight");
+          await new Promise((r) => setTimeout(r, 60));
+          const hopResult = await page.evaluate(() => {
+            const sel = getSelection()!;
+            const strips = [...document.querySelectorAll(".gp-strip")];
+            const container = sel.anchorNode?.parentElement?.closest(".gp-strip") ?? null;
+            return { stripIndex: container ? strips.indexOf(container) : -1 };
+          });
+          expect(hopResult.stripIndex).toBe(1);
+
+          // ── 7. repeated drift degrades the block to overlay-only ────────
+          const degrade = await page.evaluate(async () => {
+            const w = window as unknown as {
+              GutterpressEdit: {
+                verifyChapter(s: { chapter: string }): Promise<{
+                  healed: number;
+                  degraded?: Array<{ chapter: string; range: [number, number] }>;
+                }>;
+              };
+            };
+            const mutate = () => {
+              const p = [...document.querySelectorAll("p")].find((el) =>
+                el.textContent!.startsWith("Closing paragraph"),
+              )!;
+              (p.firstChild as Text).insertData(0, "DRIFT-");
+              return p;
+            };
+            // Three drift+heal rounds on the same block: mutate, verify (the
+            // block is not focused/dirty, so it heals), repeat.
+            const results = [];
+            for (let i = 0; i < 3; i++) {
+              mutate();
+              results.push(await w.GutterpressEdit.verifyChapter({ chapter: "ch.md" }));
+            }
+            const degradedEl = document.querySelector("[data-gp-edit-degraded]");
+            return {
+              heals: results.map((r) => r.healed),
+              degradedReported: results[2]!.degraded?.length ?? 0,
+              degradedAttr: degradedEl?.textContent?.startsWith("Closing paragraph") ?? false,
+            };
+          });
+          expect(degrade.heals).toEqual([1, 1, 1]);
+          expect(degrade.degradedReported).toBe(1);
+          expect(degrade.degradedAttr).toBe(true);
+
+          // Typing into the degraded block is refused by the input policy.
+          const degradedBlocked = await page.evaluate(() => {
+            const p = document.querySelector("[data-gp-edit-degraded]")!;
+            const sel = getSelection()!;
+            sel.setBaseAndExtent(p.firstChild!, 0, p.firstChild!, 0);
+            (p.closest(".gp-strip") as HTMLElement).focus();
+            return p.textContent;
+          });
+          await page.keyboard.type("XX");
+          const degradedAfter = await page.evaluate(
+            () => document.querySelector("[data-gp-edit-degraded]")!.textContent,
+          );
+          expect(degradedAfter).toBe(degradedBlocked);
         } finally {
           await page.close();
         }

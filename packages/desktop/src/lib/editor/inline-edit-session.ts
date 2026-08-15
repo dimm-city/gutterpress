@@ -81,8 +81,17 @@ export class InlineEditSession {
         this.dirty = Boolean((detail as { dirty?: boolean } | null)?.dirty);
         return true;
       case "editDrift": {
-        const d = detail as { chapter: string; mismatch?: string };
+        const d = detail as {
+          chapter: string;
+          mismatch?: string;
+          degraded?: Array<{ chapter: string; range: [number, number] }>;
+        };
         if (d?.mismatch) this.deps.onDriftMismatch?.(d.chapter, d.mismatch);
+        // Blocks the frame degraded after repeated heals: surface each once
+        // through the same refusal path (overlay/toast) as codec refusals.
+        for (const g of d?.degraded ?? []) {
+          this.deps.onRefusal?.({ ...g, reason: "repeated drift — edit this block in the source view" });
+        }
         return true;
       }
       default:

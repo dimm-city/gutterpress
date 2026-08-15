@@ -939,6 +939,9 @@ ${emitBlocks(item.blocks, ctx)}`;
   var autosyncTimer;
   var verifyTimers = new Map;
   var hadDirty = false;
+  var healCounts = new Map;
+  var DEGRADE_AFTER_HEALS = 3;
+  var DEGRADED_ATTR = "data-gp-edit-degraded";
   var gp = () => window.Gutterpress;
   function emit(name, detail) {
     window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -1080,6 +1083,8 @@ ${emitBlocks(item.blocks, ctx)}`;
     for (const node of nodes) {
       const unit = commitUnitOf(node);
       if (!unit)
+        return null;
+      if (unit.hasAttribute(DEGRADED_ATTR))
         return null;
       if (!units.includes(unit))
         units.push(unit);
@@ -1288,6 +1293,7 @@ ${emitBlocks(item.blocks, ctx)}`;
       return detail2;
     }
     let healed = 0;
+    const degraded = [];
     const options = { features: opts.features };
     for (let i = 0;i < freshBlocks.length; i++) {
       const live = liveBlocks[i];
@@ -1310,6 +1316,16 @@ ${emitBlocks(item.blocks, ctx)}`;
       }
       if (!same) {
         const imported = document.importNode(freshEl, true);
+        const healKey = freshRange ? keyOf(chapter, freshRange.split(":").map(Number)) : null;
+        const heals = healKey ? (healCounts.get(healKey) ?? 0) + 1 : 1;
+        if (healKey)
+          healCounts.set(healKey, heals);
+        if (heals >= DEGRADE_AFTER_HEALS) {
+          imported.setAttribute(DEGRADED_ATTR, "");
+          const range = parseRangeAttr(imported);
+          if (range)
+            degraded.push({ chapter, range });
+        }
         live.replaceWith(imported);
         committedModels.delete(live);
         healed++;
@@ -1317,7 +1333,7 @@ ${emitBlocks(item.blocks, ctx)}`;
     }
     if (healed)
       safeRelayout();
-    const detail = { chapter, healed };
+    const detail = { chapter, healed, degraded };
     emit("editDrift", detail);
     return detail;
   }
@@ -1351,6 +1367,46 @@ ${emitBlocks(item.blocks, ctx)}`;
       } : null
     };
   }
+  function onKeyDown(ev) {
+    if (!enabled || composing)
+      return;
+    const forward = ev.key === "ArrowRight" || ev.key === "ArrowDown";
+    const backward = ev.key === "ArrowLeft" || ev.key === "ArrowUp";
+    if (!forward && !backward || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey)
+      return;
+    const sel = getSelection();
+    if (!sel?.isCollapsed || !sel.anchorNode)
+      return;
+    const strip = (sel.anchorNode.parentElement ?? sel.anchorNode)?.closest?.(".gp-strip");
+    if (!strip)
+      return;
+    const before = { node: sel.anchorNode, offset: sel.anchorOffset };
+    setTimeout(() => {
+      const after = getSelection();
+      if (!after?.isCollapsed || after.anchorNode !== before.node || after.anchorOffset !== before.offset) {
+        return;
+      }
+      const strips = [...document.querySelectorAll(".gp-strip")];
+      const idx = strips.indexOf(strip);
+      const target = strips[idx + (forward ? 1 : -1)];
+      if (!target)
+        return;
+      const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) => n.data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+      });
+      let node = null;
+      if (forward) {
+        node = walker.nextNode();
+      } else {
+        for (let t = walker.nextNode();t; t = walker.nextNode())
+          node = t;
+      }
+      if (!node)
+        return;
+      after.setBaseAndExtent(node, forward ? 0 : node.length, node, forward ? 0 : node.length);
+      node.parentElement?.scrollIntoView({ block: "nearest" });
+    }, 0);
+  }
   function onCompositionStart() {
     composing = true;
   }
@@ -1380,6 +1436,7 @@ ${emitBlocks(item.blocks, ctx)}`;
       document.addEventListener("compositionstart", onCompositionStart, true);
       document.addEventListener("compositionend", onCompositionEnd, true);
       document.addEventListener("dragstart", onDragStart, true);
+      document.addEventListener("keydown", onKeyDown, true);
       window.addEventListener("gp:relayout", onRelayout);
     }
     applyEditability();
@@ -1394,6 +1451,7 @@ ${emitBlocks(item.blocks, ctx)}`;
     document.removeEventListener("compositionstart", onCompositionStart, true);
     document.removeEventListener("compositionend", onCompositionEnd, true);
     document.removeEventListener("dragstart", onDragStart, true);
+    document.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("gp:relayout", onRelayout);
     clearTimeout(relayoutTimer);
     clearTimeout(autosyncTimer);

@@ -204,7 +204,7 @@ describe('generateAndWriteHtml', () => {
     expect(content).not.toContain('<style>.gutterpress-chapter{break-before:page}</style>');
   }, 60000);
 
-  test('renders one source file for an incremental chapter update', async () => {
+  test('renders one source file for the drift verifier (/__chapter, ADR 0010)', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
 
@@ -218,8 +218,11 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('class="gutterpress-chapter"');
     expect(content).toContain('data-chapter-src="chapter-02.md"');
     expect(content).not.toContain('Chapter 1');
-    expect(content).toContain('<style>.gutterpress-chapter{break-before:page}</style>');
-    expect(content).toContain('/engine/gutterpress-viewer.js');
+    // The consumer is DOMParser inside the edit module — the render must be
+    // script-free and carry no splice-era page-isolate style.
+    expect(content).not.toContain('<style>.gutterpress-chapter{break-before:page}</style>');
+    expect(content).not.toContain('/engine/gutterpress-viewer.js');
+    expect(content).toMatch(/<h1[^>]*data-source-range="0:1"/);
   }, 60000);
 
   test('omits incremental wrappers when the incremental preview is disabled', async () => {
@@ -708,6 +711,34 @@ describe('createFileWatcher', () => {
     watcher.emit('all', 'change', chapter);
     await wait(400);
     expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+    await watcher.close();
+  }, 50000);
+
+  test('an inline-edit settled write suppresses BOTH the rebuild and its watcher echo (ADR 0010)', async () => {
+    // The write is a projection of DOM the preview already shows: rebuilding
+    // (and broadcasting a swap) would yank the editing surface out from
+    // under the author mid-keystroke. Only the echo suppression runs.
+    const chapter = join(testDir, 'chapter-01.md');
+    const content = '# Saved by the inline editor';
+    await writeFile(chapter, content);
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await waitForWatcherReady(watcher);
+
+    const notify = (state as ServerState & {
+      notifySettledWrite?: (filePath: string, writtenContent: string, origin?: string) => void;
+    }).notifySettledWrite;
+    notify?.(chapter, content, 'inline-edit');
+    expect(state.isRebuilding).toBe(false);
+    await wait(400);
+    expect(calls).toEqual([]);
+
+    // The watcher's echo of that same write must also stay silent — the
+    // settled-write record covers it exactly like the classic path.
+    watcher.emit('all', 'change', chapter);
+    await wait(400);
+    expect(calls).toEqual([]);
     await watcher.close();
   }, 50000);
 

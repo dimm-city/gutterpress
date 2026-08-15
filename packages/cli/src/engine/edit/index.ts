@@ -105,6 +105,12 @@ let relayoutTimer: ReturnType<typeof setTimeout> | undefined;
 let autosyncTimer: ReturnType<typeof setTimeout> | undefined;
 const verifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let hadDirty = false;
+/** Heals per block (keyed by chapter+range) this session. A block that keeps
+ *  drifting after its commits has a codec disagreement — degrade it to the
+ *  overlay instead of letting the author fight the healer. */
+const healCounts = new Map<string, number>();
+const DEGRADE_AFTER_HEALS = 3;
+const DEGRADED_ATTR = "data-gp-edit-degraded";
 
 // ── small utilities ─────────────────────────────────────────────────────────
 
@@ -282,6 +288,7 @@ function unitsOfEvent(ev: InputEvent): Element[] | null {
   for (const node of nodes) {
     const unit = commitUnitOf(node);
     if (!unit) return null; // any endpoint outside an editable block → refuse
+    if (unit.hasAttribute(DEGRADED_ATTR)) return null; // overlay-only block
     if (!units.includes(unit)) units.push(unit);
   }
   return units;
@@ -502,7 +509,11 @@ function scheduleVerify(chapter: string): void {
 
 export async function verifyChapter(spec: {
   chapter: string;
-}): Promise<{ healed: number; mismatch?: string }> {
+}): Promise<{
+  healed: number;
+  mismatch?: string;
+  degraded?: Array<{ chapter: string; range: [number, number] }>;
+}> {
   const chapter = spec.chapter;
   verifyTimers.delete(chapter);
   if (!enabled) return { healed: 0 };
@@ -533,6 +544,7 @@ export async function verifyChapter(spec: {
   }
 
   let healed = 0;
+  const degraded: Array<{ chapter: string; range: [number, number] }> = [];
   const options = { features: opts.features };
   for (let i = 0; i < freshBlocks.length; i++) {
     const live = liveBlocks[i]!;
@@ -559,13 +571,21 @@ export async function verifyChapter(spec: {
     }
     if (!same) {
       const imported = document.importNode(freshEl, true) as Element;
+      const healKey = freshRange ? keyOf(chapter, freshRange.split(":").map(Number) as [number, number]) : null;
+      const heals = healKey ? (healCounts.get(healKey) ?? 0) + 1 : 1;
+      if (healKey) healCounts.set(healKey, heals);
+      if (heals >= DEGRADE_AFTER_HEALS) {
+        imported.setAttribute(DEGRADED_ATTR, "");
+        const range = parseRangeAttr(imported);
+        if (range) degraded.push({ chapter, range });
+      }
       live.replaceWith(imported);
       committedModels.delete(live);
       healed++;
     }
   }
   if (healed) safeRelayout();
-  const detail = { chapter, healed };
+  const detail = { chapter, healed, degraded };
   emit("editDrift", detail);
   return detail;
 }
@@ -611,6 +631,49 @@ export function getSelectionState(): {
 
 // ── lifecycle ───────────────────────────────────────────────────────────────
 
+/**
+ * Cross-strip caret hop: each `.gp-strip` is its own contenteditable host,
+ * so the caret cannot leave a strip natively. Detection over boundary math:
+ * let the browser attempt the arrow move; if the selection did not move and
+ * a neighboring strip exists in that direction, place the caret at its
+ * nearest text position. (Backspace/Delete across a strip boundary stays a
+ * native no-op — deliberate v1: no cross-page-run merges.)
+ */
+function onKeyDown(ev: KeyboardEvent): void {
+  if (!enabled || composing) return;
+  const forward = ev.key === "ArrowRight" || ev.key === "ArrowDown";
+  const backward = ev.key === "ArrowLeft" || ev.key === "ArrowUp";
+  if ((!forward && !backward) || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const sel = getSelection();
+  if (!sel?.isCollapsed || !sel.anchorNode) return;
+  const strip = (sel.anchorNode.parentElement ?? (sel.anchorNode as Element))?.closest?.(".gp-strip");
+  if (!strip) return;
+  const before = { node: sel.anchorNode, offset: sel.anchorOffset };
+  setTimeout(() => {
+    const after = getSelection();
+    if (!after?.isCollapsed || after.anchorNode !== before.node || after.anchorOffset !== before.offset) {
+      return; // the browser moved it — no hop needed
+    }
+    const strips = [...document.querySelectorAll(".gp-strip")];
+    const idx = strips.indexOf(strip);
+    const target = strips[idx + (forward ? 1 : -1)];
+    if (!target) return;
+    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) =>
+        (n as Text).data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    let node: Text | null = null;
+    if (forward) {
+      node = walker.nextNode() as Text | null;
+    } else {
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) node = t as Text;
+    }
+    if (!node) return;
+    after.setBaseAndExtent(node, forward ? 0 : node.length, node, forward ? 0 : node.length);
+    node.parentElement?.scrollIntoView({ block: "nearest" });
+  }, 0);
+}
+
 function onCompositionStart(): void {
   composing = true;
 }
@@ -643,6 +706,7 @@ export function enable(options: EnableOptions = {}): boolean {
     document.addEventListener("compositionstart", onCompositionStart, true);
     document.addEventListener("compositionend", onCompositionEnd, true);
     document.addEventListener("dragstart", onDragStart, true);
+    document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("gp:relayout", onRelayout);
   }
   applyEditability();
@@ -657,6 +721,7 @@ export function disable(): void {
   document.removeEventListener("compositionstart", onCompositionStart, true);
   document.removeEventListener("compositionend", onCompositionEnd, true);
   document.removeEventListener("dragstart", onDragStart, true);
+  document.removeEventListener("keydown", onKeyDown, true);
   window.removeEventListener("gp:relayout", onRelayout);
   clearTimeout(relayoutTimer);
   clearTimeout(autosyncTimer);

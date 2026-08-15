@@ -631,7 +631,7 @@ describe('/__chapter route', () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  test('renders one source file with chapter metadata and preview scripts', async () => {
+  test('renders one script-free source file for the drift verifier (ADR 0010)', async () => {
     const projectDir = join(workDir, 'project');
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, 'chapter1.md'), '# Hello Chapter');
@@ -642,17 +642,19 @@ describe('/__chapter route', () => {
 
     const res = await fetch(
       `http://localhost:${port}/__chapter?file=${encodeURIComponent('chapter1.md')}`
-        + '&revision=0'
     );
     expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
     const body = await res.text();
     expect(body).toContain('Hello Chapter');
     expect(body).toContain('data-chapter-src="chapter1.md"');
-    expect(body).toContain('/engine/gutterpress-viewer.js');
+    // DOMParser consumer: no preview scripts, no splice-era isolate style.
+    expect(body).not.toContain('/engine/gutterpress-viewer.js');
+    expect(body).not.toContain('.gutterpress-chapter{break-before:page}');
     expect(body).not.toContain('Other Chapter');
   });
 
-  test('rejects a source outside the configured file list and a stale revision', async () => {
+  test('rejects a source outside the configured file list', async () => {
     const projectDir = join(workDir, 'project');
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, 'chapter1.md'), '# Configured');
@@ -663,15 +665,17 @@ describe('/__chapter route', () => {
     server = await createPreviewServer(state, port);
 
     const unconfigured = await fetch(
-      `http://localhost:${port}/__chapter?file=private.md&revision=0`,
+      `http://localhost:${port}/__chapter?file=private.md`,
     );
     expect(unconfigured.status).toBe(400);
     expect(await unconfigured.text()).not.toContain('Not Configured');
 
-    const stale = await fetch(
-      `http://localhost:${port}/__chapter?file=chapter1.md&revision=1`,
+    // The splice-era revision handshake is gone: the verifier always wants
+    // the CURRENT render, so a legacy revision param is simply ignored.
+    const withRevision = await fetch(
+      `http://localhost:${port}/__chapter?file=chapter1.md&revision=999`,
     );
-    expect(stale.status).toBe(400);
+    expect(withRevision.status).toBe(200);
   });
 
   test('rejects a path-traversal file param that escapes the project root', async () => {

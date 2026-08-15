@@ -188,20 +188,21 @@ export async function generateAndWriteHtml(
 }
 
 /**
- * Render one source file with the same CSS, plugins, source metadata, and
- * preview scripts as the full book. The shell paginates this small document in
- * a hidden iframe and replaces only the edited source file's pages.
+ * Render one source file with the same CSS, plugins, and source metadata as
+ * the full book. Serves `/__chapter` — the inline-edit drift verifier's
+ * endpoint (ADR 0010). The result is parsed with DOMParser, never executed,
+ * so no preview scripts are injected (the splice-era shell consumer that
+ * needed them is gone).
  */
 export async function renderChapterPreviewHtml(
   inputPath: string,
   file: string,
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string> {
-  const html = await renderPreviewBook(inputPath, config, {
+  return renderPreviewBook(inputPath, config, {
     files: [canonicalChapterId(file)],
     wrapChapters: true,
   });
-  return injectPreviewScripts(html, true);
 }
 
 /** One changed project file, named for the preview broadcast decision. */

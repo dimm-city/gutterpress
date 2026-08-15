@@ -628,18 +628,19 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Render one source file for the shell's fast Markdown-update path.
+    // 3. Render one source file — the inline-edit drift verifier's endpoint
+    //    (ADR 0010): the frame fetches the chapter's authoritative render
+    //    here, diffs it per block against the live DOM, and heals only what
+    //    drifted. The splice-era revision handshake is gone with the splice:
+    //    the verifier always wants the CURRENT render, and a race with a
+    //    concurrent rebuild self-corrects on the next verify pass.
     if (url.pathname === '/__chapter' && req.method === 'GET') {
       const rawFile = url.searchParams.get('file');
       const file = rawFile ? canonicalChapterId(rawFile) : '';
-      const revision = Number(url.searchParams.get('revision'));
       const configuredFiles = state.config.source?.files;
       if (
         !file ||
         !state.currentInputPath ||
-        !incrementalPreviewEnabled() ||
-        !Number.isSafeInteger(revision) ||
-        revision !== reloadRevision ||
         path.extname(file).toLowerCase() !== '.md' ||
         hasDotSegment(file) ||
         !resolveWithinRoot(file, state.currentInputPath) ||
@@ -656,11 +657,6 @@ export async function createPreviewServer(
           file,
           state.config,
         );
-        if (revision !== reloadRevision) {
-          res.writeHead(409);
-          res.end('Superseded');
-          return;
-        }
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',
