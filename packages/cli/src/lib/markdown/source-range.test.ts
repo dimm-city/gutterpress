@@ -165,13 +165,8 @@ describe("source_range: generic markdown constructs", () => {
     // "second item" is the segment's 4th line (0-based offset 3 within the segment).
     const lastItemStart = seg.start + 3;
     const lastItemEnd = seg.start + 4;
-    // Asserted as "the attribute is on the <li>, whose text is 'second item'"
-    // rather than as one closed tag string. The original form pinned the
-    // COMPLETE tag, so any additive annotation on <li> broke it — which
-    // `data-gp-source-offsets` (inline-offsets.ts) is. The claim under test is
-    // the RANGE VALUE, and that is unchanged.
-    expect(html).toMatch(
-      new RegExp(`<li [^>]*${SOURCE_RANGE_ATTR}="${lastItemStart}:${lastItemEnd}"[^>]*>second item</li>`)
+    expect(html).toContain(
+      `<li ${SOURCE_RANGE_ATTR}="${lastItemStart}:${lastItemEnd}">second item</li>`
     );
     const starts = buildLineStarts(src);
     const [from, to] = charRange(src, starts, [lastItemStart, lastItemEnd]);

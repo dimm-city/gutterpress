@@ -1,6 +1,5 @@
 import type MarkdownIt from "markdown-it";
 import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
-import { SOURCE_OFFSETS_ATTR } from "./inline-offsets";
 
 export const SOURCE_TOKEN_ATTR = "data-gp-source-token";
 export const SOURCE_OCCURRENCE_ATTR = "data-gp-source-occurrence";
@@ -8,18 +7,7 @@ export const SOURCE_OCCURRENCE_ATTR = "data-gp-source-occurrence";
 type InlineRule = (state: StateInline, silent: boolean) => boolean;
 type InternalRule = { name: string; fn: InlineRule };
 
-/**
- * Attributes the PARSER owns. Every one is a destructive edit coordinate, so an
- * author must never be able to supply one — through raw HTML (`html: true` is
- * on, with no allowlist) or through markdown-it-attrs braces. Anything added
- * here is stripped from author input by `stripReservedRawHtmlAttrs` below and
- * filtered again in the renderer rule.
- */
-const RESERVED_ATTRS = new Set([
-  SOURCE_TOKEN_ATTR,
-  SOURCE_OCCURRENCE_ATTR,
-  SOURCE_OFFSETS_ATTR,
-]);
+const RESERVED_ATTRS = new Set([SOURCE_TOKEN_ATTR, SOURCE_OCCURRENCE_ATTR]);
 
 function isHtmlSpace(char: string | undefined): boolean {
   return char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
@@ -174,19 +162,13 @@ function stripReservedRawHtmlAttrs(
     const identity = tagIdentity(tag);
     if (!identity) {
       out += tag;
-    } else if (!identity.closing) {
-      // EVERY opening tag, not just <img>/<a>. `data-gp-source-offsets`
-      // (inline-offsets.ts) lands on BLOCK elements — p, h1-h6, li,
-      // blockquote, td — so restricting the strip to img/a would leave a
-      // forged block coordinate intact and steer a splice at the author's
-      // chosen character. Broadening is safe: this only ever removes
-      // RESERVED_ATTRS, which no author has a legitimate use for.
+    } else if (!identity.closing && (identity.name === "img" || identity.name === "a")) {
       out += stripReservedAttrsFromTag(tag);
-      if (protectedTags.has(identity.name)) {
-        protectedTag = identity.name;
-      }
     } else {
       out += tag;
+      if (!identity.closing && protectedTags.has(identity.name)) {
+        protectedTag = identity.name;
+      }
     }
     i = end;
   }
