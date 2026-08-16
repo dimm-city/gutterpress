@@ -2,7 +2,8 @@
  * Galley mount integration (chromium) — the architecture's riskiest claims,
  * exercised against the REAL bundles:
  *
- * 1. The Tiptap editor's view.dom serves as the fragmenter's flow root: the
+ * 1. Editing is CONTINUOUS and CSS-only — ProseMirror owns its DOM and the
+ *    fragmenter never touches it (pagination is the print preview's job): the
  *    viewer paginates the editor's DOM (strips/sheets appear, pages > 0).
  * 2. Typing through the real input path lands in the doc, survives the
  *    debounced Gutterpress.refresh() (nodes moved by the fragmenter), and
@@ -174,8 +175,10 @@ testIf(
             (window as unknown as { __no_reload_marker: boolean }).__no_reload_marker = true;
             window.GutterpressGalley.setEditMode({ on: true });
           });
+          // Editing no longer mounts the paginated viewer, so there is no
+          // totalPages to wait on — the editable PM view IS the surface.
           await page.waitForFunction(
-            "window.Gutterpress && window.Gutterpress.totalPages > 0 && document.querySelector('.tiptap[contenteditable=true]') && window.GutterpressGalley.isEditing()",
+            "document.querySelector('.tiptap[contenteditable=true]') && window.GutterpressGalley.isEditing()",
           );
           const after = (await page.evaluate(() => ({
             sameDocument: (window as unknown as { __no_reload_marker?: boolean })
@@ -188,28 +191,22 @@ testIf(
           expect(after.chapters).toBe(2);
           expect(after.alpha).toBe(true);
 
-          // The desktop's post-renderingComplete sequence: setViewMode →
-          // Gutterpress.setSpread() + a refresh() — viewer passes initiated
-          // OUTSIDE any galley call path. Unbracketed, PM's DOMObserver sees
-          // the fragmenter's node moves and reverts them, wiping pagination
-          // to 0 pages (the rerender-latency gate hang). The layoutBracket
-          // handed to mount() must cover these later passes too.
-          await page.evaluate(() => {
-            (window.Gutterpress as unknown as { setSpread(on: boolean): void }).setSpread(true);
-          });
-          await new Promise((r) => setTimeout(r, 250));
-          await page.evaluate(() => {
-            (window.Gutterpress as unknown as { refresh(): void }).refresh();
-          });
-          await new Promise((r) => setTimeout(r, 250));
-          const survived = (await page.evaluate(() => ({
-            pages: window.Gutterpress!.totalPages,
-            sheets: (document.querySelectorAll(".gp-sheet") as { length: number }).length,
-            editing: window.GutterpressGalley.isEditing(),
-          }))) as { pages: number; sheets: number; editing: boolean };
-          expect(survived.editing).toBe(true);
-          expect(survived.pages).toBeGreaterThanOrEqual(1);
-          expect(survived.sheets).toBeGreaterThanOrEqual(1);
+          // ProseMirror owns its DOM in editing mode: the fragmenter never
+          // runs over it, so no strip/sheet/spacer chrome may appear inside
+          // the editor and there is nothing for a layout bracket to defend.
+          // This is the assertion that would fail if the fragmenter were ever
+          // re-coupled to the editor.
+          const untouched = (await page.evaluate(() => {
+            const root = document.querySelector(".tiptap")!;
+            return {
+              stripsInside: root.querySelectorAll(".gp-strip, .gp-sheet, .gp-layer").length,
+              continuousCss: !!document.getElementById("gp-continuous"),
+              editing: window.GutterpressGalley.isEditing(),
+            };
+          })) as { stripsInside: number; continuousCss: boolean; editing: boolean };
+          expect(untouched.stripsInside).toBe(0);
+          expect(untouched.continuousCss).toBe(true);
+          expect(untouched.editing).toBe(true);
 
           // ── Context menu (protocol v9) ──────────────────────────────────
           // The menu is the author's route to image/link properties. It was
@@ -353,7 +350,7 @@ testIf(
 );
 
 testIf(
-  "galley mount: PM view is the flow root; typing survives refresh and emits byte-preserving whole-file saves",
+  "galley mount: continuous CSS-only editing; typing reflows natively and emits byte-preserving whole-file saves",
   async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-galley-mount-"));
     try {
@@ -372,20 +369,26 @@ testIf(
             window.GutterpressGalley.setEditMode({ on: true });
           });
 
-          // 1. The viewer paginates the PM view's DOM.
+          // 1. Editing is continuous and CSS-only: the editable PM view is
+          //    the surface, the fragmenter never runs over it, and the
+          //    continuous stylesheet sizes the column to the page's real
+          //    content width.
           await page.waitForFunction(
-            "window.Gutterpress && window.Gutterpress.totalPages > 0 && document.querySelector('.tiptap[contenteditable=true]')",
+            "document.querySelector('.tiptap[contenteditable=true]') && document.getElementById('gp-continuous')",
           );
-          const mounted = (await page.evaluate(() => ({
-            pages: window.Gutterpress!.totalPages,
-            editing: window.GutterpressGalley.isEditing(),
-            chapters: document.querySelectorAll("div.gutterpress-chapter").length,
-            alpha: !!document.querySelector(".tiptap p"),
-          }))) as { pages: number; editing: boolean; chapters: number; alpha: boolean };
+          const mounted = (await page.evaluate(() => {
+            const root = document.querySelector(".tiptap")!;
+            return {
+              editing: window.GutterpressGalley.isEditing(),
+              chapters: document.querySelectorAll("div.gutterpress-chapter").length,
+              alpha: !!document.querySelector(".tiptap p"),
+              stripsInside: root.querySelectorAll(".gp-strip, .gp-sheet, .gp-layer").length,
+            };
+          })) as { editing: boolean; chapters: number; alpha: boolean; stripsInside: number };
           expect(mounted.editing).toBe(true);
-          expect(mounted.pages).toBeGreaterThanOrEqual(1);
           expect(mounted.chapters).toBe(2);
           expect(mounted.alpha).toBe(true);
+          expect(mounted.stripsInside).toBe(0);
 
           // Opaque island renders through the (stubbed) fragment pipeline.
           await page.waitForFunction(
@@ -430,17 +433,16 @@ testIf(
           const chapters = (await page.evaluate("window.__contents.map((c) => c.chapter)")) as string[];
           expect(chapters).not.toContain("ch2.md");
 
-          // 4. The view survived the debounced refresh that followed typing.
+          // 4. Typing reflows natively — there is no re-pagination pass to
+          //    survive, and the edited text is simply still there.
           await new Promise((r) => setTimeout(r, 400));
           const after = (await page.evaluate(() => ({
-            pages: window.Gutterpress!.totalPages,
             editing: window.GutterpressGalley.isEditing(),
             text: [...(document.querySelectorAll(".tiptap p") as unknown as Iterable<{ textContent: string | null }>)]
               .map((p) => p.textContent)
               .join("|"),
-          }))) as { pages: number; editing: boolean; text: string };
+          }))) as { editing: boolean; text: string };
           expect(after.editing).toBe(true);
-          expect(after.pages).toBeGreaterThanOrEqual(1);
           expect(after.text).toContain("Alpha paragraph, now edited,");
 
           // 5. Marker input rule: a break atom from plain typing.

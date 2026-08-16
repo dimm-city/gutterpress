@@ -57,9 +57,35 @@ function viewerGlobal(): { mount(opts?: object): Promise<unknown> } | null {
 }
 
 /** Plain read-only viewer, exactly what a published book or CLI preview shows. */
+/** The server-rendered flow the editor displaced, kept so switching back to
+ *  the paginated preview has real HTML to paginate. */
+let displacedFlow: Element[] | null = null;
+let editorHost: HTMLElement | null = null;
+
 async function mountReadonly(): Promise<void> {
   await viewerGlobal()?.mount();
   mode = "readonly";
+}
+
+/**
+ * editing → readonly IS the switch to PRINT PREVIEW. Editing is continuous
+ * and never paginates, so the paginated viewer has to be mounted here — and
+ * it mounts over the RESTORED server-rendered flow, not over ProseMirror's
+ * DOM. That separation is the point: the fragmenter only ever runs where
+ * there is no editor to fight, which is why spread view and zoom are free
+ * again and no layout bracket exists.
+ */
+async function leaveEditing(): Promise<void> {
+  active?.setEditable(false);
+  active?.destroy();
+  active = null;
+  document.getElementById("gp-continuous")?.remove();
+  if (editorHost && displacedFlow) {
+    editorHost.replaceWith(...displacedFlow);
+    editorHost = null;
+    displacedFlow = null;
+  }
+  await mountReadonly();
 }
 
 /**
@@ -104,13 +130,9 @@ async function reconcile(): Promise<void> {
         }
       }
     } else if (active) {
-      // editing → readonly: drop editability in place. The document, its
-      // pagination and the reader's scroll position all survive, so the
-      // kill-switch is no longer a destructive reload that loses the
-      // author's place and races the debounced save (setEditable flushes
-      // first). Reversible without refetching anything.
-      active.setEditable(false);
-      mode = "readonly";
+      // setEditable(false) flushes the debounced save before anything is
+      // torn down, so switching to preview can never race a pending edit.
+      await leaveEditing();
     } else {
       await mountReadonly();
     }
@@ -141,6 +163,10 @@ async function mountEditing(): Promise<void> {
   if (doomed.length) doomed[0]!.before(host);
   else document.body.appendChild(host);
   for (const el of doomed) el.remove();
+  // Kept so leaveEditing() can put the real flow back for the paginated
+  // preview to render, instead of paginating ProseMirror's DOM.
+  displacedFlow = doomed;
+  editorHost = host;
 
   try {
     active = createGalleyEditor({

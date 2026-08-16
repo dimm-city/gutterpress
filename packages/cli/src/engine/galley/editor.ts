@@ -1,32 +1,26 @@
 /**
- * Galley editor — ONE Tiptap/ProseMirror editor over the whole book, whose
- * `view.dom` IS the fragmenter's flow root.
+ * Galley editor — ONE Tiptap/ProseMirror editor over the whole book.
  *
- * How the editor and the pagination engine coexist (the load-bearing idea):
- * the fragmenter paginates by MOVING the flow root's element nodes into
- * per-run multicol strips and cloning shallow ancestor shells — but it
- * always moves the SAME element references. ProseMirror's view descriptors
- * track DOM *references*, not tree paths, so with its DOMObserver detached
- * around every fragmenter pass (`withFragmenter`) and ParseRule ignores for
- * every piece of viewer chrome, its document, caret mapping
- * (posAtCoords/coordsAtPos read live rects), and in-place patching all keep
- * working while the fragmenter re-arranges presentation around the nodes.
- * Spike B measured this shape: typing median 2.70ms, view survives
- * `Gutterpress.refresh()`; galley-mount.test.ts pins it end to end.
+ * ProseMirror owns its DOM outright. Nothing reparents its nodes, injects
+ * spacers, or mounts a fragmenter over it, so there is no DOMObserver to
+ * detach and no layout bracket for callers to remember. Editing layout is
+ * CONTINUOUS and applied purely as CSS at the page's real content width
+ * (`applyContinuousLayout`), which is why line breaking, image sizing,
+ * floats and the column utilities already match print.
  *
- * Ownership rules that keep this honest:
- * - ProseMirror owns CONTENT nodes (everything the doc renders).
- * - The viewer owns CHROME (strips, runs, layers, sheets, spacers) — all of
- *   it `contenteditable=false` and parse-ignored, so it can never enter the
- *   document or the serialization.
- * - Every fragmenter operation happens inside `withFragmenter()` so
- *   ProseMirror ignores exactly the mutations the viewer makes, no more.
+ * Pagination is the PRINT PREVIEW's job: the paginated viewer renders the
+ * same book read-only, where spread view and zoom are free and there is no
+ * editor for it to fight. The preview↔print parity gate governs that path.
+ *
+ * What continuous view deliberately does not show: where pages divide, and
+ * per-page furniture (running heads, folios) — both need a page box.
  */
 import { Editor, InputRule } from "@tiptap/core";
 import type { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { Fragment } from "@tiptap/pm/model";
 import { EditorState, Plugin, NodeSelection } from "@tiptap/pm/state";
 
+import { extract as extractGcpm, resolvePage } from "../shared/gcpm-extract.ts";
 import { galleyExtensions, MarkerAtom, MarkerWrap, RawBlock } from "./extensions.ts";
 import { buildGalleyDoc, serializeGalleyDoc, type GalleyToken } from "./markdown.ts";
 
@@ -72,14 +66,6 @@ export interface GalleyEditorOptions {
   onSelection(payload: SelectionPayload): void;
   onDirtyChanged(dirty: boolean): void;
   onOpaqueEdit(payload: OpaqueEditPayload): void;
-}
-
-interface ViewerGlobal {
-  mount(opts: {
-    root: HTMLElement;
-    layoutBracket?: (fn: () => unknown) => Promise<unknown> | unknown;
-  }): Promise<unknown>;
-  refresh(): void;
 }
 
 /** Typing `@section ` on an empty paragraph converts it into the marker. */
@@ -188,7 +174,6 @@ export interface GalleyContextTarget {
 }
 
 export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
-  const refreshDelayMs = 150;
   const saveDelayMs = 500;
 
   // ── shared state ──────────────────────────────────────────────────────────
@@ -197,7 +182,6 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   const lastText = new Map<string, string>();
   /** chapter id → chapterFile node identity at the last emit. */
   const lastEmitted = new Map<string, PMNode>();
-  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let dirty = false;
   let destroyed = false;
@@ -301,7 +285,6 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     onTransaction: ({ transaction }) => {
       if (!transaction.docChanged) return;
       setDirty(true);
-      scheduleRefresh();
       scheduleSave();
     },
   });
@@ -332,72 +315,67 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
    * it is the sanctioned escape hatch this exact pattern is known for; the
    * mount-integration test pins the behavior.)
    */
-  let fragmenterDepth = 0;
-  async function withFragmenter(fn: () => Promise<unknown> | unknown): Promise<void> {
-    const obs = (
-      editor.view as unknown as {
-        domObserver: { flush(): void; stop(): void; start(): void };
-      }
-    ).domObserver;
-    // Re-entrant: this same function is handed to the viewer as its
-    // `layoutBracket`, so a viewer pass may run while an outer bracket is
-    // already open (mountViewer wraps `mount()`, which brackets internally
-    // too). Only the outermost frame may stop/start the observer — an inner
-    // start() would re-arm it mid-surgery.
-    if (fragmenterDepth === 0) {
-      obs.flush();
-      obs.stop();
-    }
-    fragmenterDepth++;
-    try {
-      await fn();
-    } finally {
-      fragmenterDepth--;
-      if (fragmenterDepth === 0) obs.start();
-    }
+  /**
+   * Continuous editing layout — CSS ONLY, over the ProseMirror DOM as PM
+   * rendered it. Nothing is reparented, no spacer or shim is injected, and
+   * the paginated viewer is never mounted here, so PM keeps sole ownership
+   * of its own DOM. (The paginated viewer remains the PRINT PREVIEW; it runs
+   * read-only, where having no editor to fight is exactly the point.)
+   *
+   * Everything horizontal matches print because the column is the page's
+   * real content width: line breaking, wrapping, image sizes, floats and the
+   * column utilities are what will print. What continuous view does NOT show
+   * is where pages divide — that needs fragmentation, which is the preview's
+   * job.
+   *
+   * `.page`/`.spread` keep a page-tall min-height so authored page units read
+   * as pages AND so `.gp-pin` (which pins to the nearest `.page`/`.spread`
+   * ELEMENT, not to a browser page box) resolves exactly where it prints.
+   */
+  function applyContinuousLayout(): void {
+    const css = [...document.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n");
+    const model = extractGcpm(css);
+    const base = resolvePage(model).geometry;
+    const px = (pt: number) => (pt * 96) / 72;
+    const contentW = Math.round(px(base.width - base.margin.left - base.margin.right));
+    const contentH = Math.round(px(base.height - base.margin.top - base.margin.bottom));
+    const padX = Math.round(px(base.margin.left));
+    const padTop = Math.round(px(base.margin.top));
+    const padBottom = Math.round(px(base.margin.bottom));
+
+    // `@page NAME { margin }` compiled to element CSS: the element that
+    // triggers the named page absorbs the margin delta, so a chapter opener
+    // shows its real top space without any page box existing.
+    const named = model.pageAssignments
+      .map((a) => {
+        const g = resolvePage(model, { name: a.page }).geometry;
+        const d = {
+          top: g.margin.top - base.margin.top,
+          left: g.margin.left - base.margin.left,
+          right: g.margin.right - base.margin.right,
+        };
+        const out: string[] = [];
+        if (d.top > 0) out.push(`padding-top:${d.top}pt`);
+        else if (d.top < 0) out.push(`margin-top:${d.top}pt`);
+        if (d.left !== 0) out.push(`margin-left:${d.left}pt`);
+        if (d.right !== 0) out.push(`margin-right:${d.right}pt`);
+        return out.length ? `${a.selector}{${out.join(";")}}` : "";
+      })
+      .join("");
+
+    const style = document.createElement("style");
+    style.id = "gp-continuous";
+    style.textContent =
+      `html,body{margin:0;padding:0;background:var(--gp-workspace,#f2f2f2)}` +
+      `.gp-galley-host{box-sizing:content-box;width:${contentW}px;margin:0 auto;` +
+      `padding:${padTop}px ${padX}px ${padBottom}px;background:#fff;` +
+      `box-shadow:0 1px 4px rgba(0,0,0,.18)}` +
+      `.gp-galley-host>.tiptap{outline:none}` +
+      `:where(.page,.spread){min-height:${contentH}px}` +
+      named;
+    document.head.appendChild(style);
   }
 
-  function stampChromeUneditable() {
-    for (const el of document.querySelectorAll(".gp-layer, .gp-sheet")) {
-      (el as HTMLElement).setAttribute("contenteditable", "false");
-    }
-  }
-
-  async function mountViewer(): Promise<void> {
-    const g = (window as unknown as { Gutterpress?: ViewerGlobal }).Gutterpress;
-    if (!g?.mount) throw new Error("galley: viewer global missing");
-    // `layoutBracket` covers every LATER viewer-initiated pass too —
-    // setSpread()/refresh() driven by the host's setViewMode land outside
-    // any galley call path, and unbracketed they let PM's observer see the
-    // fragmenter's moves and revert them (wiping pagination to 0 pages).
-    await withFragmenter(() =>
-      g.mount({ root: editor.view.dom as HTMLElement, layoutBracket: withFragmenter }),
-    );
-    stampChromeUneditable();
-  }
-
-  async function refreshViewer(): Promise<void> {
-    const g = (window as unknown as { Gutterpress?: ViewerGlobal }).Gutterpress;
-    if (!g) return;
-    await withFragmenter(() => g.refresh());
-    stampChromeUneditable();
-    // Re-assert the DOM selection after the fragmenter moved nodes around —
-    // the state's selection is authoritative and the text nodes survived.
-    if (editor.view.hasFocus()) {
-      editor.view.dispatch(editor.state.tr.setMeta("galley-selection-sync", true));
-    }
-  }
-
-  function scheduleRefresh() {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => {
-      refreshTimer = null;
-      if (!destroyed) void refreshViewer();
-    }, refreshDelayMs);
-  }
-
-  const onRelayout = () => stampChromeUneditable();
-  window.addEventListener("gp:relayout", onRelayout);
 
   // ── serialization + save emit ─────────────────────────────────────────────
   function chapterAtPos(doc: PMNode, pos: number): string | null {
@@ -576,7 +554,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   editor.registerPlugin(opaqueKeyPlugin);
 
   // ── initial mount ─────────────────────────────────────────────────────────
-  const ready = mountViewer();
+  const ready = Promise.resolve(applyContinuousLayout());
 
   // ── public surface ────────────────────────────────────────────────────────
   return {
@@ -628,9 +606,6 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
       // debounce window is stranded.
       if (!on) flushSave(true);
       editor.setEditable(on, false);
-      // setEditable rewrites contenteditable on the root; the viewer chrome
-      // living inside it must stay non-editable either way.
-      stampChromeUneditable();
     },
 
     ackContent,
@@ -837,10 +812,8 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
 
     destroy() {
       destroyed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
       if (saveTimer) clearTimeout(saveTimer);
       if (retryTimer) clearTimeout(retryTimer);
-      window.removeEventListener("gp:relayout", onRelayout);
       void ready.catch(() => {});
       editor.destroy();
     },
