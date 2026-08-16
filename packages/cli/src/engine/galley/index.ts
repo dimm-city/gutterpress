@@ -134,21 +134,29 @@ async function mountEditing(): Promise<void> {
   else document.body.appendChild(host);
   for (const el of doomed) el.remove();
 
-  active = createGalleyEditor({
-    chapters,
-    container: host,
-    fragmentHtml: async (markdown) =>
-      (await json<{ html: string }>("/__galley/fragment", { markdown })).html,
-    parseTokens: async (markdown) =>
-      (await json<{ tokens: GalleyToken[] }>("/__galley/tokens", { markdown })).tokens,
-    onContentChanged: (spec) => emit("galleyContent", spec),
-    onSelection: (payload) => emit("editSelection", payload),
-    onDirtyChanged: (dirty) => emit("editStateChanged", { dirty }),
-    onOpaqueEdit: (payload) => emit("galleyOpaqueEdit", payload),
-  });
-  // A viewer-mount failure must surface here (enterEditing falls back to
-  // readonly), never hang layout as an unhandled rejection.
-  await active.ready;
+  try {
+    active = createGalleyEditor({
+      chapters,
+      container: host,
+      fragmentHtml: async (markdown) =>
+        (await json<{ html: string }>("/__galley/fragment", { markdown })).html,
+      parseTokens: async (markdown) =>
+        (await json<{ tokens: GalleyToken[] }>("/__galley/tokens", { markdown })).tokens,
+      onContentChanged: (spec) => emit("galleyContent", spec),
+      onSelection: (payload) => emit("editSelection", payload),
+      onDirtyChanged: (dirty) => emit("editStateChanged", { dirty }),
+      onOpaqueEdit: (payload) => emit("galleyOpaqueEdit", payload),
+    });
+    // A viewer-mount failure must surface here (enterEditing falls back to
+    // readonly), never hang layout as an unhandled rejection.
+    await active.ready;
+  } catch (err) {
+    // Put the server-rendered flow back before rethrowing — the readonly
+    // fallback mounts over the CURRENT body, and without this it would
+    // paginate an empty document (a blank book, reported as 0 pages).
+    host.replaceWith(...doomed);
+    throw err;
+  }
 }
 
 function bootMount(): void {

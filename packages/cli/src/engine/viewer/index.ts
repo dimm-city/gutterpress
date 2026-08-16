@@ -39,14 +39,33 @@ declare global {
 
 let resizeListener: (() => void) | undefined;
 
-export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
+export interface MountOptions extends LayoutOptions {
+  designer?: boolean;
+  /**
+   * Host-supplied bracket run around EVERY pass that rearranges the flow
+   * DOM — the initial fragment+decorate, `refresh()`, and `setSpread()`.
+   * The Galley editor passes its ProseMirror DOMObserver detach here: the
+   * fragmenter moves PM's own element nodes into strips, and PM must never
+   * observe those moves or it reverts them (wiping pagination). The bracket
+   * must be re-entrant — the viewer may call it while the host already
+   * holds it open around `mount()` itself.
+   */
+  layoutBracket?: (fn: () => unknown) => Promise<unknown> | unknown;
+}
+
+export async function mount(opts: MountOptions = {}) {
   const t0 = performance.now();
-  const layout = await fragmentDocument(opts);
-  // Single mode is a 1-column wrap, not the unwrapped default — apply it
-  // BEFORE the first decorate() or the initial paint is the long-horizontal-
-  // row layout and only the first view-mode toggle would fix it.
-  applySpreadMode(layout.strips, false);
-  const decoration = decorate(layout, { designer: opts.designer });
+  const wrap = opts.layoutBracket ?? ((fn: () => unknown) => fn());
+  let layout!: Awaited<ReturnType<typeof fragmentDocument>>;
+  let decoration!: DecorationApi;
+  await wrap(async () => {
+    layout = await fragmentDocument(opts);
+    // Single mode is a 1-column wrap, not the unwrapped default — apply it
+    // BEFORE the first decorate() or the initial paint is the long-horizontal-
+    // row layout and only the first view-mode toggle would fix it.
+    applySpreadMode(layout.strips, false);
+    decoration = decorate(layout, { designer: opts.designer });
+  });
   // Tracked here (not derived from the DOM) because `relayout()` rebuilds
   // `layout.strips` from scratch on every refresh — the fresh elements carry
   // no `data-wrap` attribute, so the previously-requested view mode has to be
@@ -70,9 +89,13 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     prev: () => api.goto(api.currentPage() - 1),
     currentPage: () => current + 1,
     refresh() {
-      layout.relayout();
-      applySpreadMode(layout.strips, spreadOn);
-      decoration.redraw();
+      // With the host's bracket (see MountOptions.layoutBracket) the fn body
+      // runs synchronously; only the bracket's release is deferred a tick.
+      void wrap(() => {
+        layout.relayout();
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+      });
       emit();
       // relayout() rebuilds the strips from scratch — anything stamped onto
       // strip elements (the edit module's contenteditable hosts) is gone and
@@ -83,8 +106,10 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     },
     setSpread(on: boolean) {
       spreadOn = on;
-      applySpreadMode(layout.strips, spreadOn);
-      decoration.redraw();
+      void wrap(() => {
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+      });
       emit();
     },
   });

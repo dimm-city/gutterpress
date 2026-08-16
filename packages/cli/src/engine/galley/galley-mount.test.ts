@@ -175,6 +175,29 @@ testIf(
           expect(after.sameDocument).toBe(true);
           expect(after.chapters).toBe(2);
           expect(after.alpha).toBe(true);
+
+          // The desktop's post-renderingComplete sequence: setViewMode →
+          // Gutterpress.setSpread() + a refresh() — viewer passes initiated
+          // OUTSIDE any galley call path. Unbracketed, PM's DOMObserver sees
+          // the fragmenter's node moves and reverts them, wiping pagination
+          // to 0 pages (the rerender-latency gate hang). The layoutBracket
+          // handed to mount() must cover these later passes too.
+          await page.evaluate(() => {
+            (window.Gutterpress as unknown as { setSpread(on: boolean): void }).setSpread(true);
+          });
+          await new Promise((r) => setTimeout(r, 250));
+          await page.evaluate(() => {
+            (window.Gutterpress as unknown as { refresh(): void }).refresh();
+          });
+          await new Promise((r) => setTimeout(r, 250));
+          const survived = (await page.evaluate(() => ({
+            pages: window.Gutterpress!.totalPages,
+            sheets: (document.querySelectorAll(".gp-sheet") as { length: number }).length,
+            editing: window.GutterpressGalley.isEditing(),
+          }))) as { pages: number; sheets: number; editing: boolean };
+          expect(survived.editing).toBe(true);
+          expect(survived.pages).toBeGreaterThanOrEqual(1);
+          expect(survived.sheets).toBeGreaterThanOrEqual(1);
         } finally {
           await page.close();
         }

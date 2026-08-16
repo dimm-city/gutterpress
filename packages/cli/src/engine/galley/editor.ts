@@ -79,7 +79,10 @@ export interface GalleyEditorOptions {
 }
 
 interface ViewerGlobal {
-  mount(opts: { root: HTMLElement }): Promise<unknown>;
+  mount(opts: {
+    root: HTMLElement;
+    layoutBracket?: (fn: () => unknown) => Promise<unknown> | unknown;
+  }): Promise<unknown>;
   refresh?: () => void;
 }
 
@@ -295,18 +298,28 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
    * it is the sanctioned escape hatch this exact pattern is known for; the
    * mount-integration test pins the behavior.)
    */
+  let fragmenterDepth = 0;
   async function withFragmenter(fn: () => Promise<unknown> | unknown): Promise<void> {
     const obs = (
       editor.view as unknown as {
         domObserver: { flush(): void; stop(): void; start(): void };
       }
     ).domObserver;
-    obs.flush();
-    obs.stop();
+    // Re-entrant: this same function is handed to the viewer as its
+    // `layoutBracket`, so a viewer pass may run while an outer bracket is
+    // already open (mountViewer wraps `mount()`, which brackets internally
+    // too). Only the outermost frame may stop/start the observer — an inner
+    // start() would re-arm it mid-surgery.
+    if (fragmenterDepth === 0) {
+      obs.flush();
+      obs.stop();
+    }
+    fragmenterDepth++;
     try {
       await fn();
     } finally {
-      obs.start();
+      fragmenterDepth--;
+      if (fragmenterDepth === 0) obs.start();
     }
   }
 
@@ -319,7 +332,13 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   async function mountViewer(): Promise<void> {
     const g = (window as unknown as { Gutterpress?: ViewerGlobal }).Gutterpress;
     if (!g?.mount) throw new Error("galley: viewer global missing");
-    await withFragmenter(() => g.mount({ root: editor.view.dom as HTMLElement }));
+    // `layoutBracket` covers every LATER viewer-initiated pass too —
+    // setSpread()/refresh() driven by the host's setViewMode land outside
+    // any galley call path, and unbracketed they let PM's observer see the
+    // fragmenter's moves and revert them (wiping pagination to 0 pages).
+    await withFragmenter(() =>
+      g.mount({ root: editor.view.dom as HTMLElement, layoutBracket: withFragmenter }),
+    );
     stampChromeUneditable();
   }
 

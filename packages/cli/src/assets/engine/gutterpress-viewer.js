@@ -2262,9 +2262,14 @@
   var resizeListener;
   async function mount(opts = {}) {
     const t0 = performance.now();
-    const layout = await fragmentDocument(opts);
-    applySpreadMode(layout.strips, false);
-    const decoration = decorate(layout, { designer: opts.designer });
+    const wrap = opts.layoutBracket ?? ((fn) => fn());
+    let layout;
+    let decoration;
+    await wrap(async () => {
+      layout = await fragmentDocument(opts);
+      applySpreadMode(layout.strips, false);
+      decoration = decorate(layout, { designer: opts.designer });
+    });
     let spreadOn = false;
     const api = Object.assign(layout, {
       decoration,
@@ -2279,16 +2284,20 @@
       prev: () => api.goto(api.currentPage() - 1),
       currentPage: () => current + 1,
       refresh() {
-        layout.relayout();
-        applySpreadMode(layout.strips, spreadOn);
-        decoration.redraw();
+        wrap(() => {
+          layout.relayout();
+          applySpreadMode(layout.strips, spreadOn);
+          decoration.redraw();
+        });
         emit();
         window.dispatchEvent(new CustomEvent("gp:relayout", { detail: { pages: layout.totalPages } }));
       },
       setSpread(on) {
         spreadOn = on;
-        applySpreadMode(layout.strips, spreadOn);
-        decoration.redraw();
+        wrap(() => {
+          applySpreadMode(layout.strips, spreadOn);
+          decoration.redraw();
+        });
         emit();
       }
     });
