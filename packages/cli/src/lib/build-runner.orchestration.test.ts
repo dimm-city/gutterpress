@@ -9,7 +9,6 @@ import {
   resolveIccProfile,
   BuildError,
 } from "./build-runner.ts";
-import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 import { shipViewerHtml } from "./build-staging.ts";
 
@@ -19,26 +18,21 @@ import { shipViewerHtml } from "./build-staging.ts";
  * full HTML build path and the extracted pure ICC-resolution helper, so the
  * god-function -> stages+strategies refactor is provably behavior-preserving.
  *
- * The HTML build assertion exercises the runtime-pagination fallback
+ * The HTML build assertion exercises runtime pagination
  * (shipRuntimePaginatedHtml): markdown -> book.html + index.html + fingerprint,
- * and the returned BuildRunnerResult shape. That fallback path is only taken
- * when NO Chromium is resolvable, so — mirroring pagination.test.ts's
- * `chromium ? test : test.skip` gate, inverted — it runs only when Chromium is
- * absent. When Chromium IS present (e.g. CI's Test job sets
- * PUPPETEER_EXECUTABLE_PATH), runBuild paginates in Chromium instead; that path
- * is covered by pagination.test.ts, and launching a real browser here
- * would both change the exercised code path and blow the test timeout.
- * The ICC-resolver tests below are pure and always run.
+ * and the returned BuildRunnerResult shape.
+ *
+ * It is deliberately UNGATED. It used to be wrapped in
+ * `chromium ? test.skip : test` — inverted, so it ran only when Chromium was
+ * ABSENT — on the theory that `--format html` paginates in Chromium when one
+ * is available. That theory was wrong: `rendersInPooledChromium()`
+ * (build-preflight.ts) is `format !== "html" && !opts.engineBrowser`, so an
+ * html build never touches Chromium at all. CI's Test job always resolves a
+ * Chromium, so the gate skipped these 14 assertions on every CI run —
+ * including the check that published output ships neither the galley nor the
+ * edit bundle — while the suite still reported green. (The comment also cited
+ * a `pagination.test.ts` that does not exist.)
  */
-
-const chromium = await resolveChromiumExecutable();
-const htmlFallbackTest = chromium ? test.skip : test;
-if (chromium) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[build-runner.orchestration.test] Chromium resolved — skipping the HTML runtime-pagination fallback assertion (the Chromium path is covered by pagination.test.ts)."
-  );
-}
 
 const dirsToClean: string[] = [];
 
@@ -48,7 +42,7 @@ afterEach(async () => {
   }
 });
 
-htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
+test("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
   const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-in-"));
   const outDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-out-"));
   dirsToClean.push(inputDir, outDir);
