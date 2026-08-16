@@ -21,7 +21,12 @@ on:
       - "packages/cli/src/preview/**"
       - "packages/cli/src/assets/preview/**"
       - "packages/cli/src/lib/markdown/**"
+      # The galley editor and its engine bundles — the end-to-end editing
+      # check below is the only thing that exercises them in the shipped app.
+      - "packages/cli/src/engine/galley/**"
+      - "packages/cli/src/assets/engine/**"
       - "packages/desktop/tests/perf/**"
+      - "packages/desktop/tests/integration/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
 
@@ -66,3 +71,13 @@ jobs:
       - name: Run instant-preview regression gate
         working-directory: packages/desktop
         run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000
+
+      # ADR 0011 end-to-end: the ONLY check that drives the galley in the
+      # shipped app — real CDP keystrokes into the paginated page, through the
+      # ProseMirror doc and the commit engine, asserted against bytes on disk.
+      # Everything else tests the editor against a synthetic page or a unit
+      # seam, so "the editor works" was an assertion until this ran. Reuses the
+      # app built above.
+      - name: Run galley editing end-to-end
+        working-directory: packages/desktop
+        run: node tests/integration/galley-editing.pw.mjs
