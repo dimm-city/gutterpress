@@ -219,7 +219,7 @@ through HTML.
 - **Server routes** (thin, pattern (A)): `parse-tokens` (chapter → token
   JSON), `render-fragment` (markdown slice → HTML for opaque nodeViews +
   overlay preview). Both are ~30-line wrappers over the existing renderer.
-- **Bridge** (protocol v8, *smaller* than v7): `setEditMode`,
+- **Bridge** (protocol v9, *smaller* than v7): `setEditMode`,
   `insertMarkdown`/`command`, `contentChanged(markdown)` out,
   `selectionState` out. Deleted: `editPatches`/`ackEditPatches`/
   `verifyChapter`/`editDrift`/`flushEditState` and the patch-ack lifecycle.

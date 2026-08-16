@@ -509,7 +509,7 @@
     // `range`.
     getProtocolVersion: function () { return 9; },
 
-    // ── protocol v8: galley editing (ADR 0011) ─────────────────────────────
+    // ── protocol v9: galley editing (ADR 0011) ─────────────────────────────
     // All delegate to window.GutterpressGalley; absent (a stale or published
     // bundle set) they report inert results rather than throwing.
     setEditMode: function (spec) {

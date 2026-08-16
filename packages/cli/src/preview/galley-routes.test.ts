@@ -1,5 +1,5 @@
 /**
- * Unit tests for the galley editor routes (preview-interface protocol v8).
+ * Unit tests for the galley editor routes (preview-interface protocol v9).
  *
  * Covers:
  *   - GET /__galley/book: chapters in book order with canonical ids, normalized

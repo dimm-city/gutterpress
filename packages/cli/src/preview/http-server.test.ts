@@ -279,7 +279,6 @@ describe('createPreviewServer', () => {
     expect(body).toContain('<h1>Hi</h1>');
     expect(body).toContain('__gutterpress-hmr');
     expect(body).toContain('full-reload');
-    expect(body).toContain('content-update');
     expect(body).toContain('reload-state');
     expect(body).toContain('reload-applied');
     expect(body).toContain("closest('[data-chapter-src]')");
@@ -515,18 +514,17 @@ describe('createPreviewServer', () => {
     const chapterMessage = new Promise<string>((resolve) => {
       ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
     });
-    server.broadcastContentUpdate('chapters/one.md');
+    server.broadcastReload();
     expect(JSON.parse(await chapterMessage)).toEqual({
-      type: 'content-update',
+      type: 'full-reload',
       instance: initial.instance,
       revision: 2,
-      file: 'chapters/one.md',
     });
 
     const cumulativeMessage = new Promise<string>((resolve) => {
       ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
     });
-    server.broadcastContentUpdate('chapters/two.md');
+    server.broadcastReload();
     expect(JSON.parse(await cumulativeMessage)).toEqual({
       type: 'full-reload',
       instance: initial.instance,
@@ -541,7 +539,7 @@ describe('createPreviewServer', () => {
 
     // No client receives this edge. A new connection still learns the current
     // revision and can update, which is the stale-view recovery contract.
-    server.broadcastContentUpdate('chapters/three.md');
+    server.broadcastReload();
     const reconnected = new WebSocket(`ws://localhost:${port}/__gutterpress-hmr`);
     const recoveredState = new Promise<string>((resolve) => {
       reconnected.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');

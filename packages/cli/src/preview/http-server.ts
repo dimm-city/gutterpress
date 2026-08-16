@@ -167,8 +167,7 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
         try { msg = JSON.parse(e.data); } catch (_) { return; }
         if (
           msg.type !== 'reload-state' &&
-          msg.type !== 'full-reload' &&
-          msg.type !== 'content-update'
+          msg.type !== 'full-reload'
         ) return;
         var instance = typeof msg.instance === 'string' ? msg.instance : null;
         var revision = Number(msg.revision);
@@ -237,7 +236,6 @@ export interface PreviewServer {
    */
   broadcastReload(): void;
   /** Paginate and replace one edited Markdown source in connected shells. */
-  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -510,7 +508,7 @@ export async function createPreviewServer(
 
   function sendRevision(
     ws: WebSocket,
-    type: 'reload-state' | 'full-reload' | 'content-update',
+    type: 'reload-state' | 'full-reload',
     file?: string,
   ): void {
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -622,7 +620,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Galley editor routes (preview-interface protocol v8): the frame
+    // 3. Galley editor routes (preview-interface protocol v9): the frame
     //     editor's source-of-truth endpoints — book source + tokens,
     //     tokenization, fragment rendering — all through THE SAME markdown-it
     //     configuration as the preview render path. See ./galley-routes.ts.
@@ -772,7 +770,7 @@ export async function createPreviewServer(
   let stopped = false;
 
   const broadcastUpdate = (
-    type: 'full-reload' | 'content-update',
+    type: 'full-reload',
     file?: string,
   ): void => {
     if (stopped) return;
@@ -811,13 +809,6 @@ export async function createPreviewServer(
     },
     broadcastReload() {
       broadcastUpdate('full-reload');
-    },
-    broadcastContentUpdate(file: string) {
-      // Revisions are cumulative. If any visible client is still applying an
-      // older update, a second isolated splice could omit it; the latest
-      // authoritative book.html safely subsumes both changes.
-      if (updateInFlight()) broadcastUpdate('full-reload');
-      else broadcastUpdate('content-update', canonicalChapterId(file));
     },
   };
 }

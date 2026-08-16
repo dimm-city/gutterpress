@@ -14,7 +14,7 @@
    * trap/restore discipline the app's existing dialogs use
    * (`$lib/dialog.ts`'s `dialogBehavior`/`trapFocus`).
    *
-   * Galley mode (protocol v8) is invisible to this component: the controller's
+   * Galley mode (protocol v9) is invisible to this component: the controller's
    * `showGalley()` seeds `initialText` and routes `commit()` to an injected
    * `onCommitText` callback (→ `galleySetOpaqueSource`) instead of the commit
    * engine — same widget, same dismissal matrix, different write path.

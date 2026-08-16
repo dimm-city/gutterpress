@@ -1,6 +1,6 @@
 /**
  * galley-session.ts — the SPA half of Galley v2 inline editing
- * (protocol v8, docs/tiptap-galley-architecture.md).
+ * (protocol v9, docs/tiptap-galley-architecture.md).
  *
  * The frame owns ONE ProseMirror doc per chapter; screen↔file drift is
  * impossible by construction, so there is no patch-ack lifecycle, no drift

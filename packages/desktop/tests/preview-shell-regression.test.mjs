@@ -14,7 +14,7 @@ const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"
 // engine/viewer/decorate.ts). Paged.js has been removed
 // (native-only-migration-plan.md Phase 6) — the incremental chapter-splice
 // scenario this fixture set used to also cover (UPDATED_CHAPTER) was removed
-// with it: every content-update now goes through the same full-reload swap
+// with it: every update message goes through the same full-reload swap
 // as a geometry-wide change (see preview-shell.js's header comment on the
 // removed spliceChapter()).
 const BOOK_NATIVE = `
@@ -363,11 +363,11 @@ async function runTopLevelScrollIdleRegression() {
   };
 
   dispatchViewportChanged();
-  onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
+  onChange?.({ type: "full-reload", instance: "cli", revision: 1 });
   const firstTimer = [...idleTimers.keys()].at(-1);
   assert.equal(typeof firstTimer, "number", "CLI top-level: active scrolling defers the first revision");
 
-  onChange?.({ type: "content-update", instance: "cli", revision: 2, file: "chapter-2.md" });
+  onChange?.({ type: "full-reload", instance: "cli", revision: 2 });
   const secondTimer = [...idleTimers.keys()].at(-1);
   assert.notEqual(secondTimer, firstTimer, "CLI top-level: a newer revision replaces the pending timer");
   assert.equal(clearedTimers.includes(firstTimer), true, "CLI top-level: the superseded timer is cancelled");
@@ -681,20 +681,19 @@ async function main() {
   );
   flushAnimationFrames();
 
-  // A `content-update` message now goes through the exact same full-reload
+  // Every update message goes through the exact same full-reload
   // swap as `full-reload` (Paged.js's incremental chapter splice was removed
   // along with Paged.js — see preview-shell.js's header comment on the
   // removed spliceChapter()).
   const beforeUpdate = document.getElementById("gutterpress-active");
   const beforeUpdateEvents = hostEvents.length;
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 2,
-    file: "chapter-2.md",
   });
   const afterUpdate = document.getElementById("gutterpress-active");
-  assert.notEqual(afterUpdate, beforeUpdate, "a content-update triggers a full swap, same as full-reload");
+  assert.notEqual(afterUpdate, beforeUpdate, "an update message triggers a full swap");
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
   // preview-bridge.js (not loaded by this fixture — see the file header)
   // is what relays the swapped-in frame's own 'renderingComplete' DOM event
@@ -718,18 +717,16 @@ async function main() {
   // apply both in sequence.
   deferNextFrameLoad = true;
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 3,
-    file: "chapter-2.md",
   });
   assert.ok(deferredFrame?.isConnected, "the first rapid update is still paginating");
   const beforeOverlapRecovery = document.getElementById("gutterpress-active");
   onChange?.({
-    type: "content-update",
+    type: "full-reload",
     instance: "instance-b",
     revision: 4,
-    file: "chapter-1.md",
   });
   assert.equal(deferredFrame.isConnected, false, "the superseded frame is discarded");
   assert.notEqual(

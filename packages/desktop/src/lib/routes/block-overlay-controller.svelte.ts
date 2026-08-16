@@ -72,7 +72,7 @@ export class BlockOverlayController {
   initialText = $state("");
 
   /**
-   * Galley mode (protocol v8, docs/tiptap-galley-architecture.md): set, the
+   * Galley mode (protocol v9, docs/tiptap-galley-architecture.md): set, the
    * overlay was handed initial text + a commit callback by `showGalley()` and
    * resolves NO chapter/range of its own — commit routes the edited text to
    * this callback (which calls `galleySetOpaqueSource`; the resulting doc
@@ -115,7 +115,7 @@ export class BlockOverlayController {
   }
 
   /**
-   * Galley-mode entry point (protocol v8): open the overlay over an opaque
+   * Galley-mode entry point (protocol v9): open the overlay over an opaque
    * atom's on-screen rect, seeded with its verbatim source. The caller owns
    * what a commit MEANS (`onCommitText` → `galleySetOpaqueSource`); this
    * controller only owns geometry and the open/commit/cancel lifecycle —

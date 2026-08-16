@@ -221,16 +221,18 @@ export function describeChanges(
   return files;
 }
 
-export type BroadcastDecision =
-  | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
-  | { kind: 'full-reload' };
-
-/** A single surviving Markdown edit can be paginated independently. */
-export function decideBroadcast(
+/**
+ * The relative path when a rebuild was triggered by exactly ONE surviving
+ * Markdown edit, else null. This decides the log line the author sees and
+ * nothing else: both preview clients treat every update message identically
+ * (neither branches on the type, neither reads the file name), so there is
+ * no second wire shape to choose between.
+ */
+export function singleMarkdownEdit(
   files: ChangedFile[],
   changeCount: number,
   incremental: boolean
-): BroadcastDecision {
+): string | null {
   const only = files.length === 1 ? files[0]! : null;
   if (
     incremental &&
@@ -239,13 +241,9 @@ export function decideBroadcast(
     only.event !== 'unlink' &&
     only.event !== 'unlinkDir'
   ) {
-    return {
-      kind: 'chapter-splice',
-      chapterId: canonicalChapterId(only.relativePath),
-      relativePath: only.relativePath,
-    };
+    return only.relativePath;
   }
-  return { kind: 'full-reload' };
+  return null;
 }
 
 /**
@@ -767,16 +765,15 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
         if (closed) return;
 
-        const decision = decideBroadcast(
+        const singleEdit = singleMarkdownEdit(
           describeChanges(changes, inputResolved),
           changes.length,
           incrementalPreviewEnabled(),
         );
-        if (decision.kind === 'chapter-splice') {
-          state.previewServer?.broadcastContentUpdate(decision.chapterId);
-          info(`Chapter updated: ${decision.relativePath}`);
+        state.previewServer?.broadcastReload();
+        if (singleEdit) {
+          info(`Chapter updated: ${singleEdit}`);
         } else {
-          state.previewServer?.broadcastReload();
           info(
             changes.length > 1
               ? `Preview updated (${changes.length} files changed — full reload)`

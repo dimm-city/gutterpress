@@ -92,7 +92,7 @@ export interface ContextMenuDeps {
   toastSuccess: (message: string) => void;
   toastError: (message: string) => void;
   /**
-   * Galley (protocol v8) node edits — the controller's only write path.
+   * Galley (protocol v9) node edits — the controller's only write path.
    * Actions mutate the DOCUMENT; the editor's whole-file save writes it out.
    */
   galley?: {

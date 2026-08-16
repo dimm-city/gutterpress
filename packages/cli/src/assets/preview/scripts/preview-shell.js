@@ -279,7 +279,7 @@
   // worst failure this project can produce. It also bought nothing: measured
   // end-to-end (file write -> change visible, 5 samples, 34pp field guide)
   // the plain full reload (`swap`, below) is 509ms avg vs the incremental
-  // splice's 998ms avg. Every content-update now goes straight to `swap()`.
+  // splice's 998ms avg. Every update message now goes straight to `swap()`.
 
   function markActiveReady() {
     onReady(active, function () {
@@ -347,8 +347,7 @@
   var disconnectChanges = connectChanges(function (message) {
     if (!message || (
       message.type !== 'reload-state' &&
-      message.type !== 'full-reload' &&
-      message.type !== 'content-update'
+      message.type !== 'full-reload'
     )) return;
     var instance = typeof message.instance === 'string' ? message.instance : null;
     var revision = Number(message.revision);

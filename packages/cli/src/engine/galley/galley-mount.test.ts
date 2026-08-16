@@ -211,7 +211,7 @@ testIf(
           expect(survived.pages).toBeGreaterThanOrEqual(1);
           expect(survived.sheets).toBeGreaterThanOrEqual(1);
 
-          // ── Context menu (protocol v8) ──────────────────────────────────
+          // ── Context menu (protocol v9) ──────────────────────────────────
           // The menu is the author's route to image/link properties. It was
           // gated OFF on galley frames because the PM DOM carries no
           // `data-source-range`; targets are node-addressed instead. Pin the

@@ -1,6 +1,16 @@
 # ADR 0009 — Inline editing: source ranges, the commit gate, and the preview bridge
 
-Date: 2026-08-04 · Status: accepted
+Date: 2026-08-04 · Status: superseded by ADR 0011 (the Galley editor)
+
+> **What survived and what did not.** §1's `data-source-range` addressing
+> primitive is **gone** — the attribute is no longer emitted at all, and the
+> core rule that produced it now only stamps `data-chapter-src`
+> (`packages/cli/src/lib/markdown/source-chapter.ts`). The galley addresses
+> nodes by ProseMirror position instead. §3's commit gate **survives intact**
+> and is what ADR 0011's whole-chapter saves commit through. §2's bridge
+> protocol has moved on to v9; the range-addressed commands it defined
+> (`getRectsFor`, `setEditMask`, `getContextTargetAt` as a host-callable
+> pull) are removed.
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
@@ -36,7 +46,7 @@ properties of this app rule it out, each verified by spike rather than assumed:
 
 The full analysis is in
 [`docs/reviews/inline-editing-analysis-2026-08-04.md`](../reviews/inline-editing-analysis-2026-08-04.md);
-the phased implementation plan is [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
+its phased implementation plan was removed with the mechanism it built.
 
 ## Decision
 

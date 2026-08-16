@@ -93,7 +93,7 @@
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
   });
-  // Galley editing events (protocol v8, ADR 0011): whole-file save
+  // Galley editing events (protocol v9, ADR 0011): whole-file save
   // proposals, opaque-block edit requests, the selection stream for the
   // formatting bubble, and the dirty indicator.
   window.addEventListener('galleyContent', function (e) {

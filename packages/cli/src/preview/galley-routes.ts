@@ -1,5 +1,5 @@
 /**
- * Galley editor routes (preview-interface protocol v8).
+ * Galley editor routes (preview-interface protocol v9).
  *
  * Three same-origin endpoints served by the preview
  * HTTP server (http-server.ts dispatches every `/__galley/*` path here):

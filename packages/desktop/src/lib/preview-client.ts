@@ -13,7 +13,7 @@ export interface PreviewEvent {
     | "sourceLineChanged"
     | "elementActivated"
     | "contextMenuRequested"
-    // Inline editing (protocol v8, Galley v2 — docs/tiptap-galley-architecture.md):
+    // Inline editing (protocol v9, Galley v2 — docs/tiptap-galley-architecture.md):
     | "editStateChanged"
     | "editSelection"
     | "galleyContent"
@@ -48,7 +48,7 @@ export interface PreviewEvent {
     link?: { href: string | null; text: string } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
-    /** contextMenuRequested (protocol v8): node handle for a galley-resolved
+    /** contextMenuRequested (protocol v9): node handle for a galley-resolved
      *  target — present INSTEAD of `range` while the galley owns the doc. */
     galley?: GalleyTargetHandle | null;
     /** contextMenuRequested: viewport point the menu was requested at. */
@@ -92,7 +92,7 @@ export interface ContextTargetSelection {
 }
 
 /**
- * Node handle for a target resolved by the galley (protocol v8). Present
+ * Node handle for a target resolved by the galley (protocol v9). Present
  * instead of `range` whenever the galley owns the document: its PM-rendered
  * DOM carries no `data-source-range`, and a source splice under a live galley
  * would be reverted by the document's own next whole-file save. Menu actions
@@ -119,7 +119,7 @@ export interface ContextTarget {
   } | null;
   link: { href: string | null; text: string } | null;
   selection: ContextTargetSelection | null;
-  /** Set only when the galley resolved this target (protocol v8). */
+  /** Set only when the galley resolved this target (protocol v9). */
   galley?: GalleyTargetHandle | null;
 }
 
@@ -145,7 +145,7 @@ export interface RectsForResult {
 }
 
 /**
- * `galleyTargetAt()`'s result (protocol v8): what the galley doc holds at a
+ * `galleyTargetAt()`'s result (protocol v9): what the galley doc holds at a
  * frame-viewport point. `src` is populated only when `kind` identifies an
  * opaque atom (a verbatim source slice the editor does not model richly).
  */
@@ -340,7 +340,7 @@ export class PreviewClient {
   }
 
   /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
-  // ── protocol v8: Galley v2 inline editing ─────────────────────────────
+  // ── protocol v9: Galley v2 inline editing ─────────────────────────────
   // (docs/tiptap-galley-architecture.md — one ProseMirror doc per chapter in
   // the frame; the SPA saves whole chapters and never splices block patches.)
 
@@ -402,7 +402,7 @@ export class PreviewClient {
 
   /**
    * Rewrite an image node's src/alt/authored brace attrs in the galley doc
-   * (protocol v8). This is the galley's replacement for the context menu's
+   * (protocol v9). This is the galley's replacement for the context menu's
    * source-token splice: the doc is authoritative while editing, and its own
    * whole-file save writes the change to disk.
    */

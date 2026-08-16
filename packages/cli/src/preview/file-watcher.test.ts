@@ -20,7 +20,7 @@ import {
   isDotPathUnderRoot,
   isIgnoredWatchPath,
   describeChanges,
-  decideBroadcast,
+  singleMarkdownEdit,
   type ChangedFile,
 } from './file-watcher';
 import { resolveConfig } from '../lib/manifest';
@@ -310,19 +310,15 @@ describe('incremental broadcast decision', () => {
     event,
   });
 
-  test('uses a chapter splice for one surviving Markdown edit', () => {
-    expect(decideBroadcast([markdown('chapters/one.md')], 1, true)).toEqual({
-      kind: 'chapter-splice',
-      chapterId: 'chapters/one.md',
-      relativePath: 'chapters/one.md',
-    });
+  test('names the file for one surviving Markdown edit', () => {
+    expect(singleMarkdownEdit([markdown('chapters/one.md')], 1, true)).toBe('chapters/one.md');
   });
 
-  test('uses a full reload for deletion, multi-file, external, and disabled cases', () => {
-    expect(decideBroadcast([markdown('one.md', 'unlink')], 1, true)).toEqual({ kind: 'full-reload' });
-    expect(decideBroadcast([markdown('one.md'), markdown('two.md')], 2, true)).toEqual({ kind: 'full-reload' });
-    expect(decideBroadcast([], 1, true)).toEqual({ kind: 'full-reload' });
-    expect(decideBroadcast([markdown('one.md')], 1, false)).toEqual({ kind: 'full-reload' });
+  test('names nothing for deletion, multi-file, external, and disabled cases', () => {
+    expect(singleMarkdownEdit([markdown('one.md', 'unlink')], 1, true)).toBeNull();
+    expect(singleMarkdownEdit([markdown('one.md'), markdown('two.md')], 2, true)).toBeNull();
+    expect(singleMarkdownEdit([], 1, true)).toBeNull();
+    expect(singleMarkdownEdit([markdown('one.md')], 1, false)).toBeNull();
   });
 
   test('describes in-project paths with canonical forward slashes', () => {
@@ -643,7 +639,7 @@ describe('createFileWatcher', () => {
       await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Updated under a dot ancestor');
       await waitForRebuild(dotState, calls);
 
-      expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+      expect(calls).toEqual([{ type: 'full-reload' }]);
     } finally {
       await watcher.close();
       await rm(dotAncestorBase, { recursive: true, force: true });
@@ -658,7 +654,6 @@ describe('createFileWatcher', () => {
       port: 0,
       async close() {},
       broadcastReload() { calls.push({ type: 'full-reload' }); },
-      broadcastContentUpdate(file: string) { calls.push({ type: 'content-update', arg: file }); },
     } as any;
     return calls;
   }
@@ -678,7 +673,7 @@ describe('createFileWatcher', () => {
     watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
     await waitForRebuild(state, calls);
 
-    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-02.md' }]);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
   }, 50000);
 
@@ -698,11 +693,11 @@ describe('createFileWatcher', () => {
     notify?.(chapter, content);
     expect(state.isRebuilding).toBe(true);
     await waitForRebuild(state, calls);
-    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
 
     watcher.emit('all', 'change', chapter);
     await wait(400);
-    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
   }, 50000);
 
@@ -940,8 +935,8 @@ describe('createFileWatcher', () => {
       await pollUntil(() => calls.length >= 2 && !state.isRebuilding);
       expect(calls.length).toBe(2);
       expect(calls).toEqual([
-        { type: 'content-update', arg: 'chapter-01.md' },
-        { type: 'content-update', arg: 'chapter-02.md' },
+        { type: 'full-reload' },
+        { type: 'full-reload' },
       ]);
       await watcher.close();
     } finally {

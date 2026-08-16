@@ -1228,7 +1228,7 @@
    * doc) and no infinite loop (gives up with a clear toast).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
-    // Galley v2 (protocol v8): with the inline editor live, insert at the
+    // Galley v2 (protocol v9): with the inline editor live, insert at the
     // cursor in the page; the source-pane flow below is the fallback.
     insertAuthoredMarkdown(`![${payload.alt ?? ""}](${payload.src})`, () =>
       insertImageViaSourcePane(payload),
@@ -2007,7 +2007,7 @@
   // listener — separate from previewEvents' switch below (PR 0 already owns
   // the elementActivated case there).
   // ----------------------------------------------------------------
-  // Galley v2 inline editing (protocol v8, docs/tiptap-galley-architecture.md):
+  // Galley v2 inline editing (protocol v9, docs/tiptap-galley-architecture.md):
   // the frame's ProseMirror doc is the one truth; it serializes whole chapters
   // (`galleyContent`) and this session commits each through the commit engine
   // as ONE whole-file range patch (origin: "inline-edit", so the preview
@@ -2196,7 +2196,7 @@
         if (client === c) frameProtocol = v;
       });
     });
-    // Galley inline editing (protocol v8): the session owns its slice of the
+    // Galley inline editing (protocol v9): the session owns its slice of the
     // event stream (whole-chapter commits, dirty state, edit-mode re-sync) —
     // the page keeps bubble positioning (needs the iframe rect), the opaque-
     // atom overlay handoff, and the stale-commit toast.
@@ -3362,7 +3362,7 @@
   projectDir={lifecycle.currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => {
-    // Galley v2 (protocol v8): with the inline editor live, snippets land at
+    // Galley v2 (protocol v9): with the inline editor live, snippets land at
     // the cursor in the page; otherwise the classic source-editor path.
     insertAuthoredMarkdown(text, () => insertSnippetViaSourcePane(text));
   }}

@@ -54,6 +54,16 @@ jobs:
         working-directory: packages/cli
         run: bun run roundtrip:gate
 
+      # Preview/print parity: the on-screen viewer derives pagination by a
+      # different route than the print fragmenter, so this proves the two
+      # still agree. CLAUDE.md calls it permanent and required-green with an
+      # empty allowlist — it was never actually wired into CI, so nothing
+      # enforced that. It needs the engine's Chromium milestone, which this
+      # runner has and a dev container may not.
+      - name: Preview/print parity gate
+        working-directory: packages/cli
+        run: bun run parity:gate
+
       - name: Test Open Design plugin contract
         working-directory: packages/open-design-plugin
         run: bun test

@@ -153,7 +153,7 @@ export interface GalleyEditor {
    *  its pagination — no reload, no re-render, no lost scroll position. */
   setEditable(on: boolean): void;
   /**
-   * Context-menu target resolution (protocol v8). Mirrors the v7
+   * Context-menu target resolution (protocol v9). Mirrors the v7
    * `getContextTargetAt` payload — same `kind` precedence (selection → image
    * → link → marker → block → none) and the same image/link/selection
    * side-channels — but resolved through the ProseMirror document instead of
