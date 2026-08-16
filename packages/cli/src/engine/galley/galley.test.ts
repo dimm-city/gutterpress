@@ -293,3 +293,82 @@ test("unknown inline HTML stays inline and verbatim inside an editable paragraph
   const out = serializeGalleyDoc(schema, doc);
   expect(out).toContain("<kbd>Ctrl</kbd>");
 });
+
+test("footnote definitions stay where the author wrote them (markdown-it hoists them)", () => {
+  // markdown-it-footnote moves EVERY definition into a trailing footnote
+  // block, so document order (which is RENDER order — the print pipeline puts
+  // the notes section at the end too) is not source order. Serializing
+  // document order rewrote the author's file with the definition moved to the
+  // bottom on every save.
+  const source = [
+    "Intro paragraph before.",
+    "",
+    "Some text with a footnote[^a] here.",
+    "",
+    "[^a]: The footnote definition body.",
+    "",
+    "Trailing paragraph after.",
+    "",
+  ].join("\n");
+  const { doc, srcMap } = buildGalleyDoc(schema, tokensOf(source), source);
+  // The hoisting is real: the definition IS the document's last child.
+  expect(doc.lastChild!.type.name).toBe("rawBlock");
+  expect(String(doc.lastChild!.attrs.src)).toStartWith("[^a]:");
+  // …and serialization must put it back.
+  expect(serializeGalleyDoc(schema, doc, srcMap)).toBe(source);
+});
+
+test("multiple footnote definitions each return to their own source position", () => {
+  const source = [
+    "First[^one] and second[^two].",
+    "",
+    "[^one]: Note one.",
+    "",
+    "Middle paragraph between the definitions.",
+    "",
+    "[^two]: Note two.",
+    "",
+    "After both.",
+    "",
+  ].join("\n");
+  const { doc, srcMap } = buildGalleyDoc(schema, tokensOf(source), source);
+  expect(serializeGalleyDoc(schema, doc, srcMap)).toBe(source);
+});
+
+test("definitions already written at the end are not moved", () => {
+  const source = ["Body text[^z].", "", "More body.", "", "[^z]: Trailing note.", ""].join("\n");
+  const { doc, srcMap } = buildGalleyDoc(schema, tokensOf(source), source);
+  expect(serializeGalleyDoc(schema, doc, srcMap)).toBe(source);
+});
+
+test("a paragraph between two definitions is not swallowed into the opaque slice", () => {
+  // Regression: the hoisted definitions escalated as ONE run whose span
+  // covered every line between the first and last definition, so this
+  // paragraph was written twice — once as itself, once inside the slice.
+  const source = [
+    "First[^one] and second[^two].",
+    "",
+    "[^one]: Note one.",
+    "",
+    "Middle paragraph between the definitions.",
+    "",
+    "[^two]: Note two.",
+    "",
+    "After both.",
+    "",
+  ].join("\n");
+  const { doc, srcMap } = buildGalleyDoc(schema, tokensOf(source), source);
+  const out = serializeGalleyDoc(schema, doc, srcMap);
+  expect(out).toBe(source);
+  expect(out.match(/Middle paragraph/g)).toHaveLength(1);
+});
+
+test("multi-line definition bodies and definitions written above their reference survive", () => {
+  for (const source of [
+    ["Ref[^m] here.", "", "[^m]: First line of the note.", "    Continued on a second line.", "", "Tail.", ""].join("\n"),
+    ["[^early]: Defined up top.", "", "Body that references[^early] it later.", ""].join("\n"),
+  ]) {
+    const { doc, srcMap } = buildGalleyDoc(schema, tokensOf(source), source);
+    expect(serializeGalleyDoc(schema, doc, srcMap)).toBe(source);
+  }
+});

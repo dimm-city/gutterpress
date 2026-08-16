@@ -38,10 +38,8 @@ declare const window: {
   __contents: Array<{ chapter: string; markdown: string; expected: string }>;
   addEventListener(name: string, cb: (e: { detail: unknown }) => void): void;
 };
-declare const document: {
-  querySelector(sel: string): { textContent: string | null } | null;
-  querySelectorAll(sel: string): ArrayLike<{ textContent: string | null }>;
-};
+// `document` comes from the DOM lib (browser.tsconfig) — the page.evaluate
+// callbacks below run in the browser and use real Element APIs.
 
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
@@ -293,6 +291,54 @@ testIf(
           await page.waitForFunction(
             `window.__contents.some((c) => c.chapter === "ch2.md" && c.markdown.includes("{.gp-left width=25%}") && c.markdown.includes("https://example.com/changed"))`,
           );
+
+          // ── Kill-switch round trip ──────────────────────────────────────
+          // Turning editing off used to `location.reload()`, throwing away
+          // the reader's position and the mounted document. It must now drop
+          // editability in place and be reversible.
+          const off = (await page.evaluate(() => {
+            window.GutterpressGalley.setEditMode({ on: false });
+            return new Promise((resolve) =>
+              setTimeout(
+                () =>
+                  resolve(
+                    JSON.stringify({
+                      stillSameDocument:
+                        (window as unknown as { __no_reload_marker?: boolean })
+                          .__no_reload_marker === true,
+                      editing: window.GutterpressGalley.isEditing(),
+                      editable: !!document.querySelector(".tiptap[contenteditable=true]"),
+                      // Pagination survives — this is what a reload destroyed.
+                      pages: window.Gutterpress!.totalPages,
+                      sheets: document.querySelectorAll(".gp-sheet").length,
+                    }),
+                  ),
+                150,
+              ),
+            );
+          })) as string;
+          const o = JSON.parse(off) as {
+            stillSameDocument: boolean; editing: boolean; editable: boolean;
+            pages: number; sheets: number;
+          };
+          expect(o.stillSameDocument).toBe(true);
+          expect(o.editing).toBe(false);
+          expect(o.editable).toBe(false);
+          expect(o.pages).toBeGreaterThanOrEqual(1);
+          expect(o.sheets).toBeGreaterThanOrEqual(1);
+
+          // Back on: the same editor re-arms, no refetch, no reload.
+          await page.evaluate(() => {
+            window.GutterpressGalley.setEditMode({ on: true });
+          });
+          await page.waitForFunction(
+            "window.GutterpressGalley.isEditing() && document.querySelector('.tiptap[contenteditable=true]')",
+          );
+          const backOn = (await page.evaluate(
+            () =>
+              (window as unknown as { __no_reload_marker?: boolean }).__no_reload_marker === true,
+          )) as boolean;
+          expect(backOn).toBe(true);
         } finally {
           await page.close();
         }

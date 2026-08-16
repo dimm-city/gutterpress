@@ -280,7 +280,18 @@ export const RawBlock = Node.create({
   atom: true,
   selectable: true,
   addAttributes() {
-    return { src: { default: "" } };
+    return {
+      src: { default: "" },
+      /**
+       * 1-based source line this block came from. Needed because
+       * markdown-it-footnote HOISTS every footnote definition to the end of
+       * the token stream: without the original line the serializer would
+       * write mid-document definitions back at the end of the file, silently
+       * reordering the author's markdown on save. Not rendered — an opaque
+       * block's DOM comes from the fragment route.
+       */
+      srcLine: { default: null as number | null, rendered: false },
+    };
   },
   parseHTML() {
     return [

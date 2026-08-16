@@ -35,6 +35,7 @@ import {
   MarkdownSerializer,
   defaultMarkdownSerializer,
 } from "prosemirror-markdown";
+import { Fragment } from "@tiptap/pm/model";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 
 // ── plain-JSON token shape (markdown-it Token survives JSON round-trip) ─────
@@ -124,6 +125,16 @@ function preprocess(tokens: GalleyToken[]): GalleyToken[] {
       out.push({ ...tok, type: "footnote_ref_inline" });
       continue;
     }
+    // Drop markdown-it-footnote's wrapper around the hoisted definitions.
+    // Keeping it made the whole collection ONE unhandled run, whose span is
+    // [min, max] over its inner token maps — and because the plugin gathers
+    // definitions written at scattered source lines, that span swallowed
+    // every line between the first and last definition. Any paragraph in
+    // between was then emitted twice: once as itself, once inside the opaque
+    // slice. Without the wrapper each `footnote_open…footnote_close` is its
+    // own balanced run with its own contiguous span. Nesting stays balanced:
+    // the open/close pair is removed together.
+    if (tok.type === "footnote_block_open" || tok.type === "footnote_block_close") continue;
     if (tok.children) {
       out.push({ ...tok, children: preprocess(tok.children) });
       continue;
@@ -570,7 +581,10 @@ function buildTokenSpecs(lines: string[]): Record<string, Record<string, unknown
     },
     gp_opaque_block: {
       node: "rawBlock",
-      getAttrs: (tok: GalleyToken) => ({ src: tok.content ?? "" }),
+      getAttrs: (tok: GalleyToken) => ({
+        src: tok.content ?? "",
+        srcLine: tok.map ? tok.map[0] + 1 : null,
+      }),
     },
   };
 }
@@ -925,12 +939,74 @@ function buildSerializer(
  * Serialize the doc back to markdown. Pass the build's `srcMap` to keep
  * untouched blocks byte-identical; omit it for fully canonical output.
  */
+/** A footnote definition line: `[^label]: body`. */
+const FOOTNOTE_DEF_RE = /^\[\^[^\]]*\]:/;
+
+/** 1-based source line a top-level child came from, when it knows one. */
+function sourceLineOf(node: PMNode): number | null {
+  const a = node.attrs as { gpLine?: number | null; srcLine?: number | null };
+  return a.gpLine ?? a.srcLine ?? null;
+}
+
+/**
+ * Undo markdown-it-footnote's hoisting.
+ *
+ * The plugin moves EVERY footnote definition into a trailing footnote block,
+ * so the token stream — and therefore the document — ends with definitions
+ * that the author wrote mid-file. Document order is render order (the print
+ * pipeline puts the notes section at the end too, so the editor matches the
+ * PDF), but it is NOT source order, and serializing document order would
+ * rewrite the author's file with every definition moved to the bottom.
+ *
+ * This puts each definition back in front of the first later-sourced sibling.
+ * Only footnote definitions move, and only ones that know their source line;
+ * siblings without a line are skipped in the comparison, so newly typed
+ * content never shifts.
+ */
+function unhoistFootnoteDefs(schema: Schema, node: PMNode): PMNode {
+  if (!node.isBlock && !node.type.name.startsWith("doc")) return node;
+  const kids: PMNode[] = [];
+  node.forEach((child) => {
+    kids.push(
+      child.type.name === "chapterFile" || child.type.name === "doc"
+        ? unhoistFootnoteDefs(schema, child)
+        : child,
+    );
+  });
+  const isDef = (n: PMNode) =>
+    n.type.name === "rawBlock" &&
+    FOOTNOTE_DEF_RE.test(String((n.attrs as { src?: string }).src ?? "")) &&
+    sourceLineOf(n) !== null;
+  if (!kids.some(isDef)) {
+    return kids.length === node.childCount && kids.every((k, i) => k === node.child(i))
+      ? node
+      : node.copy(Fragment.fromArray(kids));
+  }
+  const defs = kids.filter(isDef);
+  const rest = kids.filter((k) => !isDef(k));
+  for (const def of defs) {
+    const line = sourceLineOf(def)!;
+    let at = rest.length;
+    for (let i = 0; i < rest.length; i++) {
+      const sibling = sourceLineOf(rest[i]!);
+      if (sibling !== null && sibling > line) {
+        at = i;
+        break;
+      }
+    }
+    rest.splice(at, 0, def);
+  }
+  return node.copy(Fragment.fromArray(rest));
+}
+
 export function serializeGalleyDoc(
   schema: Schema,
   doc: PMNode,
   srcMap?: WeakMap<PMNode, string>,
 ): string {
   const serializer = buildSerializer(schema, srcMap ?? null);
-  const out = serializer.serialize(doc as never, { tightLists: true });
+  const out = serializer.serialize(unhoistFootnoteDefs(schema, doc) as never, {
+    tightLists: true,
+  });
   return out.endsWith("\n") ? out : `${out}\n`;
 }

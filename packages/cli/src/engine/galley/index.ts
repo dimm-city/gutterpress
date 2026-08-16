@@ -14,9 +14,10 @@
  *   readonly ──setEditMode({on:true})──▶ editing   IN PLACE: the old flow
  *            DOM is discarded, ProseMirror renders the same content from
  *            tokens, and the viewer re-mounts over the PM root. No reload.
- *   editing ──setEditMode({on:false})─▶ flush + location.reload() (the
- *            rare kill-switch direction; a reload here cannot loop because
- *            the off state needs no timing).
+ *   editing ──setEditMode({on:false})─▶ readonly  ALSO in place: flush, then
+ *            drop editability. The document, its pagination and the
+ *            reader's scroll position survive, and flipping back on re-arms
+ *            the same editor. Neither direction reloads.
  *
  * A failed editing mount always falls back to readonly — layout must
  * complete no matter what.
@@ -81,7 +82,12 @@ async function reconcile(): Promise<void> {
   if (target === mode) return;
   transitioning = true;
   try {
-    if (target === "editing") {
+    if (target === "editing" && active) {
+      // Already mounted, merely switched off — re-arm in place instead of
+      // refetching the book and rebuilding the document.
+      active.setEditable(true);
+      mode = "editing";
+    } else if (target === "editing") {
       try {
         await mountEditing();
         mode = "editing";
@@ -97,14 +103,16 @@ async function reconcile(): Promise<void> {
           /* the viewer global is missing entirely — nothing left to show */
         }
       }
-    } else if (mode === "boot") {
-      await mountReadonly();
+    } else if (active) {
+      // editing → readonly: drop editability in place. The document, its
+      // pagination and the reader's scroll position all survive, so the
+      // kill-switch is no longer a destructive reload that loses the
+      // author's place and races the debounced save (setEditable flushes
+      // first). Reversible without refetching anything.
+      active.setEditable(false);
+      mode = "readonly";
     } else {
-      // editing → readonly: the rare kill-switch direction. Flush and
-      // reload; this cannot loop because the off state needs no timing.
-      active?.saveNow();
-      location.reload();
-      return;
+      await mountReadonly();
     }
   } finally {
     transitioning = false;

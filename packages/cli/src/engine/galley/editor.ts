@@ -149,6 +149,9 @@ export interface GalleyEditor {
    *  divergence → suspend until reload). */
   ackContent(chapter: string, ok: boolean, seq?: number, reason?: string): void;
   selectionState(): SelectionPayload;
+  /** Toggle editability in place. Read-only keeps the mounted document and
+   *  its pagination — no reload, no re-render, no lost scroll position. */
+  setEditable(on: boolean): void;
   /**
    * Context-menu target resolution (protocol v8). Mirrors the v7
    * `getContextTargetAt` payload — same `kind` precedence (selection → image
@@ -622,6 +625,16 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
 
     saveNow() {
       flushSave(true);
+    },
+
+    setEditable(on) {
+      // Flush BEFORE dropping editability so nothing typed in the last
+      // debounce window is stranded.
+      if (!on) flushSave(true);
+      editor.setEditable(on, false);
+      // setEditable rewrites contenteditable on the root; the viewer chrome
+      // living inside it must stay non-editable either way.
+      stampChromeUneditable();
     },
 
     ackContent,
