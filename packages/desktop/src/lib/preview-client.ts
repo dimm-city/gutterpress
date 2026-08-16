@@ -146,10 +146,9 @@ export interface ContextTarget {
 }
 
 /**
- * A single fragment's geometry from `getRectsFor()` (protocol v5, inline-
- * editing plan §5.3, ADR 0009) — plain and JSON-cloneable, `page` is the
- * fragment's own 1-based page number (a split block's fragments can land on
- * different pages).
+ * A single on-page fragment's geometry — plain and JSON-cloneable, `page` is
+ * the fragment's own 1-based page number (a block split across a page break
+ * has fragments on different pages).
  */
 export interface PreviewRect {
   top: number;
@@ -160,16 +159,12 @@ export interface PreviewRect {
 }
 
 /**
- * `getRectsFor()`'s result: every fragment rect for one logical block.
- * `rects` is empty when nothing resolves — a range that no longer matches
- * anything in `chapter` (the block was deleted/moved).
+ * Every fragment rect for one logical block. `rects` is empty when nothing
+ * resolves.
  */
 export interface RectsForResult {
   rects: PreviewRect[];
 }
-
-/** Target form for `getRectsFor()` (§5.3). */
-export type RectsForTarget = { chapter: string; range: SourceRange };
 
 /**
  * `galleyTargetAt()`'s result (protocol v8): what the galley doc holds at a
@@ -453,19 +448,6 @@ export class PreviewClient {
   }
 
   /**
-   * All fragment rects for one logical block, keyed by `{chapter, range}`
-   * (protocol v6, block overlay — inline-editing plan §5.3). A source range is
-   * duplicated verbatim onto every split fragment (Paged.js clones a block
-   * across pages but copies every data attribute to each clone), so it
-   * identifies the whole fragment set on its own — no separate ref needed,
-   * and it survives a fresh render (a splice mints fresh DOM but the same
-   * range) without a post-splice fallback.
-   */
-  getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
-    return this.call<RectsForResult>("getRectsFor", [target]);
-  }
-
-  /**
    * Toggle a masking class on every fragment matching `{chapter, range}`,
    * plus the book document's own scroll lock (protocol v6, block overlay —
    * inline-editing plan §5.1/§5.3). Purely cosmetic and reversible; `masked:
@@ -473,10 +455,6 @@ export class PreviewClient {
    * any live fragment (defense-in-depth teardown after a splice already
    * replaced the DOM).
    */
-  setEditMask(spec: { chapter: string; range: SourceRange; masked: boolean }): Promise<{ count: number }> {
-    return this.call<{ count: number }>("setEditMask", [spec]);
-  }
-
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */
   queryDom(spec: {
     selector: string;

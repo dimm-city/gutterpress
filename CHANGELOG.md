@@ -41,6 +41,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   your markdown. Block-source editing also remains available by
   double-clicking any non-editable (raw/plugin) block.
 
+- **Turning inline editing off no longer reloads the preview.** The switch
+  now flushes any pending save and simply makes the page read-only; your
+  place in the book, the pagination, and the loaded document all survive,
+  and switching back on resumes immediately.
+
+### Removed
+
+- **The pre-galley editing machinery.** With the editor owning the document,
+  the older surface that addressed blocks by source range and wrote through
+  markdown-token splices had no remaining entry point: the source-token
+  rewriters, the rendered-text-to-source matcher, the block overlay's
+  range/mask/re-anchor path, and the frame's `getRectsFor` / `setEditMask` /
+  `data-source-range` target resolver are gone, along with ~3,600 lines of
+  their tests. The preview bridge is protocol **v9**. Nothing an author
+  writes changes; this is entirely internal.
+
 ## [0.10.0] - 2026-08-12
 
 ### Added

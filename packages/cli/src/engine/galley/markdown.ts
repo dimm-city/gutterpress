@@ -657,7 +657,7 @@ export function buildGalleyDoc(
  * the pipeline produced serialize back as an author would type them. A
  * literally-authored “smart” character normalizes to its ASCII spelling —
  * display-identical after the next render. (Table mirrors
- * selection-search.ts; keep the two in sync.)
+ * desktop's deleted selection-search.ts.)
  */
 const TYPOGRAPHER_REVERSE: ReadonlyArray<readonly [string, string]> = [
   ["©", "(c)"],

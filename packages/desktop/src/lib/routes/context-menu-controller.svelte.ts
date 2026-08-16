@@ -12,28 +12,19 @@
  * `elementActivated` case there; this controller neither touches nor
  * duplicates it, per the plan's ownership split).
  *
- * Host coupling (the preview client, the buffer/editor accessors, the commit
- * engine, geometry, and the small text-prompt/toast/clipboard/media-panel
- * glue) is injected so this stays testable with fakes and PWA-clean (§8 /
- * ADR 0004): ZERO direct DOM / `node:*` / lib value imports. Menu-item
- * parameter resolution (image/link token matching) is delegated to the pure
- * helpers in `$lib/editor/context-menu-actions`; the write path is entirely
- * `commit-engine.ts` — this controller never touches a file directly.
+ * Host coupling (the preview client, geometry, and the small
+ * text-prompt/toast/clipboard/media-panel glue) is injected so this stays
+ * testable with fakes and PWA-clean (§8 / ADR 0004): ZERO direct DOM /
+ * `node:*` / lib value imports.
+ *
+ * Every action addresses a NODE in the galley's document (ADR 0011) and is
+ * applied by the frame; the editor's own whole-file save writes it to disk.
+ * The pre-galley design resolved targets from `data-source-range` and wrote
+ * through source-token splices — that path was deleted with the editing
+ * surface it belonged to, along with the token splicers, the rendered-text
+ * source search, and the rect/mask geometry it needed.
  */
-import type { PreviewEvent, ContextTarget, SourceRange } from "$lib/preview-client";
-import type { CommitEngine } from "$lib/editor/commit-engine";
-import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
-import { buildLineStarts, charRange } from "$lib/editor/source-range";
-import {
-  findImageToken,
-  findImageWrapper,
-  makeLinkToken,
-  rewriteImageToken,
-  rewriteLinkToken,
-  resolveLinkToken,
-  spliceToken,
-  type LinkResolution,
-} from "$lib/editor/context-menu-actions";
+import type { PreviewEvent, ContextTarget } from "$lib/preview-client";
 import {
   IMAGE_PIN_ALIGNMENT_OPTIONS,
   IMAGE_PIN_CLASS,
@@ -60,13 +51,6 @@ import {
   tokenizeImageAttrs,
   type ImagePropertiesValue,
 } from "$lib/editor/image-classes";
-import {
-  locateSelectionInSource,
-  touchesStructuralSyntax,
-  hasSameDelimiter,
-  wrapDelimiter,
-  type FormatKind,
-} from "$lib/editor/selection-search";
 
 /** Minimal preview-client surface the controller drives. */
 export interface ContextMenuClient {
@@ -88,19 +72,6 @@ export interface ContextMenuDeps {
   enabled: () => boolean;
   /** True while a preview render is in flight (ignore contextMenuRequested). */
   rendering: () => boolean;
-  /** The open project directory, or null when none is loaded. */
-  currentDir: () => string | null;
-  /** The live in-editor content of the one open file, or null. */
-  openContent: (path: string) => string | null;
-  /**
-   * Read a chapter's file DIRECTLY — NOT through `selectEditorFile`. Menu
-   * open must never disturb which file the editor pane shows; this is used
-   * only to peek at a chapter's current source for menu-item resolution when
-   * it isn't already the buffer's open file.
-   */
-  readFile: (path: string) => Promise<string>;
-  /** The commit engine — owns the write path AND the edit-generation counter. */
-  commitEngine: CommitEngine;
   /** The preview iframe's own `getBoundingClientRect()` (left/top only needed), or null if unmounted. */
   getIframeOrigin: () => { left: number; top: number } | null;
   /** The workspace container's rect, for clamping the menu on-screen. */
@@ -114,8 +85,6 @@ export interface ContextMenuDeps {
   }) => Promise<string | null>;
   /** Edit every supported image property in one modal and apply once. */
   promptImageProperties: (initial: ImagePropertiesValue) => Promise<ImagePropertiesValue | null>;
-  /** Open the editor, reveal the chapter, and place its caret on the source line. */
-  goToSource: (chapter: string, line: number) => void;
   /** Switch the left panel to the Media tab ("Reveal in Media panel"). */
   openMediaPanel: () => void;
   /** Copy text to the OS clipboard. */
@@ -123,17 +92,8 @@ export interface ContextMenuDeps {
   toastSuccess: (message: string) => void;
   toastError: (message: string) => void;
   /**
-   * Open the click-to-edit block overlay on this block (PR 5,
-   * `block-overlay-controller.svelte.ts`) — the "Edit this block" item's
-   * destination, closing the menu itself is this controller's job, not the
-   * overlay's.
-   */
-  openBlockOverlay: (chapter: string, range: SourceRange, anchor: { x: number; y: number }) => void;
-  /**
-   * Galley (protocol v8) node edits. While the galley owns the document,
-   * menu actions mutate the DOC, not the file: a source splice would be
-   * reverted by the galley's own next whole-file save. Absent on frames
-   * older than v8, in which case only the range-addressed path runs.
+   * Galley (protocol v8) node edits — the controller's only write path.
+   * Actions mutate the DOCUMENT; the editor's whole-file save writes it out.
    */
   galley?: {
     setImageAttrs: (spec: {
@@ -166,17 +126,6 @@ export interface ContextMenuItem {
  *  has mounted and can report its real size via {@link ContextMenuController.reportMenuSize}. */
 const ESTIMATED_WIDTH = 240;
 const ESTIMATED_HEIGHT = 260;
-
-function linkDisabledReason(kind: LinkResolution["kind"]): string {
-  switch (kind) {
-    case "reference-style":
-      return "This is a reference-style link — edit it in the editor.";
-    case "linkified":
-      return "This is a plain web address, not a markdown link — edit it in the editor.";
-    default:
-      return "Couldn't locate this link in the source.";
-  }
-}
 
 export class ContextMenuController {
   private deps: ContextMenuDeps;
@@ -213,10 +162,10 @@ export class ContextMenuController {
         void this.handleContextMenuRequested(e.detail);
         break;
       case "renderingComplete":
-        // Content changed under the menu (or a build just finished) — the
-        // generation bump closes the clean-but-DOM-stale commit window
-        // (plan §4.9); the menu itself is now anchored to stale geometry.
-        this.deps.commitEngine.noteRenderingComplete();
+        // Content changed under the menu — it is now anchored to stale
+        // geometry. (The generation bump that closes the stale-commit window
+        // is owned by BlockOverlayController, which documents itself as
+        // correct standalone; duplicating it here bought nothing.)
         this.close();
         break;
       case "renderingStarted":
@@ -258,7 +207,7 @@ export class ContextMenuController {
     };
 
     const anchor = { x: detail.x ?? 0, y: detail.y ?? 0 };
-    const items = await this.buildItems(target, anchor);
+    const items = this.buildItems(target, anchor);
     // A render/navigation could have raced the async item-build above.
     if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
@@ -334,127 +283,43 @@ export class ContextMenuController {
 
   // ── Menu-item resolution (plan §4.3–4.4) ───────────────────────────────────
 
-  private async readChapterSource(chapter: string): Promise<string | null> {
-    const dir = this.deps.currentDir();
-    if (!dir || !isSafeChapterId(chapter)) return null;
-    const absPath = chapterPath(dir, chapter);
-    const open = this.deps.openContent(absPath);
-    if (open != null) return open;
-    try {
-      return await this.deps.readFile(absPath);
-    } catch {
-      return null;
-    }
-  }
-
-  private sliceRange(source: string, range: SourceRange): string | null {
-    try {
-      const starts = buildLineStarts(source);
-      const [from, to] = charRange(source, starts, range);
-      return source.slice(from, to);
-    } catch {
-      return null;
-    }
-  }
-
-  private async buildItems(
+  private buildItems(
     target: ContextTarget,
     anchor: { x: number; y: number },
-  ): Promise<ContextMenuItem[]> {
-    // Galley targets are node-addressed, not range-addressed — they never
-    // have a `range`, so they must branch before the range guard below.
-    if (target.galley && this.deps.galley) return this.galleyItems(target, anchor);
-    if (target.kind === "selection") {
-      if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
-      return this.crossBlockSelectionItems(target);
-    }
-    if (!target.chapter || !isSafeChapterId(target.chapter) || !target.range) return [];
-    const gen = this.deps.commitEngine.generation;
-    const source = await this.readChapterSource(target.chapter);
-    const blockSlice = source != null ? this.sliceRange(source, target.range) : null;
-
-    switch (target.kind) {
-      case "image":
-        return this.imageItems(target, blockSlice, gen);
-      case "link":
-        return this.linkItems(target, blockSlice, gen);
-      case "marker":
-        return this.markerItems(target, gen);
-      case "block":
-        return this.blockItems(target, gen, anchor);
-      default:
-        return [];
-    }
+  ): ContextMenuItem[] {
+    // The galley is the editing surface, and its targets are node-addressed:
+    // the editor's DOM carries no `data-source-range`, and a source splice
+    // would be reverted by the document's own next whole-file save.
+    if (!target.galley || !this.deps.galley) return [];
+    return this.galleyItems(target, anchor);
   }
 
-  private goToSourceItem(
-    target: ContextTarget,
-    /**
-     * Overrides `target.chapter`/`target.range` (the RIGHT-CLICK POINT's
-     * resolved block) with an explicit chapter/range. Used by the selection-
-     * formatting row (plan §4.6): a selection's anchor block
-     * (`selection.chapter`/`selection.range`) is the block actually being
-     * formatted and can, in principle, differ from the point the
-     * context-menu event fired at. "Go to source" must jump to the block
-     * being formatted, not wherever the pointer happened to land.
-     */
-    override?: { chapter: string; range: SourceRange },
-  ): ContextMenuItem {
-    const chapter = override?.chapter ?? target.chapter;
-    const range = override?.range ?? target.range;
-    const enabled = !!chapter && isSafeChapterId(chapter) && !!range;
-    return {
-      id: "go-to-source",
-      label: "Go to source",
-      enabled,
-      disabledReason: enabled ? undefined : "This source location is invalid.",
-      run: () => {
-        if (chapter && range) this.deps.goToSource(chapter, range[0] + 1);
-        this.close();
-      },
-    };
-  }
-
-  private async commit(
-    chapter: string,
-    range: SourceRange,
-    expected: string,
-    replacement: string,
-    expectedGeneration: number,
-  ): Promise<void> {
-    const outcome = await this.deps.commitEngine.commitRangePatch({
-      chapter,
-      range,
-      expected,
-      replacement,
-      expectedGeneration,
-    });
-    this.close();
-    if (!outcome.ok) {
-      this.deps.toastError(outcome.message);
-      return;
-    }
-    if (outcome.flushed) this.deps.toastSuccess("Updated.");
-    // When !outcome.flushed, buffer.flush() detected an external change and
-    // the buffer's OWN conflict banner is already showing (plan §4.7 Step 5)
-    // — nothing further to say here.
-  }
-
-  // ── Galley targets (ADR 0011, protocol v8) ─────────────────────────────────
-  /**
-   * The same menu, addressed to the ProseMirror document instead of a source
-   * range. Every attribute helper below is reused verbatim — an image's
-   * authored braces live on the node as `gpAttrs`, the same string the source
-   * token carries, so `tokenizeImageAttrs`/`setSizeClass`/… apply unchanged.
-   * Only the WRITE differs: a doc mutation the galley's save flushes to disk,
-   * rather than a splice that the galley would overwrite.
-   */
   private galleyItems(
     target: ContextTarget,
     anchor: { x: number; y: number },
   ): ContextMenuItem[] {
     const galley = this.deps.galley!;
     const pos = target.galley!.pos;
+
+    // A selection. The frame calls preventDefault for every non-"none"
+    // target, so if this returned nothing the author would get NO menu on a
+    // selection — not even Copy. Formatting lives in the selection bubble;
+    // the menu carries the clipboard action the native menu would have.
+    if (target.kind === "selection") {
+      const text = target.selection?.text ?? "";
+      return [
+        {
+          id: "selection-copy",
+          label: "Copy",
+          enabled: !!text,
+          disabledReason: text ? undefined : "Nothing to copy.",
+          run: async () => {
+            if (text) await this.deps.copyToClipboard(text);
+            this.close();
+          },
+        },
+      ];
+    }
 
     if (target.kind === "image" && target.image) {
       const image = target.image;
@@ -612,379 +477,4 @@ export class ContextMenuController {
     return null;
   }
 
-  // ── Image (plan §4.3–4.4) ───────────────────────────────────────────────────
-
-  private imageItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
-    const chapter = target.chapter!;
-    const range = target.range!;
-    const image = target.image;
-    if (blockSlice == null || !image) {
-      return [this.goToSourceItem(target)];
-    }
-    const match = findImageToken(blockSlice, image);
-    if (!match && !image.source) {
-      // Raw HTML <img> — no markdown token to address (plan §2.6).
-      return [this.goToSourceItem(target)];
-    }
-    const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
-    const wrapper = match ? findImageWrapper(blockSlice, match) : null;
-    const slice = blockSlice; // narrowed for closures below
-    const items: ContextMenuItem[] = [
-      {
-        id: "image-properties",
-        label: "Set properties…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const position = getPositionClass(tokens);
-          const initial: ImagePropertiesValue = {
-            src: match.src,
-            alt: match.alt,
-            width: getWidth(tokens),
-            position: position ? normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? "" : "",
-            pinAlignment: getPinAlignment(tokens) ?? "center",
-            size: getSizeClass(tokens) ?? "",
-            spacing: getSpacingClass(tokens) ?? "",
-            shape: hasShapeClass(tokens),
-            layer: getLayerClass(tokens) ?? "",
-          };
-          const next = await this.deps.promptImageProperties(initial);
-          if (next == null) return;
-          if (!next.src.trim()) {
-            this.deps.toastError("Choose an image path or URL.");
-            return;
-          }
-          const validPosition = !next.position || IMAGE_POSITION_OPTIONS.some((option) => option.class === next.position);
-          const validAlignment = IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next.pinAlignment);
-          const validSize = !next.size || IMAGE_SIZE_OPTIONS.some((option) => option.class === next.size);
-          const validSpacing = !next.spacing || IMAGE_SPACING_OPTIONS.some((option) => option.class === next.spacing);
-          const validLayer = !next.layer || IMAGE_LAYER_OPTIONS.some((option) => option.class === next.layer);
-          if (!validPosition || !validAlignment || !validSize || !validSpacing || !validLayer) {
-            this.deps.toastError("Choose image options from the lists.");
-            return;
-          }
-          if (next.width.trim() && next.size) {
-            this.deps.toastError("Choose either a custom width or a preset size, not both.");
-            return;
-          }
-          const width = next.width.trim();
-          let updated = tokens;
-          if (width !== initial.width) updated = setWidth(updated, width || null);
-          if (next.position !== initial.position) {
-            updated = setPositionClass(updated, next.position || null);
-          }
-          if (next.position === IMAGE_PIN_CLASS &&
-              (initial.position !== IMAGE_PIN_CLASS || next.pinAlignment !== initial.pinAlignment)) {
-            updated = setPinAlignment(updated, next.pinAlignment);
-          }
-          if (next.size !== initial.size) updated = setSizeClass(updated, next.size || null);
-          if (next.spacing !== initial.spacing) updated = setSpacingClass(updated, next.spacing || null);
-          if (next.shape !== initial.shape) updated = setShapeClass(updated, next.shape);
-          if (next.layer !== initial.layer) updated = setLayerClass(updated, next.layer || null);
-          const sourceChanges: { src?: string; alt?: string; attrsRaw?: string } = {};
-          if (updated !== tokens) sourceChanges.attrsRaw = serializeImageAttrs(updated);
-          if (next.src.trim() !== initial.src) sourceChanges.src = next.src.trim();
-          if (next.alt !== initial.alt) sourceChanges.alt = next.alt;
-          const token = rewriteImageToken(match, {
-            ...sourceChanges,
-          });
-          const replacement = spliceToken(slice, match.start, match.end, token);
-          if (replacement === slice) {
-            this.close();
-            return;
-          }
-          await this.commit(chapter, range, slice, replacement, gen);
-        },
-      },
-      {
-        id: "image-reveal",
-        label: "Reveal in Media panel",
-        enabled: true,
-        run: () => {
-          this.deps.openMediaPanel();
-          this.close();
-        },
-      },
-      ...(wrapper ? [{
-        id: "image-unwrap",
-        label: "Unwrap image",
-        enabled: true,
-        run: async () => {
-          await this.commit(
-            chapter,
-            range,
-            slice,
-            spliceToken(slice, wrapper.start, wrapper.end, wrapper.imageToken),
-            gen,
-          );
-        },
-      }] : []),
-      this.goToSourceItem(target),
-    ];
-    return items;
-  }
-
-  // ── Link (plan §4.3–4.4) ────────────────────────────────────────────────────
-
-  private linkItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
-    const chapter = target.chapter!;
-    const range = target.range!;
-    const link = target.link;
-    const resolution: LinkResolution =
-      blockSlice != null && link ? resolveLinkToken(blockSlice, link) : { kind: "not-found" };
-    const editEnabled = resolution.kind === "found";
-    const slice = blockSlice;
-    const items: ContextMenuItem[] = [
-      {
-        id: "link-edit",
-        label: "Edit link…",
-        enabled: editEnabled,
-        disabledReason: editEnabled ? undefined : linkDisabledReason(resolution.kind),
-        run: async () => {
-          if (resolution.kind !== "found" || slice == null) return;
-          const next = await this.deps.promptText({
-            title: "Edit link",
-            label: "Web address",
-            initialValue: resolution.match.href,
-          });
-          if (next == null) return;
-          const token = rewriteLinkToken(resolution.match, next);
-          await this.commit(
-            chapter,
-            range,
-            slice,
-            spliceToken(slice, resolution.match.start, resolution.match.end, token),
-            gen,
-          );
-        },
-      },
-      {
-        id: "link-copy",
-        label: "Copy link target",
-        enabled: !!link?.href,
-        disabledReason: link?.href ? undefined : "No link target to copy.",
-        run: async () => {
-          if (link?.href) await this.deps.copyToClipboard(link.href);
-          this.close();
-        },
-      },
-      this.goToSourceItem(target),
-    ];
-    return items;
-  }
-
-  // ── Marker (plan §4.3–4.4) ──────────────────────────────────────────────────
-
-  private markerItems(target: ContextTarget, gen: number): ContextMenuItem[] {
-    const chapter = target.chapter!;
-    const range = target.range!;
-    const items: ContextMenuItem[] = [
-      {
-        id: "marker-edit",
-        label: "Edit marker…",
-        enabled: true,
-        run: async () => {
-          const source = await this.readChapterSource(chapter);
-          const slice = source != null ? this.sliceRange(source, range) : null;
-          if (slice == null) {
-            this.deps.toastError("Couldn't locate this marker in the source.");
-            this.close();
-            return;
-          }
-          const trailingNl = slice.match(/(\r\n?|\n)$/)?.[0] ?? "";
-          const rawLine = slice.slice(0, slice.length - trailingNl.length);
-          const next = await this.deps.promptText({
-            title: "Edit marker",
-            label: "Marker line",
-            initialValue: rawLine,
-          });
-          if (next == null) return;
-          await this.commit(chapter, range, slice, next + trailingNl, gen);
-        },
-      },
-      this.goToSourceItem(target),
-    ];
-    return items;
-  }
-
-  // ── Block (plan §4.3) ───────────────────────────────────────────────────────
-
-  private blockItems(
-    target: ContextTarget,
-    gen: number,
-    anchor: { x: number; y: number },
-  ): ContextMenuItem[] {
-    const chapter = target.chapter!;
-    const range = target.range!;
-    // Note: the block slice itself is unused here — the insert actions below
-    // are zero-width boundary edits that never touch the target block's text
-    // (see block-break-before/after's own comment).
-    const items: ContextMenuItem[] = [
-      {
-        id: "block-edit",
-        label: "Edit this block",
-        enabled: true,
-        run: () => {
-          this.deps.openBlockOverlay(chapter, range, anchor);
-          this.close();
-        },
-      },
-      {
-        id: "block-break-before",
-        label: "Insert page break before",
-        enabled: true,
-        run: async () => {
-          // A zero-width insert AT the block's own start line — `expected`
-          // is trivially "" and the target block's text is never touched
-          // (mirrors the §5.5 boundary-insert rule the overlay will reuse).
-          await this.commit(chapter, [range[0], range[0]], "", "@page-break\n\n", gen);
-        },
-      },
-      {
-        id: "block-break-after",
-        label: "Insert page break after",
-        enabled: true,
-        run: async () => {
-          await this.commit(chapter, [range[1], range[1]], "", "@page-break\n\n", gen);
-        },
-      },
-      this.goToSourceItem(target),
-    ];
-    return items;
-  }
-
-  // ── Selection formatting (plan §4.3, §4.6 — PR 4) ───────────────────────────
-
-  private static readonly AMBIGUOUS_REASON =
-    "Couldn't locate this text uniquely in the source — open the editor";
-  private static readonly STRUCTURE_REASON =
-    "This selection includes code or link syntax — edit it in the editor.";
-  private static readonly FORMAT_KINDS: ReadonlyArray<{
-    id: string;
-    label: string;
-    kind: FormatKind;
-  }> = [
-    { id: "format-bold", label: "Bold", kind: "bold" },
-    { id: "format-italic", label: "Italic", kind: "italic" },
-    { id: "format-strike", label: "Strikethrough", kind: "strike" },
-    { id: "format-code", label: "Inline code", kind: "code" },
-  ];
-
-  /**
-   * A single-block selection's formatting row (plan §4.6). The preview gives
-   * us `selection.text` — RENDERED text — which must be located inside the
-   * block's raw markdown source before it can be wrapped; see
-   * `$lib/editor/selection-search.ts` for the whitespace/typographer/
-   * delimiter matching this delegates to. Every disabled path here (no
-   * match, structural syntax, same-delimiter nesting) degrades to "Go to
-   * source" only — never a guessed edit (plan §1 principle 3).
-   *
-   * Uses `selection.chapter`/`selection.range` (the selection's OWN anchor
-   * block), never `target.chapter`/`target.range` (the right-click POINT's
-   * resolved block, which for a selection is populated from `pointEl` and
-   * is not guaranteed to be the same block — see `preview-interface.js`'s
-   * `buildContextTarget`).
-   */
-  private async singleBlockSelectionItems(target: ContextTarget): Promise<ContextMenuItem[]> {
-    const sel = target.selection;
-    if (!sel || !sel.chapter || !sel.range) {
-      return [this.goToSourceItem(target)];
-    }
-    const chapter = sel.chapter;
-    const range = sel.range;
-    const editItem = this.goToSourceItem(target, { chapter, range });
-
-    const gen = this.deps.commitEngine.generation;
-    const source = await this.readChapterSource(chapter);
-    const blockSlice = source != null ? this.sliceRange(source, range) : null;
-    if (blockSlice == null) {
-      return [this.goToSourceItem(target, { chapter, range })];
-    }
-
-    const match = locateSelectionInSource(blockSlice, sel.text);
-    if (!match) {
-      return [
-        ...ContextMenuController.FORMAT_KINDS.map(({ id, label }) => this.disabledFormatItem(id, label)),
-        this.disabledFormatItem("format-link", "Make link…"),
-        editItem,
-      ];
-    }
-
-    const matchedText = match.matchedText;
-    const structureBlocked = touchesStructuralSyntax(blockSlice, match.start, match.end);
-
-    const items: ContextMenuItem[] = ContextMenuController.FORMAT_KINDS.map(({ id, label, kind }) => {
-      const nested = !structureBlocked && hasSameDelimiter(matchedText, kind);
-      const disabledReason = structureBlocked
-        ? ContextMenuController.STRUCTURE_REASON
-        : nested
-          ? `This selection already contains ${label.toLowerCase()} formatting.`
-          : undefined;
-      return {
-        id,
-        label,
-        enabled: !disabledReason,
-        disabledReason,
-        run: async () => {
-          const replacement = spliceToken(blockSlice, match.start, match.end, wrapDelimiter(matchedText, kind));
-          await this.commit(chapter, range, blockSlice, replacement, gen);
-        },
-      };
-    });
-
-    items.push({
-      id: "format-link",
-      label: "Make link…",
-      enabled: !structureBlocked,
-      disabledReason: structureBlocked ? ContextMenuController.STRUCTURE_REASON : undefined,
-      run: async () => {
-        const url = await this.deps.promptText({
-          title: "Make link",
-          label: "Web address",
-          initialValue: "https://",
-        });
-        if (!url) return;
-        const replacement = spliceToken(
-          blockSlice,
-          match.start,
-          match.end,
-          makeLinkToken(matchedText, url),
-        );
-        await this.commit(chapter, range, blockSlice, replacement, gen);
-      },
-    });
-
-    items.push(editItem);
-    return items;
-  }
-
-  private disabledFormatItem(id: string, label: string): ContextMenuItem {
-    return {
-      id,
-      label,
-      enabled: false,
-      disabledReason: ContextMenuController.AMBIGUOUS_REASON,
-      run: () => {},
-    };
-  }
-
-  private crossBlockSelectionItems(target: ContextTarget): ContextMenuItem[] {
-    const text = target.selection?.text ?? "";
-    const items: ContextMenuItem[] = [
-      {
-        id: "selection-copy",
-        label: "Copy",
-        enabled: !!text,
-        disabledReason: text ? undefined : "Nothing to copy.",
-        run: async () => {
-          if (text) await this.deps.copyToClipboard(text);
-          this.close();
-        },
-      },
-      this.goToSourceItem(target),
-    ];
-    return items;
-  }
 }

@@ -1176,7 +1176,7 @@
    */
   function insertAuthoredMarkdown(text: string, fallback: () => void): void {
     const c = client;
-    if (!c || frameProtocol < 8 || !settings.current.preview.inlineEditing) {
+    if (!c || frameProtocol < 9 || !settings.current.preview.inlineEditing) {
       fallback();
       return;
     }
@@ -1988,9 +1988,6 @@
   // ----------------------------------------------------------------
   const blockOverlay = new BlockOverlayController({
     client: () => client,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
     commitEngine,
     getIframeOrigin: () => {
       const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
@@ -2094,10 +2091,6 @@
     // earlier keep the data-source-range path. One menu, two write paths.
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
-    commitEngine,
     getIframeOrigin: () => {
       const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
       return rect ? { left: rect.left, top: rect.top } : null;
@@ -2109,12 +2102,10 @@
     },
     promptText,
     promptImageProperties,
-    goToSource,
     openMediaPanel,
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range, anchor) => void blockOverlay.show({ chapter, range, anchor }),
     galley: {
       setImageAttrs: (spec) =>
         client?.galleySetImageAttrs(spec) ?? Promise.resolve({ ok: false }),

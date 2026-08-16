@@ -155,14 +155,9 @@
     return () => {
       view?.destroy();
       view = null;
-      // Defense-in-depth (plan §5.1/§5.6): ALWAYS issue setEditMask(false),
-      // regardless of how this component unmounts. commit()/cancel() already
-      // tore the mask down through the controller (teardown() is idempotent
-      // then — nothing is captured anymore, so this is a harmless no-op); this
-      // call is what matters for a path that skips both, e.g. a project
-      // switch or an error unmount removing this component out from under an
-      // still-open overlay. NOT relying on "the iframe reload clears masks
-      // anyway" — that is true for a splice/swap, not for this SPA-side path.
+      // Lifecycle hook the controller owns, called on EVERY unmount path
+      // including ones that skip commit()/cancel() (a project switch, an
+      // error unmount). Idempotent.
       controller.teardown();
       previouslyFocused?.focus?.();
     };

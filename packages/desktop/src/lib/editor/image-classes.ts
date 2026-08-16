@@ -25,7 +25,7 @@
  * the rest untouched.
  *
  * PWA-clean and Svelte-free (ADR 0004): pure data + pure string functions,
- * directly `bun test`-able — same posture as `context-menu-actions.ts`.
+ * directly `bun test`-able.
  */
 
 export interface ImageClassOption {

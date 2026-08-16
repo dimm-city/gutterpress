@@ -5,11 +5,11 @@
 // window.Gutterpress.pageOf(el) (0-based); it fires 'gp:layout' when its
 // pagination completes.
 //
-// The block-overlay fragment-grouping machinery below (blocksMatchingRange)
-// groups by `{chapter, range}` (data-source-range) — the native viewer never
-// clones an element across pages (an element that visually spans pages is
-// still ONE element), so nativeRectsFor resolves rects straight off the
-// single matching element via getClientRects() + pageOf().
+// Context-menu targets are resolved by the galley editor against its
+// ProseMirror document (galleyContextTarget below). The pre-galley resolver
+// walked `data-source-range` annotations in the rendered DOM and had a
+// companion rect/mask API for the block overlay; both went with the editing
+// surface they served — the galley's own DOM carries no source ranges.
 
 (function () {
   'use strict';
@@ -324,30 +324,9 @@
   // exact kind-precedence contract implemented here.
   var LAYOUT_MARKER_CLASSES = ['chapter', 'spread', 'page', 'section', 'gp-page-break', 'gp-column-break'];
 
-  function elementAtPoint(x, y) {
-    try {
-      if (typeof document.elementFromPoint === 'function') return document.elementFromPoint(x, y);
-    } catch (_e) { /* unsupported host — degrade to null */ }
-    return null;
-  }
-
   function elementOf(node) {
     if (!node) return null;
     return node.nodeType === 1 ? node : (node.parentElement || null);
-  }
-
-  // Parse a `data-source-range="<start>:<end>"` value into a [start, end)
-  // pair — token.map's own 0-based half-open convention, verbatim.
-  function sourceRangeOf(el) {
-    if (!el || !el.getAttribute) return null;
-    var raw = el.getAttribute('data-source-range');
-    if (!raw) return null;
-    var sep = raw.indexOf(':');
-    if (sep < 0) return null;
-    var start = parseInt(raw.slice(0, sep), 10);
-    var end = parseInt(raw.slice(sep + 1), 10);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-    return [start, end];
   }
 
   // Fence gotcha (§2.6): markdown-it's default fence renderer puts token
@@ -365,54 +344,12 @@
     return null;
   }
 
-  // Innermost [data-source-range] element at/around `el` (self-or-ancestor),
-  // with the fence <pre>-hits-<code> special case above taking priority.
-  function resolveAnnotatedBlock(el) {
-    if (!el) return null;
-    var fenceCode = fenceCodeChild(el);
-    if (fenceCode) return fenceCode;
-    return el.closest ? el.closest('[data-source-range]') : null;
-  }
-
-  function isMarkerBlock(el) {
-    if (!el || !el.classList) return false;
-    for (var i = 0; i < LAYOUT_MARKER_CLASSES.length; i++) {
-      if (el.classList.contains(LAYOUT_MARKER_CLASSES[i])) return true;
-    }
-    return false;
-  }
-
-  // The native fragmenter MOVES elements into strips rather than cloning them,
-  // so there is no split-fragment marker to detect here — a block that visually
-  // spans pages is still exactly one element.
-  function isSplitFragment() {
-    return false;
-  }
-
   // Plain, JSON-cloneable rect — the payload crosses two postMessage
   // boundaries, so no DOMRect instances (§3.5).
   function plainRect(el) {
     if (!el || !el.getBoundingClientRect) return null;
     var r = el.getBoundingClientRect();
     return { top: r.top, left: r.left, width: r.width, height: r.height };
-  }
-
-  // Non-collapsed selection info, or null. NEVER Range.toString() — a
-  // cross-page range's raw text is polluted with inter-page structural
-  // whitespace and can include every intervening page's content (§3.5);
-  // selection.toString() is the display-only source of truth here.
-  function selectionInfo() {
-    var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
-    if (!sel || sel.isCollapsed) return null;
-    var anchorBlock = resolveAnnotatedBlock(elementOf(sel.anchorNode));
-    var focusBlock = resolveAnnotatedBlock(elementOf(sel.focusNode));
-    var withinSingleBlock = !!(anchorBlock && focusBlock && anchorBlock === focusBlock);
-    return {
-      text: sel.toString(),
-      withinSingleBlock: withinSingleBlock,
-      range: withinSingleBlock ? sourceRangeOf(anchorBlock) : null,
-      chapter: withinSingleBlock ? chapterOf(anchorBlock) : null
-    };
   }
 
   // Shared resolution: builds the full getContextTargetAt() payload for a
@@ -422,71 +359,24 @@
   //
   // kind precedence (decided): selection -> image -> link -> marker -> block
   // -> none.
-  function buildContextTarget(pointEl) {
-    var selection = selectionInfo();
-    var imageEl = pointEl && pointEl.closest ? pointEl.closest('img') : null;
-    var sourceOf = function (el) {
-      if (!el || !el.hasAttribute || !el.hasAttribute('data-gp-source-token')) return null;
-      var token = el.getAttribute('data-gp-source-token');
-      var rawOccurrence = el.getAttribute('data-gp-source-occurrence');
-      if (!token || !rawOccurrence) return null;
-      for (var i = 0; i < rawOccurrence.length; i++) {
-        if (rawOccurrence[i] < '0' || rawOccurrence[i] > '9') return null;
-      }
-      var occurrence = Number(rawOccurrence);
-      if (!Number.isSafeInteger(occurrence)) return null;
-      return {
-        token: token,
-        occurrence: occurrence
-      };
-    };
-    var image = imageEl ? {
-      src: imageEl.getAttribute('src'),
-      alt: imageEl.getAttribute('alt'),
-      source: sourceOf(imageEl)
-    } : null;
-    var linkEl = pointEl && pointEl.closest ? pointEl.closest('a') : null;
-    var link = linkEl ? {
-      href: linkEl.getAttribute('href'),
-      text: (linkEl.textContent || '').trim(),
-      source: sourceOf(linkEl)
-    } : null;
-
-    var block = resolveAnnotatedBlock(pointEl);
-
-    var kind;
-    if (selection) kind = 'selection';
-    else if (image) kind = 'image';
-    else if (link) kind = 'link';
-    else if (block && isMarkerBlock(block)) kind = 'marker';
-    else if (block) kind = 'block';
-    else kind = 'none';
-
-    return {
-      kind: kind,
-      chapter: chapterOf(pointEl),
-      range: block ? sourceRangeOf(block) : null,
-      blockTag: block && block.tagName ? block.tagName.toLowerCase() : null,
-      split: isSplitFragment(block),
-      rect: plainRect(block || pointEl),
-      image: image,
-      link: link,
-      selection: selection
-    };
-  }
-
-  // Galley (protocol v8) target resolution, shaped to the SAME payload
-  // buildContextTarget() returns so the host's menu builder is unchanged.
+  // Galley target resolution (protocol v9) — the only target resolver there
+  // is. `kind` keeps its established precedence (selection, image, link,
+  // marker, block, none) so the host's menu builder is unchanged.
   //
   // `range` is null by construction: the galley's PM-rendered DOM carries no
   // `data-source-range`, and a source-range splice would in any case be
   // reverted by the document's own next whole-file save. `galley.pos`
   // replaces it — the host addresses the NODE and edits it through
   // galleySetImageAttrs / galleySetLink / galleySetOpaqueSource.
+  var NO_TARGET = {
+    kind: 'none', chapter: null, range: null, blockTag: null, split: false,
+    rect: null, image: null, link: null, selection: null, galley: null
+  };
+
   function galleyContextTarget(x, y) {
     var galley = window.GutterpressGalley;
     var t = galley.targetAt({ x: x, y: y });
-    if (!t) return { kind: 'none', chapter: null, range: null, blockTag: null, split: false, rect: null, image: null, link: null, selection: null, galley: null };
+    if (!t) return NO_TARGET;
     return {
       kind: t.kind,
       chapter: t.chapter,
@@ -537,52 +427,6 @@
   function rangedBlocksInChapter(chapter) {
     if (!chapter) return rangedBlocks();
     return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
-  }
-
-  function blocksMatchingRange(chapter, range) {
-    if (!range) return [];
-    return rangedBlocksInChapter(chapter).filter(function (el) {
-      var r = sourceRangeOf(el);
-      return r && r[0] === range[0] && r[1] === range[1];
-    });
-  }
-
-  // getRectsFor(): the viewer never clones, so a spec resolves to AT MOST ONE
-  // element. Its fragment rects come straight from getClientRects() — a block
-  // can still visually span pages if the browser's own multicol layout breaks
-  // it there. Resolve each rect against the sheet it actually intersects;
-  // pageOf(el) can only identify the element's starting fragmentainer.
-  function nativeRectsFor(spec) {
-    spec = spec || {};
-    var el = blocksMatchingRange(spec.chapter, spec.range)[0] || null;
-    if (!el) return { rects: [] };
-    var geometryEl = el.tagName && el.tagName.toLowerCase() === 'code' &&
-      el.parentElement && el.parentElement.tagName.toLowerCase() === 'pre'
-      ? el.parentElement
-      : el;
-    if (pages.length === 0) refreshPages();
-    var fallbackPage = pageIndexOf(el);
-    var raw = geometryEl.getClientRects ? Array.from(geometryEl.getClientRects()) : [];
-    if (!raw.length) {
-      var r0 = plainRect(geometryEl);
-      raw = r0 ? [r0] : [];
-    }
-    var rects = raw.map(function (r) {
-      var page = fallbackPage;
-      var bestArea = 0;
-      for (var i = 0; i < pages.length; i++) {
-        var sheetRect = pages[i].getBoundingClientRect();
-        var width = Math.min(r.right, sheetRect.right) - Math.max(r.left, sheetRect.left);
-        var height = Math.min(r.bottom, sheetRect.bottom) - Math.max(r.top, sheetRect.top);
-        var area = width > 0 && height > 0 ? width * height : 0;
-        if (area > bestArea) {
-          bestArea = area;
-          page = i + 1;
-        }
-      }
-      return { top: r.top, left: r.left, width: r.width, height: r.height, page: page };
-    });
-    return { rects: rects };
   }
 
   var api = {
@@ -699,7 +543,12 @@
     // their v7 shapes; galleyInsertMarkdown / galleySetOpaqueSource /
     // galleySaveNow / galleyTargetAt are new; events editSelection /
     // editStateChanged carry over, galleyContent / galleyOpaqueEdit are new.
-    getProtocolVersion: function () { return 8; },
+    // v9: the range-addressed surface is gone — getRectsFor()/setEditMask()
+    // and the `data-source-range` target resolver went with the pre-galley
+    // editing surface. getContextTargetAt() now answers only while the
+    // galley is editing, and its payload carries `galley: {pos}` instead of
+    // `range`.
+    getProtocolVersion: function () { return 9; },
 
     // ── protocol v8: galley editing (ADR 0011) ─────────────────────────────
     // All delegate to window.GutterpressGalley; absent (a stale or published
@@ -748,51 +597,17 @@
       return galley ? galley.setLink(spec || {}) : { ok: false };
     },
 
-    // Resolve the annotated element/selection at a viewport point (protocol
-    // v4). Pure read; see buildContextTarget() above for the full contract.
-    //
-    // While the galley owns the document, resolution runs through the PM doc
-    // (galley.targetAt) instead of `data-source-range`, which the galley's
-    // rendered DOM does not carry. Same payload shape either way, plus a
-    // `galley: {pos}` handle telling the host to apply edits to the node
-    // rather than splicing the source file.
+    // Resolve what sits at a viewport point, for the host's context menu.
+    // Pure read. Only the galley can answer: it owns the document, and its
+    // rendered DOM carries no `data-source-range` for anything else to walk.
+    // Outside editing there is no target and the browser's native menu shows.
     getContextTargetAt: function (spec) {
       spec = spec || {};
       var galley = window.GutterpressGalley;
       if (galley && galley.isEditing && galley.isEditing()) {
         return galleyContextTarget(spec.x, spec.y);
       }
-      return buildContextTarget(elementAtPoint(spec.x, spec.y));
-    },
-
-    // All fragment rects for one logical block (protocol v6, §5.3), targeted
-    // by {chapter, range}. Pure read; never mutates the DOM. Plain,
-    // JSON-cloneable objects only (§3.5) — no DOMRect instances.
-    getRectsFor: function (spec) {
-      return nativeRectsFor(spec);
-    },
-
-    // Toggle a masking class on EVERY fragment of a block ({chapter, range}
-    // match, protocol v6, §5.1/§5.3), plus a scroll lock on the book document
-    // element. Purely cosmetic and fully reversible — nothing here may touch
-    // anything layout-affecting; see the class definitions below and ADR
-    // 0009. `masked: false` always removes the lock class too, even if this
-    // particular range has zero live fragments (e.g. called defensively
-    // during teardown after a splice) — it is a document-level toggle, not
-    // scoped per-block, and there is at most one overlay open at a time.
-    setEditMask: function (spec) {
-      spec = spec || {};
-      var els = blocksMatchingRange(spec.chapter, spec.range);
-      for (var i = 0; i < els.length; i++) {
-        if (spec.masked) els[i].classList.add('gutterpress-edit-mask');
-        else els[i].classList.remove('gutterpress-edit-mask');
-      }
-      var root = document.documentElement;
-      if (root && root.classList) {
-        if (spec.masked) root.classList.add('gutterpress-edit-scroll-lock');
-        else root.classList.remove('gutterpress-edit-scroll-lock');
-      }
-      return { count: els.length };
+      return NO_TARGET;
     },
 
     // Publish any debounced reader movement before a host atomically replaces
@@ -1017,25 +832,6 @@
         'transition:outline-color .2s,background .2s;}';
       (document.head || document.documentElement).appendChild(hlStyle);
     } catch (_e) { /* non-fatal: highlight just renders unstyled */ }
-  }
-
-  // Block-overlay mask + scroll-lock style (protocol v5, plan §5.1/§5.3).
-  // Preview-only, never part of the PDF build path. Purely cosmetic: dims the
-  // masked fragment(s) so stale rendered text doesn't show behind/beside the
-  // overlay, and disables the book document's own scroll while an overlay is
-  // open (the overlay is positioned in host-SPA coordinates from a rect
-  // snapshot; an unlocked scroll would silently drift it over unrelated
-  // content — see BlockOverlayController). Exact visual treatment (dim vs.
-  // blank) is a placeholder pending design review (plan §7.6 open item).
-  if (typeof document.createElement === 'function') {
-    try {
-      var maskStyle = document.createElement('style');
-      maskStyle.textContent =
-        '.gutterpress-edit-mask{opacity:.2;filter:saturate(.4);pointer-events:none;' +
-        'transition:opacity .12s,filter .12s;}' +
-        'html.gutterpress-edit-scroll-lock{overflow:hidden !important;}';
-      (document.head || document.documentElement).appendChild(maskStyle);
-    } catch (_e) { /* non-fatal: mask just renders unstyled */ }
   }
 
   // Click-to-source: emit elementActivated when the user clicks a source-mapped

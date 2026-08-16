@@ -7,11 +7,12 @@
  * `ContextMenuController`'s own rationale (§4.1).
  *
  * Ownership split from `BlockEditOverlay.svelte`: this controller owns
- * geometry, the captured-at-open patch context (chapter/range/expected/
- * trailingBlank/generation), the bridge calls (`getRectsFor`/
- * `setEditMask`), and the dismissal-event subscription
- * (`renderingComplete`/page/viewport changes) — it has ZERO DOM / CodeMirror
- * awareness. The component owns the live CodeMirror view and therefore the
+ * geometry and the dismissal-event subscription (`renderingComplete`) — it
+ * has ZERO DOM / CodeMirror awareness. The overlay opens over one thing: an
+ * opaque atom in the galley's document, at a rect the frame supplied. The
+ * pre-galley overlay also resolved a block by `data-source-range`, masked its
+ * on-page fragments, re-anchored them across renders and zooms, and committed
+ * a source splice; all of that went with the editing surface it served. The component owns the live CodeMirror view and therefore the
  * CURRENT edited text; `commit(text)`/`cancel()` are the two entry points the
  * component calls with that text (or none, for cancel) whenever a dismissal
  * source fires (Escape, blur, window blur, an opening dialog — see the
@@ -21,16 +22,12 @@
  * is injected so this stays testable with fakes and PWA-clean (CLAUDE.md §8 /
  * ADR 0004): ZERO direct DOM / `node:*` / lib value imports.
  */
-import type { PreviewEvent, SourceRange, RectsForResult } from "$lib/preview-client";
+import type { PreviewEvent, RectsForResult } from "$lib/preview-client";
 import type { CommitEngine } from "$lib/editor/commit-engine";
-import { chapterPath } from "$lib/editor/chapter-path";
-import { buildLineStarts, charRange } from "$lib/editor/source-range";
 
 /** Minimal preview-client surface the controller drives. */
 export interface BlockOverlayClient {
   on(fn: (e: PreviewEvent) => void): () => void;
-  getRectsFor(target: { chapter: string; range: SourceRange }): Promise<RectsForResult>;
-  setEditMask(spec: { chapter: string; range: SourceRange; masked: boolean }): Promise<{ count: number }>;
 }
 
 export interface BlockOverlayRect {
@@ -40,28 +37,11 @@ export interface BlockOverlayRect {
   height: number;
 }
 
-/** The target the "Edit this block" menu item hands off (context-menu-controller.svelte.ts). */
-export interface BlockOverlayTarget {
-  chapter: string;
-  range: SourceRange;
-  /** Context-menu request point in iframe viewport coordinates. */
-  anchor?: { x: number; y: number };
-}
-
 export interface BlockOverlayDeps {
   /** The live preview client, or undefined when no document is loaded. */
   client: () => BlockOverlayClient | undefined;
-  /** The open project directory, or null when none is loaded. */
-  currentDir: () => string | null;
-  /** The live in-editor content of the one open file, or null. */
-  openContent: (path: string) => string | null;
-  /**
-   * Read a chapter's file DIRECTLY — NOT through `selectEditorFile`, mirroring
-   * `ContextMenuController.readChapterSource` (§4.4's "never disturb which
-   * file the editor pane shows just to open the overlay" discipline).
-   */
-  readFile: (path: string) => Promise<string>;
-  /** The commit engine — owns the write path AND the edit-generation counter. */
+  /** The commit engine — owns the edit-generation counter the galley's
+   *  whole-file saves gate on. */
   commitEngine: CommitEngine;
   /** The preview iframe's own `getBoundingClientRect()` (left/top only), or null if unmounted. */
   getIframeOrigin: () => { left: number; top: number } | null;
@@ -79,44 +59,6 @@ export interface BlockOverlayDeps {
 const MIN_HEIGHT = 96;
 const MIN_WIDTH = 220;
 
-/**
- * Split a captured block slice's trailing NEWLINE-ONLY run into `{editable,
- * trailingBlank}` (plan §5.5 boundary rules).
- *
- * A run of `k` consecutive trailing newline tokens corresponds to the last
- * content line's own required line terminator (1 token) plus `k - 1` blank
- * lines after it. Only the blank-line tokens are stripped — the block's own
- * last line (its text AND its own terminator, if any) is always left intact
- * in `editable`, so a fence's closing line (non-blank — it's backticks, not
- * whitespace) is never touched, and a block with no trailing newline at all
- * (last block in a file) strips nothing.
- *
- * `trailingBlank` is re-appended VERBATIM on commit — this is what prevents
- * an author from merging two blocks by deleting the terminal newline.
- */
-export function splitTrailingBlankRun(slice: string): { editable: string; trailingBlank: string } {
-  const runMatch = slice.match(/(?:\r\n?|\n)+$/);
-  if (!runMatch) return { editable: slice, trailingBlank: "" };
-  const run = runMatch[0];
-  const runStart = slice.length - run.length;
-  const tokens = run.match(/\r\n?|\n/g) ?? [];
-  if (tokens.length <= 1) return { editable: slice, trailingBlank: "" };
-  const keep = tokens[0]!;
-  const trailingBlank = tokens.slice(1).join("");
-  return { editable: slice.slice(0, runStart) + keep, trailingBlank };
-}
-
-interface Captured {
-  chapter: string;
-  range: SourceRange;
-  /** The FULL slice (including the trailing blank run) captured at open time — this is `commitRangePatch`'s `expected`. */
-  expected: string;
-  trailingBlank: string;
-  expectedGeneration: number;
-  /** Keeps a split block tied to the fragment the user chose. */
-  anchor?: { x: number; y: number };
-}
-
 export class BlockOverlayController {
   private deps: BlockOverlayDeps;
 
@@ -130,7 +72,6 @@ export class BlockOverlayController {
   /** The block's SOURCE MARKDOWN (buffer slice), trailing blank run stripped — seeds the CM view on mount. Read once at mount; not updated by a later re-anchor. */
   initialText = $state("");
 
-  private captured: Captured | null = null;
   /**
    * Galley mode (protocol v8, docs/tiptap-galley-architecture.md): set, the
    * overlay was handed initial text + a commit callback by `showGalley()` and
@@ -141,7 +82,6 @@ export class BlockOverlayController {
    */
   private galleyCommit: ((text: string) => void) | null = null;
   private requestId = 0;
-  private geometryId = 0;
 
   constructor(deps: BlockOverlayDeps) {
     this.deps = deps;
@@ -155,106 +95,32 @@ export class BlockOverlayController {
   private async handleEvent(e: PreviewEvent): Promise<void> {
     switch (e.name) {
       case "renderingComplete":
-        // Bumping the generation here too (alongside ContextMenuController's
-        // own identical call) double-increments `gen` on a single render
-        // when both controllers are live — harmless: the commit gate is a
-        // NOT-EQUAL check against a captured snapshot, so any nonzero delta
-        // invalidates a stale capture identically to a delta of exactly one.
-        // Keeping the call here (rather than relying on the sibling
-        // controller) keeps this controller correct standalone, e.g. under
-        // test with no ContextMenuController present at all.
+        // The generation bump closes the clean-but-DOM-stale commit window
+        // for every commit path (the galley session's whole-file saves gate
+        // on it). This controller owns the call outright now that the
+        // context menu no longer duplicates it.
         this.deps.commitEngine.noteRenderingComplete();
-        // Galley mode: a fresh render rebuilds the frame's doc, so the
-        // captured ProseMirror position the commit callback closes over is
-        // stale — discard rather than write through a wrong pos ("fail safe,
-        // not fail wrong"). Under v8 typing never rebuilds (inline-edit saves
-        // suppress it), so this fires only for external changes/CSS edits.
-        if (this.galleyCommit && this.open) {
-          this.closeWithToast();
-          break;
-        }
-        await this.reanchorAfterRender();
+        // A fresh render rebuilds the frame's document, so the ProseMirror
+        // position the commit callback closes over is stale — discard rather
+        // than write through a wrong pos ("fail safe, not fail wrong").
+        // Typing never rebuilds (inline-edit saves suppress it), so this
+        // fires only for external changes and CSS edits.
+        if (this.open) this.closeWithToast();
         break;
-      case "pageChanged":
-        // Zoom / view-mode / page-nav all route through the bridge's
-        // notifyPageChange() (preview-interface.js), so this ONE case covers
-        // all three anchor-invalidating cases the plan lists separately.
-        await this.reanchorAfterViewportChange();
-        break;
-      case "viewportChanged":
-        // Splitter/window resize and viewport movement invalidate geometry
-        // without replacing the annotated block DOM.
-        await this.reanchorAfterViewportChange();
-        break;
+      // pageChanged / viewportChanged used to re-fetch this block's rects by
+      // {chapter, range}. The overlay is now only ever opened over an atom
+      // whose rect the frame supplied, and `closeGalleyOnViewportChange()`
+      // (called by the page on viewport movement) closes it rather than
+      // chasing geometry that the editor itself owns.
     }
-  }
-
-  /** Entry point: the context menu's "Edit this block" item. */
-  async show(target: BlockOverlayTarget): Promise<void> {
-    const dir = this.deps.currentDir();
-    if (!dir) return;
-    const requestId = ++this.requestId;
-    this.teardown();
-    this.reset();
-    const source = await this.readChapterSource(target.chapter);
-    if (requestId !== this.requestId) return;
-    if (source == null) {
-      this.deps.toastError("Couldn't read this chapter's source.");
-      return;
-    }
-    let from: number;
-    let to: number;
-    try {
-      const starts = buildLineStarts(source);
-      [from, to] = charRange(source, starts, target.range);
-    } catch {
-      this.deps.toastError("Couldn't locate this block in the source.");
-      return;
-    }
-    const slice = source.slice(from, to);
-    const { editable, trailingBlank } = splitTrailingBlankRun(slice);
-
-    this.captured = {
-      chapter: target.chapter,
-      range: target.range,
-      expected: slice,
-      trailingBlank,
-      expectedGeneration: this.deps.commitEngine.generation,
-      anchor: target.anchor,
-    };
-    this.initialText = editable;
-    this.open = true;
-
-    const client = this.deps.client();
-    if (!client) {
-      // No live client (locked / URL-preview mode) — still let the overlay
-      // open with a fallback position; there is nothing to mask.
-      return;
-    }
-    let result: RectsForResult;
-    const geometryId = ++this.geometryId;
-    try {
-      result = await client.getRectsFor({ chapter: target.chapter, range: target.range });
-    } catch {
-      result = { rects: [] };
-    }
-    if (requestId !== this.requestId || geometryId !== this.geometryId || !this.open) return;
-    if (!result.rects.length) {
-      this.deps.toastError("Couldn't locate this block on the page.");
-      this.close();
-      return;
-    }
-    this.applyRects(result.rects, target.anchor);
-    void client.setEditMask({ chapter: target.chapter, range: target.range, masked: true });
   }
 
   /**
    * Galley-mode entry point (protocol v8): open the overlay over an opaque
    * atom's on-screen rect, seeded with its verbatim source. The caller owns
    * what a commit MEANS (`onCommitText` → `galleySetOpaqueSource`); this
-   * controller only owns geometry and the open/commit/cancel lifecycle. No
-   * chapter/range capture, no `getRectsFor`, no edit mask — the frame's
-   * editor already owns the block on screen.
+   * controller only owns geometry and the open/commit/cancel lifecycle —
+   * the frame's editor already owns the block on screen.
    */
   showGalley(target: {
     /** The atom's verbatim markdown source — seeds the CM view. */
@@ -290,46 +156,20 @@ export class BlockOverlayController {
   async commit(editedText: string, opts: { duringComposition?: boolean } = {}): Promise<void> {
     if (opts.duringComposition) return;
     const galleyCommit = this.galleyCommit;
-    if (galleyCommit) {
-      this.teardown();
-      this.close();
-      galleyCommit(editedText);
-      return;
-    }
-    const captured = this.captured;
-    if (!captured) return;
-    const replacement = editedText + captured.trailingBlank;
+    if (!galleyCommit) return;
     this.teardown();
     this.close();
-    const outcome = await this.deps.commitEngine.commitRangePatch({
-      chapter: captured.chapter,
-      range: captured.range,
-      expected: captured.expected,
-      replacement,
-      expectedGeneration: captured.expectedGeneration,
-    });
-    if (!outcome.ok) this.deps.toastError(outcome.message);
+    galleyCommit(editedText);
   }
 
   /**
-   * Defense-in-depth (plan §5.1/§5.6): ALWAYS issues `setEditMask({masked:
-   * false})` for whatever block is currently captured. `commit()`/`cancel()`
-   * already call this; `BlockEditOverlay.svelte`'s `onMount` cleanup calls it
-   * again unconditionally on EVERY unmount path, including ones that skip
-   * `commit()`/`cancel()` entirely (a project switch, an error unmount) — the
-   * "the iframe reload clears masks anyway" argument only covers a
-   * splice/swap, not SPA-side teardown. Idempotent: removing a class that
-   * isn't there, or unmasking a range with zero live fragments, is a no-op.
+   * Release anything held while the overlay was open. The pre-galley overlay
+   * masked the block's on-page fragments and had to guarantee an unmask on
+   * every unmount path; the galley overlay opens over an atom the editor
+   * already owns, so there is no mask to clear and this is a no-op kept as
+   * the lifecycle hook `BlockEditOverlay.svelte` calls on unmount.
    */
-  teardown(): void {
-    const captured = this.captured;
-    const client = this.deps.client();
-    if (captured && client) {
-      void client
-        .setEditMask({ chapter: captured.chapter, range: captured.range, masked: false })
-        .catch(() => {});
-    }
-  }
+  teardown(): void {}
 
   private close(): void {
     this.requestId++;
@@ -348,75 +188,9 @@ export class BlockOverlayController {
   }
 
   private reset(): void {
-    this.geometryId++;
     this.open = false;
-    this.captured = null;
     this.galleyCommit = null;
     this.initialText = "";
-  }
-
-  // ── Re-anchoring (plan §5.1) ─────────────────────────────────────────────
-
-  /**
-   * `renderingComplete`: a chapter splice just replaced the DOM (our own
-   * commit already closed the overlay by the time this fires; an EXTERNAL
-   * change — another save, a watcher reload — may still be open). Re-resolves
-   * by `{chapter, range}` — the one identity that survives a fresh render on
-   * BOTH engines (a source range is duplicated verbatim onto every split
-   * fragment, so it groups a Paged.js clone-set exactly like the old
-   * `data-ref` did, with no separate ref bookkeeping needed). Since fresh DOM
-   * means the mask class from before the splice is gone, always re-issue
-   * `setEditMask(true)` against the (possibly new) elements. If the block no
-   * longer resolves (edited away / merged), the in-progress edit is discarded
-   * and the overlay closes with a toast — plan §1 principle 3 ("fail safe,
-   * not fail wrong"): once the underlying content can no longer be verified
-   * to be what's on screen, silently continuing to edit it is not safe, even
-   * though the commit engine's own mismatch gate would ALSO catch this at
-   * commit time.
-   */
-  private async reanchorAfterRender(): Promise<void> {
-    if (!this.open || !this.captured) return;
-    const client = this.deps.client();
-    const { chapter, range } = this.captured;
-    if (!client) {
-      this.closeWithToast();
-      return;
-    }
-    let result: RectsForResult;
-    const geometryId = ++this.geometryId;
-    try {
-      result = await client.getRectsFor({ chapter, range });
-    } catch {
-      result = { rects: [] };
-    }
-    if (geometryId !== this.geometryId || !this.open || this.captured?.chapter !== chapter) return;
-    if (!result.rects.length) {
-      this.closeWithToast();
-      return;
-    }
-    this.applyRects(result.rects, this.captured.anchor);
-    void client.setEditMask({ chapter, range, masked: true });
-  }
-
-  /**
-   * `pageChanged` (zoom / view-mode / page nav): the DOM itself did not
-   * change, only layout — re-fetch by the same `{chapter, range}`, purely to
-   * refresh geometry.
-   */
-  private async reanchorAfterViewportChange(): Promise<void> {
-    if (!this.open || !this.captured) return;
-    const client = this.deps.client();
-    if (!client) return;
-    const { chapter, range } = this.captured;
-    let result: RectsForResult;
-    const geometryId = ++this.geometryId;
-    try {
-      result = await client.getRectsFor({ chapter, range });
-    } catch {
-      return;
-    }
-    if (geometryId !== this.geometryId || !this.open || this.captured?.chapter !== chapter) return;
-    if (result.rects.length) this.applyRects(result.rects, this.captured.anchor);
   }
 
   private closeWithToast(): void {
@@ -427,31 +201,6 @@ export class BlockOverlayController {
 
   // ── Chapter source (mirrors ContextMenuController.readChapterSource) ───────
 
-  private async readChapterSource(chapter: string): Promise<string | null> {
-    const dir = this.deps.currentDir();
-    if (!dir) return null;
-    const absPath = chapterPath(dir, chapter);
-    const open = this.deps.openContent(absPath);
-    if (open != null) return open;
-    try {
-      return await this.deps.readFile(absPath);
-    } catch {
-      return null;
-    }
-  }
-
-  // ── Geometry (plan §5.1) ────────────────────────────────────────────────
-
-  /**
-   * Position/size the overlay from the clicked or most-visible fragment, clamped
-   * fully inside `.preview-pane` (never flipped — unlike the point-anchored
-   * context menu, this overlay is anchored to sit ON the block itself, so
-   * flipping it to the opposite side of the anchor point would put it over
-   * unrelated content; clamping is what actually matters for staying
-   * on-screen). Height is capped to the visible pane with the difference left
-   * to the component's own internal CM scroll (a split block can span 9+
-   * pages, plan §5.1).
-   */
   private applyRects(
     rects: RectsForResult["rects"],
     anchor?: { x: number; y: number },
