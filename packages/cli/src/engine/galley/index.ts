@@ -245,4 +245,3 @@ const api = {
 
 (window as unknown as { GutterpressGalley: typeof api }).GutterpressGalley = api;
 
-export type GutterpressGalleyApi = typeof api;

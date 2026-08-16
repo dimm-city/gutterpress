@@ -138,7 +138,6 @@ export class ContextMenuController {
 
   private rawX = 0;
   private rawY = 0;
-  private target: ContextTarget | null = null;
   private requestId = 0;
   // Set for a short window right after open(), across the SAME event-loop
   // discipline as EditorToolbar.svelte's outside-click popover handling —
@@ -192,9 +191,6 @@ export class ContextMenuController {
     const target: ContextTarget = {
       kind,
       chapter: detail.chapter ?? null,
-      range: detail.range ?? null,
-      blockTag: detail.blockTag ?? null,
-      split: !!detail.split,
       rect: detail.rect ?? null,
       image: detail.image ?? null,
       link: detail.link ?? null,
@@ -212,7 +208,6 @@ export class ContextMenuController {
     if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
 
-    this.target = target;
     this.items = items;
     this.rawX = detail.x ?? 0;
     this.rawY = detail.y ?? 0;
@@ -248,7 +243,6 @@ export class ContextMenuController {
   private reset(): void {
     this.open = false;
     this.items = [];
-    this.target = null;
   }
 
   async runItem(item: ContextMenuItem): Promise<void> {

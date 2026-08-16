@@ -34,7 +34,6 @@ import markdownItSup from "markdown-it-sup";
 import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
 import { sourceChapterRule } from "./source-chapter";
-import { registerInlineSourceMetadata } from "./inline-source";
 
 /**
  * Plugin author API.
@@ -176,16 +175,12 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   }
 
   // The parser that recognized an inline image/link records its exact source
-  // token for desktop menu edits. This must wrap the final rules after custom
-  // plugins; consumers never need a second Markdown parser.
-  registerInlineSourceMetadata(md);
 
   // Chapter annotation (data-chapter-src) — registered UNCONDITIONALLY
   // after the custom-plugin block above, not inside it: projects with zero
   // custom plugins must still get the rule. `md.core.ruler.push` appends in
   // registration order, so registering last here guarantees this rule sees
   // the final token stream even when a user plugin pushed its own core rule.
-  // See docs/inline-editing-plan.md §2.2 / ADR 0009.
   md.core.ruler.push("source_chapter", sourceChapterRule);
 
   return md;

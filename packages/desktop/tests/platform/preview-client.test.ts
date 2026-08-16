@@ -164,97 +164,42 @@ describe("PreviewClient postMessage origin/source validation (M31)", () => {
 });
 
 /**
- * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): getContextTargetAt()
- * command wrapper + the contextMenuRequested event round-trip through
- * PreviewClient, following the M31 origin/source-gated pattern above.
+ * Bridge: the frame PUSHES a resolved context-menu target as an event; the
+ * host never pulls one. (The pull-based `getContextTargetAt()` wrapper went
+ * with the range-addressed surface — only the frame's own contextmenu
+ * listener calls that command now, and it does so in-process.)
  */
-describe("PreviewClient context-menu bridge (protocol v4)", () => {
-  test("getContextTargetAt() sends the command with its point argument", () => {
+describe("PreviewClient context-menu bridge", () => {
+  test("contextMenuRequested reaches subscribers with its galley node handle", () => {
     const c = new PreviewClient();
     const frameWin = fakeFrameWindow();
     c.setExpectedOrigin("http://127.0.0.1:3579/");
     c.attach(frameWin as unknown as Window);
 
-    c.getContextTargetAt({ x: 12, y: 34 }).catch(() => {});
-    expect(frameWin.calls.length).toBe(1);
-    const sent = frameWin.calls[0]!.msg as { cmd: string; args: unknown[] };
-    expect(sent.cmd).toBe("getContextTargetAt");
-    expect(sent.args).toEqual([{ x: 12, y: 34 }]);
-
-    c.detach();
-  });
-
-  test("getContextTargetAt() resolves with the reply's ContextTarget payload", async () => {
-    const c = new PreviewClient();
-    const frameWin = fakeFrameWindow();
-    c.setExpectedOrigin("http://127.0.0.1:3579/");
-    c.attach(frameWin as unknown as Window);
-
-    const payload = {
-      kind: "block" as const,
-      chapter: "a.md",
-      range: [4, 5] as [number, number],
-      blockTag: "p",
-      split: false,
-      ref: "p-ref",
-      rect: { top: 1, left: 2, width: 3, height: 4 },
-      image: null,
-      link: null,
-      selection: null,
-    };
-    const p = c.getContextTargetAt({ x: 1, y: 1 });
-    const id = 1; // first call() in a fresh client always gets id 1
-    dispatchMessage(
-      { type: "gutterpress:reply", id, ok: true, result: payload },
-      "http://127.0.0.1:3579",
-      frameWin,
-    );
-
-    c.detach();
-    await expect(p).resolves.toEqual(payload);
-  });
-
-  test("a genuine contextMenuRequested event round-trips through on() with its full detail", () => {
-    const c = new PreviewClient();
-    const frameWin = fakeFrameWindow();
-    c.setExpectedOrigin("http://127.0.0.1:3579/");
-    c.attach(frameWin as unknown as Window);
-
-    const received: unknown[] = [];
+    const received: PreviewEvent[] = [];
     c.on((e) => received.push(e));
-
-    const detail = {
-      kind: "selection",
-      chapter: "a.md",
-      range: [2, 3],
-      blockTag: "p",
-      split: false,
-      ref: "p-ref",
-      rect: { top: 10, left: 20, width: 30, height: 40 },
-      image: null,
-      link: null,
-      selection: { text: "Hello", withinSingleBlock: true, range: [2, 3], chapter: "a.md" },
-      x: 100,
-      y: 200,
-      via: "mouse",
-    };
-
-    // Spoofed event from the wrong origin must not reach listeners (M31 still applies).
     dispatchMessage(
-      { type: "gutterpress:event", name: "contextMenuRequested", detail },
-      "http://evil.example",
-      frameWin,
-    );
-    expect(received.length).toBe(0);
-
-    dispatchMessage(
-      { type: "gutterpress:event", name: "contextMenuRequested", detail },
+      {
+        type: "gutterpress:event",
+        name: "contextMenuRequested",
+        detail: {
+          kind: "image",
+          chapter: "a.md",
+          galley: { pos: 64, src: null },
+          image: { src: "cover.png", alt: "Cover", attrsRaw: "{.gp-right}" },
+          x: 12,
+          y: 34,
+          via: "mouse",
+        },
+      },
       "http://127.0.0.1:3579",
       frameWin,
     );
-    expect(received.length).toBe(1);
-    expect(received[0]).toEqual({ name: "contextMenuRequested", detail });
 
+    expect(received.length).toBe(1);
+    expect(received[0]!.name).toBe("contextMenuRequested");
+    expect(received[0]!.detail.galley).toEqual({ pos: 64, src: null });
+    expect(received[0]!.detail.kind).toBe("image");
     c.detach();
   });
 });

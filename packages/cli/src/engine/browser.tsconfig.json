@@ -23,7 +23,6 @@
     // The inline-edit module (ADR 0010) is browser-side too: excluded from the
     // package's Node program for the same lib reason as the viewer, so it must
     // be re-included HERE or it would be typechecked by nothing at all.
-    "edit/**/*.ts",
     "galley/**/*.ts",
     "../markdown-shims.d.ts"
   ],

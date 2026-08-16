@@ -120,15 +120,9 @@ async function renderPreviewBook(
  * Both bundles are preview-only by construction — build output goes through
  * shipViewerHtml, never through this injector.
  *
- * `pageIsolateChapters` is reserved for the one-source render. The full book
- * always paginates as one document: native preview updates use a full iframe
- * swap, so forcing every source wrapper to a new page buys no incremental
- * splice boundary and diverges from the PDF whenever a source file begins in
- * the middle of a printed page.
  */
 export function injectPreviewScripts(
   html: string,
-  pageIsolateChapters: boolean,
 ): string {
   const scripts =
     // ORDER IS LOAD-BEARING: the viewer decides whether to arm its
@@ -145,12 +139,6 @@ export function injectPreviewScripts(
   let output = /<\/head>/i.test(html)
     ? html.replace(/<\/head>/i, scripts + '</head>')
     : html + scripts;
-  if (pageIsolateChapters && /<\/head>/i.test(output)) {
-    output = output.replace(
-      /<\/head>/i,
-      '<style>.gutterpress-chapter{break-before:page}</style>\n</head>'
-    );
-  }
   return output;
 }
 
@@ -194,7 +182,7 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, false),
+    injectPreviewScripts(html),
     "utf-8"
   );
 }

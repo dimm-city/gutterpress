@@ -1998,7 +1998,6 @@
       const rect = previewPaneEl.getBoundingClientRect();
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     },
-    toastError: (message) => toast?.error(message),
     toastInfo: (message) => toast?.info?.(message),
   });
 

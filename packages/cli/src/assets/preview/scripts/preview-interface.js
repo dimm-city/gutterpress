@@ -363,9 +363,9 @@
       split: false,
       rect: t.rect,
       image: t.image
-        ? { src: t.image.src, alt: t.image.alt, attrsRaw: t.image.attrsRaw, source: null }
+        ? { src: t.image.src, alt: t.image.alt, attrsRaw: t.image.attrsRaw }
         : null,
-      link: t.link ? { href: t.link.href, text: t.link.text, source: null } : null,
+      link: t.link ? { href: t.link.href, text: t.link.text } : null,
       selection: t.selection
         ? { text: t.selection.text, chapter: t.selection.chapter, range: null }
         : null,
@@ -805,7 +805,7 @@
       }));
     }, true);
 
-    // Context menu (protocol v4, docs/inline-editing-plan.md §3.1). Both the
+    // Context menu. Both the
     // mouse and keyboard paths dispatch the same contextMenuRequested window
     // event carrying the getContextTargetAt() payload plus the viewport
     // x/y and `via`.

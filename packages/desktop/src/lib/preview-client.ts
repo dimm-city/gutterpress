@@ -40,18 +40,12 @@ export interface PreviewEvent {
     tag?: string;
     /** contextMenuRequested: what kind of thing is at the resolved target — see ADR 0009. */
     kind?: ContextTargetKind;
-    /** contextMenuRequested: data-source-range [start, end) of the innermost annotated block. */
-    range?: SourceRange | null;
-    /** contextMenuRequested: tag name of the innermost annotated block (e.g. "code" for a fence). */
-    blockTag?: string | null;
-    /** contextMenuRequested: true when the target fragment carries data-split-from/-to. */
-    split?: boolean;
     /** contextMenuRequested: the target fragment's rect (post-zoom, plain object — no DOMRect). */
     rect?: PlainRect | null;
     /** contextMenuRequested: populated whenever the point is on/in an <img>, regardless of `kind`. */
-    image?: { src: string | null; alt: string | null; source: InlineSourceToken | null } | null;
+    image?: { src: string | null; alt: string | null; attrsRaw?: string } | null;
     /** contextMenuRequested: populated whenever the point is on/in an <a>, regardless of `kind`. */
-    link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
+    link?: { href: string | null; text: string } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
     /** contextMenuRequested (protocol v8): node handle for a galley-resolved
@@ -79,13 +73,7 @@ export interface PreviewEvent {
 /** A `data-source-range` value — token.map's own 0-based half-open `[start, end)` convention. */
 export type SourceRange = [number, number];
 
-/** Parser-owned coordinates for one rendered Markdown image/link token. */
-export interface InlineSourceToken {
-  token: string;
-  occurrence: number;
-}
-
-/** `getContextTargetAt()` / `contextMenuRequested`'s `kind` (protocol v4, ADR 0009). Precedence:
+/** `contextMenuRequested`'s `kind`. Precedence:
  * selection -> image -> link -> marker -> block -> none. */
 export type ContextTargetKind = "selection" | "image" | "link" | "marker" | "block" | "none";
 
@@ -97,16 +85,10 @@ export interface PlainRect {
   height: number;
 }
 
-/** `getContextTargetAt()`'s `selection` field — populated for any non-collapsed selection. */
+/** The `selection` side-channel — populated for any non-collapsed selection. */
 export interface ContextTargetSelection {
   /** `selection.toString()` — NEVER `Range.toString()` (cross-page ranges pick up structural whitespace). */
   text: string;
-  /** True only when both selection endpoints resolve to the same annotated block. */
-  withinSingleBlock: boolean;
-  /** That block's source range — only set when `withinSingleBlock`. */
-  range: SourceRange | null;
-  /** That block's chapter — only set when `withinSingleBlock`. */
-  chapter: string | null;
 }
 
 /**
@@ -124,22 +106,18 @@ export interface GalleyTargetHandle {
   src: string | null;
 }
 
-/** The full payload returned by `getContextTargetAt()` (protocol v4, ADR 0009). */
+/** The resolved context-menu target the frame pushes with `contextMenuRequested`. */
 export interface ContextTarget {
   kind: ContextTargetKind;
   chapter: string | null;
-  range: SourceRange | null;
-  blockTag: string | null;
-  split: boolean;
   rect: PlainRect | null;
   image: {
     src: string | null;
     alt: string | null;
-    /** Authored brace attrs (`{.gp-right width=50%}`) — galley targets only. */
+    /** Authored brace attrs, e.g. `{.gp-right width=50%}`. */
     attrsRaw?: string;
-    source: InlineSourceToken | null;
   } | null;
-  link: { href: string | null; text: string; source: InlineSourceToken | null } | null;
+  link: { href: string | null; text: string } | null;
   selection: ContextTargetSelection | null;
   /** Set only when the galley resolved this target (protocol v8). */
   galley?: GalleyTargetHandle | null;
@@ -362,10 +340,6 @@ export class PreviewClient {
   }
 
   /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
-  getContextTargetAt(point: { x: number; y: number }): Promise<ContextTarget> {
-    return this.call<ContextTarget>("getContextTargetAt", [point]);
-  }
-
   // ── protocol v8: Galley v2 inline editing ─────────────────────────────
   // (docs/tiptap-galley-architecture.md — one ProseMirror doc per chapter in
   // the frame; the SPA saves whole chapters and never splices block patches.)
@@ -447,15 +421,6 @@ export class PreviewClient {
     return this.call<{ ok: boolean }>("galleySetLink", [spec]);
   }
 
-  /**
-   * Toggle a masking class on every fragment matching `{chapter, range}`,
-   * plus the book document's own scroll lock (protocol v6, block overlay —
-   * inline-editing plan §5.1/§5.3). Purely cosmetic and reversible; `masked:
-   * false` clears the scroll lock even when the range no longer resolves to
-   * any live fragment (defense-in-depth teardown after a splice already
-   * replaced the DOM).
-   */
-  /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */
   queryDom(spec: {
     selector: string;
     fields?: Array<

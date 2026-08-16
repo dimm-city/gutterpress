@@ -275,13 +275,6 @@ function probePort(port: number, host: string): Promise<PortProbeResult> {
   });
 }
 
-export async function isPortAvailable(
-  port: number,
-  host: string = '127.0.0.1',
-): Promise<boolean> {
-  return (await probePort(port, host)).available;
-}
-
 /**
  * Find the next available port starting from `startPort`.
  *

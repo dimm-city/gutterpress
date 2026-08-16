@@ -138,7 +138,7 @@ function loadNativePreviewApi(sheets, runs = []) {
 }
 
 // Real DOM (happy-dom) loader for getContextTargetAt() / contextMenuRequested
-// tests (protocol v4, docs/inline-editing-plan.md §3.1): resolution walks
+// tests: resolution walks
 // closest()/classList/getAttribute against real elements, which a hand-mock
 // can't cheaply reproduce faithfully. Mirrors preview-bridge.test.mjs's
 // setup() pattern, which loads this SAME script the same way.

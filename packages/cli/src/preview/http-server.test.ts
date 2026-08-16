@@ -14,7 +14,6 @@ import { mkdtemp, rm, writeFile, mkdir, utimes } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  isPortAvailable,
   findAvailablePort,
   createPreviewServer,
   type PreviewServer,
@@ -57,41 +56,6 @@ function makeState(currentInputPath: string, tempDir: string = currentInputPath)
     options,
   };
 }
-
-describe('isPortAvailable', () => {
-  test('returns true for available port', async () => {
-    // Bind an OS-assigned port, capture it, then release it — so we test a port
-    // we KNOW was bindable a moment ago rather than a hardcoded guess that may
-    // be occupied on a busy CI runner (the old fixed 59999 was flaky).
-    const probe = Bun.serve({ port: 0, fetch: () => new Response('probe') });
-    const freedPort = probe.port!; // a just-bound server always has a port
-    probe.stop(true);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const result = await isPortAvailable(freedPort);
-    expect(result).toBe(true);
-  });
-
-  test('returns false for unavailable port', async () => {
-    // Let the OS pick a free port (port: 0) instead of a hardcoded 58888, which
-    // collided under back-to-back CI runs (EADDRINUSE → "Failed to start server").
-    const server = Bun.serve({
-      port: 0,
-      fetch() {
-        return new Response('test');
-      },
-    });
-    const testPort = server.port!; // a just-bound server always has a port
-
-    try {
-      const result = await isPortAvailable(testPort);
-      expect(result).toBe(false);
-    } finally {
-      server.stop(true);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  });
-});
 
 describe('findAvailablePort', () => {
   // Reserve `count` CONTIGUOUS, currently-bindable ports starting at a randomly

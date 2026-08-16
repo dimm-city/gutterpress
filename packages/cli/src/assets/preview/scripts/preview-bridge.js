@@ -89,8 +89,7 @@
   window.addEventListener('elementActivated', function (e) {
     post({ type: 'gutterpress:event', name: 'elementActivated', detail: e.detail });
   });
-  // docs/inline-editing-plan.md §3.1/§3.2 (protocol v4): right-click / keyboard
-  // context-menu target request.
+  // Right-click / keyboard context-menu target request.
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
   });

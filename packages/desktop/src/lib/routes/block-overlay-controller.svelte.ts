@@ -51,7 +51,6 @@ export interface BlockOverlayDeps {
    * engage that scrollbar rather than the intended internal CM scroll).
    */
   getPaneRect: () => BlockOverlayRect | null;
-  toastError: (message: string) => void;
   /** "This section changed — reopen to edit" (plan §5.1 close-with-toast outcome). */
   toastInfo: (message: string) => void;
 }
@@ -198,8 +197,6 @@ export class BlockOverlayController {
     this.teardown();
     this.close();
   }
-
-  // ── Chapter source (mirrors ContextMenuController.readChapterSource) ───────
 
   private applyRects(
     rects: RectsForResult["rects"],

@@ -139,7 +139,7 @@ export interface AppSettings {
      * the latter does not apply here.
      */
     contextMenu: boolean;
-    /** HTML-first inline editing in the preview (ADR 0010). Default ON —
+    /** inline editing in the preview (the Galley editor, ADR 0011). Default ON —
      *  this is the primary editing model; the flag is a kill switch. */
     inlineEditing: boolean;
   };

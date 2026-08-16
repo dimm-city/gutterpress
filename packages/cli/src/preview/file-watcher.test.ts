@@ -276,7 +276,7 @@ describe('injectPreviewScripts', () => {
   const html = `<!doctype html>\n<html><head><title>t</title>\n</head><body></body></html>`;
 
   test('injects the viewer + galley bundles + interface scripts before </head>', () => {
-    const out = injectPreviewScripts(html, false);
+    const out = injectPreviewScripts(html);
     expect(out).toContain('/engine/gutterpress-viewer.js');
     // The galley entry orchestrates the viewer mount itself, so the manual
     // flag must land BETWEEN the viewer and galley bundles.
@@ -296,10 +296,10 @@ describe('injectPreviewScripts', () => {
     expect(out).not.toContain('__GP_EDIT_FEATURES__');
   });
 
-  test('page-isolates source wrappers only for incremental preview', () => {
-    const isolate = '<style>.gutterpress-chapter{break-before:page}</style>';
-    expect(injectPreviewScripts(html, true)).toContain(isolate);
-    expect(injectPreviewScripts(html, false)).not.toContain(isolate);
+  test('never page-isolates chapter wrappers (that served the deleted one-source render)', () => {
+    expect(injectPreviewScripts(html)).not.toContain(
+      '<style>.gutterpress-chapter{break-before:page}</style>',
+    );
   });
 });
 
