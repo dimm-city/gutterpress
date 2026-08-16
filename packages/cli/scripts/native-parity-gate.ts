@@ -79,9 +79,18 @@ import { getAssetPath } from "../src/lib/embedded-assets.ts";
 const REPO = resolve(import.meta.dir, "..", "..", "..");
 const WORK = process.env.GUTTERPRESS_PARITY_DIR ?? "/tmp/gutterpress-parity";
 
+/**
+ * Every fixture is IN-REPO and every one is required.
+ *
+ * Two defaults used to be `/tmp` scratch books (`/tmp/fbtest/book`,
+ * `/tmp/fg-proof-parent/field-guide`). They existed on one machine, were
+ * absent everywhere else, and the runner skipped them with a log line — so
+ * 2 of 7 fixtures silently contributed nothing and the gate still reported
+ * PASS. A gate that quietly measures less than it claims is worse than no
+ * gate; that is the exact failure this script exists to prevent, so a
+ * missing fixture is now a hard error (see `main()`).
+ */
 const DEFAULT_FIXTURES = [
-  "/tmp/fbtest/book",
-  "/tmp/fg-proof-parent/field-guide",
   // examples/with-design-guide is 3 separate manifests, not one book — run
   // all 3 so the gate covers the whole example, not an arbitrary pick.
   join(REPO, "examples", "with-design-guide", "book-01"),
@@ -100,6 +109,13 @@ const DEFAULT_FIXTURES = [
   // (In-page pin GEOMETRY is asserted by paged-css-image-pin.test.ts — the
   // gate only sees page indices.)
   join(REPO, "docs", "fixtures", "gp-image-positioning", "book"),
+  // The user guide is the largest first-party book (64pp, tier 3, 157
+  // instrumented headings) and the only default fixture with enough ordinary
+  // long-form prose to catch a fragmentation drift that accumulates over
+  // many pages rather than showing up on page 1. It was absent from this
+  // list while the gate ran nowhere, which is how it came to carry an
+  // unnoticed viewer-vs-print divergence.
+  join(REPO, "examples", "gutterpress-user-guide"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
@@ -399,22 +415,55 @@ async function runFixture(
   };
 }
 
+/**
+ * Stable, COLLISION-FREE report label per fixture.
+ *
+ * The label is not cosmetic: it names the fixture's staging directory
+ * (`join(WORK, label)`) and it is what `KNOWN_DIVERGENCES.fixture` matches on.
+ * A bare basename gave two different books the same label — `book`, from
+ * `docs/fixtures/css-authoring-spike/book` and
+ * `docs/fixtures/gp-image-positioning/book`. That made them share one staging
+ * directory AND made a single allowlist entry silently excuse divergences in
+ * both. Duplicated basenames get enough parent segments prepended to become
+ * unique; a unique basename is left alone so existing labels do not churn.
+ */
+export function fixtureLabels(dirs: string[]): string[] {
+  const segs = dirs.map((d) => d.replace(/\/+$/, "").split("/").filter(Boolean));
+  const labels = segs.map((s) => s.at(-1)!);
+  for (let depth = 2; ; depth++) {
+    const counts = new Map<string, number>();
+    for (const l of labels) counts.set(l, (counts.get(l) ?? 0) + 1);
+    const dupes = [...counts.entries()].filter(([, n]) => n > 1).map(([l]) => l);
+    if (!dupes.length) return labels;
+    let grew = false;
+    for (let i = 0; i < labels.length; i++) {
+      if (!dupes.includes(labels[i]!)) continue;
+      const next = segs[i]!.slice(-depth).join("/");
+      if (next !== labels[i]) {
+        labels[i] = next;
+        grew = true;
+      }
+    }
+    // Ran out of parent segments to disambiguate with (identical paths).
+    if (!grew) return labels;
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  const requested = (args.length ? args : DEFAULT_FIXTURES).map((p) => resolve(p));
-  // Two default fixtures live outside the repo (/tmp scratch books), so on a
-  // fresh clone or in CI they are simply absent — skipping them keeps the
-  // in-repo fixtures meaningful instead of failing the gate for a reason that
-  // has nothing to do with parity. An explicitly named dir is never skipped.
-  const fixtures = args.length
-    ? requested
-    : requested.filter((dir) => {
-        if (existsSync(dir)) return true;
-        console.log(`   SKIP ${dir} — not present on this machine`);
-        return false;
-      });
+  const fixtures = (args.length ? args : DEFAULT_FIXTURES).map((p) => resolve(p));
+  // NEVER skip. Every fixture is in-repo, so an absent one means a bad path or
+  // a deleted book, not a machine difference — and a gate that drops coverage
+  // while still printing PASS is precisely the failure mode this script is
+  // supposed to catch in the renderers.
+  const missing = fixtures.filter((dir) => !existsSync(dir));
+  if (missing.length) {
+    console.error("Fixture(s) not found — refusing to measure a partial set:");
+    for (const dir of missing) console.error(`   MISSING ${dir}`);
+    process.exit(1);
+  }
   if (!fixtures.length) {
-    console.log("No fixtures available to measure — nothing was checked.");
+    console.error("No fixtures requested — nothing was checked.");
     process.exit(1);
   }
   mkdirSync(WORK, { recursive: true });
@@ -425,8 +474,9 @@ async function main() {
   const browser = await launchChromium();
   const reports: FixtureReport[] = [];
   try {
-    for (const dir of fixtures) {
-      const name = dir.replace(/\/+$/, "").split("/").pop()!;
+    const labels = fixtureLabels(fixtures);
+    for (const [i, dir] of fixtures.entries()) {
+      const name = labels[i]!;
       console.log(`\n== ${name} (${dir})`);
       try {
         const report = await runFixture(browser, name, dir, AGENT, VIEWER);
@@ -485,4 +535,7 @@ async function main() {
   console.log(`\nAll divergences accounted for — gate PASSES.`);
 }
 
-await main();
+// Only run when executed directly (`bun scripts/native-parity-gate.ts`).
+// Without this guard, importing anything from this module — e.g. a unit test
+// for `fixtureLabels` — would launch Chromium and build every fixture book.
+if (import.meta.main) await main();

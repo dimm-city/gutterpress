@@ -182,3 +182,39 @@ jobs:
       - name: Run TypeScript compiler (desktop Electron main/preload)
         working-directory: packages/desktop
         run: bun run typecheck
+
+  # Preview-vs-PDF parity. The on-screen viewer and Chromium's print engine are
+  # two different fragmenters, and the ONLY thing keeping them in agreement is
+  # this gate. It shipped with a `parity:gate` npm script and was referenced by
+  # no workflow, so it had never run in CI — which is how
+  # examples/gutterpress-user-guide came to carry an unnoticed 77-divergence
+  # drift (viewer 65pp vs print 64pp). A divergence here is release-blocking.
+  parity:
+    name: Preview/PDF Parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The engine requires Chromium 148+ (REQUIRED_MILESTONE in
+      # engine/shared/cdp.ts) and refuses to measure on anything older, so the
+      # pinned Playwright Chromium is deliberately NOT used here.
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies
+        run: bun install
+
+      # cdp.ts's own candidate list checks GUTTERPRESS_CHROMIUM first, then
+      # PUPPETEER_EXECUTABLE_PATH. Set it explicitly so the gate can never
+      # silently fall back to some other browser on the runner.
+      - name: Point the engine at system Chrome
+        run: echo "GUTTERPRESS_CHROMIUM=$(which google-chrome-stable)" >> $GITHUB_ENV
+
+      - name: Run preview/PDF parity gate
+        working-directory: packages/cli
+        run: bun run parity:gate
