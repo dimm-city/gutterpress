@@ -58,16 +58,30 @@ jobs:
       # different route than the print fragmenter, so this proves the two
       # still agree. CLAUDE.md calls it permanent and required-green with an
       # empty allowlist — but it was never wired into CI, so nothing enforced
-      # that, and its first real run (2026-08-16) FAILED with a pre-existing
-      # divergence on docs/fixtures/css-authoring-spike/book: the viewer
-      # reports 6pp where print measures 7pp, and every instrumented heading
-      # maps one page earlier in the viewer, which also skews target-counter()
-      # values. That is the exact signature the fixture was committed to pin
-      # (a <gp-anchor> zero-size absolute first child immediately after a
-      # forced break-before:page measuring one page late in print).
+      # that, and its first real run (2026-08-16) FAILED.
       #
-      # It is NOT caused by anything in this branch: the prediction path calls
-      # `fragmentDocument()` directly and never goes through `mount()`.
+      # What it reports: 14 divergences, ALL confined to the one fixture
+      # docs/fixtures/css-authoring-spike/book. Every other fixture is clean
+      # (with-design-guide book-01 2pp, book-02 2pp, design-guide 54pp,
+      # gp-image-positioning 7pp — 0 divergences each). On that fixture print
+      # measures 7pp where the viewer reports 6pp; instrumented headings from
+      # gp-parity-h2 onward map one page earlier in the viewer (ch-gallery two
+      # pages earlier), and target-counter() values skew to match.
+      #
+      # Root cause is NOT yet known, and in particular it is NOT the defect
+      # this fixture was originally committed to pin. That one was a
+      # `position:absolute` <gp-anchor> as the first box after a forced break
+      # measuring one page late in print; it was fixed by making the anchor
+      # `display:inline` (compiler/agent.ts `ensureAnchor`) and is pinned by
+      # build.running-heads.test.ts. Reproducing THIS divergence needs
+      # Chromium >= 148 (the engine's own milestone gate), so it cannot be
+      # bisected in a dev container running an older build.
+      #
+      # It is NOT caused by the galley branch: that branch has an empty diff
+      # against this script, the fixture, src/engine/compiler/, and
+      # viewer/fragment.ts, and BOTH sides of the comparison call
+      # `fragmentDocument()` directly (build.ts:1130, this script:245) — never
+      # `mount()`, so the branch's `layoutBracket` cannot reach either path.
       #
       # Reported, not blocking, so an unrelated engine bug does not gate every
       # PR — but it now runs on every push instead of never, so it cannot be
