@@ -62,7 +62,7 @@
  *   section opened by @continue) and both standalone break tokens
  *   (layout_page_break / layout_column_break) carry `token.meta.line`, the
  *   1-based marker line that produced them. This is consumed by the
- *   node-free `source-range.ts` core rule (registered in renderer.ts) to
+ *   galley codec (engine/galley/markdown.ts, `markerAttrs`/`linesOf`) to
  *   emit `data-source-range` on these wrappers. token.map is deliberately
  *   left null on all of these tokens — see the inline comments at each
  *   `t.meta = …` assignment site and ADR 0009: setting `map` would make
@@ -606,7 +606,7 @@ export default function plugin(md, pluginOptions = {}) {
     function openChapter(meta) {
       const t = new state.Token('layout_chapter_open', 'div', 1);
       // Thread the 1-based marker line onto token.meta for the source-range
-      // annotation rule (source-range.ts) to consume. Do NOT set token.map
+      // galley codec (engine/galley/markdown.ts) to consume. Do NOT set token.map
       // here: markdown-it-source-map would then stamp data-source-line onto
       // this wrapper div, and topVisibleSourceEl()'s strictly-greater rect
       // tie-break in preview-interface.js would resolve scroll-sync to this
@@ -714,7 +714,7 @@ export default function plugin(md, pluginOptions = {}) {
       // @column-break. Stored on the token's own `meta` (not env / not a
       // rendered attribute) since it's per-token render guidance, not
       // author-visible output. `line` is the 1-based marker line, threaded
-      // for the source-range annotation rule (source-range.ts). Do NOT set
+      // for the galley codec (engine/galley/markdown.ts). Do NOT set
       // token.map here — see the do-not-use-token.map comment in
       // openChapter above (ADR 0009); applies identically here.
       t.meta = { hasColumnBreak: false, line: meta.__line };
@@ -827,7 +827,7 @@ export default function plugin(md, pluginOptions = {}) {
 
       if (kind === 'page-break') {
         const t = new state.Token('layout_page_break', 'div', 0);
-        // Thread the 1-based marker line for source-range.ts. Do NOT set
+        // Thread the 1-based marker line for the galley codec. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
@@ -855,7 +855,7 @@ export default function plugin(md, pluginOptions = {}) {
         }
 
         const t = new state.Token('layout_column_break', 'div', 0);
-        // Thread the 1-based marker line for source-range.ts. Do NOT set
+        // Thread the 1-based marker line for the galley codec. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
