@@ -308,6 +308,11 @@ testIf(
                       // Pagination survives — this is what a reload destroyed.
                       pages: window.Gutterpress!.totalPages,
                       sheets: document.querySelectorAll(".gp-sheet").length,
+                      // Returning to the preview must paginate CONTENT, not
+                      // re-explode the previous mount's own chrome. A nested
+                      // strip means buildStrips() ran over a fragmented DOM.
+                      nestedStrips: document.querySelectorAll(".gp-strip .gp-strip").length,
+                      stripsInRuns: document.querySelectorAll(".gp-run .gp-run").length,
                     }),
                   ),
                 150,
@@ -316,13 +321,15 @@ testIf(
           })) as string;
           const o = JSON.parse(off) as {
             stillSameDocument: boolean; editing: boolean; editable: boolean;
-            pages: number; sheets: number;
+            pages: number; sheets: number; nestedStrips: number; stripsInRuns: number;
           };
           expect(o.stillSameDocument).toBe(true);
           expect(o.editing).toBe(false);
           expect(o.editable).toBe(false);
           expect(o.pages).toBeGreaterThanOrEqual(1);
           expect(o.sheets).toBeGreaterThanOrEqual(1);
+          expect(o.nestedStrips).toBe(0);
+          expect(o.stripsInRuns).toBe(0);
 
           // Back on: the same editor re-arms, no refetch, no reload.
           await page.evaluate(() => {

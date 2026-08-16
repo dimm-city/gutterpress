@@ -119,8 +119,9 @@ function markerAtomInputRules(): InputRule[] {
 
 export interface GalleyEditor {
   editor: Editor;
-  /** Resolves when the viewer has mounted over the editor's DOM; rejects on
-   * mount failure so the caller can fall back instead of hanging layout. */
+  /** Resolves when the continuous layout has been applied; rejects if the
+   * document's @page geometry cannot be read, so the caller can fall back to
+   * the paginated preview instead of hanging layout. */
   ready: Promise<void>;
   applyFormat(format: "bold" | "italic" | "strike" | "code"): boolean;
   insertMarkdown(markdown: string): Promise<boolean>;
@@ -131,8 +132,8 @@ export interface GalleyEditor {
    *  divergence → suspend until reload). */
   ackContent(chapter: string, ok: boolean, seq?: number, reason?: string): void;
   selectionState(): SelectionPayload;
-  /** Toggle editability in place. Read-only keeps the mounted document and
-   *  its pagination — no reload, no re-render, no lost scroll position. */
+  /** Toggle editability in place, without rebuilding the document. Leaving
+   *  edit mode entirely is the host's job (it swaps to the print preview). */
   setEditable(on: boolean): void;
   /**
    * Context-menu target resolution (protocol v9). Mirrors the v7
@@ -339,7 +340,8 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     const px = (pt: number) => (pt * 96) / 72;
     const contentW = Math.round(px(base.width - base.margin.left - base.margin.right));
     const contentH = Math.round(px(base.height - base.margin.top - base.margin.bottom));
-    const padX = Math.round(px(base.margin.left));
+    const padLeft = Math.round(px(base.margin.left));
+    const padRight = Math.round(px(base.margin.right));
     const padTop = Math.round(px(base.margin.top));
     const padBottom = Math.round(px(base.margin.bottom));
 
@@ -368,7 +370,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     style.textContent =
       `html,body{margin:0;padding:0;background:var(--gp-workspace,#f2f2f2)}` +
       `.gp-galley-host{box-sizing:content-box;width:${contentW}px;margin:0 auto;` +
-      `padding:${padTop}px ${padX}px ${padBottom}px;background:#fff;` +
+      `padding:${padTop}px ${padRight}px ${padBottom}px ${padLeft}px;background:#fff;` +
       `box-shadow:0 1px 4px rgba(0,0,0,.18)}` +
       `.gp-galley-host>.tiptap{outline:none}` +
       `:where(.page,.spread){min-height:${contentH}px}` +
@@ -554,7 +556,14 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   editor.registerPlugin(opaqueKeyPlugin);
 
   // ── initial mount ─────────────────────────────────────────────────────────
-  const ready = Promise.resolve(applyContinuousLayout());
+  // Deferred into the promise on purpose: applyContinuousLayout() is
+  // synchronous and CAN throw (extractGcpm rejects unresolvable @page geometry
+  // vars). Calling it inline would abort createGalleyEditor() after `new
+  // Editor()` already mounted a live view, so the caller never receives the
+  // object whose destroy() removes ProseMirror's document-level listeners —
+  // a leak on every failed entry into edit mode. As a rejected `ready`, the
+  // caller gets a usable handle and can tear it down.
+  const ready = (async () => applyContinuousLayout())();
 
   // ── public surface ────────────────────────────────────────────────────────
   return {

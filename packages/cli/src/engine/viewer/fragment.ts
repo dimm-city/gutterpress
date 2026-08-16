@@ -919,6 +919,30 @@ function unwrapStrips(strips: StripInfo[]): void {
   }
 }
 
+/**
+ * Unwrap any chrome a PREVIOUS mount left in the flow root, found by DOM scan
+ * rather than by a retained strip list.
+ *
+ * `relayout()` can unwrap from the `StripInfo[]` it already holds, but
+ * `mount()`/`fragmentDocument()` may run over a document some earlier mount
+ * already fragmented — the galley does exactly this when it leaves editing and
+ * hands the restored flow back to the paginated preview. Without this,
+ * `buildStrips()` explodes the previous run's `.gp-strip`/`.gp-run` as if an
+ * author had written them, nesting strips and producing ghost pages (the
+ * failure `unwrapStrips`'s own comment describes, reached by a second mount
+ * instead of a second relayout).
+ *
+ * `unwrapStrips` reads only `.el`, so a scanned element is a sufficient
+ * StripInfo here. The bounded loop covers already-nested chrome.
+ */
+function unwrapPreviousMount(): void {
+  for (let pass = 0; pass < 8; pass++) {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(".gp-strip"));
+    if (!els.length) return;
+    unwrapStrips(els.map((el) => ({ el }) as unknown as StripInfo));
+  }
+}
+
 /** One geometry read per strip; no per-node measurement. */
 export function measure(strips: StripInfo[]): LayoutResult {
   let offset = 0;
@@ -1217,6 +1241,9 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   }
   const model = extract(css);
   injectBreakMapping(model);
+  // Idempotence: a re-mount must partition the ORIGINAL content, never the
+  // previous mount's own chrome.
+  unwrapPreviousMount();
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
   await layoutReady;

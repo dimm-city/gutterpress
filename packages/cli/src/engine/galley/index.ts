@@ -132,7 +132,17 @@ async function reconcile(): Promise<void> {
     } else if (active) {
       // setEditable(false) flushes the debounced save before anything is
       // torn down, so switching to preview can never race a pending edit.
-      await leaveEditing();
+      try {
+        await leaveEditing();
+      } catch (err) {
+        // The editor is already gone by the time mountReadonly() can fail, so
+        // the mode MUST advance regardless — leaving mode="editing" with
+        // active=null wedges reconcile()'s `target === mode` short-circuit and
+        // every later setEditMode becomes a silent no-op until a reload.
+        // eslint-disable-next-line no-console
+        console.error("[galley] leaving edit mode failed — preview may be blank:", err);
+        mode = "readonly";
+      }
     } else {
       await mountReadonly();
     }

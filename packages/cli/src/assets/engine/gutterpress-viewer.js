@@ -1481,6 +1481,14 @@
       parent.removeChild(removalTarget);
     }
   }
+  function unwrapPreviousMount() {
+    for (let pass = 0;pass < 8; pass++) {
+      const els = Array.from(document.querySelectorAll(".gp-strip"));
+      if (!els.length)
+        return;
+      unwrapStrips(els.map((el) => ({ el })));
+    }
+  }
   function measure(strips) {
     let offset = 0;
     for (const strip of strips) {
@@ -1608,6 +1616,7 @@
     }
     const model = extract(css);
     injectBreakMapping(model);
+    unwrapPreviousMount();
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
     await layoutReady;
