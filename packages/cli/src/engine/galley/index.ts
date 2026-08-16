@@ -215,6 +215,24 @@ const api = {
   targetAt(spec: { x: number; y: number }) {
     return active ? active.targetAt(spec.x, spec.y) : null;
   },
+
+  /** Context-menu image edit — rewrites the node, never the source file (the
+   *  doc's own save writes it; a parallel source splice would be reverted). */
+  setImageAttrs(spec: {
+    pos: number;
+    src?: string;
+    alt?: string;
+    title?: string | null;
+    attrsRaw?: string;
+  }) {
+    const { pos, ...changes } = spec;
+    return { ok: active ? active.setImageAttrs(pos, changes) : false };
+  },
+
+  /** Context-menu link edit; `href: null` unlinks. */
+  setLink(spec: { pos?: number; href: string | null }) {
+    return { ok: active ? active.setLink(spec) : false };
+  },
 };
 
 (window as unknown as { GutterpressGalley: typeof api }).GutterpressGalley = api;

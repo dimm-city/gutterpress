@@ -2088,13 +2088,11 @@
 
   const contextMenu = new ContextMenuController({
     client: () => client,
-    // Gated OFF for v8 (galley) frames: the v7 data-source-range hit-testing
-    // (getContextTargetAt/getRectsFor/setEditMask) finds nothing in a galley
-    // frame, so let the native menu show instead of an empty custom one. The
-    // source-view context path is untouched.
-    // TODO(galley): rebuild the preview context menu on the v8 galleyTargetAt
-    // command ({x,y} → {kind, chapter, pos, src?}).
-    enabled: () => settings.current.preview.contextMenu && frameProtocol < 8,
+    // v8 (galley) frames resolve the target through the ProseMirror document
+    // (galleyTargetAt) and carry a `galley: {pos}` handle instead of a source
+    // range; the `galley` deps below apply those edits to the doc. v7 and
+    // earlier keep the data-source-range path. One menu, two write paths.
+    enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
@@ -2117,6 +2115,20 @@
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
     openBlockOverlay: (chapter, range, anchor) => void blockOverlay.show({ chapter, range, anchor }),
+    galley: {
+      setImageAttrs: (spec) =>
+        client?.galleySetImageAttrs(spec) ?? Promise.resolve({ ok: false }),
+      setLink: (spec) => client?.galleySetLink(spec) ?? Promise.resolve({ ok: false }),
+      // Same overlay the galleyOpaqueEdit event opens (double-click / Enter on
+      // an atom) — the menu is just a third way in.
+      openOpaqueEditor: (_chapter, pos, src, anchor) =>
+        openGalleyBlockOverlay({
+          chapter: _chapter,
+          pos,
+          src,
+          rect: { top: anchor.y, left: anchor.x, width: 320, height: 160 },
+        }),
+    },
   });
 
   // ----------------------------------------------------------------

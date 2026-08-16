@@ -29,11 +29,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Preview right-click menu (v1 scope).** On the new editing surface the
-  Gutterpress context menu is temporarily disabled (the browser's native
-  menu — cut/copy/paste — shows instead) while it is rebuilt against the
-  galley editor's hit-testing; the source view's editing surface and
-  toolbar are unchanged. Block-source editing remains available by
+- **Preview right-click menu now edits the document, not the file.** The
+  menu works on the editing surface exactly as before — image properties,
+  link edit/remove/copy, block source — but on the galley it resolves what
+  you clicked through the ProseMirror document rather than through
+  `data-source-range`, which the editor's own DOM does not carry. Actions
+  apply to the node and the editor's normal whole-file save writes them to
+  disk; a direct source splice would be overwritten by that same save.
+  Image options (position, size, spacing, shape, layer, width) use the
+  identical `{...}` attribute vocabulary as before, so nothing changes in
+  your markdown. Block-source editing also remains available by
   double-clicking any non-editable (raw/plugin) block.
 
 ## [0.10.0] - 2026-08-12

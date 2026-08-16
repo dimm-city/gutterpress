@@ -67,9 +67,15 @@ Beta paragraph stays put -- with an en dash spelling.
 Gamma closes the chapter.
 `;
 
+/** A 1x1 PNG — a data URI so the <img> has real geometry to hit-test. */
+const PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 const CH2 = `## Second chapter
 
-Delta paragraph in the second file.
+Delta paragraph in the second file with a [target link](https://example.com/a) inline.
+
+![alt text](${PNG}){.gp-right width=40%}
 `;
 
 const md = createMarkdownRenderer();
@@ -119,6 +125,7 @@ p { margin: 0 0 0.5em; font: 12px/1.4 serif; }
 </script>
 <script src="gutterpress-viewer.js"></script>
 <script src="gutterpress-galley.js"></script>
+<script src="preview-interface.js"></script>
 </head><body>
 <p>server-rendered placeholder (replaced by the galley takeover)</p>
 </body></html>`;
@@ -133,6 +140,13 @@ testIf(
       for (const bundle of ["gutterpress-viewer.js", "gutterpress-galley.js"]) {
         await fsp.copyFile(await getAssetPath(`engine/${bundle}`), path.join(dir, bundle));
       }
+      // The real previewAPI, so the context-menu assertions below exercise the
+      // actual host-facing surface (including the galley→ContextTarget payload
+      // adapter) rather than the galley global directly.
+      await fsp.copyFile(
+        await getAssetPath("preview/scripts/preview-interface.js"),
+        path.join(dir, "preview-interface.js"),
+      );
       const { url: root, close } = await serveDir(dir, "book.html");
       try {
         const browser = await getBrowser(TIMEOUT_MS);
@@ -198,6 +212,87 @@ testIf(
           expect(survived.editing).toBe(true);
           expect(survived.pages).toBeGreaterThanOrEqual(1);
           expect(survived.sheets).toBeGreaterThanOrEqual(1);
+
+          // ── Context menu (protocol v8) ──────────────────────────────────
+          // The menu is the author's route to image/link properties. It was
+          // gated OFF on galley frames because the PM DOM carries no
+          // `data-source-range`; targets are node-addressed instead. Pin the
+          // whole chain: hit-test → target kind/payload → doc mutation.
+          const targets = (await page.evaluate(() => {
+            const centerOf = (el: Element) => {
+              const r = el.getBoundingClientRect();
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            };
+            const api = (window as unknown as { previewAPI: {
+              getContextTargetAt(p: { x: number; y: number }): Record<string, unknown>;
+            } }).previewAPI;
+            const out: Record<string, unknown> = {};
+            const link = document.querySelector(".tiptap a[href]");
+            const img = document.querySelector(".tiptap img");
+            // A paragraph OUTSIDE any marker wrapper — one inside `@section`
+            // correctly resolves as kind "marker", which is a different case.
+            const para = [
+              ...(document.querySelectorAll(".tiptap p") as unknown as Iterable<Element>),
+            ].find((p) => (p.textContent ?? "").startsWith("Gamma"));
+            for (const [name, el] of [["link", link], ["image", img], ["block", para]] as const) {
+              out[name] = el ? api.getContextTargetAt(centerOf(el)) : null;
+            }
+            return JSON.stringify(out);
+          })) as string;
+          const t = JSON.parse(targets) as Record<string, {
+            kind: string;
+            galley: { pos: number } | null;
+            image?: { attrsRaw?: string } | null;
+            link?: { href?: string } | null;
+          }>;
+          // A link must NOT degrade to "block": posAtDOM lands on the mark's
+          // start boundary, where a non-inclusive link mark reports absent.
+          expect(t.link!.kind).toBe("link");
+          expect(t.link!.link!.href).toBe("https://example.com/a");
+          expect(t.image!.kind).toBe("image");
+          expect(t.image!.image!.attrsRaw).toBe("{.gp-right width=40%}");
+          expect(t.block!.kind).toBe("block");
+          // Every galley target carries the node handle the host edits through.
+          for (const key of ["link", "image", "block"]) {
+            expect(typeof t[key]!.galley?.pos).toBe("number");
+          }
+
+          // The write path: mutate the DOC (a source splice would be reverted
+          // by the galley's own next whole-file save).
+          const wrote = (await page.evaluate(() => {
+            const api = (window as unknown as { previewAPI: {
+              getContextTargetAt(p: { x: number; y: number }): { galley: { pos: number } };
+              galleySetImageAttrs(s: Record<string, unknown>): { ok: boolean };
+              galleySetLink(s: Record<string, unknown>): { ok: boolean };
+            } }).previewAPI;
+            const centerOf = (el: Element) => {
+              const r = el.getBoundingClientRect();
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            };
+            const imgT = api.getContextTargetAt(centerOf(document.querySelector(".tiptap img")!));
+            const imgRes = api.galleySetImageAttrs({ pos: imgT.galley.pos, attrsRaw: "{.gp-left width=25%}" });
+            const linkT = api.getContextTargetAt(centerOf(document.querySelector(".tiptap a[href]")!));
+            const linkRes = api.galleySetLink({ pos: linkT.galley.pos, href: "https://example.com/changed" });
+            return JSON.stringify({
+              imgOk: imgRes.ok,
+              linkOk: linkRes.ok,
+              imgAttr: document.querySelector(".tiptap img")!.getAttribute("data-gp-attrs"),
+              href: document.querySelector(".tiptap a[href]")!.getAttribute("href"),
+            });
+          })) as string;
+          const w = JSON.parse(wrote) as {
+            imgOk: boolean; linkOk: boolean; imgAttr: string; href: string;
+          };
+          expect(w.imgOk).toBe(true);
+          expect(w.linkOk).toBe(true);
+          expect(w.imgAttr).toBe("{.gp-left width=25%}");
+          expect(w.href).toBe("https://example.com/changed");
+
+          // …and the doc change must reach the save proposal, so the file
+          // actually gets the author's edit.
+          await page.waitForFunction(
+            `window.__contents.some((c) => c.chapter === "ch2.md" && c.markdown.includes("{.gp-left width=25%}") && c.markdown.includes("https://example.com/changed"))`,
+          );
         } finally {
           await page.close();
         }

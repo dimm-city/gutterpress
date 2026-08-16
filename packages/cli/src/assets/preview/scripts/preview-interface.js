@@ -475,6 +475,36 @@
     };
   }
 
+  // Galley (protocol v8) target resolution, shaped to the SAME payload
+  // buildContextTarget() returns so the host's menu builder is unchanged.
+  //
+  // `range` is null by construction: the galley's PM-rendered DOM carries no
+  // `data-source-range`, and a source-range splice would in any case be
+  // reverted by the document's own next whole-file save. `galley.pos`
+  // replaces it — the host addresses the NODE and edits it through
+  // galleySetImageAttrs / galleySetLink / galleySetOpaqueSource.
+  function galleyContextTarget(x, y) {
+    var galley = window.GutterpressGalley;
+    var t = galley.targetAt({ x: x, y: y });
+    if (!t) return { kind: 'none', chapter: null, range: null, blockTag: null, split: false, rect: null, image: null, link: null, selection: null, galley: null };
+    return {
+      kind: t.kind,
+      chapter: t.chapter,
+      range: null,
+      blockTag: t.blockTag,
+      split: false,
+      rect: t.rect,
+      image: t.image
+        ? { src: t.image.src, alt: t.image.alt, attrsRaw: t.image.attrsRaw, source: null }
+        : null,
+      link: t.link ? { href: t.link.href, text: t.link.text, source: null } : null,
+      selection: t.selection
+        ? { text: t.selection.text, chapter: t.selection.chapter, range: null }
+        : null,
+      galley: { pos: t.pos, src: t.src === undefined ? null : t.src }
+    };
+  }
+
   // The anchor point for a keyboard-invoked menu: the current selection's
   // focus position if non-collapsed, else the block at the top of the
   // viewport (topVisibleSourceEl(), which already exists for scroll sync).
@@ -709,11 +739,29 @@
       spec = spec || {};
       return galley ? galley.targetAt({ x: spec.x, y: spec.y }) : null;
     },
+    galleySetImageAttrs: function (spec) {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.setImageAttrs(spec || {}) : { ok: false };
+    },
+    galleySetLink: function (spec) {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.setLink(spec || {}) : { ok: false };
+    },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
+    //
+    // While the galley owns the document, resolution runs through the PM doc
+    // (galley.targetAt) instead of `data-source-range`, which the galley's
+    // rendered DOM does not carry. Same payload shape either way, plus a
+    // `galley: {pos}` handle telling the host to apply edits to the node
+    // rather than splicing the source file.
     getContextTargetAt: function (spec) {
       spec = spec || {};
+      var galley = window.GutterpressGalley;
+      if (galley && galley.isEditing && galley.isEditing()) {
+        return galleyContextTarget(spec.x, spec.y);
+      }
       return buildContextTarget(elementAtPoint(spec.x, spec.y));
     },
 
@@ -1013,13 +1061,10 @@
     // with no replacement menu would be a strict regression. No event is
     // dispatched for 'none' either.
     document.addEventListener('contextmenu', function (e) {
-      // Galley editing (ADR 0011): the SPA's context menu is gated off on
-      // v8 frames pending its galleyTargetAt rebuild — preventDefault here
-      // would leave the author with NO menu at all on selections, images,
-      // links, and raw blocks. Let the browser's native editing menu
-      // (cut/copy/paste) show instead.
-      var galley = window.GutterpressGalley;
-      if (galley && galley.isEditing && galley.isEditing()) return;
+      // Galley editing (ADR 0011) resolves the target through the PM document
+      // (see galleyContextTarget) — same payload, node-addressed instead of
+      // range-addressed. `kind === 'none'` still falls through to the native
+      // menu so page furniture stays copyable.
       var detail = api.getContextTargetAt({ x: e.clientX, y: e.clientY });
       if (detail.kind === 'none') return;
       e.preventDefault();

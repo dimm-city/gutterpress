@@ -54,6 +54,9 @@ export interface PreviewEvent {
     link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
+    /** contextMenuRequested (protocol v8): node handle for a galley-resolved
+     *  target — present INSTEAD of `range` while the galley owns the doc. */
+    galley?: GalleyTargetHandle | null;
     /** contextMenuRequested: viewport point the menu was requested at. */
     x?: number;
     /** contextMenuRequested: viewport point the menu was requested at. */
@@ -106,6 +109,21 @@ export interface ContextTargetSelection {
   chapter: string | null;
 }
 
+/**
+ * Node handle for a target resolved by the galley (protocol v8). Present
+ * instead of `range` whenever the galley owns the document: its PM-rendered
+ * DOM carries no `data-source-range`, and a source splice under a live galley
+ * would be reverted by the document's own next whole-file save. Menu actions
+ * therefore address the NODE and mutate the doc; the galley's save writes the
+ * file.
+ */
+export interface GalleyTargetHandle {
+  /** ProseMirror document position of the addressed node. */
+  pos: number;
+  /** Opaque/raw-block source, when the target is one. */
+  src: string | null;
+}
+
 /** The full payload returned by `getContextTargetAt()` (protocol v4, ADR 0009). */
 export interface ContextTarget {
   kind: ContextTargetKind;
@@ -114,9 +132,17 @@ export interface ContextTarget {
   blockTag: string | null;
   split: boolean;
   rect: PlainRect | null;
-  image: { src: string | null; alt: string | null; source: InlineSourceToken | null } | null;
+  image: {
+    src: string | null;
+    alt: string | null;
+    /** Authored brace attrs (`{.gp-right width=50%}`) — galley targets only. */
+    attrsRaw?: string;
+    source: InlineSourceToken | null;
+  } | null;
   link: { href: string | null; text: string; source: InlineSourceToken | null } | null;
   selection: ContextTargetSelection | null;
+  /** Set only when the galley resolved this target (protocol v8). */
+  galley?: GalleyTargetHandle | null;
 }
 
 /**
@@ -403,6 +429,27 @@ export class PreviewClient {
   /** Resolve what the galley doc holds at a frame-viewport point. */
   galleyTargetAt(point: { x: number; y: number }): Promise<GalleyTarget | null> {
     return this.call<GalleyTarget | null>("galleyTargetAt", [point]);
+  }
+
+  /**
+   * Rewrite an image node's src/alt/authored brace attrs in the galley doc
+   * (protocol v8). This is the galley's replacement for the context menu's
+   * source-token splice: the doc is authoritative while editing, and its own
+   * whole-file save writes the change to disk.
+   */
+  galleySetImageAttrs(spec: {
+    pos: number;
+    src?: string;
+    alt?: string;
+    title?: string | null;
+    attrsRaw?: string;
+  }): Promise<{ ok: boolean }> {
+    return this.call<{ ok: boolean }>("galleySetImageAttrs", [spec]);
+  }
+
+  /** Apply, replace, or (with `href: null`) remove a link in the galley doc. */
+  galleySetLink(spec: { pos?: number; href: string | null }): Promise<{ ok: boolean }> {
+    return this.call<{ ok: boolean }>("galleySetLink", [spec]);
   }
 
   /**

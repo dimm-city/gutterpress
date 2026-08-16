@@ -149,8 +149,43 @@ export interface GalleyEditor {
    *  divergence → suspend until reload). */
   ackContent(chapter: string, ok: boolean, seq?: number, reason?: string): void;
   selectionState(): SelectionPayload;
-  targetAt(x: number, y: number): { kind: string; chapter: string | null; pos: number; src?: string } | null;
+  /**
+   * Context-menu target resolution (protocol v8). Mirrors the v7
+   * `getContextTargetAt` payload — same `kind` precedence (selection → image
+   * → link → marker → block → none) and the same image/link/selection
+   * side-channels — but resolved through the ProseMirror document instead of
+   * `data-source-range`, which the galley's PM-rendered DOM does not carry.
+   * `pos` addresses the node so the host can mutate it via `setImageAttrs` /
+   * `setLink` rather than splicing source text (a source splice under a live
+   * galley would be reverted by the doc's own next whole-file save).
+   */
+  targetAt(x: number, y: number): GalleyContextTarget | null;
+  /** Rewrite an image node's src/alt and its authored brace attrs. */
+  setImageAttrs(
+    pos: number,
+    changes: { src?: string; alt?: string; title?: string | null; attrsRaw?: string },
+  ): boolean;
+  /** Apply/replace the link mark over the current selection (or the link at
+   *  `pos` when the selection is collapsed inside one). `href: null` unlinks. */
+  setLink(spec: { pos?: number; href: string | null }): boolean;
   destroy(): void;
+}
+
+/** Context-menu target — the galley analogue of protocol v7's ContextTarget. */
+export interface GalleyContextTarget {
+  kind: "selection" | "image" | "link" | "marker" | "block" | "none";
+  chapter: string | null;
+  /** Document position of the addressed node (the block for `block`/`marker`,
+   *  the image node for `image`, the link's inline anchor for `link`). */
+  pos: number;
+  /** Node type name — the galley's answer to v7's `blockTag`. */
+  blockTag: string | null;
+  /** Opaque/raw-block source, when the target is one. */
+  src?: string;
+  image?: { src: string; alt: string; title: string | null; attrsRaw: string };
+  link?: { href: string; text: string };
+  selection?: { text: string; chapter: string | null };
+  rect: { top: number; left: number; width: number; height: number } | null;
 }
 
 export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
@@ -596,24 +631,199 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     targetAt(x, y) {
       const found = editor.view.posAtCoords({ left: x, top: y });
       if (!found) return null;
-      const $pos = editor.state.doc.resolve(found.pos);
-      for (let d = $pos.depth; d >= 0; d--) {
-        const n = d === 0 ? editor.state.doc : $pos.node(d);
-        if (n.type.name === "rawBlock" || n.type.name === "image" || n.type.name === "markerWrap") {
+      const { doc } = editor.state;
+      const $pos = doc.resolve(found.pos);
+      const chapter = chapterAtPos(doc, found.pos);
+      const rectOf = (pos: number) => {
+        try {
+          const dom = editor.view.nodeDOM(pos);
+          const el =
+            dom instanceof Element
+              ? dom
+              : dom && (dom as Node).parentElement
+                ? (dom as Node).parentElement!
+                : null;
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { top: r.top, left: r.left, width: r.width, height: r.height };
+        } catch {
+          return null;
+        }
+      };
+
+      // The point's own element decides image/link, exactly as the v7 DOM
+      // walk did — a click lands on the <img>/<a> the author sees, and PM's
+      // position may resolve to the enclosing text block.
+      const pointEl = document.elementFromPoint(x, y);
+
+      // 1. Selection wins (matches the v7 precedence the menu is built for).
+      const sel = editor.state.selection;
+      if (!sel.empty && !(sel instanceof NodeSelection)) {
+        const text = doc.textBetween(sel.from, sel.to, " ");
+        if (text.trim()) {
           return {
-            kind: n.type.name,
-            chapter: chapterAtPos(editor.state.doc, found.pos),
-            pos: d === 0 ? found.pos : $pos.before(d),
-            src: (n.attrs as { src?: string }).src,
+            kind: "selection",
+            chapter,
+            pos: sel.from,
+            blockTag: $pos.parent.type.name,
+            selection: { text, chapter: chapterAtPos(doc, sel.from) },
+            rect: rectOf($pos.before($pos.depth)),
           };
         }
       }
-      const direct = editor.state.doc.nodeAt(found.inside >= 0 ? found.inside : found.pos);
+
+      // 2. Image — resolve the node so its attrs can be rewritten in place.
+      const imgEl = pointEl?.closest?.("img") ?? null;
+      if (imgEl) {
+        const imgPos = editor.view.posAtDOM(imgEl, 0);
+        const node = doc.nodeAt(imgPos);
+        if (node?.type.name === "image") {
+          const a = node.attrs as {
+            src: string;
+            alt: string;
+            title: string | null;
+            gpAttrs?: string;
+          };
+          return {
+            kind: "image",
+            chapter: chapterAtPos(doc, imgPos),
+            pos: imgPos,
+            blockTag: "image",
+            image: {
+              src: a.src ?? "",
+              alt: a.alt ?? "",
+              title: a.title ?? null,
+              attrsRaw: a.gpAttrs ?? "",
+            },
+            rect: rectOf(imgPos),
+          };
+        }
+      }
+
+      // 3. Link — the mark carrying the point. Probe one position INSIDE the
+      // anchor: `posAtDOM(el, 0)` lands on the mark's start boundary, and a
+      // link mark is non-inclusive there, so `marks()` at the boundary comes
+      // back empty and every link would degrade to a plain block.
+      const linkEl = pointEl?.closest?.("a[href]") ?? null;
+      if (linkEl) {
+        const linkPos = editor.view.posAtDOM(linkEl, 0);
+        const inside = Math.min(Math.max(linkPos + 1, 0), doc.content.size);
+        const $link = doc.resolve(inside);
+        const mark = $link.marks().find((m) => m.type.name === "link");
+        if (mark) {
+          const r = (linkEl as HTMLElement).getBoundingClientRect();
+          return {
+            kind: "link",
+            chapter: chapterAtPos(doc, inside),
+            // A position strictly inside the mark, so the host's setLink can
+            // find it again without hitting the same boundary problem.
+            pos: inside,
+            blockTag: "link",
+            link: {
+              href: (mark.attrs as { href: string }).href ?? "",
+              text: (linkEl.textContent ?? "").trim(),
+            },
+            rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          };
+        }
+      }
+
+      // 4/5. Marker wrapper, opaque block, or plain block.
+      for (let d = $pos.depth; d >= 1; d--) {
+        const n = $pos.node(d);
+        if (n.type.name === "markerWrap" || n.type.name === "rawBlock") {
+          const at = $pos.before(d);
+          return {
+            kind: n.type.name === "markerWrap" ? "marker" : "block",
+            chapter,
+            pos: at,
+            blockTag: n.type.name,
+            src: (n.attrs as { src?: string }).src,
+            rect: rectOf(at),
+          };
+        }
+      }
+      const nodeAt = doc.nodeAt(found.inside >= 0 ? found.inside : found.pos);
+      if (nodeAt?.type.name === "rawBlock" || nodeAt?.type.name === "markerAtom") {
+        const at = found.inside >= 0 ? found.inside : found.pos;
+        return {
+          kind: nodeAt.type.name === "markerAtom" ? "marker" : "block",
+          chapter,
+          pos: at,
+          blockTag: nodeAt.type.name,
+          src: (nodeAt.attrs as { src?: string }).src,
+          rect: rectOf(at),
+        };
+      }
+      const blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : found.pos;
       return {
-        kind: direct?.type.name ?? $pos.parent.type.name,
-        chapter: chapterAtPos(editor.state.doc, found.pos),
-        pos: found.pos,
+        kind: "block",
+        chapter,
+        pos: blockPos,
+        blockTag: $pos.parent.type.name,
+        rect: rectOf(blockPos),
       };
+    },
+
+    setImageAttrs(pos, changes) {
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node || node.type.name !== "image") return false;
+      const tr = editor.state.tr;
+      if (changes.src !== undefined) tr.setNodeAttribute(pos, "src", changes.src);
+      if (changes.alt !== undefined) tr.setNodeAttribute(pos, "alt", changes.alt);
+      if (changes.title !== undefined) tr.setNodeAttribute(pos, "title", changes.title);
+      if (changes.attrsRaw !== undefined) tr.setNodeAttribute(pos, "gpAttrs", changes.attrsRaw);
+      if (!tr.steps.length) return false;
+      editor.view.dispatch(tr);
+      return true;
+    },
+
+    setLink(spec) {
+      const linkType = editor.state.schema.marks.link;
+      if (!linkType) return false;
+      const { doc } = editor.state;
+      let { from, to } = editor.state.selection;
+      // Collapsed selection (or an explicit pos): operate on the whole link
+      // run under it, the way every editor's "edit link" behaves.
+      if (from === to) {
+        // Probe `at` and `at + 1`: a caret sitting on the mark's start
+        // boundary reports no link mark (link marks are non-inclusive), so a
+        // boundary-only probe would refuse every edit.
+        const raw = spec.pos ?? from;
+        const clamp = (n: number) => Math.min(Math.max(n, 0), doc.content.size);
+        let $at = doc.resolve(clamp(raw));
+        let mark = $at.marks().find((m) => m.type.name === "link");
+        if (!mark) {
+          $at = doc.resolve(clamp(raw + 1));
+          mark = $at.marks().find((m) => m.type.name === "link");
+        }
+        if (!mark) return false;
+        // Expand to the whole contiguous run carrying the SAME link mark —
+        // "edit link" acts on the link, not on one character of it.
+        const parentStart = $at.start($at.depth);
+        let start = $at.pos;
+        let end = $at.pos;
+        let offset = 0;
+        $at.parent.forEach((child) => {
+          const cFrom = parentStart + offset;
+          const cTo = cFrom + child.nodeSize;
+          offset += child.nodeSize;
+          if (!child.isText || !mark!.isInSet(child.marks)) return;
+          // Adjacent runs of the same mark are one link.
+          if (cTo >= $at.pos && cFrom <= $at.pos) {
+            start = Math.min(start, cFrom);
+            end = Math.max(end, cTo);
+          }
+        });
+        if (start === end) return false;
+        from = start;
+        to = end;
+      }
+      if (from === to) return false;
+      const tr = editor.state.tr.removeMark(from, to, linkType);
+      if (spec.href) tr.addMark(from, to, linkType.create({ href: spec.href, title: null }));
+      editor.view.dispatch(tr);
+      return true;
     },
 
     destroy() {

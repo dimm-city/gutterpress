@@ -129,6 +129,28 @@ export interface ContextMenuDeps {
    * overlay's.
    */
   openBlockOverlay: (chapter: string, range: SourceRange, anchor: { x: number; y: number }) => void;
+  /**
+   * Galley (protocol v8) node edits. While the galley owns the document,
+   * menu actions mutate the DOC, not the file: a source splice would be
+   * reverted by the galley's own next whole-file save. Absent on frames
+   * older than v8, in which case only the range-addressed path runs.
+   */
+  galley?: {
+    setImageAttrs: (spec: {
+      pos: number;
+      src?: string;
+      alt?: string;
+      attrsRaw?: string;
+    }) => Promise<{ ok: boolean }>;
+    setLink: (spec: { pos?: number; href: string | null }) => Promise<{ ok: boolean }>;
+    /** Open the opaque-source editor on a raw block at `pos`. */
+    openOpaqueEditor: (
+      chapter: string,
+      pos: number,
+      src: string,
+      anchor: { x: number; y: number },
+    ) => void;
+  };
 }
 
 export interface ContextMenuItem {
@@ -228,6 +250,11 @@ export class ContextMenuController {
       image: detail.image ?? null,
       link: detail.link ?? null,
       selection: detail.selection ?? null,
+      // Protocol v8: the galley resolves targets against its document and
+      // sends a node handle INSTEAD of a source range. Dropping it here left
+      // every galley target rangeless, so `buildItems` produced no items and
+      // the menu silently never opened.
+      galley: detail.galley ?? null,
     };
 
     const anchor = { x: detail.x ?? 0, y: detail.y ?? 0 };
@@ -334,6 +361,9 @@ export class ContextMenuController {
     target: ContextTarget,
     anchor: { x: number; y: number },
   ): Promise<ContextMenuItem[]> {
+    // Galley targets are node-addressed, not range-addressed — they never
+    // have a `range`, so they must branch before the range guard below.
+    if (target.galley && this.deps.galley) return this.galleyItems(target, anchor);
     if (target.kind === "selection") {
       if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
       return this.crossBlockSelectionItems(target);
@@ -408,6 +438,178 @@ export class ContextMenuController {
     // When !outcome.flushed, buffer.flush() detected an external change and
     // the buffer's OWN conflict banner is already showing (plan §4.7 Step 5)
     // — nothing further to say here.
+  }
+
+  // ── Galley targets (ADR 0011, protocol v8) ─────────────────────────────────
+  /**
+   * The same menu, addressed to the ProseMirror document instead of a source
+   * range. Every attribute helper below is reused verbatim — an image's
+   * authored braces live on the node as `gpAttrs`, the same string the source
+   * token carries, so `tokenizeImageAttrs`/`setSizeClass`/… apply unchanged.
+   * Only the WRITE differs: a doc mutation the galley's save flushes to disk,
+   * rather than a splice that the galley would overwrite.
+   */
+  private galleyItems(
+    target: ContextTarget,
+    anchor: { x: number; y: number },
+  ): ContextMenuItem[] {
+    const galley = this.deps.galley!;
+    const pos = target.galley!.pos;
+
+    if (target.kind === "image" && target.image) {
+      const image = target.image;
+      return [
+        {
+          id: "image-properties",
+          label: "Set properties…",
+          enabled: true,
+          run: async () => {
+            const tokens = tokenizeImageAttrs(image.attrsRaw ?? "");
+            const position = getPositionClass(tokens);
+            const initial: ImagePropertiesValue = {
+              src: image.src ?? "",
+              alt: image.alt ?? "",
+              width: getWidth(tokens),
+              position: position ? normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? "" : "",
+              pinAlignment: getPinAlignment(tokens) ?? "center",
+              size: getSizeClass(tokens) ?? "",
+              spacing: getSpacingClass(tokens) ?? "",
+              shape: hasShapeClass(tokens),
+              layer: getLayerClass(tokens) ?? "",
+            };
+            const next = await this.deps.promptImageProperties(initial);
+            if (next == null) return;
+            const invalid = this.validateImageProperties(next);
+            if (invalid) {
+              this.deps.toastError(invalid);
+              return;
+            }
+            const width = next.width.trim();
+            let updated = tokens;
+            if (width !== initial.width) updated = setWidth(updated, width || null);
+            if (next.position !== initial.position) {
+              updated = setPositionClass(updated, next.position || null);
+            }
+            if (
+              next.position === IMAGE_PIN_CLASS &&
+              (initial.position !== IMAGE_PIN_CLASS || next.pinAlignment !== initial.pinAlignment)
+            ) {
+              updated = setPinAlignment(updated, next.pinAlignment);
+            }
+            if (next.size !== initial.size) updated = setSizeClass(updated, next.size || null);
+            if (next.spacing !== initial.spacing) updated = setSpacingClass(updated, next.spacing || null);
+            if (next.shape !== initial.shape) updated = setShapeClass(updated, next.shape);
+            if (next.layer !== initial.layer) updated = setLayerClass(updated, next.layer || null);
+            const changes: { pos: number; src?: string; alt?: string; attrsRaw?: string } = { pos };
+            if (updated !== tokens) changes.attrsRaw = serializeImageAttrs(updated);
+            if (next.src.trim() !== initial.src) changes.src = next.src.trim();
+            if (next.alt !== initial.alt) changes.alt = next.alt;
+            this.close();
+            if (changes.src === undefined && changes.alt === undefined && changes.attrsRaw === undefined) {
+              return;
+            }
+            const res = await galley.setImageAttrs(changes);
+            if (res.ok) this.deps.toastSuccess("Updated.");
+            else this.deps.toastError("Couldn't update this image.");
+          },
+        },
+        {
+          id: "image-reveal",
+          label: "Reveal in Media panel",
+          enabled: true,
+          run: () => {
+            this.deps.openMediaPanel();
+            this.close();
+          },
+        },
+      ];
+    }
+
+    if (target.kind === "link" && target.link) {
+      const link = target.link;
+      return [
+        {
+          id: "link-edit",
+          label: "Edit link…",
+          enabled: true,
+          run: async () => {
+            const next = await this.deps.promptText({
+              title: "Edit link",
+              label: "Web address",
+              initialValue: link.href ?? "",
+            });
+            if (next == null) return;
+            this.close();
+            const res = await galley.setLink({ pos, href: next });
+            if (!res.ok) this.deps.toastError("Couldn't update this link.");
+          },
+        },
+        {
+          id: "link-remove",
+          label: "Remove link",
+          enabled: true,
+          run: async () => {
+            this.close();
+            const res = await galley.setLink({ pos, href: null });
+            if (!res.ok) this.deps.toastError("Couldn't remove this link.");
+          },
+        },
+        {
+          id: "link-copy",
+          label: "Copy link target",
+          enabled: !!link.href,
+          disabledReason: link.href ? undefined : "No link target to copy.",
+          run: async () => {
+            if (link.href) await this.deps.copyToClipboard(link.href);
+            this.close();
+          },
+        },
+      ];
+    }
+
+    // Opaque/raw block — the one target whose content is still plain source.
+    const src = target.galley!.src;
+    if (src != null) {
+      const chapter = target.chapter;
+      return [
+        {
+          id: "block-edit-source",
+          label: "Edit source…",
+          enabled: !!chapter,
+          disabledReason: chapter ? undefined : "This block has no chapter.",
+          run: () => {
+            if (chapter) galley.openOpaqueEditor(chapter, pos, src, anchor);
+            this.close();
+          },
+        },
+      ];
+    }
+
+    // Plain text block: the caret is already in it — the formatting bubble
+    // owns inline styling, so the menu offers navigation only.
+    return [];
+  }
+
+  /** Shared validation for the image-properties modal (both write paths). */
+  private validateImageProperties(next: ImagePropertiesValue): string | null {
+    if (!next.src.trim()) return "Choose an image path or URL.";
+    const validPosition =
+      !next.position || IMAGE_POSITION_OPTIONS.some((option) => option.class === next.position);
+    const validAlignment = IMAGE_PIN_ALIGNMENT_OPTIONS.some(
+      (option) => option.value === next.pinAlignment,
+    );
+    const validSize = !next.size || IMAGE_SIZE_OPTIONS.some((option) => option.class === next.size);
+    const validSpacing =
+      !next.spacing || IMAGE_SPACING_OPTIONS.some((option) => option.class === next.spacing);
+    const validLayer =
+      !next.layer || IMAGE_LAYER_OPTIONS.some((option) => option.class === next.layer);
+    if (!validPosition || !validAlignment || !validSize || !validSpacing || !validLayer) {
+      return "Choose image options from the lists.";
+    }
+    if (next.width.trim() && next.size) {
+      return "Choose either a custom width or a preset size, not both.";
+    }
+    return null;
   }
 
   // ── Image (plan §4.3–4.4) ───────────────────────────────────────────────────
