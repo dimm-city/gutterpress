@@ -72,10 +72,6 @@ export interface GalleyEditorOptions {
   onSelection(payload: SelectionPayload): void;
   onDirtyChanged(dirty: boolean): void;
   onOpaqueEdit(payload: OpaqueEditPayload): void;
-  /** Debounce for pagination refresh after edits (ms). */
-  refreshDelayMs?: number;
-  /** Debounce for serialization + save emit (ms). */
-  saveDelayMs?: number;
 }
 
 interface ViewerGlobal {
@@ -83,7 +79,7 @@ interface ViewerGlobal {
     root: HTMLElement;
     layoutBracket?: (fn: () => unknown) => Promise<unknown> | unknown;
   }): Promise<unknown>;
-  refresh?: () => void;
+  refresh(): void;
 }
 
 /** Typing `@section ` on an empty paragraph converts it into the marker. */
@@ -192,8 +188,8 @@ export interface GalleyContextTarget {
 }
 
 export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
-  const refreshDelayMs = opts.refreshDelayMs ?? 150;
-  const saveDelayMs = opts.saveDelayMs ?? 500;
+  const refreshDelayMs = 150;
+  const saveDelayMs = 500;
 
   // ── shared state ──────────────────────────────────────────────────────────
   const srcMap = new WeakMap<PMNode, string>();
@@ -382,8 +378,8 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
 
   async function refreshViewer(): Promise<void> {
     const g = (window as unknown as { Gutterpress?: ViewerGlobal }).Gutterpress;
-    if (!g?.refresh) return;
-    await withFragmenter(() => g.refresh!());
+    if (!g) return;
+    await withFragmenter(() => g.refresh());
     stampChromeUneditable();
     // Re-assert the DOM selection after the fragmenter moved nodes around —
     // the state's selection is authoritative and the text nodes survived.
