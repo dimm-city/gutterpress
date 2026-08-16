@@ -1041,11 +1041,20 @@
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
-      if (prop === "break-before" && !el.previousElementSibling)
-        continue;
+      let site = el;
+      if (prop === "break-before") {
+        while (!site.previousElementSibling) {
+          const parent = site.parentElement;
+          if (!parent || parent === strip || !strip.contains(parent))
+            break;
+          site = parent;
+        }
+        if (!site.previousElementSibling)
+          continue;
+      }
       if (prop === "break-after" && !el.nextElementSibling)
         continue;
-      const rects = Array.from(el.getClientRects());
+      const rects = Array.from(site.getClientRects());
       const rect = prop === "break-after" ? rects.at(-1) : rects[0];
       if (!rect)
         continue;
@@ -1066,7 +1075,7 @@
       if (prop === "break-after")
         el.after(spacer);
       else
-        el.before(spacer);
+        site.before(spacer);
     }
   }
   function directPageName(el, model) {

@@ -426,7 +426,15 @@ async function main() {
   const reports: FixtureReport[] = [];
   try {
     for (const dir of fixtures) {
-      const name = dir.replace(/\/+$/, "").split("/").pop()!;
+      // Qualify with the parent when the leaf is a generic container name:
+      // css-authoring-spike/book and gp-image-positioning/book both end in
+      // "book", which made them share a staging dir (second run inherits the
+      // first's leftover assets) and report under one indistinguishable
+      // label — and KNOWN_DIVERGENCES matches on this name, so one entry
+      // would have silently excused both fixtures.
+      const parts = dir.replace(/\/+$/, "").split("/");
+      const leaf = parts.pop()!;
+      const name = leaf === "book" ? `${parts.pop()}/${leaf}` : leaf;
       console.log(`\n== ${name} (${dir})`);
       try {
         const report = await runFixture(browser, name, dir, AGENT, VIEWER);

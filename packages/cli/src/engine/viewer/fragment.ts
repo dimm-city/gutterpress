@@ -204,15 +204,27 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
-    // A forced page break is only valid between sibling boxes in the same
-    // fragmentation flow. When the site's preceding sibling is absent, CSS
-    // Break §3 has no break opportunity there — Chromium print ignores the
-    // declaration. The common real shape is a final `.page` nested inside a
-    // chapter/section shell whose previous authored page is outside that
-    // immediate container. Do not manufacture a screen-only page for it.
-    if (prop === "break-before" && !el.previousElementSibling) continue;
+    // CSS Fragmentation 3 §3.3: a forced `break-before` on a first in-flow
+    // child propagates to its parent, recursively. Chromium print does this
+    // (css-authoring-spike's `.page`, sole child of `.chapter#ch-tides`,
+    // opens p3), so break at the outermost box `el` still leads — using it
+    // for the geometry too, since its margin/border-top moves with it.
+    // Reaching the strip's leading chain means nothing precedes the break:
+    // spec-ignorable, already neutralized by clearLeadingForcedBreaks().
+    let site: Element = el;
+    if (prop === "break-before") {
+      while (!site.previousElementSibling) {
+        const parent = site.parentElement;
+        if (!parent || parent === strip || !strip.contains(parent)) break;
+        site = parent;
+      }
+      if (!site.previousElementSibling) continue;
+    }
+    // break-after keeps the strict sibling rule — propagation is symmetric
+    // in the spec but no fixture exercises it, and a manufactured trailing
+    // page is the failure this guard exists to prevent.
     if (prop === "break-after" && !el.nextElementSibling) continue;
-    const rects = Array.from(el.getClientRects());
+    const rects = Array.from(site.getClientRects());
     const rect = prop === "break-after" ? rects.at(-1) : rects[0];
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
@@ -227,7 +239,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
     if (prop === "break-after") el.after(spacer);
-    else el.before(spacer);
+    else site.before(spacer);
   }
 }
 
