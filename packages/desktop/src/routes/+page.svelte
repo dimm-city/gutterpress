@@ -2084,10 +2084,10 @@
 
   const contextMenu = new ContextMenuController({
     client: () => client,
-    // v8 (galley) frames resolve the target through the ProseMirror document
-    // (galleyTargetAt) and carry a `galley: {pos}` handle instead of a source
-    // range; the `galley` deps below apply those edits to the doc. v7 and
-    // earlier keep the data-source-range path. One menu, two write paths.
+    // The target resolves through the ProseMirror document (galleyTargetAt)
+    // and carries a `galley: {pos}` handle; the `galley` deps below apply the
+    // edit to the doc. Editing the file directly would be reverted by the
+    // doc's own next save, so this is the only write path.
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
     getIframeOrigin: () => {
