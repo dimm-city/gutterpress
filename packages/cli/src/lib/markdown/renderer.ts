@@ -35,6 +35,7 @@ import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
 import { registerInlineSourceMetadata } from "./inline-source";
+import { registerInlineOffsets } from "./inline-offsets";
 
 /**
  * Plugin author API.
@@ -187,6 +188,16 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // the final token stream even when a user plugin pushed its own core rule.
   // See docs/inline-editing-plan.md §2.2 / ADR 0009.
   md.core.ruler.push("source_range", sourceRangeRule);
+
+  // Inline-level source coordinates (data-gp-source-offsets) — the per-block
+  // rendered->source map that turns a caret offset inside a rendered block
+  // into a character-range patch. Registered LAST, after `source_range`, for
+  // two reasons: it must see the final token stream (same reason
+  // `source_range` is registered after the plugin block), and appending its
+  // attribute last keeps `data-source-range` in its established position in
+  // the rendered tag, which the source-range wire-contract tests assert on
+  // literally.
+  registerInlineOffsets(md);
 
   return md;
 }
