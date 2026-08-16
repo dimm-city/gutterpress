@@ -204,15 +204,15 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
-    // A forced page break is only valid between sibling boxes in the same
-    // fragmentation flow. When the site's preceding sibling is absent, CSS
-    // Break §3 has no break opportunity there — Chromium print ignores the
-    // declaration. The common real shape is a final `.page` nested inside a
-    // chapter/section shell whose previous authored page is outside that
-    // immediate container. Do not manufacture a screen-only page for it.
-    if (prop === "break-before" && !el.previousElementSibling) continue;
-    if (prop === "break-after" && !el.nextElementSibling) continue;
-    const rects = Array.from(el.getClientRects());
+    // A forced break is only valid BETWEEN boxes, but when the declaring box
+    // has no adjacent in-flow sibling the break propagates outward rather than
+    // vanishing (CSS Fragmentation 3 §3.3 — see `effectiveBreakSite`, whose
+    // doc comment carries the Chromium measurement). Reserve against the box
+    // the break actually acts on; `null` means it reached the flow root, where
+    // there genuinely is no break opportunity.
+    const site = effectiveBreakSite(el, prop, strip);
+    if (!site) continue;
+    const rects = Array.from(site.getClientRects());
     const rect = prop === "break-after" ? rects.at(-1) : rects[0];
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
@@ -226,9 +226,52 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     spacer.className = "gp-column-break-spacer";
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
-    if (prop === "break-after") el.after(spacer);
-    else el.before(spacer);
+    // Insert at the propagated site, so the reserve lands OUTSIDE any wrapper
+    // the break climbed out of — inserting before `el` would put it inside the
+    // wrapper, below the wrapper's own top edge, and reserve the wrong gap.
+    if (prop === "break-after") site.after(spacer);
+    else site.before(spacer);
   }
+}
+
+/**
+ * The element a forced break actually acts on.
+ *
+ * CSS Fragmentation 3 §3.3: a forced break on a box with no preceding (resp.
+ * following) in-flow sibling PROPAGATES to its parent, and keeps propagating
+ * until it reaches a box that has one — or the fragmentation root, where it
+ * IS genuinely ignored because there is no break opportunity at the very
+ * start (resp. end) of the flow.
+ *
+ * MEASURED against Chromium 153 print: a `.page { break-before: page }` that
+ * is the first child of a `.chapter` wrapper — the `@chapter` → `@page`
+ * marker shape, the single most common structure in a Gutterpress book —
+ * DOES break in the PDF, one and two levels deep alike, and stops breaking
+ * only when the site is the very first thing in the flow:
+ *
+ *   no break (control)          1pp
+ *   sibling before the site     2pp
+ *   first child of a wrapper    2pp   ← propagates
+ *   first child, nested twice   2pp   ← propagates
+ *   very first box in the flow  1pp   ← genuinely ignored
+ *
+ * This function previously did not exist: the caller skipped any site with no
+ * previous element sibling outright, on the stated grounds that "Chromium
+ * print ignores the declaration". It does not, and that cost the viewer one
+ * page per occurrence — a divergence invisible while the parity gate ran
+ * nowhere (`docs/fixtures/css-authoring-spike/book`: print 7pp, viewer 6pp).
+ */
+function effectiveBreakSite(el: Element, prop: string, strip: HTMLElement): Element | null {
+  const adjacent = (n: Element) =>
+    prop === "break-after" ? n.nextElementSibling : n.previousElementSibling;
+  let node: Element = el;
+  while (!adjacent(node)) {
+    const parent = node.parentElement;
+    // At the strip (the fragmentation root) there is no break opportunity.
+    if (!parent || parent === strip || !strip.contains(parent)) return null;
+    node = parent;
+  }
+  return node;
 }
 
 /** Named page assigned directly ON `el` itself (not a descendant). */

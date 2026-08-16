@@ -1041,11 +1041,10 @@
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
-      if (prop === "break-before" && !el.previousElementSibling)
+      const site = effectiveBreakSite(el, prop, strip);
+      if (!site)
         continue;
-      if (prop === "break-after" && !el.nextElementSibling)
-        continue;
-      const rects = Array.from(el.getClientRects());
+      const rects = Array.from(site.getClientRects());
       const rect = prop === "break-after" ? rects.at(-1) : rects[0];
       if (!rect)
         continue;
@@ -1064,10 +1063,21 @@
       spacer.setAttribute("aria-hidden", "true");
       spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
       if (prop === "break-after")
-        el.after(spacer);
+        site.after(spacer);
       else
-        el.before(spacer);
+        site.before(spacer);
     }
+  }
+  function effectiveBreakSite(el, prop, strip) {
+    const adjacent = (n) => prop === "break-after" ? n.nextElementSibling : n.previousElementSibling;
+    let node = el;
+    while (!adjacent(node)) {
+      const parent = node.parentElement;
+      if (!parent || parent === strip || !strip.contains(parent))
+        return null;
+      node = parent;
+    }
+    return node;
   }
   function directPageName(el, model) {
     for (const a of model.pageAssignments) {
