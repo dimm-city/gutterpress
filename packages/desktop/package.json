@@ -24,7 +24,6 @@
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",
-    "test:inline:packaged": "node tests/integration/inline-editing.pw.mjs --require-packaged",
     "perf-gate": "node tests/perf/render-gate.mjs",
     "rerender-gate": "node tests/perf/rerender-latency-gate.mjs",
     "rerender-ci": "node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000",

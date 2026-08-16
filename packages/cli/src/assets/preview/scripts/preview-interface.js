@@ -317,31 +317,9 @@
     return null;
   }
 
-  // ── Context-menu target resolution (protocol v4) ────────────────────────────
-  // docs/inline-editing-plan.md §3.1 / ADR 0009. getContextTargetAt() is the
-  // single resolution routine shared by the public previewAPI member and both
-  // event listeners below (contextmenu + keyboard) — see that doc for the
-  // exact kind-precedence contract implemented here.
-  var LAYOUT_MARKER_CLASSES = ['chapter', 'spread', 'page', 'section', 'gp-page-break', 'gp-column-break'];
-
   function elementOf(node) {
     if (!node) return null;
     return node.nodeType === 1 ? node : (node.parentElement || null);
-  }
-
-  // Fence gotcha (§2.6): markdown-it's default fence renderer puts token
-  // attrs on the inner <code>, never the <pre> wrapper — a click on the code
-  // block's padding hits <pre>'s box, which never carries data-source-range.
-  // Prefer an annotated <code> child over climbing to a coarser ancestor.
-  function fenceCodeChild(el) {
-    if (!el || !el.tagName || el.tagName.toLowerCase() !== 'pre' || !el.children) return null;
-    for (var i = 0; i < el.children.length; i++) {
-      var c = el.children[i];
-      if (c.tagName && c.tagName.toLowerCase() === 'code' && c.getAttribute && c.getAttribute('data-source-range')) {
-        return c;
-      }
-    }
-    return null;
   }
 
   // Plain, JSON-cloneable rect — the payload crosses two postMessage
@@ -408,25 +386,6 @@
     var rect = el ? plainRect(el) : null;
     if (!rect) return { x: 0, y: 0 };
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  }
-
-  // ── Block-overlay geometry + masking (protocol v6) ──────────────────────────
-  // docs/inline-editing-plan.md §5.3 / ADR 0009. A block split across pages
-  // exists as MULTIPLE DOM fragments that duplicate every data attribute
-  // (§3.5's split-fragment gotcha applies here too) — `data-source-range` is
-  // duplicated onto every fragment identically, so `{chapter, range}` groups
-  // them (protocol v5 dropped `data-ref` from the wire contract entirely: the
-  // native viewer never mints one at all — it never clones, so there is
-  // nothing to give a shared identity to — and a source range already
-  // uniquely identifies one block).
-
-  function rangedBlocks() {
-    return Array.from(document.querySelectorAll('[data-source-range]'));
-  }
-
-  function rangedBlocksInChapter(chapter) {
-    if (!chapter) return rangedBlocks();
-    return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
   }
 
   var api = {

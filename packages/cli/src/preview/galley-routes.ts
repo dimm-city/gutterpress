@@ -1,7 +1,7 @@
 /**
  * Galley editor routes (preview-interface protocol v8).
  *
- * Three same-origin endpoints served alongside `/__chapter` by the preview
+ * Three same-origin endpoints served by the preview
  * HTTP server (http-server.ts dispatches every `/__galley/*` path here):
  *
  *   GET  /__galley/book                   → { chapters: [{ chapter, source, tokens }] }

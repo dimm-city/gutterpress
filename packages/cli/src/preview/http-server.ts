@@ -25,7 +25,7 @@ import {
 } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
-import { incrementalPreviewEnabled, renderChapterPreviewHtml } from './file-watcher.ts';
+import { incrementalPreviewEnabled } from './file-watcher.ts';
 import { handleGalleyRequest } from './galley-routes.ts';
 import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
@@ -629,48 +629,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Render one source file — the inline-edit drift verifier's endpoint
-    //    (ADR 0010): the frame fetches the chapter's authoritative render
-    //    here, diffs it per block against the live DOM, and heals only what
-    //    drifted. The splice-era revision handshake is gone with the splice:
-    //    the verifier always wants the CURRENT render, and a race with a
-    //    concurrent rebuild self-corrects on the next verify pass.
-    if (url.pathname === '/__chapter' && req.method === 'GET') {
-      const rawFile = url.searchParams.get('file');
-      const file = rawFile ? canonicalChapterId(rawFile) : '';
-      const configuredFiles = state.config.source?.files;
-      if (
-        !file ||
-        !state.currentInputPath ||
-        path.extname(file).toLowerCase() !== '.md' ||
-        hasDotSegment(file) ||
-        !resolveWithinRoot(file, state.currentInputPath) ||
-        (Array.isArray(configuredFiles) && configuredFiles.length > 0 &&
-          !configuredFiles.some((configured) => canonicalChapterId(configured) === file))
-      ) {
-        res.writeHead(400);
-        res.end('Bad Request');
-        return;
-      }
-      try {
-        const html = await renderChapterPreviewHtml(
-          state.currentInputPath,
-          file,
-          state.config,
-        );
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(html);
-      } catch (error) {
-        res.writeHead(500);
-        res.end(error instanceof Error ? error.message : String(error));
-      }
-      return;
-    }
-
-    // 3b. Galley editor routes (preview-interface protocol v8): the frame
+    // 3. Galley editor routes (preview-interface protocol v8): the frame
     //     editor's source-of-truth endpoints — book source + tokens,
     //     tokenization, fragment rendering — all through THE SAME markdown-it
     //     configuration as the preview render path. See ./galley-routes.ts.

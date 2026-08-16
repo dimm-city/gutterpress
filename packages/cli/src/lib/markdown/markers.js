@@ -9,7 +9,7 @@
  * never consumed from npm (no dependency, ever), and carried four feature
  * clusters upstream has none of, all of them Gutterpress-specific:
  *
- *   - `data-source-range` threading for the desktop editor (ADR 0009)
+ *   - `data-chapter-src` threading for the preview frame
  *   - `data-chapter-label` propagation and `.chapter-opener` injection
  *   - `env.__colSplitDepth` per-render state
  *   - the emitted-class contract the viewer and preview depend on
@@ -945,18 +945,13 @@ export default function plugin(md, pluginOptions = {}) {
       // everything attribute-unsafe (e.g. a `'`-quoted class=value can still
       // carry a literal `"` through, see markers.test.ts).
       //
-      // data-source-range (set by the source_range core rule, which runs
-      // BEFORE render — see source-range.ts) is threaded through explicitly:
-      // this branch bypasses self.renderToken()/renderAttrs, so any attr not
-      // named here is silently dropped from output. Without this, a
-      // col-split section with a @column-break would be un-targetable by
-      // the context menu's "marker" kind (plan §3.1) even though its
-      // wrapper token IS annotated internally.
-      const rangeAttr = token.attrGet('data-source-range');
-      const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
+      // data-chapter-src (set by the source_chapter core rule, which runs
+      // BEFORE render — see source-chapter.ts) is threaded through
+      // explicitly: this branch bypasses self.renderToken()/renderAttrs, so
+      // any attr not named here is silently dropped from output.
       const chapterAttr = token.attrGet('data-chapter-src');
       const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-      return `<div class="${escapeAttr(cls)}"${rangeHtml}${chapterHtml}><div class="col">\n`;
+      return `<div class="${escapeAttr(cls)}"${chapterHtml}><div class="col">\n`;
     }
 
     return self.renderToken(tokens, idx, opts);
@@ -975,22 +970,15 @@ export default function plugin(md, pluginOptions = {}) {
   // 'gp-column-break') today, never author input, but escapeAttr is applied
   // here too so this stays safe if that ever changes.
   //
-  // data-source-range (set by the source_range core rule, which runs BEFORE
-  // render — see source-range.ts) is threaded through explicitly in both
+  // data-chapter-src (set by the source_chapter core rule, which runs BEFORE
+  // render — see source-chapter.ts) is threaded through explicitly in both
   // rules below: this custom renderer bypasses self.renderToken()/
-  // renderAttrs, so any attr not named here is silently dropped from
-  // output. Without this, @page-break / @column-break markers would be
-  // un-targetable by the context menu's "marker" kind (plan §3.1's kind
-  // precedence explicitly includes "layout wrapper/break") even though
-  // this module threads token.meta.line onto them for exactly this
-  // purpose.
+  // renderAttrs, so any attr not named here is silently dropped.
   md.renderer.rules.layout_page_break = (tokens, idx) => {
     const cls = tokens[idx].attrGet('class') || 'gp-page-break';
-    const rangeAttr = tokens[idx].attrGet('data-source-range');
-    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
     const chapterAttr = tokens[idx].attrGet('data-chapter-src');
     const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${chapterHtml}></div>\n`;
   };
 
   md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
@@ -998,11 +986,9 @@ export default function plugin(md, pluginOptions = {}) {
       return `</div><div class="col">\n`;
     }
     const cls = tokens[idx].attrGet('class') || 'gp-column-break';
-    const rangeAttr = tokens[idx].attrGet('data-source-range');
-    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
     const chapterAttr = tokens[idx].attrGet('data-chapter-src');
     const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${chapterHtml}></div>\n`;
   };
 
   // layout_marker tokens are transformed away in the core rule

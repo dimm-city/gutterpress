@@ -199,24 +199,6 @@ export async function generateAndWriteHtml(
   );
 }
 
-/**
- * Render one source file with the same CSS, plugins, and source metadata as
- * the full book. Serves `/__chapter` — the inline-edit drift verifier's
- * endpoint (ADR 0010). The result is parsed with DOMParser, never executed,
- * so no preview scripts are injected (the splice-era shell consumer that
- * needed them is gone).
- */
-export async function renderChapterPreviewHtml(
-  inputPath: string,
-  file: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
-): Promise<string> {
-  return renderPreviewBook(inputPath, config, {
-    files: [canonicalChapterId(file)],
-    wrapChapters: true,
-  });
-}
-
 /** One changed project file, named for the preview broadcast decision. */
 export interface ChangedFile {
   relativePath: string;
