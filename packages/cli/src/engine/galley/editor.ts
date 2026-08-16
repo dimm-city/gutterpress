@@ -174,7 +174,7 @@ export interface GalleyEditor {
   destroy(): void;
 }
 
-/** Context-menu target — the galley analogue of protocol v7's ContextTarget. */
+/** Context-menu target — the galley analogue of the pre-galley ContextTarget. */
 export interface GalleyContextTarget {
   kind: "selection" | "image" | "link" | "marker" | "block" | "none";
   chapter: string | null;

@@ -490,23 +490,11 @@
     // ── ADR 0005 generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
-    // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
-    // {ref} form entirely — {chapter, range} is the only target shape now
-    // (the native viewer never mints a ref — it never clones).
-    // v7 (ADR 0010, superseded): the patch-proposal edit lifecycle
-    // (ackEditPatches / verifyChapter / flushEditState + editPatches /
-    // editDrift events) — removed with the edit module it drove.
-    // v8 (ADR 0011): the Galley editor — one ProseMirror editor over the
-    // whole book (window.GutterpressGalley, preview-only bundle). Commands
-    // setEditMode / getSelectionState / applyInlineFormat carry over with
-    // their v7 shapes; galleyInsertMarkdown / galleySetOpaqueSource /
-    // galleySaveNow / galleyTargetAt are new; events editSelection /
-    // editStateChanged carry over, galleyContent / galleyOpaqueEdit are new.
-    // v9: the range-addressed surface is gone — getRectsFor()/setEditMask()
-    // and the `data-source-range` target resolver went with the pre-galley
-    // editing surface. getContextTargetAt() now answers only while the
-    // galley is editing, and its payload carries `galley: {pos}` instead of
-    // `range`.
+    // v9 (ADR 0011) is the Galley editor: one ProseMirror editor over the
+    // whole book (window.GutterpressGalley, preview-only bundle). Targets are
+    // document positions — getContextTargetAt() answers only while the galley
+    // is editing and its payload carries `galley: {pos}`. Versions before v9
+    // addressed edits by source range; that surface no longer exists.
     getProtocolVersion: function () { return 9; },
 
     // ── protocol v9: galley editing (ADR 0011) ─────────────────────────────

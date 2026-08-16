@@ -23,7 +23,7 @@
  * complete no matter what.
  *
  * Events out (window CustomEvents, forwarded by preview-bridge):
- *   editSelection, editStateChanged  — same names/shapes as protocol v7
+ *   editSelection, editStateChanged  — same names/shapes as the pre-galley protocol
  *   galleyContent {chapter, markdown, expected} — whole-file save proposals
  *   galleyOpaqueEdit {chapter, pos, src, rect} — source-edit request
  */
