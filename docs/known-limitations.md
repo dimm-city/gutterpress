@@ -134,3 +134,55 @@ If you find print output that contradicts the CSS Paged Media spec:
 
 Do not fix it in a shim. See
 [`CLAUDE.md`](../CLAUDE.md) — "What Gutterpress is — and what the engine is not".
+
+## Preview/PDF parity: the user guide is one page long in the viewer
+
+`examples/gutterpress-user-guide` fragments to **65 pages in the on-screen
+viewer and 64 in the PDF**, producing 77 divergences in
+`scripts/native-parity-gate.ts`. Every other fixture — book-01, book-02, the
+design guide, css-authoring-spike, gp-image-positioning — is at 0 divergences,
+so this is one book and one break, not a systemic drift.
+
+**It is deliberately NOT in `KNOWN_DIVERGENCES`.** That allowlist matches on
+`(fixture, kind)` and would excuse every future divergence of that kind in that
+book, including ones nobody has looked at. The CI `parity` job is red until
+this is fixed, and a red gate that names a real defect is worth more than a
+green one that has been told to ignore it.
+
+### What is known
+
+- The viewer and print agree exactly up to heading 9 ("Reference: Manifest
+  Configuration", page 7 in both). The viewer inserts one extra break before
+  heading 10 ("Page Size Reference"): print puts it on page 8, the viewer on
+  page 9. Every later divergence is that same constant +1 — nothing
+  accumulates.
+- Not blank-page synthesis: `blankPages` is 0 and `blankPageIndices` empty.
+- Not the repeated-table-header compensation: running with
+  `compensateHeaders: false` reproduces 65pp unchanged.
+- Not a monolithic box overflowing its page: no `<pre>` in the book exceeds
+  75% of the 876px content height.
+- The region between the two headings is long YAML code fences.
+
+### The finding that matters most
+
+`guide.css` sets `pre { overflow: hidden }`, whose comment says it is there to
+"allow code blocks to flow across pages". It does the opposite — per CSS
+Fragmentation, an `overflow` other than `visible` makes the box **monolithic**,
+so code blocks cannot break at all.
+
+That accident is load-bearing. Measured both ways:
+
+| `pre { overflow: hidden }` | viewer | print |
+|---|---|---|
+| present (today) | 65pp | 64pp |
+| removed | 64pp | 54pp |
+
+So the two fragmenters agree on this book *because* code blocks are
+unbreakable; let them fragment and multicol and paged media disagree by ten
+pages. Removing the declaration is therefore not the fix, and any future change
+that makes code blocks breakable needs this measured again first.
+
+The residual +1 is a genuine Chromium multicol-vs-paged break-avoidance
+difference. Per CLAUDE.md ("Chrome wins once it ships… file upstream Chromium
+bugs; do not maintain corrective shims") the resolution is an upstream report
+plus a minimal reduction, not another compensation pass in `fragment.ts`.
