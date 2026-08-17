@@ -27,3 +27,23 @@ export type {
 } from "./lib/markdown/renderer";
 
 export { MARKER_CSS } from "./lib/markdown/markers.js";
+
+/**
+ * Page geometry, for anything that needs to lay content out at the real
+ * printed page size without running the paginator.
+ *
+ * `engine/shared/gcpm-extract.ts` has ZERO imports — it is a self-contained
+ * CSS reader — so exposing it here costs the render subpath nothing and is
+ * enforced by `scripts/check-render-pure.mjs` like everything else on this
+ * entry. The rich-text editor uses `resolvePage()` to size its CSS-paginated
+ * columns from the author's own `@page` rules, so the editing surface and the
+ * PDF derive their geometry from one source rather than two.
+ */
+export { extract, resolvePage, parseSize, mediaPrintBodies } from "./engine/shared/gcpm-extract";
+export type {
+  BreakDecl,
+  GcpmModel,
+  PageAssignment,
+  PageGeometry,
+  PageRule,
+} from "./engine/shared/gcpm-extract";
