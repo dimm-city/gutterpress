@@ -237,7 +237,7 @@ Each layout marker emits a predictable CSS class that you can style. This mirror
 | `@page-break` | `<div class="gp-page-break">` (no page wrapper) | `.gp-page-break` |
 | `@section` | `<div class="section">` | `.section` |
 | `@continue` | `<div class="section gp-continued">` | `.section.gp-continued` |
-| `@column-break` | `<div class="gp-column-break">` (or a `.col` boundary inside `.col-split`) | `.gp-column-break` |
+| `@column-break` | `<div class="gp-column-break">` | `.gp-column-break` |
 
 Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.gp-page-break`, never `.md-break`.
 

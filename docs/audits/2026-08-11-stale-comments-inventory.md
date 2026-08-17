@@ -113,6 +113,33 @@ Paged.js compatibility is that plugin's advertised scope. Gutterpress dropping P
 
 **One genuine question inside that file**, which is a *code* question rather than a comment question: `.col-split` emits explicit `<div class="col">` wrappers because Paged.js stripped `break-after: column`. If native honours the property, Gutterpress may no longer need the wrapper path. Worth measuring — it is not a comment fix.
 
+> **ANSWERED and ACTIONED, 2026-08-17.** Measured on Chromium 153 against a
+> deliberately lopsided 5-then-1 split inside a 2-column box, so that automatic
+> balancing would be visibly different from a fixed split:
+>
+> | variant | left paragraphs in col 1 / col 2 | right paragraph |
+> |---|---|---|
+> | explicit `.col` wrappers (the old path) | 5 / 0 | col 2 |
+> | native `break-after: column`, no wrappers | 5 / 0 | col 2 |
+> | no split at all (control) | 3 / 2 | col 2 |
+>
+> Native reproduces the fixed split exactly, and the control confirms the
+> comparison discriminates. The wrapper path was removed: `markers.js` lost the
+> `.col` emission, the `hasColumnBreak` precompute and `env.__colSplitDepth`,
+> and with them the `layout_chapter_open` / `layout_page_open` /
+> `layout_section_open` / `layout_section_close` renderer rules, which existed
+> only to service it and are now plain `renderToken` fallbacks.
+>
+> A second, stronger claim was also found to be false along the way —
+> `toolbar-actions.ts` asserted that "plain CSS multicol does not create the
+> explicit left/right wrappers the fixed split needs". A fixed split needs a
+> forced BREAK, not wrappers. That snippet emitted `@section .col-split`, which
+> never set `column-count` at all, so it only appeared to work because the
+> wrapper path faked the columns; it now emits the core `.gp-columns-2`.
+>
+> `.col-split` survives as an inert author class: `@section .two-column
+> .col-split` still produces the same fixed split, now via the native property.
+
 ---
 
 ## Recommended handling

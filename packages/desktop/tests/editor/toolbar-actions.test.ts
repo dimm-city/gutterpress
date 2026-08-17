@@ -469,15 +469,21 @@ test("applySectionBlock: inserts the @section/@end-section pair with cursor on t
   expect(v.state.doc.lineAt(sel.from).text).toBe("");
 });
 
-test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break creates a fixed authored split", () => {
+test("applyTwoColumnBlock: uses the core .gp-columns-2 utility so @column-break creates a fixed authored split", () => {
   const v = makeMockView("before");
   applyTwoColumnBlock(v as unknown as EditorView);
   const doc = getDoc(v);
-  expect(doc).toContain("@section .col-split");
+  // Was `.col-split`, which made the renderer emit explicit <div class="col">
+  // wrappers (a Paged.js-era workaround, removed 2026-08-17) and which never
+  // set `column-count` itself. `.gp-columns-2` is the core column utility
+  // (gutterpress-css.ts:195); the fixed split now comes from
+  // `@column-break`'s native `break-after: column`.
+  expect(doc).toContain("@section .gp-columns-2");
+  expect(doc).not.toContain("col-split");
   expect(doc).toContain("@column-break");
   expect(doc).toContain("@end-section");
   // Marker order: section open, column-break, section close.
-  expect(doc.indexOf("@section .col-split")).toBeLessThan(doc.indexOf("@column-break"));
+  expect(doc.indexOf("@section .gp-columns-2")).toBeLessThan(doc.indexOf("@column-break"));
   expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-section"));
 });
 

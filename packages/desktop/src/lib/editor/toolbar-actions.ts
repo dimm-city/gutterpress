@@ -412,13 +412,24 @@ export function applySectionBlock(view: EditorView): void {
   });
 }
 
-/** A working two-column section. `.col-split` (not bare `.two-column`) is
- *  required because `@column-break` is structural within that authoring
- *  primitive; plain CSS multicol does not create the explicit left/right
- *  wrappers the fixed split needs. */
+/** A working two-column section with a fixed, authored split.
+ *
+ *  Emits the CORE column utility `.gp-columns-2` (gutterpress-css.ts:195),
+ *  not `.col-split`. `.col-split` used to make the renderer emit explicit
+ *  `<div class="col">` wrappers because Paged.js stripped
+ *  `break-after: column`; that path was removed 2026-08-17 after measuring
+ *  that native `break-after: column` reproduces the fixed split exactly
+ *  (5/0 with a forced break vs 3/2 when balancing, Chromium 153).
+ *
+ *  The old comment here claimed "plain CSS multicol does not create the
+ *  explicit left/right wrappers the fixed split needs" — that was wrong. A
+ *  fixed split needs a forced BREAK, not wrappers, and `@column-break`
+ *  already emits `.gp-column-break { break-after: column }`. `.col-split`
+ *  alone also never set `column-count`, so this snippet only appeared to
+ *  work because the wrapper path faked the columns. */
 export function applyTwoColumnBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
-  const prefix = "\n\n@section .col-split\n";
+  const prefix = "\n\n@section .gp-columns-2\n";
   const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
   const cursorPos = insertAt + prefix.length;
   view.dispatch({
@@ -461,7 +472,7 @@ export interface LayoutBlockItem {
 export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "chapter", label: "Chapter", detail: "@chapter — wraps content, auto chapter-opener" },
   { kind: "section", label: "Section", detail: "@section … @end-section — keeps content together" },
-  { kind: "two-column", label: "Two columns", detail: "@section .col-split … @column-break … @end-section" },
+  { kind: "two-column", label: "Two columns", detail: "@section .gp-columns-2 … @column-break … @end-section" },
   { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
