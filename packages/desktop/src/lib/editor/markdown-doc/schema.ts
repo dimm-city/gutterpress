@@ -106,8 +106,23 @@ const tableNodes: Record<string, NodeSpec> = {
     toDOM: (n) => ["th", n.attrs.align ? { style: `text-align:${n.attrs.align}` } : {}, 0] },
 };
 
+/**
+ * `markdown-it-attrs` braces, kept on the nodes that actually carry them.
+ *
+ * Measured across the first-party corpus: 18 heading ids and 10 image classes.
+ * Without this they were silently dropped on save — see `attrs.ts`. The value
+ * is the author's attribute map; `attrsToBraces()` turns it back into
+ * `{.gp-bleed}` / `{#custom-id}` on serialize.
+ */
+const withAttrs = (spec: NodeSpec): NodeSpec => ({
+  ...spec,
+  attrs: { ...(spec.attrs ?? {}), attrs: { default: null } },
+});
+
 export const gutterpressSchema = new Schema({
   nodes: base.spec.nodes
+    .update("image", withAttrs(base.spec.nodes.get("image")!))
+    .update("heading", withAttrs(base.spec.nodes.get("heading")!))
     .append(tableNodes)
     .append({
       gp_chapter: layoutWrapper(),

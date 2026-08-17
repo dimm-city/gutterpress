@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { canEditRichly, createEditorRenderer, isFixpoint } from "../../src/lib/editor/markdown-doc";
+import { canEditRichly, createEditorRenderer, isFixpoint, normalize } from "../../src/lib/editor/markdown-doc";
 
 /**
  * The corpus gate.
@@ -84,6 +84,80 @@ describe("corpus", () => {
       console.log(`    ${String(n).padStart(3)} refused by: ${cause}`);
     }
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * THE GATE THAT ACTUALLY CATCHES CONTENT LOSS.
+   *
+   * The fixpoint test below is necessary but NOT sufficient, and shipping
+   * proved it: `markdown-it-attrs` braces were being dropped —
+   * `![Art](art.jpg){.gp-bleed}` came back as `![Art](art.jpg)`, and every
+   * `# Heading {#custom-id}` lost its anchor — while the fixpoint test stayed
+   * green, because an attribute lost on the FIRST normalization is perfectly
+   * stable on the second.
+   *
+   * This compares what the two texts MEAN: render both through the print
+   * pipeline and require identical HTML. That is exactly the comparison
+   * rejected earlier as a REPLACEMENT for the fixpoint (it cannot see text
+   * normalization, because typographer and linkify run before the ProseMirror
+   * document exists) — but as an ADDITION it is the only thing here that can
+   * see a dropped attribute, a dropped node, or reordered content.
+   *
+   * Two gates, two different blindnesses, and neither covers the other.
+   */
+  /**
+   * Drop the two attributes that encode SOURCE COORDINATES rather than
+   * content: `data-source-range` (ADR 0009's editor↔preview mapping) and
+   * `data-source-line`. Normalization legitimately moves line numbers — that
+   * is what reformatting IS — so comparing them would flag every reflowed
+   * paragraph as content loss and the gate would have to be thrown away.
+   *
+   * Exactly these two, nothing else. Every other attribute, including the
+   * `class` and `id` that regressed, stays in the comparison.
+   */
+  const semanticHtml = (html: string) =>
+    html
+      .replace(/ data-source-(range|line)="[^"]*"/g, "")
+      // Same class of thing: `data-gp-source-token` / `-occurrence` are the
+      // preview↔source mapping the preview interface reads to find which
+      // token produced an element. They appear on an authored `[a](b)` but not
+      // on a bare domain that `linkify` turned into a link, so normalizing
+      // `itch.io` to `[itch.io](http://itch.io)` adds them. The href and the
+      // link text — the parts that reach the PDF — are unchanged.
+      .replace(/ data-gp-source-(token|occurrence)="[^"]*"/g, "")
+      // A soft line break inside a paragraph renders as a literal newline;
+      // unwrapping turns it into a space. HTML collapses both identically, so
+      // this is the accepted reformatting, not lost content.
+      //
+      // Collapsed everywhere EXCEPT inside `<pre>`, where whitespace is
+      // significant and a real difference would be a genuine defect — so the
+      // gate keeps its teeth on code blocks.
+      .split(/(<pre[\s\S]*?<\/pre>)/)
+      .map((part, i) => (i % 2 === 1 ? part : part.replace(/\s+/g, " ")))
+      .join("");
+
+  test("normalizing NEVER changes what the document means", () => {
+    const lost: Array<{ file: string; detail: string }> = [];
+    for (const file of editable) {
+      const text = readFileSync(file, "utf8");
+      const md = createEditorRenderer();
+      const before = semanticHtml(md.render(text, {}));
+      const after = semanticHtml(md.render(normalize(createEditorRenderer(), text), {}));
+      if (before !== after) {
+        const a = before.split("\n");
+        const b = after.split("\n");
+        const at = a.findIndex((l, i) => l !== b[i]);
+        lost.push({
+          file: file.slice(REPO.length + 1),
+          detail: `line ${at}:\n        was: ${JSON.stringify(a[at]?.slice(0, 160))}\n        got: ${JSON.stringify(b[at]?.slice(0, 160))}`,
+        });
+      }
+    }
+    if (lost.length) {
+      console.log(`\n  ${lost.length} file(s) lose meaning when normalized:`);
+      for (const l of lost.slice(0, 8)) console.log(`    ${l.file}\n      ${l.detail}`);
+    }
+    expect(lost).toEqual([]);
   });
 
   test("EVERY rich-editable file is a fixpoint — no threshold, no allowlist", () => {

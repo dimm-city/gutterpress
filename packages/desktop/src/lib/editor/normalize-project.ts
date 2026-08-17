@@ -32,22 +32,34 @@
  * ## running it
  *
  * Measured on the first-party corpus: **27 of 32 files change.** The dominant
- * edit is not bullet characters, it is REWRAPPING — a hand-wrapped paragraph
+ * edit is not bullet characters, it is UNWRAPPING — a hand-wrapped paragraph
  * comes back as one long line, because a soft line break inside a paragraph is
  * just a space in markdown and `prosemirror-markdown` does not re-wrap.
  *
  * Nothing is lost: the rendered output is identical and the result is
- * fixpoint-stable. But two consequences are worth being deliberate about:
+ * fixpoint-stable. The costs are that an author who hand-wraps will not get
+ * that formatting back, and that lines on disk get long — median 238
+ * characters, p95 877.
  *
- * - An author who hand-wraps their prose will not get that formatting back.
- * - Line-level diffs get coarser. A one-word change in a rewrapped paragraph
- *   shows up as the whole paragraph, which makes the automatic snapshot
- *   history less readable than it is today.
+ * **Re-wrapping was evaluated and rejected on measurement, not taste.** Across
+ * 139 real paragraphs and 417 simulated single-word edits:
  *
- * That is the accepted cost of a canonical serializer, and paying it once
- * per project is the entire reason this module exists. It is NOT something to
- * discover halfway through a book — show the author the plan
- * (`planNormalize` writes nothing) and let them agree to it.
+ * | strategy            | adoption churn | changed lines/edit | worst | median line |
+ * |---------------------|----------------|--------------------|-------|-------------|
+ * | one line (this)     |     1045 lines |               2.00 |     2 |      238 ch |
+ * | re-wrap at 80 cols  |     1826 lines |               2.90 |    14 |       75 ch |
+ * | one sentence a line |     1504 lines |               2.04 |     3 |      113 ch |
+ *
+ * Wrapping loses on BOTH counts it would be adopted for: it nearly doubles the
+ * one-time churn, and greedy re-flow cascades make an ordinary edit dirty up
+ * to 14 lines where leaving paragraphs alone always dirties exactly 2. (It
+ * also broke the fixpoint on a real corpus file in prototype.) So the long
+ * lines are the deliberate trade, and re-opening this needs new numbers, not a
+ * new opinion.
+ *
+ * Paying the churn once per project is the entire reason this module exists.
+ * It is NOT something to discover halfway through a book — show the author the
+ * plan (`planNormalize` writes nothing) and let them agree to it.
  */
 import type MarkdownIt from "markdown-it";
 import { createEditorRenderer, isFixpoint } from "./markdown-doc";

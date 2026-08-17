@@ -22,6 +22,7 @@ import { MarkdownSerializer, defaultMarkdownSerializer } from "prosemirror-markd
 import type { Node as PMNode } from "prosemirror-model";
 import type { MarkdownSerializerState } from "prosemirror-markdown";
 import { gutterpressSchema } from "./schema";
+import { attrsToBraces, type ExtraAttrs } from "./attrs";
 
 /** Emit a layout wrapper's authored marker line, then its children. */
 function layoutWrapper(closing?: string) {
@@ -79,6 +80,27 @@ function cellText(node: PMNode): string {
 export const gutterpressMarkdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
+
+    // ── markdown-it-attrs braces ─────────────────────────────────────────
+    // `{#custom-id}` / `{.gp-bleed}`. These were being DROPPED, which broke
+    // image positioning and every internal cross-reference target. The
+    // fixpoint gate could not see it (a loss on pass one is stable on pass
+    // two); the corpus test's semantic-preservation check is what catches it.
+    heading(state, node) {
+      state.write(`${state.repeat("#", node.attrs.level as number)} `);
+      state.renderInline(node, false);
+      const braces = attrsToBraces(node.attrs.attrs as ExtraAttrs | null);
+      if (braces) state.write(` ${braces}`);
+      state.closeBlock(node);
+    },
+    image(state, node) {
+      const alt = state.esc((node.attrs.alt as string) || "");
+      const src = (node.attrs.src as string).replace(/[\(\)]/g, "\\$&");
+      const title = node.attrs.title
+        ? ` "${(node.attrs.title as string).replace(/"/g, '\\"')}"`
+        : "";
+      state.write(`![${alt}](${src}${title})${attrsToBraces(node.attrs.attrs as ExtraAttrs | null)}`);
+    },
 
     // ── Gutterpress layout ───────────────────────────────────────────────
     // `@chapter` / `@page` / `@spread` are open-ended in the source: they run

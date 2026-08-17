@@ -22,6 +22,7 @@ import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import type { Node as PMNode } from "prosemirror-model";
 import { gutterpressSchema } from "./schema";
+import { extraAttrs } from "./attrs";
 
 /** `listIsTight`, which prosemirror-markdown keeps private. */
 function listIsTight(tokens: readonly Token[], i: number): boolean {
@@ -74,7 +75,10 @@ export function createDocParser(md: MarkdownIt) {
       block: "ordered_list",
       getAttrs: (tok, tokens, i) => ({ order: +(tok.attrGet("start") ?? 1) || 1, tight: listIsTight(tokens, i) }),
     },
-    heading: { block: "heading", getAttrs: (tok) => ({ level: +tok.tag.slice(1) }) },
+    heading: {
+      block: "heading",
+      getAttrs: (tok) => ({ level: +tok.tag.slice(1), attrs: extraAttrs(tok, "heading") }),
+    },
     code_block: { block: "code_block", noCloseToken: true },
     fence: { block: "code_block", getAttrs: (tok) => ({ params: tok.info || "" }), noCloseToken: true },
     hr: { node: "horizontal_rule" },
@@ -84,6 +88,9 @@ export function createDocParser(md: MarkdownIt) {
         src: tok.attrGet("src"),
         title: tok.attrGet("title") || null,
         alt: (tok.children?.[0] && tok.children[0].content) || null,
+        // `{.gp-bleed}` and friends. Dropping these silently destroyed image
+        // positioning in a book — see attrs.ts.
+        attrs: extraAttrs(tok, "image"),
       }),
     },
     hardbreak: { node: "hard_break" },
@@ -97,8 +104,13 @@ export function createDocParser(md: MarkdownIt) {
     thead: { block: "table_head" },
     tbody: { block: "table_body" },
     tr: { block: "table_row" },
-    th: { block: "table_header", getAttrs: alignOf as ParseSpec["getAttrs"] },
-    td: { block: "table_cell", getAttrs: alignOf as ParseSpec["getAttrs"] },
+    // `getAttrs` must return the attribute OBJECT, not a bare value. An
+    // earlier `alignOf as ParseSpec["getAttrs"]` cast returned the string
+    // `"right"` instead of `{ align: "right" }`, and the cast silenced the
+    // type error — so every table's column alignment was dropped on save
+    // (`| ---: |` came back as `| --- |`). No casts here.
+    th: { block: "table_header", getAttrs: (tok) => ({ align: alignOf(tok) }) },
+    td: { block: "table_cell", getAttrs: (tok) => ({ align: alignOf(tok) }) },
 
     // ── Gutterpress layout markers ───────────────────────────────────────
     layout_chapter: { block: "gp_chapter", getAttrs: marker },
