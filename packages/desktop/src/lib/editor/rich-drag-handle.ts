@@ -49,12 +49,12 @@
  * `EditorView.dragging` is public and writable. Setting it to
  * `{ slice, move: true }` in our `dragstart` is what PM's own `dragstart`
  * handler does — its `move` comes from the modifier held at that instant, and
- * `handleDrop` re-reads the modifier at the DROP anyway, so what matters here
- * is that the field is non-null and carries the right slice. From there
- * `editHandlers.dragover`/`drop` plus
- * `prosemirror-dropcursor` do the rest — including deleting the source, which
- * `handleDrop` performs as `tr.deleteSelection()` against the `NodeSelection`
- * we set. No custom drop code exists here, so the drop path is upstream's.
+ * upstream re-reads the modifier at the DROP anyway, so what matters here is
+ * that the field is non-null and carries the right slice. From there
+ * `editHandlers.dragover` and `prosemirror-dropcursor` do the rest; the DROP
+ * itself is `onDrop` below, which upstream calls (with the modifier already
+ * resolved) before it would run its own, and which returns "handled" so only
+ * one insertion happens. See the next section for why that had to be ours.
  *
  * Leaving `view.dragging` null would be the data-corrupting failure: PM then
  * re-parses the DataTransfer's HTML, and this schema's `gp_chapter`/`gp_spread`
@@ -63,17 +63,89 @@
  * marker line gone — and `move` is computed from `dragging` too, so the
  * original would not be removed either. Hence: on any failure the handler
  * calls `preventDefault()` and no drag starts at all.
+ *
+ * ## The one narrowing: the block lands among its own siblings
+ *
+ * `onDrop` below performs the drop itself instead of letting upstream's run,
+ * and the difference is where the block ends up: upstream inserts at
+ * `dropPoint()`, the DEEPEST node under the pointer that can hold the block;
+ * this inserts at the nearest slot in the block's OWN parent. Two reasons:
+ *
+ * 1. **A drop into a different parent is a move the keyboard cannot make.**
+ *    `moveBlock` only exchanges siblings, so an unrestricted drag would put a
+ *    paragraph INSIDE a `@section` with no keystroke that does the same —
+ *    against `docs/ux-design-contract.md`'s "drag-and-drop always has a
+ *    keyboard alternative (SC 2.5.7)", and against what this PR's own user
+ *    guide tells authors ("the two always pick the same one", "only the order
+ *    changes"). Retargeting is what makes those sentences true.
+ * 2. **It keeps the emptied-wrapper deletion unreachable by construction.**
+ *    `layoutWrapper()` is `content: "block+"`, so `deleteRange` removes a
+ *    wrapper whose last child leaves — taking `@section`/`@end-section` and
+ *    its classes out of the .md, cascading through nested wrappers. Today the
+ *    grip already cannot reach that: `isReorderable()` refuses a block that is
+ *    its parent's only child, so the walk in `blockAtDom` offers the WRAPPER
+ *    instead (verified headlessly on the three shapes a reviewer proposed —
+ *    all three either offer no grip or move the wrapper intact). That safety
+ *    is a side effect of a predicate chosen for a different reason; keeping
+ *    the block in its parent states it directly, so loosening
+ *    `isReorderable()` later cannot silently re-open a content-destroying path.
+ *
+ * **Retarget, never refuse — and this is where the first attempt was wrong.**
+ * That version returned "handled, do nothing" whenever the drop point resolved
+ * outside the parent, which reads as a narrow guard and is not: `posAtCoords`
+ * always lands INSIDE a textblock, so for a `@section` dropped over a
+ * neighbouring `@section`'s text the innermost node that can hold it is the
+ * NEIGHBOUR — refused. Measured on `examples/gutterpress-user-guide/00-cover.md`
+ * (`@page cover` wrapping two `@section`s, the ordinary book shape): both
+ * sections offered a grip and NO pointer-reachable position moved either one,
+ * while Alt+ArrowDown swapped them. An affordance that promises an edit which
+ * cannot happen is the exact defect `isReorderable()` exists to prevent.
+ *
+ * The one thing genuinely refused is a drop into a document that changed under
+ * the drag, which is a live corruption path rather than a hypothetical one:
+ * upstream's `handleDrop` deletes the source with `tr.deleteSelection()`, and
+ * after any wholesale state replacement (the folder watcher's external-edit
+ * reload is the ordinary way to get one) the selection is no longer the dragged
+ * block. Verified headlessly: `setContent` between dragstart and drop left the
+ * block inserted at the destination AND still in place at the source, i.e. a
+ * duplicate that autosave then wrote to disk.
+ *
+ * The cost of retargeting is that `prosemirror-dropcursor` draws its line at
+ * `dropPoint()`'s position, so over a sibling WRAPPER's interior the line sits
+ * one level deeper than where the block will actually land — a few lines off,
+ * on the same side of that wrapper the pointer is on. The cursor has no hook to
+ * override, and a cursor that points a little high beats a drag that silently
+ * does nothing.
  */
-import type { ResolvedPos } from "prosemirror-model";
+import type { Node as PMNode, ResolvedPos, Slice } from "prosemirror-model";
 import { NodeSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { isReorderable } from "./rich-move-block";
 
 /** Gap between the handle and the block it points at, in px. */
 const GAP = 6;
-/** The handle's width, in px. Both live here because `point()` subtracts them
- *  from the block's left edge and the stylesheet has to agree. */
+/** The VISIBLE grip, in px. These live here rather than only in the stylesheet
+ *  because `point()` positions the element from them, so the two have to
+ *  agree. */
 const WIDTH = 14;
+const HEIGHT = 20;
+/**
+ * Transparent padding around the grip, so the element a pointer must hit is
+ * 32×32 — `docs/ux-design-contract.md`'s pointer floor ("Interactive targets:
+ * ≥44×44px on touch; ≥32×32px on pointer"). The grip itself stays 14px wide: a
+ * 32px block of grey in the page margin would read as part of the page.
+ *
+ * The horizontal padding is all on the LEFT, and that asymmetry is the whole
+ * point. Centring it put the element's right edge 3px INSIDE the block
+ * (`left` backed out one PAD_X but the element had grown by two), so
+ * `elementFromPoint` returned the handle for the first 3 CSS px of every line
+ * and a click there selected the whole block instead of placing the caret.
+ * Growing leftwards puts the extra hit area in the page margin, which is empty,
+ * and leaves the element's right edge exactly where the grip's is — `GAP` px
+ * clear of the text, which is what the visual was always meant to be.
+ */
+const PAD_LEFT = 32 - WIDTH;
+const PAD_Y = (32 - HEIGHT) / 2;
 
 /**
  * The handle's own stylesheet, injected into the frame's head.
@@ -87,22 +159,31 @@ const WIDTH = 14;
  *
  * The `[hidden]` rule is stated rather than left to the UA sheet: the book's
  * CSS is in the same cascade and a bare `div { display: block }` in it would
- * outrank the UA rule and pin the handle on screen.
+ * outrank the UA rule and pin the handle on screen. `box-sizing` is stated for
+ * the same reason — `* { box-sizing: border-box }` is one of the commonest
+ * lines in a stylesheet, and under it the padding below would eat the grip
+ * rather than surround it.
  */
 const HANDLE_CSS = `
 .gp-drag-handle {
   position: absolute;
   top: 0;
   left: 0;
+  box-sizing: content-box;
   width: ${WIDTH}px;
-  height: 20px;
+  height: ${HEIGHT}px;
   margin: 0;
-  padding: 0;
+  /* Transparent hit area, painted-in grip: see PAD_LEFT/PAD_Y. */
+  padding: ${PAD_Y}px 0 ${PAD_Y}px ${PAD_LEFT}px;
   border: 0;
   border-radius: 4px;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  /* Both content-box, so the dot grid is laid out from the 14px FACE and the
+     transparent hit area neither shows nor shifts it. */
+  background-clip: content-box;
+  background-origin: content-box;
   background-color: rgba(128, 128, 128, 0.14);
   background-image: radial-gradient(circle, rgba(128, 128, 128, 0.95) 1px, rgba(0, 0, 0, 0) 1.4px);
   background-size: 5px 5px;
@@ -115,6 +196,22 @@ const HANDLE_CSS = `
 .gp-drag-handle:hover { background-color: rgba(128, 128, 128, 0.3); }
 .gp-drag-handle:active { cursor: grabbing; }
 .gp-drag-handle[hidden] { display: none; }
+
+/* The grip is revealed by hovering and dragged with a pointer, so it exists
+   only where hovering does — docs/ux-design-contract.md: "Hover-dependent UI
+   only via @media (hover: hover)". On a touch target a tap synthesizes a
+   mousemove, which would reveal a drag affordance a finger cannot use.
+
+   KNOWN GAP, recorded so it is not invisible: where hover:none matches —
+   a touch-primary tablet running the packaged app, and the PWA target the
+   contract's own "touch alternatives per §2" clause names — block reordering
+   has NO pointer or touch path at all. Alt+Up/Alt+Down still works, but that
+   needs a hardware keyboard. The real touch spelling is long-press drag, which
+   is a feature to build rather than a media query to delete: removing this rule
+   would put back a grip a finger still cannot drag. */
+@media (hover: none) {
+  .gp-drag-handle { display: none; }
+}
 
 /* The block the grip has hold of. Both the click and the drag put a
    NodeSelection on it and prosemirror-view ships no default appearance for
@@ -252,6 +349,17 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
   let current: HTMLElement | null = null;
 
   /**
+   * What the current drag picked up, or null when no drag of ours is running.
+   *
+   * The DOCUMENT is held alongside the position because the position is only
+   * meaningful in it: PM keeps the same `doc` object across selection-only
+   * transactions, so identity here is an exact "has the document been replaced
+   * under this drag" test, and a stale position is what makes upstream's
+   * `tr.deleteSelection()` delete the wrong thing. See the module header.
+   */
+  let dragged: { doc: PMNode; pos: number } | null = null;
+
+  /**
    * An ELEMENT, never a position.
    *
    * Positions go stale across transactions — the lesson `chromePlugin`'s
@@ -264,8 +372,17 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
     // Frame-document coordinates: `body` is unpositioned, so an absolutely
     // positioned child is placed against the initial containing block. The
     // handle therefore scrolls with the content and needs no scroll listener.
-    handle.style.top = `${rect.top + win.scrollY}px`;
-    handle.style.left = `${Math.max(0, rect.left + win.scrollX - GAP - WIDTH)}px`;
+    //
+    // The vertical padding is backed out so the GRIP lines up with the block's
+    // top; horizontally the whole element — hit area included — sits `GAP` px
+    // clear of the block, because the padding is all on its left (see
+    // PAD_LEFT). Deliberately NOT clamped to 0: a block whose left edge is
+    // under 38px from the frame's own edge (`@page cover { margin: 0 }`,
+    // `.gp-bleed`) used to pull the 32px hit area on top of its first line, and
+    // an overlapping dead zone over the author's text is worse than a grip that
+    // runs off the side. Alt+Up/Alt+Down reorders those blocks either way.
+    handle.style.top = `${rect.top + win.scrollY - PAD_Y}px`;
+    handle.style.left = `${rect.left + win.scrollX - GAP - WIDTH - PAD_LEFT}px`;
     handle.hidden = false;
   }
 
@@ -286,7 +403,13 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
   /** Select the block, so a click makes the keyboard commands act on it. */
   function onMouseDown(): void {
     // No `preventDefault()` here — in Chromium that cancels the native drag
-    // this element exists to start.
+    // this element exists to start (measured: with it, no `dragstart` fires at
+    // all). The cost is that mousedown's default action then moves focus to
+    // `body`, because this element is not focusable — so every editor binding,
+    // Alt+Arrow included, stops reaching the view until the author clicks back
+    // into the text. `onClick` below puts it back. Calling `view.focus()` HERE
+    // does not work: the default action runs after the listener and undoes it
+    // (measured in Chromium 153 — activeElement was BODY either way).
     const pos = current && blockPosFor(view, current);
     if (pos == null) return;
     try {
@@ -294,6 +417,16 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
     } catch {
       /* the block stopped being selectable between hover and click */
     }
+  }
+
+  /**
+   * A press that did NOT become a drag — put focus back in the editor.
+   *
+   * `click` fires only when the pointer went down and up without a drag
+   * starting, which is exactly the case `onDragEnd` does not cover.
+   */
+  function onClick(): void {
+    view.focus();
   }
 
   function onDragStart(event: DragEvent): void {
@@ -305,6 +438,7 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
       const selection = NodeSelection.create(view.state.doc, pos);
       view.dispatch(view.state.tr.setSelection(selection));
       const slice = selection.content();
+      dragged = { doc: view.state.doc, pos };
       dt.clearData();
       // Enough for the browser to start a drag, and a sensible payload for a
       // drop into another application. PM never reads it for a drop back into
@@ -338,13 +472,82 @@ export function mountDragHandle(view: EditorView): DragHandleControl {
     }
   }
 
+  /**
+   * Re-insert the dragged block at the nearest slot in its OWN parent.
+   *
+   * Returning true means "handled" — upstream's `handleDrop` stops there, so
+   * this owns the whole edit and there is no second insertion to reconcile.
+   * `moved` is PM's own reading of the copy modifier at the drop (Ctrl, Option
+   * on macOS), taken as given rather than re-derived.
+   *
+   * Returning FALSE for a drag that is not ours matters: a file dragged in from
+   * the desktop, or text from another application, is upstream's business and
+   * must keep working.
+   *
+   * The depth is the block's parent's, and `$to` is walked out to it with the
+   * same midpoint bias `dropPoint()` uses — the pointer in the top half of a
+   * sibling puts the block before it, the bottom half after it. Only a drop
+   * whose ancestor chain never reaches that parent is refused, which after the
+   * walk means a drop somewhere the block's family does not extend to.
+   */
+  function onDrop(v: EditorView, event: DragEvent, _slice: Slice, moved: boolean): boolean {
+    if (!dragged) return false;
+    const { doc: at, pos } = dragged;
+    // The document was replaced under the drag; `pos` describes a tree that is
+    // gone. See the module header — this is the duplicate-on-reload path.
+    if (v.state.doc !== at) return true;
+    const node = at.nodeAt(pos);
+    const found = v.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (!node || !found) return true;
+    const $from = at.resolve(pos);
+    const $to = at.resolve(found.pos);
+    // `$from` sits BEFORE the node, so its own depth is already the parent's.
+    const depth = $from.depth;
+    if ($to.depth < depth || $to.start(depth) !== $from.start()) return true;
+    const landing =
+      $to.depth === depth
+        ? $to.pos
+        : $to.pos <= ($to.start(depth + 1) + $to.end(depth + 1)) / 2
+          ? $to.before(depth + 1)
+          : $to.after(depth + 1);
+    const to = pos + node.nodeSize;
+    // Dropped on itself. Only a MOVE is a no-op — a copy dropped on its own
+    // block is a duplicate the author asked for.
+    if (moved && landing >= pos && landing <= to) return true;
+
+    const tr = v.state.tr;
+    if (moved) tr.delete(pos, to);
+    // Mapped, not arithmetic: a move DOWN puts the landing point after the
+    // deleted range, so it has shifted by the node's size. Same two steps
+    // `moveBlock` performs, for the same reason (see its header).
+    const insertAt = tr.mapping.map(landing);
+    tr.insert(insertAt, node);
+    // Keep the author with the block they moved, as upstream's drop does.
+    tr.setSelection(NodeSelection.create(tr.doc, insertAt));
+    v.dispatch(tr.setMeta("uiEvent", "drop"));
+    v.focus();
+    return true;
+  }
+
   function onDragEnd(): void {
     view.dragging = null;
+    dragged = null;
+    // The press that started this drag left focus on `body` (see
+    // `onMouseDown`), and a refused drop does not restore it the way upstream's
+    // completed drop does.
+    view.focus();
   }
+
+  // A direct prop, not a plugin: `setContent` builds a whole new state, and a
+  // plugin-carried handler would be torn down and rebuilt with it, while this
+  // handle's lifetime is the VIEW's. Direct props also win over plugin props in
+  // `someProp`, so nothing can register a drop handler ahead of this one.
+  view.setProps({ handleDrop: onDrop });
 
   doc.addEventListener("mousemove", onMove, { passive: true });
   doc.documentElement?.addEventListener("mouseleave", hide);
   handle.addEventListener("mousedown", onMouseDown);
+  handle.addEventListener("click", onClick);
   handle.addEventListener("dragstart", onDragStart);
   handle.addEventListener("dragend", onDragEnd);
 

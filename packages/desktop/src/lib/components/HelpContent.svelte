@@ -86,6 +86,9 @@
 
   const isMac = $derived(data?.platform?.os === 'darwin');
   const modKey = $derived(isMac ? 'Cmd' : 'Ctrl');
+  // ProseMirror's keymap resolves `Alt-` to the Option key on macOS, and the
+  // key cap says Option — so the shortcut table has to as well.
+  const altKey = $derived(isMac ? 'Option' : 'Alt');
 
   function getInstallHint(hint: string, os: string): string {
     if (!hint) return hint;
@@ -185,7 +188,7 @@
           <tr><td>Open folder</td><td>{modKey}+O</td></tr>
           <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
           <tr><td>Focus mode (editor only)</td><td>{modKey}+Shift+F</td></tr>
-          <tr><td>Move block up / down (rich editor)</td><td>Alt+Up / Alt+Down</td></tr>
+          <tr><td>Move block up / down (rich editor)</td><td>{altKey}+Up / {altKey}+Down</td></tr>
           <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
           <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
           <tr><td>Settings</td><td>{modKey}+,</td></tr>

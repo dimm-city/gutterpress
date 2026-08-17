@@ -326,7 +326,7 @@
   // mount; later changes go through the editorViewModeSink below, because the
   // editor takes no reactive dependency on its props. The surface may still
   // show one page: it renders at print size with no zoom, so it refuses a
-  // spread that would not fit the pane (RichEditor.spreadFits).
+  // spread that would not fit the pane (paginate.ts's nextEditorSheet).
   let editorColumns = $derived<1 | 2>(viewMode === "two-column" ? 2 : 1);
   let bgColor = $derived(settings.current.appearance.previewBg);
   // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
@@ -1518,6 +1518,30 @@
     editorModePref === "rich" && isMd(editorFilePath) && !richBlockedReason && !richModuleFailed
       ? "rich"
       : "source",
+  );
+
+  /**
+   * Whether a rich editing surface is on screen right now.
+   *
+   * The toolbar's Single / Two-page pair drives that surface as well as the
+   * preview (see `editorColumns`), so it must stay live when there is no
+   * preview to drive: `previewUrl` is null from the moment a project opens
+   * until the preview server reports ready — indefinitely, if it never starts,
+   * which is a supported non-fatal state. That is also the case where the
+   * editor is full-window, i.e. exactly the width a spread needs. Zoom and
+   * page navigation stay gated on the preview, because they really are
+   * preview-only.
+   *
+   * All THREE terms are load-bearing, and the `editorView` one is the easy
+   * one to leave out: `editorPaneOpen` is true whenever `editorView` is
+   * "activity", but that branch of the template renders `ProjectActivityView`
+   * INSTEAD of the editor, so `editorRef` is null there. Without it, opening
+   * the activity panel with no preview running left Single / Two-page enabled
+   * and driving nothing at all — an enabled control with no surface behind it,
+   * which is the same defect as the disabled one this flag was added to fix.
+   */
+  let richEditorShowing = $derived(
+    editorPaneOpen && editorView === "editor" && effectiveEditorMode === "rich",
   );
 
   let editorSavePhase = $derived(buffer?.phase ?? "clean");
@@ -3129,6 +3153,7 @@
     {viewMode}
     {zoom}
     previewControlsDisabled={!lifecycle.previewUrl}
+    viewModeDisabled={!lifecycle.previewUrl && !richEditorShowing}
     onApplyViewMode={(mode) => { contextMenu.close(); zoomView.applyViewMode(mode, true); }}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     {previewHidden}

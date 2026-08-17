@@ -104,13 +104,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   the numbers stay right as you edit above them instead of drifting.
 - **Two-page view drives the editor too.** The toolbar's Single / Two-page
   switch is now one control for the whole workspace: choose Two-page and the
-  editing surface shows facing pages side by side, exactly as the preview
-  does. There is no second setting to find. The one difference is room — the
-  editor draws pages at their true print size and never zooms, so a US-Letter
-  spread is a fixed 1656 px wide, and an editing pane narrower than that
-  keeps the single-page stack instead of putting half a spread behind a
-  horizontal scrollbar. Drag the splitter wider or hide the preview and the
-  spread appears on its own.
+  editing surface shows two pages side by side instead of one. There is no
+  second setting to find, and the switch stays usable while the preview is
+  still starting, since it now drives an editing surface that does not need
+  one. Two things it does not claim: which side of the gutter a page falls on
+  — the editor lays out the file you have open and cannot know where that file
+  begins in the finished book, so use the preview when you need to see true
+  facing pages — and room, because the editor draws pages at their true print
+  size and never zooms, so a US-Letter spread is a fixed 1656 px wide, and an
+  editing pane narrower than that keeps the single-page stack instead of
+  putting half a spread behind a horizontal scrollbar. Drag the splitter wider
+  or hide the preview and the spread appears on its own.
 - **Blocks can be reordered — with the mouse or without it.** Point at any
   block in rich mode and a grip appears in the page margin beside it; drag it
   and the block moves, with a line showing where it will land. **Alt+Up** and
@@ -122,7 +126,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   moves among its siblings, and anywhere inside a table the whole table moves,
   because a table's rows and columns are its structure rather than an order
   you chose. Holding **Ctrl** (**Option** on macOS) while you drop copies
-  instead of moving, and either way it is one undo.
+  instead of moving, and either way it is one undo. A block moves among the
+  blocks it sits with and no further: drop it over a neighbouring `@section`
+  and it lands beside that section, not inside it, so the pointer does exactly
+  what the keyboard does and no drop can quietly move your text out of the
+  group whose styling it was written for.
   - The grip is chrome, not content. It lives beside the page rather than in
     your document, so it cannot be saved into your markdown, and it is not
     injected between your blocks — a handle rendered inline would break the

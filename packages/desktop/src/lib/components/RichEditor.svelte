@@ -42,7 +42,7 @@
    */
   import { onMount } from "svelte";
   import { canEditRichly, createEditorRenderer } from "$lib/editor/markdown-doc";
-  import { editorStylesheet, paginatedWidth } from "$lib/editor/paginate";
+  import { nextEditorSheet, type EditorSheet } from "$lib/editor/paginate";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
     clearSlashQuery,
@@ -117,18 +117,16 @@
   // its first value, which Svelte warns about and which would silently go
   // stale if the host ever mounted this with a file already chosen.
   let openPath: string | null = null;
-  let appliedCss = "";
   let baseEl: HTMLBaseElement | null = null;
   /** What the app asked for; seeded from the prop in onMount. */
   let requestedColumns: 1 | 2 = 1;
-  /** What the stylesheet in the frame actually uses — never more than fits. */
-  let appliedColumns: 1 | 2 = 1;
   /**
-   * Width a spread needs, memoized against the CSS it was measured from.
-   * `paginatedWidth()` parses the whole stylesheet and the fit is re-checked on
-   * every resize frame while the splitter is being dragged.
+   * The stylesheet the frame is carrying, and what it was derived from — the
+   * whole of this component's pagination state. `nextEditorSheet()` owns the
+   * decision (including the spread fit and its memo) so it is unit-testable
+   * without layout; see its header.
    */
-  let spreadNeed = { css: "", px: 0 };
+  let applied: EditorSheet | null = null;
 
   /**
    * The frame's base URL.
@@ -200,7 +198,7 @@
    */
   function onFrameGeometryChanged(): void {
     if (chrome) chrome = null;
-    if (requestedColumns === 2) applyCss(appliedCss);
+    if (requestedColumns === 2) applyCss(applied?.css ?? "");
   }
 
   function runSlash(item: SlashItem): void {
@@ -279,43 +277,21 @@
   });
 
   /**
-   * Whether a spread physically fits the frame.
-   *
-   * The editor renders at 1 CSS px per print px — no zoom, unlike the preview,
-   * which scales its pages to the pane. A US-Letter spread is therefore a fixed
-   * 1656px wide, while the default 0.42 split gives the editor ~806px on a
-   * 1920px window. Following the setting unconditionally would open a brand-new
-   * project showing half a spread behind a horizontal scrollbar, so a request
-   * for 2 is honoured only when 2 genuinely fits — the author gets a spread by
-   * widening the pane or hiding the preview, and never gets a broken one.
-   *
-   * The measurement is the frame BODY's content box, which is the flow's own
-   * containing block: it already nets out the vertical scrollbar the stacked
-   * pages always produce and any margin the author's `body` rule sets.
-   *
-   * With no book CSS there is no page geometry to fit against, so the honest
-   * answer is no.
-   */
-  function spreadFits(css: string): boolean {
-    if (!css) return false;
-    if (spreadNeed.css !== css) spreadNeed = { css, px: paginatedWidth(css, { columns: 2 }) };
-    return (frame?.contentDocument?.body?.clientWidth ?? 0) >= spreadNeed.px;
-  }
-
-  /**
    * Put the book's stylesheet and the page-flow rules into the frame.
    *
-   * Recomputed only when the CSS text or the fitted column count actually
-   * changes: `editorStylesheet()` parses the whole stylesheet, and both a live
-   * preview rebuild and a splitter drag can ask for the same answer repeatedly.
+   * The decision — how many pages fit, and whether anything changed at all —
+   * belongs to `nextEditorSheet()`; all this adds is the one measurement only a
+   * mounted frame can make. That is the frame BODY's content box, which is the
+   * flow's own containing block: it already nets out the vertical scrollbar the
+   * stacked pages always produce and any margin the author's `body` rule sets.
    */
   function applyCss(css: string): void {
     if (!styleEl) return;
-    const cols: 1 | 2 = requestedColumns === 2 && spreadFits(css) ? 2 : 1;
-    if (css === appliedCss && cols === appliedColumns) return;
-    appliedCss = css;
-    appliedColumns = cols;
-    styleEl.textContent = `${css}\n\n${editorStylesheet(css, { columns: cols })}`;
+    const width = frame?.contentDocument?.body?.clientWidth ?? 0;
+    const next = nextEditorSheet(applied, css, requestedColumns, width);
+    if (!next) return;
+    applied = next;
+    styleEl.textContent = next.text;
   }
 
   /**
@@ -364,13 +340,13 @@
    * The same push seam `setBookCss`/`setAssetBase` use, for the same reason:
    * this component takes no reactive dependency on its props, so a prop alone
    * would be dead wiring. A 2 that does not fit the pane is recorded and honoured
-   * later, when the pane is wide enough (see `spreadFits`) — refusing outright
+   * later, when the pane is wide enough (see `nextEditorSheet`) — refusing outright
    * would mean an author who widens the editor never gets the spread they asked
    * for.
    */
   export function setColumns(next: 1 | 2): void {
     requestedColumns = next;
-    applyCss(appliedCss);
+    applyCss(applied?.css ?? "");
   }
 
   /** Scroll a 1-based source line into view (preview "go to source"). */

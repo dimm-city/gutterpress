@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Window } from "happy-dom";
 import { undo } from "prosemirror-history";
 import { NodeSelection, TextSelection } from "prosemirror-state";
@@ -7,7 +9,11 @@ import type {
   RichToolbarAction,
   ToolbarPayloadLike,
 } from "../../src/lib/editor/rich-commands";
-import { createEditorState, mountRichEditor } from "../../src/lib/editor/rich-editor";
+import {
+  createEditorState,
+  mountRichEditor,
+  type ChromeState,
+} from "../../src/lib/editor/rich-editor";
 import { createEditorRenderer, gutterpressSchema, serializeDoc } from "../../src/lib/editor/markdown-doc";
 import {
   lineForPos,
@@ -36,7 +42,11 @@ const md = createEditorRenderer();
  * Window has to be installed globally for the duration of a test rather than
  * only passed in.
  */
-function editor(content: string, onChange?: (s: string) => void) {
+function editor(
+  content: string,
+  onChange?: (s: string) => void,
+  onChrome?: (state: ChromeState | null) => void,
+) {
   const win = new Window();
   const g = globalThis as unknown as Record<string, unknown>;
   const prior = { window: g.window, document: g.document };
@@ -46,7 +56,7 @@ function editor(content: string, onChange?: (s: string) => void) {
   const doc = win.document as unknown as Document;
   const mount = doc.createElement("div");
   doc.body.appendChild(mount);
-  const handle = mountRichEditor({ mount, md, content, onChange });
+  const handle = mountRichEditor({ mount, md, content, onChange, onChrome });
   return {
     handle,
     mount,
@@ -568,6 +578,22 @@ describe("the block drag handle", () => {
     e.restore();
   });
 
+  test("the document's only top-level block offers no grip either", () => {
+    // A chapter file that opens with `@page` and is never explicitly closed
+    // parses as ONE top-level wrapper holding the whole file. Dragging that
+    // would empty `doc` (`block+`), which PM refills with a paragraph before
+    // re-inserting the slice — a stray blank line at the top of the author's
+    // saved file. There is nowhere for it to go anyway.
+    const e = editor("@page .wide\n\nAlpha\n\nBravo\n");
+    const { view } = e.handle;
+    expect(view.state.doc.childCount).toBe(1);
+    expect(blockAtDom(view, e.mount.firstElementChild!)).toBeNull();
+    // Its CHILDREN still move, among themselves.
+    const alpha = e.mount.querySelector("p") as HTMLElement;
+    expect(view.state.doc.nodeAt(blockAtDom(view, alpha)!.pos)?.type.name).toBe("paragraph");
+    e.restore();
+  });
+
   test("an element left over from the previous document resolves to nothing", () => {
     // `posAtDOM` reads the `pmViewDesc` ProseMirror hangs off the element, and
     // a detached one still carries a stale desc — so it answers from a tree
@@ -658,6 +684,292 @@ describe("the block drag handle", () => {
     expect(undo(view.state, view.dispatch)).toBe(true);
     expect(e.handle.getMarkdown()).toBe(src);
     e.restore();
+  });
+
+  /** Hover `el`, start a drag, and drop it at document position `pos`. */
+  function dragTo(e: ReturnType<typeof editor>, el: Element, pos: number): void {
+    const { view } = e.handle;
+    hover(e, el);
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords =
+      () => ({ pos, inside: -1 });
+    view.dom.dispatchEvent(dragEvent(e, "drop"));
+  }
+
+  /** The element whose whole text is `text`. */
+  function elFor(e: ReturnType<typeof editor>, text: string): HTMLElement {
+    for (const el of Array.from(e.mount.querySelectorAll("*"))) {
+      if ((el as HTMLElement).textContent?.trim() === text) return el as HTMLElement;
+    }
+    throw new Error(`no element for ${text}`);
+  }
+
+  /**
+   * A drop position a POINTER can actually produce: inside a textblock's text.
+   *
+   * `posAtCoords` is a binary search over text, so it never answers with a
+   * boundary between two block nodes. An earlier version of these tests dropped
+   * at exactly such a boundary and so certified a path no author could reach —
+   * with the pointer drag completely dead for `@section`/`@page` wrappers, the
+   * whole suite stayed green. `frac` says how far into the block the pointer
+   * is, because the drop biases before/after the containing sibling at its
+   * midpoint, the same way `dropPoint()` does.
+   */
+  function inText(e: ReturnType<typeof editor>, text: string, frac: number): number {
+    let at = -1;
+    e.handle.view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isTextblock && node.textContent === text) {
+        at = pos + 1 + Math.round(frac * node.content.size);
+      }
+      return at < 0;
+    });
+    if (at < 0) throw new Error(`no textblock for ${text}`);
+    return at;
+  }
+
+  test("a block dropped over another marker lands BESIDE it, not inside", () => {
+    // The drag reorders among siblings, exactly as Alt+Arrow does. Upstream's
+    // drop would insert at the deepest node under the pointer that can hold the
+    // block — here, INSIDE the `@section` — which no keystroke can do and which
+    // quietly changes which marker the author's text belongs to. So the drop is
+    // re-targeted to the nearest slot in the block's own parent instead.
+    const src = "Before\n\n@section .gp-columns-2\n\nInside\n\nAlso\n\n@end-section\n\nAfter\n";
+    const e = editor(src);
+    dragTo(e, elFor(e, "Before"), inText(e, "Also", 0.5));
+    expect(e.handle.getMarkdown()).toBe(
+      "@section .gp-columns-2\n\nInside\n\nAlso\n\n@end-section\n\nBefore\n\nAfter\n",
+    );
+    e.restore();
+  });
+
+  test("...and a block inside a marker cannot be dropped out of it", () => {
+    const src = "Before\n\n@section .gp-columns-2\n\nInside\n\nAlso\n\n@end-section\n\nAfter\n";
+    const e = editor(src);
+    // `Inside` has a sibling, so the grip offers the PARAGRAPH; the drop point
+    // is a top-level paragraph, whose parent is not the paragraph's.
+    dragTo(e, elFor(e, "Inside"), inText(e, "After", 0.5));
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+
+  test("but it moves freely WITHIN its marker", () => {
+    // The re-targeting above must not have cost the drag its actual job, and
+    // the midpoint decides the direction: past the middle of a sibling puts the
+    // block after it, before the middle puts it before — where it already was.
+    const src = "Before\n\n@section\n\nOne\n\nTwo\n\n@end-section\n";
+    const e = editor(src);
+    dragTo(e, elFor(e, "One"), inText(e, "Two", 1));
+    expect(e.handle.getMarkdown()).toBe("Before\n\n@section\n\nTwo\n\nOne\n\n@end-section\n");
+    e.restore();
+
+    const back = editor(src);
+    dragTo(back, elFor(back, "One"), inText(back, "Two", 0));
+    expect(back.handle.getMarkdown()).toBe(src);
+    back.restore();
+  });
+
+  test("a wrapper whose siblings are all wrappers moves too", () => {
+    // The shape of the shipped `examples/gutterpress-user-guide/00-cover.md`:
+    // a `@page` holding two `@section`s and nothing else. Every position a
+    // pointer can reach here is inside one of those sections' text, so a drop
+    // rule that refused anything resolving into a sibling wrapper made this
+    // file's grips completely inert — offered on both sections, moving neither,
+    // while Alt+ArrowDown swapped them. Measured on the real file: 22 of the
+    // 103 pointer-reachable positions now move a section, all to the same
+    // result, markers and classes intact.
+    const src =
+      "@page cover .cover-page\n\n@section .cover-top\n\nAlpha\n\n@end-section\n\n" +
+      "@section .cover-bottom\n\nBravo\n\n@end-section\n";
+    const e = editor(src);
+    expect(e.handle.getMarkdown()).toBe(src);
+    // The grip is on the SECTION — each holds an only child, so `isReorderable`
+    // walks out to the wrapper.
+    const found = blockAtDom(e.handle.view, elFor(e, "Alpha"))!;
+    expect(e.handle.view.state.doc.nodeAt(found.pos)?.type.name).toBe("gp_section");
+
+    dragTo(e, elFor(e, "Alpha"), inText(e, "Bravo", 1));
+    expect(e.handle.getMarkdown()).toBe(
+      "@page cover .cover-page\n\n@section .cover-bottom\n\nBravo\n\n@end-section\n\n" +
+        "@section .cover-top\n\nAlpha\n\n@end-section\n",
+    );
+    e.restore();
+  });
+
+  test("a wrapper is never left empty, so its marker lines cannot vanish", () => {
+    // `layoutWrapper()` is `content: "block+"`, so PM's `deleteRange` removes a
+    // wrapper whose last child leaves — taking `@section`/`@end-section` and
+    // its classes with it, cascading outward through nested wrappers. Two
+    // things stop that, and this asserts both: the grip is never offered on an
+    // only child (it grabs the WRAPPER instead, which is what an author wants
+    // anyway), and the drop re-targets into the parent rather than out of it.
+    const src = "Before\n\n@section .gp-columns-2\n\nInside\n\n@end-section\n\nAfter\n";
+    const e = editor(src);
+    const { view } = e.handle;
+    const found = blockAtDom(view, elFor(e, "Inside"))!;
+    expect(view.state.doc.nodeAt(found.pos)?.type.name).toBe("gp_section");
+
+    // Dragging what the grip DID offer moves the whole section, marker intact.
+    dragTo(e, elFor(e, "Inside"), inText(e, "Before", 0));
+    expect(e.handle.getMarkdown()).toBe(
+      "@section .gp-columns-2\n\nInside\n\n@end-section\n\nBefore\n\nAfter\n",
+    );
+    e.restore();
+  });
+
+  test("a drop into a document that changed under the drag is refused", () => {
+    // Upstream's `handleDrop` deletes the source with `tr.deleteSelection()`,
+    // and after a wholesale state replacement — the folder watcher's
+    // external-edit reload is the ordinary way to get one — the selection is
+    // no longer the dragged block. Measured before this guard: the block was
+    // inserted at the destination AND left in place at the source, i.e. a
+    // duplicate that autosave wrote to the author's file.
+    //
+    // The replacement is SHORTER than what was captured, and that is the whole
+    // point of the case. With a longer one every interesting drop position is
+    // out of range in the captured document, so the guard's next line throws
+    // and the drop aborts by exception — the assertion then passes whether the
+    // guard is there or not. Shorter keeps every position valid in both
+    // documents, so only the identity check can refuse: remove it and this
+    // yields "Alpha\n\nBravo\n\nAlpha\n".
+    const e = editor("Alpha\n\nBravo\n\nCharlie\n\nDelta\n");
+    const { view } = e.handle;
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+
+    const fresh = "Alpha\n\nBravo\n";
+    e.handle.setContent(fresh);
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords =
+      () => ({ pos: view.state.doc.content.size, inside: -1 });
+    view.dom.dispatchEvent(dragEvent(e, "drop"));
+
+    expect(e.handle.getMarkdown()).toBe(fresh);
+    e.restore();
+  });
+
+  test("...and a LONGER replacement is refused without throwing", () => {
+    // The other half: a drop position past the end of the captured document
+    // must be turned away by the identity check, not by an exception escaping
+    // the listener.
+    const e = editor("Alpha\n\nBravo\n");
+    const { view } = e.handle;
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+
+    const fresh = "Alpha\n\nBravo\n\nCharlie\n\nDelta\n";
+    e.handle.setContent(fresh);
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords =
+      () => ({ pos: view.state.doc.content.size, inside: -1 });
+    expect(() => view.dom.dispatchEvent(dragEvent(e, "drop"))).not.toThrow();
+
+    expect(e.handle.getMarkdown()).toBe(fresh);
+    e.restore();
+  });
+
+  test("a drag from outside the editor is left to ProseMirror", () => {
+    // The guard must not swallow a file or a paste dragged in from another
+    // application: with no drag of ours running it has nothing to say.
+    const e = editor("Alpha\n\nBravo\n");
+    const { view } = e.handle;
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords =
+      () => ({ pos: 1, inside: -1 });
+    const drop = dragEvent(e, "drop");
+    (drop as DragEvent).dataTransfer!.setData("text/plain", "dropped");
+    view.dom.dispatchEvent(drop);
+    expect(e.handle.getMarkdown()).toBe("droppedAlpha\n\nBravo\n");
+    e.restore();
+  });
+
+  test("grabbing a block does not open the formatting bubble", () => {
+    // The grip puts a NodeSelection on a whole block, which is non-empty and
+    // has text — so the selection toolbar used to appear the instant the
+    // author pressed the grip, sit between the pointer and the drop target for
+    // the whole drag, and stay open on the moved block, offering to apply
+    // `strong` to an entire `gp_section`.
+    const seen: Array<ChromeState | null> = [];
+    const e = editor("Alpha\n\nBravo\n", undefined, (s) => seen.push(s));
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(
+      new (e.win.MouseEvent as unknown as new (t: string, i: Record<string, unknown>) => Event)(
+        "mousedown",
+        { bubbles: true },
+      ),
+    );
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+    expect(seen.every((s) => s === null)).toBe(true);
+
+    // ...but an ordinary text selection still gets one.
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6)));
+    expect(seen.at(-1)?.kind).toBe("selection");
+    e.restore();
+  });
+
+  test("a click on the grip leaves focus in the editor", () => {
+    // mousedown on a non-focusable element moves focus to `body` unless it is
+    // prevented — and preventing it cancels the native drag this element
+    // exists to start (both measured in Chromium 153). So focus is put back
+    // afterwards; without it, Alt+Arrow and every other binding stop reaching
+    // the view until the author clicks into the text.
+    const e = editor("Alpha\n\nBravo\n");
+    const { view } = e.handle;
+    let focused = 0;
+    (view as unknown as { focus: () => void }).focus = () => {
+      focused += 1;
+    };
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(
+      new (e.win.MouseEvent as unknown as new (t: string, i: Record<string, unknown>) => Event)(
+        "click",
+        { bubbles: true },
+      ),
+    );
+    expect(focused).toBe(1);
+    // A drag that ends without a completed drop is the other way to get here.
+    grip(e).dispatchEvent(dragEvent(e, "dragend"));
+    expect(focused).toBe(2);
+    e.restore();
+  });
+
+  test("the grip is a 32px pointer target with a 14px face, and needs hover", () => {
+    // ux-design-contract.md: interactive targets are >=32x32 on pointer, and
+    // hover-dependent UI exists only under `@media (hover: hover)`. The element
+    // is built in TS, so no a11y lint sees it — this is the only gate.
+    const e = editor("Alpha\n\nBravo\n");
+    const css = Array.from(e.doc.head.querySelectorAll("style"))
+      .map((s) => s.textContent)
+      .join("\n");
+    expect(css).toContain("width: 14px;");
+    // 14+18 = 32 wide, 20+2*6 = 32 tall. The horizontal padding is all on the
+    // LEFT: centred, the element's right edge landed 3px inside the block (the
+    // offset backed out one PAD but the element had grown by two), so
+    // `elementFromPoint` returned the handle for the first 3 CSS px of every
+    // line and clicking there selected the block instead of placing the caret.
+    expect(css).toContain("padding: 6px 0 6px 18px;");
+    // Under `* { box-sizing: border-box }` — one of the commonest lines in a
+    // book stylesheet — that padding would eat the grip instead of surrounding
+    // it, and the paint must stay on the 14px face.
+    expect(css).toContain("box-sizing: content-box;");
+    expect(css).toContain("background-clip: content-box;");
+    expect(css).toContain("@media (hover: none)");
+    e.restore();
+  });
+
+  test("the hit area clears the block, and is not clamped on top of it", () => {
+    // happy-dom does no layout, so this reads the arithmetic `point()` performs
+    // rather than a measured rect: the element is positioned by its full width,
+    // so its right edge sits GAP px left of the block at every offset —
+    // including a block whose left edge is under 38px from the frame's own,
+    // which `@page cover { margin: 0 }` and `.gp-bleed` both produce and which
+    // a `Math.max(0, …)` clamp used to answer by parking a 32px dead zone over
+    // the author's first line.
+    const src = readFileSync(
+      resolve(import.meta.dir, "../../src/lib/editor/rich-drag-handle.ts"),
+      "utf8",
+    );
+    const point = src.slice(src.indexOf("function point(el: HTMLElement)"));
+    const body = point.slice(0, point.indexOf("\n  }"));
+    expect(body).toContain("`${rect.left + win.scrollX - GAP - WIDTH - PAD_LEFT}px`");
+    expect(body).not.toContain("Math.max");
   });
 });
 

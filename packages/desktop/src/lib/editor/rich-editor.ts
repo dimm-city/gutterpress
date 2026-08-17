@@ -34,7 +34,7 @@ import { inputRules, textblockTypeInputRule, wrappingInputRule } from "prosemirr
 import { keymap } from "prosemirror-keymap";
 import type { MarkType, Node as PMNode, NodeType, ResolvedPos } from "prosemirror-model";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { EditorState, Plugin, Selection, type Command } from "prosemirror-state";
+import { EditorState, NodeSelection, Plugin, Selection, type Command } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import type MarkdownIt from "markdown-it";
 import { createDocParser, gutterpressSchema, serializeDoc } from "./markdown-doc";
@@ -380,7 +380,19 @@ function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
         }
 
         // ── selection toolbar ─────────────────────────────────────────────
-        if (!selection.empty && state.doc.textBetween(selection.from, selection.to).trim()) {
+        // A NodeSelection is never a formatting selection. The drag handle
+        // puts one on a whole block for both the click and the drag, and that
+        // selection is non-empty and has text — so without this the bubble
+        // opened the instant the author grabbed a grip, sat between the pointer
+        // and the drop target for the whole drag, and stayed open on the moved
+        // block afterwards, offering to apply `strong` to an entire
+        // `gp_section`. Selecting a block is a structural act, not a request to
+        // format it.
+        if (
+          !(selection instanceof NodeSelection) &&
+          !selection.empty &&
+          state.doc.textBetween(selection.from, selection.to).trim()
+        ) {
           const start = v.coordsAtPos(selection.from);
           const end = v.coordsAtPos(selection.to);
           onChrome({

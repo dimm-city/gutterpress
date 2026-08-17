@@ -5,6 +5,7 @@ import {
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
+  nextEditorSheet,
   paginatedWidth,
   paginationCss,
   scrollContainerCss,
@@ -140,6 +141,98 @@ test("the single-page stack keeps a one-page-wide flow box", () => {
   const css = paginationCss(resolvePage(extract(BOOK_CSS)).geometry);
   expect(css).toContain("width: 648px;");
   expect(css).toContain("column-count: 1;");
+});
+
+test("the two-page view claims no gutter side, at either column count", () => {
+  // A leading empty column slot (`::before { break-after: column }`) would put
+  // page 1 alone on the right, the way a printed book does — and it was written
+  // and then removed, because the editor paginates ONE FILE from its own page 1
+  // and cannot know where that file starts in the book. The user guide's
+  // chapters carry `break-before: page`, not `recto`, so a chapter begins on
+  // whichever page the previous file left off before: odd or even by
+  // arithmetic. Shifting unconditionally is wrong for about half the corpus and
+  // wrong in the most misleading way, since the pairs then LOOK authoritative.
+  // Facing-page fidelity is the preview's job (`applySpreadMode` shifts a run
+  // only when `strip.offset % 2 === 0` — the input the editor does not have).
+  expect(editorStylesheet(BOOK_CSS, { columns: 2 })).not.toContain("::before");
+  expect(editorStylesheet(BOOK_CSS, { columns: 1 })).not.toContain("::before");
+  expect(paginationCss(resolvePage(extract(BOOK_CSS)).geometry, { columns: 2 })).not.toContain(
+    "break-after",
+  );
+});
+
+/**
+ * The fit decision and the re-emit decision.
+ *
+ * These live in `paginate.ts` rather than in `RichEditor.svelte` because the
+ * component's version read `body.clientWidth`, which happy-dom never fills in —
+ * so NOTHING could test it, and two mutations that made the toolbar's Two-page
+ * button silently dead for a mounted editor both left the suite green.
+ */
+const SHEET_NEED = 816 * 2 + 24; // a US-Letter spread of BOOK_CSS
+
+test("a spread is refused unless it genuinely fits the pane", () => {
+  const at = (px: number) => nextEditorSheet(null, BOOK_CSS, 2, px)!.columns;
+  expect(at(0)).toBe(1); // an unmeasured pane is not a wide one
+  expect(at(SHEET_NEED - 1)).toBe(1); // one px short
+  expect(at(SHEET_NEED)).toBe(2); // exactly fits
+  expect(at(9999)).toBe(2);
+  // ...and one page never becomes two on width alone.
+  expect(nextEditorSheet(null, BOOK_CSS, 1, 9999)!.columns).toBe(1);
+});
+
+test("no book CSS means no geometry to fit against, so one page", () => {
+  // `paginatedWidth("")` answers from the letter-size fallback, which would
+  // make an unstyled brand-new project claim a spread fits.
+  const sheet = nextEditorSheet(null, "", 2, 99999)!;
+  expect(sheet.columns).toBe(1);
+  expect(sheet.spreadPx).toBe(0);
+});
+
+test("the same CSS at the same fitted count re-emits nothing", () => {
+  // `editorStylesheet()` parses the whole stylesheet, and a splitter drag asks
+  // this question on every resize frame.
+  const first = nextEditorSheet(null, BOOK_CSS, 1, 400)!;
+  expect(nextEditorSheet(first, BOOK_CSS, 1, 400)).toBeNull();
+  expect(nextEditorSheet(first, BOOK_CSS, 2, 400)).toBeNull(); // still does not fit
+});
+
+test("the same CSS at a CHANGED fitted count DOES re-emit", () => {
+  // The mutation this exists to catch: guarding only on the CSS text makes the
+  // Two-page button do nothing for an already-mounted editor, and makes a
+  // splitter drag past the threshold do nothing either.
+  const single = nextEditorSheet(null, BOOK_CSS, 1, 9999)!;
+  const spread = nextEditorSheet(single, BOOK_CSS, 2, 9999);
+  expect(spread).not.toBeNull();
+  expect(spread!.columns).toBe(2);
+  expect(spread!.text).toContain("column-count: 2;");
+  // ...and back again when the pane narrows, with the same CSS and request.
+  const back = nextEditorSheet(spread!, BOOK_CSS, 2, 400);
+  expect(back!.columns).toBe(1);
+  expect(back!.text).toContain("column-count: 1;");
+});
+
+test("changed CSS always re-emits, and re-measures the spread", () => {
+  const a = nextEditorSheet(null, BOOK_CSS, 2, 9999)!;
+  const wider = BOOK_CSS.replace("8.5in 11in", "17in 11in");
+  const b = nextEditorSheet(a, wider, 2, 9999)!;
+  expect(b.spreadPx).toBeGreaterThan(a.spreadPx);
+  // The emitted text is the book's own CSS first, then the editor's layers, so
+  // author rules and editor rules land in the frame in one write.
+  expect(b.text.startsWith(wider)).toBe(true);
+  expect(b.text).toContain("column-wrap: wrap;");
+});
+
+test("the spread measurement is carried, not re-derived, while the CSS holds", () => {
+  // `paginatedWidth()` parses the whole stylesheet — a couple of milliseconds
+  // against a 16ms resize frame, asked on every frame of a splitter drag.
+  const first = nextEditorSheet(null, BOOK_CSS, 2, 9999)!;
+  expect(first.spreadPx).toBe(SHEET_NEED);
+  // A doctored measurement is believed while the CSS is unchanged: 20px of pane
+  // "fits" the 10px it was told a spread needs.
+  const narrowed = nextEditorSheet({ ...first, columns: 1, spreadPx: 10 }, BOOK_CSS, 2, 20)!;
+  expect(narrowed.spreadPx).toBe(10);
+  expect(narrowed.columns).toBe(2);
 });
 
 test("paginatedWidth reports what a pane must be to show N pages", () => {

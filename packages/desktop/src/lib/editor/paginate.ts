@@ -57,6 +57,27 @@
  *    equivalent and is skipped.
  * 3. **Multicol and paged media avoid breaks differently.** The residual.
  *
+ * ## What the two-page view is, and what it deliberately is not
+ *
+ * Two page boxes side by side at print size. It is NOT a modelled spread: it
+ * does not claim which side of the gutter a page falls on, because the editor
+ * shows ONE FILE and cannot know where that file starts in the book. A leading
+ * empty column slot (`::before { break-after: column }`) would shift page 1 to
+ * the right where a printed book puts it — and was written, and is removed
+ * again — but it is only correct for a file whose first page is a RECTO. The
+ * user guide's chapters carry `break-before: page`, not `recto`, so a chapter
+ * begins on whichever page the previous file happened to end before: odd or
+ * even by arithmetic, not by rule. Guessing "recto" is wrong for about half the
+ * book, and wrong in the most misleading way, since the pairs LOOK authoritative.
+ *
+ * The preview, which paginates the whole book, is where facing-page fidelity
+ * lives (`applySpreadMode` in `engine/viewer/fragment.ts` shifts a run only
+ * when `strip.offset % 2 === 0`). If the editor is ever to pair pages the way
+ * print does, it needs the file's first PRINT page as an input — the preview
+ * knows it — and must fall back to no shift when there is no preview running.
+ * Until then this view sizes and typesets two pages at once; it does not
+ * position them in a book.
+ *
  * A fourth cause used to sit alongside those and is now fixed:
  * Chromium treats a scroll container as monolithic in multicol and splits it
  * in print, so every `pre { overflow: hidden }` that straddled a page boundary
@@ -88,25 +109,69 @@ export interface PaginateOptions {
   root?: string;
 }
 
-const px = (pt: number) => `${Math.round(pt * PX_PER_PT * 1000) / 1000}px`;
+/**
+ * The stylesheet a frame is currently carrying, and what it was derived from.
+ *
+ * Returned by `nextEditorSheet()` and handed straight back to it next time, so
+ * the "has anything actually changed" decision — the one an already-mounted
+ * editor's Two-page button depends on — is a pure function of two values
+ * rather than component state nothing can test.
+ */
+export interface EditorSheet {
+  /** The book CSS this was built from. */
+  css: string;
+  /** Columns actually used — never more than `availablePx` fits. */
+  columns: 1 | 2;
+  /**
+   * Width a two-page spread of THIS css needs, in CSS px; 0 when there is no
+   * geometry to fit against. Carried rather than recomputed because
+   * `paginatedWidth()` parses the whole stylesheet — a couple of milliseconds
+   * against a 16ms resize frame, on a question the splitter drag asks on every
+   * one of them. (No byte count here on purpose: this file's own header
+   * retracts a table of measurements that went stale three ways in one release,
+   * and nothing re-derives a stylesheet's size either.)
+   */
+  spreadPx: number;
+  /** The text to put in the frame's `<style>`. */
+  text: string;
+}
 
 /**
- * Whether this browser can stack multicol columns into rows.
+ * The stylesheet the frame should carry now, or `null` when it already has it.
  *
- * CSS Multicol L2 (`column-wrap` / `column-height`) shipped unflagged in
- * Chrome/Edge 145+. Electron 42 bundles Chromium 148, so the packaged app
- * always has it — but this is feature-probed rather than assumed, matching
- * `fragment.ts`'s own `spreadModeSupported()`. Without it the editor still
- * works; the pages simply run in one long horizontal row.
+ * Three inputs decide it: the book's CSS, how many pages the app asked for, and
+ * how much room the frame has. A request for 2 is honoured only when 2
+ * genuinely fits — the editor renders at 1 CSS px per print px with no zoom of
+ * its own, so a US-Letter spread is a fixed 1656px while the default 0.42 split
+ * gives the editor ~806px on a 1920px window. Following the setting
+ * unconditionally would open a brand-new project showing half a spread behind a
+ * horizontal scrollbar; refusing outright would mean an author who widens the
+ * pane never gets the spread they asked for. So the request is remembered and
+ * the fit is re-decided on every resize.
+ *
+ * A `null` return is the whole re-emit decision, and it is here rather than in
+ * the component for a measured reason: `spreadFits()` used to read
+ * `body.clientWidth`, which happy-dom never fills in, so nothing could test the
+ * decision at all — two mutations that made the Two-page button silently dead
+ * for a mounted editor both left the suite green.
+ *
+ * With no book CSS there is no page geometry to fit against, so the honest
+ * answer is one column.
  */
-export function stackedPagesSupported(): boolean {
-  return (
-    typeof CSS !== "undefined" &&
-    typeof CSS.supports === "function" &&
-    CSS.supports("column-wrap", "wrap") &&
-    CSS.supports("column-height", "100px")
-  );
+export function nextEditorSheet(
+  applied: EditorSheet | null,
+  css: string,
+  requested: 1 | 2,
+  availablePx: number,
+): EditorSheet | null {
+  const sameCss = applied?.css === css;
+  const spreadPx = sameCss ? applied!.spreadPx : css ? paginatedWidth(css, { columns: 2 }) : 0;
+  const columns: 1 | 2 = requested === 2 && spreadPx > 0 && availablePx >= spreadPx ? 2 : 1;
+  if (sameCss && applied!.columns === columns) return null;
+  return { css, columns, spreadPx, text: `${css}\n\n${editorStylesheet(css, { columns })}` };
 }
+
+const px = (pt: number) => `${Math.round(pt * PX_PER_PT * 1000) / 1000}px`;
 
 /**
  * The whole editor stylesheet, from the book's own CSS text.

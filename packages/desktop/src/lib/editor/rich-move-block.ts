@@ -17,11 +17,9 @@
  *
  *   - caret in a paragraph inside `@section` → the paragraph moves among the
  *     section's children (the common shape in these books);
- *   - caret in a list item's paragraph → the paragraph is an only child, so
- *     the search moves outward and the LIST ITEM moves among its siblings;
- *   - a nested list that cannot legally sit above its item's first paragraph
- *     (`list_item` is `paragraph block*`) → rejected by `validContent`, so the
- *     search moves outward and the whole list item moves instead;
+ *   - caret in a plain bullet's paragraph → that paragraph is its item's only
+ *     child, so it has no sibling to trade with, the search moves outward and
+ *     the LIST ITEM moves among its siblings;
  *   - caret anywhere inside a table → every candidate's parent carries a
  *     `tableRole`, so the search skips them all and the whole TABLE moves.
  *
@@ -30,11 +28,33 @@
  * `table_head` before a `table_body`, cells aligned into columns), not the
  * author's to shuffle, but the table itself is an ordinary block.
  *
+ * A bullet holding MORE than a paragraph is the case to state plainly, because
+ * `list_item` here is `block+` — not `prosemirror-markdown`'s
+ * `paragraph block*`. Nothing forbids a nested list above its item's first
+ * paragraph, so a bullet with a sub-list under it reorders its OWN children
+ * rather than falling outward to the item: measured, caret in `one` of
+ * `* one\n\n  * a\n  * b\n\n* two\n`, Alt-ArrowDown gives
+ * `* * a\n  * b\n\n  one\n\n* two\n`, which round-trips. That is the same rule
+ * as everywhere else — the innermost block that CAN move — and it is the block
+ * the author put the caret in.
+ *
  * `isReorderable()` is that whole search condition, exported so the drag
  * handle stops its own outward walk at exactly the block this command would
  * move. The handle used to share only `reordersChildren()`, which is a
  * strictly weaker question, and the two picked different blocks in a bulleted
  * list — see that function's own comment.
+ *
+ * The two agree on the DESTINATION as well, and that is enforced at the other
+ * end: this command only ever exchanges siblings, so `rich-drag-handle.ts`
+ * re-targets a drop to the nearest slot in the block's own parent instead of
+ * letting upstream insert wherever the pointer happens to land. Without that,
+ * the pointer could relocate a block into or out of an `@section` with no
+ * keystroke that does the same — a drag-only capability, which
+ * `docs/ux-design-contract.md` does not allow ("drag-and-drop always has a
+ * keyboard alternative"). Re-targeting rather than refusing is load-bearing:
+ * a refusal reads as equivalent and is not, because every position a pointer
+ * can produce is inside a textblock, so a wrapper dropped over a neighbouring
+ * wrapper's text would never move at all.
  *
  * ## Why the moved node is re-inserted rather than the parent rewritten
  *
@@ -61,10 +81,14 @@ function reordersChildren(parent: PMNode): boolean {
 /**
  * Whether `parent.child(index)` can trade places with the sibling `dir` away.
  *
- * The schema check is what lets the outward search below exist: a nested list
- * cannot legally sit above its item's first paragraph (`list_item` is
- * `paragraph block*`), so asking the schema here turns an illegal arrangement
- * into "try the next depth out" rather than a throw from `tr.insert`.
+ * The `validContent` half turns an arrangement the schema forbids into "try
+ * the next depth out" rather than a throw from `tr.insert`. In THIS schema it
+ * never actually fires: every parent the search reaches holds one homogeneous
+ * group (`block+`, `list_item+`), and the one ordered content expression —
+ * `table` is `table_head? table_body?` — is behind `reordersChildren()`, which
+ * rejects it first. It is kept because the alternative is a crash rather than a
+ * refusal the moment a node type with an ordered expression joins the schema,
+ * and because the cost is one call on a fragment already in hand.
  */
 function canSwap(parent: PMNode, index: number, dir: 1 | -1): boolean {
   const target = index + dir;

@@ -62,6 +62,7 @@
     viewMode,
     zoom,
     previewControlsDisabled,
+    viewModeDisabled,
     onApplyViewMode,
     onApplyZoom,
     previewHidden,
@@ -111,6 +112,14 @@
     viewMode: "single" | "two-column";
     zoom: string;
     previewControlsDisabled: boolean;
+    /**
+     * Single / Two-page specifically. Separate from
+     * `previewControlsDisabled` because these two drive the rich EDITOR as well
+     * as the preview, and the editor runs — full-window, which is exactly the
+     * width a spread needs — while the preview server is still starting, or
+     * never starts at all.
+     */
+    viewModeDisabled: boolean;
     onApplyViewMode: (mode: "single" | "two-column") => void;
     onApplyZoom: (zoom: string) => void;
     previewHidden: boolean;
@@ -316,7 +325,7 @@
         class="icon-text"
         class:active={viewMode === "single"}
         onclick={() => onApplyViewMode("single")}
-        disabled={previewControlsDisabled}
+        disabled={viewModeDisabled}
         title="Show one page at a time"
         aria-label="Single page view"
         aria-pressed={viewMode === "single"}
@@ -327,7 +336,7 @@
         class="icon-text"
         class:active={viewMode === "two-column"}
         onclick={() => onApplyViewMode("two-column")}
-        disabled={previewControlsDisabled}
+        disabled={viewModeDisabled}
         title="Show two pages side by side, like an open book"
         aria-label="Two pages side by side"
         aria-pressed={viewMode === "two-column"}
@@ -346,7 +355,7 @@
           class="menu-item"
           class:active={viewMode === "single"}
           onclick={(e) => { onApplyViewMode("single"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          disabled={viewModeDisabled}
         >
           <Icon name="rectangle-vertical" /> Single page
         </button>
@@ -355,7 +364,7 @@
           class="menu-item"
           class:active={viewMode === "two-column"}
           onclick={(e) => { onApplyViewMode("two-column"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          disabled={viewModeDisabled}
         >
           <Icon name="columns-2" /> Two pages side by side
         </button>

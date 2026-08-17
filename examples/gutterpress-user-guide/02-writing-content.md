@@ -216,6 +216,15 @@ and the block moves: a line shows where it will land, and it lands there when
 you let go. Only the order changes; the words, the marker lines and the
 `{.class}` braces come along untouched.
 
+A block moves **among the blocks it sits with** — a paragraph inside a
+`@section` moves within that section, a top-level paragraph moves among the
+other top-level blocks. Drop it over something outside that group, such as a
+different `@section`, and it lands **beside** that section rather than inside
+it, so a stray drop can never quietly change which group your text belongs to.
+To move text between groups, edit the marker lines in **Markdown** mode. And
+dragging a `@section` itself moves the whole section — marker lines, classes
+and everything inside — which is usually the move you wanted anyway.
+
 **Alt+Up** and **Alt+Down** do the same thing from the keyboard, with no grip
 involved — the same keys that move a line up and down in **Markdown** mode, so
 one habit works in both surfaces. The keys move whichever block the cursor is

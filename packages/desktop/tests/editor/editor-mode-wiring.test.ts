@@ -26,6 +26,11 @@ const RICH = readFileSync(
   "utf8",
 );
 
+const TOOLBAR = readFileSync(
+  resolve(import.meta.dir, "../../src/lib/components/AppToolbar.svelte"),
+  "utf8",
+);
+
 describe("editor.mode setting", () => {
   test("defaults to rich", () => {
     expect(DEFAULT_SETTINGS.editor.mode).toBe("rich");
@@ -139,6 +144,13 @@ describe("+page.svelte mode wiring", () => {
  * view mode has to be mapped, the mapping has to reach a surface that is
  * mounted lazily and reads its props exactly once, and the surface has to
  * render the count that FITS rather than the one it was handed.
+ *
+ * The third link used to be asserted only as source text, and it gated nothing:
+ * two mutations that made the Two-page button silently dead — dropping the
+ * column half of the re-emit guard, and leaving `setColumns` a pure setter —
+ * both passed 711 tests. The decision now lives in `nextEditorSheet()` and is
+ * tested there, against real values; what stays here is the wiring that only
+ * this file's source can show.
  */
 describe("spread view wiring", () => {
   test("the editor follows preview.viewMode rather than owning a second setting", () => {
@@ -180,12 +192,19 @@ describe("spread view wiring", () => {
     // is a fixed 1656px against ~806px of editor pane at the default split.
     // Passing the request straight through would open a new project showing
     // half a spread behind a horizontal scrollbar.
+    //
+    // The DECISION is `nextEditorSheet()` and paginate.test.ts exercises it
+    // directly — every branch, including the two mutations that used to leave
+    // this suite green. What is left here is the LINK: this component must feed
+    // it the frame's own measurement rather than deciding for itself, which no
+    // unit test can see because happy-dom does no layout.
     const applyCss = RICH.slice(RICH.indexOf("function applyCss(css: string)"));
-    expect(applyCss.slice(0, 400)).toContain("requestedColumns === 2 && spreadFits(css) ? 2 : 1");
-    expect(applyCss.slice(0, 400)).toContain("editorStylesheet(css, { columns: cols })");
-    const fits = RICH.slice(RICH.indexOf("function spreadFits(css: string)"));
-    expect(fits.slice(0, 400)).toContain("paginatedWidth(css, { columns: 2 })");
-    expect(fits.slice(0, 400)).toContain("body?.clientWidth");
+    const body = applyCss.slice(0, applyCss.indexOf("\n  }"));
+    expect(body).toContain("body?.clientWidth");
+    expect(body).toContain("nextEditorSheet(applied, css, requestedColumns, width)");
+    // The emit is gated on that answer, not on the CSS text alone.
+    expect(body).toContain("if (!next) return;");
+    expect(body).toContain("styleEl.textContent = next.text;");
   });
 
   test("a refused spread is reconsidered when the pane changes size", () => {
@@ -197,6 +216,54 @@ describe("spread view wiring", () => {
       RICH.indexOf("function onFrameGeometryChanged"),
       RICH.indexOf("function runSlash"),
     );
-    expect(fn).toContain("if (requestedColumns === 2) applyCss(appliedCss);");
+    expect(fn).toContain('if (requestedColumns === 2) applyCss(applied?.css ?? "");');
+  });
+
+  test("the view-mode buttons stay usable when there is no preview", () => {
+    // They were gated on `previewControlsDisabled` — correct while they only
+    // drove the preview. Now they also drive an editing surface that is
+    // explicitly designed to work without one: `previewUrl` is null from the
+    // moment a project opens until the preview reports ready, and indefinitely
+    // if it never starts. That is also when the editor is full-window, i.e.
+    // exactly the width a spread needs.
+    expect(PAGE).toContain(
+      "viewModeDisabled={!lifecycle.previewUrl && !richEditorShowing}",
+    );
+    // All three terms, and `editorView` is the one that was missing: the
+    // "activity" branch of the template renders ProjectActivityView INSTEAD of
+    // the editor, so `editorPaneOpen` alone left both buttons enabled over a
+    // null `editorRef` and a null preview client — enabled controls driving
+    // nothing, the mirror of the bug this flag was added to fix.
+    expect(PAGE).toMatch(
+      /richEditorShowing = \$derived\(\s*editorPaneOpen && editorView === "editor" && effectiveEditorMode === "rich",\s*\)/,
+    );
+    // The editor is rendered only in the non-activity branch — the fact the
+    // term above encodes.
+    expect(PAGE.indexOf('{#if editorView === "activity"}')).toBeLessThan(
+      PAGE.indexOf("<RichEditor"),
+    );
+    // Zoom and page navigation are genuinely preview-only and must stay gated.
+    expect(PAGE).toContain("previewControlsDisabled={!lifecycle.previewUrl}");
+    // All four view-mode controls (segmented pair + the collapsed menu's two
+    // items) move together, or the narrow toolbar disagrees with the wide one.
+    const viewMode = TOOLBAR.slice(
+      TOOLBAR.indexOf('<div class="view-mode-group">'),
+      TOOLBAR.indexOf("<!-- Zoom:"),
+    );
+    expect(viewMode.match(/disabled=\{viewModeDisabled\}/g)?.length).toBe(4);
+    expect(viewMode).not.toContain("previewControlsDisabled");
+  });
+
+  test("changing the view mode re-applies the stylesheet, not just the field", () => {
+    // The other mutation that used to ship green: leaving `setColumns` a pure
+    // setter makes the toolbar's Two-page button dead for a mounted editor —
+    // the request is recorded and nothing re-emits until some unrelated resize
+    // happens to come along. There is no component harness in this suite, so
+    // this is the one link that has to be read off the source; the decision it
+    // guards is behavioural in paginate.test.ts.
+    const fn = RICH.slice(RICH.indexOf("export function setColumns"));
+    const body = fn.slice(0, fn.indexOf("\n  }"));
+    expect(body).toContain("requestedColumns = next;");
+    expect(body).toMatch(/applyCss\(/);
   });
 });
