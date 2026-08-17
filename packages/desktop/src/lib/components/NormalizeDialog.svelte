@@ -145,12 +145,15 @@
 {/if}
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
+  /* No `dialog-shell.css` import: this dialog lays itself out with the `nz-*`
+     classes below, so the shell's `dlg-*` rules would ship as dead CSS.
+     Visual consistency comes from the shared `--app-*` tokens, which is what
+     actually carries the look. */
 
   .nz-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--app-backdrop);
     z-index: 60;
   }
   .nz-dialog {
@@ -164,9 +167,9 @@
     overflow: auto;
     padding: 20px;
     border-radius: 10px;
-    background: var(--panel-bg, #1e1e22);
-    border: 1px solid var(--border, #333);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    box-shadow: var(--app-shadow-lg);
   }
   .nz-head {
     display: flex;
@@ -183,7 +186,7 @@
   .nz-clean {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-dim, #aaa);
+    color: var(--app-text-muted);
     line-height: 1.5;
   }
   .nz-list {
@@ -192,11 +195,11 @@
     padding: 0;
     max-height: 34vh;
     overflow: auto;
-    border: 1px solid var(--border, #333);
+    border: 1px solid var(--app-border);
     border-radius: 6px;
   }
   .nz-item + .nz-item {
-    border-top: 1px solid var(--border, #2c2c31);
+    border-top: 1px solid var(--app-border-subtle);
   }
   .nz-row {
     display: flex;
@@ -208,13 +211,13 @@
   .nz-path {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
-    color: var(--text, #ddd);
+    color: var(--app-text);
     overflow-wrap: anywhere;
   }
   .nz-link {
     background: none;
     border: none;
-    color: var(--accent, #7aa2f7);
+    color: var(--app-accent);
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
@@ -230,7 +233,7 @@
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim, #888);
+    color: var(--app-text-muted);
     margin-bottom: 3px;
   }
   .nz-compare pre {
@@ -238,7 +241,7 @@
     padding: 7px;
     font-size: 11px;
     line-height: 1.45;
-    background: var(--code-bg, #141417);
+    background: var(--app-surface-sunken);
     border-radius: 4px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -247,8 +250,8 @@
   }
   .nz-refused {
     font-size: 12px;
-    color: var(--text-dim, #aaa);
-    border-left: 2px solid var(--border, #444);
+    color: var(--app-text-muted);
+    border-left: 2px solid var(--app-border-strong);
     padding-left: 10px;
     margin-bottom: 12px;
   }

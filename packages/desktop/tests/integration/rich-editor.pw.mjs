@@ -138,7 +138,20 @@ ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
 };
+const pageErrors = [];
+ws.onmessage = (ev) => {
+  const m = JSON.parse(String(ev.data));
+  if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
+  if (m.method === "Runtime.exceptionThrown") {
+    pageErrors.push(m.params?.exceptionDetails?.exception?.description
+      ?? m.params?.exceptionDetails?.text ?? "unknown");
+  }
+  if (m.method === "Runtime.consoleAPICalled" && m.params?.type === "error") {
+    pageErrors.push((m.params.args ?? []).map((a) => a.description ?? a.value).join(" "));
+  }
+};
 await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
+await send("Runtime.enable");
 function send(method, params = {}) {
   return new Promise((res) => {
     const id = ++msgId;
@@ -201,15 +214,18 @@ if (await waitFor(`!!document.querySelector('.nz-dialog')`, "", 15, true)) {
   log("project tidied");
 }
 
+// Applying the tidy rewrites files, which the folder watch sees as a project
+// change — and a project reset closes the editor pane. Reopen if that happened.
+if (!(await waitFor(`!!document.querySelector('.editor-pane')`, "", 8, true))) {
+  log("editor closed by the post-tidy project refresh; reopening");
+  await evalJs(`document.querySelector('button[aria-label="Toggle markdown editor"]').click()`);
+}
 if (!(await waitFor(`!!document.querySelector('.editor-pane')`, "", 20, true))) {
-  console.log("[rich-editor] DIAG2:", await evalJs(`JSON.stringify({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    toggle: document.querySelector('button[aria-label="Toggle markdown editor"]')?.getAttribute('aria-pressed'),
-    editorish: [...document.querySelectorAll('[class*=editor]')].map(e=>e.className).slice(0,10),
-    tabs: [...document.querySelectorAll('[role=tab]')].map(e=>e.textContent.trim()+':'+e.getAttribute('aria-selected')),
-    allPanes: [...document.querySelectorAll('.pane')].map(e=>e.className),
-  })`));
+  // Page errors are the signal that matters here: a thrown error inside the
+  // pane's subtree removes the whole thing, and the DOM alone just looks
+  // "closed". This is how a temporal-dead-zone `isMd` reference — invisible to
+  // `tsc`, which does not read .svelte files — was found.
+  console.log("[rich-editor] PAGE ERRORS:", JSON.stringify(pageErrors.slice(0, 4), null, 2));
   fail("the editor pane never opened");
 }
 log("editor pane open");

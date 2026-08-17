@@ -969,6 +969,22 @@
   // (which the preview file-watcher picks up to re-render), debounced
   // crash-recovery snapshots, the close/navigate flush, and external-edit
   // reconciliation. The editor owns exactly one file buffer at a time.
+  /**
+   * Is this a markdown file?
+   *
+   * A function DECLARATION, and at component scope on purpose. This used to be
+   * a `const` arrow inside `insertImageIntoChapter`, and the editor-mode
+   * derived below — which runs during component init — referenced it from
+   * outside that function. The result was `ReferenceError: isMd is not
+   * defined` at startup, which killed the whole editor-pane subtree, so the
+   * editor never opened at all. `tsc` cannot see it (it does not read
+   * `.svelte` files) and a `const` here would still be in its temporal dead
+   * zone; a declaration is hoisted.
+   */
+  function isMd(path: string | null): boolean {
+    return !!path && /\.(md|markdown)$/i.test(path);
+  }
+
   let editorOpen = $state(false);
   let previewHidden = $state(false);
   // Focus mode (#104) — transient editor-only layout. Declared here (before the
@@ -1238,19 +1254,6 @@
    */
   let richBlockedReason = $state<string | null>(null);
 
-  /** The author's preference; the effective mode also depends on the file. */
-  let editorModePref = $derived(settings.current.editor.mode);
-
-  /**
-   * The mode actually in use. Source wins whenever rich is impossible: a
-   * non-markdown file (CSS), a file the model cannot represent, or a failed
-   * chunk load.
-   */
-  let effectiveEditorMode = $derived<"rich" | "source">(
-    editorModePref === "rich" && isMd(editorFilePath) && !richBlockedReason && !richModuleFailed
-      ? "rich"
-      : "source",
-  );
 
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
@@ -1371,7 +1374,6 @@
    * doc) and no infinite loop (gives up with a clear toast).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
-    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
       editorOpen = true;
@@ -1415,6 +1417,20 @@
     if (dir && file.startsWith(dir + "/")) return file.slice(dir.length + 1);
     return basenameOf(file);
   });
+  /** The author's preference; the effective mode also depends on the file. */
+  let editorModePref = $derived(settings.current.editor.mode);
+
+  /**
+   * The mode actually in use. Source wins whenever rich is impossible: a
+   * non-markdown file (CSS), a file the model cannot represent, or a failed
+   * chunk load.
+   */
+  let effectiveEditorMode = $derived<"rich" | "source">(
+    editorModePref === "rich" && isMd(editorFilePath) && !richBlockedReason && !richModuleFailed
+      ? "rich"
+      : "source",
+  );
+
   let editorSavePhase = $derived(buffer?.phase ?? "clean");
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
@@ -3691,25 +3707,25 @@
     display: flex;
     gap: 2px;
     padding: 4px 8px;
-    border-bottom: 1px solid var(--border, #333);
-    background: var(--panel-bg, #1e1e22);
+    border-bottom: 1px solid var(--app-border);
+    background: var(--app-surface-raised);
   }
   .editor-mode-switch button {
     border: 1px solid transparent;
     background: transparent;
-    color: var(--text-dim, #999);
+    color: var(--app-text-muted);
     font-size: 12px;
     padding: 3px 10px;
     border-radius: 4px;
     cursor: pointer;
   }
   .editor-mode-switch button:hover:not(:disabled) {
-    color: var(--text, #eee);
+    color: var(--app-text);
   }
   .editor-mode-switch button.active {
-    background: var(--accent-soft, #2d2d33);
-    border-color: var(--border, #3a3a40);
-    color: var(--text, #eee);
+    background: var(--app-surface-hover);
+    border-color: var(--app-border);
+    color: var(--app-text);
   }
   .editor-mode-switch button:disabled {
     opacity: 0.45;
@@ -3721,9 +3737,9 @@
     margin: 0;
     padding: 6px 10px;
     font-size: 12px;
-    color: var(--text-dim, #aaa);
-    background: var(--panel-bg, #26262b);
-    border-bottom: 1px solid var(--border, #333);
+    color: var(--app-text-muted);
+    background: var(--app-surface-raised);
+    border-bottom: 1px solid var(--app-border);
   }
 
   .editor-loading {

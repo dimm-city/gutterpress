@@ -52,6 +52,7 @@
   } from "$lib/editor/rich-editor";
   import { slashAction, type ChromeAnchor, type SlashItem } from "$lib/editor/rich-chrome.svelte";
   import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-commands";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
 
   let {
     filePath = null,
@@ -87,7 +88,10 @@
   let frame: HTMLIFrameElement;
   let handle: RichEditorHandle | null = null;
   let styleEl: HTMLStyleElement | null = null;
-  let openPath: string | null = filePath;
+  // Read inside onMount, not at init: referencing a prop here captures only
+  // its first value, which Svelte warns about and which would silently go
+  // stale if the host ever mounted this with a file already chosen.
+  let openPath: string | null = null;
   let appliedCss = "";
 
   /**
@@ -131,6 +135,7 @@
   }
 
   onMount(() => {
+    openPath = filePath;
     const doc = frame.contentDocument;
     if (!doc) return;
 
@@ -208,12 +213,21 @@
     return handle !== null && openPath === path;
   }
 
-  /** Run a toolbar action. False when it does not apply to the selection. */
-  export function runToolbarAction(
-    action: RichToolbarAction,
-    payload?: ToolbarPayloadLike,
-  ): boolean {
-    return handle?.runToolbarAction(action, payload) ?? false;
+  /**
+   * Run a toolbar action.
+   *
+   * Takes the host's FULL action union so both editors share one signature.
+   * `snippet` and `focus-mode` are intercepted by the host before they reach
+   * an editor, so they resolve to no command here and report false — the same
+   * outcome `MarkdownEditor` produces by having no case for them.
+   */
+  export function runToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): boolean {
+    return (
+      handle?.runToolbarAction(
+        action as RichToolbarAction,
+        payload as ToolbarPayloadLike,
+      ) ?? false
+    );
   }
 
   export function getSelectionText(): string {

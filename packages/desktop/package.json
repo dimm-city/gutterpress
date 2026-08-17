@@ -21,6 +21,7 @@
     "dist:win": "npm run dist -- --win nsis zip",
     "dist:mac": "npm run dist -- --mac --arm64 --x64",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "verify": "npm run check && npm run lint && bun test && npm run build",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",

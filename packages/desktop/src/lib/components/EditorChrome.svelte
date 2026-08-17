@@ -181,10 +181,10 @@
   .gp-bubble {
     position: fixed;
     z-index: var(--app-z-menu);
-    background: var(--app-panel-bg, #232329);
-    border: 1px solid var(--app-border, #3a3a42);
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
     border-radius: 8px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--app-shadow-lg);
   }
 
   .gp-slash {
@@ -201,25 +201,25 @@
     border: 0;
     border-radius: 5px;
     background: transparent;
-    color: var(--app-text, #e6e6ea);
+    color: var(--app-text);
     text-align: left;
     cursor: pointer;
   }
   .gp-slash-item.active {
-    background: var(--app-accent-soft, #33333c);
+    background: var(--app-surface-hover);
   }
   .gp-slash-label {
     font-size: 13px;
   }
   .gp-slash-detail {
     font-size: 11px;
-    color: var(--app-text-dim, #9a9aa4);
+    color: var(--app-text-muted);
   }
   .gp-empty {
     margin: 0;
     padding: 10px;
     font-size: 12px;
-    color: var(--app-text-dim, #9a9aa4);
+    color: var(--app-text-muted);
   }
 
   .gp-bubble {
@@ -236,16 +236,16 @@
     border: 0;
     border-radius: 5px;
     background: transparent;
-    color: var(--app-text, #e6e6ea);
+    color: var(--app-text);
     cursor: pointer;
   }
   .gp-bubble button:hover {
-    background: var(--app-accent-soft, #33333c);
+    background: var(--app-surface-hover);
   }
 
   .gp-slash-item:focus-visible,
   .gp-bubble button:focus-visible {
-    outline: 2px solid var(--app-accent, #7aa2f7);
+    outline: 2px solid var(--app-accent);
     outline-offset: -2px;
   }
   @media (prefers-contrast: more) {
