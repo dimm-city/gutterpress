@@ -134,10 +134,6 @@ const WebSocketImpl =
 const ws = new WebSocketImpl(await getWsUrl());
 let msgId = 0;
 const pending = new Map();
-ws.onmessage = (ev) => {
-  const m = JSON.parse(String(ev.data));
-  if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
-};
 const pageErrors = [];
 ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
