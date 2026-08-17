@@ -42,15 +42,33 @@ import { Schema, type NodeSpec } from "prosemirror-model";
  * them would invent `label=…` the author never wrote. Keeping the one source
  * line is exact, and it is one attribute on one node type.
  */
+/**
+ * `class` is the classes `markers.js` PUT ON THE TOKEN — `"page wide"`,
+ * `"section gp-columns-2"` — carried through so the editing view emits the
+ * same DOM the print path does.
+ *
+ * This is what makes "looks as it will print" true rather than approximate: a
+ * book styles `.page`, `.section` and its own `.wide`/`.gp-columns-2` utility
+ * classes, so a view that rendered a generic `div.gp-layout` would drop every
+ * one of those rules on the floor. It is also why the editor needs no
+ * stylesheet of its own for author content — the book's CSS matches, unchanged.
+ *
+ * View-only: the serializer round-trips from `marker` alone (the authored
+ * line), so nothing here can reach the file.
+ */
 function layoutWrapper(): NodeSpec {
   return {
     content: "block+",
     group: "block",
     defining: true,
-    attrs: { marker: { default: "" } },
+    attrs: { marker: { default: "" }, class: { default: "" } },
     // Rendered for the editing view only. The PRINT path never sees this
     // schema — it renders through markdown-it exactly as it always has.
-    toDOM: (node) => ["div", { class: "gp-layout", "data-marker": node.attrs.marker as string }, 0],
+    toDOM: (node) => [
+      "div",
+      { class: (node.attrs.class as string) || "gp-layout", "data-marker": node.attrs.marker as string },
+      0,
+    ],
   };
 }
 
@@ -59,8 +77,15 @@ function layoutAtom(): NodeSpec {
     group: "block",
     atom: true,
     selectable: true,
-    attrs: { marker: { default: "" } },
-    toDOM: (node) => ["div", { class: "gp-layout-atom", "data-marker": node.attrs.marker as string }],
+    attrs: { marker: { default: "" }, class: { default: "" } },
+    toDOM: (node) => [
+      "div",
+      {
+        class: (node.attrs.class as string) || "gp-layout-atom",
+        "data-marker": node.attrs.marker as string,
+        "aria-hidden": "true",
+      },
+    ],
   };
 }
 

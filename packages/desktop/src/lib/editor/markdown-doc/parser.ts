@@ -48,9 +48,20 @@ function alignOf(token: Token): string | null {
 export function createDocParser(md: MarkdownIt) {
   let lines: string[] = [];
 
+  /**
+   * The authored marker line, plus the classes `markers.js` derived from it.
+   *
+   * The class list is view-only (see `schema.ts`) — it is what lets the
+   * editing surface emit the same `.page` / `.section` / author-utility DOM
+   * the print path emits, so the book's own stylesheet applies unchanged.
+   * Only `marker` is ever serialized back.
+   */
   const marker = (tok: Token) => {
     const line = (tok.meta as { line?: number } | null)?.line;
-    return { marker: typeof line === "number" ? (lines[line - 1] ?? "") : "" };
+    return {
+      marker: typeof line === "number" ? (lines[line - 1] ?? "") : "",
+      class: tok.attrGet("class") ?? "",
+    };
   };
 
   const specs: Record<string, ParseSpec> = {

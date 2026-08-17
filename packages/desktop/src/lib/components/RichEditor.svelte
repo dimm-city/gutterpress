@@ -1,0 +1,173 @@
+<script lang="ts">
+  /**
+   * RichEditor — the WYSIWYG surface, showing the author's text at print size.
+   *
+   * A sibling of `MarkdownEditor.svelte`, deliberately sharing its contract:
+   * the same props (`filePath`, `content`, `onChange`, `onSave`) and the same
+   * imperative methods (`switchFile`, `updateContent`, `focus`, `hasFile`), so
+   * the host can drive either without special-casing. Like that component it
+   * takes no reactive dependency on `content` — this repo bans `$effect`, and
+   * reading `content` reactively would also fire on every keystroke's
+   * onChange -> buffer round trip and fight the author's own typing.
+   *
+   * ## Why an iframe
+   *
+   * The promise is that text looks as it will print, so the BOOK'S stylesheet
+   * has to apply to the editing surface — and a book stylesheet has bare `h1`,
+   * `p` and `table` rules that would repaint the whole application if they
+   * landed in the app's document. Some isolation is mandatory.
+   *
+   * A shadow root was tried first and is WRONG here, for a concrete measured
+   * reason: `:root` matches nothing inside a shadow tree, so every
+   * `:root { --font-body: … }` custom property silently stops applying — and
+   * custom properties are Gutterpress's primary styling surface for
+   * non-technical authors. Measured on the user guide: every font fell back to
+   * Times. Fixing it would mean rewriting the author's CSS (`:root` -> `:host`),
+   * i.e. becoming a general CSS rewriter, which `gcpm-extract.ts` names as the
+   * signal that this design has drifted.
+   *
+   * An iframe reads the author's stylesheet VERBATIM — the same bytes the PDF
+   * gets, evaluated the same way — so there is nothing to rewrite. Measured
+   * side by side on the user guide: identical pagination (9 pages, 648px
+   * columns), identical editing behaviour, `--font-body` resolving correctly,
+   * and no leak into the host document.
+   *
+   * ProseMirror itself runs in THIS document and drives DOM inside the frame
+   * (`view.root` resolves to the frame's document) — so the frame needs no
+   * script of its own, which is what makes the CSP below free.
+   *
+   * NOTE for whoever adds the editor pane's show/hide: never merely hide this
+   * iframe while it is live. Chromium throttles invisible frames to ~1fps —
+   * the same trap `PreviewFrame.svelte` documents. Unmount it instead.
+   */
+  import { onMount } from "svelte";
+  import { createEditorRenderer } from "$lib/editor/markdown-doc";
+  import { editorStylesheet } from "$lib/editor/paginate";
+  import { mountRichEditor, type RichEditorHandle } from "$lib/editor/rich-editor";
+
+  let {
+    filePath = null,
+    content = "",
+    bookCss = "",
+    assetBase = "",
+    columns = 1,
+    onChange,
+    onSave,
+  }: {
+    filePath?: string | null;
+    content?: string;
+    /** The book's fully-inlined CSS — the same text the preview renders with. */
+    bookCss?: string;
+    /**
+     * Base URL for relative asset references (usually the preview server's
+     * origin). Without it, `![](images/x.png)` cannot resolve inside a frame
+     * that has no document URL of its own.
+     */
+    assetBase?: string;
+    /** 1 = a vertical stack of pages, 2 = facing spreads. */
+    columns?: 1 | 2;
+    onChange?: (value: string) => void;
+    onSave?: () => void;
+  } = $props();
+
+  /** Gutterpress's own markdown-it pipeline — the one that prints. */
+  const md = createEditorRenderer();
+
+  let frame: HTMLIFrameElement;
+  let handle: RichEditorHandle | null = null;
+  let styleEl: HTMLStyleElement | null = null;
+  let openPath: string | null = filePath;
+  let appliedCss = "";
+
+  onMount(() => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+
+    // `script-src 'none'` is what lets the surface render an author's raw HTML
+    // (see `rawHtmlView` in rich-editor.ts) without also running an author's
+    // `<script>`. The preview frame gets this protection from being
+    // cross-origin and sandboxed; this frame is deliberately same-origin so
+    // ProseMirror can reach its DOM, so it states the restriction directly.
+    doc.open();
+    doc.write(
+      "<!doctype html><meta charset=utf-8>" +
+        `<meta http-equiv="Content-Security-Policy" content="script-src 'none'">` +
+        (assetBase ? `<base href="${assetBase.replace(/"/g, "&quot;")}">` : "") +
+        "<body></body>",
+    );
+    doc.close();
+
+    styleEl = doc.createElement("style");
+    doc.head.appendChild(styleEl);
+
+    const flow = doc.createElement("div");
+    flow.className = "gp-editor-page-flow";
+    doc.body.appendChild(flow);
+
+    applyCss(bookCss);
+    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave });
+
+    return () => {
+      handle?.destroy();
+      handle = null;
+      styleEl = null;
+    };
+  });
+
+  /**
+   * Put the book's stylesheet and the page-flow rules into the frame.
+   *
+   * Recomputed only when the CSS text actually changes: `editorStylesheet()`
+   * parses the whole stylesheet, and a live preview can re-emit identical CSS
+   * on every rebuild.
+   */
+  function applyCss(css: string): void {
+    if (!styleEl || css === appliedCss) return;
+    appliedCss = css;
+    styleEl.textContent = `${css}\n\n${editorStylesheet(css, { columns })}`;
+  }
+
+  /** The host changed which file is open. */
+  export function switchFile(newPath: string | null, newContent: string): void {
+    openPath = newPath;
+    handle?.setContent(newContent);
+  }
+
+  /** Same file, new bytes — an external-edit auto-reload. */
+  export function updateContent(nextDoc: string): void {
+    if (handle && handle.getMarkdown() !== nextDoc) handle.setContent(nextDoc);
+  }
+
+  /** The book's stylesheet changed (the author edited CSS, or a rebuild ran). */
+  export function setBookCss(css: string): void {
+    applyCss(css);
+  }
+
+  export function focus(): void {
+    frame?.focus();
+    handle?.focus();
+  }
+
+  export function hasFile(path: string): boolean {
+    return openPath === path;
+  }
+
+  /** Canonical markdown for what is on screen right now. */
+  export function getMarkdown(): string {
+    return handle?.getMarkdown() ?? content;
+  }
+</script>
+
+<iframe bind:this={frame} class="rich-editor" title="Gutterpress editor"></iframe>
+
+<style>
+  /* The frame is the whole surface; everything inside it is the book's own
+     CSS plus the page-flow box. Nothing here styles author content. */
+  .rich-editor {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: var(--gp-editor-backdrop, #2a2a2e);
+  }
+</style>
