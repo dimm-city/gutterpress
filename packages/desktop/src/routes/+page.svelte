@@ -981,15 +981,29 @@
    *  unclamped overlay could engage that scrollbar. */
   let previewPaneEl = $state<HTMLElement | undefined>(undefined);
   let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
+  /**
+   * The mounted editor, whichever mode it is in.
+   *
+   * `MarkdownEditor.svelte` (CodeMirror, source) and `RichEditor.svelte`
+   * (ProseMirror, WYSIWYG) both satisfy this, so nothing below branches on
+   * mode. Where they genuinely differ the method is OPTIONAL and the caller
+   * must handle its absence visibly rather than silently doing nothing:
+   *
+   * - `revealLine` is source-only. A ProseMirror document has no line
+   *   numbers; deriving them is deferred, so in rich mode a "go to source"
+   *   jump switches that file to source mode instead of quietly failing.
+   * - `canApplySourceOffsets` is rich-only, and gates `applyRangeEditIn`.
+   * - `setBookCss` is rich-only (the book stylesheet the surface renders in).
+   */
   let editorRef = $state<{
     focus: () => void;
-    revealLine: (line: number, focusEditor?: boolean) => void;
-    runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
+    revealLine?: (line: number, focusEditor?: boolean) => void;
+    runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void | boolean;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
     updateContent: (content: string) => void;
     /** Switch which file is open (UX review M8) — called explicitly whenever
-     * the buffer's open file changes; MarkdownEditor has no reactive effect
+     * the buffer's open file changes; neither editor has a reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
     /** Whether the live document is this file
@@ -997,8 +1011,20 @@
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
      * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
-     * Offsets are into THAT FILE, not into the document. */
-    applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
+     * Offsets are into THAT FILE, not into the document. `expectedSource` is
+     * the text they were computed against; the rich editor refuses without it
+     * (see its own docs), the source editor ignores it. */
+    applyRangeEditIn: (
+      path: string,
+      from: number,
+      to: number,
+      insert: string,
+      expectedSource?: string,
+    ) => boolean | void;
+    /** Rich only: whether source offsets can be trusted right now. */
+    canApplySourceOffsets?: (path: string, diskContent: string) => boolean;
+    /** Rich only: the book stylesheet the editing surface renders with. */
+    setBookCss?: (css: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -1116,6 +1142,51 @@
   // by an explicit user "Retry".
   let editorModuleFailed = $state(false);
 
+  // RichEditor pulls in ProseMirror + the document model — its own large
+  // chunk, and one a source-mode author must never pay for. Separate slot, so
+  // opening in source mode loads CodeMirror only and vice versa.
+  let RichEditor = $state<
+    typeof import("$lib/components/RichEditor.svelte")["default"] | null
+  >(null);
+  let richModuleLoading = $state(false);
+  let richModuleFailed = $state(false);
+  /** The book's inlined stylesheet — what the rich surface renders with. */
+  let bookCss = $state("");
+  /**
+   * The document model, for the fail-closed preflight.
+   *
+   * Deliberately NOT a static import: `canEditRichly` drags in markdown-it,
+   * prosemirror-markdown and the schema, and putting that in the main bundle
+   * would undo the lazy loading either editor pays for. It rides in with the
+   * rich chunk, which is the only chunk that needs it.
+   */
+  let docModel = $state<typeof import("$lib/editor/markdown-doc") | null>(null);
+
+  /**
+   * Why the open file is NOT rich-editable, or null when it is.
+   *
+   * Set by `canEditRichly()` — the fail-closed preflight. A file using
+   * footnotes, definition lists or an unmodelled plugin construct raises in
+   * the parser, and opening it richly would mis-serialize an author's book.
+   * It opens in source mode instead, and this string is what the UI shows so
+   * the author knows WHY rather than finding the toggle mysteriously stuck.
+   */
+  let richBlockedReason = $state<string | null>(null);
+
+  /** The author's preference; the effective mode also depends on the file. */
+  let editorModePref = $derived(settings.current.editor.mode);
+
+  /**
+   * The mode actually in use. Source wins whenever rich is impossible: a
+   * non-markdown file (CSS), a file the model cannot represent, or a failed
+   * chunk load.
+   */
+  let effectiveEditorMode = $derived<"rich" | "source">(
+    editorModePref === "rich" && isMd(editorFilePath) && !richBlockedReason && !richModuleFailed
+      ? "rich"
+      : "source",
+  );
+
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
   function loadEditorModule() {
@@ -1139,9 +1210,72 @@
       });
   }
 
+  /** Lazy-load the rich editor chunk. Same guards as loadEditorModule(). */
+  function loadRichModule() {
+    if (!editorOpen || !lifecycle.currentDir || RichEditor || richModuleLoading || richModuleFailed)
+      return;
+    richModuleLoading = true;
+    void import("$lib/editor/markdown-doc").then((m) => {
+      docModel = m;
+      // The preflight for the already-open file could not run before the model
+      // existed; run it now so a file that cannot be edited richly falls back
+      // rather than sitting in a mode that will mis-serialize it.
+      evaluateRichSupport(editorFilePath, editorContent);
+    });
+    import("$lib/components/RichEditor.svelte")
+      .then((m) => {
+        RichEditor = m.default;
+      })
+      .catch((e) => {
+        richModuleFailed = true;
+        toast?.error(
+          `Could not open the rich editor: ${e instanceof Error ? e.message : String(e)}. Using source mode.`,
+        );
+      })
+      .finally(() => {
+        richModuleLoading = false;
+      });
+  }
+
   function retryEditorLoad() {
     editorModuleFailed = false;
+    richModuleFailed = false;
     loadEditorModule();
+    loadRichModule();
+  }
+
+  /**
+   * Decide whether `content` can be edited richly, and remember why not.
+   *
+   * Runs on every file handoff, because the answer is per-file. Fail-closed:
+   * anything the schema does not model raises in the parser and the file
+   * opens in source mode with the reason shown (CLAUDE.md §5).
+   */
+  function evaluateRichSupport(path: string | null, content: string): void {
+    if (!path || !isMd(path) || !docModel) {
+      richBlockedReason = null;
+      return;
+    }
+    const verdict = docModel.canEditRichly(docModel.createEditorRenderer(), content);
+    richBlockedReason = verdict.ok ? null : verdict.reason;
+  }
+
+  /**
+   * Fetch the book's stylesheet and hand it to the rich surface.
+   *
+   * The editor renders the author's text with the BOOK'S CSS so it looks the
+   * way it will print. Failure is non-fatal — the surface still paginates and
+   * edits, just unstyled — so this warns rather than blocking the editor.
+   */
+  async function refreshBookCss(): Promise<void> {
+    if (!isDesktop() || !lifecycle.currentDir) return;
+    try {
+      const { css } = await api.project.inlineCss(lifecycle.currentDir);
+      bookCss = css;
+      editorRef?.setBookCss?.(css);
+    } catch (e) {
+      console.warn("could not load the book stylesheet for the editor", e);
+    }
   }
   function focusEditorWhenReady() {
     // If the editor component isn't mounted yet, retry via rAF until it is
@@ -1215,8 +1349,66 @@
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
   function showEditorContent(path: string, content: string): void {
+    // Decide rich-vs-source BEFORE handing the content over, so the right
+    // component is the one that receives it.
+    evaluateRichSupport(path, content);
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
+  }
+
+  /**
+   * Re-push the open file into a newly mounted editor.
+   *
+   * Switching mode swaps the component, and the new one mounts empty. The
+   * BUFFER is untouched by a mode change — it is orthogonal to which component
+   * renders — so this is a view-level re-seed, never an EditorFileSession
+   * select() (which would re-read the file and could drop unsaved work).
+   */
+  /**
+   * Reveal a 1-based source line in the editor.
+   *
+   * `revealLine` is source-mode only — a ProseMirror document has no line
+   * numbers, and deriving them is deferred. So in rich mode this SWITCHES the
+   * file to source and then jumps, rather than optional-chaining into a
+   * silent no-op that leaves the author staring at an unchanged screen after
+   * clicking "go to source".
+   */
+  function revealLineInEditor(path: string, line: number): void {
+    if (!editorRef?.hasFile(path)) return;
+    if (editorRef.revealLine) {
+      editorRef.revealLine(line, true);
+      return;
+    }
+    void setEditorMode("source").then(() => {
+      whenEditorReady(() => {
+        if (editorRef?.hasFile(path)) editorRef.revealLine?.(line, true);
+      });
+    });
+  }
+
+  function reseedEditor(): void {
+    const path = editorFilePath;
+    if (!path) return;
+    editorRef?.switchFile(path, editorContent);
+  }
+
+  /**
+   * Flip between rich and source for the open file.
+   *
+   * Flushes first so the incoming editor parses the bytes that are on disk —
+   * which is also the precondition for source-offset edits (see
+   * `canApplySourceOffsets`).
+   */
+  async function setEditorMode(mode: "rich" | "source"): Promise<void> {
+    if (mode === editorModePref) return;
+    if (buffer?.hasPendingSave) await handleForceSave();
+    settings.set({ editor: { mode } });
+    if (mode === "rich") loadRichModule();
+    // The component swap happens reactively; re-seed once it has mounted.
+    whenEditorReady(() => {
+      reseedEditor();
+      if (mode === "rich") void refreshBookCss();
+    });
   }
 
   function createEditorBuffer(): EditorBuffer {
@@ -1368,7 +1560,7 @@
       const path = editorFilePath;
       if (path) {
         whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+          revealLineInEditor(path, line);
         });
       }
       return;
@@ -1381,7 +1573,7 @@
       if (!(await selectEditorFile(path))) return;
     }
     whenEditorReady(() => {
-      if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+      revealLineInEditor(path, line);
     });
   }
 
@@ -1661,7 +1853,7 @@
       if (selected && p.line) {
         const path = p.filePath!;
         whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true);
+          revealLineInEditor(path, p.line!);
         });
       }
     });
@@ -1839,9 +2031,24 @@
     // reveal:false — a committed menu action must not also scroll the author's
     // editor to the top of the chapter it happened to touch.
     selectEditorFile: (path) => selectEditorFile(path),
-    editorHasFile: (path) => editorRef?.hasFile(path) ?? false,
-    applyRangeEdit: (path, from, to, insert) =>
-      editorRef?.applyRangeEditIn(path, from, to, insert),
+    /**
+     * Only claim the file when an offset-based edit can actually be applied.
+     *
+     * In rich mode the document is a tree; the caller's offsets index into the
+     * file on disk, and they only line up when the document's canonical
+     * markdown IS those bytes. When it isn't (an un-normalized project),
+     * returning false sends the edit down CommitEngine's own buffer path
+     * instead of writing at a guessed position — ADR 0009's "never guess an
+     * edit".
+     */
+    editorHasFile: (path) => {
+      if (!editorRef?.hasFile(path)) return false;
+      if (!editorRef.canApplySourceOffsets) return true; // source mode
+      return editorRef.canApplySourceOffsets(path, buffer?.content ?? "");
+    },
+    applyRangeEdit: (path, from, to, insert) => {
+      editorRef?.applyRangeEditIn(path, from, to, insert, buffer?.content ?? "");
+    },
   });
 
   let textPrompt = $state<{
@@ -2866,7 +3073,54 @@
               }}
               onSave={handleForceSave}
             />
-            {#if MarkdownEditor}
+            {#if isMd(editorFilePath)}
+              <div class="editor-mode-switch" role="group" aria-label="Editing mode">
+                <button
+                  type="button"
+                  class:active={effectiveEditorMode === "rich"}
+                  aria-pressed={effectiveEditorMode === "rich"}
+                  disabled={!!richBlockedReason}
+                  title={richBlockedReason ?? "Edit with the book's own layout and type"}
+                  onclick={() => void setEditorMode("rich")}
+                >
+                  Rich
+                </button>
+                <button
+                  type="button"
+                  class:active={effectiveEditorMode === "source"}
+                  aria-pressed={effectiveEditorMode === "source"}
+                  title="Edit the markdown source"
+                  onclick={() => void setEditorMode("source")}
+                >
+                  Markdown
+                </button>
+              </div>
+            {/if}
+            {#if richBlockedReason && editorModePref === "rich" && isMd(editorFilePath)}
+              <!-- Fail-closed, and SAID so. The document model cannot
+                   represent this file, so it opens in source mode rather than
+                   risk mis-serializing the author's book on save. -->
+              <p class="editor-mode-note" role="status">
+                Editing this file as markdown — {richBlockedReason}
+              </p>
+            {/if}
+            {#if effectiveEditorMode === "rich"}
+              {#if RichEditor}
+                <RichEditor
+                  bind:this={editorRef}
+                  filePath={editorFilePath}
+                  content={editorContent}
+                  {bookCss}
+                  assetBase={lifecycle.previewUrl ?? ""}
+                  onChange={onEditorChange}
+                  onSave={() => void handleForceSave()}
+                />
+              {:else}
+                <div class="editor-loading" role="status" aria-live="polite">
+                  Loading editor…
+                </div>
+              {/if}
+            {:else if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
                    source file via a synchronous switchFile() handoff. -->
@@ -3354,6 +3608,46 @@
       transition: none;
     }
   }
+  /* Rich / Markdown switch, sitting under the formatting toolbar. */
+  .editor-mode-switch {
+    display: flex;
+    gap: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border, #333);
+    background: var(--panel-bg, #1e1e22);
+  }
+  .editor-mode-switch button {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim, #999);
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .editor-mode-switch button:hover:not(:disabled) {
+    color: var(--text, #eee);
+  }
+  .editor-mode-switch button.active {
+    background: var(--accent-soft, #2d2d33);
+    border-color: var(--border, #3a3a40);
+    color: var(--text, #eee);
+  }
+  .editor-mode-switch button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Why a file opened as markdown when rich was asked for. Never silent. */
+  .editor-mode-note {
+    margin: 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-dim, #aaa);
+    background: var(--panel-bg, #26262b);
+    border-bottom: 1px solid var(--border, #333);
+  }
+
   .editor-loading {
     flex: 1;
     display: grid;

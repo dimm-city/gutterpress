@@ -111,6 +111,21 @@ export interface AppSettings {
     autoSaveDelay: number;
     /** Write crash-recovery sidecar snapshots while editing (#44). */
     crashRecovery: boolean;
+    /**
+     * Which editing surface a markdown file opens in.
+     *
+     * `rich` is the WYSIWYG surface — the author's text at print size, using
+     * the book's own stylesheet. `source` is the markdown editor. Both are
+     * first-class: markdown is the only thing on disk and hand-editing it is a
+     * supported story, and `source` is also where a file lands when the
+     * document model cannot represent it (footnotes, plugin syntax), with the
+     * reason shown.
+     *
+     * Default `rich` — the editor is the core of the UI product. Saving in
+     * rich mode rewrites the file canonically, which is why the app offers a
+     * one-time project normalize before that first save.
+     */
+    mode: "rich" | "source";
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -191,6 +206,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     spellCheckLanguage: "en-US",
     autoSaveDelay: 500,
     crashRecovery: true,
+    mode: "rich",
   },
   appearance: {
     theme: "system",

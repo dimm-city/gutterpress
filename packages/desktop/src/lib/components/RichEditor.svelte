@@ -182,15 +182,23 @@
     return hasFile(path) && (handle?.canApplySourceOffsets(diskContent) ?? false);
   }
 
-  /** Apply a source-offset edit. Returns false when it was refused. */
+  /**
+   * Apply a source-offset edit. Returns false when it was refused.
+   *
+   * Same signature as `MarkdownEditor.applyRangeEditIn` so the host calls one
+   * method without branching on mode — but here `expectedSource` is REQUIRED,
+   * because a document tree has no source offsets of its own and applying the
+   * caller's against different text would write at a position the author
+   * never chose.
+   */
   export function applyRangeEditIn(
     path: string,
-    expectedSource: string,
     from: number,
     to: number,
     insert: string,
+    expectedSource?: string,
   ): boolean {
-    if (!hasFile(path)) return false;
+    if (!hasFile(path) || expectedSource === undefined) return false;
     return handle?.applyRangeEdit(expectedSource, from, to, insert) ?? false;
   }
 

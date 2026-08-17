@@ -401,9 +401,19 @@
     from: number,
     to: number,
     insert: string,
-  ): void {
-    if (!view || appliedPath !== path) return;
+    /**
+     * Ignored here, and present so this and `RichEditor.svelte` share ONE
+     * signature the host can call without branching on mode. This editor's
+     * document IS the markdown source, so its offsets are already the
+     * caller's offsets; the rich editor holds a document tree instead and
+     * needs the text they were computed against in order to refuse when it
+     * does not match.
+     */
+    _expectedSource?: string,
+  ): boolean {
+    if (!view || appliedPath !== path) return false;
     view.dispatch({ changes: { from, to, insert } });
+    return true;
   }
 
   /** Current selection text (empty string when there is no selection) (#29). */
