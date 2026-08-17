@@ -54,6 +54,7 @@
     columns = 1,
     onChange,
     onSave,
+    onAnchorLine,
   }: {
     filePath?: string | null;
     content?: string;
@@ -69,6 +70,8 @@
     columns?: 1 | 2;
     onChange?: (value: string) => void;
     onSave?: () => void;
+    /** Editor→preview sync; same contract as MarkdownEditor's. */
+    onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
   } = $props();
 
   /** Gutterpress's own markdown-it pipeline — the one that prints. */
@@ -106,7 +109,7 @@
     doc.body.appendChild(flow);
 
     applyCss(bookCss);
-    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave });
+    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave, onAnchorLine });
 
     return () => {
       handle?.destroy();
@@ -142,6 +145,11 @@
   /** The book's stylesheet changed (the author edited CSS, or a rebuild ran). */
   export function setBookCss(css: string): void {
     applyCss(css);
+  }
+
+  /** Scroll a 1-based source line into view (preview "go to source"). */
+  export function revealLine(line: number, focusEditor = false): void {
+    handle?.revealLine(line, focusEditor);
   }
 
   export function focus(): void {

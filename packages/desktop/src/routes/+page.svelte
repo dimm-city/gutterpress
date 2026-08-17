@@ -990,15 +990,12 @@
    * mode. Where they genuinely differ the method is OPTIONAL and the caller
    * must handle its absence visibly rather than silently doing nothing:
    *
-   * - `revealLine` is source-only. A ProseMirror document has no line
-   *   numbers; deriving them is deferred, so in rich mode a "go to source"
-   *   jump switches that file to source mode instead of quietly failing.
    * - `canApplySourceOffsets` is rich-only, and gates `applyRangeEditIn`.
    * - `setBookCss` is rich-only (the book stylesheet the surface renders in).
    */
   let editorRef = $state<{
     focus: () => void;
-    revealLine?: (line: number, focusEditor?: boolean) => void;
+    revealLine: (line: number, focusEditor?: boolean) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void | boolean;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
@@ -1442,23 +1439,12 @@
   /**
    * Reveal a 1-based source line in the editor.
    *
-   * `revealLine` is source-mode only — a ProseMirror document has no line
-   * numbers, and deriving them is deferred. So in rich mode this SWITCHES the
-   * file to source and then jumps, rather than optional-chaining into a
-   * silent no-op that leaves the author staring at an unchanged screen after
-   * clicking "go to source".
+   * Both surfaces implement this. The rich editor has no line numbers of its
+   * own — it derives them by serializing the document, which is the same text
+   * the file gets, so the two modes resolve the same line to the same block.
    */
   function revealLineInEditor(path: string, line: number): void {
-    if (!editorRef?.hasFile(path)) return;
-    if (editorRef.revealLine) {
-      editorRef.revealLine(line, true);
-      return;
-    }
-    void setEditorMode("source").then(() => {
-      whenEditorReady(() => {
-        if (editorRef?.hasFile(path)) editorRef.revealLine?.(line, true);
-      });
-    });
+    if (editorRef?.hasFile(path)) editorRef.revealLine?.(line, true);
   }
 
   function reseedEditor(): void {
@@ -3199,6 +3185,8 @@
                   assetBase={lifecycle.previewUrl ?? ""}
                   onChange={onEditorChange}
                   onSave={() => void handleForceSave()}
+                  onAnchorLine={(line, origin) =>
+                    editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                 />
               {:else}
                 <div class="editor-loading" role="status" aria-live="polite">

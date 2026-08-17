@@ -34,7 +34,7 @@ import { inputRules, textblockTypeInputRule, wrappingInputRule } from "prosemirr
 import { keymap } from "prosemirror-keymap";
 import type { MarkType, Node as PMNode, NodeType } from "prosemirror-model";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { EditorState, Plugin, type Command } from "prosemirror-state";
+import { EditorState, Plugin, Selection, type Command } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import type MarkdownIt from "markdown-it";
 import { createDocParser, gutterpressSchema, serializeDoc } from "./markdown-doc";
@@ -45,6 +45,7 @@ import {
   type RichToolbarAction,
   type ToolbarPayloadLike,
 } from "./rich-commands";
+import { lineForPos, posForLine } from "./rich-lines";
 
 const schema = gutterpressSchema;
 
@@ -59,6 +60,12 @@ export interface MountOptions {
   onChange?: (markdown: string) => void;
   /** Fires on the save shortcut, so the host can drive its own save path. */
   onSave?: () => void;
+  /**
+   * Editor→preview sync. Fires with the 1-based source line at the top of the
+   * view on scroll, or of the caret on a deliberate (non-typing) move — the
+   * same contract `MarkdownEditor` has, so the host wires them identically.
+   */
+  onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
 }
 
 export interface RichEditorHandle {
@@ -92,6 +99,8 @@ export interface RichEditorHandle {
    * "never guess an edit" (ADR 0009).
    */
   canApplySourceOffsets(diskContent: string): boolean;
+  /** Scroll a 1-based source line into view, optionally focusing the editor. */
+  revealLine(line: number, focusEditor?: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +305,22 @@ export function createEditorState(md: MarkdownIt, content: string, onSave?: () =
  * changed the document, so selection and focus churn cost nothing.
  */
 export function mountRichEditor(opts: MountOptions): RichEditorHandle {
-  const { mount, md, content, onChange, onSave } = opts;
+  const { mount, md, content, onChange, onSave, onAnchorLine } = opts;
+
+  /**
+   * Anchor-line emission, mirroring `MarkdownEditor`'s three guards: a
+   * timestamp window so a programmatic scroll cannot bounce back as an
+   * editor→preview event, an equality check, and rAF coalescing on scroll.
+   * Without the window the two panes chase each other.
+   */
+  let suppressEmitUntil = 0;
+  let lastEmittedLine = -1;
+  let anchorRaf = 0;
+  const emitAnchor = (line: number, origin: "scroll" | "caret") => {
+    if (!onAnchorLine || Date.now() < suppressEmitUntil || line === lastEmittedLine) return;
+    lastEmittedLine = line;
+    onAnchorLine(line, origin);
+  };
 
   // `{ mount }` makes the given element the editable root itself rather than
   // appending one inside it. That matters here: the page-flow element carries
@@ -312,6 +336,11 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
       const next = view.state.apply(tr);
       view.updateState(next);
       if (tr.docChanged) onChange?.(serializeDoc(next.doc));
+      // A DELIBERATE caret move only — emitting while typing would yank the
+      // preview on every keystroke.
+      if (tr.selectionSet && !tr.docChanged) {
+        emitAnchor(lineForPos(next.doc, next.selection.head), "caret");
+      }
     },
   });
 
@@ -322,9 +351,25 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     view.dispatch(tr);
   }
 
+  // Scrolling produces no transactions, so this rides the scroll container —
+  // the editor's own document inside the iframe.
+  const scrollRoot = mount.ownerDocument?.defaultView;
+  const onScroll = () => {
+    if (!onAnchorLine || anchorRaf) return;
+    anchorRaf = (scrollRoot ?? window).requestAnimationFrame(() => {
+      anchorRaf = 0;
+      const rect = mount.getBoundingClientRect();
+      const found = view.posAtCoords({ left: rect.left + 6, top: Math.max(rect.top, 0) + 6 });
+      if (found) emitAnchor(lineForPos(view.state.doc, found.pos), "scroll");
+    });
+  };
+  scrollRoot?.addEventListener("scroll", onScroll, { passive: true });
+
   return {
     view,
     setContent(markdown: string) {
+      suppressEmitUntil = Date.now() + 300;
+      lastEmittedLine = -1;
       // A whole-document replacement, not an edit: this is a file switch or an
       // external reload, and neither should be undoable back into the previous
       // FILE's content.
@@ -332,7 +377,27 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     },
     getMarkdown: () => serializeDoc(view.state.doc),
     focus: () => view.focus(),
-    destroy: () => view.destroy(),
+    destroy: () => {
+      scrollRoot?.removeEventListener("scroll", onScroll);
+      view.destroy();
+    },
+
+    revealLine(line: number, focusEditor = false) {
+      const pos = posForLine(view.state.doc, line);
+      if (pos == null) return;
+      // Suppress the scroll this causes, or it returns as an editor->preview
+      // anchor and the panes fight.
+      suppressEmitUntil = Date.now() + 300;
+      lastEmittedLine = line;
+      const dom = view.nodeDOM(pos) ?? view.domAtPos(pos).node;
+      if (dom instanceof HTMLElement) dom.scrollIntoView({ block: "start" });
+      if (focusEditor) {
+        view.dispatch(
+          view.state.tr.setSelection(Selection.near(view.state.doc.resolve(pos))).scrollIntoView(),
+        );
+        view.focus();
+      }
+    },
 
     runToolbarAction(action, payload) {
       const command = toolbarCommand(action, payload);

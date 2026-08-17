@@ -7,7 +7,13 @@ import type {
   ToolbarPayloadLike,
 } from "../../src/lib/editor/rich-commands";
 import { createEditorState, mountRichEditor } from "../../src/lib/editor/rich-editor";
-import { createEditorRenderer } from "../../src/lib/editor/markdown-doc";
+import { createEditorRenderer, gutterpressSchema } from "../../src/lib/editor/markdown-doc";
+import {
+  lineForPos,
+  lineTable,
+  posForLine,
+  resetLineTableCache,
+} from "../../src/lib/editor/rich-lines";
 
 /**
  * The editing surface, headless.
@@ -321,5 +327,89 @@ describe("selection and snippets", () => {
     e.handle.insertSnippet("!!");
     expect(e.handle.getMarkdown()).toBe("Hello!!\n");
     e.restore();
+  });
+});
+
+describe("source lines (editor↔preview sync)", () => {
+  const CHAPTER = "# Title\n\nFirst paragraph.\n\n## Section\n\nSecond paragraph.\n";
+
+  test("every block reports the line it actually occupies on disk", () => {
+    // The property the whole mapping rests on: the line comes from the SAME
+    // serializer that writes the file, so it cannot drift from the file.
+    const state = createEditorState(md, CHAPTER);
+    const lines = CHAPTER.split("\n");
+    const table = lineTable(state.doc);
+    expect(table.length).toBe(4);
+    for (const entry of table) {
+      const node = state.doc.nodeAt(entry.pos)!;
+      expect(lines[entry.line - 1]).toContain(node.textContent.split("\n")[0]!.slice(0, 10));
+    }
+    resetLineTableCache();
+  });
+
+  test("line numbers survive an edit — they are derived, never stored", () => {
+    // Storing token.map on nodes would leave every line below an insertion
+    // silently wrong. Inserting a block must shift the ones after it.
+    const e = editor(CHAPTER);
+    const { view } = e.handle;
+    const before = lineTable(view.state.doc).map((b) => b.line);
+    view.dispatch(view.state.tr.insert(0, gutterpressSchema.nodes.paragraph!.create(
+      null, gutterpressSchema.text("Inserted."),
+    )));
+    const after = lineTable(view.state.doc).map((b) => b.line);
+    expect(after[0]).toBe(1);
+    // everything that was there is now two lines lower (block + blank line)
+    expect(after.slice(1)).toEqual(before.map((l) => l + 2));
+    resetLineTableCache();
+    e.restore();
+  });
+
+  test("posForLine and lineForPos agree with each other", () => {
+    const state = createEditorState(md, CHAPTER);
+    for (const { pos, line } of lineTable(state.doc)) {
+      expect(posForLine(state.doc, line)).toBe(pos);
+      expect(lineForPos(state.doc, pos)).toBe(line);
+    }
+    resetLineTableCache();
+  });
+
+  test("a line inside a block resolves to that block, not the next one", () => {
+    const state = createEditorState(md, "para one\n\npara two\n");
+    const table = lineTable(state.doc);
+    expect(table.map((t) => t.line)).toEqual([1, 3]);
+    // line 2 is the blank separator — it belongs to the block before it
+    expect(posForLine(state.doc, 2)).toBe(table[0]!.pos);
+    resetLineTableCache();
+  });
+
+  test("onAnchorLine does NOT fire while typing", () => {
+    // Emitting on every keystroke would yank the preview out from under the
+    // author — the exact behaviour MarkdownEditor guards against.
+    const seen: Array<[number, string]> = [];
+    const win = new Window();
+    const g = globalThis as unknown as Record<string, unknown>;
+    const prior = { window: g.window, document: g.document };
+    g.window = win;
+    g.document = win.document;
+    const doc = win.document as unknown as Document;
+    const mount = doc.createElement("div");
+    doc.body.appendChild(mount);
+    const handle = mountRichEditor({
+      mount, md, content: CHAPTER,
+      onAnchorLine: (line, origin) => seen.push([line, origin]),
+    });
+    const { view } = handle;
+    view.dispatch(view.state.tr.insertText("x", 1));
+    expect(seen).toEqual([]);
+
+    // ...but a deliberate caret move does fire, with the right line.
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 24)));
+    expect(seen.length).toBe(1);
+    expect(seen[0]![1]).toBe("caret");
+
+    handle.destroy();
+    g.window = prior.window;
+    g.document = prior.document;
+    resetLineTableCache();
   });
 });
