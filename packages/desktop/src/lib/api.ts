@@ -555,12 +555,9 @@ export const api = {
      * Plan (or apply) the project-wide markdown normalization rich editing
      * needs. `apply: false` writes nothing — it returns the before/after for
      * every file that would change, so the author agrees to a diff rather
-     * than to a number.
-     */
-    /**
-     * `expected` is the `before` text the confirm dialog showed, per file.
-     * The route skips any file that no longer matches, so an apply can only
-     * ever write the plan the author actually reviewed.
+     * than to a number. `expected` is that `before` text handed back on the
+     * apply call, per file; the route skips any file that no longer matches,
+     * so an apply can only ever write the plan the author actually reviewed.
      */
     normalize: (projectDir: string, apply = false, expected?: Record<string, string>) =>
       post<NormalizePlan>('/api/project/normalize', { projectDir, apply, expected }),

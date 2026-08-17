@@ -261,6 +261,7 @@
     parseMargin: () => parseMargin,
     parseDeclarations: () => parseDeclarations,
     mediaPrintBodies: () => mediaPrintBodies,
+    isScrollingOverflow: () => isScrollingOverflow,
     extract: () => extract,
     PAGE_SIZES: () => PAGE_SIZES,
     MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES
@@ -717,7 +718,9 @@
     }
     return -1;
   }
-  var SCROLLING = /^(hidden|auto|scroll)$/i;
+  function isScrollingOverflow(value) {
+    return /^(hidden|auto|scroll)$/i.test(value);
+  }
   function parseQualifiedRule(selector, body, model) {
     const decls = parseDeclarations(body);
     for (const [prop, value] of Object.entries(decls)) {
@@ -733,8 +736,18 @@
       } else if (prop === "break-before" || prop === "break-after" || prop === "break-inside") {
         model.breaks.push({ selector, prop, value });
       } else if (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") {
-        if (value.trim().split(/\s+/).some((v) => SCROLLING.test(v)))
-          model.scrollContainers.push({ selector, prop, value: value.trim() });
+        const parts = value.trim().split(/\s+/);
+        const axes = [];
+        if (prop === "overflow") {
+          if (isScrollingOverflow(parts[0] ?? ""))
+            axes.push("overflow-x");
+          if (isScrollingOverflow(parts[1] ?? parts[0] ?? ""))
+            axes.push("overflow-y");
+        } else if (isScrollingOverflow(parts[0] ?? "")) {
+          axes.push(prop);
+        }
+        if (axes.length > 0)
+          model.scrollContainers.push({ selector, prop, value: value.trim(), axes });
       } else if (prop === "counter-reset") {
         const m = /\bpage\s+(-?\d+)/.exec(value);
         if (m)
@@ -1191,15 +1204,18 @@
         el.style.breakBefore = "auto";
     }
   }
-  var SCROLLING2 = /^(hidden|auto|scroll)$/;
   function splitScrollContainers(strip) {
+    const found = [];
     for (const el of Array.from(strip.querySelectorAll("*"))) {
       const cs = getComputedStyle(el);
-      const x = SCROLLING2.test(cs.overflowX);
-      const y = SCROLLING2.test(cs.overflowY);
+      const x = isScrollingOverflow(cs.overflowX);
+      const y = isScrollingOverflow(cs.overflowY);
       if (!x && !y)
         continue;
-      if (cs.display === "block")
+      found.push({ el, x, y, block: cs.display === "block" });
+    }
+    for (const { el, x, y, block } of found) {
+      if (block)
         el.style.display = "flow-root";
       if (x)
         el.style.overflowX = "clip";

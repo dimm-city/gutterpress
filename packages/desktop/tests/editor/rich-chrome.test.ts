@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { flipClamp } from "../../src/lib/flip-clamp";
 import {
   filterSlashItems,
-  flipClamp,
   isSlashTrigger,
   slashAction,
   SLASH_ITEMS,

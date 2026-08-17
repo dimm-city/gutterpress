@@ -14,14 +14,14 @@
    * bubble is `role="toolbar"` with a single tab stop and arrow keys between
    * buttons, per the ARIA toolbar pattern the UX contract requires.
    *
-   * Positioning is `flipClamp()` from `rich-chrome.svelte.ts`, fed coordinates
+   * Positioning is `flipClamp()` from `$lib/flip-clamp`, fed coordinates
    * the editor reports in the FRAME's viewport plus the frame's own rect —
    * the same translation `BlockEditOverlay` does for the preview.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import { flipClamp } from "$lib/flip-clamp";
   import {
     filterSlashItems,
-    flipClamp,
     type ChromeAnchor,
     type SlashItem,
   } from "$lib/editor/rich-chrome.svelte";

@@ -19,8 +19,8 @@
  * context menu, which had the original private copy of it.
  */
 
-export { flipClamp, type Point, type Rect } from "$lib/flip-clamp";
 import type { Rect } from "$lib/flip-clamp";
+import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-commands";
 
 /**
  * What the chrome should show, in APP coordinates.
@@ -102,7 +102,7 @@ export function filterSlashItems(query: string): SlashItem[] {
  */
 export function slashAction(
   id: string,
-): { action: string; payload?: Record<string, unknown> } | null {
+): { action: RichToolbarAction; payload?: ToolbarPayloadLike } | null {
   switch (id) {
     case "heading-1": return { action: "heading", payload: { level: 1 } };
     case "heading-2": return { action: "heading", payload: { level: 2 } };

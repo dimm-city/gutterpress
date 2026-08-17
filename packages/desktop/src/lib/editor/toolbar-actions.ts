@@ -371,6 +371,15 @@ export function applyImage(
 /** Which layout skeleton `applyLayoutBlock` inserts. */
 export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break" | "spread";
 
+/**
+ * The authored placeholder text the scaffolds invent. Shared with the rich
+ * editor's node scaffolds (`rich-commands.ts`) and the completion source
+ * (`marker-completions.ts`) so the same button writes the same file in every
+ * mode.
+ */
+export const CHAPTER_TITLE_PLACEHOLDER = "Chapter Title";
+export const TWO_COLUMN_FILLER = "Right column content.";
+
 /** `@chapter` + a nested `@page`, with the title placeholder selected so
  *  typing immediately replaces it (mirrors applyLink's "select link text"
  *  placeholder pattern above).
@@ -387,7 +396,7 @@ export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break
  *  source's `@chapter` template. */
 export function applyChapterBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
-  const label = "Chapter Title";
+  const label = CHAPTER_TITLE_PLACEHOLDER;
   const prefix = '\n\n@chapter "';
   const suffix = '"';
   const labelStart = insertAt + prefix.length;
@@ -430,7 +439,7 @@ export function applySectionBlock(view: EditorView): void {
 export function applyTwoColumnBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
   const prefix = "\n\n@section .gp-columns-2\n";
-  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
+  const insert = `${prefix}\n@column-break\n\n${TWO_COLUMN_FILLER}\n\n@end-section\n\n`;
   const cursorPos = insertAt + prefix.length;
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert },

@@ -18,8 +18,7 @@
  */
 import { existsSync } from "node:fs";
 import { inlineStyles } from "./asset-inline.ts";
-import { MARKER_CSS } from "./markdown/markers.js";
-import { GUTTERPRESS_CSS } from "./markdown/gutterpress-css.ts";
+import { composeBookCss } from "./markdown/assemble.ts";
 import { loadPluginsWithCss } from "./markdown/plugins.ts";
 import type { ResolvedPluginConfig } from "../schema/manifest.types.ts";
 import { readdir } from "node:fs/promises";
@@ -291,14 +290,9 @@ export async function resolveProjectCss(
     warnings.push(`plugin CSS unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const css = [
-    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
-    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
-    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
-    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  return { css, styles, warnings };
+  // The SAME recipe `assembleBookHtml` uses — one definition, so the editor
+  // and the PDF cannot end up on different stylesheets (this used to be a
+  // copied array literal, which is how the editor once lost three of the
+  // four layers).
+  return { css: composeBookCss(pluginCss, projectCss), styles, warnings };
 }

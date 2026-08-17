@@ -22,7 +22,13 @@ import type { MarkType, Node as PMNode, NodeType } from "prosemirror-model";
 import { liftListItem, wrapInList } from "prosemirror-schema-list";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { gutterpressSchema as schema } from "./markdown-doc";
-import { buildImageAttrsString, type LayoutBlockKind } from "./toolbar-actions";
+import { tokenizeImageAttrs, unquoteAttrValue } from "./image-classes";
+import {
+  buildImageAttrsString,
+  CHAPTER_TITLE_PLACEHOLDER,
+  TWO_COLUMN_FILLER,
+  type LayoutBlockKind,
+} from "./toolbar-actions";
 
 export type RichToolbarAction =
   | "bold" | "italic" | "strikethrough" | "code" | "link"
@@ -54,9 +60,10 @@ const emptyParagraph = () => nodes.paragraph!.create();
 function layoutBlock(kind: LayoutBlockKind): PMNode {
   switch (kind) {
     case "chapter":
-      return nodes.gp_chapter!.create({ marker: '@chapter "Chapter Title"', class: "chapter" }, [
-        nodes.gp_page!.create({ marker: "@page", class: "page" }, [emptyParagraph()]),
-      ]);
+      return nodes.gp_chapter!.create(
+        { marker: `@chapter "${CHAPTER_TITLE_PLACEHOLDER}"`, class: "chapter" },
+        [nodes.gp_page!.create({ marker: "@page", class: "page" }, [emptyParagraph()])],
+      );
     case "spread":
       return nodes.gp_spread!.create({ marker: "@spread", class: "spread" }, [
         nodes.gp_page!.create({ marker: "@page", class: "page" }, [emptyParagraph()]),
@@ -69,7 +76,7 @@ function layoutBlock(kind: LayoutBlockKind): PMNode {
         [
           emptyParagraph(),
           nodes.gp_column_break!.create({ marker: "@column-break", class: "gp-column-break" }),
-          nodes.paragraph!.create(null, schema.text("Right column content.")),
+          nodes.paragraph!.create(null, schema.text(TWO_COLUMN_FILLER)),
         ],
       );
     case "page-break":
@@ -168,29 +175,28 @@ export interface ImagePayload {
  *
  * `buildImageAttrsString()` returns the authored brace text (e.g.
  * `{.gp-right .gp-small}`); the node stores the parsed map, which is what
- * `attrs.ts` re-emits on save. Parsing our own output here keeps ONE
- * definition of that syntax rather than a second, drifting one.
+ * `attrs.ts` re-emits on save. Parsing our own output here — with the same
+ * `tokenizeImageAttrs` the context menu uses — keeps ONE definition of that
+ * syntax rather than a second, drifting one. (A hand-rolled split here DID
+ * drift: it kept the quotes `setWidth` adds, so `width="30%"` round-tripped
+ * to `width="&quot;30%&quot;"` on save.)
  */
 function image(payload: ImagePayload): PMNode {
   const braces = buildImageAttrsString(
     payload.width, payload.position, payload.size, payload.shape,
   );
-  const inner = braces.replace(/^\{|\}$/g, "").trim();
-  let attrs: Record<string, string> | null = null;
-  if (inner) {
-    const classes: string[] = [];
-    attrs = {};
-    for (const token of inner.split(/\s+/)) {
-      if (token.startsWith(".")) classes.push(token.slice(1));
-      else if (token.startsWith("#")) attrs.id = token.slice(1);
-      else {
-        const eq = token.indexOf("=");
-        if (eq > 0) attrs[token.slice(0, eq)] = token.slice(eq + 1);
-      }
+  const classes: string[] = [];
+  const parsed: Record<string, string> = {};
+  for (const token of tokenizeImageAttrs(braces)) {
+    if (token.startsWith(".")) classes.push(token.slice(1));
+    else if (token.startsWith("#")) parsed.id = token.slice(1);
+    else {
+      const eq = token.indexOf("=");
+      if (eq > 0) parsed[token.slice(0, eq)] = unquoteAttrValue(token.slice(eq + 1));
     }
-    if (classes.length) attrs.class = classes.join(" ");
-    if (Object.keys(attrs).length === 0) attrs = null;
   }
+  if (classes.length) parsed.class = classes.join(" ");
+  const attrs = Object.keys(parsed).length > 0 ? parsed : null;
   return nodes.image!.create({ src: payload.src, alt: payload.alt || null, title: null, attrs });
 }
 

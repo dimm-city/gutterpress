@@ -1273,11 +1273,16 @@
       }
       normalizePlan = null;
       // The open file may be one of the rewritten ones — re-read it through
-      // the buffer so the editor shows the file that is now on disk.
+      // the buffer so the editor shows the file that is now on disk. Exact
+      // absolute-path comparison, not a suffix match: `endsWith("01-intro.md")`
+      // also matched `another-01-intro.md`. The relative path is split into
+      // segments so `joinPath` applies the platform's separator to each.
       const open = editorFilePath;
-      if (open) {
-        const rewritten = result.changed.find((c) => open.endsWith(c.path));
-        const stillFailed = failed.some((f) => open.endsWith(f.path));
+      const dir = lifecycle.currentDir;
+      if (open && dir) {
+        const isOpen = (rel: string) => joinPath(dir, ...rel.split("/")) === open;
+        const rewritten = result.changed.find((c) => isOpen(c.path));
+        const stillFailed = failed.some((f) => isOpen(f.path));
         if (rewritten && !stillFailed) showEditorContent(open, rewritten.after);
       }
       const wrote = result.changed.length - failed.length - stale.length;
@@ -1379,8 +1384,11 @@
   function retryEditorLoad() {
     editorModuleFailed = false;
     richModuleFailed = false;
+    // `loadEditorModule` already loads the rich chunk when the pref is rich;
+    // calling `loadRichModule()` here too made retry fetch ProseMirror for a
+    // source-mode author — the exact cost the separate lazy slot exists to
+    // avoid.
     loadEditorModule();
-    loadRichModule();
   }
 
   /**
@@ -1422,6 +1430,13 @@
    */
   async function refreshBookCss(): Promise<void> {
     if (!isDesktop() || !lifecycle.currentDir) return;
+    // No consumer, no fetch: this rides every preview rebuild, and until the
+    // rich chunk has loaded there is nothing to hand the CSS to — a
+    // source-mode author was paying a full server-side style inline
+    // (~10ms + re-base64ing every embedded font) per autosave for a result
+    // that was thrown away. `loadRichModule` runs its own refresh when the
+    // chunk arrives, so nothing is missed by returning early.
+    if (!RichEditor) return;
     const forDir = lifecycle.currentDir;
     try {
       const { css } = await api.project.inlineCss(forDir);
@@ -1431,11 +1446,6 @@
       if (lifecycle.currentDir !== forDir) return;
       bookCss = css;
       editorRef?.setBookCss?.(css);
-      // The editor usually mounts before the preview server is ready, and its
-      // frame document is written once — so the asset base has to be pushed in
-      // when it becomes known, or relative `![](images/x.png)` never resolves
-      // for the rest of that editor's life.
-      if (lifecycle.previewUrl) editorRef?.setAssetBase?.(lifecycle.previewUrl);
     } catch (e) {
       console.warn("could not load the book stylesheet for the editor", e);
     }
@@ -1557,14 +1567,6 @@
   }
 
   /**
-   * Re-push the open file into a newly mounted editor.
-   *
-   * Switching mode swaps the component, and the new one mounts empty. The
-   * BUFFER is untouched by a mode change — it is orthogonal to which component
-   * renders — so this is a view-level re-seed, never an EditorFileSession
-   * select() (which would re-read the file and could drop unsaved work).
-   */
-  /**
    * Reveal a 1-based source line in the editor.
    *
    * Both surfaces implement this. The rich editor has no line numbers of its
@@ -1575,6 +1577,14 @@
     if (editorRef?.hasFile(path)) editorRef.revealLine?.(line, true);
   }
 
+  /**
+   * Re-push the open file into a newly mounted editor.
+   *
+   * Switching mode swaps the component, and the new one mounts empty. The
+   * BUFFER is untouched by a mode change — it is orthogonal to which component
+   * renders — so this is a view-level re-seed, never an EditorFileSession
+   * select() (which would re-read the file and could drop unsaved work).
+   */
   function reseedEditor(): void {
     const path = editorFilePath;
     if (!path) return;
@@ -2446,6 +2456,13 @@
       return;
     }
     c.setExpectedOrigin(lifecycle.previewUrl);
+    // The rich editor usually mounts before the preview server is ready, and
+    // its frame document is written once — so the asset base is pushed at the
+    // actual transition ("the preview came live"), or relative
+    // `![](images/x.png)` never resolves for that editor's life. This used to
+    // ride refreshBookCss inside the rebuild callback, which only held
+    // because a build-finished event happens to follow every preview start.
+    if (lifecycle.previewUrl) editorRef?.setAssetBase?.(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     blockOverlay.subscribe(c);

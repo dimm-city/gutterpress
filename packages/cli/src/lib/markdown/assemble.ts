@@ -97,6 +97,32 @@ export interface AssembleBookHtmlOptions {
 }
 
 /**
+ * The book's whole stylesheet, in cascade order.
+ *
+ * Gutterpress's marker layout primitives, then its `gp-*` vocabulary, then
+ * user plugin CSS, then the author's own stylesheets last so project rules
+ * win at equal specificity. The two core blocks stay separate by ownership:
+ * MARKER_CSS supports the marker-generated DOM, while gutterpress-css.ts owns
+ * the broader `gp-*` author vocabulary.
+ *
+ * ONE definition, shared with `resolveProjectCss` (style-resolver.ts), which
+ * feeds the rich editor. Its promise — "the same bytes the PDF is built from,
+ * so the two cannot drift" — used to be enforced by a copied array literal,
+ * i.e. by exactly the thing that drifts; a fifth layer added here would have
+ * silently never reached the editor. Now the recipe exists once.
+ */
+export function composeBookCss(pluginCss: string, projectCss: string): string {
+  return [
+    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
+    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
+    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
+    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
  * Assemble a single `book.html` string from the given markdown files.
  *
  * Pure: every input (the file list, their contents via `readText`, the resolved
@@ -168,18 +194,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   }
 
   // Inject built-in + user-plugin CSS as a single <style> block.
-  // Cascade order: Gutterpress's marker layout primitives, then its `gp-*`
-  // vocabulary, then user plugin CSS, then the author's own
-  // stylesheets last so project rules win at equal specificity.
-  // The two core blocks stay separate by ownership: MARKER_CSS supports the
-  // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
-  // author vocabulary.
-  const inlineCss = [
-    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
-    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
-    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
-    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
-  ].filter(Boolean).join("\n\n");
+  const inlineCss = composeBookCss(pluginCss, projectCss);
 
   return `<!DOCTYPE html>
 <html lang="en">

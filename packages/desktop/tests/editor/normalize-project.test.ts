@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { planNormalize, summarizeNormalize } from "../../src/lib/editor/normalize-project";
-
-const REPO = resolve(import.meta.dir, "..", "..", "..", "..");
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { planNormalize } from "../../src/lib/editor/normalize-project";
+import { mdFilesIn, REPO } from "../support/corpus";
 
 describe("planNormalize", () => {
   test("reports a file that is already canonical as unchanged", () => {
@@ -60,17 +59,6 @@ describe("planNormalize", () => {
     planNormalize([input]);
     expect(input.text).toBe("+ one\n");
   });
-
-  test("summarizeNormalize states all three outcomes", () => {
-    const summary = summarizeNormalize({
-      changed: [{ path: "a.md", text: "" }],
-      unchanged: ["b.md", "c.md"],
-      refused: [{ path: "d.md", reason: "x" }],
-    });
-    expect(summary).toContain("1 file(s) reformatted");
-    expect(summary).toContain("2 already canonical");
-    expect(summary).toContain("1 left unchanged");
-  });
 });
 
 describe("on the real corpus", () => {
@@ -79,18 +67,10 @@ describe("on the real corpus", () => {
     "examples/with-design-guide/design-guide",
     "docs/fixtures/css-authoring-spike/book",
   ];
-  const files = BOOKS.flatMap((b) => {
-    const dir = join(REPO, b);
-    try {
-      return readdirSync(dir)
-        .filter((n) => n.endsWith(".md"))
-        .map((n) => join(dir, n))
-        .filter((p) => statSync(p).isFile())
-        .map((p) => ({ path: p.slice(REPO.length + 1), text: readFileSync(p, "utf8") }));
-    } catch {
-      return [];
-    }
-  });
+  const files = BOOKS.flatMap((b) => mdFilesIn(join(REPO, b))).map((p) => ({
+    path: p.slice(REPO.length + 1),
+    text: readFileSync(p, "utf8"),
+  }));
 
   test("the corpus is present — this must not pass vacuously", () => {
     expect(files.length).toBeGreaterThan(10);

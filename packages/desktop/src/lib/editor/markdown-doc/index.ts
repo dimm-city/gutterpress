@@ -8,10 +8,10 @@
  * product. Output is CANONICAL rather than byte-preserving; the property that
  * replaces byte identity is the fixpoint (`isFixpoint` below).
  */
-export { gutterpressSchema, type GutterpressSchema } from "./schema";
+export { gutterpressSchema } from "./schema";
 export { createDocParser, canEditRichly } from "./parser";
 export { createEditorRenderer } from "./renderer";
-export { gutterpressMarkdownSerializer, serializeDoc } from "./serializer";
+export { resetSerializeCache, serializeDoc } from "./serializer";
 
 import type MarkdownIt from "markdown-it";
 import { createDocParser } from "./parser";

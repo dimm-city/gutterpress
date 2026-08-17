@@ -207,10 +207,7 @@
     // Remove the `/query` the author typed before inserting, or it would be
     // left behind in the text.
     clearSlashQuery(handle.view);
-    handle.runToolbarAction(
-      mapped.action as Parameters<RichEditorHandle["runToolbarAction"]>[0],
-      mapped.payload as Parameters<RichEditorHandle["runToolbarAction"]>[1],
-    );
+    handle.runToolbarAction(mapped.action, mapped.payload);
     chrome = null;
   }
 
@@ -419,11 +416,6 @@
   ): boolean {
     if (!hasFile(path) || expectedSource === undefined) return false;
     return handle?.applyRangeEdit(expectedSource, from, to, insert) ?? false;
-  }
-
-  /** Canonical markdown for what is on screen right now. */
-  export function getMarkdown(): string {
-    return handle?.getMarkdown() ?? content;
   }
 </script>
 

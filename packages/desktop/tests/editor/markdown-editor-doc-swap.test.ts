@@ -149,7 +149,7 @@ describe("MarkdownEditor.svelte — one persistent EditorView, synchronous swap"
   test("same-file replacement preserves the viewport without scrollIntoView", () => {
     const src = read(EDITOR_PATH);
     const update = src.slice(src.indexOf("export function updateContent("), src.indexOf("export function focus("));
-    expect(update).toContain("suppressEmitUntil = Date.now() + 300");
+    expect(update).toContain("anchor.suppress()");
     expect(update).toContain("const scrollTop = view.scrollDOM.scrollTop");
     expect(update).toContain("view.scrollDOM.scrollTop = scrollTop");
     expect(update).not.toContain("EditorView.scrollIntoView");

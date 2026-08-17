@@ -216,4 +216,3 @@ export const gutterpressSchema = new Schema({
   }),
 });
 
-export type GutterpressSchema = typeof gutterpressSchema;

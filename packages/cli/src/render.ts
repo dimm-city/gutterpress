@@ -39,7 +39,7 @@ export { MARKER_CSS } from "./lib/markdown/markers.js";
  * columns from the author's own `@page` rules, so the editing surface and the
  * PDF derive their geometry from one source rather than two.
  */
-export { extract, resolvePage, parseSize, mediaPrintBodies } from "./engine/shared/gcpm-extract";
+export { extract, resolvePage, mediaPrintBodies } from "./engine/shared/gcpm-extract";
 export type {
   BreakDecl,
   GcpmModel,

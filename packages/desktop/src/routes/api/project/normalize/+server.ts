@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineRoute, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import { planNormalize, type NormalizeReport } from '$lib/editor/normalize-project';
 import type { RequestHandler } from './$types';
 
@@ -31,10 +31,7 @@ export const POST: RequestHandler = defineRoute<{
       // Confined to the open project, exactly like fs:listProjectFiles — this
       // both enumerates and WRITES, so it must never become a way to reach
       // files outside the book.
-      projectDir: await requireWithinProjectRoot(
-        requireAbsolute(body.projectDir, 'project:normalize'),
-        'project:normalize',
-      ),
+      projectDir: await requireProjectDir(body.projectDir, 'project:normalize'),
       apply: body.apply === true,
       expected:
         body.expected && typeof body.expected === 'object'
@@ -51,10 +48,22 @@ export const POST: RequestHandler = defineRoute<{
     // warns against exactly this re-derivation.
     const lib = await loadLib();
     const { manifest } = await lib.loadManifestWithPath(body.projectDir);
-    const names = await lib.resolveActiveMarkdownFiles(
+    let names: string[] = await lib.resolveActiveMarkdownFiles(
       body.projectDir,
       manifest.source?.files ?? null,
     );
+
+    // An apply that carries the reviewed plan works on EXACTLY that plan's
+    // files. Re-planning the whole project doubled every read and parse for
+    // nothing (~140ms on the user guide, twice) — and, worse, a file that was
+    // UNCHANGED at plan time but edited on disk before the click landed in
+    // the fresh plan with no `expected` entry, and was written without anyone
+    // having reviewed it. Restricting to the reviewed set fixes both; the
+    // intersection with the resolver's list keeps path safety intact.
+    if (body.apply && body.expected) {
+      const reviewed = new Set(Object.keys(body.expected));
+      names = names.filter((name) => reviewed.has(name));
+    }
 
     const files = await Promise.all(
       names.map(async (name: string) => ({

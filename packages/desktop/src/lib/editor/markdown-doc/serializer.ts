@@ -77,7 +77,7 @@ function cellText(node: PMNode): string {
   );
 }
 
-export const gutterpressMarkdownSerializer = new MarkdownSerializer(
+const gutterpressMarkdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
 
@@ -205,8 +205,35 @@ export const gutterpressMarkdownSerializer = new MarkdownSerializer(
   },
 );
 
+/**
+ * One-slot memo, keyed on document identity.
+ *
+ * Safe because ProseMirror documents are immutable — the same object always
+ * serializes to the same string. Worth having because one keystroke can ask
+ * for the serialization more than once: `dispatchTransaction` serializes for
+ * `onChange`, and a caret that scrolls into view then hits `lineForPos`,
+ * whose line table starts from `serializeDoc(doc)` of the very same doc
+ * (measured: 1.3ms + 3.1ms duplicated per such keystroke on a 22KB chapter,
+ * super-linear in file size). One slot, not a WeakMap: consecutive callers
+ * are always about the current document, and holding older docs would pin
+ * their whole node trees — the same reasoning as `rich-lines.ts`'s cache.
+ */
+let lastDoc: PMNode | null = null;
+let lastOut = "";
+
 export function serializeDoc(doc: PMNode): string {
+  if (doc === lastDoc) return lastOut;
   const out = gutterpressMarkdownSerializer.serialize(doc);
   // Files end with exactly one newline.
-  return `${out.replace(/\n+$/, "")}\n`;
+  lastDoc = doc;
+  lastOut = `${out.replace(/\n+$/, "")}\n`;
+  return lastOut;
+}
+
+/** Drop the memo — called from the editor's `destroy()` so a closed file's
+ * document tree is not pinned by the slot. Never needed for correctness:
+ * the key is object identity, so the slot cannot go stale. */
+export function resetSerializeCache(): void {
+  lastDoc = null;
+  lastOut = "";
 }

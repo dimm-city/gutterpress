@@ -37,6 +37,7 @@ import {
   type CompletionResult,
   type Completion,
 } from "@codemirror/autocomplete";
+import { CHAPTER_TITLE_PLACEHOLDER } from "./toolbar-actions";
 
 /**
  * A single core marker completion entry.
@@ -58,8 +59,6 @@ export interface MarkerCompletion {
    */
   apply: string | ((view: EditorView, completion: Completion, from: number, to: number) => void);
 }
-
-const CHAPTER_TITLE_PLACEHOLDER = "Chapter Title";
 
 /**
  * `@chapter` — inserts the marker with a QUOTED, selected title placeholder.

@@ -146,11 +146,3 @@ export function planNormalize(
 
   return report;
 }
-
-/** A one-line summary for a confirmation prompt or a commit message. */
-export function summarizeNormalize(report: NormalizeReport): string {
-  const parts = [`${report.changed.length} file(s) reformatted`];
-  if (report.unchanged.length) parts.push(`${report.unchanged.length} already canonical`);
-  if (report.refused.length) parts.push(`${report.refused.length} left unchanged`);
-  return parts.join(", ");
-}

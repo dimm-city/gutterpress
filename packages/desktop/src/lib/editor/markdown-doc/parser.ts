@@ -141,8 +141,26 @@ export function createDocParser(md: MarkdownIt) {
   const parser = new MarkdownParser(gutterpressSchema, md, specs);
 
   return {
-    /** Throws on any construct the schema does not model — see FAIL CLOSED. */
+    /**
+     * Throws on any construct the schema does not model — see FAIL CLOSED.
+     *
+     * That includes reference definitions, which are checked HERE rather than
+     * in a caller-side preflight. They are the one construct markdown-it
+     * consumes without emitting a token, so the library cannot raise on them
+     * — and when the check lived only in `canEditRichly`, every other path
+     * into a parse (`setContent` on an external reload, `applyRangeEdit`,
+     * `isFixpoint`) silently used a WEAKER predicate and would have absorbed
+     * a document whose `[ref]: url` lines then vanished on save. One choke
+     * point, so no layer can hold a weaker verdict than another.
+     */
     parse(text: string): PMNode {
+      const refs = referenceLabels(md, text);
+      if (refs.length) {
+        throw new Error(
+          `this file defines link ${refs.length === 1 ? "reference" : "references"} ` +
+            `(${refs.map((r) => `[${r}]`).join(", ")}), which rich editing cannot represent`,
+        );
+      }
       lines = text.split(/\r\n?|\n/);
       const doc = parser.parse(text);
       if (!doc) throw new Error("markdown parse produced no document");
@@ -155,23 +173,15 @@ export function createDocParser(md: MarkdownIt) {
  * Whether a file can be edited richly.
  *
  * There is no separate guard list to keep in sync — we simply attempt the
- * parse. Anything the schema does not model raises, and the reason is
- * returned so the UI can say WHY a file opened in source mode rather than
- * silently degrading.
+ * parse, which is the single fail-closed choke point (unknown token types
+ * raise in the library; reference definitions raise in `parse()` itself).
+ * The reason is returned so the UI can say WHY a file opened in source mode
+ * rather than silently degrading.
  */
 export function canEditRichly(
   md: MarkdownIt,
   text: string,
 ): { ok: true } | { ok: false; reason: string } {
-  const refs = referenceLabels(md, text);
-  if (refs.length) {
-    return {
-      ok: false,
-      reason:
-        `this file defines link ${refs.length === 1 ? "reference" : "references"} ` +
-        `(${refs.map((r) => `[${r}]`).join(", ")}), which rich editing cannot represent`,
-    };
-  }
   try {
     createDocParser(md).parse(text);
     return { ok: true };

@@ -70,6 +70,7 @@
     type EditorLanguage,
   } from "$lib/editor/css-editor";
   import { markerCompletionSource } from "$lib/editor/marker-completions";
+  import { createAnchorEmitter } from "$lib/editor/anchor-emitter";
   import { onMount } from "svelte";
 
   let {
@@ -96,21 +97,12 @@
   // Guards the updateListener so programmatic document swaps (loading a file)
   // don't echo back through onChange and re-trigger a save.
   let applyingExternal = false;
-  // Suppress anchor-line emission until this timestamp — set by revealLine()
-  // (preview→editor) so the resulting scroll/selection can't bounce back as an
-  // editor→preview event. A timestamp (not a boolean) survives the async scroll
-  // event that fires after dispatch returns.
-  let suppressEmitUntil = 0;
-  let lastEmittedLine = -1;
+  // Anchor-line guards (suppression window + dedup), shared with the rich
+  // editor — see anchor-emitter.ts for why the window is a timestamp. The
+  // arrow (rather than passing `onAnchorLine` itself) reads the prop at call
+  // time, not its initial value.
+  const anchor = createAnchorEmitter((line, origin) => onAnchorLine?.(line, origin));
   let anchorRaf = 0;
-
-  function emitAnchorLine(line: number, origin: "scroll" | "caret"): void {
-    if (!onAnchorLine) return;
-    if (Date.now() < suppressEmitUntil) return;
-    if (line === lastEmittedLine) return;
-    lastEmittedLine = line;
-    onAnchorLine(line, origin);
-  }
 
   // Top visible source line = doc line at the top-left of the scroll viewport.
   function topVisibleLine(v: EditorView): number | null {
@@ -273,7 +265,7 @@
           // Editor→preview sync on a DELIBERATE caret move (click / arrow key),
           // not while typing — typing would yank the preview on every keystroke.
           if (onAnchorLine && update.selectionSet && !update.docChanged) {
-            emitAnchorLine(
+            anchor.emit(
               update.state.doc.lineAt(update.state.selection.main.head).number,
               "caret",
             );
@@ -301,7 +293,7 @@
       anchorRaf = requestAnimationFrame(() => {
         anchorRaf = 0;
         const line = topVisibleLine(v);
-        if (line != null) emitAnchorLine(line, "scroll");
+        if (line != null) anchor.emit(line, "scroll");
       });
     };
     v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
@@ -339,8 +331,7 @@
     if (newPath == null) return; // nothing open — template hides the host
     // A document swap moves the viewport; that is not the author scrolling, so
     // don't let it drive the preview.
-    suppressEmitUntil = Date.now() + 300;
-    lastEmittedLine = -1;
+    anchor.suppress(-1);
     view.setState(buildState(newContent, newPath));
   }
 
@@ -362,7 +353,7 @@
     const clampedSel = prevSel.ranges.map((r) =>
       EditorSelection.range(Math.min(r.anchor, docLen), Math.min(r.head, docLen)),
     );
-    suppressEmitUntil = Date.now() + 300;
+    anchor.suppress();
     applyingExternal = true;
     try {
       view.dispatch({
@@ -490,8 +481,7 @@
     const clamped = Math.max(1, Math.min(line, doc.lines));
     const pos = doc.line(clamped).from;
     // Suppress the echo across the async scroll event the dispatch triggers.
-    suppressEmitUntil = Date.now() + 300;
-    lastEmittedLine = clamped;
+    anchor.suppress(clamped);
     // y:'start' (not 'center'): the preview emits its TOP-visible block
     // (sourceLineChanged) and editor→preview scroll sync anchors the resolved
     // block to the preview's top — anchoring the revealed line to the editor's

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { POST as normalize } from "../../src/routes/api/project/normalize/+server";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
+import { request } from "../support/route-test-helpers";
 
 /**
  * The normalize route REWRITES an author's book, so what it does and — more
@@ -56,11 +57,7 @@ async function project(files: Record<string, string>): Promise<string> {
 
 async function run(dir: string, apply: boolean, expected?: Record<string, string>) {
   const res = await (normalize as Handler)({
-    request: new Request("http://localhost/api/project/normalize", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ projectDir: dir, apply, expected }),
-    }),
+    request: request({ projectDir: dir, apply, expected }),
   });
   return (await res.json()) as {
     applied: boolean;

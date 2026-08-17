@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { canEditRichly, createEditorRenderer, isFixpoint, normalize } from "../../src/lib/editor/markdown-doc";
+import { mdFilesIn, REPO } from "../support/corpus";
 
 /**
  * The corpus gate.
@@ -22,8 +23,6 @@ import { canEditRichly, createEditorRenderer, isFixpoint, normalize } from "../.
  *    document exists, so an HTML comparison would pass no matter how lossy
  *    the serializer is.
  */
-const REPO = resolve(import.meta.dir, "..", "..", "..", "..");
-
 const BOOKS = [
   "examples/gutterpress-user-guide",
   "examples/with-design-guide/design-guide",
@@ -35,19 +34,7 @@ const BOOKS = [
   "docs/fixtures/gp-image-positioning/book",
 ];
 
-function chaptersOf(dir: string): string[] {
-  try {
-    return readdirSync(dir)
-      .filter((n) => n.endsWith(".md"))
-      .map((n) => join(dir, n))
-      .filter((p) => statSync(p).isFile())
-      .sort();
-  } catch {
-    return [];
-  }
-}
-
-const files = BOOKS.flatMap((b) => chaptersOf(join(REPO, b)));
+const files = BOOKS.flatMap((b) => mdFilesIn(join(REPO, b)));
 
 describe("corpus", () => {
   test("the corpus is actually present — this gate must not pass vacuously", () => {

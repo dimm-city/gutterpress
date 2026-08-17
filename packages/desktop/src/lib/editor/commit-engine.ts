@@ -50,7 +50,18 @@ export interface CommitEngineDeps {
    */
   selectEditorFile: (path: string) => Promise<boolean>;
   /**
-   * Whether the mounted one-file editor currently displays this file.
+   * Whether a range edit can be dispatched into the mounted editor for this
+   * file — i.e. the editor displays it AND the edit's source offsets can be
+   * trusted against what the editor holds.
+   *
+   * The second half matters for the RICH editor: its document's canonical
+   * markdown can differ from the bytes on disk (an un-normalized project),
+   * and applying disk offsets against different text would write at a
+   * position the author never chose (ADR 0009, "never guess an edit"). The
+   * host's implementation answers both questions; a wiring or fake written
+   * to the old "currently displays this file" reading would silently
+   * reinstate the guessed-offset write for rich mode. False routes the edit
+   * down `applyRangeEditToBuffer` instead.
    */
   editorHasFile: (path: string) => boolean;
   /**

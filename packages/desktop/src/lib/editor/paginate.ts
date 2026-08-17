@@ -97,9 +97,6 @@ const PX_PER_PT = 96 / 72;
  */
 const FORCED_PAGE_LIKE = /^(page|left|right|recto|verso)$/;
 
-/** `overflow` values that make a box a scroll container. */
-const SCROLLING = /^(hidden|auto|scroll)$/i;
-
 export interface PaginateOptions {
   /** 1 = a vertical stack of pages, 2 = facing spreads. */
   columns?: 1 | 2;
@@ -335,17 +332,11 @@ export function breakMappingCss(model: GcpmModel, root = ".gp-editor-page-flow")
 export function scrollContainerCss(model: GcpmModel, root = ".gp-editor-page-flow"): string {
   const rules: string[] = [];
   for (const decl of model.scrollContainers) {
-    // `overflow` is one or two values (x then y); the longhands name one axis.
-    const parts = decl.value.split(/\s+/);
-    const axes: string[] = [];
-    if (decl.prop === "overflow") {
-      if (SCROLLING.test(parts[0] ?? "")) axes.push("overflow-x");
-      if (SCROLLING.test(parts[1] ?? parts[0] ?? "")) axes.push("overflow-y");
-    } else if (SCROLLING.test(parts[0] ?? "")) {
-      axes.push(decl.prop);
-    }
-    if (axes.length === 0) continue;
-    rules.push(`${root} ${decl.selector} { ${axes.map((a) => `${a}: clip;`).join(" ")} }`);
+    // The shorthand's one-or-two-value grammar is resolved ONCE, by
+    // `extract()` — the decl carries its axes, so this used to be a second
+    // copy of that grammar (and of the scrolling-value regex) that had to
+    // agree with the model's across two packages.
+    rules.push(`${root} ${decl.selector} { ${decl.axes.map((a) => `${a}: clip;`).join(" ")} }`);
     rules.push(`:where(${root}) :where(${decl.selector}) { display: flow-root; }`);
   }
   return [...new Set(rules)].join("\n");

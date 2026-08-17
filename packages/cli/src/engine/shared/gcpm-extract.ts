@@ -60,6 +60,15 @@ export interface ScrollContainerDecl {
   prop: "overflow" | "overflow-x" | "overflow-y";
   /** The raw value, e.g. `hidden` or `hidden auto`. */
   value: string;
+  /**
+   * The axes the declaration actually makes scrollable, with the shorthand's
+   * one-or-two-value grammar (x then y) already resolved. Consumers map over
+   * this instead of re-parsing `value` — the editor's `scrollContainerCss`
+   * used to re-split the shorthand with its own copy of the value-class
+   * regex, which meant a new scrolling value had to be added in two packages
+   * or the model and the editor silently disagreed.
+   */
+  axes: Array<"overflow-x" | "overflow-y">;
 }
 
 export interface XrefDecl {
@@ -671,8 +680,18 @@ function findNextAtRule(body: string, start: number): number {
   return -1;
 }
 
-/** `overflow` values that make a box a scroll container. */
-const SCROLLING = /^(hidden|auto|scroll)$/i;
+/**
+ * Whether an `overflow` value makes its box a scroll container.
+ *
+ * THE one definition of that value-class. It decides pagination on three
+ * surfaces — the model here, the viewer's DOM pass (`fragment.ts`'s
+ * `splitScrollContainers`), and the editor's CSS layer (which consumes the
+ * pre-resolved `ScrollContainerDecl.axes`) — and it used to exist as three
+ * private regex copies, one per surface, that had to agree by luck.
+ */
+export function isScrollingOverflow(value: string): boolean {
+  return /^(hidden|auto|scroll)$/i.test(value);
+}
 
 function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
   const decls = parseDeclarations(body);
@@ -691,9 +710,18 @@ function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
     } else if (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") {
       // Only the values that actually create a scroll container. `overflow`
       // takes one or two values (x then y), so a shorthand qualifies if
-      // EITHER axis does.
-      if (value.trim().split(/\s+/).some((v) => SCROLLING.test(v)))
-        model.scrollContainers.push({ selector, prop, value: value.trim() });
+      // EITHER axis does — and the per-axis resolution is recorded on the
+      // decl so no consumer re-parses the shorthand grammar.
+      const parts = value.trim().split(/\s+/);
+      const axes: ScrollContainerDecl["axes"] = [];
+      if (prop === "overflow") {
+        if (isScrollingOverflow(parts[0] ?? "")) axes.push("overflow-x");
+        if (isScrollingOverflow(parts[1] ?? parts[0] ?? "")) axes.push("overflow-y");
+      } else if (isScrollingOverflow(parts[0] ?? "")) {
+        axes.push(prop);
+      }
+      if (axes.length > 0)
+        model.scrollContainers.push({ selector, prop, value: value.trim(), axes });
     } else if (prop === "counter-reset") {
       // `counter-reset` resets a list of counters ("page 1", "chapter 1 page
       // 1", …); only the `page` pair is our business.

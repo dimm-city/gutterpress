@@ -185,15 +185,18 @@ function isFacetToken(options: readonly ImageClassOption[]) {
   };
 }
 
-/** Current width value, `""` when absent. */
-export function getWidth(tokens: readonly string[]): string {
-  const token = tokens.find(isWidthToken);
-  if (!token) return "";
-  const value = token.slice("width=".length);
+/** Strip the outer quotes a `key="value"` token carries, if any. */
+export function unquoteAttrValue(value: string): string {
   if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
     return value.slice(1, -1);
   }
   return value;
+}
+
+/** Current width value, `""` when absent. */
+export function getWidth(tokens: readonly string[]): string {
+  const token = tokens.find(isWidthToken);
+  return token ? unquoteAttrValue(token.slice("width=".length)) : "";
 }
 
 /**

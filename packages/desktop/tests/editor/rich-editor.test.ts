@@ -13,6 +13,7 @@ import {
   createEditorState,
   mountRichEditor,
   type ChromeState,
+  type MountOptions,
 } from "../../src/lib/editor/rich-editor";
 import { createEditorRenderer, gutterpressSchema, serializeDoc } from "../../src/lib/editor/markdown-doc";
 import {
@@ -45,7 +46,7 @@ const md = createEditorRenderer();
 function editor(
   content: string,
   onChange?: (s: string) => void,
-  onChrome?: (state: ChromeState | null) => void,
+  opts?: Pick<MountOptions, "onChrome" | "onAnchorLine">,
 ) {
   const win = new Window();
   const g = globalThis as unknown as Record<string, unknown>;
@@ -56,7 +57,7 @@ function editor(
   const doc = win.document as unknown as Document;
   const mount = doc.createElement("div");
   doc.body.appendChild(mount);
-  const handle = mountRichEditor({ mount, md, content, onChange, onChrome });
+  const handle = mountRichEditor({ mount, md, content, onChange, ...opts });
   return {
     handle,
     mount,
@@ -256,6 +257,15 @@ describe("toolbar actions", () => {
     expect(out).toContain("![Art](a.png)");
     expect(out).toContain(".gp-right");
     expect(out).toContain(".gp-small");
+  });
+
+  test("an inserted width survives the save round-trip unquoted", () => {
+    // `setWidth` quotes its value (`width="30%"`). A hand-rolled attrs split
+    // here used to keep those quotes in the stored value, so the serializer
+    // re-quoted them: the file said `width="&quot;30%&quot;"`.
+    const out = act("x\n", "image", { src: "a.png", alt: "Art", width: "30%" }).out;
+    expect(out).toContain("width=30%");
+    expect(out).not.toContain("&quot;");
   });
 
   test("strikethrough works, and the file stays rich-editable", () => {
@@ -886,7 +896,7 @@ describe("the block drag handle", () => {
     // the whole drag, and stay open on the moved block, offering to apply
     // `strong` to an entire `gp_section`.
     const seen: Array<ChromeState | null> = [];
-    const e = editor("Alpha\n\nBravo\n", undefined, (s) => seen.push(s));
+    const e = editor("Alpha\n\nBravo\n", undefined, { onChrome: (s) => seen.push(s) });
     hover(e, e.mount.firstElementChild!);
     grip(e).dispatchEvent(
       new (e.win.MouseEvent as unknown as new (t: string, i: Record<string, unknown>) => Event)(
@@ -1057,19 +1067,10 @@ describe("source lines (editor↔preview sync)", () => {
     // Emitting on every keystroke would yank the preview out from under the
     // author — the exact behaviour MarkdownEditor guards against.
     const seen: Array<[number, string]> = [];
-    const win = new Window();
-    const g = globalThis as unknown as Record<string, unknown>;
-    const prior = { window: g.window, document: g.document };
-    g.window = win;
-    g.document = win.document;
-    const doc = win.document as unknown as Document;
-    const mount = doc.createElement("div");
-    doc.body.appendChild(mount);
-    const handle = mountRichEditor({
-      mount, md, content: CHAPTER,
+    const e = editor(CHAPTER, undefined, {
       onAnchorLine: (line, origin) => seen.push([line, origin]),
     });
-    const { view } = handle;
+    const { view } = e.handle;
     view.dispatch(view.state.tr.insertText("x", 1));
     expect(seen).toEqual([]);
 
@@ -1078,9 +1079,7 @@ describe("source lines (editor↔preview sync)", () => {
     expect(seen.length).toBe(1);
     expect(seen[0]![1]).toBe("caret");
 
-    handle.destroy();
-    g.window = prior.window;
-    g.document = prior.document;
+    e.restore();
     resetLineTableCache();
   });
 });

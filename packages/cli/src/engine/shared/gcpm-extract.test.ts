@@ -423,15 +423,24 @@ describe("scroll containers", () => {
   test("records the longhands, per axis", () => {
     const m = extract(`.wide { overflow-x: auto } .tall { overflow-y: hidden }`);
     expect(m.scrollContainers).toEqual([
-      { selector: ".wide", prop: "overflow-x", value: "auto" },
-      { selector: ".tall", prop: "overflow-y", value: "hidden" },
+      { selector: ".wide", prop: "overflow-x", value: "auto", axes: ["overflow-x"] },
+      { selector: ".tall", prop: "overflow-y", value: "hidden", axes: ["overflow-y"] },
     ]);
   });
 
-  test("a two-value shorthand qualifies if either axis does", () => {
+  test("a two-value shorthand qualifies if either axis does, and records WHICH", () => {
+    // The resolved axes are the decl's whole point: consumers map over them
+    // instead of re-parsing the one-or-two-value shorthand grammar.
     const m = extract(`.a { overflow: visible auto } .b { overflow: clip visible }`);
     expect(m.scrollContainers).toEqual([
-      { selector: ".a", prop: "overflow", value: "visible auto" },
+      { selector: ".a", prop: "overflow", value: "visible auto", axes: ["overflow-y"] },
+    ]);
+  });
+
+  test("a one-value shorthand resolves to both axes", () => {
+    expect(extract(`pre { overflow: hidden }`).scrollContainers[0]?.axes).toEqual([
+      "overflow-x",
+      "overflow-y",
     ]);
   });
 

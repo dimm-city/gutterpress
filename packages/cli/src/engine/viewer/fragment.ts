@@ -7,6 +7,7 @@
 import VIEWER_CSS from "./viewer.css" with { type: "text" };
 import {
   extract,
+  isScrollingOverflow,
   mediaPrintBodies,
   resolvePage,
   type GcpmModel,
@@ -432,8 +433,6 @@ function clearLeadingForcedBreaks(strip: HTMLElement) {
   }
 }
 
-/** Computed `overflow` values that make a box a scroll container. */
-const SCROLLING = /^(hidden|auto|scroll)$/;
 
 /**
  * Let a scroll container fragment, because Chromium's print engine fragments
@@ -485,12 +484,19 @@ const SCROLLING = /^(hidden|auto|scroll)$/;
  * `.gp-marginbox` live in the decoration layer, a sibling of the strips.
  */
 function splitScrollContainers(strip: HTMLElement): void {
+  // Two phases — read everything, then write everything. Interleaving them
+  // forced an incremental style recalc per matched element, because each
+  // inline-style write invalidated the next element's getComputedStyle.
+  const found: Array<{ el: HTMLElement; x: boolean; y: boolean; block: boolean }> = [];
   for (const el of Array.from(strip.querySelectorAll<HTMLElement>("*"))) {
     const cs = getComputedStyle(el);
-    const x = SCROLLING.test(cs.overflowX);
-    const y = SCROLLING.test(cs.overflowY);
+    const x = isScrollingOverflow(cs.overflowX);
+    const y = isScrollingOverflow(cs.overflowY);
     if (!x && !y) continue;
-    if (cs.display === "block") el.style.display = "flow-root";
+    found.push({ el, x, y, block: cs.display === "block" });
+  }
+  for (const { el, x, y, block } of found) {
+    if (block) el.style.display = "flow-root";
     if (x) el.style.overflowX = "clip";
     if (y) el.style.overflowY = "clip";
     el.dataset.gpFragmentable = "";

@@ -22,6 +22,7 @@
  */
 import type { Node as PMNode } from "prosemirror-model";
 import { serializeDoc } from "./markdown-doc";
+import { buildLineStarts } from "./source-range";
 
 export interface BlockLine {
   /** Document position of the block. */
@@ -65,8 +66,16 @@ function computeTable(doc: PMNode): BlockLine[] {
 
   const docType = doc.type.schema.nodes.doc!;
   const full = serializeDoc(doc);
-  // Line number of every offset in `full`, computed once.
-  const lineAt = (offset: number) => countLines(full.slice(0, offset));
+  // Line number of every offset in `full`. The canonical line-start table
+  // (shared with `source-range.ts`) plus an upper-bound scan replaces a
+  // per-block `full.slice(0, offset)` re-count, which scanned
+  // O(blocks x bytes) — ~9MB per table build on an 88KB single-file book.
+  const starts = buildLineStarts(full);
+  const lineAt = (offset: number) => {
+    let line = 1;
+    while (line < starts.length && starts[line]! <= offset) line++;
+    return line;
+  };
 
   let pos = 0;
   let cursor = 0;
@@ -138,7 +147,9 @@ export function lineForPos(doc: PMNode, pos: number): number {
   return best;
 }
 
-/** Drop the memo — for tests, so one document cannot leak into another. */
+/** Drop the memo — called from `destroy()` so a closed file's document
+ * tree is not pinned, and from tests so one document cannot leak into
+ * another. */
 export function resetLineTableCache(): void {
   cachedDoc = null;
   cachedTable = [];
