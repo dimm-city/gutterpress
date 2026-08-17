@@ -43,7 +43,14 @@
   import { onMount } from "svelte";
   import { createEditorRenderer } from "$lib/editor/markdown-doc";
   import { editorStylesheet } from "$lib/editor/paginate";
-  import { mountRichEditor, type RichEditorHandle } from "$lib/editor/rich-editor";
+  import EditorChrome from "$lib/components/EditorChrome.svelte";
+  import {
+    clearSlashQuery,
+    mountRichEditor,
+    type ChromeState,
+    type RichEditorHandle,
+  } from "$lib/editor/rich-editor";
+  import { slashAction, type ChromeAnchor, type SlashItem } from "$lib/editor/rich-chrome.svelte";
   import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-commands";
 
   let {
@@ -83,6 +90,46 @@
   let openPath: string | null = filePath;
   let appliedCss = "";
 
+  /**
+   * Where the inline chrome goes, in APP coordinates.
+   *
+   * The editor reports frame-viewport coordinates because that is all it can
+   * know; only this component knows where the frame sits on screen, so the
+   * translation happens here — the same split `BlockEditOverlay` uses for the
+   * preview.
+   */
+  let chrome = $state<ChromeAnchor | null>(null);
+
+  function onChrome(state: ChromeState | null): void {
+    if (!state || !frame) {
+      chrome = null;
+      return;
+    }
+    const rect = frame.getBoundingClientRect();
+    chrome = {
+      kind: state.kind,
+      x: rect.left + state.x,
+      y: rect.top + state.y,
+      query: state.query,
+      // Keep the panel inside the frame, not merely inside the window: a menu
+      // hanging over the preview pane would be pointing at nothing.
+      workspace: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    };
+  }
+
+  function runSlash(item: SlashItem): void {
+    const mapped = slashAction(item.id);
+    if (!mapped || !handle) return;
+    // Remove the `/query` the author typed before inserting, or it would be
+    // left behind in the text.
+    clearSlashQuery(handle.view);
+    handle.runToolbarAction(
+      mapped.action as Parameters<RichEditorHandle["runToolbarAction"]>[0],
+      mapped.payload as Parameters<RichEditorHandle["runToolbarAction"]>[1],
+    );
+    chrome = null;
+  }
+
   onMount(() => {
     const doc = frame.contentDocument;
     if (!doc) return;
@@ -109,7 +156,7 @@
     doc.body.appendChild(flow);
 
     applyCss(bookCss);
-    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave, onAnchorLine });
+    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave, onAnchorLine, onChrome });
 
     return () => {
       handle?.destroy();
@@ -217,6 +264,16 @@
 </script>
 
 <iframe bind:this={frame} class="rich-editor" title="Gutterpress editor"></iframe>
+
+<EditorChrome
+  anchor={chrome}
+  onRunSlash={runSlash}
+  onFormat={(action) => {
+    handle?.runToolbarAction(action);
+    chrome = null;
+  }}
+  onClose={() => (chrome = null)}
+/>
 
 <style>
   /* The frame is the whole surface; everything inside it is the book's own

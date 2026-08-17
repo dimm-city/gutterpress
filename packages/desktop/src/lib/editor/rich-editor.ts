@@ -46,6 +46,7 @@ import {
   type ToolbarPayloadLike,
 } from "./rich-commands";
 import { lineForPos, posForLine } from "./rich-lines";
+import { isSlashTrigger } from "./rich-chrome.svelte";
 
 const schema = gutterpressSchema;
 
@@ -66,6 +67,24 @@ export interface MountOptions {
    * same contract `MarkdownEditor` has, so the host wires them identically.
    */
   onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
+  /**
+   * Inline chrome state. Fires whenever the slash menu or the selection
+   * toolbar should appear, move or close; `null` means close.
+   *
+   * Coordinates are in the FRAME's viewport — the host translates them (see
+   * `rich-chrome.svelte.ts`), because only the host knows where the frame sits.
+   */
+  onChrome?: (state: ChromeState | null) => void;
+}
+
+/** What the inline chrome should currently show. */
+export interface ChromeState {
+  kind: "slash" | "selection";
+  /** Anchor point, in the frame's viewport. */
+  x: number;
+  y: number;
+  /** Slash only: the text typed after `/`. */
+  query?: string;
 }
 
 export interface RichEditorHandle {
@@ -281,7 +300,88 @@ function rawHtmlView(inline: boolean) {
 // state + mount
 // ---------------------------------------------------------------------------
 
-export function createEditorState(md: MarkdownIt, content: string, onSave?: () => void): EditorState {
+/**
+ * Watches for the slash trigger and the selection, and reports where the
+ * chrome belongs.
+ *
+ * A plugin rather than DOM listeners: it sees every state change, including
+ * programmatic ones, so the menu cannot be left open over a document that has
+ * moved out from under it.
+ */
+function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
+  let slashFrom: number | null = null;
+
+  return new Plugin({
+    view: (view) => ({
+      update(v, prev) {
+        if (v.state.doc === prev.doc && v.state.selection.eq(prev.selection)) return;
+        const { state } = v;
+        const { selection } = state;
+
+        // ── slash menu ────────────────────────────────────────────────────
+        if (selection.empty) {
+          const $pos = selection.$from;
+          const textBefore = $pos.parent.textBetween(
+            Math.max(0, $pos.parentOffset - 80), $pos.parentOffset, undefined, "\ufffc",
+          );
+          if (slashFrom === null && isSlashTrigger(textBefore)) {
+            slashFrom = selection.from;
+          }
+          if (slashFrom !== null) {
+            // Typing past the trigger filters; moving before it, or inserting a
+            // space, is the author writing a literal slash — close.
+            if (selection.from < slashFrom) slashFrom = null;
+            else {
+              const query = state.doc.textBetween(slashFrom, selection.from);
+              if (/\s/.test(query)) slashFrom = null;
+              else {
+                const coords = v.coordsAtPos(slashFrom);
+                onChrome({ kind: "slash", x: coords.left, y: coords.bottom, query });
+                return;
+              }
+            }
+          }
+        } else {
+          slashFrom = null;
+        }
+
+        // ── selection toolbar ─────────────────────────────────────────────
+        if (!selection.empty && state.doc.textBetween(selection.from, selection.to).trim()) {
+          const start = v.coordsAtPos(selection.from);
+          const end = v.coordsAtPos(selection.to);
+          onChrome({
+            kind: "selection",
+            x: (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2,
+            y: Math.min(start.top, end.top),
+          });
+          return;
+        }
+
+        onChrome(null);
+      },
+      destroy() {
+        onChrome(null);
+      },
+    }),
+  });
+}
+
+/** Delete the `/query` the author typed, before running the chosen command. */
+export function clearSlashQuery(view: EditorView): void {
+  const { $from } = view.state.selection;
+  const text = $from.parent.textBetween(0, $from.parentOffset);
+  const slash = text.lastIndexOf("/");
+  if (slash === -1) return;
+  const from = $from.start() + slash;
+  view.dispatch(view.state.tr.delete(from, view.state.selection.from));
+}
+
+export function createEditorState(
+  md: MarkdownIt,
+  content: string,
+  onSave?: () => void,
+  onChrome?: (state: ChromeState | null) => void,
+): EditorState {
   return EditorState.create({
     doc: createDocParser(md).parse(content),
     plugins: [
@@ -292,6 +392,7 @@ export function createEditorState(md: MarkdownIt, content: string, onSave?: () =
       dropCursor(),
       gapCursor(),
       generatedContentPlugin,
+      ...(onChrome ? [chromePlugin(onChrome)] : []),
     ],
   });
 }
@@ -305,7 +406,7 @@ export function createEditorState(md: MarkdownIt, content: string, onSave?: () =
  * changed the document, so selection and focus churn cost nothing.
  */
 export function mountRichEditor(opts: MountOptions): RichEditorHandle {
-  const { mount, md, content, onChange, onSave, onAnchorLine } = opts;
+  const { mount, md, content, onChange, onSave, onAnchorLine, onChrome } = opts;
 
   /**
    * Anchor-line emission, mirroring `MarkdownEditor`'s three guards: a
@@ -327,7 +428,7 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
   // the multicol pagination, and putting a second block between it and the
   // content would give the fragmenter one opaque child to break inside.
   const view = new EditorView({ mount }, {
-    state: createEditorState(md, content, onSave),
+    state: createEditorState(md, content, onSave, onChrome),
     nodeViews: {
       html_block: rawHtmlView(false),
       html_inline: rawHtmlView(true),
@@ -373,7 +474,7 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
       // A whole-document replacement, not an edit: this is a file switch or an
       // external reload, and neither should be undoable back into the previous
       // FILE's content.
-      view.updateState(createEditorState(md, markdown, onSave));
+      view.updateState(createEditorState(md, markdown, onSave, onChrome));
     },
     getMarkdown: () => serializeDoc(view.state.doc),
     focus: () => view.focus(),
