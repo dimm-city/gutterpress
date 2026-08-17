@@ -271,6 +271,15 @@ export interface ProjectState {
   currentPage?: number;
   viewMode?: "single" | "two-column";
   splitPaneRatio?: number;
+  /**
+   * When this project's markdown was normalized for rich editing (ISO 8601).
+   *
+   * Rich editing saves canonically, so the first save on an un-normalized
+   * project reformats that file. The app offers to normalize the whole project
+   * once instead, and records it here so the offer is not repeated. Per
+   * project, because normalization is a property of a book's files.
+   */
+  normalizedAt?: string;
 }
 
 // ── Desktop preferences ────────────────────────────────────────────────────

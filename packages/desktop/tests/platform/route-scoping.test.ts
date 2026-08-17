@@ -63,6 +63,8 @@ import { POST as themePrevious } from "../../src/routes/api/theme/previous/+serv
 import { POST as themeRevert } from "../../src/routes/api/theme/revert/+server";
 import { POST as styleSetActive } from "../../src/routes/api/style/set-active/+server";
 import { POST as projectListStyles } from "../../src/routes/api/project/list-styles/+server";
+import { POST as projectInlineCss } from "../../src/routes/api/project/inline-css/+server";
+import { POST as projectNormalize } from "../../src/routes/api/project/normalize/+server";
 import { POST as manifestRead } from "../../src/routes/api/manifest/read/+server";
 import { POST as manifestSetFields } from "../../src/routes/api/manifest/set-fields/+server";
 import { POST as pluginSetEnabled } from "../../src/routes/api/plugin/set-enabled/+server";
@@ -117,6 +119,10 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "theme/revert", handler: themeRevert as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "style/set-active", handler: styleSetActive as RouteHandler, body: (d) => ({ projectDir: d, paths: [] }) },
   { name: "project/list-styles", handler: projectListStyles as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "project/inline-css", handler: projectInlineCss as RouteHandler, body: (d) => ({ projectDir: d }) },
+  // WRITES markdown files, so an unguarded projectDir here would let the
+  // renderer rewrite files anywhere on disk. Guarded like fs:listProjectFiles.
+  { name: "project/normalize", handler: projectNormalize as RouteHandler, body: (d) => ({ projectDir: d, apply: false }) },
   { name: "manifest/read", handler: manifestRead as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "manifest/set-fields", handler: manifestSetFields as RouteHandler, body: (d) => ({ projectDir: d, updates: { title: "pwned" } }) },
   { name: "plugin/set-enabled", handler: pluginSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, ref: "some-plugin", enabled: true }) },

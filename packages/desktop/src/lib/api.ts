@@ -140,6 +140,20 @@ import type {
 export type { PreflightRow } from './preflight';
 import type { PreflightRow } from './preflight';
 
+/**
+ * The result of `api.project.normalize`.
+ *
+ * `changed` carries before/after so the confirm dialog can show a real diff
+ * per file. `refused` names files the document model cannot represent — those
+ * are left exactly as the author wrote them.
+ */
+export interface NormalizePlan {
+  applied: boolean;
+  changed: Array<{ path: string; before: string; after: string }>;
+  unchanged: string[];
+  refused: Array<{ path: string; reason: string }>;
+}
+
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
 export interface TemplateInfo {
@@ -525,6 +539,15 @@ export const api = {
         '/api/project/inline-css',
         { projectDir },
       ),
+
+    /**
+     * Plan (or apply) the project-wide markdown normalization rich editing
+     * needs. `apply: false` writes nothing — it returns the before/after for
+     * every file that would change, so the author agrees to a diff rather
+     * than to a number.
+     */
+    normalize: (projectDir: string, apply = false) =>
+      post<NormalizePlan>('/api/project/normalize', { projectDir, apply }),
   },
 
   manifest: {

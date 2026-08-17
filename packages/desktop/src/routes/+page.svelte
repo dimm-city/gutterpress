@@ -3,6 +3,7 @@
   import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import NormalizeDialog from "$lib/components/NormalizeDialog.svelte";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
   import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
@@ -51,7 +52,7 @@
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { api, type NormalizePlan } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -1162,6 +1163,73 @@
    */
   let docModel = $state<typeof import("$lib/editor/markdown-doc") | null>(null);
 
+  // ── normalize-on-adoption ──────────────────────────────────────────────
+  /** The plan awaiting the author's consent, or null when nothing is asked. */
+  let normalizePlan = $state<NormalizePlan | null>(null);
+  let normalizeApplying = $state(false);
+  /** Guards against re-offering within a session after "Decide later". */
+  let normalizeOffered = false;
+
+  /**
+   * Offer the one-time tidy, once per project.
+   *
+   * Rich editing saves canonically, so without this the author meets the
+   * reformat as a surprise diff on whichever file they happened to edit
+   * first. Asked only when it is actually relevant — desktop, rich mode, a
+   * project that has never been normalized — and only when there is something
+   * to change, so a book already in that style is never interrupted.
+   */
+  async function maybeOfferNormalize(): Promise<void> {
+    if (!isDesktop() || normalizeOffered || normalizePlan) return;
+    if (editorModePref !== "rich" || !lifecycle.currentDir) return;
+    normalizeOffered = true;
+    try {
+      const state = await api.app.getDesktopProjectState(lifecycle.currentDir);
+      if (state?.normalizedAt) return;
+      const plan = await api.project.normalize(lifecycle.currentDir, false);
+      // Nothing to change: record it and never ask again for this book.
+      if (plan.changed.length === 0) {
+        await api.app.setDesktopProjectState(lifecycle.currentDir, {
+          normalizedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      normalizePlan = plan;
+    } catch (e) {
+      // Non-fatal: the editor works, the author just was not offered the tidy.
+      console.warn("could not plan the project tidy", e);
+    }
+  }
+
+  /** Apply the plan the author agreed to, then reload the open file. */
+  async function applyNormalize(): Promise<void> {
+    if (!lifecycle.currentDir || normalizeApplying) return;
+    normalizeApplying = true;
+    try {
+      const result = await api.project.normalize(lifecycle.currentDir, true);
+      await api.app.setDesktopProjectState(lifecycle.currentDir, {
+        normalizedAt: new Date().toISOString(),
+      });
+      normalizePlan = null;
+      // The open file may be one of the rewritten ones — re-read it through
+      // the buffer so the editor shows the file that is now on disk.
+      const open = editorFilePath;
+      if (open) {
+        const rewritten = result.changed.find((c) => open.endsWith(c.path));
+        if (rewritten) showEditorContent(open, rewritten.after);
+      }
+      toast?.success(
+        `Tidied ${result.changed.length} ${result.changed.length === 1 ? "file" : "files"}.`,
+      );
+    } catch (e) {
+      toast?.error(
+        `Could not tidy the markdown: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      normalizeApplying = false;
+    }
+  }
+
   /**
    * Why the open file is NOT rich-editable, or null when it is.
    *
@@ -1190,6 +1258,11 @@
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
   function loadEditorModule() {
+    // Rich is the default mode, so the rich chunk has to be prepared wherever
+    // the editor is opened — not only when the author toggles into it, or a
+    // project that opens richly would never load its editor (or be offered
+    // the one-time tidy).
+    if (editorModePref === "rich") loadRichModule();
     if (!editorOpen || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
     editorModuleLoading = true;
     import("$lib/components/MarkdownEditor.svelte")
@@ -1225,6 +1298,8 @@
     import("$lib/components/RichEditor.svelte")
       .then((m) => {
         RichEditor = m.default;
+        void refreshBookCss();
+        void maybeOfferNormalize();
       })
       .catch((e) => {
         richModuleFailed = true;
@@ -1407,7 +1482,10 @@
     // The component swap happens reactively; re-seed once it has mounted.
     whenEditorReady(() => {
       reseedEditor();
-      if (mode === "rich") void refreshBookCss();
+      if (mode === "rich") {
+        void refreshBookCss();
+        void maybeOfferNormalize();
+      }
     });
   }
 
@@ -2820,6 +2898,13 @@
 </script>
 
 <Toast bind:api={toast} />
+
+<NormalizeDialog
+  plan={normalizePlan}
+  applying={normalizeApplying}
+  onApply={() => void applyNormalize()}
+  onDismiss={() => (normalizePlan = null)}
+/>
 
 <CrashRecoveryDialog
   items={crashRecovery.items}
