@@ -101,6 +101,23 @@ export const gutterpressMarkdownSerializer = new MarkdownSerializer(
         : "";
       state.write(`![${alt}](${src}${title})${attrsToBraces(node.attrs.attrs as ExtraAttrs | null)}`);
     },
+    /**
+     * A fence, with its braces.
+     *
+     * Same shape as the default rule — including the grow-the-fence trick that
+     * keeps a fence longer than any backtick run inside it — plus the
+     * `{.line-numbers}` the default has nowhere to put.
+     */
+    code_block(state, node) {
+      const runs = node.textContent.match(/`{3,}/gm);
+      const fence = runs ? `${runs.sort().slice(-1)[0]}\`` : "```";
+      const braces = attrsToBraces(node.attrs.attrs as ExtraAttrs | null);
+      state.write(`${fence}${(node.attrs.params as string) || ""}${braces ? ` ${braces}` : ""}\n`);
+      state.text(node.textContent, false);
+      state.write("\n");
+      state.write(fence);
+      state.closeBlock(node);
+    },
 
     // ── Gutterpress layout ───────────────────────────────────────────────
     // `@chapter` / `@page` / `@spread` are open-ended in the source: they run
@@ -163,6 +180,22 @@ export const gutterpressMarkdownSerializer = new MarkdownSerializer(
   },
   {
     ...defaultMarkdownSerializer.marks,
+    /**
+     * The default link rule, plus its `markdown-it-attrs` braces.
+     *
+     * Delegates the hard part — the `<autolink>` vs `[text](href "title")`
+     * decision, which turns on a private `isPlainURL` helper — and appends
+     * the braces the default has nowhere to put.
+     */
+    link: {
+      ...defaultMarkdownSerializer.marks.link,
+      close(state, mark, parent, index) {
+        const inner = defaultMarkdownSerializer.marks.link.close;
+        const base =
+          typeof inner === "function" ? inner(state, mark, parent, index) : String(inner);
+        return base + attrsToBraces(mark.attrs.attrs as ExtraAttrs | null);
+      },
+    },
     strikethrough: {
       open: "~~",
       close: "~~",

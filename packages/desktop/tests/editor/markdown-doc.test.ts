@@ -160,3 +160,106 @@ describe("normalization is accepted, but must be stable", () => {
     expect(out.endsWith("\n\n")).toBe(false);
   });
 });
+
+/**
+ * Regressions found by review, each one a way an author's file came back
+ * changed. Every case here failed before the fix; the comment on each says
+ * what it produced.
+ */
+describe("content preservation", () => {
+  /** Every character with the SET of marks on it, nesting order ignored. */
+  function markProfile(src: string): string {
+    const doc = createDocParser(md()).parse(src);
+    const out: string[] = [];
+    doc.descendants((node) => {
+      if (!node.isText) return true;
+      const marks = node.marks.map((m) => m.type.name).sort().join("+");
+      for (const ch of node.text ?? "") out.push(`${ch}:${marks}`);
+      return true;
+    });
+    return out.join("|");
+  }
+
+  test("emphasis nested inside a link keeps its markers", () => {
+    // Was: `[a **bold *****italic*** **word**](…)`, which re-parses with a
+    // literal `**bold **` as TEXT. Mark order in schema.ts is the fix.
+    const src = "[a **bold _italic_ word**](https://example.com)\n";
+    expect(roundTrip(src)).toBe("[a **bold *italic* word**](https://example.com)\n");
+    expect(markProfile(roundTrip(src))).toBe(markProfile(src));
+  });
+
+  test("a bold link does not turn inside out", () => {
+    // Was: `**[bold link](…)**` — link and strong swapped nesting.
+    expect(roundTrip("[**bold link**](https://example.com)\n")).toBe(
+      "[**bold link**](https://example.com)\n",
+    );
+  });
+
+  test("a header-only table gains no phantom row", () => {
+    // Was: a `|  |` row appended, which rendered as a real empty row.
+    const src = "| A | B |\n| --- | --- |\n";
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("a quoted multi-word attribute value stays quoted", () => {
+    // Was: `{data-note=two words}`, re-parsing as data-note="two" plus an
+    // invented `words=""`.
+    const src = '# Heading {data-note="two words"}\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("attribute values are quoted only when they need it", () => {
+    expect(roundTrip("# Heading {#id .cls data-x=plain}\n")).toBe(
+      "# Heading {.cls #id data-x=plain}\n",
+    );
+  });
+
+  test("link attributes survive", () => {
+    // Was: dropped entirely — every `target`, `rel` and utility class gone.
+    expect(roundTrip('[docs](https://example.com){target="_blank"}\n')).toBe(
+      "[docs](https://example.com){target=_blank}\n",
+    );
+    expect(roundTrip("[docs](https://example.com){.external}\n")).toBe(
+      "[docs](https://example.com){.external}\n",
+    );
+  });
+
+  test("fence attributes survive", () => {
+    // Was: dropped, leaving only the language.
+    const src = "```js {.line-numbers}\nconst x = 1;\n```\n";
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("a fence still grows past a backtick run in its own body", () => {
+    const src = "````text {.x}\n```\n````\n";
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("an author's aria-hidden is not mistaken for a generated one", () => {
+    // Was: stripped, deleting a deliberate accessibility annotation.
+    expect(roundTrip('![Decorative](border.png){aria-hidden="true"}\n')).toBe(
+      "![Decorative](border.png){aria-hidden=true}\n",
+    );
+  });
+
+  test("pipeline-generated attributes are still not written back", () => {
+    // The other half of the same filter: these must never reach the file.
+    const out = roundTrip("# Title\n");
+    expect(out).not.toContain("data-source-range");
+    expect(out).not.toContain("data-chapter-label");
+  });
+
+  test("a file defining a link reference is refused, not silently emptied", () => {
+    // Was: accepted, and the definition line deleted on save. Invisible to
+    // both the fixpoint gate (a loss is stable) and the semantic gate (a
+    // definition renders no HTML).
+    const src = 'Just a paragraph.\n\n[unused]: https://example.com "Unused"\n';
+    const verdict = canEditRichly(md(), src);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toContain("[unused]");
+  });
+
+  test("a file with no references is unaffected", () => {
+    expect(canEditRichly(md(), "Just a paragraph.\n").ok).toBe(true);
+  });
+});

@@ -90,7 +90,12 @@ function layoutAtom(): NodeSpec {
 }
 
 const tableNodes: Record<string, NodeSpec> = {
-  table: { content: "table_head? table_body", group: "block", tableRole: "table", isolating: true,
+  // `table_body?`, not `table_body`. A header-only table (`| A |\n| --- |`) is
+  // legal GFM and an ordinary thing to write — a template waiting to be filled
+  // in. With the body REQUIRED, `createAndFill` had to invent a `table_row` to
+  // satisfy the schema, and saving wrote back a `|  |` row the author never
+  // typed, which then rendered as a real empty row in the printed book.
+  table: { content: "table_head? table_body?", group: "block", tableRole: "table", isolating: true,
     toDOM: () => ["table", 0] },
   table_head: { content: "table_row+", tableRole: "head", isolating: true, toDOM: () => ["thead", 0] },
   table_body: { content: "table_row+", tableRole: "body", isolating: true, toDOM: () => ["tbody", 0] },
@@ -119,10 +124,58 @@ const withAttrs = (spec: NodeSpec): NodeSpec => ({
   attrs: { ...(spec.attrs ?? {}), attrs: { default: null } },
 });
 
+/**
+ * `link` FIRST. Mark order decides nesting, and nesting decides whether the
+ * serializer emits valid markdown.
+ *
+ * ProseMirror sorts every text node's marks by their rank in this list, and
+ * `MarkdownSerializerState` closes marks back to the longest common prefix of
+ * the previous node's sorted marks. `prosemirror-markdown`'s own schema ranks
+ * `link` LAST, so a link wrapping emphasis — which is how a link with any
+ * formatting inside it is written — sorts the link innermost even though the
+ * source has it outermost. Every emphasis boundary inside the link then forces
+ * the serializer to close and reopen its neighbours, and the asterisks it
+ * emits do not re-parse:
+ *
+ *   in   [a **bold _italic_ word**](https://example.com)
+ *   out  [a **bold *****italic*** **word**](https://example.com)
+ *
+ * which renders as the literal text `a **bold **` followed by a wrongly
+ * bold-AND-italic "italic" — visible garbage in the printed book. This is
+ * upstream behaviour, reproduced with the stock `defaultMarkdownParser` and
+ * `defaultMarkdownSerializer`, not something our specs introduced. Mark order
+ * is the part we own, so it is the part that changes.
+ *
+ * Ranking `link` first is not a cost-free win, and it was chosen by measuring
+ * rather than by reasoning. Across an 11-case inline matrix, comparing the
+ * SET of marks on every character before and after a round trip (so a mere
+ * re-nesting of `<a><strong>` into `<strong><a>` counts as equal, because it
+ * is):
+ *
+ *   order                     characters whose marks changed
+ *   em, strong, link (stock)  4 literal `*` injected, "bold" loses strong
+ *   link, em, strong (ours)   one SPACE loses `strong`
+ *
+ * Both orders disagree with the input on exactly one case out of eleven. The
+ * stock order corrupts the author's text; ours changes whether a single space
+ * character is bold, which no renderer can show. `roundtrip.test.ts` holds
+ * that matrix so a future reorder has to face the same evidence.
+ */
+const markOrder = base.spec.marks.remove("link").addToStart("link", {
+  ...base.spec.marks.get("link")!,
+  // `[docs](url){target="_blank"}` — the same `markdown-it-attrs` braces the
+  // heading and image nodes carry, on the one INLINE construct that takes
+  // them. Without the slot they parsed and then evaporated on save, which
+  // quietly unset every `target`, `rel` and utility class in a book.
+  attrs: { ...(base.spec.marks.get("link")!.attrs ?? {}), attrs: { default: null } },
+});
+
 export const gutterpressSchema = new Schema({
   nodes: base.spec.nodes
     .update("image", withAttrs(base.spec.nodes.get("image")!))
     .update("heading", withAttrs(base.spec.nodes.get("heading")!))
+    // ```js {.line-numbers} — the info string is `params`, the braces are not.
+    .update("code_block", withAttrs(base.spec.nodes.get("code_block")!))
     .append(tableNodes)
     .append({
       gp_chapter: layoutWrapper(),
@@ -148,7 +201,7 @@ export const gutterpressSchema = new Schema({
         toDOM: (node) => ["span", { class: "gp-raw-html-inline" }, node.attrs.html as string],
       },
     }),
-  marks: base.spec.marks.append({
+  marks: markOrder.append({
     /**
      * `~~struck~~`. markdown-it emits `s_open`/`s_close` out of the box, and
      * without a mark for it the parser RAISED — so a single `~~word~~` made a

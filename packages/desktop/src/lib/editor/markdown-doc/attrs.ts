@@ -30,6 +30,9 @@ const OWNED: Record<string, readonly string[]> = {
   image: ["src", "alt", "title"],
   heading: [],
   link: ["href", "title"],
+  // A fence's language lives in `tok.info`, not in `attrs`, so nothing here is
+  // owned — `{.line-numbers}` is all the author's.
+  code_block: [],
 };
 
 /**
@@ -39,8 +42,18 @@ const OWNED: Record<string, readonly string[]> = {
  * `data-chapter-label` is PROPAGATED from an enclosing chapter — neither was
  * written by the author, so echoing them back into the file would invent
  * source the author never typed.
+ *
+ * `aria-hidden` was on this list and should not have been. The pipeline does
+ * emit it — but only on the `layout_page_break` / `layout_column_break` marker
+ * atoms, which carry it from `markers.js` and never route through
+ * `extraAttrs()` at all. On the two node types this filter actually runs for,
+ * headings and images, `aria-hidden` can only have come from the author, and
+ * `![Decorative](border.png){aria-hidden="true"}` — the standard way to hide a
+ * decorative image from a screen reader — was being deleted on save. Filtering
+ * by NAME cannot tell an internal key from a plausible authored one; the
+ * remaining two are `data-` prefixed and specific enough to be safe.
  */
-const GENERATED = /^(data-source-range|data-chapter-label|aria-hidden)$/;
+const GENERATED = /^(data-source-range|data-chapter-label)$/;
 
 export type ExtraAttrs = Record<string, string>;
 
@@ -72,7 +85,23 @@ export function attrsToBraces(attrs: ExtraAttrs | null | undefined): string {
   if (attrs.id) parts.push(`#${attrs.id}`);
   for (const key of Object.keys(attrs).sort()) {
     if (key === "class" || key === "id") continue;
-    parts.push(`${key}=${attrs[key]}`);
+    parts.push(`${key}=${quoteValue(attrs[key]!)}`);
   }
   return parts.length ? `{${parts.join(" ")}}` : "";
+}
+
+/**
+ * A `key=value` value, quoted when it has to be.
+ *
+ * `markdown-it-attrs` splits an unquoted value at whitespace, so writing one
+ * bare did not merely look untidy — it silently corrupted the attribute AND
+ * invented a new one. `{data-note="two words"}` came back as
+ * `{data-note=two words}`, which re-parses as `data-note="two"` plus an empty
+ * `words=""`. Quoting is the whole fix; the escape is for a value that
+ * contains a quote of its own.
+ */
+function quoteValue(value: string): string {
+  if (value === "") return '""';
+  if (!/[\s"'=}]/.test(value)) return value;
+  return `"${value.replace(/"/g, "&quot;")}"`;
 }

@@ -80,7 +80,11 @@ export function createDocParser(md: MarkdownIt) {
       getAttrs: (tok) => ({ level: +tok.tag.slice(1), attrs: extraAttrs(tok, "heading") }),
     },
     code_block: { block: "code_block", noCloseToken: true },
-    fence: { block: "code_block", getAttrs: (tok) => ({ params: tok.info || "" }), noCloseToken: true },
+    fence: {
+      block: "code_block",
+      getAttrs: (tok) => ({ params: tok.info || "", attrs: extraAttrs(tok, "code_block") }),
+      noCloseToken: true,
+    },
     hr: { node: "horizontal_rule" },
     image: {
       node: "image",
@@ -96,7 +100,15 @@ export function createDocParser(md: MarkdownIt) {
     hardbreak: { node: "hard_break" },
     em: { mark: "em" },
     strong: { mark: "strong" },
-    link: { mark: "link", getAttrs: (tok) => ({ href: tok.attrGet("href"), title: tok.attrGet("title") || null }) },
+    link: {
+      mark: "link",
+      getAttrs: (tok) => ({
+        href: tok.attrGet("href"),
+        title: tok.attrGet("title") || null,
+        // `{target="_blank"}` / `{.external}` — see attrs.ts.
+        attrs: extraAttrs(tok, "link"),
+      }),
+    },
     code_inline: { mark: "code", noCloseToken: true },
     s: { mark: "strikethrough" },
 
@@ -151,10 +163,48 @@ export function canEditRichly(
   md: MarkdownIt,
   text: string,
 ): { ok: true } | { ok: false; reason: string } {
+  const refs = referenceLabels(md, text);
+  if (refs.length) {
+    return {
+      ok: false,
+      reason:
+        `this file defines link ${refs.length === 1 ? "reference" : "references"} ` +
+        `(${refs.map((r) => `[${r}]`).join(", ")}), which rich editing cannot represent`,
+    };
+  }
   try {
     createDocParser(md).parse(text);
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * The `[label]: url` definitions in a file.
+ *
+ * These are the one construct that can go missing with NOTHING to detect it
+ * afterwards. markdown-it's reference rule consumes the definition line into
+ * `env.references` and emits no token at all, so there is nothing for the
+ * parser to raise on; the definition simply vanishes on save. Both existing
+ * gates are blind to it by construction — a loss that happens once is stable
+ * on the second pass, so the fixpoint holds, and a definition renders no HTML,
+ * so the semantic-preservation check compares two identical strings.
+ *
+ * A USED reference would survive as an inline link, but distinguishing used
+ * from unused means guessing which link came from which definition. Refusing
+ * whenever a definition is present is the fail-closed reading, and it is free:
+ * across the whole first-party corpus, no file defines one.
+ */
+function referenceLabels(md: MarkdownIt, text: string): string[] {
+  const env: { references?: Record<string, unknown> } = {};
+  md.parse(text, env);
+  const found = Object.keys(env.references ?? {});
+  if (found.length === 0) return [];
+  // markdown-it normalizes labels to upper case; quote the author's own
+  // spelling back at them so the message names something they can search for.
+  const authored = new Map(
+    [...text.matchAll(/^ {0,3}\[([^\]]+)\]:/gm)].map((m) => [m[1]!.toUpperCase(), m[1]!]),
+  );
+  return found.map((label) => authored.get(label) ?? label);
 }
