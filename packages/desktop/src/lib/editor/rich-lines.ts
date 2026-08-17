@@ -41,25 +41,52 @@ const countLines = (text: string) => text.split("\n").length;
  * blocks anyway (`preview-interface.js`'s `resolveLinePosition`). It is a
  * CORRECTNESS choice: `cut()` slices through open nodes and the fragment it
  * leaves serializes differently from the real prefix (a half-open list emits
- * its own bullet), so the line count drifts. Serializing `doc(children[0..i])`
- * cannot drift — every child is whole — and the corpus confirms the result is
- * always a genuine prefix of the full document.
+ * its own bullet), so the line count drifts.
+ *
+ * Each block is LOCATED in the real saved text rather than having its start
+ * line accumulated. Accumulating meant assuming exactly one blank line between
+ * blocks, and `prosemirror-markdown` does not always write one: two adjacent
+ * lists of the same shape — what you get from using the list command twice in
+ * a row — are separated by TWO, or re-parsing would merge them into one list.
+ * Every line after such a pair was then reported one early, silently, in every
+ * "go to source" jump and preview scroll sync.
+ *
+ * Locating is also what keeps this honest in general: it is measured against
+ * the bytes `serializeDoc` actually produces, so any future change to how a
+ * node is written moves these numbers with it instead of invalidating an
+ * assumption recorded here. One full serialization plus one per child, with
+ * the search cursor only moving forward — linear, not the quadratic cost of
+ * serializing a growing prefix per block.
  */
 function computeTable(doc: PMNode): BlockLine[] {
   const out: BlockLine[] = [];
   const children: PMNode[] = [];
   doc.forEach((child) => children.push(child));
 
+  const docType = doc.type.schema.nodes.doc!;
+  const full = serializeDoc(doc);
+  // Line number of every offset in `full`, computed once.
+  const lineAt = (offset: number) => countLines(full.slice(0, offset));
+
   let pos = 0;
-  let line = 1;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    out.push({ pos, line });
-    // Lines consumed by this child, plus the blank line the serializer puts
-    // between blocks. Derived from the serializer itself, so a change to how
-    // any node is written moves these numbers with it.
-    const text = serializeDoc(doc.type.schema.nodes.doc!.create(null, [child])).replace(/\n+$/, "");
-    line += countLines(text) + 1;
+  let cursor = 0;
+  let fallbackLine = 1;
+  for (const child of children) {
+    const text = serializeDoc(docType.create(null, [child])).replace(/\n+$/, "");
+    const at = text ? full.indexOf(text, cursor) : -1;
+    if (at === -1) {
+      // A block whose standalone spelling is not a literal substring of the
+      // document's. Nothing observed does this, but guessing a position would
+      // be worse than an approximate one: keep the old accumulate-and-hope
+      // number for this block and let the next locatable block resynchronize.
+      out.push({ pos, line: fallbackLine });
+      fallbackLine += countLines(text) + 1;
+    } else {
+      const line = lineAt(at);
+      out.push({ pos, line });
+      cursor = at + text.length;
+      fallbackLine = line + countLines(text) + 1;
+    }
     pos += child.nodeSize;
   }
   return out;
@@ -70,6 +97,13 @@ function computeTable(doc: PMNode): BlockLine[] {
  *
  * One entry, not a Map: consecutive calls are always about the current
  * document, and holding older documents would pin their whole node trees.
+ *
+ * Module-level rather than per-editor, which assumes one mounted rich editor —
+ * true today, and the host unmounts one surface before mounting the other. It
+ * is safe rather than merely convenient: the entry is keyed on document
+ * IDENTITY, so a second editor can never be handed the first one's lines, it
+ * would only miss and recompute. If two ever coexist, move this onto the
+ * handle `mountRichEditor()` returns.
  */
 let cachedDoc: PMNode | null = null;
 let cachedTable: BlockLine[] = [];

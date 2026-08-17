@@ -18,9 +18,13 @@
  */
 import { existsSync } from "node:fs";
 import { inlineStyles } from "./asset-inline.ts";
+import { MARKER_CSS } from "./markdown/markers.js";
+import { GUTTERPRESS_CSS } from "./markdown/gutterpress-css.ts";
+import { loadPluginsWithCss } from "./markdown/plugins.ts";
+import type { ResolvedPluginConfig } from "../schema/manifest.types.ts";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { loadManifestWithPath } from "./manifest.ts";
+import { loadManifestWithPath, resolveConfig } from "./manifest.ts";
 
 /** One resolvable project stylesheet for the CSS editor's picker. */
 export interface ProjectStyle {
@@ -223,15 +227,28 @@ export async function listProjectStyles(
 }
 
 /**
- * The project's stylesheet, fully inlined — the exact CSS the built book gets.
+ * The WHOLE stylesheet a built book renders with, fully inlined.
  *
- * The rich editor renders the author's text with the BOOK'S stylesheet so it
- * looks the way it will print, which means it needs the same bytes
- * `assembleBookHtml` receives as `projectCss`. This runs the same two steps
- * `renderChapters` does (`resolveActiveStyles` then `inlineStyles`), so the
- * editing surface and the PDF cannot drift onto different CSS — a third
- * caller re-deriving this by hand is exactly the "updating the design doesn't
- * change the preview" bug this module exists to prevent.
+ * All four layers `assembleBookHtml` composes, in its order: Gutterpress's
+ * marker layout primitives, then its `gp-*` author vocabulary, then user
+ * plugin CSS, then the author's own stylesheets last so project rules win at
+ * equal specificity. Any caller that wants "what the book looks like" needs
+ * all four.
+ *
+ * This returned only the project's own stylesheet at first, and the rich
+ * editor — its only caller — silently lost the other three. Measured on the
+ * user guide, none of `.page`, `.section`, `.chapter`, `.gp-columns-2`,
+ * `.gp-bleed` or `.gp-pin` reached the editing surface, so every structural
+ * marker and every author utility class rendered unstyled. Worse than
+ * cosmetic: `MARKER_CSS` is where `.page`/`.spread`/`.gp-page-break` get their
+ * `break-before`, and the editor derives its pagination from the break
+ * declarations it can see — so on a book that marks pages with `@page` and
+ * writes no `break-*` CSS of its own, `breakMappingCss()` emitted NOTHING and
+ * every deliberate page break was ignored.
+ *
+ * Composing here rather than in the caller is the point: the editor asks for
+ * "the book's CSS" and gets the same bytes the PDF is built from, so the two
+ * cannot drift.
  *
  * Fonts and images referenced by the stylesheet are already `data:` URIs after
  * inlining, so the result is self-contained and needs no asset staging.
@@ -239,9 +256,49 @@ export async function listProjectStyles(
 export async function resolveProjectCss(
   projectDir: string,
   manifestStyles?: string[],
+  plugins?: ResolvedPluginConfig[] | null,
 ): Promise<{ css: string; styles: string[]; warnings: string[] }> {
-  const styles = await resolveActiveStyles(projectDir, manifestStyles);
-  if (styles.length === 0) return { css: "", styles: [], warnings: [] };
-  const { css, warnings } = await inlineStyles(projectDir, styles);
-  return { css, styles, warnings: warnings ?? [] };
+  const warnings: string[] = [];
+  // One manifest read, shared with the plugin resolution below.
+  const { manifest } = await loadManifestWithPath(projectDir);
+  const styles = await resolveActiveStyles(
+    projectDir,
+    manifestStyles ?? (Array.isArray(manifest.styles) ? manifest.styles : []),
+  );
+  let projectCss = "";
+  if (styles.length > 0) {
+    const inlined = await inlineStyles(projectDir, styles);
+    projectCss = inlined.css;
+    warnings.push(...(inlined.warnings ?? []));
+  }
+
+  // Degrade-and-report, the mode the LIVE surfaces use (CLAUDE.md §5): one
+  // uninstalled plugin must not blank an author's editor, but every skip is
+  // surfaced rather than swallowed.
+  //
+  // Resolved from the manifest when not supplied, the same way
+  // `resolveActiveStyles` resolves `styles` — so a caller that just has a
+  // project directory gets the book's real configuration rather than silently
+  // getting none of it.
+  let pluginCss = "";
+  try {
+    const configs = plugins === undefined ? resolveConfig({}, manifest).plugins : plugins;
+    const loaded = await loadPluginsWithCss(configs, projectDir, (ref, err) =>
+      warnings.push(`plugin ${ref} did not load: ${err.message}`),
+    );
+    pluginCss = loaded.pluginCss;
+  } catch (err) {
+    warnings.push(`plugin CSS unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const css = [
+    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
+    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
+    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
+    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { css, styles, warnings };
 }

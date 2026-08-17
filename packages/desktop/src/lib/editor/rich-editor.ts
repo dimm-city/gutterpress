@@ -32,7 +32,7 @@ import { gapCursor } from "prosemirror-gapcursor";
 import { history, redo, undo } from "prosemirror-history";
 import { inputRules, textblockTypeInputRule, wrappingInputRule } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
-import type { MarkType, Node as PMNode, NodeType } from "prosemirror-model";
+import type { MarkType, Node as PMNode, NodeType, ResolvedPos } from "prosemirror-model";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
 import { EditorState, Plugin, Selection, type Command } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
@@ -89,8 +89,13 @@ export interface ChromeState {
 
 export interface RichEditorHandle {
   readonly view: EditorView;
-  /** Replace the whole document — a file switch or an external-edit reload. */
-  setContent(markdown: string): void;
+  /**
+   * Replace the whole document — a file switch or an external-edit reload.
+   * False when the markdown is one this schema cannot model, so the caller
+   * can fall back to source mode instead of leaving a stale document on
+   * screen.
+   */
+  setContent(markdown: string): boolean;
   /** Canonical markdown for the current document. */
   getMarkdown(): string;
   focus(): void;
@@ -223,7 +228,23 @@ function buildKeymap(onSave?: () => void): Plugin {
   } = schema.nodes;
   const { strong, em, code } = schema.marks;
 
+  /**
+   * Shift-Enter, except inside a table cell.
+   *
+   * A cell's content is `inline*`, so `hard_break` is a legal child there and
+   * this used to insert one — but a markdown table row is one line by
+   * construction. `cellText()` serializes the break as `\` + newline and then
+   * flattens the newline to a space, so the author's forced break became a
+   * stray backslash in the cell, permanently (it round-trips as a literal
+   * backslash from then on). Refusing is the honest answer: markdown has no
+   * spelling for it, so the key does nothing rather than writing something
+   * else.
+   */
   const insertBreak: Command = (state, dispatch) => {
+    for (let d = state.selection.$from.depth; d > 0; d--) {
+      const role = state.selection.$from.node(d).type.spec.tableRole;
+      if (role === "cell" || role === "header_cell") return false;
+    }
     dispatch?.(state.tr.replaceSelectionWith(hard_break!.create()).scrollIntoView());
     return true;
   };
@@ -309,7 +330,15 @@ function rawHtmlView(inline: boolean) {
  * moved out from under it.
  */
 function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
-  let slashFrom: number | null = null;
+  // A flag, NOT a position. The menu still opens only on TYPING `/`, so
+  // putting the caret after a slash already in the text does not summon it —
+  // but WHERE that slash is gets re-derived from the live document on every
+  // update. Holding the position meant holding a number across transactions
+  // that never mapped through them, and `applyRangeEdit` dispatches exactly
+  // such a transaction onto this same state: an insertion earlier in the
+  // document left the number pointing somewhere else, or past the end, where
+  // `coordsAtPos` throws. A flag cannot go stale.
+  let open = false;
 
   return new Plugin({
     view: (view) => ({
@@ -324,25 +353,20 @@ function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
           const textBefore = $pos.parent.textBetween(
             Math.max(0, $pos.parentOffset - 80), $pos.parentOffset, undefined, "\ufffc",
           );
-          if (slashFrom === null && isSlashTrigger(textBefore)) {
-            slashFrom = selection.from;
-          }
-          if (slashFrom !== null) {
-            // Typing past the trigger filters; moving before it, or inserting a
+          if (!open && isSlashTrigger(textBefore)) open = true;
+          if (open) {
+            // Typing past the trigger filters; deleting it, or inserting a
             // space, is the author writing a literal slash — close.
-            if (selection.from < slashFrom) slashFrom = null;
+            const at = slashQueryAt($pos);
+            if (!at) open = false;
             else {
-              const query = state.doc.textBetween(slashFrom, selection.from);
-              if (/\s/.test(query)) slashFrom = null;
-              else {
-                const coords = v.coordsAtPos(slashFrom);
-                onChrome({ kind: "slash", x: coords.left, y: coords.bottom, query });
-                return;
-              }
+              const coords = v.coordsAtPos(at.from);
+              onChrome({ kind: "slash", x: coords.left, y: coords.bottom, query: at.query });
+              return;
             }
           }
         } else {
-          slashFrom = null;
+          open = false;
         }
 
         // ── selection toolbar ─────────────────────────────────────────────
@@ -366,14 +390,34 @@ function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
   });
 }
 
+/**
+ * The `/query` the caret sits at the end of, located in the CURRENT document.
+ *
+ * One definition, used by both the menu (to place itself and to filter) and
+ * `clearSlashQuery` (to delete the text before inserting). They read the same
+ * span by construction, so the menu can never be filtering on one range while
+ * the insert removes another.
+ *
+ * Returns null when there is no live slash command: no slash, a slash in the
+ * middle of a word (`and/or`), or whitespace since the slash.
+ */
+function slashQueryAt($pos: ResolvedPos): { from: number; query: string } | null {
+  // The leaf char keeps text offsets aligned with document positions when the
+  // block holds an inline atom (a raw `html_inline` span).
+  const text = $pos.parent.textBetween(0, $pos.parentOffset, undefined, "￼");
+  const slash = text.lastIndexOf("/");
+  if (slash === -1) return null;
+  if (slash > 0 && !/\s$/.test(text.slice(0, slash))) return null;
+  const query = text.slice(slash + 1);
+  if (/\s/.test(query)) return null;
+  return { from: $pos.start() + slash, query };
+}
+
 /** Delete the `/query` the author typed, before running the chosen command. */
 export function clearSlashQuery(view: EditorView): void {
-  const { $from } = view.state.selection;
-  const text = $from.parent.textBetween(0, $from.parentOffset);
-  const slash = text.lastIndexOf("/");
-  if (slash === -1) return;
-  const from = $from.start() + slash;
-  view.dispatch(view.state.tr.delete(from, view.state.selection.from));
+  const at = slashQueryAt(view.state.selection.$from);
+  if (!at) return;
+  view.dispatch(view.state.tr.delete(at.from, view.state.selection.from));
 }
 
 export function createEditorState(
@@ -468,13 +512,33 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
 
   return {
     view,
-    setContent(markdown: string) {
+    /**
+     * Replace the whole document. Returns false when the markdown is one this
+     * schema cannot model.
+     *
+     * The parse throws by design (see `parser.ts`, FAIL CLOSED), and the
+     * preflight that is supposed to keep such content away from here only
+     * chooses which component MOUNTS — it does not gate what is later pushed
+     * into an already-mounted one. Two ordinary things do exactly that: an
+     * external edit adding a footnote to the open file, and switching to a
+     * chapter that uses one. Reporting the refusal lets the host fall back to
+     * source mode; throwing left an unhandled rejection and skipped the
+     * caller's remaining work.
+     */
+    setContent(markdown: string): boolean {
+      let next: EditorState;
+      try {
+        next = createEditorState(md, markdown, onSave, onChrome);
+      } catch {
+        return false;
+      }
       suppressEmitUntil = Date.now() + 300;
       lastEmittedLine = -1;
       // A whole-document replacement, not an edit: this is a file switch or an
       // external reload, and neither should be undoable back into the previous
       // FILE's content.
-      view.updateState(createEditorState(md, markdown, onSave, onChrome));
+      view.updateState(next);
+      return true;
     },
     getMarkdown: () => serializeDoc(view.state.doc),
     focus: () => view.focus(),

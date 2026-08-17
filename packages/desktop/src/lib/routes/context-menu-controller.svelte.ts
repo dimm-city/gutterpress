@@ -23,6 +23,7 @@
 import type { PreviewEvent, ContextTarget, SourceRange } from "$lib/preview-client";
 import type { CommitEngine } from "$lib/editor/commit-engine";
 import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
+import { flipClamp } from "$lib/flip-clamp";
 import { buildLineStarts, charRange } from "$lib/editor/source-range";
 import {
   findImageToken,
@@ -293,16 +294,9 @@ export class ContextMenuController {
     const baseY = (origin?.top ?? 0) + py;
     const workspace = this.deps.getWorkspaceRect();
     if (!workspace) return { x: baseX, y: baseY };
-
-    const maxX = workspace.left + workspace.width;
-    const maxY = workspace.top + workspace.height;
-    // Flip near the right/bottom edge.
-    let x = baseX + width > maxX ? baseX - width : baseX;
-    let y = baseY + height > maxY ? baseY - height : baseY;
-    // Clamp fully inside the workspace either way.
-    x = Math.min(Math.max(x, workspace.left), Math.max(workspace.left, maxX - width));
-    y = Math.min(Math.max(y, workspace.top), Math.max(workspace.top, maxY - height));
-    return { x, y };
+    // Flip near the right/bottom edge, then clamp fully inside either way.
+    // Shared with the editor's slash menu and selection bubble.
+    return flipClamp({ x: baseX, y: baseY }, width, height, workspace);
   }
 
   // ── Menu-item resolution (plan §4.3–4.4) ───────────────────────────────────

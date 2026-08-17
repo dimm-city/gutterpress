@@ -290,9 +290,30 @@ function indexOfTopLevel(s: string, ch: string): number {
  * screen styles: the preview must render the print stylesheet, and the browser
  * won't apply print-media rules on screen (verified: `break-before` computes to
  * `auto` until print emulation is on, which a plain document can't switch on).
+ *
+ * Descends into conditional group rules, so an `@media print` nested inside an
+ * `@supports` is found. Scanning only the top level missed those, and the
+ * result was a silent preview↔PDF appearance divergence: the rule applied in
+ * the PDF and nowhere on screen. Progressive enhancement wrapped around print
+ * styles is an ordinary thing to write.
+ *
+ * The nesting is FLATTENED rather than preserved — the `@supports` condition
+ * is dropped and its body re-injected unconditionally. That is deliberate and
+ * it is the honest trade: the condition was already true, or the browser
+ * showing the preview could not have matched it either. Re-emitting the
+ * `@supports` wrapper would be more faithful but would also re-emit an
+ * `@media print` wrapper we exist to strip.
  */
 export function mediaPrintBodies(css: string): string[] {
   const out: string[] = [];
+  collectPrintBodies(css, out);
+  return out;
+}
+
+/** `@media`, `@supports` and friends — at-rules whose body is more rules. */
+const CONDITIONAL_GROUP = /^@(media|supports|layer|container|scope)\b/i;
+
+function collectPrintBodies(css: string, out: string[]): void {
   for (const rule of scanRules(css)) {
     if ("statement" in rule) continue;
     if (/^@media\b/i.test(rule.prelude)) {
@@ -300,9 +321,13 @@ export function mediaPrintBodies(css: string): string[] {
       // absent — anything fancier and the author is off the paved path
       const q = rule.prelude.replace(/^@media/i, "").trim();
       if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q)) out.push(rule.body);
+      // A `@media screen` may still contain a nested `@media print`; a
+      // `@media print` already contributed its whole body above.
+      else if (!/\bprint\b/i.test(q)) collectPrintBodies(rule.body, out);
+    } else if (CONDITIONAL_GROUP.test(rule.prelude)) {
+      collectPrintBodies(rule.body, out);
     }
   }
-  return out;
 }
 
 export function extract(css: string): GcpmModel {

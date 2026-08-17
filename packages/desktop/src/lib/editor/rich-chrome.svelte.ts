@@ -15,22 +15,12 @@
  * and `BlockOverlayController` do it — add the iframe's own bounding rect —
  * and then flip near an edge and clamp inside the workspace.
  *
- * That flip-and-clamp was the only such implementation in the repo, private to
- * the context-menu controller. It is `flipClamp()` here so this is not a
- * second copy of it; the context menu should move onto this too.
+ * That flip-and-clamp lives in `$lib/flip-clamp` and is shared with the
+ * context menu, which had the original private copy of it.
  */
 
-export interface Rect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-export interface Point {
-  x: number;
-  y: number;
-}
+export { flipClamp, type Point, type Rect } from "$lib/flip-clamp";
+import type { Rect } from "$lib/flip-clamp";
 
 /**
  * What the chrome should show, in APP coordinates.
@@ -46,36 +36,6 @@ export interface ChromeAnchor {
   workspace: Rect;
 }
 
-/**
- * Place a `width`×`height` panel at `point`, flipping away from the near edge
- * and clamping inside `workspace`.
- *
- * `preferAbove` is what a bubble toolbar wants: it sits over the selection, so
- * the natural placement is above and it flips DOWN only when there is no room.
- */
-export function flipClamp(
-  point: Point,
-  width: number,
-  height: number,
-  workspace: Rect,
-  preferAbove = false,
-): Point {
-  const maxX = workspace.left + workspace.width;
-  const maxY = workspace.top + workspace.height;
-
-  let x = point.x + width > maxX ? point.x - width : point.x;
-  let y = preferAbove
-    ? point.y - height < workspace.top
-      ? point.y
-      : point.y - height
-    : point.y + height > maxY
-      ? point.y - height
-      : point.y;
-
-  x = Math.min(Math.max(x, workspace.left), Math.max(workspace.left, maxX - width));
-  y = Math.min(Math.max(y, workspace.top), Math.max(workspace.top, maxY - height));
-  return { x, y };
-}
 
 // ---------------------------------------------------------------------------
 // slash menu

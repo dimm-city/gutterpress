@@ -7,7 +7,7 @@ import type {
   ToolbarPayloadLike,
 } from "../../src/lib/editor/rich-commands";
 import { createEditorState, mountRichEditor } from "../../src/lib/editor/rich-editor";
-import { createEditorRenderer, gutterpressSchema } from "../../src/lib/editor/markdown-doc";
+import { createEditorRenderer, gutterpressSchema, serializeDoc } from "../../src/lib/editor/markdown-doc";
 import {
   lineForPos,
   lineTable,
@@ -369,6 +369,34 @@ describe("source lines (editor↔preview sync)", () => {
     for (const { pos, line } of lineTable(state.doc)) {
       expect(posForLine(state.doc, line)).toBe(pos);
       expect(lineForPos(state.doc, pos)).toBe(line);
+    }
+    resetLineTableCache();
+  });
+
+  test("two adjacent lists do not shift every line after them", () => {
+    // The serializer puts TWO blank lines between same-shape sibling lists —
+    // one blank would let re-parsing merge them into a single list. The table
+    // used to assume one separator everywhere and reported every later block
+    // a line early. This is the shape the list toolbar action produces when
+    // used twice in a row, so it is reachable without writing it by hand.
+    const li = (t: string) =>
+      gutterpressSchema.nodes.list_item!.create(
+        null,
+        gutterpressSchema.nodes.paragraph!.create(null, gutterpressSchema.text(t)),
+      );
+    const list = (t: string) =>
+      gutterpressSchema.nodes.bullet_list!.create({ tight: true }, [li(t)]);
+    const doc = gutterpressSchema.nodes.doc!.create(null, [
+      list("one"),
+      list("two"),
+      gutterpressSchema.nodes.paragraph!.create(null, gutterpressSchema.text("after")),
+    ]);
+
+    const saved = serializeDoc(doc).split("\n");
+    for (const entry of lineTable(doc)) {
+      const node = doc.nodeAt(entry.pos)!;
+      // Every reported line must be where that block's text really is.
+      expect(saved[entry.line - 1]).toContain(node.textContent.split("\n")[0]!);
     }
     resetLineTableCache();
   });

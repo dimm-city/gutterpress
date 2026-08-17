@@ -152,6 +152,12 @@ export interface NormalizePlan {
   changed: Array<{ path: string; before: string; after: string }>;
   unchanged: string[];
   refused: Array<{ path: string; reason: string }>;
+  /**
+   * Files the write failed for, when `applied`. Empty on a plan-only call.
+   * Present so a partial apply can be reported by NAME rather than as one
+   * generic error that leaves the author guessing which half landed.
+   */
+  failed: Array<{ path: string; error: string }>;
 }
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────

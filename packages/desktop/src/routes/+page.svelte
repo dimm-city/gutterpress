@@ -1039,6 +1039,8 @@
     canApplySourceOffsets?: (path: string, diskContent: string) => boolean;
     /** Rich only: the book stylesheet the editing surface renders with. */
     setBookCss?: (css: string) => void;
+    /** Rich only: where relative asset references resolve from. */
+    setAssetBase?: (url: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -1220,20 +1222,34 @@
     normalizeApplying = true;
     try {
       const result = await api.project.normalize(lifecycle.currentDir, true);
-      await api.app.setDesktopProjectState(lifecycle.currentDir, {
-        normalizedAt: new Date().toISOString(),
-      });
+      const failed = result.failed ?? [];
+      // Only claim the project is normalized if every file actually got there.
+      // Recording it after a partial apply would suppress the prompt while
+      // some chapters are still un-normalized, and their first rich save would
+      // reformat them one at a time — the exact churn this exists to avoid.
+      if (failed.length === 0) {
+        await api.app.setDesktopProjectState(lifecycle.currentDir, {
+          normalizedAt: new Date().toISOString(),
+        });
+      }
       normalizePlan = null;
       // The open file may be one of the rewritten ones — re-read it through
       // the buffer so the editor shows the file that is now on disk.
       const open = editorFilePath;
       if (open) {
         const rewritten = result.changed.find((c) => open.endsWith(c.path));
-        if (rewritten) showEditorContent(open, rewritten.after);
+        const stillFailed = failed.some((f) => open.endsWith(f.path));
+        if (rewritten && !stillFailed) showEditorContent(open, rewritten.after);
       }
-      toast?.success(
-        `Tidied ${result.changed.length} ${result.changed.length === 1 ? "file" : "files"}.`,
-      );
+      const wrote = result.changed.length - failed.length;
+      if (failed.length) {
+        toast?.error(
+          `Tidied ${wrote} of ${result.changed.length} files. Could not write ` +
+            `${failed.map((f) => f.path).join(", ")} — ${failed[0]!.error}`,
+        );
+      } else {
+        toast?.success(`Tidied ${wrote} ${wrote === 1 ? "file" : "files"}.`);
+      }
     } catch (e) {
       toast?.error(
         `Could not tidy the markdown: ${e instanceof Error ? e.message : String(e)}`,
@@ -1335,6 +1351,20 @@
   }
 
   /**
+   * The mounted rich editor refused content we pushed into it.
+   *
+   * `evaluateRichSupport` runs on every handoff, but it decides which
+   * component MOUNTS — it cannot cover content that arrives at an editor
+   * already on screen. An external edit adding a footnote to the open file
+   * does exactly that. Recording the reason flips `effectiveEditorMode` to
+   * source on the next render, and the banner above the editor explains it.
+   */
+  function onRichUnsupported(path: string | null, reason: string): void {
+    if (path !== editorFilePath) return;
+    richBlockedReason = reason;
+  }
+
+  /**
    * Fetch the book's stylesheet and hand it to the rich surface.
    *
    * The editor renders the author's text with the BOOK'S CSS so it looks the
@@ -1347,6 +1377,11 @@
       const { css } = await api.project.inlineCss(lifecycle.currentDir);
       bookCss = css;
       editorRef?.setBookCss?.(css);
+      // The editor usually mounts before the preview server is ready, and its
+      // frame document is written once — so the asset base has to be pushed in
+      // when it becomes known, or relative `![](images/x.png)` never resolves
+      // for the rest of that editor's life.
+      if (lifecycle.previewUrl) editorRef?.setAssetBase?.(lifecycle.previewUrl);
     } catch (e) {
       console.warn("could not load the book stylesheet for the editor", e);
     }
@@ -3204,10 +3239,12 @@
                   content={editorContent}
                   {bookCss}
                   assetBase={lifecycle.previewUrl ?? ""}
+                  backdrop={bgColor}
                   onChange={onEditorChange}
                   onSave={() => void handleForceSave()}
                   onAnchorLine={(line, origin) =>
                     editorSync.onEditorAnchorLine(line, origin, editorChapter)}
+                  onUnsupported={onRichUnsupported}
                 />
               {:else}
                 <div class="editor-loading" role="status" aria-live="polite">

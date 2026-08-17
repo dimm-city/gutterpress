@@ -444,3 +444,42 @@ describe("scroll containers", () => {
     expect(extract(`p { color: red }`).scrollContainers).toEqual([]);
   });
 });
+
+describe("mediaPrintBodies: nested conditional groups", () => {
+  test("finds @media print inside @supports", () => {
+    // Progressive enhancement wrapped around print styles. Scanning only the
+    // top level left this applying in the PDF and nowhere on screen.
+    expect(
+      mediaPrintBodies("@supports (display: grid) { @media print { .a { color: #666 } } }"),
+    ).toEqual([" .a { color: #666 } "]);
+  });
+
+  test("finds @media print inside @layer and @container", () => {
+    expect(mediaPrintBodies("@layer book { @media print { .a { color: red } } }")).toHaveLength(1);
+    expect(
+      mediaPrintBodies("@container (min-width: 1px) { @media print { .a { color: red } } }"),
+    ).toHaveLength(1);
+  });
+
+  test("finds @media print nested inside another @media", () => {
+    expect(
+      mediaPrintBodies("@media screen { @media print { .a { color: red } } }"),
+    ).toEqual([" .a { color: red } "]);
+  });
+
+  test("does not double-count a nested block inside an @media print", () => {
+    // The outer body is taken whole; descending as well would emit the inner
+    // rules a second time.
+    expect(
+      mediaPrintBodies("@media print { .a { color: red } @supports (x: y) { .b { color: blue } } }"),
+    ).toHaveLength(1);
+  });
+
+  test("still ignores `not print` when nested", () => {
+    expect(mediaPrintBodies("@supports (display: grid) { @media not print { .a { c: 1 } } }")).toEqual([]);
+  });
+
+  test("a plain rule block is not descended into", () => {
+    expect(mediaPrintBodies(".a { color: red }")).toEqual([]);
+  });
+});

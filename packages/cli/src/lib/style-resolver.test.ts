@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { listProjectStyles, resolveActiveStyles } from "./style-resolver";
+import { listProjectStyles, resolveActiveStyles, resolveProjectCss } from "./style-resolver";
 import { resolveConfig } from "./manifest";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `style-resolver-tests-${Date.now()}`);
@@ -299,5 +299,73 @@ describe("listProjectStyles with a repo root (multi-book shared styles)", () => 
     const without = await listProjectStyles(dir);
 
     expect(withRoot).toEqual(without);
+  });
+});
+
+/**
+ * `resolveProjectCss` feeds the rich editor, and the editor derives its
+ * pagination from the break declarations it can SEE. It returned only the
+ * author's own stylesheet at first, so a book that marks pages with `@page`
+ * and writes no `break-*` CSS of its own gave the editor nothing to paginate
+ * on — every deliberate page break silently ignored, and every marker and
+ * utility class unstyled.
+ */
+describe("resolveProjectCss", () => {
+  beforeEach(() => {
+    mkdirSync(TMP_ROOT, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TMP_ROOT, { recursive: true, force: true });
+  });
+
+  test("composes all four layers, in the order assembleBookHtml uses", async () => {
+    const dir = projectDir();
+    write(dir, "manifest.yaml", "title: T\nstyles:\n  - styles/book.css\n");
+    write(dir, "styles/book.css", ".mine { color: red }");
+
+    const { css } = await resolveProjectCss(dir);
+
+    expect(css).toContain("/* gutterpress markers */");
+    expect(css).toContain("/* gutterpress */");
+    expect(css).toContain("/* project css */");
+    // Author last, so project rules win at equal specificity.
+    expect(css.indexOf("/* gutterpress markers */")).toBeLessThan(css.indexOf("/* gutterpress */"));
+    expect(css.indexOf("/* gutterpress */")).toBeLessThan(css.indexOf("/* project css */"));
+    expect(css).toContain(".mine { color: red }");
+  });
+
+  test("carries the break declarations the editor paginates on", async () => {
+    // The concrete regression: `.page`/`.spread`/`.gp-page-break` get their
+    // `break-before` from MARKER_CSS, nowhere else.
+    const dir = projectDir();
+    write(dir, "manifest.yaml", "title: T\n");
+
+    const { css } = await resolveProjectCss(dir);
+
+    expect(css).toContain(".page { break-before: page; }");
+    expect(css).toContain(".spread { break-before: page; }");
+    expect(css).toContain(".gp-page-break { break-before: page; }");
+  });
+
+  test("carries the gp-* author utility vocabulary", async () => {
+    const dir = projectDir();
+    write(dir, "manifest.yaml", "title: T\n");
+
+    const { css } = await resolveProjectCss(dir);
+
+    for (const cls of [".gp-columns-2", ".gp-bleed", ".gp-pin", ".gp-shape"]) {
+      expect(css).toContain(cls);
+    }
+  });
+
+  test("a book with no stylesheet still gets the core layers", async () => {
+    const dir = projectDir();
+    write(dir, "manifest.yaml", "title: T\n");
+
+    const { css, styles } = await resolveProjectCss(dir);
+
+    expect(styles).toEqual([]);
+    expect(css).toContain("/* gutterpress markers */");
+    expect(css).not.toContain("/* project css */");
   });
 });

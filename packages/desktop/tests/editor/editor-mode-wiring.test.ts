@@ -52,10 +52,22 @@ describe("+page.svelte mode wiring", () => {
   test("the effective mode falls back to source when rich is impossible", () => {
     // A CSS file, a file the model cannot represent, or a failed chunk load
     // must never leave the author staring at an editor that cannot open it.
-    expect(PAGE).toContain("editorModePref === \"rich\"");
-    expect(PAGE).toContain("isMd(editorFilePath)");
-    expect(PAGE).toContain("!richBlockedReason");
-    expect(PAGE).toContain("!richModuleFailed");
+    //
+    // Matched against the `effectiveEditorMode` DECLARATION, not the whole
+    // file. Four loose `toContain`s over 6000 lines passed happily with
+    // `&& !richBlockedReason` deleted from the expression: the substring
+    // still occurred, in `disabled={!!richBlockedReason}` — a different
+    // attribute entirely, since "!!x".includes("!x"). The test named the
+    // fail-closed guard and gated nothing.
+    const decl = /effectiveEditorMode\s*=\s*\$derived(?:<[^>]*>)?\(([\s\S]*?)\n  \);/.exec(PAGE);
+    expect(decl).not.toBeNull();
+    const expr = decl![1]!;
+    expect(expr).toContain('editorModePref === "rich"');
+    expect(expr).toContain("isMd(editorFilePath)");
+    expect(expr).toContain("!richBlockedReason");
+    expect(expr).toContain("!richModuleFailed");
+    // All four are conjunctions: any one of them false means source mode.
+    expect(expr.split("&&").length).toBeGreaterThanOrEqual(4);
   });
 
   test("a refusal is SHOWN, never silent", () => {

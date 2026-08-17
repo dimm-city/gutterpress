@@ -41,7 +41,7 @@
    * the same trap `PreviewFrame.svelte` documents. Unmount it instead.
    */
   import { onMount } from "svelte";
-  import { createEditorRenderer } from "$lib/editor/markdown-doc";
+  import { canEditRichly, createEditorRenderer } from "$lib/editor/markdown-doc";
   import { editorStylesheet } from "$lib/editor/paginate";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
@@ -60,9 +60,11 @@
     bookCss = "",
     assetBase = "",
     columns = 1,
+    backdrop = "",
     onChange,
     onSave,
     onAnchorLine,
+    onUnsupported,
   }: {
     filePath?: string | null;
     content?: string;
@@ -76,10 +78,25 @@
     assetBase?: string;
     /** 1 = a vertical stack of pages, 2 = facing spreads. */
     columns?: 1 | 2;
+    /**
+     * The colour around the pages — the author's `appearance.previewBg`.
+     *
+     * The same setting the preview canvas uses, so the two surfaces match.
+     * This used to be a `var(--gp-editor-backdrop, #2a2a2e)` whose custom
+     * property was never defined anywhere, i.e. a hardcoded grey wearing a
+     * token's clothes — and an author who had chosen a canvas colour got it in
+     * the preview and not while editing.
+     */
+    backdrop?: string;
     onChange?: (value: string) => void;
     onSave?: () => void;
     /** Editor→preview sync; same contract as MarkdownEditor's. */
     onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
+    /**
+     * Content was pushed in that the schema cannot model — the host should
+     * show this file in source mode, with the reason.
+     */
+    onUnsupported?: (path: string | null, reason: string) => void;
   } = $props();
 
   /** Gutterpress's own markdown-it pipeline — the one that prints. */
@@ -93,6 +110,28 @@
   // stale if the host ever mounted this with a file already chosen.
   let openPath: string | null = null;
   let appliedCss = "";
+  let baseEl: HTMLBaseElement | null = null;
+
+  /**
+   * The frame's base URL.
+   *
+   * `about:blank` when there is nothing to resolve against, so relative asset
+   * references simply fail to load rather than resolving somewhere unintended.
+   */
+  function baseHref(url: string): string {
+    return (url || "about:blank").replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Point relative asset references at the preview server.
+   *
+   * Called when the preview starts, which is usually AFTER this component
+   * mounts — the frame's document is written once, so the `<base>` element is
+   * updated in place rather than the document rewritten.
+   */
+  export function setAssetBase(url: string): void {
+    if (baseEl) baseEl.setAttribute("href", baseHref(url));
+  }
 
   /**
    * Where the inline chrome goes, in APP coordinates.
@@ -121,6 +160,26 @@
     };
   }
 
+  /**
+   * Anything that moves the frame invalidates the chrome's position.
+   *
+   * The coordinates are computed once, when the editor reports a caret or
+   * selection — so a window resize, a splitter drag or a panel toggle leaves
+   * the menu painted where the caret USED to be, pointing at nothing, until
+   * the next keystroke. The preview's overlay re-anchors on the preview
+   * client's `viewportChanged`, but this frame deliberately runs no script of
+   * its own (`script-src 'none'`), so a `ResizeObserver` on the frame element
+   * is the equivalent signal — and it catches the splitter, which a `window`
+   * resize listener would miss.
+   *
+   * Closing rather than re-anchoring: both panels are transient and tied to a
+   * caret the author is about to move anyway, and a menu that quietly stays
+   * open across a layout change is more surprising than one that dismisses.
+   */
+  function onFrameGeometryChanged(): void {
+    if (chrome) chrome = null;
+  }
+
   function runSlash(item: SlashItem): void {
     const mapped = slashAction(item.id);
     if (!mapped || !handle) return;
@@ -144,14 +203,32 @@
     // `<script>`. The preview frame gets this protection from being
     // cross-origin and sandboxed; this frame is deliberately same-origin so
     // ProseMirror can reach its DOM, so it states the restriction directly.
+    //
+    // The `<base>` is ALWAYS written, even with no asset base to put in it.
+    // It used to be conditional, and `previewUrl` is null from the moment a
+    // project opens until its preview server reports ready — indefinitely, if
+    // the preview never starts, which is a supported non-fatal state. The
+    // editor can mount inside that window and this document is written exactly
+    // once, so such an instance had no `<base>` for its whole life. The first
+    // `<base>` in tree order wins, so an author's raw HTML could supply its
+    // own and re-point every relative URL in the document; verified in
+    // Chromium, `document.baseURI` really does become the injected origin.
+    // That is not code execution, but it sends the author's own images and
+    // links to someone else's server. Occupying the slot first settles it.
+    //
+    // A CSP `base-uri` would be the other way to close this, and is wrong
+    // here: the asset base is the preview server on 127.0.0.1, a different
+    // origin from the app's own, so both `'none'` and `'self'` would block our
+    // own `<base>` along with the attacker's.
     doc.open();
     doc.write(
       "<!doctype html><meta charset=utf-8>" +
         `<meta http-equiv="Content-Security-Policy" content="script-src 'none'">` +
-        (assetBase ? `<base href="${assetBase.replace(/"/g, "&quot;")}">` : "") +
+        `<base href="${baseHref(assetBase)}">` +
         "<body></body>",
     );
     doc.close();
+    baseEl = doc.querySelector("base");
 
     styleEl = doc.createElement("style");
     doc.head.appendChild(styleEl);
@@ -163,7 +240,14 @@
     applyCss(bookCss);
     handle = mountRichEditor({ mount: flow, md, content, onChange, onSave, onAnchorLine, onChrome });
 
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onFrameGeometryChanged);
+    observer?.observe(frame);
+    window.addEventListener("resize", onFrameGeometryChanged);
+
     return () => {
+      window.removeEventListener("resize", onFrameGeometryChanged);
+      observer?.disconnect();
       handle?.destroy();
       handle = null;
       styleEl = null;
@@ -183,15 +267,39 @@
     styleEl.textContent = `${css}\n\n${editorStylesheet(css, { columns })}`;
   }
 
-  /** The host changed which file is open. */
+  /**
+   * The host changed which file is open.
+   *
+   * No-ops when the file has not actually changed, matching
+   * `MarkdownEditor.switchFile` — `setContent` builds a fresh `EditorState`
+   * and drops undo history, so a redundant call is not free. The host makes
+   * exactly one such call today (`reseedEditor` after a mode toggle, into a
+   * component that already mounted with these props).
+   */
   export function switchFile(newPath: string | null, newContent: string): void {
+    if (newPath === openPath && handle?.getMarkdown() === newContent) return;
     openPath = newPath;
-    handle?.setContent(newContent);
+    if (handle && !handle.setContent(newContent)) refuse(newPath, newContent);
   }
 
   /** Same file, new bytes — an external-edit auto-reload. */
   export function updateContent(nextDoc: string): void {
-    if (handle && handle.getMarkdown() !== nextDoc) handle.setContent(nextDoc);
+    if (!handle || handle.getMarkdown() === nextDoc) return;
+    if (!handle.setContent(nextDoc)) refuse(openPath, nextDoc);
+  }
+
+  /**
+   * Content arrived that this schema cannot model.
+   *
+   * The host's preflight only decides which component MOUNTS; content pushed
+   * into an already-mounted editor never passed it. An external edit that adds
+   * a footnote to the open file is the ordinary way to get here. Ask the host
+   * for source mode rather than leaving the previous file's text on screen
+   * under the new file's name.
+   */
+  function refuse(path: string | null, text: string): void {
+    const why = canEditRichly(md, text);
+    onUnsupported?.(path, why.ok ? "this file cannot be edited richly" : why.reason);
   }
 
   /** The book's stylesheet changed (the author edited CSS, or a rebuild ran). */
@@ -277,7 +385,12 @@
   }
 </script>
 
-<iframe bind:this={frame} class="rich-editor" title="Gutterpress editor"></iframe>
+<iframe
+  bind:this={frame}
+  class="rich-editor"
+  title="Gutterpress editor"
+  style={backdrop ? `background: ${backdrop}` : undefined}
+></iframe>
 
 <EditorChrome
   anchor={chrome}
@@ -297,6 +410,8 @@
     width: 100%;
     height: 100%;
     border: 0;
-    background: var(--gp-editor-backdrop, #2a2a2e);
+    /* Overridden inline by `backdrop`; this is the fallback when the author
+       has not chosen a canvas colour. */
+    background: #2a2a2e;
   }
 </style>

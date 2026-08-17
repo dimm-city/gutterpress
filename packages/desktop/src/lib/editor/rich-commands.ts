@@ -17,7 +17,7 @@
  * `snippet` and `focus-mode` are absent on purpose: the host intercepts both
  * before they reach the editor.
  */
-import { setBlockType, toggleMark, wrapIn } from "prosemirror-commands";
+import { lift, setBlockType, toggleMark, wrapIn } from "prosemirror-commands";
 import type { MarkType, Node as PMNode, NodeType } from "prosemirror-model";
 import { liftListItem, wrapInList } from "prosemirror-schema-list";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
@@ -124,14 +124,19 @@ const applyLink: Command = (state, dispatch) => {
   return toggleMark(marks.link as MarkType, { href: "url", title: null })(state, dispatch);
 };
 
-/** Toggle blockquote: lift out when already inside one. */
+/**
+ * Toggle blockquote: lift out when already inside one.
+ *
+ * `lift` rather than a hand-computed depth. The hand-rolled version passed a
+ * literal `0` as the lift target, which lifts to the document root — so
+ * toggling inside a nested quote unwrapped BOTH levels in one keystroke,
+ * rather than the one the author asked for. `blockquote` is in this schema's
+ * `block` group, so nesting is legal and reachable.
+ */
 const applyBlockquote: Command = (state, dispatch, view) => {
   for (let d = state.selection.$from.depth; d > 0; d--) {
     if (state.selection.$from.node(d).type === nodes.blockquote) {
-      const target = state.selection.$from.before(d);
-      dispatch?.(state.tr.lift(state.selection.$from.blockRange()!, 0).scrollIntoView());
-      void target;
-      return true;
+      return lift(state, dispatch);
     }
   }
   return wrapIn(nodes.blockquote as NodeType)(state, dispatch, view);

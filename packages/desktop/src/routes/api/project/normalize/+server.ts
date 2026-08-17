@@ -50,12 +50,28 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
 
     const report: NormalizeReport = planNormalize(files);
 
+    // Every write is attempted, and each result is reported. A bare
+    // `Promise.all` rejected on the first failure while the writes that had
+    // already resolved stayed on disk — so a permission error or a full disk
+    // left the book half-reformatted, and the only thing the author saw was a
+    // generic error naming no file. Nothing here can lose content (every
+    // `changed` entry is an already-verified meaning-preserving rewrite), but
+    // "which files actually changed?" has to be answerable.
+    const failed: Array<{ path: string; error: string }> = [];
     if (body.apply) {
-      await Promise.all(
+      const results = await Promise.allSettled(
         report.changed.map((c) =>
           writeFile(join(body.projectDir, c.path), c.text, 'utf-8'),
         ),
       );
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          failed.push({
+            path: report.changed[i]!.path,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
     }
 
     // The before/after text is what the confirm dialog shows per file, so the
@@ -70,6 +86,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
       })),
       unchanged: report.unchanged,
       refused: report.refused,
+      failed,
     };
   },
 });

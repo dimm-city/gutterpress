@@ -425,6 +425,11 @@
   }
   function mediaPrintBodies(css) {
     const out = [];
+    collectPrintBodies(css, out);
+    return out;
+  }
+  var CONDITIONAL_GROUP = /^@(media|supports|layer|container|scope)\b/i;
+  function collectPrintBodies(css, out) {
     for (const rule of scanRules(css)) {
       if ("statement" in rule)
         continue;
@@ -432,9 +437,12 @@
         const q = rule.prelude.replace(/^@media/i, "").trim();
         if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q))
           out.push(rule.body);
+        else if (!/\bprint\b/i.test(q))
+          collectPrintBodies(rule.body, out);
+      } else if (CONDITIONAL_GROUP.test(rule.prelude)) {
+        collectPrintBodies(rule.body, out);
       }
     }
-    return out;
   }
   function extract(css) {
     const model = {
