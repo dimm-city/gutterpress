@@ -77,15 +77,26 @@ compiled binary or the desktop bundle beyond our own code.
 
 **Non-goals (this plan)**
 
-- No `contenteditable` on paginated DOM, ever. **[spike-verified]** A caret
-  cannot cross a Paged.js split-fragment boundary (each fragment is an
-  independent DOM island), and Paged.js never re-layouts after a mutation, so
-  native typing desyncs layout immediately.
+- No `contenteditable` on **the preview's** paginated DOM, ever. The original
+  reason was Paged.js-specific and is now void — Paged.js was deleted
+  2026-08-10 — but the rule survives on the surviving reason: every save
+  replaces the preview DOM (`spliceChapter()` / `swap()`), destroying anything
+  stateful mounted inside it (ADR 0009 §2).
+
+  **Amended 2026-08-17:** `contenteditable` on paginated content is no longer
+  a non-goal in general — it is what the rich editor pane is. That surface
+  paginates with CSS (`editor/paginate.ts`, `column-wrap: wrap`), so there are
+  no split fragments and nothing rewrites the DOM to lay it out; a caret
+  crossing a page boundary is verified in Chromium. The scope of this non-goal
+  is the PREVIEW.
 - No live per-keystroke re-pagination. Commits are per-block; the existing
   settled-write → chapter-splice pipeline (median ≤ 1000 ms, enforced by
   `rerender-ci`) does the refresh.
-- No WYSIWYG framework. A continuous-flow "Write" mode (Milkdown) stays
-  deferred per the analysis doc §8.
+- No WYSIWYG framework **in the preview**. (Amended 2026-08-17: one shipped in
+  the editor pane — ProseMirror over a real document model. It is deliberately
+  NOT continuous-flow: the surface shows discrete, page-sized boxes at the
+  book's `@page` geometry. Continuous flow was one of the postmortem's own
+  identified mistakes.)
 - Web/PWA enablement of the *write* paths is out of scope (the editor stack is
   desktop-gated today); the read-side primitives are built browser-safe so the
   PWA can adopt them later.

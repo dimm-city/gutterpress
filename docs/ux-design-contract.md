@@ -210,9 +210,39 @@ Proposed refinements:
 - Focus mode (`Cmd/Ctrl+Shift+F` / dedicated button): hides all chrome except
   the editor; must compose with the existing pane/panel toggles.
   Tracked in **#104**.
-- Typora-style seamless WYSIWYG as an opt-in toggle — never the default;
-  explicit source/preview is the default because print layout fidelity
-  matters.
+- **Two first-class editing modes: rich and source.** Amended 2026-08-17,
+  when the rich surface shipped (`components/RichEditor.svelte`); this rule
+  previously read "opt-in toggle — never the default; explicit source/preview
+  is the default because print layout fidelity matters."
+
+  Both halves of that have been overtaken. Rich editing is not a nice-to-have
+  bolted onto a source editor — it is the core of the UI product — and its
+  fidelity is now a measured number rather than an assumed risk: the surface
+  renders the author's own stylesheet at the author's own `@page` geometry,
+  and lands within a few pages of the PDF on real books (exact on one fixture,
+  -4/+3 on the rest; the table and its three causes are in
+  `editor/paginate.ts`'s header).
+
+  Equally, source mode is not a fallback to be designed away. Markdown is the
+  only thing on disk and hand-editing it is a first-class story, so the source
+  pane keeps parity of capability — not a degraded second seat.
+
+  Normative:
+  - Mode is per-author, remembered, and switchable at any time on any file.
+  - **Source mode is the fail-closed destination.** A file the document model
+    cannot represent (footnotes, deflists, sub/sup/mark/abbr, or any plugin
+    construct the schema does not model) opens in source mode **with the
+    reason shown**. It must never open in rich mode and mis-serialize. The
+    parser raises on an unmodelled token rather than guessing, so this is
+    structural, not a list somebody maintains.
+  - **Saving normalizes.** Rich mode rewrites the file canonically — bullet
+    characters, emphasis markers, wrapping. This is the same bargain Typora,
+    Milkdown and HackMD make, and it is what keeps the serializer small
+    enough to be correct. Offer a project-wide normalize on adoption so the
+    churn lands in one deliberate commit instead of scattered across every
+    later diff.
+  - Which mode a NEW project opens in is a product decision, not a technical
+    one, and is not settled by this amendment.
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
@@ -222,10 +252,18 @@ Proposed refinements:
 implementation plan `docs/inline-editing-plan.md`, rationale
 `docs/adr/0009-inline-editing-source-ranges.md`).
 
-The paginated preview is an editing surface, not only a viewer. This does
-**not** supersede the opt-in WYSIWYG rule above: these are explicit,
-user-invoked actions on a specific target, not a seamless typing surface.
-The source pane remains the default editing model.
+The paginated preview is an editing surface, not only a viewer. Its actions
+are explicit and user-invoked on a specific target — **the preview is not a
+seamless typing surface, and must not become one.**
+
+That constraint is about the PREVIEW specifically, and survives the rich
+editor unchanged. Seamless typing now exists, in the editor pane (§1), where
+it has a surface it owns 1:1. The preview does not: every save replaces its
+DOM (`spliceChapter()` / `swap()`), which destroys anything stateful mounted
+inside it — see ADR 0009, whose reason 2 is still live even though its
+Paged.js reason is not. Mounting an editor over the preview remains the wrong
+move for a reason that has nothing to do with which editor framework is
+chosen.
 
 Shipped behavior:
 

@@ -1,12 +1,72 @@
 # ADR 0009 — Inline editing: source ranges, the commit gate, and the preview bridge
 
-Date: 2026-08-04 · Status: accepted
+Date: 2026-08-04 · Status: accepted, **superseded in part 2026-08-17** (see
+[Superseded in part](#superseded-in-part-2026-08-17) below)
+
+> [!IMPORTANT]
+> Everything this ADR says about **the preview** still holds and is still
+> load-bearing. What no longer holds is its conclusion that a ProseMirror-family
+> editor is unavailable to Gutterpress *anywhere* — it is now the editor pane's
+> surface. Read the supersession note before citing this ADR against a
+> rich-editing change.
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
 > repository (only 0008 is). ADR 0005 in particular is cited as the home of the
 > preview bridge protocol. Rather than amend a missing document, this ADR records
 > the v3 → v5 protocol delta self-containedly.
+
+## Superseded in part (2026-08-17)
+
+A rich-text editing surface now exists — ProseMirror over a real document
+model (`packages/desktop/src/lib/editor/`). That does not overturn this ADR so
+much as narrow it: **its three ruled-out premises were about mounting an editor
+over the PAGINATED PREVIEW, and the new surface is not that.** It is the editor
+pane, it is its own iframe, and it paginates with CSS (`editor/paginate.ts`)
+rather than by fragmenting the DOM.
+
+Taking the premises one at a time, because the distinction matters:
+
+1. **"Paged.js fragments the document"** — VOID. Paged.js was deleted
+   2026-08-10. The observation was correct and is now unreachable: nothing
+   splits a block into `data-split-from` fragments, and the rich surface does
+   not run a fragmenter at all. The deeper form of the objection — that a
+   ProseMirror editor needs a `contenteditable` subtree it owns 1:1 — is
+   satisfied by giving it its own surface instead of the preview's DOM.
+2. **"Every save replaces the preview DOM"** — STILL TRUE, still a reason not
+   to mount a stateful editor inside the preview. Unchanged.
+3. **"Gutterpress markdown is not CommonMark"** — STILL TRUE, and still the
+   most important warning in this document. What changed is that it no longer
+   implies a second parser: `prosemirror-markdown` is designed to tokenize with
+   a markdown-it instance you supply, so the editor parses with Gutterpress's
+   OWN pipeline — same plugins, same `markers.js`, same `typographer`/`linkify`.
+   The remark objection this ADR actually raised (a second, drifting dialect)
+   is avoided by construction. **Do not read this as permission to introduce
+   remark, marked, or `@tiptap/markdown`** — each would reintroduce exactly the
+   drift described here.
+
+Two decisions below are superseded:
+
+- **"There is no second document model and no serializer."** There is now, for
+  the editor pane. The accompanying fear — `remark-stringify` reformatting the
+  whole file on save — was answered by deciding it deliberately rather than by
+  avoiding it: output is CANONICAL, not byte-preserving, exactly as Typora,
+  Milkdown and HackMD are. What replaces byte identity as the safety property
+  is a FIXPOINT gate over every markdown file in every example book —
+  normalizing an already-normalized document must return it unchanged, source
+  compared to source, no threshold and no allowlist
+  (`tests/editor/markdown-doc-corpus.test.ts`). The whole-file-diff cost to
+  snapshot history is real and accepted; it is meant to be paid once per
+  project by an explicit normalize-on-adoption step.
+- **The framing that a WYSIWYG framework "is not available to us."** It is,
+  for the editor pane. It remains unavailable for the preview, for reason 2.
+
+What is UNCHANGED and still normative: `data-source-range` carrying
+`token.map` verbatim, layout markers threading `token.meta.line`, the commit
+engine's clean-buffer gate, never patching the paginated DOM optimistically,
+the bridge protocol, and **"never guess an edit."** A file the document model
+cannot represent opens in SOURCE mode with the reason stated — the parser
+fails closed rather than mis-serializing.
 
 ## Context
 

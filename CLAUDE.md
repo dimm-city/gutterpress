@@ -299,6 +299,30 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
     blank a non-technical author's entire preview.
 
+**A plugin's token types decide whether a file can be edited richly.** The
+rich editor (`packages/desktop/src/lib/editor/`) parses with THIS pipeline —
+`prosemirror-markdown` fed our own markdown-it instance — so there is exactly
+one markdown dialect in the product. Its schema models standard markdown,
+tables, the `@marker` family and raw HTML. Anything else (footnotes, deflists,
+the sub/sup/mark/abbr set, a plugin's own token types) has no node to map onto,
+and `MarkdownParser` RAISES on it.
+
+That is the intended behaviour, not a gap to paper over: the file opens in
+SOURCE mode with the reason shown, rather than opening richly and
+mis-serializing an author's book. Measured on the corpus, 31 of 32 first-party
+markdown files are rich-editable; the one refusal is a `footnote_ref`.
+
+Two consequences worth stating plainly:
+
+- **Do not add a fallback that guesses.** An unmodelled construct must fail
+  closed. The guard is the library raising on an unknown token, not a list
+  anybody maintains — keep it that way.
+- **Modelling a construct is a schema change, not a plugin change.** If a
+  plugin's syntax deserves rich editing, add the node to
+  `editor/markdown-doc/schema.ts` plus its parse and serialize rules, and let
+  the corpus fixpoint gate prove the round trip. Never reach for a
+  Gutterpress-specific plugin API to do it — §5's rule stands.
+
 Authoring guide lives in [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
