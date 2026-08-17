@@ -43,6 +43,25 @@ export interface BreakDecl {
   value: string;
 }
 
+/**
+ * An `overflow` declaration that makes its subject a scroll container.
+ *
+ * Collected because a scroll container is MONOLITHIC in a multicol box but
+ * splittable in Chromium's print engine — so anything that paginates with
+ * multicol has to know which of the author's selectors are affected in order
+ * to agree with the PDF. `viewer/fragment.ts` solves the same problem from the
+ * DOM side; a multicol paginator that cannot mutate the DOM (the editor) needs
+ * it from the stylesheet instead.
+ *
+ * `visible` and `clip` are not recorded: neither makes a scroll container.
+ */
+export interface ScrollContainerDecl {
+  selector: string;
+  prop: "overflow" | "overflow-x" | "overflow-y";
+  /** The raw value, e.g. `hidden` or `hidden auto`. */
+  value: string;
+}
+
 export interface XrefDecl {
   /** selector the generated content hangs off, e.g. "a.xref::after" */
   selector: string;
@@ -77,6 +96,8 @@ export interface GcpmModel {
   stringSets: StringSetDecl[];
   pageAssignments: PageAssignment[];
   breaks: BreakDecl[];
+  /** `overflow` declarations that create a scroll container — see the type. */
+  scrollContainers: ScrollContainerDecl[];
   xrefs: XrefDecl[];
   /** `counter-reset: page N` declarations — native print ignores this restart (ENGINE.md §8) */
   counterResets: CounterResetDecl[];
@@ -290,6 +311,7 @@ export function extract(css: string): GcpmModel {
     stringSets: [],
     pageAssignments: [],
     breaks: [],
+    scrollContainers: [],
     xrefs: [],
     counterResets: [],
     pageNames: [],
@@ -601,6 +623,9 @@ function findNextAtRule(body: string, start: number): number {
   return -1;
 }
 
+/** `overflow` values that make a box a scroll container. */
+const SCROLLING = /^(hidden|auto|scroll)$/i;
+
 function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
   const decls = parseDeclarations(body);
   for (const [prop, value] of Object.entries(decls)) {
@@ -615,6 +640,12 @@ function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
         model.pageAssignments.push({ selector, page: value.trim() });
     } else if (prop === "break-before" || prop === "break-after" || prop === "break-inside") {
       model.breaks.push({ selector, prop, value });
+    } else if (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") {
+      // Only the values that actually create a scroll container. `overflow`
+      // takes one or two values (x then y), so a shorthand qualifies if
+      // EITHER axis does.
+      if (value.trim().split(/\s+/).some((v) => SCROLLING.test(v)))
+        model.scrollContainers.push({ selector, prop, value: value.trim() });
     } else if (prop === "counter-reset") {
       // `counter-reset` resets a list of counters ("page 1", "chapter 1 page
       // 1", …); only the `page` pair is our business.

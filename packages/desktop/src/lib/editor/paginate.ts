@@ -52,9 +52,13 @@
  *    top-margin-only difference as padding — that alone recovered 4 of the
  *    design guide's 7 missing pages — but a named page with a different sheet
  *    size or bottom margin has no multicol equivalent and is skipped.
- * 3. **Multicol and paged media avoid breaks differently.** The residual, and
- *    the same difference the parked user-guide preview/PDF divergence turns
- *    on.
+ * 3. **Multicol and paged media avoid breaks differently.** The residual.
+ *
+ * A fourth cause used to sit at the top of that list and is now fixed:
+ * Chromium treats a scroll container as monolithic in multicol and splits it
+ * in print, so every `pre { overflow: hidden }` that straddled a page boundary
+ * jumped a page here. `scrollContainerCss()` below is the repair, and the same
+ * defect was what made the user guide's preview disagree with its PDF.
  */
 import { extract, mediaPrintBodies, resolvePage } from "gutterpress/render";
 import type { GcpmModel, PageGeometry } from "gutterpress/render";
@@ -68,6 +72,9 @@ const PX_PER_PT = 96 / 72;
  * `column` already works natively and is left alone.
  */
 const FORCED_PAGE_LIKE = /^(page|left|right|recto|verso)$/;
+
+/** `overflow` values that make a box a scroll container. */
+const SCROLLING = /^(hidden|auto|scroll)$/i;
 
 export interface PaginateOptions {
   /** 1 = a vertical stack of pages, 2 = facing spreads. */
@@ -116,6 +123,7 @@ export function editorStylesheet(css: string, opts: PaginateOptions = {}): strin
     paginationCss(resolvePage(model).geometry, opts),
     breakMappingCss(model, opts.root),
     namedPageCss(model, opts.root),
+    scrollContainerCss(model, opts.root),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -188,6 +196,60 @@ export function breakMappingCss(model: GcpmModel, root = ".gp-editor-page-flow")
   const rules = model.breaks
     .filter((b) => b.prop !== "break-inside" && FORCED_PAGE_LIKE.test(b.value.trim()))
     .map((b) => `${root} :where(${b.selector}) { ${b.prop}: column; }`);
+  return [...new Set(rules)].join("\n");
+}
+
+/**
+ * Let the author's scroll containers fragment, the way they fragment in print.
+ *
+ * A box with `overflow: hidden` is monolithic in a multicol box and splittable
+ * in Chromium's print engine (measured on 153; `viewer/fragment.ts`'s
+ * `splitScrollContainers` has the full table). `pre { overflow: hidden }` is an
+ * ordinary thing for a book to write — it is what stops a wide code block
+ * leaving half a page empty — so without this every such block jumps a page in
+ * the editor relative to the PDF.
+ *
+ * The viewer fixes this on the DOM. The editor cannot: mutating ProseMirror's
+ * own DOM is precisely the mistake this module's header records, so the
+ * equivalent has to be expressible as CSS, which is why `extract()` carries the
+ * declarations.
+ *
+ * ## Why this one layer is not `:where()`
+ *
+ * Every other rule here is zero-specificity so the author always wins. This
+ * one has to WIN over the author's `overflow`, so it repeats their selector
+ * under the root and takes the higher specificity deliberately.
+ *
+ * That is not overriding the author's intent, it is preserving it: they asked
+ * for clipping, and they get clipping. `clip` differs from `hidden` only in
+ * being unscrollable — which no printed page is — and in not establishing a
+ * block formatting context, which the second rule puts back.
+ *
+ * The `display` half stays at zero specificity on purpose, and the two rules
+ * are split for exactly that reason. `flow-root` must beat the UA sheet's
+ * `display: block` but lose to any author `display` — clobbering an authored
+ * `display: grid` here would be a real layout regression, and `:where()` on
+ * both the root and the selector is what prevents it.
+ *
+ * An `overflow: hidden !important` still wins and still fragments differently;
+ * that is rare enough to leave rather than escalate to `!important` ourselves.
+ */
+export function scrollContainerCss(model: GcpmModel, root = ".gp-editor-page-flow"): string {
+  const rules: string[] = [];
+  for (const decl of model.scrollContainers) {
+    // `overflow` is one or two values (x then y); the longhands name one axis.
+    const parts = decl.value.split(/\s+/);
+    const axes: string[] = [];
+    if (decl.prop === "overflow") {
+      if (SCROLLING.test(parts[0] ?? "")) axes.push("overflow-x");
+      if (SCROLLING.test(parts[1] ?? parts[0] ?? "")) axes.push("overflow-y");
+    } else if (SCROLLING.test(parts[0] ?? "")) {
+      axes.push(decl.prop);
+    }
+    if (axes.length === 0) continue;
+    rules.push(`${root} ${decl.selector} { ${axes.map((a) => `${a}: clip;`).join(" ")} }`);
+    rules.push(`:where(${root}) :where(${decl.selector}) { display: flow-root; }`);
+  }
   return [...new Set(rules)].join("\n");
 }
 

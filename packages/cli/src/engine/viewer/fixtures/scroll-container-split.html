@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: 400px 500px;
+        margin: 50px;
+      }
+      body { margin: 0; }
+      /* 300px of filler leaves 100px of the 400px content box, so a 200px
+         block can only fit by splitting across the page boundary. */
+      .filler { height: 300px; background: #cfc; }
+      .clipped {
+        overflow: hidden;
+        background: #ccf;
+        border-left: 4px solid #00f;
+      }
+      .line { height: 20px; }
+
+      /* Control: the same box in a plain multicol container OUTSIDE any strip,
+         so the viewer's shim never touches it. It records raw Chromium
+         behaviour — see the assertions. */
+      .control-strip {
+        width: 300px;
+        height: 400px;
+        column-width: 300px;
+        column-count: 1;
+        column-fill: auto;
+        column-gap: 24px;
+      }
+      .control-filler { height: 300px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="filler">filler</div>
+      <div class="clipped" id="clipped">
+        <div class="line">l0</div>
+        <div class="line">l1</div>
+        <div class="line">l2</div>
+        <div class="line">l3</div>
+        <div class="line">l4</div>
+        <div class="line">l5</div>
+        <div class="line">l6</div>
+        <div class="line">l7</div>
+        <div class="line">l8</div>
+        <div class="line">l9</div>
+      </div>
+    </main>
+
+    <div class="control-strip">
+      <div class="control-filler"></div>
+      <div class="clipped" id="control">
+        <div class="line">c0</div>
+        <div class="line">c1</div>
+        <div class="line">c2</div>
+        <div class="line">c3</div>
+        <div class="line">c4</div>
+        <div class="line">c5</div>
+        <div class="line">c6</div>
+        <div class="line">c7</div>
+        <div class="line">c8</div>
+        <div class="line">c9</div>
+      </div>
+    </div>
+
+    <script src="./gutterpress-viewer.js"></script>
+  </body>
+</html>

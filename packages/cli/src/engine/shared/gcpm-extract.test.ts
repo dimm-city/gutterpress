@@ -407,3 +407,40 @@ describe("mediaPrintBodies", () => {
     ).toEqual([" a { color: red } ", " b { color: blue } "]);
   });
 });
+
+describe("scroll containers", () => {
+  test("records only the values that create one", () => {
+    const m = extract(`
+      pre { overflow: hidden }
+      .a { overflow: auto }
+      .b { overflow: scroll }
+      .c { overflow: visible }
+      .d { overflow: clip }
+    `);
+    expect(m.scrollContainers.map((s) => s.selector)).toEqual(["pre", ".a", ".b"]);
+  });
+
+  test("records the longhands, per axis", () => {
+    const m = extract(`.wide { overflow-x: auto } .tall { overflow-y: hidden }`);
+    expect(m.scrollContainers).toEqual([
+      { selector: ".wide", prop: "overflow-x", value: "auto" },
+      { selector: ".tall", prop: "overflow-y", value: "hidden" },
+    ]);
+  });
+
+  test("a two-value shorthand qualifies if either axis does", () => {
+    const m = extract(`.a { overflow: visible auto } .b { overflow: clip visible }`);
+    expect(m.scrollContainers).toEqual([
+      { selector: ".a", prop: "overflow", value: "visible auto" },
+    ]);
+  });
+
+  test("carries the author's selector verbatim", () => {
+    const m = extract(`figure > .frame, blockquote { overflow: hidden }`);
+    expect(m.scrollContainers[0]?.selector).toBe("figure > .frame, blockquote");
+  });
+
+  test("is empty for a stylesheet that sets no overflow", () => {
+    expect(extract(`p { color: red }`).scrollContainers).toEqual([]);
+  });
+});

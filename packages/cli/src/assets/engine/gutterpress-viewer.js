@@ -442,6 +442,7 @@
       stringSets: [],
       pageAssignments: [],
       breaks: [],
+      scrollContainers: [],
       xrefs: [],
       counterResets: [],
       pageNames: [],
@@ -699,6 +700,7 @@
     }
     return -1;
   }
+  var SCROLLING = /^(hidden|auto|scroll)$/i;
   function parseQualifiedRule(selector, body, model) {
     const decls = parseDeclarations(body);
     for (const [prop, value] of Object.entries(decls)) {
@@ -713,6 +715,9 @@
           model.pageAssignments.push({ selector, page: value.trim() });
       } else if (prop === "break-before" || prop === "break-after" || prop === "break-inside") {
         model.breaks.push({ selector, prop, value });
+      } else if (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") {
+        if (value.trim().split(/\s+/).some((v) => SCROLLING.test(v)))
+          model.scrollContainers.push({ selector, prop, value: value.trim() });
       } else if (prop === "counter-reset") {
         const m = /\bpage\s+(-?\d+)/.exec(value);
         if (m)
@@ -1169,6 +1174,23 @@
         el.style.breakBefore = "auto";
     }
   }
+  var SCROLLING2 = /^(hidden|auto|scroll)$/;
+  function splitScrollContainers(strip) {
+    for (const el of Array.from(strip.querySelectorAll("*"))) {
+      const cs = getComputedStyle(el);
+      const x = SCROLLING2.test(cs.overflowX);
+      const y = SCROLLING2.test(cs.overflowY);
+      if (!x && !y)
+        continue;
+      if (cs.display === "block")
+        el.style.display = "flow-root";
+      if (x)
+        el.style.overflowX = "clip";
+      if (y)
+        el.style.overflowY = "clip";
+      el.dataset.gpFragmentable = "";
+    }
+  }
   function stabilizeFullHeightPageRoots(model, strips) {
     let stabilized = 0;
     for (const strip of strips) {
@@ -1315,8 +1337,10 @@
         strip.appendChild(n);
       strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
     }
-    for (const s of strips)
+    for (const s of strips) {
       clearLeadingForcedBreaks(s.el);
+      splitScrollContainers(s.el);
+    }
     return strips;
   }
   function compensateRepeatedHeaders(strips, maxPasses = 24) {

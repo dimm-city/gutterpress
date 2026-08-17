@@ -432,6 +432,71 @@ function clearLeadingForcedBreaks(strip: HTMLElement) {
   }
 }
 
+/** Computed `overflow` values that make a box a scroll container. */
+const SCROLLING = /^(hidden|auto|scroll)$/;
+
+/**
+ * Let a scroll container fragment, because Chromium's print engine fragments
+ * it and the preview must agree with the PDF.
+ *
+ * css-break-3 §4.1 calls scroll containers monolithic, and Chromium's multicol
+ * implements that: a box with `overflow: hidden` is pushed whole into the next
+ * column rather than split. Chromium's PRINT engine does not — it splits the
+ * same box across the page boundary. Measured on Chromium 153, 400px
+ * fragmentainer, 300px box after 200px of filler:
+ *
+ *   overflow   print         multicol
+ *   visible    split         split
+ *   hidden     split         MONOLITHIC
+ *   auto       split         MONOLITHIC
+ *   clip       split         split
+ *
+ * So `pre { overflow: hidden }` — an ordinary thing to write, and exactly what
+ * the user guide writes to stop wide code blocks leaving half-empty pages —
+ * paginates one way in the preview and another in the PDF. Every `<pre>` that
+ * straddled a page boundary landed a page later on screen than in print: 7
+ * independent one-page shifts through that book, most absorbed by the next
+ * chapter's forced break, the last one surviving as a 65-vs-64 page count.
+ *
+ * `overflow: clip` is the same box without the scroll container, so it
+ * fragments. It is not on its own a drop-in for `hidden`, which also
+ * establishes a block formatting context; `display: flow-root` restores that
+ * without reintroducing the scroll container. Measured, same engine:
+ *
+ *   candidate           fragments  contains float  keeps child margin
+ *   hidden (author's)   no         yes             yes
+ *   clip                yes        NO              NO
+ *   clip + flow-root    yes        yes             yes
+ *
+ * `flow-root` is applied only where the formatting context came from
+ * `overflow` in the first place — a flex, grid or table box already has its
+ * own and must keep its display.
+ *
+ * Which side is right does not decide what we do here: css-break-3 says the
+ * multicol behaviour is the correct one and print is the deviation, but
+ * CLAUDE.md's "Chrome wins once it ships" makes the PDF the definition of
+ * correct, so the shim goes on the preview. REMOVE THIS when Chromium
+ * fragments scroll containers the same way in both engines — whichever way it
+ * settles on — which `splitScrollContainers.test.ts` detects directly.
+ *
+ * Runs from `buildStrips`, so mount and `relayout` both get it, and it is
+ * idempotent — a converted box is no longer a scroll container, so a second
+ * pass skips it. Viewer chrome cannot be caught by this: `.gp-sheet` and
+ * `.gp-marginbox` live in the decoration layer, a sibling of the strips.
+ */
+function splitScrollContainers(strip: HTMLElement): void {
+  for (const el of Array.from(strip.querySelectorAll<HTMLElement>("*"))) {
+    const cs = getComputedStyle(el);
+    const x = SCROLLING.test(cs.overflowX);
+    const y = SCROLLING.test(cs.overflowY);
+    if (!x && !y) continue;
+    if (cs.display === "block") el.style.display = "flow-root";
+    if (x) el.style.overflowX = "clip";
+    if (y) el.style.overflowY = "clip";
+    el.dataset.gpFragmentable = "";
+  }
+}
+
 /**
  * Keep a full-content-height named-page containing block on the page whose
  * geometry sized it.
@@ -650,7 +715,10 @@ export function buildStrips(
   // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
   // that inside the loop above would force one synchronous style recalc per
   // strip right after that strip's own DOM writes.
-  for (const s of strips) clearLeadingForcedBreaks(s.el);
+  for (const s of strips) {
+    clearLeadingForcedBreaks(s.el);
+    splitScrollContainers(s.el);
+  }
   return strips;
 }
 

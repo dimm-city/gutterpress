@@ -6,6 +6,7 @@ import {
   namedPageCss,
   namedPageDelta,
   paginationCss,
+  scrollContainerCss,
 } from "../../src/lib/editor/paginate";
 
 /**
@@ -119,4 +120,56 @@ test("spread mode asks for two columns per row", () => {
   expect(paginationCss(resolvePage(extract(BOOK_CSS)).geometry, { columns: 2 })).toContain(
     "column-count: 2;",
   );
+});
+
+/**
+ * The scroll-container layer is the one place here that deliberately outranks
+ * the author, so these assert the specificity split as much as the values —
+ * getting it backwards would either fail to fix the pagination or clobber an
+ * authored `display`.
+ */
+test("scroll containers: clips both axes and restores the formatting context", () => {
+  const css = scrollContainerCss(extract(`pre { overflow: hidden }`), ".root");
+  expect(css).toContain(".root pre { overflow-x: clip; overflow-y: clip; }");
+  expect(css).toContain(":where(.root) :where(pre) { display: flow-root; }");
+});
+
+test("scroll containers: the overflow rule outranks the author's", () => {
+  const css = scrollContainerCss(extract(`pre { overflow: hidden }`), ".root");
+  // Author writes `pre { overflow: hidden }` (0-0-1). Ours is `.root pre`
+  // (0-1-1) and comes later, so it wins. A `:where()` here would silently do
+  // nothing at all.
+  const overflowRule = css.split("\n").find((l) => l.includes("overflow-x"))!;
+  expect(overflowRule.startsWith(".root pre")).toBe(true);
+  expect(overflowRule).not.toContain(":where(.root pre)");
+});
+
+test("scroll containers: the display rule loses to any authored display", () => {
+  const css = scrollContainerCss(extract(`.grid { display: grid; overflow: hidden }`), ".root");
+  // Zero specificity on BOTH halves, so `.grid { display: grid }` (0-1-0)
+  // wins and the grid keeps its display; only the UA default is overridden.
+  expect(css).toContain(":where(.root) :where(.grid) { display: flow-root; }");
+  expect(css).not.toContain(".root .grid { display");
+});
+
+test("scroll containers: a longhand clips only its own axis", () => {
+  const css = scrollContainerCss(extract(`.wide { overflow-x: auto }`), ".root");
+  expect(css).toContain(".root .wide { overflow-x: clip; }");
+  expect(css).not.toContain("overflow-y");
+});
+
+test("scroll containers: a two-value shorthand clips only the scrolling axis", () => {
+  const css = scrollContainerCss(extract(`.a { overflow: visible auto }`), ".root");
+  expect(css).toContain(".root .a { overflow-y: clip; }");
+  expect(css).not.toContain("overflow-x");
+});
+
+test("scroll containers: emits nothing when the book creates none", () => {
+  expect(scrollContainerCss(extract(`pre { overflow: visible } .a { overflow: clip }`))).toBe("");
+});
+
+test("scroll containers: reach the composed stylesheet", () => {
+  const sheet = editorStylesheet(`@page { size: 400px 500px; margin: 20px } pre { overflow: hidden }`);
+  expect(sheet).toContain("overflow-x: clip");
+  expect(sheet).toContain("display: flow-root");
 });

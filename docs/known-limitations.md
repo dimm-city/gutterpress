@@ -135,54 +135,70 @@ If you find print output that contradicts the CSS Paged Media spec:
 Do not fix it in a shim. See
 [`CLAUDE.md`](../CLAUDE.md) — "What Gutterpress is — and what the engine is not".
 
-## Preview/PDF parity: the user guide is one page long in the viewer
+## Chromium fragments a scroll container in print but not in multicol
 
-`examples/gutterpress-user-guide` fragments to **65 pages in the on-screen
-viewer and 64 in the PDF**, producing 77 divergences in
-`scripts/native-parity-gate.ts`. Every other fixture — book-01, book-02, the
-design guide, css-authoring-spike, gp-image-positioning — is at 0 divergences,
-so this is one book and one break, not a systemic drift.
+**Shimmed. The parity gate is green and `KNOWN_DIVERGENCES` is empty.**
 
-**It is deliberately NOT in `KNOWN_DIVERGENCES`.** That allowlist matches on
-`(fixture, kind)` and would excuse every future divergence of that kind in that
-book, including ones nobody has looked at. The CI `parity` job is red until
-this is fixed, and a red gate that names a real defect is worth more than a
-green one that has been told to ignore it.
+A box whose computed `overflow` is `hidden`, `auto` or `scroll` is a scroll
+container, and css-break-3 §4.1 calls those **monolithic** — unbreakable across
+a fragmentation boundary. Chromium's multicol implements that. Chromium's PRINT
+engine does not: it splits the same box across a page boundary. Measured on
+Chromium 153, a 300px box after 200px of filler in a 400px fragmentainer:
 
-### What is known
-
-- The viewer and print agree exactly up to heading 9 ("Reference: Manifest
-  Configuration", page 7 in both). The viewer inserts one extra break before
-  heading 10 ("Page Size Reference"): print puts it on page 8, the viewer on
-  page 9. Every later divergence is that same constant +1 — nothing
-  accumulates.
-- Not blank-page synthesis: `blankPages` is 0 and `blankPageIndices` empty.
-- Not the repeated-table-header compensation: running with
-  `compensateHeaders: false` reproduces 65pp unchanged.
-- Not a monolithic box overflowing its page: no `<pre>` in the book exceeds
-  75% of the 876px content height.
-- The region between the two headings is long YAML code fences.
-
-### The finding that matters most
-
-`guide.css` sets `pre { overflow: hidden }`, whose comment says it is there to
-"allow code blocks to flow across pages". It does the opposite — per CSS
-Fragmentation, an `overflow` other than `visible` makes the box **monolithic**,
-so code blocks cannot break at all.
-
-That accident is load-bearing. Measured both ways:
-
-| `pre { overflow: hidden }` | viewer | print |
+| `overflow` | print | multicol |
 |---|---|---|
-| present (today) | 65pp | 64pp |
-| removed | 64pp | 54pp |
+| `visible` | split | split |
+| `hidden` | split | **monolithic** |
+| `auto` | split | **monolithic** |
+| `clip` | split | split |
 
-So the two fragmenters agree on this book *because* code blocks are
-unbreakable; let them fragment and multicol and paged media disagree by ten
-pages. Removing the declaration is therefore not the fix, and any future change
-that makes code blocks breakable needs this measured again first.
+Every Gutterpress surface except the PDF paginates with multicol, so any book
+that writes `pre { overflow: hidden }` — an ordinary thing to write, and what
+`examples/gutterpress-user-guide` writes to stop wide code blocks leaving
+half-empty pages — sees a different pagination on screen than in print.
 
-The residual +1 is a genuine Chromium multicol-vs-paged break-avoidance
-difference. Per CLAUDE.md ("Chrome wins once it ships… file upstream Chromium
-bugs; do not maintain corrective shims") the resolution is an upstream report
-plus a minimal reduction, not another compensation pass in `fragment.ts`.
+That was the whole of the user guide's 65-vs-64 divergence: seven independent
+one-page shifts, one per `<pre>` that straddled a page boundary, six of them
+absorbed by the next chapter's forced break and the seventh surviving as the
+page-count difference. It read like one systemic drift and was seven instances
+of one bug.
+
+### What we do about it
+
+Per CLAUDE.md's "Chrome wins once it ships", the PDF is the definition of
+correct even where the spec says otherwise — so the shim goes on the preview,
+not on the print path. `overflow: clip` is the same box without the scroll
+container, so it fragments; it is not on its own a drop-in for `hidden`, which
+also establishes a block formatting context, and `display: flow-root` restores
+that. Measured, same engine:
+
+| candidate | fragments | contains float | keeps child margin |
+|---|---|---|---|
+| `hidden` (author's) | no | yes | yes |
+| `clip` | yes | **no** | **no** |
+| `clip` + `flow-root` | yes | yes | yes |
+
+Two implementations, because the two surfaces have different constraints:
+
+- **Viewer** — `splitScrollContainers()` in `engine/viewer/fragment.ts`, a DOM
+  pass over each strip. Gated by `engine/viewer/scroll-container-split.test.ts`.
+- **Editor** — `scrollContainerCss()` in `desktop/src/lib/editor/paginate.ts`,
+  which emits CSS instead, because mutating ProseMirror's DOM is the mistake
+  that module exists to avoid. It repeats the author's own selector to outrank
+  their `overflow` while keeping the `display` half at zero specificity, so an
+  authored `display: grid` still wins.
+
+### Removal trigger
+
+When Chromium fragments scroll containers the same way in both engines —
+whichever way it settles on — both shims should be deleted.
+`scroll-container-split.test.ts` detects it directly: it asserts that a control
+box outside the shim's reach is still monolithic, so the day Chromium changes,
+that assertion fails and names the cleanup.
+
+A caveat for whoever does that work: the author's declaration is doing real
+layout work, not just decoration. Deleting `pre { overflow: hidden }` from
+`guide.css` (rather than shimming around it) was measured at viewer 64pp /
+print 54pp — code blocks then break freely and print packs ten pages tighter.
+Removing the shim is safe; removing the author's declaration is a different
+change with a much larger blast radius.
