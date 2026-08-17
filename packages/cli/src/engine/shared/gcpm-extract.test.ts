@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extract,
+  mediaPrintBodies,
   parseDeclarations,
   parseMargin,
   parseSize,
@@ -363,5 +364,46 @@ describe("var() in @page geometry (§−1a: never fail silently)", () => {
   test("`bleed: auto` via var() stays valid (it is not a length, and must not error)", () => {
     const model = extract(`:root { --b: auto; }\n@page { size: 6in 9in; bleed: var(--b); }`);
     expect(resolvePage(model).geometry.bleed).toBe(0);
+  });
+});
+
+/**
+ * `mediaPrintBodies` shipped with literal BACKSPACE bytes (U+0008) where its
+ * three `\b` word boundaries were meant to be, so every regex was looking for
+ * a control character and the function returned `[]` for every input it has
+ * ever been given. Nothing caught it because nothing tested it, and no
+ * first-party book uses `@media print` — but the viewer calls this to
+ * re-inject print rules as screen rules, so any author who wrote one had them
+ * silently dropped from the preview while the PDF honored them.
+ */
+describe("mediaPrintBodies", () => {
+  test("returns the body of an @media print block", () => {
+    expect(mediaPrintBodies("@media print { p { color: red } }")).toEqual([" p { color: red } "]);
+  });
+
+  test("ignores non-print media", () => {
+    expect(mediaPrintBodies("@media screen { p { color: red } }")).toEqual([]);
+  });
+
+  test("ignores `not print`", () => {
+    expect(mediaPrintBodies("@media not print { p { color: red } }")).toEqual([]);
+  });
+
+  test("matches print in a compound query", () => {
+    expect(mediaPrintBodies("@media print and (min-width: 5in) { p { color: red } }")).toHaveLength(1);
+    expect(mediaPrintBodies("@media screen, print { p { color: red } }")).toHaveLength(1);
+  });
+
+  test("word boundaries: `sprint` is not `print`", () => {
+    // This is the case the `\b`s exist for, and the one the backspace bug
+    // made unobservable.
+    expect(mediaPrintBodies("@media sprint { p { color: red } }")).toEqual([]);
+    expect(mediaPrintBodies("@medias print { p { color: red } }")).toEqual([]);
+  });
+
+  test("returns every print block, in source order", () => {
+    expect(
+      mediaPrintBodies("@media print { a { color: red } }\n@media print { b { color: blue } }"),
+    ).toEqual([" a { color: red } ", " b { color: blue } "]);
   });
 });

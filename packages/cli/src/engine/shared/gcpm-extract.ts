@@ -274,11 +274,11 @@ export function mediaPrintBodies(css: string): string[] {
   const out: string[] = [];
   for (const rule of scanRules(css)) {
     if ("statement" in rule) continue;
-    if (/^@media/i.test(rule.prelude)) {
+    if (/^@media\b/i.test(rule.prelude)) {
       // crude media-query match is fine here: `print` present and `not print`
       // absent — anything fancier and the author is off the paved path
       const q = rule.prelude.replace(/^@media/i, "").trim();
-      if (/print/i.test(q) && !/not\s+print/i.test(q)) out.push(rule.body);
+      if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q)) out.push(rule.body);
     }
   }
   return out;

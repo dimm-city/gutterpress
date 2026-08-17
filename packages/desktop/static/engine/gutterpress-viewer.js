@@ -428,9 +428,9 @@
     for (const rule of scanRules(css)) {
       if ("statement" in rule)
         continue;
-      if (/^@media/i.test(rule.prelude)) {
+      if (/^@media\b/i.test(rule.prelude)) {
         const q = rule.prelude.replace(/^@media/i, "").trim();
-        if (/print/i.test(q) && !/not\s+print/i.test(q))
+        if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q))
           out.push(rule.body);
       }
     }
