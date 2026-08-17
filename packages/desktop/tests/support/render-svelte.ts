@@ -57,7 +57,15 @@ function compileToCache(absPath: string, seen = new Map<string, string>()): stri
     );
   }
 
-  const out = join(CACHE, `${name}-${source.length}.js`);
+  // Keyed on the file's PATH, not just its basename and length. Two different
+  // `.svelte` files sharing a basename and byte length would have resolved to
+  // the same cache path, and since the compiled module is loaded with
+  // `import()` — which caches by resolved path — the second component would
+  // silently render as the first. A test that passes while exercising the
+  // wrong component is worse than no test, which is the whole reason this
+  // harness treats compile warnings as failures too.
+  const key = absPath.slice(ROOT.length + 1).replace(/[^a-zA-Z0-9]+/g, "_");
+  const out = join(CACHE, `${key}-${source.length}.js`);
   mkdirSync(CACHE, { recursive: true });
   // Reserve the path before recursing so an import cycle terminates.
   seen.set(absPath, out);

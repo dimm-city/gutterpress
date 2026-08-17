@@ -158,6 +158,11 @@ export interface NormalizePlan {
    * generic error that leaves the author guessing which half landed.
    */
   failed: Array<{ path: string; error: string }>;
+  /**
+   * Files skipped because they changed on disk after the dialog was shown, so
+   * the text the author reviewed is no longer the text that would be written.
+   */
+  stale: string[];
 }
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
@@ -552,8 +557,13 @@ export const api = {
      * every file that would change, so the author agrees to a diff rather
      * than to a number.
      */
-    normalize: (projectDir: string, apply = false) =>
-      post<NormalizePlan>('/api/project/normalize', { projectDir, apply }),
+    /**
+     * `expected` is the `before` text the confirm dialog showed, per file.
+     * The route skips any file that no longer matches, so an apply can only
+     * ever write the plan the author actually reviewed.
+     */
+    normalize: (projectDir: string, apply = false, expected?: Record<string, string>) =>
+      post<NormalizePlan>('/api/project/normalize', { projectDir, apply, expected }),
   },
 
   manifest: {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { POST as normalize } from "../../src/routes/api/project/normalize/+server";
@@ -54,12 +54,12 @@ async function project(files: Record<string, string>): Promise<string> {
   return dir;
 }
 
-async function run(dir: string, apply: boolean) {
+async function run(dir: string, apply: boolean, expected?: Record<string, string>) {
   const res = await (normalize as Handler)({
     request: new Request("http://localhost/api/project/normalize", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ projectDir: dir, apply }),
+      body: JSON.stringify({ projectDir: dir, apply, expected }),
     }),
   });
   return (await res.json()) as {
@@ -67,6 +67,8 @@ async function run(dir: string, apply: boolean) {
     changed: Array<{ path: string; before: string; after: string }>;
     unchanged: string[];
     refused: Array<{ path: string; reason: string }>;
+    failed: Array<{ path: string; error: string }>;
+    stale: string[];
   };
 }
 
@@ -140,5 +142,57 @@ describe("project/normalize", () => {
     expect(out).toContain("{#anchor}");
     expect(out).toContain("{.gp-bleed}");
     expect(out).toContain("---:");
+  });
+});
+
+describe("project/normalize: only what the author reviewed", () => {
+  test("a file that changed since the plan is skipped and named", async () => {
+    const dir = await project({ "a.md": "# A\n\n- one\n", "b.md": "# B\n\n- two\n" });
+    const plan = await run(dir, false);
+    expect(plan.changed.length).toBeGreaterThan(0);
+
+    // Someone else edits a.md while the dialog is open.
+    await writeFile(join(dir, "a.md"), "# A changed elsewhere\n\n- one\n", "utf-8");
+
+    const expected = Object.fromEntries(plan.changed.map((c) => [c.path, c.before]));
+    const applied = await run(dir, true, expected);
+
+    expect(applied.stale).toEqual(["a.md"]);
+    // The out-of-date file keeps the text that arrived, not the reviewed one.
+    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("# A changed elsewhere\n\n- one\n");
+  });
+
+  test("matching files still apply normally", async () => {
+    const dir = await project({ "a.md": "# A\n\n- one\n" });
+    const plan = await run(dir, false);
+    const expected = Object.fromEntries(plan.changed.map((c) => [c.path, c.before]));
+    const applied = await run(dir, true, expected);
+    expect(applied.stale).toEqual([]);
+    for (const c of plan.changed) {
+      expect(await readFile(join(dir, c.path), "utf-8")).toBe(c.after);
+    }
+  });
+
+  test("an apply with no expectations still works (nothing to compare against)", async () => {
+    const dir = await project({ "a.md": "# A\n\n- one\n" });
+    const applied = await run(dir, true);
+    expect(applied.stale).toEqual([]);
+  });
+});
+
+describe("project/normalize: the files it enumerates", () => {
+  test("follows the manifest's source.files, including nested paths", async () => {
+    // The renderer's own resolver decides what the book contains; a hand-rolled
+    // top-level readdir missed nested chapters entirely and still let the
+    // project be recorded as normalized.
+    const dir = await project({
+      "manifest.yaml": "title: T\nsource:\n  files:\n    - chapters/intro.md\n",
+    });
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "intro.md"), "# Intro\n\n- one\n", "utf-8");
+
+    const plan = await run(dir, false);
+    const seen = [...plan.changed.map((c) => c.path), ...plan.unchanged];
+    expect(seen).toContain("chapters/intro.md");
   });
 });

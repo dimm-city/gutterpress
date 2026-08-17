@@ -1,6 +1,6 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
+import { defineRoute, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import { planNormalize, type NormalizeReport } from '$lib/editor/normalize-project';
 import type { RequestHandler } from './$types';
 
@@ -20,9 +20,13 @@ import type { RequestHandler } from './$types';
  * Runs host-side because it touches the filesystem. `planNormalize` itself is
  * pure and is unit-tested without any of this.
  */
-export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boolean }>({
+export const POST: RequestHandler = defineRoute<{
+  projectDir: string;
+  apply: boolean;
+  expected?: Record<string, string>;
+}>({
   validate: async (raw) => {
-    const body = raw as { projectDir?: string; apply?: unknown };
+    const body = raw as { projectDir?: string; apply?: unknown; expected?: unknown };
     return {
       // Confined to the open project, exactly like fs:listProjectFiles — this
       // both enumerates and WRITES, so it must never become a way to reach
@@ -32,17 +36,28 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
         'project:normalize',
       ),
       apply: body.apply === true,
+      expected:
+        body.expected && typeof body.expected === 'object'
+          ? (body.expected as Record<string, string>)
+          : undefined,
     };
   },
   call: async ({ body }) => {
-    const entries = await readdir(body.projectDir, { withFileTypes: true });
-    const names = entries
-      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.md'))
-      .map((e) => e.name)
-      .sort((a, b) => a.localeCompare(b));
+    // The SAME resolver the renderer and lint use, so this rewrites exactly
+    // the book's files — no more and no fewer. A hand-rolled `readdir` for
+    // top-level `.md` stood here and missed every manifest that lists nested
+    // sources (`chapters/intro.md`), which produced a partial plan that still
+    // recorded the project as normalized. `markdown/index.ts`'s own header
+    // warns against exactly this re-derivation.
+    const lib = await loadLib();
+    const { manifest } = await lib.loadManifestWithPath(body.projectDir);
+    const names = await lib.resolveActiveMarkdownFiles(
+      body.projectDir,
+      manifest.source?.files ?? null,
+    );
 
     const files = await Promise.all(
-      names.map(async (name) => ({
+      names.map(async (name: string) => ({
         path: name,
         text: await readFile(join(body.projectDir, name), 'utf-8'),
       })),
@@ -57,17 +72,35 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
     // generic error naming no file. Nothing here can lose content (every
     // `changed` entry is an already-verified meaning-preserving rewrite), but
     // "which files actually changed?" has to be answerable.
+    const before = new Map(files.map((f) => [f.path, f.text]));
+
+    // Only write what the author actually reviewed.
+    //
+    // The apply call re-reads and re-plans, so a file that changed between the
+    // dialog being shown and the button being pressed — a git sync, an
+    // external editor, a collaborator — would have been rewritten from content
+    // nobody saw. That defeats the whole point of the confirm step. The client
+    // sends back the `before` text it displayed; anything that no longer
+    // matches is skipped and named, so the author can re-open the dialog on
+    // the current state.
+    const stale: string[] = [];
+    const toWrite = report.changed.filter((c) => {
+      const expected = body.expected?.[c.path];
+      if (expected === undefined) return true;
+      if (expected === before.get(c.path)) return true;
+      stale.push(c.path);
+      return false;
+    });
+
     const failed: Array<{ path: string; error: string }> = [];
     if (body.apply) {
       const results = await Promise.allSettled(
-        report.changed.map((c) =>
-          writeFile(join(body.projectDir, c.path), c.text, 'utf-8'),
-        ),
+        toWrite.map((c) => writeFile(join(body.projectDir, c.path), c.text, 'utf-8')),
       );
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
           failed.push({
-            path: report.changed[i]!.path,
+            path: toWrite[i]!.path,
             error: r.reason instanceof Error ? r.reason.message : String(r.reason),
           });
         }
@@ -75,8 +108,8 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
     }
 
     // The before/after text is what the confirm dialog shows per file, so the
-    // author agrees to a diff rather than to a number.
-    const before = new Map(files.map((f) => [f.path, f.text]));
+    // author agrees to a diff rather than to a number — and it is what comes
+    // back as `expected` on the apply call.
     return {
       applied: body.apply,
       changed: report.changed.map((c) => ({
@@ -87,6 +120,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; apply: boo
       unchanged: report.unchanged,
       refused: report.refused,
       failed,
+      stale,
     };
   },
 });

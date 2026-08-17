@@ -425,22 +425,31 @@
   }
   function mediaPrintBodies(css) {
     const out = [];
-    collectPrintBodies(css, out);
+    collectPrintBodies(css, [], out);
     return out;
   }
-  var CONDITIONAL_GROUP = /^@(media|supports|layer|container|scope)\b/i;
-  function collectPrintBodies(css, out) {
+  var CONDITIONAL_GROUP = /^@(supports|layer|container|scope)\b/i;
+  function rewrap(body, wrappers) {
+    let out = body;
+    for (let i = wrappers.length - 1;i >= 0; i--)
+      out = `${wrappers[i]} {${out}}`;
+    return out;
+  }
+  function collectPrintBodies(css, wrappers, out) {
     for (const rule of scanRules(css)) {
       if ("statement" in rule)
         continue;
       if (/^@media\b/i.test(rule.prelude)) {
         const q = rule.prelude.replace(/^@media/i, "").trim();
-        if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q))
-          out.push(rule.body);
-        else if (!/\bprint\b/i.test(q))
-          collectPrintBodies(rule.body, out);
+        if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q)) {
+          out.push(rewrap(rule.body, wrappers));
+        } else if (!/\bprint\b/i.test(q)) {
+          collectPrintBodies(rule.body, wrappers, out);
+        }
       } else if (CONDITIONAL_GROUP.test(rule.prelude)) {
-        collectPrintBodies(rule.body, out);
+        wrappers.push(rule.prelude.trim());
+        collectPrintBodies(rule.body, wrappers, out);
+        wrappers.pop();
       }
     }
   }

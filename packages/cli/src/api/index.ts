@@ -182,6 +182,10 @@ export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.
 export { listProjectStyles, resolveActiveStyles, resolveProjectCss } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
 
+// ── Markdown source resolution — the same list the renderer and lint use, so a
+//    tool that rewrites the book's files rewrites exactly the book's files ──
+export { resolveActiveMarkdownFiles } from "../lib/markdown/index.ts";
+
 // ── Project configuration view (#PCV) — author-facing manifest field writers ──
 export {
   readManifestFields,

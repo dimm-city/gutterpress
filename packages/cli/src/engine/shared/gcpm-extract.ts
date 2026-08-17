@@ -297,35 +297,58 @@ function indexOfTopLevel(s: string, ch: string): number {
  * the PDF and nowhere on screen. Progressive enhancement wrapped around print
  * styles is an ordinary thing to write.
  *
- * The nesting is FLATTENED rather than preserved — the `@supports` condition
- * is dropped and its body re-injected unconditionally. That is deliberate and
- * it is the honest trade: the condition was already true, or the browser
- * showing the preview could not have matched it either. Re-emitting the
- * `@supports` wrapper would be more faithful but would also re-emit an
- * `@media print` wrapper we exist to strip.
+ * Enclosing non-media wrappers are KEPT, so `@layer base { @media print { … } }`
+ * comes back as `@layer base { … }`. Flattening them instead was tried and is
+ * wrong: it does not merely strip `@media print`, it changes the cascade.
+ * An unlayered rule outranks every layered one, so a print rule inside
+ * `@layer base` would have beaten author rules on screen that it loses to in
+ * the PDF; and a rule inside an `@supports` condition the browser does NOT
+ * match would have become active on screen while staying inactive in print —
+ * both of them the exact preview↔PDF divergence this function exists to
+ * prevent.
+ *
+ * Only the `@media` wrapper is dropped, because that is the one whose whole
+ * purpose here is to be removed.
  */
 export function mediaPrintBodies(css: string): string[] {
   const out: string[] = [];
-  collectPrintBodies(css, out);
+  collectPrintBodies(css, [], out);
   return out;
 }
 
-/** `@media`, `@supports` and friends — at-rules whose body is more rules. */
-const CONDITIONAL_GROUP = /^@(media|supports|layer|container|scope)\b/i;
+/**
+ * At-rules whose body is more rules, and which are NOT `@media` — these are
+ * carried through so the extracted body keeps its cascade position.
+ */
+const CONDITIONAL_GROUP = /^@(supports|layer|container|scope)\b/i;
 
-function collectPrintBodies(css: string, out: string[]): void {
+/** Re-wrap `body` in the preludes it was nested inside, innermost last. */
+function rewrap(body: string, wrappers: readonly string[]): string {
+  let out = body;
+  for (let i = wrappers.length - 1; i >= 0; i--) out = `${wrappers[i]} {${out}}`;
+  return out;
+}
+
+function collectPrintBodies(css: string, wrappers: string[], out: string[]): void {
   for (const rule of scanRules(css)) {
     if ("statement" in rule) continue;
     if (/^@media\b/i.test(rule.prelude)) {
       // crude media-query match is fine here: `print` present and `not print`
       // absent — anything fancier and the author is off the paved path
       const q = rule.prelude.replace(/^@media/i, "").trim();
-      if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q)) out.push(rule.body);
-      // A `@media screen` may still contain a nested `@media print`; a
-      // `@media print` already contributed its whole body above.
-      else if (!/\bprint\b/i.test(q)) collectPrintBodies(rule.body, out);
+      if (/\bprint\b/i.test(q) && !/\bnot\s+print\b/i.test(q)) {
+        out.push(rewrap(rule.body, wrappers));
+      } else if (!/\bprint\b/i.test(q)) {
+        // A `@media screen` may still contain a nested `@media print`; a
+        // `@media print` already contributed its whole body above. The screen
+        // query itself is dropped for the same reason the print one is — the
+        // preview IS a screen.
+        collectPrintBodies(rule.body, wrappers, out);
+      }
     } else if (CONDITIONAL_GROUP.test(rule.prelude)) {
-      collectPrintBodies(rule.body, out);
+      wrappers.push(rule.prelude.trim());
+      collectPrintBodies(rule.body, wrappers, out);
+      wrappers.pop();
     }
   }
 }

@@ -786,9 +786,24 @@
    */
   function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
+    // Everything the rich editor remembers is about the book being LEFT.
+    // Neither of these resets used to happen, because both were tied to the
+    // one-time lazy module load: `RichEditor` stays cached across projects, so
+    // the second book opened in a session inherited the first one's stylesheet
+    // and never got its own normalize prompt. This is the one funnel every
+    // project switch goes through.
+    resetRichEditorProjectState();
     lifecycle.busy = true;
     lifecycle.busyLabel = label;
     return lifecycle.startFolderPreview(path, label, basenameOf(path));
+  }
+
+  /** Forget the outgoing book's editor state, before another one opens. */
+  function resetRichEditorProjectState(): void {
+    normalizeOffered = false;
+    normalizePlan = null;
+    bookCss = "";
+    richBlockedReason = null;
   }
 
   // One OS folder picker at a time: a double-click on "Open a folder" must not
@@ -1221,13 +1236,19 @@
     if (!lifecycle.currentDir || normalizeApplying) return;
     normalizeApplying = true;
     try {
-      const result = await api.project.normalize(lifecycle.currentDir, true);
+      // Send back the exact `before` text the dialog displayed, so the route
+      // can refuse to write a file that changed underneath it.
+      const expected = Object.fromEntries(
+        (normalizePlan?.changed ?? []).map((c) => [c.path, c.before]),
+      );
+      const result = await api.project.normalize(lifecycle.currentDir, true, expected);
       const failed = result.failed ?? [];
+      const stale = result.stale ?? [];
       // Only claim the project is normalized if every file actually got there.
       // Recording it after a partial apply would suppress the prompt while
       // some chapters are still un-normalized, and their first rich save would
       // reformat them one at a time — the exact churn this exists to avoid.
-      if (failed.length === 0) {
+      if (failed.length === 0 && stale.length === 0) {
         await api.app.setDesktopProjectState(lifecycle.currentDir, {
           normalizedAt: new Date().toISOString(),
         });
@@ -1241,11 +1262,21 @@
         const stillFailed = failed.some((f) => open.endsWith(f.path));
         if (rewritten && !stillFailed) showEditorContent(open, rewritten.after);
       }
-      const wrote = result.changed.length - failed.length;
+      const wrote = result.changed.length - failed.length - stale.length;
       if (failed.length) {
         toast?.error(
           `Tidied ${wrote} of ${result.changed.length} files. Could not write ` +
             `${failed.map((f) => f.path).join(", ")} — ${failed[0]!.error}`,
+        );
+      } else if (stale.length) {
+        // Not an error the author caused, and not something to retry blindly:
+        // the file moved under them, so the honest thing is to name it and let
+        // them look again.
+        toast?.error(
+          `Tidied ${wrote} of ${result.changed.length} files. ` +
+            `${stale.join(", ")} changed while you were reviewing, so ${
+              stale.length === 1 ? "it was" : "they were"
+            } left alone — open the tidy prompt again to see the current version.`,
         );
       } else {
         toast?.success(`Tidied ${wrote} ${wrote === 1 ? "file" : "files"}.`);
@@ -1373,8 +1404,13 @@
    */
   async function refreshBookCss(): Promise<void> {
     if (!isDesktop() || !lifecycle.currentDir) return;
+    const forDir = lifecycle.currentDir;
     try {
-      const { css } = await api.project.inlineCss(lifecycle.currentDir);
+      const { css } = await api.project.inlineCss(forDir);
+      // The author can switch books while this is in flight. Applying a stale
+      // answer would style the new book with the old one's stylesheet — the
+      // same class of bug as never refreshing at all, just rarer.
+      if (lifecycle.currentDir !== forDir) return;
       bookCss = css;
       editorRef?.setBookCss?.(css);
       // The editor usually mounts before the preview server is ready, and its
@@ -2320,7 +2356,17 @@
       return restore;
     },
     refreshOutline: () => refreshOutline(),
-    refreshProblems: () => refreshProblems(),
+    refreshProblems: () => {
+      refreshProblems();
+      // Same rebuild signal, same reason: an author who edits the book's CSS
+      // must see it in the editor too. This used to fire only when the rich
+      // module first loaded, so the editing surface kept rendering with
+      // whatever bytes it started with — and on a second project, with the
+      // FIRST project's stylesheet. `refreshBookCss` is a no-op when there is
+      // no project open and discards a response for a project that is no
+      // longer current.
+      void refreshBookCss();
+    },
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     viewportWidth: () => window.innerWidth,

@@ -113,3 +113,38 @@ describe("on the real corpus", () => {
     }
   });
 });
+
+describe("representability preflight", () => {
+  /**
+   * This is the WRITING path, so it must refuse everything the editor refuses.
+   * Going straight to `isFixpoint` was not equivalent: a `[ref]: url`
+   * definition is consumed by markdown-it without emitting a token, so nothing
+   * raises and losing it is stable on the second pass — the plan called the
+   * lossy output safe and the route wrote it.
+   */
+  test("a file defining link references is refused, not rewritten", () => {
+    const src = 'Read the [docs][d].\n\n[d]: https://example.com "Docs"\n';
+    const r = planNormalize([{ path: "a.md", text: src }]);
+    expect(r.changed).toEqual([]);
+    expect(r.refused).toHaveLength(1);
+    expect(r.refused[0]!.reason).toContain("link reference");
+  });
+
+  test("an unused definition is refused too — it renders nothing, so no gate sees it", () => {
+    const r = planNormalize([{ path: "a.md", text: "Text.\n\n[unused]: https://x.com\n" }]);
+    expect(r.changed).toEqual([]);
+    expect(r.refused).toHaveLength(1);
+  });
+
+  test("a file the schema cannot model is still refused", () => {
+    const r = planNormalize([{ path: "a.md", text: "Text[^1]\n\n[^1]: note\n" }]);
+    expect(r.changed).toEqual([]);
+    expect(r.refused).toHaveLength(1);
+  });
+
+  test("an ordinary file is still normalized", () => {
+    const r = planNormalize([{ path: "a.md", text: "# Title\n\n- one\n- two\n" }]);
+    expect(r.refused).toEqual([]);
+    expect(r.changed.length + r.unchanged.length).toBe(1);
+  });
+});

@@ -446,19 +446,35 @@ describe("scroll containers", () => {
 });
 
 describe("mediaPrintBodies: nested conditional groups", () => {
-  test("finds @media print inside @supports", () => {
+  test("finds @media print inside @supports, KEEPING the condition", () => {
     // Progressive enhancement wrapped around print styles. Scanning only the
-    // top level left this applying in the PDF and nowhere on screen.
+    // top level left this applying in the PDF and nowhere on screen — but
+    // flattening the wrapper is equally wrong: a condition the browser does
+    // NOT match would become active on screen and stay inactive in print.
     expect(
       mediaPrintBodies("@supports (display: grid) { @media print { .a { color: #666 } } }"),
-    ).toEqual([" .a { color: #666 } "]);
+    ).toEqual(["@supports (display: grid) { .a { color: #666 } }"]);
   });
 
-  test("finds @media print inside @layer and @container", () => {
-    expect(mediaPrintBodies("@layer book { @media print { .a { color: red } } }")).toHaveLength(1);
+  test("keeps the @layer wrapper, because an unlayered rule outranks a layered one", () => {
+    expect(mediaPrintBodies("@layer book { @media print { .a { color: red } } }")).toEqual([
+      "@layer book { .a { color: red } }",
+    ]);
+  });
+
+  test("keeps @container and @scope wrappers", () => {
     expect(
       mediaPrintBodies("@container (min-width: 1px) { @media print { .a { color: red } } }"),
-    ).toHaveLength(1);
+    ).toEqual(["@container (min-width: 1px) { .a { color: red } }"]);
+    expect(mediaPrintBodies("@scope (.card) { @media print { .a { color: red } } }")).toEqual([
+      "@scope (.card) { .a { color: red } }",
+    ]);
+  });
+
+  test("keeps nested wrappers, outermost first", () => {
+    expect(
+      mediaPrintBodies("@layer book { @supports (x: y) { @media print { .a { c: 1 } } } }"),
+    ).toEqual(["@layer book {@supports (x: y) { .a { c: 1 } }}"]);
   });
 
   test("finds @media print nested inside another @media", () => {

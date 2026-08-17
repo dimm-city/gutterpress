@@ -62,7 +62,7 @@
  * plan (`planNormalize` writes nothing) and let them agree to it.
  */
 import type MarkdownIt from "markdown-it";
-import { createEditorRenderer, isFixpoint } from "./markdown-doc";
+import { canEditRichly, createEditorRenderer, isFixpoint } from "./markdown-doc";
 
 export interface NormalizeInput {
   /** Project-relative path, used only for reporting. */
@@ -94,6 +94,20 @@ export function planNormalize(
   const report: NormalizeReport = { changed: [], unchanged: [], refused: [] };
 
   for (const file of files) {
+    // The SAME preflight the editor uses to decide whether a file can be
+    // opened richly. Going straight to `isFixpoint` was not equivalent: a
+    // construct markdown-it consumes WITHOUT emitting a token — a `[ref]: url`
+    // definition — never reaches the parser, so nothing raises, and losing it
+    // is perfectly stable on the second pass. This function then classified
+    // the lossy output as safe and the route wrote it. Refusing here is
+    // strictly more important than refusing in the editor: this is the path
+    // that rewrites a whole book at once.
+    const supported = canEditRichly(md, file.text);
+    if (!supported.ok) {
+      report.refused.push({ path: file.path, reason: supported.reason });
+      continue;
+    }
+
     let result: ReturnType<typeof isFixpoint>;
     try {
       result = isFixpoint(md, file.text);
