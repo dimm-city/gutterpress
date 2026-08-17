@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { undo } from "prosemirror-history";
-import { TextSelection } from "prosemirror-state";
+import { NodeSelection, TextSelection } from "prosemirror-state";
+import { blockAtDom, blockPosFor } from "../../src/lib/editor/rich-drag-handle";
 import type {
   RichToolbarAction,
   ToolbarPayloadLike,
@@ -20,8 +21,8 @@ import {
  *
  * DOM is happy-dom (the harness `tests/platform/dialog.test.ts` uses). It does
  * no layout, so nothing here asserts geometry — pagination is CSS and is
- * covered by `paginate.test.ts` plus the measurements recorded in
- * `paginate.ts`'s header.
+ * covered by `paginate.test.ts` and the reasoning recorded in `paginate.ts`'s
+ * header.
  *
  * The property these tests exist for is the one the postmortem lost: an edit
  * must land in the author's file as the author's markdown, and the surface
@@ -49,6 +50,8 @@ function editor(content: string, onChange?: (s: string) => void) {
   return {
     handle,
     mount,
+    doc,
+    win: win as unknown as Record<string, new (type: string, init?: unknown) => Event>,
     restore() {
       handle.destroy();
       g.window = prior.window;
@@ -326,6 +329,334 @@ describe("selection and snippets", () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
     e.handle.insertSnippet("!!");
     expect(e.handle.getMarkdown()).toBe("Hello!!\n");
+    e.restore();
+  });
+});
+
+/**
+ * Press a key through ProseMirror's own keymap dispatch.
+ *
+ * Calling the command directly would prove the command works and say nothing
+ * about whether anything is BOUND to it — and the binding is the part that
+ * makes the reorder reachable without a mouse, which is the requirement.
+ *
+ * Module scope because both spellings of the reorder are tested: the keymap
+ * below, and the drag handle, which has to agree with it.
+ */
+function press(e: ReturnType<typeof editor>, key: string): boolean {
+  const event = new (e.win.KeyboardEvent as unknown as new (
+    t: string,
+    i: Record<string, unknown>,
+  ) => KeyboardEvent)("keydown", { key, altKey: true, bubbles: true });
+  return e.handle.view.someProp("handleKeyDown", (f) => f(e.handle.view, event)) === true;
+}
+
+/** Put the caret in the block containing `text`. */
+function caretIn(e: ReturnType<typeof editor>, text: string): void {
+  const { view } = e.handle;
+  let found = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (found === -1 && node.isTextblock && node.textContent === text) found = pos + 1;
+    return found === -1;
+  });
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, found)));
+}
+
+describe("moving blocks (the drag handle's keyboard equivalent)", () => {
+  test("Alt-ArrowDown moves a block below its sibling", () => {
+    const e = editor("Alpha\n\nBravo\n\nCharlie\n");
+    caretIn(e, "Alpha");
+    expect(press(e, "ArrowDown")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("Bravo\n\nAlpha\n\nCharlie\n");
+    e.restore();
+  });
+
+  test("Alt-ArrowUp moves a block above its sibling", () => {
+    const e = editor("Alpha\n\nBravo\n\nCharlie\n");
+    caretIn(e, "Charlie");
+    expect(press(e, "ArrowUp")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("Alpha\n\nCharlie\n\nBravo\n");
+    e.restore();
+  });
+
+  test("the caret travels with the block, so a second press moves the same one", () => {
+    const e = editor("Alpha\n\nBravo\n\nCharlie\n");
+    caretIn(e, "Charlie");
+    press(e, "ArrowUp");
+    press(e, "ArrowUp");
+    expect(e.handle.getMarkdown()).toBe("Charlie\n\nAlpha\n\nBravo\n");
+    e.restore();
+  });
+
+  test("undo restores the original order", () => {
+    const src = "Alpha\n\nBravo\n";
+    const e = editor(src);
+    caretIn(e, "Alpha");
+    press(e, "ArrowDown");
+    expect(e.handle.getMarkdown()).toBe("Bravo\n\nAlpha\n");
+    const { view } = e.handle;
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+
+  test("the edge of the document reports false rather than swallowing the key", () => {
+    // A command that returns true without doing anything would eat the key for
+    // whatever binding comes after it.
+    const e = editor("Alpha\n\nBravo\n");
+    caretIn(e, "Alpha");
+    expect(press(e, "ArrowUp")).toBe(false);
+    expect(e.handle.getMarkdown()).toBe("Alpha\n\nBravo\n");
+    e.restore();
+  });
+
+  test("a block moves WITHIN its marker, and the marker line is untouched", () => {
+    const src = "@section .gp-columns-2\n\nOne\n\nTwo\n\n@end-section\n";
+    const e = editor(src);
+    caretIn(e, "One");
+    expect(press(e, "ArrowDown")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("@section .gp-columns-2\n\nTwo\n\nOne\n\n@end-section\n");
+    e.restore();
+  });
+
+  test("a list item moves, not the paragraph that is its only child", () => {
+    // The search starts at the caret's own block and walks OUTWARD until it
+    // finds a depth with a sibling to swap with — so the useful thing moves
+    // without a special case for lists.
+    const e = editor("* one\n* two\n* three\n");
+    caretIn(e, "one");
+    expect(press(e, "ArrowDown")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("* two\n* one\n* three\n");
+    e.restore();
+  });
+
+  test("inside a table the whole TABLE moves — cells are not authored order", () => {
+    const src = "Before\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n";
+    const e = editor(src);
+    caretIn(e, "1");
+    expect(press(e, "ArrowUp")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |\n\nBefore\n");
+    e.restore();
+  });
+
+  test("a selection spanning two blocks refuses rather than moving one of them", () => {
+    const src = "Alpha\n\nBravo\n\nCharlie\n";
+    const e = editor(src);
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 10)));
+    expect(press(e, "ArrowDown")).toBe(false);
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+});
+
+describe("the block drag handle", () => {
+  /** The chrome the handle mounts into the FRAME's body. */
+  function grip(e: ReturnType<typeof editor>): HTMLElement {
+    return e.doc.body.querySelector(".gp-drag-handle") as HTMLElement;
+  }
+
+  /** Move the pointer over `el`, which is how the handle chooses its block. */
+  function hover(e: ReturnType<typeof editor>, el: Element): void {
+    el.dispatchEvent(
+      new (e.win.MouseEvent as unknown as new (t: string, i: Record<string, unknown>) => Event)(
+        "mousemove",
+        { bubbles: true },
+      ),
+    );
+  }
+
+  /** A drag event carrying a real DataTransfer (happy-dom's init dict drops it). */
+  function dragEvent(e: ReturnType<typeof editor>, type: string): Event {
+    const win = e.win as unknown as Record<string, new (...a: unknown[]) => unknown>;
+    const event = new (win.DragEvent as unknown as new (
+      t: string,
+      i: Record<string, unknown>,
+    ) => Event)(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: new win.DataTransfer!(),
+      configurable: true,
+    });
+    return event;
+  }
+
+  test("the grip lives in the frame body — never in the document, never in the flow", () => {
+    // The correctness constraint this whole design turns on: an affordance
+    // that were a ProseMirror node would be written into the author's .md by
+    // the serializer, and one inside `view.dom` would be reverted by
+    // DOMObserver. It is a sibling of the editable root, so it is neither.
+    const src = "@page .wide\n\nHello\n";
+    const e = editor(src);
+    expect(grip(e)).not.toBeNull();
+    expect(e.mount.contains(grip(e))).toBe(false);
+    expect(e.mount.innerHTML).not.toContain("gp-drag-handle");
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+
+  test("destroying the editor takes its chrome with it", () => {
+    const e = editor("Hello\n");
+    expect(grip(e)).not.toBeNull();
+    e.restore();
+    expect(e.doc.body.querySelector(".gp-drag-handle")).toBeNull();
+  });
+
+  test("hovering a block resolves it, including nested and generated content", () => {
+    // `After` gives the section a sibling of its own, so the pointer can
+    // resolve the section as well as the paragraphs inside it.
+    const e = editor("@section\n\nOne\n\nTwo\n\n@end-section\n\nAfter\n");
+    const { view } = e.handle;
+    const section = e.mount.firstElementChild as HTMLElement;
+    const para = section.firstElementChild as HTMLElement;
+
+    // The nested paragraph, not the section that wraps it: the handle grabs
+    // whatever is directly under the pointer.
+    expect(blockAtDom(view, para)?.pos).toBe(1);
+    expect(view.state.doc.nodeAt(blockAtDom(view, para)!.pos)?.type.name).toBe("paragraph");
+    // A text node inside it resolves the same way — the walk goes upward.
+    expect(blockAtDom(view, para.firstChild)?.el).toBe(para);
+    // The section itself, when the pointer is on its own box.
+    expect(blockAtDom(view, section)?.pos).toBe(0);
+    e.restore();
+  });
+
+  test("a table's internals offer no grip, but the table does", () => {
+    // `Before` gives the table a sibling to be reordered among; without one
+    // there is nowhere for it to go and no grip is offered at all (see the
+    // agreement test below).
+    const e = editor("Before\n\n| A |\n| --- |\n| 1 |\n");
+    const { view } = e.handle;
+    const table = e.mount.querySelector("table") as HTMLElement;
+    const cell = e.mount.querySelector("td") as HTMLElement;
+    expect(view.state.doc.nodeAt(blockAtDom(view, table)!.pos)?.type.name).toBe("table");
+    // Walking up from a cell skips every table-internal parent and lands on
+    // the table — the same answer the keyboard command gives.
+    expect(blockAtDom(view, cell)?.el).toBe(table);
+    e.restore();
+  });
+
+  test("the grip grabs the same block Alt+Arrow moves — including in a list", () => {
+    // The divergence this pins: `reordersChildren(list_item)` is true, so a
+    // handle that asked only that question stopped at the PARAGRAPH inside the
+    // bullet and offered to drag it out of its own list item, while Alt+Arrow
+    // at the same caret moved the whole item. `isReorderable()` is the
+    // command's entire search condition, so both now stop at the same depth.
+    const e = editor("* one\n* two\n* three\n");
+    const { view } = e.handle;
+    const item = e.mount.querySelectorAll("li")[1] as HTMLElement;
+    const para = item.firstElementChild as HTMLElement;
+
+    const found = blockAtDom(view, para)!;
+    expect(view.state.doc.nodeAt(found.pos)?.type.name).toBe("list_item");
+    expect(found.el).toBe(item);
+
+    // And the keyboard, from a caret in that same paragraph, moves that item.
+    caretIn(e, "two");
+    expect(press(e, "ArrowUp")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("* two\n* one\n* three\n");
+    e.restore();
+  });
+
+  test("a block with nowhere to go offers no grip", () => {
+    // Alt+Arrow returns false on the only block in the document, so a grip
+    // beside it would be an affordance for an edit that cannot happen.
+    const e = editor("| A |\n| --- |\n| 1 |\n");
+    const table = e.mount.querySelector("table") as HTMLElement;
+    expect(blockAtDom(e.handle.view, table)).toBeNull();
+    caretIn(e, "1");
+    expect(press(e, "ArrowUp")).toBe(false);
+    e.restore();
+  });
+
+  test("an element left over from the previous document resolves to nothing", () => {
+    // `posAtDOM` reads the `pmViewDesc` ProseMirror hangs off the element, and
+    // a detached one still carries a stale desc — so it answers from a tree
+    // that no longer exists instead of refusing. Measured in Chromium 153:
+    // this throws "Position -1 out of range", out of a mousemove listener.
+    const e = editor("Alpha\n\nBravo\n");
+    const stale = e.mount.lastElementChild as HTMLElement;
+    e.handle.setContent("# Something else entirely\n");
+    expect(() => blockPosFor(e.handle.view, stale)).not.toThrow();
+    expect(blockPosFor(e.handle.view, stale)).toBeNull();
+    expect(blockAtDom(e.handle.view, stale)).toBeNull();
+    e.restore();
+  });
+
+  test("dragstart hands ProseMirror a slice and a node selection", () => {
+    // This is what stops PM's drop handler from re-parsing the DataTransfer.
+    // With `view.dragging` null it would rebuild the block from HTML — and the
+    // layout nodes have no `parseDOM`, so an `@section` would come back as a
+    // plain div AND the original would survive, i.e. a mangled duplicate.
+    const e = editor("@section\n\nOne\n\n@end-section\n\nAfter\n");
+    const { view } = e.handle;
+    hover(e, e.mount.firstElementChild!);
+    const event = dragEvent(e, "dragstart");
+    grip(e).dispatchEvent(event);
+
+    expect(view.dragging).not.toBeNull();
+    expect(view.dragging!.move).toBe(true);
+    expect(view.dragging!.slice.content.firstChild?.type.name).toBe("gp_section");
+    // `copyMove`, the value prosemirror-view's own dragstart sets. A bare
+    // `move` tells the user agent that the Ctrl/Option-modified copy the docs
+    // promise is not permitted, and a drag the agent cannot resolve can end
+    // with no drop event at all.
+    expect((event as DragEvent).dataTransfer?.effectAllowed).toBe("copyMove");
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    // Starting a drag changes nothing on disk.
+    expect(e.handle.getMarkdown()).toBe("@section\n\nOne\n\n@end-section\n\nAfter\n");
+    e.restore();
+  });
+
+  test("a drag it cannot describe is refused outright", () => {
+    // No hover means no block, so there is no slice to hand over. Cancelling
+    // the drag is the only safe answer — see the test above for what a drag
+    // with a null `view.dragging` does.
+    const e = editor("Hello\n");
+    const { view } = e.handle;
+    const event = dragEvent(e, "dragstart");
+    grip(e).dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.dragging).toBeNull();
+    e.restore();
+  });
+
+  test("a completed drop reorders the file and nothing else", () => {
+    // ProseMirror's own `editHandlers.drop` runs here — the module adds no
+    // drop code of its own. Only the hit test is stubbed, because happy-dom
+    // does no layout; everything downstream of it is upstream's.
+    const e = editor("Alpha\n\nBravo\n\nCharlie\n");
+    const { view } = e.handle;
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+
+    // Drop at the end of the document: pos 21 is after "Charlie".
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords = () => ({
+      pos: view.state.doc.content.size,
+      inside: -1,
+    });
+    view.dom.dispatchEvent(dragEvent(e, "drop"));
+
+    expect(e.handle.getMarkdown()).toBe("Bravo\n\nCharlie\n\nAlpha\n");
+    // The grip is chrome, not content: it cannot have been carried along.
+    expect(e.handle.getMarkdown()).not.toContain("gp-drag-handle");
+    e.restore();
+  });
+
+  test("an undo puts a dropped block back where it was", () => {
+    const src = "Alpha\n\nBravo\n\nCharlie\n";
+    const e = editor(src);
+    const { view } = e.handle;
+    hover(e, e.mount.firstElementChild!);
+    grip(e).dispatchEvent(dragEvent(e, "dragstart"));
+    (view as unknown as { posAtCoords: () => { pos: number; inside: number } }).posAtCoords = () => ({
+      pos: view.state.doc.content.size,
+      inside: -1,
+    });
+    view.dom.dispatchEvent(dragEvent(e, "drop"));
+    expect(e.handle.getMarkdown()).not.toBe(src);
+
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(e.handle.getMarkdown()).toBe(src);
     e.restore();
   });
 });

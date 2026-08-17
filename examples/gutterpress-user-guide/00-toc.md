@@ -9,7 +9,7 @@ Eight chapters take you from first install to published, production-ready print 
 @end-section
 
 1. [Getting Started](#ch-getting-started) — Install, basic workflow, project structure, manifest configuration
-2. [Writing Your Content](#ch-writing) — Typography, text formatting, lists, tables, layout directives
+2. [Writing Your Content](#ch-writing) — Rich and markdown editing, typography, text formatting, lists, tables, layout directives
 3. [Visual Elements](#ch-visual) — Callouts, images, full-bleed artwork, positioning, print-safe formats
 4. [Styling & Theming](#ch-styling) — CSS variables, custom themes, fonts, page templates, cascade order
 5. [Plugins](#ch-plugins) — Adding, installing, writing, and loading order for markdown-it plugins

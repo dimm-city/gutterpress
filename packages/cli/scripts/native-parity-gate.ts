@@ -109,12 +109,14 @@ const DEFAULT_FIXTURES = [
   // (In-page pin GEOMETRY is asserted by paged-css-image-pin.test.ts — the
   // gate only sees page indices.)
   join(REPO, "docs", "fixtures", "gp-image-positioning", "book"),
-  // The user guide is the largest first-party book (64pp, tier 3, 157
-  // instrumented headings) and the only default fixture with enough ordinary
-  // long-form prose to catch a fragmentation drift that accumulates over
-  // many pages rather than showing up on page 1. It was absent from this
-  // list while the gate ran nowhere, which is how it came to carry an
-  // unnoticed viewer-vs-print divergence.
+  // The user guide is the largest first-party book (tier 3) and the only
+  // default fixture with enough ordinary long-form prose to catch a
+  // fragmentation drift that accumulates over many pages rather than showing
+  // up on page 1. It was absent from this list while the gate ran nowhere,
+  // which is how it came to carry an unnoticed viewer-vs-print divergence.
+  // Its page and heading counts are deliberately not written down here: the
+  // guide is edited like any other book, and a comment citing them would be
+  // wrong the next time somebody adds a paragraph to it. The run prints both.
   join(REPO, "examples", "gutterpress-user-guide"),
 ];
 

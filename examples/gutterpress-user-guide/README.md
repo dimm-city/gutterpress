@@ -29,7 +29,7 @@ gutterpress-user-guide/
 ├── 00-cover.md            # Cover page
 ├── 00-toc.md              # Table of contents
 ├── 01-getting-started.md  # Installation, workflow, manifest configuration
-├── 02-writing-content.md  # Typography, formatting, layout directives
+├── 02-writing-content.md  # Rich/markdown editing, formatting, layout directives
 ├── 03-visual-elements.md  # Callouts, images, full-bleed artwork
 ├── 04-styling-theming.md  # CSS variables, themes, fonts, page templates
 ├── 05-plugins.md          # Adding, writing, and loading plugins

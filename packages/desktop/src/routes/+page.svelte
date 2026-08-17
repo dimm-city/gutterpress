@@ -320,6 +320,14 @@
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
   let viewMode = $derived(settings.current.preview.viewMode);
+  // The rich editor shows pages too, so it follows the SAME view mode — one
+  // "how many pages am I looking at" state for the whole workspace rather than
+  // a second control that could disagree with the toolbar. Seeds the surface at
+  // mount; later changes go through the editorViewModeSink below, because the
+  // editor takes no reactive dependency on its props. The surface may still
+  // show one page: it renders at print size with no zoom, so it refuses a
+  // spread that would not fit the pane (RichEditor.spreadFits).
+  let editorColumns = $derived<1 | 2>(viewMode === "two-column" ? 2 : 1);
   let bgColor = $derived(settings.current.appearance.previewBg);
   // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
   // Only consulted below the responsive breakpoint; above it the layout is the
@@ -1056,6 +1064,8 @@
     setBookCss?: (css: string) => void;
     /** Rich only: where relative asset references resolve from. */
     setAssetBase?: (url: string) => void;
+    /** Rich only: show one page or two abreast — `preview.viewMode`, mapped. */
+    setColumns?: (columns: 1 | 2) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -1201,13 +1211,21 @@
   let normalizeOffered = false;
 
   /**
-   * Offer the one-time tidy, once per project.
+   * Offer the one-time tidy, once per project OPEN.
    *
    * Rich editing saves canonically, so without this the author meets the
    * reformat as a surprise diff on whichever file they happened to edit
    * first. Asked only when it is actually relevant — desktop, rich mode, a
    * project that has never been normalized — and only when there is something
    * to change, so a book already in that style is never interrupted.
+   *
+   * "Decide later" declines this SESSION, not for good: it writes no
+   * `normalizedAt`, and `normalizeOffered` is cleared by
+   * `resetRichEditorProjectState()` on the next open. That is deliberate — a
+   * dismissal is not consent to keep the churn — and it is what the user guide
+   * promises ("you will be asked again next time you open the book"). Only
+   * applying the plan, or finding nothing to change, records the fact and ends
+   * the offer permanently.
    */
   async function maybeOfferNormalize(): Promise<void> {
     if (!isDesktop() || normalizeOffered || normalizePlan) return;
@@ -1647,6 +1665,16 @@
   const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
     if (!enabled) contextMenu.close();
   });
+  // View mode → the rich editing surface, so the toolbar's Single / Two-page
+  // pair drives both panes. This is the only channel needed: all four writers
+  // (the toolbar, the Settings panel, the responsive auto-select and the
+  // per-project restore) land in `preview.viewMode` via settings.set(). No
+  // ready() guard, unlike previewBg: the surface is lazily mounted and often
+  // absent (source mode, no file open), and a push dropped then costs nothing
+  // because `columns` seeds the value again the next time it mounts.
+  const editorViewModeSink = settingsChangeGuard<"single" | "two-column">((mode) =>
+    editorRef?.setColumns?.(mode === "two-column" ? 2 : 1),
+  );
   onMount(() =>
     onSettingsChange((s) => {
       autoSaveDelaySink(s.editor.autoSaveDelay);
@@ -1654,6 +1682,7 @@
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
+      editorViewModeSink(s.preview.viewMode);
     }),
   );
 
@@ -3285,6 +3314,7 @@
                   content={editorContent}
                   {bookCss}
                   assetBase={lifecycle.previewUrl ?? ""}
+                  columns={editorColumns}
                   backdrop={bgColor}
                   onChange={onEditorChange}
                   onSave={() => void handleForceSave()}

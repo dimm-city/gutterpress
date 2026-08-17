@@ -15,7 +15,7 @@
  *   - GUTTERPRESS LAYOUT MARKERS (`layout_chapter/_spread/_page/_section` plus
  *     the `_page_break` / `_column_break` atoms) — the product's authoring
  *     surface, parsed by `markers.js`.
- *   - RAW HTML (51 `html_block`, 30 `html_inline`). Too common to refuse; the
+ *   - RAW HTML (49 `html_block`, 30 `html_inline`). Too common to refuse; the
  *     renderer runs `html: true` with no allowlist, so this is ordinary
  *     authored content and is carried verbatim.
  *

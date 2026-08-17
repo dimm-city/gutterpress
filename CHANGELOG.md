@@ -5,6 +5,177 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The editor is a writing surface now: your words, in your book's own type,
+  on pages the size they will print at.** Rich mode lays your text out with
+  the book's own stylesheet at its own `@page` geometry — real page boxes,
+  real margins, real fonts, the chapter-opener badge where print puts it —
+  and you type directly into it. Markdown is still the only thing on disk;
+  nothing about your project's format changes. The surface is built from the
+  same four stylesheet layers the PDF is built from — Gutterpress's marker
+  CSS, the `gp-*` utilities, your plugins' CSS, then your own stylesheets, in
+  that order — so `.page`, `.gp-columns-2`, `.gp-bleed`, `.gp-pin` and every
+  class you wrote look the way they will look printed.
+  - It is **not** the print preview and does not claim the preview's
+    accuracy: it lays each page out once and leaves it, where the preview
+    goes back over its own work and corrects it against what print does.
+    That is why the preview — and only the preview — is the surface the
+    parity gate holds to the PDF page for page. Expect a break here and
+    there to land a page early or a page late. Three causes are recorded in
+    `editor/paginate.ts`: an element sized to the whole sheet
+    (`@page cover { margin: 0 }`, `.gp-bleed`) cannot fit inside a
+    content-box column; a named page that changes the size of the page box
+    is skipped rather than approximated; and columns and pages avoid breaks
+    differently. Check a layout against the preview, not against the editor.
+  - Raw HTML you wrote renders as HTML — 49 blocks of it across the
+    first-party books, far too common to show you as escaped source — and a
+    `<script>` in a chapter does not run.
+  - Generated content is shown but never written back. The `.chapter-opener`
+    badge the pipeline injects appears because print shows it, but it lives
+    in the view rather than in your document, so it cannot end up saved into
+    your markdown.
+- **Rich and Markdown are two first-class modes, switchable on any file and
+  remembered.** A Rich/Markdown switch sits under the formatting toolbar and
+  the choice is saved as the new `editor.mode` setting — **default `rich`**,
+  so an existing project opens in the new surface. Switching flushes any
+  pending save first, so whichever surface you land in starts from the bytes
+  that are on disk. Markdown is the only thing on disk and hand-editing it
+  stays a first-class story: source mode is not a degraded second seat, and
+  every toolbar action, snippet and lint marker you already use is unchanged
+  there.
+- **A file the rich surface cannot represent exactly opens as markdown, and
+  tells you why.** Footnotes, definition lists, the sub/sup/mark/abbr set and
+  any plugin syntax Gutterpress does not model have nothing to become in a
+  rich document, so rather than open richly and mis-save your book, that file
+  opens in source mode with the reason printed above the editor ("Editing
+  this file as markdown — …"). That is the design, not a bug to report:
+  measured across all 32 markdown files in the eight first-party example
+  books, 31 are rich-editable and the single refusal is a footnote reference.
+  It holds for a file that becomes unrepresentable while it is open, too — an
+  outside edit that adds a footnote to the file you are in switches it to
+  source mode with the reason instead of failing.
+- **"Tidy this book's markdown?" — the reformat lands once, deliberately,
+  instead of ambushing you chapter by chapter.** Rich mode writes markdown in
+  one consistent style, so the first save of any chapter reformats that
+  chapter. The first time you open the editor on a book, Gutterpress offers
+  to tidy the whole book as one reviewable change and shows exactly what
+  would happen: every file it would rewrite, every file it is already happy
+  with, and a before/after for each one behind "Show changes". "Decide later"
+  is a real answer: it writes nothing, and you are asked again the next time
+  you open that book — the offer stops for good once you have accepted it, or
+  once there is nothing left to change, and a book already in that style is
+  never interrupted at all.
+  - Worth knowing before you agree, because it is bigger than bullet
+    characters: measured on the first-party books, **27 of 32 files change,
+    and the dominant edit is unwrapping** — a hand-wrapped paragraph comes
+    back as one long line, because a soft line break inside a paragraph is
+    just a space in markdown. Your words are untouched and the printed book is
+    identical, but if you hand-wrap your paragraphs you will not get that
+    wrapping back, and line-level diffs in your version history get coarser.
+  - Re-wrapping instead was measured and rejected rather than dismissed.
+    Across 139 real paragraphs and 417 simulated one-word edits, re-wrapping
+    at 80 columns nearly doubles the one-time churn (1826 changed lines
+    against 1045) and makes an ordinary edit dirty up to 14 lines, where
+    leaving paragraphs alone always dirties exactly 2.
+  - Nothing is written until you press "Tidy the markdown", and then only the
+    files you were shown: a file that changed on disk while the dialog was
+    open is skipped and named. Files Gutterpress cannot represent are listed
+    as left untouched rather than quietly passed over.
+- **Type `/` for a command menu; select text for a formatting bubble.**
+  Fourteen slash commands cover headings, lists, quote, code, divider and
+  table — and, the reason the menu exists, the layout markers that were
+  otherwise buried in a toolbar dropdown: `@section`, a two-column section,
+  `@chapter` and `@spread`. Every item runs the same command as the matching
+  toolbar button and keyboard shortcut, so the three cannot drift on what
+  they insert. `/` opens a menu only at the start of a line or after a space,
+  so `and/or`, `http://` and `1/2` are just you typing a slash.
+- **What the toolbar inserts is identical in both modes.** Bold, italic,
+  strikethrough, inline code, headings, lists, quotes, links, tables, images
+  with their `gp-*` position and size classes, and the layout blocks — which
+  emit exactly the marker lines you would have typed by hand
+  (`@chapter "Chapter Title"`, `@section .gp-columns-2` + `@column-break`).
+  A file ends up the same bytes whichever surface built it.
+- **Rich mode keeps its place with the preview.** Scrolling the editor moves
+  the preview to match, "Go to source" from the preview lands on the right
+  block, and clicking an entry in the Problems panel jumps to it — all of
+  which speak in source line numbers that a rich document does not have. Each
+  block's line is derived from what saving the file would actually write, so
+  the numbers stay right as you edit above them instead of drifting.
+- **Two-page view drives the editor too.** The toolbar's Single / Two-page
+  switch is now one control for the whole workspace: choose Two-page and the
+  editing surface shows facing pages side by side, exactly as the preview
+  does. There is no second setting to find. The one difference is room — the
+  editor draws pages at their true print size and never zooms, so a US-Letter
+  spread is a fixed 1656 px wide, and an editing pane narrower than that
+  keeps the single-page stack instead of putting half a spread behind a
+  horizontal scrollbar. Drag the splitter wider or hide the preview and the
+  spread appears on its own.
+- **Blocks can be reordered — with the mouse or without it.** Point at any
+  block in rich mode and a grip appears in the page margin beside it; drag it
+  and the block moves, with a line showing where it will land. **Alt+Up** and
+  **Alt+Down** do the same with no grip involved — the same keys that move a
+  line in Markdown mode, so one habit covers both surfaces — and they are the
+  reason the grip is allowed to exist at all: a reorder you can only reach by
+  dragging is a reorder some authors cannot reach. The nearest movable thing
+  moves: a paragraph inside a `@section` moves within the section, a list item
+  moves among its siblings, and anywhere inside a table the whole table moves,
+  because a table's rows and columns are its structure rather than an order
+  you chose. Holding **Ctrl** (**Option** on macOS) while you drop copies
+  instead of moving, and either way it is one undo.
+  - The grip is chrome, not content. It lives beside the page rather than in
+    your document, so it cannot be saved into your markdown, and it is not
+    injected between your blocks — a handle rendered inline would break the
+    `h2 + p` and `:last-child` rules real book stylesheets are full of (17
+    `:last-child` and 14 `h? + p` across the example books), making your text
+    jump as the pointer passed over it.
+
+### Removed
+
+- **Breaking, narrowly: `.col-split` no longer selects any behaviour.** It
+  existed because Paged.js stripped `break-after: column`, and Paged.js is
+  gone; measured on Chromium 153, the native property reproduces the fixed
+  split exactly (5 paragraphs left / 0 right with a forced break, against
+  3 / 2 when the columns are left to balance). The class survives as an inert
+  word you can still style, and `@section .two-column .col-split` still
+  splits where you put `@column-break`, so authored books are unaffected —
+  what changes is that the renderer no longer wraps each column in a
+  `<div class="col">`, so CSS written against that generated wrapper has
+  nothing left to select. The editor's "Two columns" snippet now inserts the
+  core `@section .gp-columns-2` utility, which is what it should always have
+  inserted: `.col-split` never set `column-count` at all, and only appeared
+  to work because the wrappers faked the columns.
+
+### Fixed
+
+- **A chapter that opens with `@chapter` and then `@page` no longer loses a
+  page in the preview.** Print starts a new page there; the preview did not —
+  so every page number, running head and `target-counter()` cross-reference
+  after that point was one page ahead of the PDF, and the error repeated at
+  every chapter in the book. This is the most common structure in a
+  Gutterpress book. Measured against Chromium's print engine rather than
+  argued about: a forced break propagates outward from a box with no sibling
+  before it until it reaches one (CSS Fragmentation 3 §3.3). The preview now
+  does the same.
+- **Code blocks no longer break a page later in the preview than in the
+  PDF.** A book that writes `pre { overflow: hidden }` — an ordinary thing to
+  write, and what the user guide writes so that wide code does not leave
+  half-empty pages — had every code block that straddled a page boundary
+  pushed onto the following page on screen only. Chromium treats such a box
+  as unbreakable in the on-screen layout and splits it in print; the preview
+  now matches print, at the cost of a shim on the preview alone. With this
+  the preview↔PDF parity gate is green on all six books at zero divergences
+  with an empty allowlist — the user guide, the largest of them, on the same
+  page count, with every heading and cross-reference landing on the same page
+  in both.
+- **`@media print` rules apply in the preview again.** Rules you wrote inside
+  `@media print` were silently dropped from the preview while the PDF honored
+  them — all of them, because the code that re-injects those rules for the
+  screen had never matched a single one. Rules nested inside `@supports` or
+  `@layer` were a second, separate case of the same thing; they now keep
+  their wrapper instead of being lifted out of it, so a rule that loses the
+  cascade in print loses it on screen as well.
+
 ## [0.10.0] - 2026-08-12
 
 ### Added

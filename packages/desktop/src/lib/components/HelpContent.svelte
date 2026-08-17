@@ -185,6 +185,7 @@
           <tr><td>Open folder</td><td>{modKey}+O</td></tr>
           <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
           <tr><td>Focus mode (editor only)</td><td>{modKey}+Shift+F</td></tr>
+          <tr><td>Move block up / down (rich editor)</td><td>Alt+Up / Alt+Down</td></tr>
           <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
           <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
           <tr><td>Settings</td><td>{modKey}+,</td></tr>

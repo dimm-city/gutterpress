@@ -5,15 +5,17 @@ import {
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
+  paginatedWidth,
   paginationCss,
   scrollContainerCss,
 } from "../../src/lib/editor/paginate";
 
 /**
  * The editor's pagination is a STYLESHEET, not a layout pass. These tests
- * assert what that stylesheet says; the page counts it actually produces in a
- * browser are recorded in `paginate.ts`'s header, measured against the parity
- * gate's fixtures.
+ * assert what that stylesheet says. What it does to page counts in a real
+ * browser is not asserted anywhere and is not claimed anywhere either — see
+ * `paginate.ts`'s header for why a table of per-book deltas that no gate
+ * re-derives was removed rather than refreshed.
  *
  * The property that matters most here is the one an earlier draft got wrong:
  * every selector must come from the AUTHOR'S css, never from a list kept in
@@ -116,10 +118,40 @@ test("a book with no @page rules still produces a usable page box", () => {
   expect(css).toMatch(/column-height: \d+(\.\d+)?px;/);
 });
 
-test("spread mode asks for two columns per row", () => {
-  expect(paginationCss(resolvePage(extract(BOOK_CSS)).geometry, { columns: 2 })).toContain(
-    "column-count: 2;",
-  );
+test("spread mode widens the flow box, not just the column count", () => {
+  // This test used to assert `column-count: 2` and nothing else, and it was
+  // green against a stylesheet that rendered ONE column: the flow box was left
+  // one page wide, and Multicol L1 §3.4 caps the used count at
+  // `floor((width + column-gap) / (column-width + column-gap))` — exactly 1
+  // when the available width is one column wide. Measured on Chromium 153, the
+  // "spread" laid out byte-identically to the single stack. The width is what
+  // makes the count real, so the width is what this asserts.
+  const css = paginationCss(resolvePage(extract(BOOK_CSS)).geometry, { columns: 2 });
+  expect(css).toContain("column-count: 2;");
+  // 648px content + 192px column-gap (0.875in + 0.875in margins + 24px gutter)
+  // + 648px content — one page pitch (840px) plus one more page.
+  expect(css).toContain("width: 1488px;");
+  expect(css).toContain("column-gap: 192px;");
+});
+
+test("the single-page stack keeps a one-page-wide flow box", () => {
+  // The spread formula must collapse back to `contentW` at one column, or the
+  // default path gains a second empty page slot to its right.
+  const css = paginationCss(resolvePage(extract(BOOK_CSS)).geometry);
+  expect(css).toContain("width: 648px;");
+  expect(css).toContain("column-count: 1;");
+});
+
+test("paginatedWidth reports what a pane must be to show N pages", () => {
+  // Whole SHEETS plus the gutters between them — the page margins are outside
+  // the flow's `width`, so this is deliberately larger than that declaration.
+  // The editor renders at 1 CSS px per print px, so this is the number the host
+  // compares its pane against before asking for a spread.
+  expect(paginatedWidth(BOOK_CSS)).toBe(816); // 8.5in
+  expect(paginatedWidth(BOOK_CSS, { columns: 2 })).toBe(816 * 2 + 24);
+  // No `@page` rule at all still answers, from the letter-size fallback —
+  // a brand-new unstyled book must not make the fit test throw.
+  expect(paginatedWidth("", { columns: 2 })).toBe(816 * 2 + 24);
 });
 
 /**

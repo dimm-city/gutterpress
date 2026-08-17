@@ -38,8 +38,12 @@
  *
  * Nothing is lost: the rendered output is identical and the result is
  * fixpoint-stable. The costs are that an author who hand-wraps will not get
- * that formatting back, and that lines on disk get long — median 238
- * characters, p95 877.
+ * that formatting back, and that lines on disk get long. Measured over the
+ * corpus above by normalizing each file and pairing its paragraphs with the
+ * source's: of the 155 paragraphs that were hand-wrapped, the single line each
+ * becomes runs to a median of 225 characters and a 95th percentile of 508, and
+ * the longest line anywhere in the normalized corpus is 797. (An earlier
+ * `p95 877` here was impossible against that maximum and is retracted.)
  *
  * **Re-wrapping was evaluated and rejected on measurement, not taste.** Across
  * 139 real paragraphs and 417 simulated single-word edits:
@@ -56,6 +60,13 @@
  * also broke the fixpoint on a real corpus file in prototype.) So the long
  * lines are the deliberate trade, and re-opening this needs new numbers, not a
  * new opinion.
+ *
+ * That table is the record of a one-off simulation, and nothing in this tree
+ * re-derives its churn columns — which is also why its `median line` reads 238
+ * where the corpus measured today reads 225: the 139 paragraphs it sampled
+ * were not recorded, so the two populations are not the same population. Read
+ * the paragraph above for the current figure and the table for the comparison
+ * it was built to make; do not mix a number from one into the other.
  *
  * Paying the churn once per project is the entire reason this module exists.
  * It is NOT something to discover halfway through a book — show the author the

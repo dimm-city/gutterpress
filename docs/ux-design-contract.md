@@ -217,11 +217,15 @@ Proposed refinements:
 
   Both halves of that have been overtaken. Rich editing is not a nice-to-have
   bolted onto a source editor — it is the core of the UI product — and its
-  fidelity is now a measured number rather than an assumed risk: the surface
-  renders the author's own stylesheet at the author's own `@page` geometry,
-  and lands within a few pages of the PDF on real books (exact on one fixture,
-  -4/+3 on the rest; the table and its three causes are in
-  `editor/paginate.ts`'s header).
+  fidelity is no longer an assumed risk: the surface renders the author's own
+  stylesheet at the author's own `@page` geometry, so a break lands a page
+  early or late rather than the text being a different shape entirely. What
+  it is NOT is page-for-page with the PDF, and it does not claim to be — the
+  preview is the surface held to that, by `scripts/native-parity-gate.ts`.
+  The three structural causes of the editor's gap are recorded in
+  `editor/paginate.ts`'s header, along with why per-book page-count deltas
+  are deliberately not written down anywhere: nothing in the tree re-derives
+  them, and the last set went stale three ways inside one release.
 
   Equally, source mode is not a fallback to be designed away. Markdown is the
   only thing on disk and hand-editing it is a first-class story, so the source

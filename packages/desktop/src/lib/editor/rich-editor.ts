@@ -47,6 +47,8 @@ import {
 } from "./rich-commands";
 import { lineForPos, posForLine } from "./rich-lines";
 import { isSlashTrigger } from "./rich-chrome.svelte";
+import { mountDragHandle } from "./rich-drag-handle";
+import { moveBlockDown, moveBlockUp } from "./rich-move-block";
 
 const schema = gutterpressSchema;
 
@@ -260,6 +262,14 @@ function buildKeymap(onSave?: () => void): Plugin {
     "Mod-Shift-8": wrapInList(schema.nodes.bullet_list!),
     "Mod-Shift-9": wrapInList(schema.nodes.ordered_list!),
     "Mod-Shift-0": setBlockType(paragraph as NodeType),
+    // The keyboard equivalent of the block drag handle, and the reason the
+    // handle is allowed to exist: a mouse-only reorder has no answer for an
+    // author who cannot drag. Alt-Arrow is the same key CodeMirror's
+    // `defaultKeymap` binds to `moveLineUp`/`moveLineDown`, which is what
+    // source mode already does here — so one key does the analogous thing in
+    // both modes, a line there and a block here.
+    "Alt-ArrowUp": moveBlockUp,
+    "Alt-ArrowDown": moveBlockDown,
     Enter: splitListItem(list_item as NodeType),
     Tab: sinkListItem(list_item as NodeType),
     "Shift-Tab": liftListItem(list_item as NodeType),
@@ -292,7 +302,7 @@ function buildKeymap(onSave?: () => void): Plugin {
  * Render an author's raw HTML as HTML, not as escaped source text.
  *
  * A `toDOM` spec cannot produce raw markup, so this is a NodeView. Without it
- * the 51 `html_block`s and 30 `html_inline`s in the corpus would show as
+ * the 49 `html_block`s and 30 `html_inline`s in the corpus would show as
  * literal angle brackets while printing as real elements — a visible break in
  * the one promise this editor makes.
  *
@@ -496,6 +506,12 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     view.dispatch(tr);
   }
 
+  // Block reordering by pointer. It appends its own chrome to the FRAME's
+  // body, outside `view.dom`, so it is neither a document node nor something
+  // `DOMObserver` can revert — see `rich-drag-handle.ts`. Its keyboard
+  // equivalent is in the keymap above.
+  const dragHandle = mountDragHandle(view);
+
   // Scrolling produces no transactions, so this rides the scroll container —
   // the editor's own document inside the iframe.
   const scrollRoot = mount.ownerDocument?.defaultView;
@@ -544,6 +560,7 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     focus: () => view.focus(),
     destroy: () => {
       scrollRoot?.removeEventListener("scroll", onScroll);
+      dragHandle.destroy();
       view.destroy();
     },
 

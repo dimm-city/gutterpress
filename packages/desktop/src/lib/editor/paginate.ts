@@ -22,39 +22,42 @@
  * no selectors of its own, so a book cannot come to depend on editor
  * internals.
  *
- * ## How close this gets to print, measured
+ * ## How close this gets to print
  *
- * Page count, editor vs the shipped PDF, across every parity-gate fixture
- * (Chromium 153, real books, real stylesheets):
+ * Close, and deliberately not equal. **Parity is required between the print
+ * PREVIEW and the PDF** — `scripts/native-parity-gate.ts` holds those two to
+ * the same page for every instrumented element, on six books, at zero
+ * divergences with an empty allowlist. The editor's job is a different one:
+ * show the author their text at the size, measure and typography it will
+ * print at, with page breaks in approximately the right places, fast enough
+ * to keep up with typing.
  *
- * | book                  | print | editor |       |
- * |-----------------------|-------|--------|-------|
- * | gp-image-positioning  |     7 |      7 | exact |
- * | book-01 / book-02     |     2 |      1 |    -1 |
- * | design guide          |    54 |     51 |    -3 |
- * | user guide            |    64 |     60 |    -4 |
- * | css-authoring-spike   |     7 |     10 |    +3 |
+ * A table of per-book page-count deltas used to sit here and has been
+ * removed rather than refreshed. Nothing in this tree re-derives those
+ * numbers, and they went stale three separate ways inside one release: when
+ * three of the four CSS layers below started reaching the editor at all
+ * (8ccdcbe), when `scrollContainerCss()` landed (bf171a9), and every time a
+ * fixture's own content changes — the user guide IS a fixture, so editing it
+ * moves its print count. A measurement no gate re-runs is a measurement that
+ * silently becomes wrong, and this one had already been retracted in a commit
+ * message while still being quoted in the user guide. If the size of the gap
+ * ever has to be a tracked quantity, it needs a committed harness first;
+ * until then what is claimed here is the shape of the gap, not its size.
  *
- * **This is not parity and is not meant to be.** Parity is required between
- * the print preview and the PDF — `scripts/native-parity-gate.ts` enforces
- * that, on the real fragmenter. The editor's job is to show the author their
- * text at the size, measure and typography it will print at, with page breaks
- * in approximately the right places. The numbers above are recorded so that
- * gap is a known quantity rather than a surprise.
- *
- * The three known causes, in order of size:
+ * The three structural causes:
  *
  * 1. **Sheet-sized elements** (`@page cover { margin: 0 }`, `.gp-bleed`). A
  *    column is the CONTENT box, so an element sized to the full sheet cannot
- *    fit in one and spills into the next. This is what over-counts the
- *    css-authoring-spike fixture.
+ *    fit in one and spills into the next. A book of full-bleed art therefore
+ *    counts LONG here, where every other cause counts short.
  * 2. **Named pages that resize the page box.** `namedPageDelta()` absorbs a
- *    top-margin-only difference as padding — that alone recovered 4 of the
- *    design guide's 7 missing pages — but a named page with a different sheet
- *    size or bottom margin has no multicol equivalent and is skipped.
+ *    top-margin-only difference as padding — the design guide's
+ *    `@page chapter { margin-top: 2.5in }` is exactly that shape — but a
+ *    named page with a different sheet size or bottom margin has no multicol
+ *    equivalent and is skipped.
  * 3. **Multicol and paged media avoid breaks differently.** The residual.
  *
- * A fourth cause used to sit at the top of that list and is now fixed:
+ * A fourth cause used to sit alongside those and is now fixed:
  * Chromium treats a scroll container as monolithic in multicol and splits it
  * in print, so every `pre { overflow: hidden }` that straddled a page boundary
  * jumped a page here. `scrollContainerCss()` below is the repair, and the same
@@ -149,9 +152,20 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   const colGap = geometry.margin.left + geometry.margin.right + gap / PX_PER_PT;
   const rowGap = geometry.margin.top + geometry.margin.bottom + gap / PX_PER_PT;
 
+  // The flow box must be as wide as the ROW it wraps into, not as wide as one
+  // page. Multicol L1 §3.4 caps the USED column count at
+  // `floor((width + column-gap) / (column-width + column-gap))`, so a box one
+  // page wide silently uses ONE column and `column-count: 2` is inert —
+  // measured on Chromium 153, the two-column stylesheet laid out
+  // byte-identically to the one-column one (same x, same 1080px y pitch), not
+  // as a degraded spread. Same formula `viewer.css`'s `.gp-strip[data-wrap]`
+  // uses, and it collapses to `contentW` at `columns: 1`, so the single-page
+  // path is unchanged.
+  const flowW = contentW * columns + colGap * (columns - 1);
+
   return `${root} {
   box-sizing: content-box;
-  width: ${px(contentW)};
+  width: ${px(flowW)};
   height: ${px(contentH)};
   column-width: ${px(contentW)};
   column-height: ${px(contentH)};
@@ -169,12 +183,31 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
 }
 
 /**
+ * How wide the paginated surface lays out, in CSS px.
+ *
+ * `columns` whole SHEETS side by side plus the visual gutters between them —
+ * deliberately NOT the `width:` declaration `paginationCss()` emits, which is
+ * the content box only and leaves the page margins outside it. What a caller
+ * wants to know is how much room the pages occupy on screen, margins included.
+ *
+ * The editor renders at 1 CSS px per print px with no zoom of its own, so this
+ * is exactly the pane width needed to show `columns` pages without a
+ * horizontal scrollbar. Exported so the host can ask before requesting a
+ * spread instead of re-deriving page geometry from the stylesheet itself.
+ */
+export function paginatedWidth(css: string, opts: PaginateOptions = {}): number {
+  const { columns = 1, gap = 24 } = opts;
+  const { width } = resolvePage(extract(css)).geometry;
+  return width * PX_PER_PT * columns + gap * (columns - 1);
+}
+
+/**
  * Map the author's forced PAGE breaks onto column breaks.
  *
  * A `break-before: page` is inert inside a multicol box — only column breaks
  * fragment there — so without this the editor ignores every deliberate page
- * break in the book. Measured across the fixtures: the mapping is worth up to
- * 4 pages (user guide 56 -> 60).
+ * break in the book: `@page`, `@chapter` and an `h1 { break-before: page }`
+ * theme rule alike all stop starting a page.
  *
  * The selectors are the AUTHOR'S, read from the extracted model, not a list
  * maintained here. That matters twice over: an earlier version of this file
@@ -279,8 +312,8 @@ export function namedPageCss(model: GcpmModel, root = ".gp-editor-page-flow"): s
  * difference can be absorbed as padding on the element that starts it: the
  * column keeps its height, content starts lower, and the page still ends at
  * the same bottom edge. This is not a micro-optimization — the design guide's
- * `@page chapter` is exactly this shape, and applying it recovered 4 of that
- * book's 7 missing pages.
+ * `@page chapter { margin-top: 2.5in }` is exactly this shape, and it applies
+ * to every chapter opening in that book.
  *
  * Returns `null` when the sheet size or bottom margin differs too, because
  * then the page is genuinely a different box and padding cannot express it.
