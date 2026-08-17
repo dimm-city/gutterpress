@@ -148,7 +148,19 @@ export const gutterpressSchema = new Schema({
         toDOM: (node) => ["span", { class: "gp-raw-html-inline" }, node.attrs.html as string],
       },
     }),
-  marks: base.spec.marks,
+  marks: base.spec.marks.append({
+    /**
+     * `~~struck~~`. markdown-it emits `s_open`/`s_close` out of the box, and
+     * without a mark for it the parser RAISED — so a single `~~word~~` made a
+     * whole file un-editable, and the toolbar's strikethrough button had
+     * nothing to bind to. Modelling it is the fix (CLAUDE.md §5), not
+     * declaring the action unsupported.
+     */
+    strikethrough: {
+      parseDOM: [{ tag: "s" }, { tag: "del" }, { tag: "strike" }],
+      toDOM: () => ["s", 0],
+    },
+  }),
 });
 
 export type GutterpressSchema = typeof gutterpressSchema;

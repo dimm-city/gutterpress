@@ -38,6 +38,13 @@ import { EditorState, Plugin, type Command } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import type MarkdownIt from "markdown-it";
 import { createDocParser, gutterpressSchema, serializeDoc } from "./markdown-doc";
+import {
+  insertText,
+  selectionText,
+  toolbarCommand,
+  type RichToolbarAction,
+  type ToolbarPayloadLike,
+} from "./rich-commands";
 
 const schema = gutterpressSchema;
 
@@ -62,6 +69,29 @@ export interface RichEditorHandle {
   getMarkdown(): string;
   focus(): void;
   destroy(): void;
+  /** Run a toolbar action. Returns false when it does not apply here. */
+  runToolbarAction(action: RichToolbarAction, payload?: ToolbarPayloadLike): boolean;
+  /** Selected text, for "save selection as snippet". */
+  getSelectionText(): string;
+  /** Insert literal text at the caret. */
+  insertSnippet(text: string): void;
+  /**
+   * Apply a `[from, to)` edit expressed in SOURCE character offsets.
+   *
+   * Returns false — changing nothing — when those offsets cannot be trusted;
+   * see `canApplySourceOffsets()`.
+   */
+  applyRangeEdit(expectedSource: string, from: number, to: number, insert: string): boolean;
+  /**
+   * Whether source-offset edits can be applied right now.
+   *
+   * True only when the document's canonical markdown is byte-identical to
+   * what is on disk, because that is the text the caller's offsets index into.
+   * On a project that has not been normalized the two differ, and applying the
+   * offsets would corrupt the file at a position the author never chose —
+   * "never guess an edit" (ADR 0009).
+   */
+  canApplySourceOffsets(diskContent: string): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +315,13 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     },
   });
 
+  /** Replace the document while KEEPING undo history (unlike `setContent`). */
+  function replaceDoc(markdown: string): void {
+    const next = createDocParser(md).parse(markdown);
+    const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, next.content);
+    view.dispatch(tr);
+  }
+
   return {
     view,
     setContent(markdown: string) {
@@ -296,5 +333,32 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     getMarkdown: () => serializeDoc(view.state.doc),
     focus: () => view.focus(),
     destroy: () => view.destroy(),
+
+    runToolbarAction(action, payload) {
+      const command = toolbarCommand(action, payload);
+      if (!command) return false;
+      view.focus();
+      return command(view.state, view.dispatch, view);
+    },
+
+    getSelectionText: () => selectionText(view.state),
+
+    insertSnippet(text: string) {
+      view.focus();
+      view.dispatch(insertText(view.state, text));
+    },
+
+    canApplySourceOffsets: (diskContent: string) => serializeDoc(view.state.doc) === diskContent,
+
+    applyRangeEdit(expectedSource, from, to, insert) {
+      // The offsets index into `expectedSource`. If the document does not
+      // serialize to exactly that, they point somewhere else entirely — refuse
+      // rather than write at a guessed position.
+      const current = serializeDoc(view.state.doc);
+      if (current !== expectedSource) return false;
+      if (from < 0 || to < from || to > current.length) return false;
+      replaceDoc(current.slice(0, from) + insert + current.slice(to));
+      return true;
+    },
   };
 }

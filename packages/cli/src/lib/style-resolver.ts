@@ -17,6 +17,7 @@
  *   OTHER discovered `.css` files, for the editor's "switch stylesheet" picker.
  */
 import { existsSync } from "node:fs";
+import { inlineStyles } from "./asset-inline.ts";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath } from "./manifest.ts";
@@ -219,4 +220,28 @@ export async function listProjectStyles(
 
   out.push(...discovered);
   return out;
+}
+
+/**
+ * The project's stylesheet, fully inlined — the exact CSS the built book gets.
+ *
+ * The rich editor renders the author's text with the BOOK'S stylesheet so it
+ * looks the way it will print, which means it needs the same bytes
+ * `assembleBookHtml` receives as `projectCss`. This runs the same two steps
+ * `renderChapters` does (`resolveActiveStyles` then `inlineStyles`), so the
+ * editing surface and the PDF cannot drift onto different CSS — a third
+ * caller re-deriving this by hand is exactly the "updating the design doesn't
+ * change the preview" bug this module exists to prevent.
+ *
+ * Fonts and images referenced by the stylesheet are already `data:` URIs after
+ * inlining, so the result is self-contained and needs no asset staging.
+ */
+export async function resolveProjectCss(
+  projectDir: string,
+  manifestStyles?: string[],
+): Promise<{ css: string; styles: string[]; warnings: string[] }> {
+  const styles = await resolveActiveStyles(projectDir, manifestStyles);
+  if (styles.length === 0) return { css: "", styles: [], warnings: [] };
+  const { css, warnings } = await inlineStyles(projectDir, styles);
+  return { css, styles, warnings: warnings ?? [] };
 }

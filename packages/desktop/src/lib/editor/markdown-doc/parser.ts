@@ -98,6 +98,7 @@ export function createDocParser(md: MarkdownIt) {
     strong: { mark: "strong" },
     link: { mark: "link", getAttrs: (tok) => ({ href: tok.attrGet("href"), title: tok.attrGet("title") || null }) },
     code_inline: { mark: "code", noCloseToken: true },
+    s: { mark: "strikethrough" },
 
     // ── tables (markdown-it emits GFM tables by default) ─────────────────
     table: { block: "table" },

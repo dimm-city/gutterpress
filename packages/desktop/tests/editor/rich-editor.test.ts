@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { undo } from "prosemirror-history";
+import { TextSelection } from "prosemirror-state";
+import type {
+  RichToolbarAction,
+  ToolbarPayloadLike,
+} from "../../src/lib/editor/rich-commands";
 import { createEditorState, mountRichEditor } from "../../src/lib/editor/rich-editor";
 import { createEditorRenderer } from "../../src/lib/editor/markdown-doc";
 
@@ -174,5 +179,147 @@ describe("editor state", () => {
     // 7 plugins: keymap, baseKeymap, inputRules, history, dropCursor,
     // gapCursor, generated-content decorations.
     expect(state.plugins.length).toBe(7);
+  });
+});
+
+describe("toolbar actions", () => {
+  /** Apply an action to `src` with the caret in the first block, return markdown. */
+  function act(src: string, action: RichToolbarAction, payload?: ToolbarPayloadLike) {
+    const e = editor(src);
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+    const applied = e.handle.runToolbarAction(action, payload);
+    const out = e.handle.getMarkdown();
+    e.restore();
+    return { applied, out };
+  }
+
+  test("block actions produce the expected markdown", () => {
+    expect(act("plain\n", "heading", { level: 2 }).out).toBe("## plain\n");
+    expect(act("plain\n", "blockquote").out).toBe("> plain\n");
+    expect(act("plain\n", "ul").out).toBe("* plain\n");
+    expect(act("plain\n", "ol").out).toBe("1. plain\n");
+  });
+
+  test("heading toggles back to a paragraph at the same level", () => {
+    // Matches the CodeMirror behaviour, so the button feels the same in both.
+    expect(act("## already\n", "heading", { level: 2 }).out).toBe("already\n");
+  });
+
+  test("layout blocks emit real markers that round-trip", () => {
+    const chapter = act("x\n", "layout-block", { kind: "chapter" }).out;
+    expect(chapter).toContain('@chapter "Chapter Title"');
+    expect(chapter).toContain("@page");
+
+    const section = act("x\n", "layout-block", { kind: "section" }).out;
+    expect(section).toContain("@section");
+    expect(section).toContain("@end-section");
+
+    const twoCol = act("x\n", "layout-block", { kind: "two-column" }).out;
+    expect(twoCol).toContain("@section .gp-columns-2");
+    expect(twoCol).toContain("@column-break");
+
+    expect(act("x\n", "page-break").out).toContain("@page-break");
+  });
+
+  test("an inserted table keeps its structure", () => {
+    const out = act("x\n", "table", { cols: 3 }).out;
+    expect(out).toContain("| Header 1 | Header 2 | Header 3 |");
+    expect(out).toContain("| Cell | Cell | Cell |");
+  });
+
+  test("image classes are built by the SAME code as source mode", () => {
+    // buildImageAttrsString() is shared with toolbar-actions.ts, so the two
+    // modes cannot drift on what `.gp-right .gp-small` means.
+    const out = act("x\n", "image", {
+      src: "a.png", alt: "Art", position: "right", size: "small",
+    }).out;
+    expect(out).toContain("![Art](a.png)");
+    expect(out).toContain(".gp-right");
+    expect(out).toContain(".gp-small");
+  });
+
+  test("strikethrough works, and the file stays rich-editable", () => {
+    const e = editor("plain\n");
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6)));
+    expect(e.handle.runToolbarAction("strikethrough")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("~~plain~~\n");
+    e.restore();
+  });
+
+  test("an action whose payload is missing reports false rather than guessing", () => {
+    const e = editor("x\n");
+    expect(e.handle.runToolbarAction("image")).toBe(false);
+    expect(e.handle.runToolbarAction("layout-block")).toBe(false);
+    expect(e.handle.getMarkdown()).toBe("x\n");
+    e.restore();
+  });
+});
+
+describe("source-offset edits (CommitEngine)", () => {
+  test("applies when the document matches the file on disk", () => {
+    const src = "Hello world\n";
+    const e = editor(src);
+    expect(e.handle.canApplySourceOffsets(src)).toBe(true);
+    expect(e.handle.applyRangeEdit(src, 6, 11, "there")).toBe(true);
+    expect(e.handle.getMarkdown()).toBe("Hello there\n");
+    e.restore();
+  });
+
+  test("REFUSES when the document does not match the offsets' basis", () => {
+    // The canonical form of `+ one` is `* one`, so a project that has not been
+    // normalized has offsets that point somewhere else. Writing anyway would
+    // corrupt the file at a position the author never chose.
+    const onDisk = "+ one\n";
+    const e = editor(onDisk);
+    expect(e.handle.canApplySourceOffsets(onDisk)).toBe(false);
+    expect(e.handle.applyRangeEdit(onDisk, 2, 5, "two")).toBe(false);
+    expect(e.handle.getMarkdown()).toBe("* one\n");
+    e.restore();
+  });
+
+  test("REFUSES out-of-bounds offsets", () => {
+    const src = "Hello\n";
+    const e = editor(src);
+    expect(e.handle.applyRangeEdit(src, 0, 999, "x")).toBe(false);
+    expect(e.handle.applyRangeEdit(src, -1, 2, "x")).toBe(false);
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+
+  test("an applied edit is undoable — it is one history step", () => {
+    const src = "Hello world\n";
+    const e = editor(src);
+    e.handle.applyRangeEdit(src, 6, 11, "there");
+    const { view } = e.handle;
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(e.handle.getMarkdown()).toBe(src);
+    e.restore();
+  });
+});
+
+describe("selection and snippets", () => {
+  test("getSelectionText returns the selected text", () => {
+    const e = editor("Hello world\n");
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6)));
+    expect(e.handle.getSelectionText()).toBe("Hello");
+    e.restore();
+  });
+
+  test("getSelectionText is empty with no selection", () => {
+    const e = editor("Hello\n");
+    expect(e.handle.getSelectionText()).toBe("");
+    e.restore();
+  });
+
+  test("insertSnippet inserts at the caret", () => {
+    const e = editor("Hello\n");
+    const { view } = e.handle;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+    e.handle.insertSnippet("!!");
+    expect(e.handle.getMarkdown()).toBe("Hello!!\n");
+    e.restore();
   });
 });

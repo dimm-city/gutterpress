@@ -179,7 +179,7 @@ export { importThemeFromFile } from "../lib/theme-import.ts";
 export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
-export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";
+export { listProjectStyles, resolveActiveStyles, resolveProjectCss } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
 
 // ── Project configuration view (#PCV) — author-facing manifest field writers ──

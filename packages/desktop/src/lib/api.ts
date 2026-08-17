@@ -514,6 +514,17 @@ export const api = {
         projectDir,
         ...(repoRoot ? { repoRoot } : {}),
       }),
+
+    /**
+     * The project's stylesheet, fully inlined — the same bytes the built book
+     * gets. The rich editor renders the author's text with it so the editing
+     * surface looks the way the page will print.
+     */
+    inlineCss: (projectDir: string) =>
+      post<{ css: string; styles: string[]; warnings: string[] }>(
+        '/api/project/inline-css',
+        { projectDir },
+      ),
   },
 
   manifest: {

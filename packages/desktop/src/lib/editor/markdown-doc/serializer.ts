@@ -161,7 +161,15 @@ export const gutterpressMarkdownSerializer = new MarkdownSerializer(
       /* handled by table_head / table_body */
     },
   },
-  defaultMarkdownSerializer.marks,
+  {
+    ...defaultMarkdownSerializer.marks,
+    strikethrough: {
+      open: "~~",
+      close: "~~",
+      mixable: true,
+      expelEnclosingWhitespace: true,
+    },
+  },
 );
 
 export function serializeDoc(doc: PMNode): string {

@@ -44,6 +44,7 @@
   import { createEditorRenderer } from "$lib/editor/markdown-doc";
   import { editorStylesheet } from "$lib/editor/paginate";
   import { mountRichEditor, type RichEditorHandle } from "$lib/editor/rich-editor";
+  import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-commands";
 
   let {
     filePath = null,
@@ -149,7 +150,48 @@
   }
 
   export function hasFile(path: string): boolean {
-    return openPath === path;
+    return handle !== null && openPath === path;
+  }
+
+  /** Run a toolbar action. False when it does not apply to the selection. */
+  export function runToolbarAction(
+    action: RichToolbarAction,
+    payload?: ToolbarPayloadLike,
+  ): boolean {
+    return handle?.runToolbarAction(action, payload) ?? false;
+  }
+
+  export function getSelectionText(): string {
+    return handle?.getSelectionText() ?? "";
+  }
+
+  export function insertSnippet(text: string): void {
+    handle?.insertSnippet(text);
+  }
+
+  /**
+   * Whether a source-offset edit can be applied to `path` right now.
+   *
+   * The host asks this before routing a CommitEngine edit here; a `false`
+   * sends it down CommitEngine's own buffer path instead. See
+   * `rich-editor.ts` — offsets index into the file on disk, and on a project
+   * that has not been normalized the document's canonical text differs from
+   * it.
+   */
+  export function canApplySourceOffsets(path: string, diskContent: string): boolean {
+    return hasFile(path) && (handle?.canApplySourceOffsets(diskContent) ?? false);
+  }
+
+  /** Apply a source-offset edit. Returns false when it was refused. */
+  export function applyRangeEditIn(
+    path: string,
+    expectedSource: string,
+    from: number,
+    to: number,
+    insert: string,
+  ): boolean {
+    if (!hasFile(path)) return false;
+    return handle?.applyRangeEdit(expectedSource, from, to, insert) ?? false;
   }
 
   /** Canonical markdown for what is on screen right now. */
