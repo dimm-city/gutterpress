@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 const desktopDir = "/home/founder3/code/dimm-city/print-md/packages/desktop";
 const require_ = createRequire(join(desktopDir, "package.json"));
@@ -19,6 +20,10 @@ function log(m) { console.log(`[${engineLabel}] ${m}`); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 const userDataDir = mkdtempSync(join(tmpdir(), `gutterpress-clickexport-${engineLabel}-`));
+
+// Rich is the default mode; this suite drives the SOURCE editor.
+
+pinEditorMode(userDataDir);
 writeFileSync(join(userDataDir, "gutterpress-prefs.json"), JSON.stringify({
   lastProjectDir: fixtureArg, leftPanel: { open: true, activeTab: "toc", width: 300 }, showLandingAtStartup: false,
 }));

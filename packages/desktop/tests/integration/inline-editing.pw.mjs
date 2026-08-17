@@ -45,6 +45,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(__dirname, "..", "..");
@@ -101,6 +102,8 @@ const originalChapterContent = readFileSync(chapterPath, "utf8");
 // `<input id="set-git-author-email">` inside `<section class="landing">` as
 // the element actually intercepting the pointer.)
 const userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-inline-edit-userdata-"));
+// Rich is the default mode; this suite drives the SOURCE editor.
+pinEditorMode(userDataDir);
 writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({

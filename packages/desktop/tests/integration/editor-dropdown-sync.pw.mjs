@@ -32,6 +32,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 function log(msg) { console.log(`[etest] ${msg}`); }
 function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
@@ -73,10 +74,10 @@ writeFileSync(
     showLandingAtStartup: false,
   }),
 );
-writeFileSync(
-  join(userDataDir, "app-settings.json"),
-  JSON.stringify({ preview: { paneMode: "edit" } }),
-);
+// `source` because rich is the DEFAULT and this suite drives the SOURCE
+// editor. Everything goes through the single writer so the pin cannot be
+// overwritten by a second write to the same file.
+pinEditorMode(userDataDir, "source", { preview: { paneMode: "edit" } });
 
 log(`launching ${exePath}`);
 const electronApp = await electron.launch({

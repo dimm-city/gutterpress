@@ -1296,7 +1296,6 @@
       .then((m) => {
         RichEditor = m.default;
         void refreshBookCss();
-        void maybeOfferNormalize();
       })
       .catch((e) => {
         richModuleFailed = true;
@@ -1826,8 +1825,14 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
-      // Defer focus until the (lazy-loaded) pane + CodeMirror view mount.
+      // Defer focus until the (lazy-loaded) pane + editor view mount.
       openEditorPane();
+      // Offer the one-time tidy HERE, not when the rich chunk loads. The chunk
+      // is prepared as soon as a project opens, and prompting there greeted the
+      // author with a modal over a book they had not asked to edit yet — whose
+      // backdrop then swallowed their first click. Opening the editor is the
+      // deliberate act that makes the question relevant.
+      void maybeOfferNormalize();
     }
   }
 

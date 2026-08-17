@@ -29,6 +29,7 @@ import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(here, "..", "..");
@@ -87,10 +88,14 @@ writeFileSync(
 // This regression specifically verifies that a configured delay reaches the
 // buffer instead of falling back to 500 ms. Keep it distinct from the product
 // default so autosave cannot win before the Save-button assertion.
-writeFileSync(
-  join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, editor: { autoSaveDelay: 2500 } }),
-);
+// `source` because rich is the DEFAULT and this suite asserts the SOURCE
+// editor's chunk loads on first file click — it must be the surface that
+// mounts. The rest of the settings go through the same call: `pinEditorMode`
+// is the one writer of this file, so nothing can overwrite the pin.
+pinEditorMode(userDataDir, "source", {
+  settingsSchemaVersion: 2,
+  editor: { autoSaveDelay: 2500 },
+});
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;

@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { waitForAppWindow } from "./app-window.mjs";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(here, "..", "..");
@@ -113,6 +114,8 @@ process.once("SIGTERM", () => void handleSignal(143));
 try {
   projectDir = mkdtempSync(join(tmpdir(), "gutterpress-problems-last-hop-project-"));
   userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-problems-last-hop-home-"));
+  // Rich is the default mode; this suite drives the SOURCE editor.
+  pinEditorMode(userDataDir);
   outputPath = join(userDataDir, "problems-last-hop.pdf");
   cpSync(sourceFixture, projectDir, { recursive: true });
 

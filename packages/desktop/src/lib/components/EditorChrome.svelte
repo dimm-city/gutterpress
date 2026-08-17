@@ -148,10 +148,13 @@
     {/if}
   </div>
 {:else if anchor?.kind === "selection"}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- ARIA toolbar pattern: the container is programmatically focusable
+       (tabindex="-1", NOT a tab stop) and the roving tabindex lives on the
+       buttons, so Tab enters the toolbar once and arrows move within it. -->
   <div
     class="gp-bubble"
     role="toolbar"
+    tabindex="-1"
     aria-label="Format selection"
     style="left: {placed.x}px; top: {placed.y}px;"
     onkeydown={onToolbarKeydown}

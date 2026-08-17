@@ -28,6 +28,7 @@ import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { pinEditorMode } from "./_editor-mode.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(here, "..", "..");
@@ -80,9 +81,21 @@ const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
 const electronBin = isMainJs ? require_("electron") : target;
-const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, "--no-sandbox"];
-
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-problems-home-"));
+// Rich is the default editing mode; this suite drives the SOURCE editor
+// (`.cm-editor`), so it has to say so. `--user-data-dir` is passed explicitly
+// rather than letting Electron derive userData from XDG: the derived name
+// comes from package.json's `name`, which is scoped, so the path would be a
+// guess — and a seed written to the wrong directory fails silently, which is
+// the exact failure mode this pin exists to prevent.
+const userDataDir = join(fakeHome, "userData");
+pinEditorMode(userDataDir);
+const appArgv = [
+  ...(isMainJs ? [target] : []),
+  `--remote-debugging-port=${PORT}`,
+  `--user-data-dir=${userDataDir}`,
+  "--no-sandbox",
+];
 // xvfb is a Linux-only headless fallback; Windows/macOS never have DISPLAY.
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
 const cmd = useXvfb ? "xvfb-run" : electronBin;
