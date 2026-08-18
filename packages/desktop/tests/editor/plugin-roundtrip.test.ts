@@ -22,20 +22,31 @@ import { semanticHtml } from "../support/semantic-html";
  * proves the generic adoption (`parser.ts` `adoptPluginTokens`) round-trips
  * a REAL-SHAPED plugin — the committed fixture at
  * `docs/fixtures/advanced-book/book`, whose plugin deliberately exercises
- * both source-recovery paths (map-carrying tokens AND markup-only close
- * tokens) plus a token transform that decorates standard tokens.
+ * every source-recovery path (map-carrying tokens, house-convention tokens
+ * that carry NOTHING the editor reads and round-trip only via the ranges
+ * `plugin-provenance.ts` stamps at registration) plus a token transform
+ * that decorates standard tokens.
  *
  * Every property here is one the first-party corpus could never test,
  * because no example book loads a plugin.
  */
 const BOOK = join(REPO, "docs", "fixtures", "advanced-book", "book");
 
-/** The editor pipeline WITH the fixture's own plugin — what the app must run. */
+/**
+ * The editor pipeline WITH the fixture's own plugin — what the app must run.
+ *
+ * Applied through `createEditorRenderer(plugins)` — the SAME path the app
+ * takes (project-renderer, the normalize route) — because that is where
+ * `applyPlugins` wraps the plugin's block rules with the line-provenance
+ * stamp. A bare `md.use(plugin)` would bypass the stamp and the fixture's
+ * house-convention `@callout` tokens would be unrecoverable; that this
+ * suite fails under a bypass is exactly the coverage we want.
+ */
 async function bookRenderer() {
   const mod = await import(join(BOOK, "plugins", "field-markers.js"));
-  const md = createEditorRenderer();
-  md.use(mod.default);
-  return md;
+  return createEditorRenderer([
+    { name: "field-markers", plugin: mod.default, options: {}, css: mod.css },
+  ]);
 }
 
 const chapters = mdFilesIn(BOOK).filter((p) => !p.endsWith("06-archive.md"));
@@ -150,23 +161,101 @@ describe("plugin round-trip (go/no-go)", () => {
     expect(serializeDoc(doc)).toBe('@stamp "Checked"\n');
   });
 
-  test("a plugin whose tokens carry NO recoverable source still fails closed", async () => {
-    const md = createEditorRenderer();
-    md.use((m: import("markdown-it")) => {
+  test("a block rule's bare tokens (no map, no markup) are adopted via the stamped range", async () => {
+    // This exact shape used to FAIL CLOSED — the editor demanded map or
+    // markup, which made rich editing depend on how each plugin happened to
+    // be written. The provenance stamp recovers the authored line from the
+    // range the rule itself consumed, so the bare shape now round-trips.
+    const opaque = (m: import("markdown-it")) => {
       m.block.ruler.before("paragraph", "opaque", (state, startLine, _end, silent) => {
         const pos = state.bMarks[startLine]! + state.tShift[startLine]!;
         if (!state.src.slice(pos).startsWith("%%opaque")) return false;
         if (silent) return true;
-        // Deliberately no map, no markup — the authored line is unrecoverable.
         state.push("opaque_open", "div", 1);
         state.push("opaque_close", "div", -1);
         state.line = startLine + 1;
         return true;
       });
-    });
-    const verdict = canEditRichly(md, "%%opaque\n");
+    };
+    const md = createEditorRenderer([{ name: "opaque", plugin: opaque, options: {} }]);
+    expect(canEditRichly(md, "%%opaque data=7\n")).toEqual({ ok: true });
+    expect(normalize(md, "%%opaque data=7\n")).toBe("%%opaque data=7\n");
+    // A one-line open/close pair has ONE authored line; it must adopt as an
+    // atom (written once), never as a block whose marker and closeMarker
+    // would both claim — and duplicate — the same line.
+    const doc = createDocParser(md).parse("%%opaque data=7\n");
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+  });
+
+  test("an AUTO-CLOSED container (no terminator in the source) fails closed", async () => {
+    // When a container-style rule hits EOF without its terminator, the close
+    // token's consumed range ends on the last CONTENT line. Recovering that
+    // as a close marker would write the content line twice. The adoption
+    // detects the double attribution and refuses.
+    const wrap = (m: import("markdown-it")) => {
+      m.block.ruler.before("paragraph", "wrap2", (state, startLine, endLine, silent) => {
+        const lineAt = (n: number) =>
+          state.src.slice(state.bMarks[n]! + state.tShift[n]!, state.eMarks[n]!);
+        if (lineAt(startLine).trim() !== "%%%wrap") return false;
+        if (silent) return true;
+        let next = startLine + 1;
+        while (next < endLine && lineAt(next).trim() !== "%%%") next++;
+        state.push("wrap2_open", "div", 1);
+        state.md.block.tokenize(state, startLine + 1, next);
+        state.line = Math.min(next + 1, endLine);
+        state.push("wrap2_close", "div", -1);
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "wrap2", plugin: wrap, options: {} }]);
+    const verdict = canEditRichly(md, "%%%wrap\n\nDangling content.\n");
     expect(verdict.ok).toBe(false);
-    if (!verdict.ok) expect(verdict.reason).toContain("opaque_open");
+    if (!verdict.ok) expect(verdict.reason).toContain("wrap2");
+  });
+
+  test("a container-style close (pushed AFTER the rule advanced, carrying nothing) recovers its own line", async () => {
+    // markdown-it-container's shape: ONE invocation consumes the whole
+    // construct, advances state.line past the terminator, and only then
+    // pushes the close token. A per-push line snapshot is off by one here;
+    // the per-invocation range is not — its last line IS the terminator.
+    const wrap = (m: import("markdown-it")) => {
+      m.block.ruler.before("paragraph", "wrap", (state, startLine, endLine, silent) => {
+        const lineAt = (n: number) =>
+          state.src.slice(state.bMarks[n]! + state.tShift[n]!, state.eMarks[n]!);
+        if (lineAt(startLine).trim() !== "%%%wrap") return false;
+        if (silent) return true;
+        let next = startLine + 1;
+        while (next < endLine && lineAt(next).trim() !== "%%%") next++;
+        state.push("wrap_open", "div", 1);
+        state.md.block.tokenize(state, startLine + 1, next);
+        state.line = Math.min(next + 1, endLine);
+        state.push("wrap_close", "div", -1);
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "wrap", plugin: wrap, options: {} }]);
+    const src = "%%%wrap\n\nInside.\n\n%%%\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    expect(normalize(md, src)).toBe(src);
+  });
+
+  test("a core-rule token injection (no consumed source) still fails closed", async () => {
+    // The stamp is granted only to tokens a BLOCK RULE pushed while
+    // consuming lines. A token synthesized in a core rule has no authored
+    // source; absorbing it would materialize generated content into the
+    // author's file (the chapter-opener bug, generalized). It must refuse.
+    const injector = (m: import("markdown-it")) => {
+      m.core.ruler.push("inject_opaque", (state) => {
+        const t = new state.Token("opaque_thing", "div", 0);
+        t.block = true;
+        state.tokens.push(t);
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "injector", plugin: injector, options: {} }]);
+    const verdict = canEditRichly(md, "Just a paragraph.\n");
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toContain("opaque_thing");
   });
 
   test("the archive file (footnote + reference definition) is REFUSED with its reason", async () => {

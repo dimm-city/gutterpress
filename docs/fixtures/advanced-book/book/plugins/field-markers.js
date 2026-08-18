@@ -14,12 +14,16 @@
  *   - shipped component CSS via `export const css`
  *
  * The token shapes are deliberately varied so the editor's generic plugin
- * handling is proven against both recovery paths:
+ * handling is proven against every recovery path:
  *
- *   - `@sidebar` open/close tokens carry `map` (line numbers)
- *   - `@callout` close tokens carry `markup` ONLY (no map) — some real
- *     plugins never set map on close tokens
- *   - `@stamp` is a self-closing atom with both
+ *   - `@sidebar` open/close tokens carry `map` (line numbers) — the
+ *     standard-carrier style
+ *   - `@callout` tokens carry NEITHER map nor markup — only the plugin's
+ *     own `meta.line`, the HOUSE convention (markers.js leaves `map` null
+ *     on purpose, ADR 0009). The editor never reads `meta.line`; these
+ *     tokens round-trip via the line ranges the core pipeline stamps at
+ *     rule registration (`plugin-provenance.ts`).
+ *   - `@stamp` is a self-closing atom with map and markup
  */
 
 /** Inlined marker-line parser (subset): `@name .class key=value "Label"`. */
@@ -64,9 +68,13 @@ export default function fieldMarkers(md) {
       if (silent) return true;
       const kind = closing[1];
       const t = state.push(`${kind}_close`, WRAPPERS.get(kind).tag, -1);
-      t.markup = line.trim();
-      // @callout closes carry markup only — deliberately no map (see header).
-      if (kind === "sidebar") t.map = [startLine, startLine + 1];
+      if (kind === "sidebar") {
+        t.markup = line.trim();
+        t.map = [startLine, startLine + 1];
+      } else {
+        // @callout: house convention — meta.line only (see header).
+        t.meta = { line: startLine + 1 };
+      }
       state.line = startLine + 1;
       return true;
     }
@@ -78,8 +86,13 @@ export default function fieldMarkers(md) {
       const t = state.push(`${name}_open`, tag, 1);
       t.attrs = [["class", [base, ...classes].join(" ")]];
       if (label) t.attrs.push(["data-label", label]);
-      t.markup = line.trim();
-      t.map = [startLine, startLine + 1];
+      if (name === "sidebar") {
+        t.markup = line.trim();
+        t.map = [startLine, startLine + 1];
+      } else {
+        // @callout: house convention — meta.line only (see header).
+        t.meta = { line: startLine + 1 };
+      }
       state.line = startLine + 1;
       return true;
     }

@@ -55,42 +55,136 @@ function viewAttrsOf(tok: Token): Record<string, string> | null {
  * Plugins are plain markdown-it plugins whose token types this product
  * cannot enumerate (CLAUDE.md §5) — but their branded markers follow the
  * marker-family shape: a block-level `X_open`/`X_close` pair, or a
- * self-closing block atom, whose authored lines are recoverable from
- * `token.map` (against the file's own lines) or `token.markup`. This pass
- * rewrites exactly those tokens onto `plugin_block` / `plugin_atom`, storing
- * the authored open and close lines verbatim — which is ALL the serializer
- * ever writes back.
+ * self-closing block atom, whose authored lines this pass recovers and
+ * stores verbatim on `plugin_block` / `plugin_atom` — which is ALL the
+ * serializer ever writes back. Recovery sources, in order:
+ *
+ *   1. `token.map` — the standard carrier, when the plugin set it.
+ *   2. `token.meta.gpEditorLines` — the range the plugin's own block rule
+ *      actually consumed, stamped at registration by the core pipeline
+ *      (`plugin-provenance.ts`). This is what frees adoption from caring
+ *      how each plugin was written: house-style tokens (`meta.line`, `map`
+ *      deliberately null per ADR 0009) and container-style closes (no map,
+ *      pushed after the rule advanced) both recover exactly. Open markers
+ *      read the range's first line; close markers read its last.
+ *   3. `token.markup` — last resort; only right when the authored line IS
+ *      the markup (e.g. a bare `:::`).
  *
  * Everything it cannot recover it leaves untouched, and the parser then
  * raises on the unknown type — the fail-closed guard is unchanged, it just
- * no longer fires for well-formed plugin markers. Inline unknowns are never
- * adopted: they have no authored line of their own to recover.
+ * no longer fires for well-formed plugin markers. A token synthesized by a
+ * core rule (`new state.Token`) passed through no block rule, carries no
+ * stamp, and still fails closed. Inline unknowns are never adopted: they
+ * have no authored line of their own to recover.
  */
 function adoptPluginTokens(tokens: Token[], lines: string[], handled: Set<string>): Token[] {
-  const authoredLine = (tok: Token): string | undefined => {
-    const fromMap = tok.map ? lines[tok.map[0]] : undefined;
-    const text = (fromMap ?? tok.markup ?? "").trim();
-    return text || undefined;
+  const stampOf = (tok: Token): [number, number] | undefined => {
+    const range = (tok.meta as { gpEditorLines?: unknown } | null)?.gpEditorLines;
+    return Array.isArray(range) && range.length === 2 ? (range as [number, number]) : undefined;
+  };
+  /**
+   * One authored marker line, plus WHICH line it is when that is knowable
+   * (`map`/stamp yes, bare `markup` no). `edge` picks the end of a stamped
+   * range: an open marker is the first line its rule consumed, a close
+   * marker the last. The index is what lets the pair handling below reason
+   * about attribution instead of trusting text blindly.
+   */
+  const authoredRef = (
+    tok: Token,
+    edge: "first" | "last",
+  ): { text: string; idx: number | undefined } | undefined => {
+    let text: string | undefined;
+    let idx: number | undefined;
+    if (tok.map) {
+      idx = tok.map[0];
+    } else {
+      const stamp = stampOf(tok);
+      if (stamp) idx = edge === "first" ? stamp[0] : stamp[1] - 1;
+      else text = tok.markup;
+    }
+    if (idx !== undefined) text = lines[idx];
+    const trimmed = (text ?? "").trim();
+    return trimmed ? { text: trimmed, idx } : undefined;
+  };
+  /** An atom's FULL authored source — its construct may span several lines. */
+  const authoredBlock = (tok: Token): string | undefined => {
+    const range = tok.map ?? stampOf(tok);
+    const text = range ? lines.slice(range[0], range[1]).join("\n") : tok.markup;
+    const trimmed = (text ?? "").trim();
+    return trimmed || undefined;
   };
 
-  const stack: Token[] = [];
-  for (const tok of tokens) {
+  const stack: Array<{ tok: Token; at: number }> = [];
+  const dropped = new Set<Token>();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
     if (handled.has(tok.type)) continue;
 
     if (tok.type.endsWith("_open")) {
-      stack.push(tok);
+      stack.push({ tok, at: i });
       continue;
     }
 
     if (tok.type.endsWith("_close")) {
-      const open = stack.pop();
-      if (!open || open.type.slice(0, -5) !== tok.type.slice(0, -6)) continue;
-      const marker = authoredLine(open);
-      const closeMarker = authoredLine(tok);
-      if (!marker || !closeMarker) continue;
+      const top = stack.pop();
+      if (!top || top.tok.type.slice(0, -5) !== tok.type.slice(0, -6)) continue;
+      const open = top.tok;
+      const openRef = authoredRef(open, "first");
+      const closeRef = authoredRef(tok, "last");
+      if (!openRef || !closeRef) continue;
+
+      if (openRef.idx !== undefined && openRef.idx === closeRef.idx) {
+        // Both markers resolve to the SAME authored line: the construct is a
+        // one-line pair (an empty wrapper from a single marker). Its source
+        // form is that line, once — adopt it as an atom, or writing marker
+        // AND closeMarker would duplicate the line on save. A one-line pair
+        // that somehow holds children has no coherent source form; leave it
+        // for the parser to refuse.
+        if (i !== top.at + 1) continue;
+        open.meta = {
+          ...(open.meta as Record<string, unknown> | null),
+          gpPlugin: { marker: openRef.text, tag: open.tag || "div", viewAttrs: viewAttrsOf(open), text: "" },
+        };
+        open.type = "plugin_atom";
+        open.nesting = 0;
+        dropped.add(tok);
+        continue;
+      }
+
+      if (closeRef.idx !== undefined) {
+        // The recovered close line must not already be owned by a child —
+        // the shape an auto-closed container produces at EOF (its close
+        // token's consumed range ends on the last CONTENT line, because
+        // there is no terminator in the source). Writing that line as a
+        // terminator would duplicate it. Ownership evidence is a child's
+        // `map`, or a stamp TIGHTER than the close's own: a stamp identical
+        // to the close's came from the same rule invocation (inner base
+        // `_close` tokens are map-less, so the wrapper stamps them with its
+        // whole range) and says nothing about the child itself.
+        const ownStamp = tok.map ? undefined : stampOf(tok);
+        const childRange = (child: Token): [number, number] | undefined => {
+          if (child.map) return child.map;
+          const stamp = stampOf(child);
+          if (stamp && ownStamp && stamp[0] === ownStamp[0] && stamp[1] === ownStamp[1]) {
+            return undefined;
+          }
+          return stamp;
+        };
+        const claimed = tokens.slice(top.at + 1, i).some((child) => {
+          const range = childRange(child);
+          return !!range && range[0] <= closeRef.idx! && closeRef.idx! < range[1];
+        });
+        if (claimed) continue;
+      }
+
       open.meta = {
         ...(open.meta as Record<string, unknown> | null),
-        gpPlugin: { marker, closeMarker, tag: open.tag || "div", viewAttrs: viewAttrsOf(open) },
+        gpPlugin: {
+          marker: openRef.text,
+          closeMarker: closeRef.text,
+          tag: open.tag || "div",
+          viewAttrs: viewAttrsOf(open),
+        },
       };
       open.type = "plugin_block_open";
       tok.type = "plugin_block_close";
@@ -98,7 +192,7 @@ function adoptPluginTokens(tokens: Token[], lines: string[], handled: Set<string
     }
 
     if (tok.nesting === 0 && tok.block) {
-      const marker = authoredLine(tok);
+      const marker = authoredBlock(tok);
       if (!marker) continue;
       tok.meta = {
         ...(tok.meta as Record<string, unknown> | null),
@@ -112,7 +206,7 @@ function adoptPluginTokens(tokens: Token[], lines: string[], handled: Set<string
       tok.type = "plugin_atom";
     }
   }
-  return tokens;
+  return dropped.size ? tokens.filter((t) => !dropped.has(t)) : tokens;
 }
 
 /** `listIsTight`, which prosemirror-markdown keeps private. */

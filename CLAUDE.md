@@ -299,29 +299,48 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
     blank a non-technical author's entire preview.
 
-**A plugin's token types decide whether a file can be edited richly.** The
-rich editor (`packages/desktop/src/lib/editor/`) parses with THIS pipeline —
-`prosemirror-markdown` fed our own markdown-it instance — so there is exactly
-one markdown dialect in the product. Its schema models standard markdown,
-tables, the `@marker` family and raw HTML. Anything else (footnotes, deflists,
-the sub/sup/mark/abbr set, a plugin's own token types) has no node to map onto,
-and `MarkdownParser` RAISES on it.
+**Whether a file can be edited richly is decided by provenance, not by a
+plugin allowlist.** The rich editor (`packages/desktop/src/lib/editor/`)
+parses with THIS pipeline — `prosemirror-markdown` fed our own markdown-it
+instance — so there is exactly one markdown dialect in the product. Its
+schema models standard markdown, tables, the `@marker` family, raw HTML, and
+two GENERIC nodes for project-plugin block markers (`gp_plugin_block` /
+`gp_plugin_atom`): a plugin's block open/close pairs and atoms are adopted
+onto those nodes whenever their AUTHORED LINES are recoverable, and the
+serializer writes those lines back verbatim. Recovery does not depend on how
+the plugin was written: `applyPlugins` wraps every block rule a plugin
+registers so its tokens carry the exact line range the rule consumed
+(`packages/cli/src/lib/markdown/plugin-provenance.ts`) — house-style tokens
+(`meta.line`, `map` deliberately null per ADR 0009), container-style closes,
+and bare tokens all round-trip. Anything WITHOUT recoverable authored source
+still has no node to map onto, and `MarkdownParser` RAISES on it: base
+pipeline constructs the schema refuses (footnotes, deflists, the
+sub/sup/mark/abbr set), inline plugin tokens, core-rule token injections
+(`new state.Token` consumed no source), and auto-closed containers whose
+terminator line does not exist.
 
 That is the intended behaviour, not a gap to paper over: the file opens in
 SOURCE mode with the reason shown, rather than opening richly and
 mis-serializing an author's book. Measured on the corpus, 31 of 32 first-party
-markdown files are rich-editable; the one refusal is a `footnote_ref`.
+markdown files are rich-editable; the one refusal is a `footnote_ref`. The
+go/no-go proof for plugin books is `tests/editor/plugin-roundtrip.test.ts`
+against `docs/fixtures/advanced-book`.
 
 Two consequences worth stating plainly:
 
 - **Do not add a fallback that guesses.** An unmodelled construct must fail
   closed. The guard is the library raising on an unknown token, not a list
-  anybody maintains — keep it that way.
-- **Modelling a construct is a schema change, not a plugin change.** If a
-  plugin's syntax deserves rich editing, add the node to
+  anybody maintains — keep it that way. Adoption obeys the same rule: it
+  recovers authored lines from tokenizer ground truth (map, or the stamped
+  rule range) and refuses when attribution is ambiguous; it never infers
+  source from gaps between neighbours.
+- **Modelling a BASE construct is a schema change, not a plugin change.** If
+  footnotes or another base construct deserve rich editing, add the node to
   `editor/markdown-doc/schema.ts` plus its parse and serialize rules, and let
-  the corpus fixpoint gate prove the round trip. Never reach for a
-  Gutterpress-specific plugin API to do it — §5's rule stands.
+  the corpus fixpoint gate prove the round trip. Project-plugin block markers
+  need none of that — the generic adoption covers them. Never reach for a
+  Gutterpress-specific plugin API — §5's rule stands; the host observes rule
+  registration, plugins stay plain markdown-it.
 
 Authoring guide lives in [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
