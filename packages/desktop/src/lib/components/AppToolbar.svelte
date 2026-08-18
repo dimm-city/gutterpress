@@ -71,6 +71,10 @@
     editorOpen,
     editorToggleDisabled,
     onToggleEditor,
+    showEditorModeSwitch,
+    editorMode,
+    richDisabledReason,
+    onSetEditorMode,
     publishVisible,
     publishDisabled,
     onPublish,
@@ -128,6 +132,12 @@
     editorOpen: boolean;
     editorToggleDisabled: boolean;
     onToggleEditor: () => void;
+    /** Rich/Markdown switch — shown only while an .md file is open in the editor. */
+    showEditorModeSwitch: boolean;
+    editorMode: "rich" | "source";
+    /** Non-null disables Rich and explains why (fail-closed file). */
+    richDisabledReason: string | null;
+    onSetEditorMode: (mode: "rich" | "source") => void;
     publishVisible: boolean;
     publishDisabled: boolean;
     onPublish: () => void;
@@ -418,6 +428,31 @@
       >
         <Icon name="pen-line" />
       </button>
+      {#if showEditorModeSwitch}
+        <!-- Editing mode (Rich/Markdown) lives HERE, with the other mode
+             controls — not floating inside the content area over the page. -->
+        <div class="view-mode-group" role="group" aria-label="Editing mode">
+          <button
+            class="icon-text"
+            class:active={editorMode === "rich"}
+            aria-pressed={editorMode === "rich"}
+            disabled={!!richDisabledReason}
+            title={richDisabledReason ?? "Edit with the book's own layout and type"}
+            onclick={() => onSetEditorMode("rich")}
+          >
+            <span class="view-label">Rich</span>
+          </button>
+          <button
+            class="icon-text"
+            class:active={editorMode === "source"}
+            aria-pressed={editorMode === "source"}
+            title="Edit the markdown source"
+            onclick={() => onSetEditorMode("source")}
+          >
+            <span class="view-label">Markdown</span>
+          </button>
+        </div>
+      {/if}
     {/if}
     {#if showProjectSettings}
       <!-- Project settings (manifest) — beside the editor toggle. Rendered on

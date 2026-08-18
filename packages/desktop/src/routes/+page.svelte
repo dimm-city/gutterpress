@@ -1522,13 +1522,13 @@
 
   let editorFilePath = $derived(buffer?.filePath ?? null);
   let editorContent = $derived(buffer?.content ?? "");
-  let editorChapter = $derived.by(() => {
-    if (!editorFilePath) return null;
-    const file = editorFilePath.replace(/\\/g, "/");
+  function chapterOf(path: string): string {
+    const file = path.replace(/\\/g, "/");
     const dir = lifecycle.currentDir?.replace(/\\/g, "/").replace(/\/+$/, "");
     if (dir && file.startsWith(dir + "/")) return file.slice(dir.length + 1);
     return basenameOf(file);
-  });
+  }
+  let editorChapter = $derived(editorFilePath ? chapterOf(editorFilePath) : null);
   /** The author's preference; the effective mode also depends on the file. */
   let editorModePref = $derived(settings.current.editor.mode);
 
@@ -1579,8 +1579,18 @@
     // content the schema cannot model is refused by the surface itself, never
     // absorbed.
     void evaluateRichSupport(path, content);
-    if (editorRef?.hasFile(path)) editorRef.updateContent(content);
-    else editorRef?.switchFile(path, content);
+    const isSwitch = !editorRef?.hasFile(path);
+    if (isSwitch) editorRef?.switchFile(path, content);
+    else editorRef?.updateContent(content);
+    // The preview follows the file the author opens. Anchor-line sync only
+    // fires on caret moves and scrolls, so before this the preview sat on
+    // whatever page it was on — page 1, typically — through every chapter
+    // switch. Derived from `path` (not `editorChapter`) because this runs
+    // mid-handoff, before the reactive graph settles. Same-file content
+    // updates deliberately do NOT re-anchor.
+    if (isSwitch && isMd(path)) {
+      editorSync.onEditorAnchorLine(1, "scroll", chapterOf(path));
+    }
   }
 
   /**
@@ -3196,6 +3206,10 @@
     {editorOpen}
     editorToggleDisabled={!toolbarProjectOpen}
     onToggleEditor={toggleEditor}
+    showEditorModeSwitch={editorOpen && isMd(editorFilePath)}
+    editorMode={effectiveEditorMode}
+    richDisabledReason={richBlockedReason}
+    onSetEditorMode={(mode) => void setEditorMode(mode)}
     publishVisible={isDesktop()}
     publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
     onPublish={() => (publishOpen = true)}
@@ -3334,29 +3348,9 @@
               }}
               onSave={handleForceSave}
             />
-            {#if isMd(editorFilePath)}
-              <div class="editor-mode-switch" role="group" aria-label="Editing mode">
-                <button
-                  type="button"
-                  class:active={effectiveEditorMode === "rich"}
-                  aria-pressed={effectiveEditorMode === "rich"}
-                  disabled={!!richBlockedReason}
-                  title={richBlockedReason ?? "Edit with the book's own layout and type"}
-                  onclick={() => void setEditorMode("rich")}
-                >
-                  Rich
-                </button>
-                <button
-                  type="button"
-                  class:active={effectiveEditorMode === "source"}
-                  aria-pressed={effectiveEditorMode === "source"}
-                  title="Edit the markdown source"
-                  onclick={() => void setEditorMode("source")}
-                >
-                  Markdown
-                </button>
-              </div>
-            {/if}
+            <!-- The Rich/Markdown switch lives in the APP TOOLBAR with the
+                 other mode controls (it used to float here, inside the
+                 content area, over the author's page). -->
             {#if richBlockedReason && editorModePref === "rich" && isMd(editorFilePath)}
               <!-- Fail-closed, and SAID so. The document model cannot
                    represent this file, so it opens in source mode rather than
@@ -3887,35 +3881,6 @@
     }
   }
   /* Rich / Markdown switch, sitting under the formatting toolbar. */
-  .editor-mode-switch {
-    display: flex;
-    gap: 2px;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface-raised);
-  }
-  .editor-mode-switch button {
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--app-text-muted);
-    font-size: 12px;
-    padding: 3px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .editor-mode-switch button:hover:not(:disabled) {
-    color: var(--app-text);
-  }
-  .editor-mode-switch button.active {
-    background: var(--app-surface-hover);
-    border-color: var(--app-border);
-    color: var(--app-text);
-  }
-  .editor-mode-switch button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-
   /* Why a file opened as markdown when rich was asked for. Never silent. */
   .editor-mode-note {
     margin: 0;

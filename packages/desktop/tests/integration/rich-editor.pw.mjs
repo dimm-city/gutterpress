@@ -231,7 +231,7 @@ const mounted = await waitFor(
 );
 const diag = await evalJs(`JSON.stringify({
   editorPane: !!document.querySelector('.editor-pane'),
-  modeSwitch: !!document.querySelector('.editor-mode-switch'),
+  modeSwitch: !!document.querySelector('[aria-label="Editing mode"]'),
   richFrame: !!document.querySelector('iframe.rich-editor'),
   cm: !!document.querySelector('.cm-editor'),
   activeFile: document.querySelector('.file-item.active .file-name')?.textContent?.trim() ?? null,
@@ -315,9 +315,9 @@ if (saved === before) fail("file unchanged");
 log("typed text saved to disk as markdown");
 
 // ── 7. the mode switch really swaps the surface, both ways ───────────────────
-await waitFor(`!!document.querySelector('.editor-mode-switch')`, "no mode switch rendered");
+await waitFor(`!!document.querySelector('[aria-label="Editing mode"]')`, "no mode switch rendered");
 await evalJs(`(() => {
-  const b = [...document.querySelectorAll('.editor-mode-switch button')]
+  const b = [...document.querySelectorAll('[aria-label="Editing mode"] button')]
     .find(x => /markdown/i.test(x.textContent || ''));
   b.click(); return true;
 })()`);
@@ -335,7 +335,7 @@ const stillOpen = await evalJs(
 if (!stillOpen) fail("the open file's content did not survive the switch to Markdown");
 
 await evalJs(`(() => {
-  const b = [...document.querySelectorAll('.editor-mode-switch button')]
+  const b = [...document.querySelectorAll('[aria-label="Editing mode"] button')]
     .find(x => /rich/i.test(x.textContent || ''));
   b.click(); return true;
 })()`);

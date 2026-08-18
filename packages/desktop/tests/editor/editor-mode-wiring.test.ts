@@ -202,21 +202,24 @@ describe("spread view wiring", () => {
     const body = applyCss.slice(0, applyCss.indexOf("\n  }"));
     expect(body).toContain("body?.clientWidth");
     expect(body).toContain("nextEditorSheet(applied, css, requestedColumns, width)");
-    // The emit is gated on that answer, not on the CSS text alone.
-    expect(body).toContain("if (!next) return;");
+    // The emit is gated on that answer, not on the CSS text alone — and the
+    // VISUAL fit (applyScale) runs even when the sheet is unchanged, because
+    // the pane width is what changed.
+    expect(body).toContain("if (next) {");
     expect(body).toContain("styleEl.textContent = next.text;");
+    expect(body).toContain("applyScale();");
   });
 
-  test("a refused spread is reconsidered when the pane changes size", () => {
-    // The refusal is measured against the pane, so it has to be re-measured:
-    // dragging the splitter wider or hiding the preview is how an author gets
-    // the spread they asked for, and without this they would have to toggle
-    // the setting off and on to be asked again.
+  test("a pane resize re-fits the surface (visual scale, both counts)", () => {
+    // The fit is VISUAL now (applyScale), so a resize must recompute it for
+    // any column count — dragging the splitter or hiding the preview changes
+    // only how large the same pagination is drawn.
     const fn = RICH.slice(
       RICH.indexOf("function onFrameGeometryChanged"),
       RICH.indexOf("function runSlash"),
     );
     expect(fn).toContain('if (requestedColumns === 2) applyCss(applied?.css ?? "");');
+    expect(fn).toContain("else applyScale();");
   });
 
   test("the view-mode buttons stay usable when there is no preview", () => {

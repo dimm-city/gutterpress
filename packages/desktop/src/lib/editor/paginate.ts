@@ -136,34 +136,27 @@ export interface EditorSheet {
 /**
  * The stylesheet the frame should carry now, or `null` when it already has it.
  *
- * Three inputs decide it: the book's CSS, how many pages the app asked for, and
- * how much room the frame has. A request for 2 is honoured only when 2
- * genuinely fits — the editor renders at 1 CSS px per print px with no zoom of
- * its own, so a US-Letter spread is a fixed 1656px while the default 0.42 split
- * gives the editor ~806px on a 1920px window. Following the setting
- * unconditionally would open a brand-new project showing half a spread behind a
- * horizontal scrollbar; refusing outright would mean an author who widens the
- * pane never gets the spread they asked for. So the request is remembered and
- * the fit is re-decided on every resize.
+ * Two inputs decide it: the book's CSS and how many pages the app asked for.
+ * A request for 2 is now honoured whenever there is page geometry at all —
+ * the surface fits itself to the pane with a VISUAL transform (see
+ * `RichEditor.applyScale`), exactly like the preview's fit-width, so "does a
+ * spread fit at print size" stopped being a real question. (`availablePx`
+ * used to gate it when the editor rendered with no zoom of its own; the
+ * parameter remains so the caller keeps supplying the one measurement only a
+ * mounted frame can make, which the scale needs anyway.)
  *
- * A `null` return is the whole re-emit decision, and it is here rather than in
- * the component for a measured reason: `spreadFits()` used to read
- * `body.clientWidth`, which happy-dom never fills in, so nothing could test the
- * decision at all — two mutations that made the Two-page button silently dead
- * for a mounted editor both left the suite green.
- *
- * With no book CSS there is no page geometry to fit against, so the honest
- * answer is one column.
+ * With no book CSS there is no page geometry, so the honest answer is one
+ * column.
  */
 export function nextEditorSheet(
   applied: EditorSheet | null,
   css: string,
   requested: 1 | 2,
-  availablePx: number,
+  _availablePx: number,
 ): EditorSheet | null {
   const sameCss = applied?.css === css;
   const spreadPx = sameCss ? applied!.spreadPx : css ? paginatedWidth(css, { columns: 2 }) : 0;
-  const columns: 1 | 2 = requested === 2 && spreadPx > 0 && availablePx >= spreadPx ? 2 : 1;
+  const columns: 1 | 2 = requested === 2 && spreadPx > 0 ? 2 : 1;
   if (sameCss && applied!.columns === columns) return null;
   return { css, columns, spreadPx, text: `${css}\n\n${editorStylesheet(css, { columns })}` };
 }
@@ -225,6 +218,24 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   // path is unchanged.
   const flowW = contentW * columns + colGap * (columns - 1);
 
+  // The SHEETS behind the flow. Each page's paper is painted by the scale
+  // wrapper's ::before — repeating vertical white bands one page-pitch apart,
+  // one band-column per page abreast — so the author sees page edges without
+  // a single wrapper element entering the content flow (fragmentation stays
+  // exactly the multicol layout above). Geometry is shared with the flow by
+  // construction: band height = page height, band pitch = page height + the
+  // visual gutter, band x-offsets = page width + gutter.
+  const pageW = geometry.width;
+  const pageH = geometry.height;
+  const band =
+    `repeating-linear-gradient(to bottom, var(--gp-editor-sheet, #ffffff) 0 ${px(pageH)}, ` +
+    `transparent ${px(pageH)} ${px(pageH + gap / PX_PER_PT)})`;
+  const bands = Array.from({ length: columns }, () => band).join(", ");
+  const positions = Array.from({ length: columns }, (_, i) =>
+    `${px(i * (pageW + gap / PX_PER_PT))} 0`,
+  ).join(", ");
+  const sizes = Array.from({ length: columns }, () => `${px(pageW)} 100%`).join(", ");
+
   return `${root} {
   box-sizing: content-box;
   width: ${px(flowW)};
@@ -241,6 +252,29 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
      Chromium creates as many columns as the content needs and they extend
      past this box. Clipping here would hide every page after the first. */
   overflow: visible;
+}
+
+/* The scale wrapper (see RichEditor.svelte): hosts the sheet backdrop and the
+   fit-width transform. flow-root so the flow's own margins stay INSIDE it —
+   collapsed-out margins would slide the sheets off the pages. The transform
+   is applied inline by the host and is VISUAL ONLY: layout inside is at print
+   size, so pagination cannot move. */
+.gp-editor-scale {
+  position: relative;
+  display: flow-root;
+  width: max-content;
+  transform-origin: 0 0;
+}
+.gp-editor-scale::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: ${bands};
+  background-position: ${positions};
+  background-size: ${sizes};
+  background-repeat: no-repeat;
+  box-shadow: none;
 }`;
 }
 

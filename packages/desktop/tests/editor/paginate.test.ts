@@ -154,8 +154,15 @@ test("the two-page view claims no gutter side, at either column count", () => {
   // wrong in the most misleading way, since the pairs then LOOK authoritative.
   // Facing-page fidelity is the preview's job (`applySpreadMode` shifts a run
   // only when `strip.offset % 2 === 0` — the input the editor does not have).
-  expect(editorStylesheet(BOOK_CSS, { columns: 2 })).not.toContain("::before");
-  expect(editorStylesheet(BOOK_CSS, { columns: 1 })).not.toContain("::before");
+  // The FLOW must carry no pseudo-content: a `::before` on it is exactly the
+  // empty-column-slot trick. (The scale wrapper's `::before` paints the sheet
+  // backdrop and never enters the flow, so it is asserted on separately.)
+  const flowRules = (css: string) =>
+    editorStylesheet(css, { columns: 2 })
+      .split("\n\n")
+      .filter((block) => block.includes(".gp-editor-page-flow"))
+      .join("\n\n");
+  expect(flowRules(BOOK_CSS)).not.toContain("::before");
   expect(paginationCss(resolvePage(extract(BOOK_CSS)).geometry, { columns: 2 })).not.toContain(
     "break-after",
   );
@@ -169,13 +176,14 @@ test("the two-page view claims no gutter side, at either column count", () => {
  * so NOTHING could test it, and two mutations that made the toolbar's Two-page
  * button silently dead for a mounted editor both left the suite green.
  */
-const SHEET_NEED = 816 * 2 + 24; // a US-Letter spread of BOOK_CSS
-
-test("a spread is refused unless it genuinely fits the pane", () => {
+test("a requested spread is honoured regardless of pane width (fit is VISUAL)", () => {
+  // The surface scales itself to the pane (`RichEditor.applyScale`), exactly
+  // like the preview's fit-width — so "does a spread fit at print size" is no
+  // longer a layout question, and narrow panes get a smaller spread, not a
+  // refused one.
   const at = (px: number) => nextEditorSheet(null, BOOK_CSS, 2, px)!.columns;
-  expect(at(0)).toBe(1); // an unmeasured pane is not a wide one
-  expect(at(SHEET_NEED - 1)).toBe(1); // one px short
-  expect(at(SHEET_NEED)).toBe(2); // exactly fits
+  expect(at(0)).toBe(2);
+  expect(at(400)).toBe(2);
   expect(at(9999)).toBe(2);
   // ...and one page never becomes two on width alone.
   expect(nextEditorSheet(null, BOOK_CSS, 1, 9999)!.columns).toBe(1);
@@ -189,25 +197,24 @@ test("no book CSS means no geometry to fit against, so one page", () => {
   expect(sheet.spreadPx).toBe(0);
 });
 
-test("the same CSS at the same fitted count re-emits nothing", () => {
+test("the same CSS at the same count re-emits nothing", () => {
   // `editorStylesheet()` parses the whole stylesheet, and a splitter drag asks
   // this question on every resize frame.
   const first = nextEditorSheet(null, BOOK_CSS, 1, 400)!;
   expect(nextEditorSheet(first, BOOK_CSS, 1, 400)).toBeNull();
-  expect(nextEditorSheet(first, BOOK_CSS, 2, 400)).toBeNull(); // still does not fit
+  expect(nextEditorSheet(first, BOOK_CSS, 1, 9999)).toBeNull(); // width alone changes nothing
 });
 
-test("the same CSS at a CHANGED fitted count DOES re-emit", () => {
+test("the same CSS at a CHANGED request DOES re-emit", () => {
   // The mutation this exists to catch: guarding only on the CSS text makes the
-  // Two-page button do nothing for an already-mounted editor, and makes a
-  // splitter drag past the threshold do nothing either.
+  // Two-page button do nothing for an already-mounted editor.
   const single = nextEditorSheet(null, BOOK_CSS, 1, 9999)!;
   const spread = nextEditorSheet(single, BOOK_CSS, 2, 9999);
   expect(spread).not.toBeNull();
   expect(spread!.columns).toBe(2);
   expect(spread!.text).toContain("column-count: 2;");
-  // ...and back again when the pane narrows, with the same CSS and request.
-  const back = nextEditorSheet(spread!, BOOK_CSS, 2, 400);
+  // ...and back to one page when the author toggles Single again.
+  const back = nextEditorSheet(spread!, BOOK_CSS, 1, 9999);
   expect(back!.columns).toBe(1);
   expect(back!.text).toContain("column-count: 1;");
 });
@@ -226,6 +233,7 @@ test("changed CSS always re-emits, and re-measures the spread", () => {
 test("the spread measurement is carried, not re-derived, while the CSS holds", () => {
   // `paginatedWidth()` parses the whole stylesheet — a couple of milliseconds
   // against a 16ms resize frame, asked on every frame of a splitter drag.
+  const SHEET_NEED = 816 * 2 + 24; // a US-Letter spread of BOOK_CSS
   const first = nextEditorSheet(null, BOOK_CSS, 2, 9999)!;
   expect(first.spreadPx).toBe(SHEET_NEED);
   // A doctored measurement is believed while the CSS is unchanged: 20px of pane

@@ -147,17 +147,45 @@ export interface RichEditorHandle {
  * not in the document, so there is no path by which it can reach the
  * serializer. Authored content is document; generated content is decoration.
  */
+/**
+ * The chapter LABEL from its authored marker line — the same selection rule
+ * as `parseMarkerLine` (markers.js): the first bare token, unquoted; classes,
+ * ids and key=value arguments are not part of the label. Taking the whole
+ * tail rendered `"Field Notes" #ch-notes` — quotes, id and all — as the badge.
+ */
+function chapterLabel(marker: string): string | null {
+  const rest = /(?:^|\s)@chapter\s+(.*)$/.exec(marker || "")?.[1] ?? "";
+  for (const t of rest.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+    if (t.startsWith('"') || t.startsWith("'")) return t.slice(1, -1).trim() || null;
+    if (t.startsWith(".") || t.startsWith("#") || t.includes("=")) continue;
+    return t;
+  }
+  return null;
+}
+
 function generatedContent(doc: PMNode): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (node.type !== schema.nodes.gp_chapter) return true;
-    const label = /(?:^|\s)@chapter\s+(.*)$/.exec((node.attrs.marker as string) || "")?.[1]?.trim();
+    const label = chapterLabel((node.attrs.marker as string) || "");
     if (!label) return true;
-    // +1 puts the widget inside the chapter, before its first child, which is
-    // where the pipeline injects it.
+    // The pipeline injects the opener INSIDE the chapter's first page, not
+    // between the chapter and the page — a widget in that gap is content
+    // before the page's own forced break, which opened every labelled
+    // chapter with a page that was blank except for the badge. Descend
+    // through the leading layout wrappers to the same spot print uses.
+    let at = pos + 1;
+    let first = node.firstChild;
+    while (
+      first &&
+      (first.type === schema.nodes.gp_page || first.type === schema.nodes.gp_spread)
+    ) {
+      at += 1;
+      first = first.firstChild;
+    }
     decorations.push(
       Decoration.widget(
-        pos + 1,
+        at,
         () => {
           const el = document.createElement("div");
           el.className = "chapter-opener";

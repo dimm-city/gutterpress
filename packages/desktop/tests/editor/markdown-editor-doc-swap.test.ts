@@ -67,7 +67,7 @@ describe("+page.svelte — no {#key editorFilePath} remount around MarkdownEdito
       src.indexOf("function createEditorBuffer("),
     );
     expect(show).toContain("editorRef?.hasFile(path)");
-    expect(show).toContain("editorRef.updateContent(content)");
+    expect(show).toContain("editorRef?.updateContent(content)");
     const reset = src.slice(
       src.indexOf("function resetEditorBuffer("),
       src.indexOf("async function flushEditorBuffer("),

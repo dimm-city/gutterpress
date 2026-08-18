@@ -45,7 +45,7 @@
   import { getProjectRenderer } from "$lib/editor/project-renderer";
   import type { ProjectPluginIssue } from "$lib/editor/project-plugins";
   import type MarkdownIt from "markdown-it";
-  import { nextEditorSheet, type EditorSheet } from "$lib/editor/paginate";
+  import { nextEditorSheet, paginatedWidth, type EditorSheet } from "$lib/editor/paginate";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
     clearSlashQuery,
@@ -135,6 +135,7 @@
   let frame: HTMLIFrameElement;
   let handle: RichEditorHandle | null = null;
   let styleEl: HTMLStyleElement | null = null;
+  let scaleBox: HTMLDivElement | null = null;
   // Read inside onMount, not at init: referencing a prop here captures only
   // its first value, which Svelte warns about and which would silently go
   // stale if the host ever mounted this with a file already chosen.
@@ -221,6 +222,7 @@
   function onFrameGeometryChanged(): void {
     if (chrome) chrome = null;
     if (requestedColumns === 2) applyCss(applied?.css ?? "");
+    else applyScale();
   }
 
   function runSlash(item: SlashItem): void {
@@ -274,9 +276,18 @@
     styleEl = doc.createElement("style");
     doc.head.appendChild(styleEl);
 
+    // Scale wrapper (fit-width) around the page flow. The transform is VISUAL
+    // ONLY — layout inside stays at print size, so pagination is untouched —
+    // and it also hosts the sheet backdrop (see paginationCss). The wrapper
+    // sits between body and flow, outside the editable root, so it is neither
+    // a document node nor anything the author's CSS addresses.
+    scaleBox = doc.createElement("div");
+    scaleBox.className = "gp-editor-scale";
+    doc.body.appendChild(scaleBox);
+
     const flow = doc.createElement("div");
     flow.className = "gp-editor-page-flow";
-    doc.body.appendChild(flow);
+    scaleBox.appendChild(flow);
 
     applyCss(bookCss);
 
@@ -323,9 +334,36 @@
     if (!styleEl) return;
     const width = frame?.contentDocument?.body?.clientWidth ?? 0;
     const next = nextEditorSheet(applied, css, requestedColumns, width);
-    if (!next) return;
-    applied = next;
-    styleEl.textContent = next.text;
+    if (next) {
+      applied = next;
+      styleEl.textContent = next.text;
+    }
+    applyScale();
+  }
+
+  /**
+   * Fit the page (or spread) to the pane — VISUALLY.
+   *
+   * The transform never touches layout: everything inside the wrapper is laid
+   * out at print size, so line breaks and page breaks are exactly what
+   * prints. Without this the surface rendered at true print width into a
+   * ~500px pane and a third of every line sat off-screen — the author read
+   * their own sentences with a horizontal scrollbar.
+   */
+  function applyScale(): void {
+    if (!scaleBox || !applied?.css) return;
+    const frameW = frame?.contentDocument?.body?.clientWidth ?? 0;
+    const flowW = paginatedWidth(applied.css, { columns: applied.columns });
+    if (frameW <= 0 || flowW <= 0) {
+      scaleBox.style.transform = "";
+      scaleBox.style.marginLeft = "";
+      return;
+    }
+    const s = Math.min(Math.max(frameW / flowW, 0.2), 2);
+    scaleBox.style.transform = s === 1 ? "" : `scale(${s})`;
+    // Center the scaled pages. `margin: auto` cannot — auto margins resolve
+    // against LAYOUT width, and the transform changes only the painted width.
+    scaleBox.style.marginLeft = `${Math.max(0, (frameW - flowW * s) / 2)}px`;
   }
 
   /**
