@@ -773,6 +773,16 @@ export default function plugin(md, pluginOptions = {}) {
           warn(state.env, line, 'nested_spread', '@spread encountered while another spread is open; closing the previous spread automatically.', meta);
         }
         stack.close('spread');
+        // A spread GROUPS pages, so it can never live inside one. With a
+        // page (or its section) still open, `close('spread')` above is a
+        // no-op and the spread token used to open INSIDE the open page — the
+        // very next `@page` then emitted that page's close token right after
+        // `spread_open`, which sealed the spread div EMPTY and demoted its
+        // pages to siblings. In print the empty `.spread { break-before:
+        // page }` box claimed a whole blank sheet (measured on the
+        // advanced-book fixture: 15pp with a blank p10, against the
+        // viewer's 14pp).
+        stack.close('page');
         openSpread(meta);
         continue;
       }

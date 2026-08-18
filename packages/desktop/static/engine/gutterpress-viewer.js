@@ -1115,6 +1115,12 @@
     return node;
   }
   function directPageName(el, model) {
+    const view = el.ownerDocument?.defaultView;
+    if (view) {
+      const computed = view.getComputedStyle(el).getPropertyValue("page").trim();
+      if (computed)
+        return computed === "auto" ? undefined : computed;
+    }
     for (const a of model.pageAssignments) {
       try {
         if (el.matches(a.selector))
@@ -1139,7 +1145,7 @@
     else
       runs.push({ page, nodes });
   }
-  function explodeChildren(container, model) {
+  function explodeChildren(container, model, ambient) {
     const runs = [];
     let pending = [];
     const carry = () => {
@@ -1153,10 +1159,22 @@
         return [];
       }
       if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
-        pushRun(runs, undefined, held);
+        pushRun(runs, ambient, held);
         return [];
       }
       return held;
+    };
+    const shellSplit = (kid, inner) => {
+      let lead = carry();
+      for (const r of inner) {
+        const shell = kid.cloneNode(false);
+        for (const n of r.nodes)
+          shell.appendChild(n);
+        kid.before(shell);
+        pushRun(runs, r.page, [...lead, shell]);
+        lead = [];
+      }
+      kid.remove();
     };
     for (const node of Array.from(container.childNodes)) {
       if (node.nodeType !== 1) {
@@ -1168,32 +1186,30 @@
         continue;
       const own = directPageName(kid, model);
       if (own !== undefined) {
+        if (hasDescendantPageAssignment(kid, model)) {
+          const inner2 = explodeChildren(kid, model, own);
+          if (inner2.length > 1) {
+            shellSplit(kid, inner2);
+            continue;
+          }
+        }
         pushRun(runs, own, [...carry(), kid]);
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
-        pushRun(runs, undefined, [...carry(), kid]);
+        pushRun(runs, ambient, [...carry(), kid]);
         continue;
       }
-      const inner = explodeChildren(kid, model);
+      const inner = explodeChildren(kid, model, ambient);
       if (inner.length <= 1) {
-        pushRun(runs, inner[0]?.page, [...carry(), kid]);
+        pushRun(runs, inner[0]?.page ?? ambient, [...carry(), kid]);
         continue;
       }
-      let lead = carry();
-      for (const r of inner) {
-        const shell = kid.cloneNode(false);
-        for (const n of r.nodes)
-          shell.appendChild(n);
-        kid.before(shell);
-        pushRun(runs, r.page, [...lead, shell]);
-        lead = [];
-      }
-      kid.remove();
+      shellSplit(kid, inner);
     }
     const trailing = carry();
     if (trailing.length)
-      pushRun(runs, undefined, trailing);
+      pushRun(runs, ambient, trailing);
     return runs;
   }
   var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;

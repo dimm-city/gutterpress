@@ -118,13 +118,16 @@ const DEFAULT_FIXTURES = [
   // guide is edited like any other book, and a comment citing them would be
   // wrong the next time somebody adds a paragraph to it. The run prints both.
   join(REPO, "examples", "gutterpress-user-guide"),
-  // NOT yet listed: docs/fixtures/advanced-book/book — the plugin +
-  // advanced-features fixture. Its first run against this gate found two
-  // REAL print↔viewer divergences (a one-page drift inside the `plate`
-  // named-page chapter, and a persistent drift after the continued column
-  // section / spread), so listing it today would fail the gate on known
-  // work. It must be added here the moment those divergences are fixed —
-  // never allowlisted.
+  // The advanced-features fixture: the only default fixture with a PROJECT
+  // PLUGIN, plus named pages with different geometry, a nested
+  // `gp-full-bleed` page-name change inside a named chapter, a continued
+  // column section, a spread, and pinned/shaped images. Its first run
+  // against this gate found two real divergences, both fixed the same day:
+  // `@spread` opened inside a still-open `@page` printed a blank sheet
+  // (markers.js now closes the page first), and the viewer ignored a
+  // page-name change nested inside a named container (explodeChildren now
+  // recurses with the container's name as ambient).
+  join(REPO, "docs", "fixtures", "advanced-book", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

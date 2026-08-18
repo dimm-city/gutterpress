@@ -275,8 +275,24 @@ function effectiveBreakSite(el: Element, prop: string, strip: HTMLElement): Elem
   return node;
 }
 
-/** Named page assigned directly ON `el` itself (not a descendant). */
+/**
+ * Named page assigned directly ON `el` itself (not a descendant).
+ *
+ * The browser's computed value is the authority where available: `page` is a
+ * cascaded property, and a first-match scan over the extracted assignments
+ * ignored specificity — the user guide's `.cover-page h1 { page: cover }`
+ * exists precisely to override its `h1 { page: chapter }`, and the scan
+ * answered `chapter`, splitting the cover title onto its own chapter-named
+ * page that print does not have. Computed `auto` means "no named page of its
+ * own" (the element rides its container's page context). The scan remains as
+ * the fallback for engines that do not compute `page`.
+ */
 function directPageName(el: Element, model: GcpmModel): string | undefined {
+  const view = el.ownerDocument?.defaultView;
+  if (view) {
+    const computed = view.getComputedStyle(el).getPropertyValue("page").trim();
+    if (computed) return computed === "auto" ? undefined : computed;
+  }
   for (const a of model.pageAssignments) {
     try {
       if (el.matches(a.selector)) return a.page;
@@ -342,7 +358,7 @@ function pushRun(runs: Run[], page: string | undefined, nodes: ChildNode[]) {
  * shell, which is where the element starts — the answer a cross-reference
  * wants.
  */
-function explodeChildren(container: Element, model: GcpmModel): Run[] {
+function explodeChildren(container: Element, model: GcpmModel, ambient?: string): Run[] {
   const runs: Run[] = [];
   let pending: ChildNode[] = [];
   /** Nodes to emit before the next element: prior run if there is one. */
@@ -355,14 +371,27 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       pushRun(runs, last.page, held);
       return [];
     }
-    // Nothing precedes it: text with real content opens its own default-page
-    // run (print puts it on the default page, then the named element breaks
-    // to its own). Whitespace generates no box, so it just rides along.
+    // Nothing precedes it: text with real content opens its own ambient-page
+    // run (print puts it on the surrounding page, then the named element
+    // breaks to its own). Whitespace generates no box, so it just rides along.
     if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
-      pushRun(runs, undefined, held);
+      pushRun(runs, ambient, held);
       return [];
     }
     return held;
+  };
+
+  /** Split `kid` into one shallow shell per inner run, in place. */
+  const shellSplit = (kid: HTMLElement, inner: Run[]) => {
+    let lead = carry();
+    for (const r of inner) {
+      const shell = kid.cloneNode(false) as HTMLElement;
+      for (const n of r.nodes) shell.appendChild(n);
+      kid.before(shell);
+      pushRun(runs, r.page, [...lead, shell]);
+      lead = [];
+    }
+    kid.remove();
   };
 
   for (const node of Array.from(container.childNodes)) {
@@ -374,33 +403,40 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
     const own = directPageName(kid, model);
     if (own !== undefined) {
+      // A named container can still hold a DIFFERENTLY-named descendant —
+      // `img.gp-bleed { page: gp-full-bleed }` inside a `plate` page div is
+      // the shipping example. Print forces a break at every page-name
+      // change, nested or not, so the container's own name becomes the
+      // AMBIENT context and its children explode against it. (Measured on
+      // the advanced-book fixture: print gave the full-bleed panorama its
+      // own zero-side-margin page inside the plate chapter; the viewer kept
+      // it inline, putting every later heading one page early.)
+      if (hasDescendantPageAssignment(kid, model)) {
+        const inner = explodeChildren(kid, model, own);
+        if (inner.length > 1) {
+          shellSplit(kid, inner);
+          continue;
+        }
+      }
       pushRun(runs, own, [...carry(), kid]);
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
-      pushRun(runs, undefined, [...carry(), kid]);
+      pushRun(runs, ambient, [...carry(), kid]);
       continue;
     }
-    const inner = explodeChildren(kid, model);
+    const inner = explodeChildren(kid, model, ambient);
     if (inner.length <= 1) {
-      pushRun(runs, inner[0]?.page, [...carry(), kid]);
+      pushRun(runs, inner[0]?.page ?? ambient, [...carry(), kid]);
       continue;
     }
     // kid's own page context changes partway through its children: split it
     // into one shell per inner run, inserted in kid's place, then drop the
     // now-empty original.
-    let lead = carry();
-    for (const r of inner) {
-      const shell = kid.cloneNode(false) as HTMLElement;
-      for (const n of r.nodes) shell.appendChild(n);
-      kid.before(shell);
-      pushRun(runs, r.page, [...lead, shell]);
-      lead = [];
-    }
-    kid.remove();
+    shellSplit(kid, inner);
   }
   const trailing = carry();
-  if (trailing.length) pushRun(runs, undefined, trailing);
+  if (trailing.length) pushRun(runs, ambient, trailing);
   return runs;
 }
 

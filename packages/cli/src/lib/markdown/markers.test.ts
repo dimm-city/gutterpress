@@ -1425,6 +1425,23 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
       expect(w.map((x) => x.message.match(/"([^"]+)"/)![1])).toEqual(["→", "<div>"]);
     });
 
+    test("@spread while a page is open CLOSES that page — a spread groups pages", () => {
+      // `@chapter → @page → prose → @spread → @page` is the ordinary way a
+      // spread appears mid-chapter. The open page used to swallow the spread:
+      // its close token landed right after `spread_open`, sealing the spread
+      // EMPTY with its pages as siblings — and the empty `.spread
+      // { break-before: page }` box printed a blank sheet.
+      const { html } = renderPaged(
+        "@page\nBefore.\n\n@spread\n\n@page\nLeft.\n\n@page\nRight.\n",
+      );
+      const clean = html.replace(/ data-source-[a-z]+="[^"]*"/g, "");
+      expect(clean).not.toContain('<div class="spread"></div>');
+      expect(clean).toContain('<div class="spread"><div class="page">');
+      // Both pages inside the ONE spread wrapper, which then closes.
+      const spread = clean.slice(clean.indexOf('<div class="spread">'));
+      expect(spread.split('<div class="page">').length - 1).toBe(2);
+    });
+
     test("a QUOTED multi-word label is a deliberate name, not an unrecognized token", () => {
       // `@chapter "Field Notes" #ch-notes` is the documented labelled-chapter
       // form (the toolbar scaffold writes it). The label used to be reported

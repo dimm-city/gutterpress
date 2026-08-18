@@ -156,6 +156,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`@spread` written while a page is still open no longer prints a blank
+  sheet.** A spread groups pages, so it can never live inside one — but with
+  a `@page` (or its `@section`) still open, the spread wrapper opened inside
+  that page, and the very next `@page` sealed it empty; the empty wrapper's
+  own forced break then claimed a whole blank page in the PDF (and the pages
+  meant to be a spread were not grouped at all). The open page now closes
+  first, exactly as `@page` closes its predecessor.
+- **The preview honors a page-name change nested inside a named page, and
+  resolves `page:` by the CSS cascade.** `![…](…){.gp-bleed}` inside a
+  `page: plate` chapter prints on its own zero-side-margin sheet; the preview
+  kept it inline, putting every heading after it one page early. And where
+  two rules assign different named pages (`h1 { page: chapter }` overridden
+  by `.cover-page h1 { page: cover }`), the preview took the first match
+  rather than the specific one. It now asks the browser for the computed
+  `page` value — the cascade the print engine itself uses. Both were found
+  by the new plugin-and-advanced-features fixture the parity gate now runs
+  (`docs/fixtures/advanced-book`).
 - **A chapter that opens with `@chapter` and then `@page` no longer loses a
   page in the preview.** Print starts a new page there; the preview did not —
   so every page number, running head and `target-counter()` cross-reference
