@@ -1425,6 +1425,16 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
       expect(w.map((x) => x.message.match(/"([^"]+)"/)![1])).toEqual(["→", "<div>"]);
     });
 
+    test("a QUOTED multi-word label is a deliberate name, not an unrecognized token", () => {
+      // `@chapter "Field Notes" #ch-notes` is the documented labelled-chapter
+      // form (the toolbar scaffold writes it). The label used to be reported
+      // as "not something a marker understands" even though the marker itself
+      // accepted it as the name and emitted data-chapter-label from it.
+      const { html, env } = renderPaged('@chapter "Field Notes" #ch-notes\nHi\n');
+      expect(html).toContain('data-chapter-label="Field Notes"');
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "unrecognized_marker_token")).toEqual([]);
+    });
+
     test("an empty .class / #id token is reported rather than silently dropped", () => {
       expect(ofType("@page .\nHi\n", "unrecognized_marker_token")).toHaveLength(1);
       expect(ofType("@page #\nHi\n", "unrecognized_marker_token")).toHaveLength(1);

@@ -89,6 +89,73 @@ function layoutAtom(): NodeSpec {
   };
 }
 
+/**
+ * A PROJECT PLUGIN's wrapped block — `@sidebar … @end-sidebar`, `@callout …`
+ * — modelled GENERICALLY rather than one node per known marker.
+ *
+ * Plugins are plain markdown-it plugins (CLAUDE.md §5); the product cannot
+ * enumerate their token types ahead of time, and refusing every plugin marker
+ * put whole chapters of plugin-using books into source mode. What CAN be
+ * required is that the tokens carry recoverable SOURCE: the parser's
+ * normalization pass (see `parser.ts`, `adoptPluginTokens`) rewrites an
+ * unknown open/close pair onto this node only when the authored open and
+ * close lines can be read back verbatim (from `token.map` against the source,
+ * or `token.markup`). Anything less reconstructable still fails closed.
+ *
+ * `marker`/`closeMarker` are the authored lines and are ALL that serializes.
+ * `tag` + `viewAttrs` reproduce the DOM the plugin's own render rules emit
+ * (minus pipeline-generated attributes), so the plugin's shipped CSS styles
+ * the block in the editor exactly as in print — view-only, like `class` on
+ * the core wrappers.
+ */
+function pluginBlock(): NodeSpec {
+  return {
+    content: "block+",
+    group: "block",
+    defining: true,
+    attrs: {
+      marker: { default: "" },
+      closeMarker: { default: "" },
+      tag: { default: "div" },
+      viewAttrs: { default: null },
+    },
+    toDOM: (node) => [
+      (node.attrs.tag as string) || "div",
+      {
+        ...((node.attrs.viewAttrs as Record<string, string> | null) ?? {}),
+        "data-marker": node.attrs.marker as string,
+      },
+      0,
+    ],
+  };
+}
+
+/** A plugin's self-closing marker (`@stamp "Checked"`). `text` is the token's
+ *  rendered content, shown so the atom is visible chrome rather than a blank
+ *  box; only `marker` serializes. */
+function pluginAtom(): NodeSpec {
+  return {
+    group: "block",
+    atom: true,
+    selectable: true,
+    attrs: {
+      marker: { default: "" },
+      tag: { default: "div" },
+      viewAttrs: { default: null },
+      text: { default: "" },
+    },
+    toDOM: (node) => {
+      const attrs = {
+        ...((node.attrs.viewAttrs as Record<string, string> | null) ?? {}),
+        "data-marker": node.attrs.marker as string,
+      };
+      const tag = (node.attrs.tag as string) || "div";
+      const text = (node.attrs.text as string) || "";
+      return text ? [tag, attrs, text] : [tag, attrs];
+    },
+  };
+}
+
 const tableNodes: Record<string, NodeSpec> = {
   // `table_body?`, not `table_body`. A header-only table (`| A |\n| --- |`) is
   // legal GFM and an ordinary thing to write — a template waiting to be filled
@@ -184,6 +251,8 @@ export const gutterpressSchema = new Schema({
       gp_section: layoutWrapper(),
       gp_page_break: layoutAtom(),
       gp_column_break: layoutAtom(),
+      gp_plugin_block: pluginBlock(),
+      gp_plugin_atom: pluginAtom(),
       /** A raw `html_block`, carried verbatim. */
       html_block: {
         group: "block",

@@ -26,7 +26,7 @@ import { attrsToBraces, type ExtraAttrs } from "./attrs";
 
 /** Emit a layout wrapper's authored marker line, then its children. */
 function layoutWrapper(closing?: string) {
-  return (state: MarkdownSerializerState, node: PMNode) => {
+  return (state: MarkdownSerializerState, node: PMNode, parent: PMNode, index: number) => {
     const marker = (node.attrs.marker as string) || "";
     if (marker) {
       // The marker is a line in its own right, not a block wrapping the
@@ -38,11 +38,31 @@ function layoutWrapper(closing?: string) {
       state.closeBlock(node);
     }
     state.renderContent(node);
-    if (closing) {
+    if (closing && !nextSiblingContinues(parent, index)) {
       state.write(closing);
       state.closeBlock(node);
     }
   };
+}
+
+/**
+ * Is the next sibling a CONTINUED section?
+ *
+ * `@continue` is one authored line that closes the current `@section` and
+ * reopens a matching one — so the document model holds TWO section nodes for
+ * ONE terminator. Writing `@end-section` after the first half invented a
+ * line the author never typed, and on reparse the `@continue` then had no
+ * open section to continue: the continuation silently lost its section (and
+ * its columns) — a structure change the semantic-preservation gate caught on
+ * the advanced-book fixture. The chain's one real terminator is written by
+ * its LAST section.
+ */
+function nextSiblingContinues(parent: PMNode, index: number): boolean {
+  const next = index + 1 < parent.childCount ? parent.child(index + 1) : null;
+  return (
+    next?.type.name === "gp_section" &&
+    ((next.attrs.marker as string) || "").trim().startsWith("@continue")
+  );
 }
 
 function layoutAtom(state: MarkdownSerializerState, node: PMNode) {
@@ -129,6 +149,19 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
     gp_section: layoutWrapper("@end-section"),
     gp_page_break: layoutAtom,
     gp_column_break: layoutAtom,
+
+    // ── project-plugin markers, adopted generically (see parser.ts) ──────
+    // Both authored lines round-trip verbatim from the node's own attributes;
+    // the closing line is per-NODE (each plugin names its own terminator),
+    // which is why this is not a `layoutWrapper(closing)` call.
+    gp_plugin_block(state, node) {
+      state.write((node.attrs.marker as string).trim());
+      state.closeBlock(node);
+      state.renderContent(node);
+      state.write((node.attrs.closeMarker as string).trim());
+      state.closeBlock(node);
+    },
+    gp_plugin_atom: layoutAtom,
 
     // ── raw HTML, verbatim ───────────────────────────────────────────────
     html_block(state, node) {

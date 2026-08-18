@@ -22,7 +22,98 @@ import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import type { Node as PMNode } from "prosemirror-model";
 import { gutterpressSchema } from "./schema";
-import { extraAttrs } from "./attrs";
+import { authoredBlockAttrs, extraAttrs } from "./attrs";
+
+/** The adoption payload `adoptPluginTokens` stashes on a rewritten token. */
+interface PluginPayload {
+  marker: string;
+  closeMarker?: string;
+  tag: string;
+  viewAttrs: Record<string, string> | null;
+  text?: string;
+}
+
+function pluginPayload(tok: Token): PluginPayload {
+  return (tok.meta as { gpPlugin: PluginPayload }).gpPlugin;
+}
+
+/** Pipeline-injected attributes that must not be presented as the plugin's. */
+const GENERATED_VIEW_ATTRS = /^(data-source-range|data-source-line|data-chapter-label)$/;
+
+function viewAttrsOf(tok: Token): Record<string, string> | null {
+  if (!tok.attrs || tok.attrs.length === 0) return null;
+  const out: Record<string, string> = {};
+  for (const [key, value] of tok.attrs) {
+    if (!GENERATED_VIEW_ATTRS.test(key)) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Adopt a PROJECT PLUGIN's block tokens onto the generic plugin nodes.
+ *
+ * Plugins are plain markdown-it plugins whose token types this product
+ * cannot enumerate (CLAUDE.md §5) — but their branded markers follow the
+ * marker-family shape: a block-level `X_open`/`X_close` pair, or a
+ * self-closing block atom, whose authored lines are recoverable from
+ * `token.map` (against the file's own lines) or `token.markup`. This pass
+ * rewrites exactly those tokens onto `plugin_block` / `plugin_atom`, storing
+ * the authored open and close lines verbatim — which is ALL the serializer
+ * ever writes back.
+ *
+ * Everything it cannot recover it leaves untouched, and the parser then
+ * raises on the unknown type — the fail-closed guard is unchanged, it just
+ * no longer fires for well-formed plugin markers. Inline unknowns are never
+ * adopted: they have no authored line of their own to recover.
+ */
+function adoptPluginTokens(tokens: Token[], lines: string[], handled: Set<string>): Token[] {
+  const authoredLine = (tok: Token): string | undefined => {
+    const fromMap = tok.map ? lines[tok.map[0]] : undefined;
+    const text = (fromMap ?? tok.markup ?? "").trim();
+    return text || undefined;
+  };
+
+  const stack: Token[] = [];
+  for (const tok of tokens) {
+    if (handled.has(tok.type)) continue;
+
+    if (tok.type.endsWith("_open")) {
+      stack.push(tok);
+      continue;
+    }
+
+    if (tok.type.endsWith("_close")) {
+      const open = stack.pop();
+      if (!open || open.type.slice(0, -5) !== tok.type.slice(0, -6)) continue;
+      const marker = authoredLine(open);
+      const closeMarker = authoredLine(tok);
+      if (!marker || !closeMarker) continue;
+      open.meta = {
+        ...(open.meta as Record<string, unknown> | null),
+        gpPlugin: { marker, closeMarker, tag: open.tag || "div", viewAttrs: viewAttrsOf(open) },
+      };
+      open.type = "plugin_block_open";
+      tok.type = "plugin_block_close";
+      continue;
+    }
+
+    if (tok.nesting === 0 && tok.block) {
+      const marker = authoredLine(tok);
+      if (!marker) continue;
+      tok.meta = {
+        ...(tok.meta as Record<string, unknown> | null),
+        gpPlugin: {
+          marker,
+          tag: tok.tag || "div",
+          viewAttrs: viewAttrsOf(tok),
+          text: tok.content || "",
+        },
+      };
+      tok.type = "plugin_atom";
+    }
+  }
+  return tokens;
+}
 
 /** `listIsTight`, which prosemirror-markdown keeps private. */
 function listIsTight(tokens: readonly Token[], i: number): boolean {
@@ -75,14 +166,24 @@ export function createDocParser(md: MarkdownIt) {
       block: "ordered_list",
       getAttrs: (tok, tokens, i) => ({ order: +(tok.attrGet("start") ?? 1) || 1, tight: listIsTight(tokens, i) }),
     },
+    // Heading and fence attrs are read from the SOURCE line, not the token:
+    // a plugin's token transform may decorate tokens freely (the fixture's
+    // adds `.fm-h2` to every h2), and token-derived attrs wrote that
+    // decoration back into the author's file. See `authoredBlockAttrs`.
     heading: {
       block: "heading",
-      getAttrs: (tok) => ({ level: +tok.tag.slice(1), attrs: extraAttrs(tok, "heading") }),
+      getAttrs: (tok) => ({
+        level: +tok.tag.slice(1),
+        attrs: authoredBlockAttrs(tok.map ? lines[tok.map[0]] : undefined),
+      }),
     },
     code_block: { block: "code_block", noCloseToken: true },
     fence: {
       block: "code_block",
-      getAttrs: (tok) => ({ params: tok.info || "", attrs: extraAttrs(tok, "code_block") }),
+      getAttrs: (tok) => ({
+        params: tok.info || "",
+        attrs: authoredBlockAttrs(tok.map ? lines[tok.map[0]] : undefined),
+      }),
       noCloseToken: true,
     },
     hr: { node: "horizontal_rule" },
@@ -136,9 +237,37 @@ export function createDocParser(md: MarkdownIt) {
     // ── raw HTML, carried verbatim ───────────────────────────────────────
     html_block: { node: "html_block", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },
     html_inline: { node: "html_inline", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },
+
+    // ── project-plugin markers, adopted generically ──────────────────────
+    // Rewritten onto these types by `adoptPluginTokens` below — only when the
+    // authored open/close lines are recoverable verbatim. `getAttrs` reads
+    // the payload the adoption pass stashed on the open token.
+    plugin_block: { block: "gp_plugin_block", getAttrs: (tok) => pluginPayload(tok) },
+    plugin_atom: { node: "gp_plugin_atom", getAttrs: (tok) => pluginPayload(tok) },
   };
 
-  const parser = new MarkdownParser(gutterpressSchema, md, specs);
+  /**
+   * Token types the specs above give the parser a handler for. Anything NOT
+   * in this set is a candidate for plugin adoption; anything that survives
+   * adoption unadopted makes the parser raise (FAIL CLOSED, unchanged).
+   */
+  const handled = new Set<string>(["inline", "text", "softbreak"]);
+  for (const [type, spec] of Object.entries(specs)) {
+    if ((spec.block || spec.mark) && !spec.noCloseToken) {
+      handled.add(`${type}_open`);
+      handled.add(`${type}_close`);
+    } else {
+      handled.add(type);
+    }
+  }
+
+  // The parser tokenizes through this facade so the adoption pass sees every
+  // token stream — `parse()`, and nothing else, is what MarkdownParser calls.
+  const tokenizer = {
+    parse: (src: string, env: Record<string, unknown>) =>
+      adoptPluginTokens(md.parse(src, env), lines, handled),
+  };
+  const parser = new MarkdownParser(gutterpressSchema, tokenizer as unknown as MarkdownIt, specs);
 
   return {
     /**

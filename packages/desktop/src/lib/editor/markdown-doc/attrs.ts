@@ -72,6 +72,48 @@ export function extraAttrs(token: Token, nodeType: string): ExtraAttrs | null {
 }
 
 /**
+ * The AUTHORED attributes of a block construct, read from its source line —
+ * the trailing `{…}` markdown-it-attrs brace block, or null when the line
+ * carries none.
+ *
+ * Why read source instead of the token: plugins run token TRANSFORMS that
+ * decorate tokens (`tok.attrJoin("class", "fm-h2")` on every h2 is the
+ * fixture's real-world example). Token-derived attrs cannot tell that
+ * decoration from authored braces, so saving wrote classes into markdown the
+ * author never typed — and the second parse decorated AGAIN, breaking the
+ * fixpoint. Source-derived attrs are immune by construction: rendering may be
+ * decorated freely, the FILE only ever gets back what the author wrote.
+ * (Inline constructs — images, links — still use token-derived `extraAttrs`;
+ * they have no per-token source line to read.)
+ */
+export function authoredBlockAttrs(line: string | undefined): ExtraAttrs | null {
+  if (!line) return null;
+  const m = /\{([^{}]*)\}\s*$/.exec(line);
+  if (!m) return null;
+  const out: ExtraAttrs = {};
+  const classes: string[] = [];
+  // Each token is a run of non-space characters where quoted spans keep their
+  // internal spaces — so `key="a b"` is ONE token.
+  const tokens = m[1]!.match(/(?:[^\s"']|"[^"]*"|'[^']*')+/g) ?? [];
+  for (const raw of tokens) {
+    if (raw.startsWith(".")) classes.push(raw.slice(1));
+    else if (raw.startsWith("#")) out.id = raw.slice(1);
+    else {
+      const eq = raw.indexOf("=");
+      if (eq > 0) {
+        const value = raw.slice(eq + 1);
+        out[raw.slice(0, eq)] =
+          value.length >= 2 && (value[0] === '"' || value[0] === "'") && value.endsWith(value[0]!)
+            ? value.slice(1, -1)
+            : value;
+      }
+    }
+  }
+  if (classes.length) out.class = classes.join(" ");
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * Render attributes back to a `{...}` brace block, or "" when there are none.
  *
  * Note the leading space is NOT included — callers place it, because an image

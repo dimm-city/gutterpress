@@ -1,0 +1,26 @@
+title: "The Wardens' Field Manual"
+authors:
+  - "Gutterpress Fixtures"
+
+preset: book
+
+plugins:
+  - ./plugins/field-markers.js
+
+styles:
+  - styles/book.css
+
+source:
+  files:
+    - 00-cover.md
+    - 01-toc.md
+    - 02-field-notes.md
+    - 03-specimens.md
+    - 04-layout-lab.md
+    - 05-appendix.md
+    - 06-archive.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  tolerance: 0.5

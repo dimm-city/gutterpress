@@ -66,6 +66,7 @@ describe("on the real corpus", () => {
     "examples/gutterpress-user-guide",
     "examples/with-design-guide/design-guide",
     "docs/fixtures/css-authoring-spike/book",
+    "docs/fixtures/advanced-book/book",
   ];
   const files = BOOKS.flatMap((b) => mdFilesIn(join(REPO, b))).map((p) => ({
     path: p.slice(REPO.length + 1),

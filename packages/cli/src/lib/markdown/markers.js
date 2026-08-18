@@ -172,9 +172,14 @@ function parseMarkerLine(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
 
-  // Tokenize respecting simple quotes: key="a b"
+  // Tokenize respecting simple quotes: key="a b". `quotedFlags[i]` records
+  // whether any part of tokens[i] sat inside quotes — a quoted token is a
+  // DELIBERATE single argument (e.g. a multi-word label), which the
+  // classification pass below must not report as an unrecognized form.
   const tokens = [];
+  const quotedFlags = [];
   let buf = '';
+  let bufQuoted = false;
   let quote = null;
 
   for (let i = 0; i < trimmed.length; i++) {
@@ -188,19 +193,27 @@ function parseMarkerLine(line) {
 
     if (ch === '"' || ch === "'") {
       quote = ch;
+      bufQuoted = true;
       continue;
     }
 
     if (/\s/.test(ch)) {
-      if (buf) tokens.push(buf);
+      if (buf) {
+        tokens.push(buf);
+        quotedFlags.push(bufQuoted);
+      }
       buf = '';
+      bufQuoted = false;
       continue;
     }
 
     buf += ch;
   }
 
-  if (buf) tokens.push(buf);
+  if (buf) {
+    tokens.push(buf);
+    quotedFlags.push(bufQuoted);
+  }
 
   // Accept the markdown-it-attrs `{...}` spelling on every marker argument —
   // see unwrapAttrBraces. The head token is left untouched; only arguments
@@ -251,7 +264,17 @@ function parseMarkerLine(line) {
   // list, which is the defect class this reports (a `@section {.two-column}`
   // whose class vanished cost two days). Behaviour is unchanged — the token
   // still lands where it always did — but the author is now told.
-  for (const t of body) {
+  //
+  // A QUOTED token chosen as the NAME is exempt: `@chapter "Field Notes"
+  // #ch-notes` tokenizes the label to one bare token with a space in it,
+  // which the grammar accepted as the label — reporting it as "not something
+  // a marker understands" contradicted the marker's own output. An UNQUOTED
+  // junk token that fell into the name slot (`@page .skills → <div>`) is
+  // still reported.
+  const bodyQuoted = quotedFlags.slice(1);
+  for (let idx = 0; idx < body.length; idx++) {
+    if (idx === nameIndex && bodyQuoted[idx]) continue;
+    const t = body[idx];
     if (t.startsWith('.') || t.startsWith('#')) {
       if (!BARE_TOKEN_RE.test(t.slice(1).trim())) unknownTokens.push(t);
       continue;

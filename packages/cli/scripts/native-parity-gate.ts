@@ -118,6 +118,13 @@ const DEFAULT_FIXTURES = [
   // guide is edited like any other book, and a comment citing them would be
   // wrong the next time somebody adds a paragraph to it. The run prints both.
   join(REPO, "examples", "gutterpress-user-guide"),
+  // NOT yet listed: docs/fixtures/advanced-book/book — the plugin +
+  // advanced-features fixture. Its first run against this gate found two
+  // REAL print↔viewer divergences (a one-page drift inside the `plate`
+  // named-page chapter, and a persistent drift after the continued column
+  // section / spread), so listing it today would fail the gate on known
+  // work. It must be added here the moment those divergences are fixed —
+  // never allowlisted.
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

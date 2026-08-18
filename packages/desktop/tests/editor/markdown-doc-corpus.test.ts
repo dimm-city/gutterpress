@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canEditRichly, createEditorRenderer, isFixpoint, normalize } from "../../src/lib/editor/markdown-doc";
 import { mdFilesIn, REPO } from "../support/corpus";
+import { semanticHtml } from "../support/semantic-html";
 
 /**
  * The corpus gate.
@@ -32,6 +33,10 @@ const BOOKS = [
   "examples/with-validation",
   "docs/fixtures/css-authoring-spike/book",
   "docs/fixtures/gp-image-positioning/book",
+  // The advanced-features fixture. This suite runs the BARE pipeline, so its
+  // plugin markers parse as plain paragraphs here (content-safe either way);
+  // the plugin-loaded properties live in plugin-roundtrip.test.ts.
+  "docs/fixtures/advanced-book/book",
 ];
 
 const files = BOOKS.flatMap((b) => mdFilesIn(join(REPO, b)));
@@ -92,36 +97,9 @@ describe("corpus", () => {
    *
    * Two gates, two different blindnesses, and neither covers the other.
    */
-  /**
-   * Drop the two attributes that encode SOURCE COORDINATES rather than
-   * content: `data-source-range` (ADR 0009's editor↔preview mapping) and
-   * `data-source-line`. Normalization legitimately moves line numbers — that
-   * is what reformatting IS — so comparing them would flag every reflowed
-   * paragraph as content loss and the gate would have to be thrown away.
-   *
-   * Exactly these two, nothing else. Every other attribute, including the
-   * `class` and `id` that regressed, stays in the comparison.
-   */
-  const semanticHtml = (html: string) =>
-    html
-      .replace(/ data-source-(range|line)="[^"]*"/g, "")
-      // Same class of thing: `data-gp-source-token` / `-occurrence` are the
-      // preview↔source mapping the preview interface reads to find which
-      // token produced an element. They appear on an authored `[a](b)` but not
-      // on a bare domain that `linkify` turned into a link, so normalizing
-      // `itch.io` to `[itch.io](http://itch.io)` adds them. The href and the
-      // link text — the parts that reach the PDF — are unchanged.
-      .replace(/ data-gp-source-(token|occurrence)="[^"]*"/g, "")
-      // A soft line break inside a paragraph renders as a literal newline;
-      // unwrapping turns it into a space. HTML collapses both identically, so
-      // this is the accepted reformatting, not lost content.
-      //
-      // Collapsed everywhere EXCEPT inside `<pre>`, where whitespace is
-      // significant and a real difference would be a genuine defect — so the
-      // gate keeps its teeth on code blocks.
-      .split(/(<pre[\s\S]*?<\/pre>)/)
-      .map((part, i) => (i % 2 === 1 ? part : part.replace(/\s+/g, " ")))
-      .join("");
+  // What the comparator drops (source coordinates, insignificant whitespace,
+  // attribute order) and why is documented in `../support/semantic-html.ts` —
+  // one definition, shared with the plugin round-trip gate.
 
   test("normalizing NEVER changes what the document means", () => {
     const lost: Array<{ file: string; detail: string }> = [];

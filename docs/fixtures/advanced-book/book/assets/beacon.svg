@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 260" width="200" height="260">
+  <rect width="200" height="260" fill="#ece9db"/>
+  <polygon points="100,18 140,220 60,220" fill="#4a5d23"/>
+  <rect x="52" y="220" width="96" height="14" fill="#37432a"/>
+  <circle cx="100" cy="40" r="16" fill="#f2c14e"/>
+  <g stroke="#f2c14e" stroke-width="4">
+    <line x1="100" y1="8" x2="100" y2="0"/>
+    <line x1="70" y1="18" x2="62" y2="10"/>
+    <line x1="130" y1="18" x2="138" y2="10"/>
+  </g>
+  <text x="100" y="252" font-family="Georgia, serif" font-size="12" fill="#5c5c54" text-anchor="middle">Fig. — the north beacon</text>
+</svg>

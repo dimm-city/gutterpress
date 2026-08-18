@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300">
+  <rect width="640" height="300" fill="#dfe4d0"/>
+  <polygon points="0,240 120,120 220,210 330,90 450,200 560,130 640,190 640,300 0,300" fill="#4a5d23"/>
+  <polygon points="0,270 160,190 300,250 470,180 640,240 640,300 0,300" fill="#37432a"/>
+  <circle cx="520" cy="70" r="28" fill="#f2c14e"/>
+  <text x="16" y="26" font-family="Georgia, serif" font-size="16" fill="#5c5c54">The long ridge, from the east ford</text>
+</svg>
