@@ -1,0 +1,50 @@
+name: Build Gutterpress desktop package
+description: >
+  Set up Node, install workspace deps, build the lib dist, and package the
+  Gutterpress desktop for one platform into packages/desktop/dist/. Run after
+  the Bun setup action (./.github/actions/bun) so `bun` is on PATH, on a
+  runner matching the requested platform (electron-builder does not
+  cross-compile these targets).
+
+  Finding #62: this is the SINGLE desktop packaging path — the release
+  workflow's three platform jobs and the download-a-build debug workflows all
+  come through here, so none of them can drift from the others.
+inputs:
+  platform:
+    description: >
+      Which package to build: `linux` (AppImage), `win` (NSIS installer + zip)
+      or `mac` (Intel + Apple Silicon DMGs). Names match the desktop package's
+      `dist:*` scripts.
+    required: true
+runs:
+  using: composite
+  steps:
+    # audit F3: pin Node rather than take the runner's ambient default, so all
+    # three platforms package under the same Node major. electron-builder runs
+    # under node/npm (see the packaging step below).
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+    - name: Install workspace deps
+      shell: bash
+      run: bun install --frozen-lockfile
+    - name: Build package dist
+      shell: bash
+      working-directory: packages/cli
+      run: bun run build
+    # IMPORTANT: package with `npm run`, never `bun run`. The `dist:*` scripts
+    # invoke electron-builder, which spawns worker processes via
+    # `process.execPath`; under Bun that points at the Bun ELF binary and the
+    # workers fail (Node can't parse it). Keep electron-builder on node/npm.
+    # (See electron-builder.yml `npmRebuild: false` for the related
+    # workspace:* guard.)
+    - name: Package desktop (dist:${{ inputs.platform }})
+      shell: bash
+      working-directory: packages/desktop
+      run: npm run dist:${{ inputs.platform }}
+      env:
+        # macOS code signing is not configured; without this electron-builder
+        # searches the keychain and fails the DMG build on an unsigned runner.
+        # electron-builder reads it on darwin only, so it is inert for the
+        # linux and windows targets that share this step.
+        CSC_IDENTITY_AUTO_DISCOVERY: false

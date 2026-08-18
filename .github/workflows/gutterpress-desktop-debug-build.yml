@@ -20,7 +20,9 @@ jobs:
       - uses: ./.github/actions/bun
 
       - name: Build desktop Windows installer and zip
-        uses: ./.github/actions/build-gutterpress-desktop-windows
+        uses: ./.github/actions/build-gutterpress-desktop
+        with:
+          platform: win
 
       - name: Upload desktop Windows artifacts
         uses: actions/upload-artifact@v6

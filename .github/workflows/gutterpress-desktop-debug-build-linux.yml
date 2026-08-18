@@ -1,0 +1,44 @@
+name: Gutterpress desktop debug build (Linux AppImage)
+
+# Builds the Linux AppImage from any branch and uploads it as a workflow
+# artifact you can download from the Actions tab — no tag, no GitHub release,
+# no npm publish. Use this to hand a testable build to someone (or to
+# yourself) while a branch is still in progress.
+#
+# To get a build: Actions -> this workflow -> "Run workflow" -> pick the
+# branch -> Run. When it finishes, download the artifact from the run's
+# summary page and `chmod +x` the AppImage before running it.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build desktop Linux AppImage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/bun
+
+      - name: Build desktop Linux AppImage
+        uses: ./.github/actions/build-gutterpress-desktop
+        with:
+          platform: linux
+
+      # The AppImage only — no latest-linux.yml/.blockmap here. Those are the
+      # electron-updater feed files, and they belong to a published release;
+      # shipping them beside a branch build would point the updater at a
+      # version that does not exist.
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v6
+        with:
+          name: gutterpress-desktop-linux-debug-${{ github.sha }}
+          path: packages/desktop/dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+          # An AppImage is already a compressed archive; re-compressing it into
+          # the artifact zip costs minutes and saves nothing.
+          compression-level: 0

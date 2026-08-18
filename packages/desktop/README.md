@@ -130,6 +130,28 @@ npm run dist:mac     # → dist/gutterpress-<version>-{arm64,x64}.dmg
 Each `dist:*` script runs the build and electron:build steps automatically
 before packaging.
 
+### Getting a build without cutting a release
+
+Two `workflow_dispatch` workflows package a branch and upload the result as a
+downloadable artifact — no tag, no GitHub release, no npm publish:
+
+| workflow | artifact |
+|---|---|
+| **Gutterpress desktop debug build (Linux AppImage)** | `.AppImage` |
+| **Gutterpress desktop debug build (Windows)** | setup `.exe` + portable `.zip` |
+
+Actions → the workflow → **Run workflow** → pick the branch. Download the
+artifact from the finished run's summary page; it arrives as a `.zip`, so
+unzip it and `chmod +x` the AppImage before running it. Artifacts are kept for
+14 days.
+
+Both come through the same composite action the release workflow uses
+(`.github/actions/build-gutterpress-desktop`), so a branch build is packaged
+exactly the way a released one is. What they deliberately leave out is the
+electron-updater feed (`latest*.yml`, `.blockmap`): those belong to a
+published release and would point the updater at a version that does not
+exist.
+
 ### Linux
 
 ```bash
