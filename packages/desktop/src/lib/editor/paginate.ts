@@ -134,29 +134,47 @@ export interface EditorSheet {
 }
 
 /**
+ * The smallest scale the EDITING surface may shrink to before it stops being
+ * a place you can write.
+ *
+ * The editor fits itself to the pane with a visual transform, so a spread
+ * always "fits" in the geometric sense — but fitting a two-page spread into
+ * the default 42% split renders this book's 10pt body face at 4.3 CSS px
+ * (measured, design-guide at 1500x1000). That is not a small editor, it is an
+ * unusable one; the same pane shows one page at 8.8px, twice the size.
+ *
+ * So a spread REQUEST is honoured only while it stays above this floor —
+ * which is the original "a 2 is a request, not a guarantee" rule with a
+ * threshold that serves legibility instead of demanding 1:1 print size. Below
+ * the floor the surface shows the most pages it can render legibly, which is
+ * never fewer than one (there is nothing smaller to fall back to, and a pane
+ * too narrow even for that is the author's cue to widen it or hide the
+ * preview).
+ */
+export const MIN_LEGIBLE_SCALE = 0.6;
+
+/**
  * The stylesheet the frame should carry now, or `null` when it already has it.
  *
- * Two inputs decide it: the book's CSS and how many pages the app asked for.
- * A request for 2 is now honoured whenever there is page geometry at all —
- * the surface fits itself to the pane with a VISUAL transform (see
- * `RichEditor.applyScale`), exactly like the preview's fit-width, so "does a
- * spread fit at print size" stopped being a real question. (`availablePx`
- * used to gate it when the editor rendered with no zoom of its own; the
- * parameter remains so the caller keeps supplying the one measurement only a
- * mounted frame can make, which the scale needs anyway.)
+ * Three inputs decide it: the book's CSS, how many pages the app asked for,
+ * and how much room the frame has. The surface fits itself to the pane with a
+ * VISUAL transform (`RichEditor.applyScale`), so the width test is no longer
+ * "does a spread fit at print size" — it is "would a spread still be
+ * readable", `MIN_LEGIBLE_SCALE` above.
  *
- * With no book CSS there is no page geometry, so the honest answer is one
- * column.
+ * With no book CSS there is no page geometry to fit against, so the honest
+ * answer is one column.
  */
 export function nextEditorSheet(
   applied: EditorSheet | null,
   css: string,
   requested: 1 | 2,
-  _availablePx: number,
+  availablePx: number,
 ): EditorSheet | null {
   const sameCss = applied?.css === css;
   const spreadPx = sameCss ? applied!.spreadPx : css ? paginatedWidth(css, { columns: 2 }) : 0;
-  const columns: 1 | 2 = requested === 2 && spreadPx > 0 ? 2 : 1;
+  const columns: 1 | 2 =
+    requested === 2 && spreadPx > 0 && availablePx / spreadPx >= MIN_LEGIBLE_SCALE ? 2 : 1;
   if (sameCss && applied!.columns === columns) return null;
   return { css, columns, spreadPx, text: `${css}\n\n${editorStylesheet(css, { columns })}` };
 }
@@ -227,9 +245,17 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   // visual gutter, band x-offsets = page width + gutter.
   const pageW = geometry.width;
   const pageH = geometry.height;
+  // Each band ends in a hairline, so the author can SEE where the page ends.
+  // The preview gives every sheet `box-shadow: 0 2px 12px …`; a background
+  // band cannot carry a per-band shadow, and without the line the sheets are
+  // invisible whenever the canvas is light — which is the default for a book
+  // whose `appearance.previewBg` is pale, and reads as "the editor has no
+  // pages" (observed on the design guide).
+  const edgePt = 2 / PX_PER_PT;
   const band =
     `repeating-linear-gradient(to bottom, var(--gp-editor-sheet, #ffffff) 0 ${px(pageH)}, ` +
-    `transparent ${px(pageH)} ${px(pageH + gap / PX_PER_PT)})`;
+    `var(--gp-editor-sheet-edge, rgb(0 0 0 / 0.28)) ${px(pageH)} ${px(pageH + edgePt)}, ` +
+    `transparent ${px(pageH + edgePt)} ${px(pageH + gap / PX_PER_PT)})`;
   const bands = Array.from({ length: columns }, () => band).join(", ");
   const positions = Array.from({ length: columns }, (_, i) =>
     `${px(i * (pageW + gap / PX_PER_PT))} 0`,

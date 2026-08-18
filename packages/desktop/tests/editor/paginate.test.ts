@@ -5,6 +5,7 @@ import {
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
+  MIN_LEGIBLE_SCALE,
   nextEditorSheet,
   paginatedWidth,
   paginationCss,
@@ -176,17 +177,27 @@ test("the two-page view claims no gutter side, at either column count", () => {
  * so NOTHING could test it, and two mutations that made the toolbar's Two-page
  * button silently dead for a mounted editor both left the suite green.
  */
-test("a requested spread is honoured regardless of pane width (fit is VISUAL)", () => {
-  // The surface scales itself to the pane (`RichEditor.applyScale`), exactly
-  // like the preview's fit-width — so "does a spread fit at print size" is no
-  // longer a layout question, and narrow panes get a smaller spread, not a
-  // refused one.
+test("a spread is refused when it would not be READABLE, not when it exceeds print size", () => {
+  // The surface scales itself to the pane, so a spread always fits
+  // geometrically — the question is whether the author could still write in
+  // it. Measured: fitting a spread into the default split renders a 10pt
+  // face at 4.3px, against 8.8px for one page in the same pane.
+  const SPREAD = 816 * 2 + 24; // a US-Letter spread of BOOK_CSS
   const at = (px: number) => nextEditorSheet(null, BOOK_CSS, 2, px)!.columns;
-  expect(at(0)).toBe(2);
-  expect(at(400)).toBe(2);
+  expect(at(0)).toBe(1); // an unmeasured pane is not a wide one
+  expect(at(Math.floor(SPREAD * 0.3))).toBe(1); // the 4.3px case
+  expect(at(Math.ceil(SPREAD * MIN_LEGIBLE_SCALE))).toBe(2); // exactly at the floor
+  expect(at(SPREAD)).toBe(2); // print size, comfortably above it
   expect(at(9999)).toBe(2);
   // ...and one page never becomes two on width alone.
   expect(nextEditorSheet(null, BOOK_CSS, 1, 9999)!.columns).toBe(1);
+});
+
+test("the legibility floor leaves a spread readable, not merely visible", () => {
+  // The floor is what stops "fits the pane" from meaning "3pt type". Stated
+  // as a property so a future tweak has to argue with a number.
+  expect(MIN_LEGIBLE_SCALE).toBeGreaterThanOrEqual(0.5);
+  expect(MIN_LEGIBLE_SCALE).toBeLessThan(1);
 });
 
 test("no book CSS means no geometry to fit against, so one page", () => {
