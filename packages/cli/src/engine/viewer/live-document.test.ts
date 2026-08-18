@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { extract, resolvePage } from "gutterpress/render";
+import { extract, resolvePage } from "../shared/gcpm-extract";
 import {
   breakMappingCss,
   editorStylesheet,
@@ -10,13 +10,13 @@ import {
   paginatedWidth,
   paginationCss,
   scrollContainerCss,
-} from "../../src/lib/editor/paginate";
+} from "./live-document";
 
 /**
  * The editor's pagination is a STYLESHEET, not a layout pass. These tests
  * assert what that stylesheet says. What it does to page counts in a real
  * browser is not asserted anywhere and is not claimed anywhere either — see
- * `paginate.ts`'s header for why a table of per-book deltas that no gate
+ * `live-document.ts`'s header for why a table of per-book deltas that no gate
  * re-derives was removed rather than refreshed.
  *
  * The property that matters most here is the one an earlier draft got wrong:

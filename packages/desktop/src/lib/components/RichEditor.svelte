@@ -45,7 +45,7 @@
   import { getProjectRenderer } from "$lib/editor/project-renderer";
   import type { ProjectPluginIssue } from "$lib/editor/project-plugins";
   import type MarkdownIt from "markdown-it";
-  import { nextEditorSheet, paginatedWidth, type EditorSheet } from "$lib/editor/paginate";
+  import { nextEditorSheet, paginatedWidth, type EditorSheet } from "gutterpress/render";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
     clearSlashQuery,

@@ -1,5 +1,15 @@
 /**
- * CSS-only pagination for the editing surface.
+ * LIVE-DOCUMENT pagination — the engine's editing mode.
+ *
+ * The print path fragments a FINISHED document (`fragment.ts`, next door);
+ * this module paginates a document that is BEING EDITED, with nothing but a
+ * stylesheet, so it can sit under a ProseMirror surface whose DOM must never
+ * be mutated from outside. It lives in the engine so the two ways Gutterpress
+ * lays out pages are one codebase, not an engine and a copy: the editing
+ * surface reads the same `@page` geometry, break declarations and page
+ * assignments through the same extractor the PDF path uses, and a change to
+ * either is made next to the other. The desktop consumes it through
+ * `gutterpress/render` and keeps no pagination logic of its own.
  *
  * The editor shows real, page-sized boxes without running the paginator. That
  * distinction is the single most important constraint in this design: the
@@ -84,8 +94,8 @@
  * jumped a page here. `scrollContainerCss()` below is the repair, and the same
  * defect was what made the user guide's preview disagree with its PDF.
  */
-import { extract, mediaPrintBodies, resolvePage } from "gutterpress/render";
-import type { GcpmModel, PageGeometry } from "gutterpress/render";
+import { extract, mediaPrintBodies, resolvePage } from "../shared/gcpm-extract";
+import type { GcpmModel, PageGeometry } from "../shared/gcpm-extract";
 
 /** CSS px per PostScript point — `@page` geometry is in pt. */
 const PX_PER_PT = 96 / 72;

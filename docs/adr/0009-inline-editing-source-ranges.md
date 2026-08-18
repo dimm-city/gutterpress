@@ -22,7 +22,7 @@ A rich-text editing surface now exists — ProseMirror over a real document
 model (`packages/desktop/src/lib/editor/`). That does not overturn this ADR so
 much as narrow it: **its three ruled-out premises were about mounting an editor
 over the PAGINATED PREVIEW, and the new surface is not that.** It is the editor
-pane, it is its own iframe, and it paginates with CSS (`editor/paginate.ts`)
+pane, it is its own iframe, and it paginates with CSS (`engine/viewer/live-document.ts`)
 rather than by fragmenting the DOM.
 
 Taking the premises one at a time, because the distinction matters:

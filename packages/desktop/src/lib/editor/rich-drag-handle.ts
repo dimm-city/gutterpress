@@ -29,7 +29,7 @@
  *    PRINTS (the chapter opener); a handle is tooling chrome and is neither
  *    document nor print.
  * 2. **Not appended inside `view.dom`.** ProseMirror's `DOMObserver` reverts
- *    external mutation of its own DOM — the trap `paginate.ts`'s header
+ *    external mutation of its own DOM — the trap `engine/viewer/live-document.ts`'s header
  *    records from the previous attempt. Living on `body` sidesteps the
  *    observer entirely, needs no `ignoreMutation`, and inherits no
  *    `contenteditable`.
@@ -218,7 +218,7 @@ const HANDLE_CSS = `
    one, so without this the author cannot see what they are about to move.
 
    An outline, and nothing else, on purpose: it is the one visual that takes no
-   space, so this cannot move a page break — the rule paginate.ts keeps for its
+   space, so this cannot move a page break — the rule engine/viewer/live-document.ts keeps for its
    own stylesheet. ProseMirror-selectednode is a view class, never part of the
    author's vocabulary, so no book can come to depend on it. */
 .ProseMirror-selectednode {

@@ -28,7 +28,7 @@ import {
  *
  * DOM is happy-dom (the harness `tests/platform/dialog.test.ts` uses). It does
  * no layout, so nothing here asserts geometry — pagination is CSS and is
- * covered by `paginate.test.ts` and the reasoning recorded in `paginate.ts`'s
+ * covered by the engine's `live-document.test.ts` and the reasoning recorded in `engine/viewer/live-document.ts`'s
  * header.
  *
  * The property these tests exist for is the one the postmortem lost: an edit

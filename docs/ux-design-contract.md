@@ -223,7 +223,7 @@ Proposed refinements:
   it is NOT is page-for-page with the PDF, and it does not claim to be — the
   preview is the surface held to that, by `scripts/native-parity-gate.ts`.
   The three structural causes of the editor's gap are recorded in
-  `editor/paginate.ts`'s header, along with why per-book page-count deltas
+  `engine/viewer/live-document.ts`'s header, along with why per-book page-count deltas
   are deliberately not written down anywhere: nothing in the tree re-derives
   them, and the last set went stale three ways inside one release.
 

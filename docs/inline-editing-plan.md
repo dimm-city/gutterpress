@@ -85,7 +85,7 @@ compiled binary or the desktop bundle beyond our own code.
 
   **Amended 2026-08-17:** `contenteditable` on paginated content is no longer
   a non-goal in general — it is what the rich editor pane is. That surface
-  paginates with CSS (`editor/paginate.ts`, `column-wrap: wrap`), so there are
+  paginates with CSS (`engine/viewer/live-document.ts`, `column-wrap: wrap`), so there are
   no split fragments and nothing rewrites the DOM to lay it out; a caret
   crossing a page boundary is verified in Chromium. The scope of this non-goal
   is the PREVIEW.

@@ -24,7 +24,7 @@
  * DOM-rewriting fragmenter over ProseMirror's own DOM; ProseMirror's
  * `DOMObserver` reverted its mutations, and detaching the observer around
  * every layout pass became a permanent obligation. Pagination here is CSS
- * (`paginate.ts`) and touches nothing.
+ * (`engine/viewer/live-document.ts`, via `gutterpress/render`) and touches nothing.
  */
 import { baseKeymap, chainCommands, exitCode, setBlockType, toggleMark } from "prosemirror-commands";
 import { dropCursor } from "prosemirror-dropcursor";

@@ -182,7 +182,7 @@ Two implementations, because the two surfaces have different constraints:
 
 - **Viewer** — `splitScrollContainers()` in `engine/viewer/fragment.ts`, a DOM
   pass over each strip. Gated by `engine/viewer/scroll-container-split.test.ts`.
-- **Editor** — `scrollContainerCss()` in `desktop/src/lib/editor/paginate.ts`,
+- **Editor** — `scrollContainerCss()` in `packages/cli/src/engine/viewer/live-document.ts`,
   which emits CSS instead, because mutating ProseMirror's DOM is the mistake
   that module exists to avoid. It repeats the author's own selector to outrank
   their `overflow` while keeping the `display` half at zero specificity, so an

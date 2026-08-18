@@ -326,7 +326,7 @@
   // mount; later changes go through the editorViewModeSink below, because the
   // editor takes no reactive dependency on its props. The surface may still
   // show one page: it renders at print size with no zoom, so it refuses a
-  // spread that would not fit the pane (paginate.ts's nextEditorSheet).
+  // spread that would not fit the pane (the engine's nextEditorSheet).
   let editorColumns = $derived<1 | 2>(viewMode === "two-column" ? 2 : 1);
   let bgColor = $derived(settings.current.appearance.previewBg);
   // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
