@@ -10,7 +10,7 @@
  */
 export { gutterpressSchema } from "./schema";
 export { createDocParser, canEditRichly } from "./parser";
-export { createEditorRenderer } from "./renderer";
+export { createEditorRenderer, type LoadedPlugin } from "./renderer";
 export { resetSerializeCache, serializeDoc } from "./serializer";
 
 import type MarkdownIt from "markdown-it";

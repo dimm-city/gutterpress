@@ -193,3 +193,57 @@ describe("project/normalize: the files it enumerates", () => {
     expect(seen).toContain("chapters/intro.md");
   });
 });
+
+describe("project/normalize: the PROJECT'S dialect, plugins included", () => {
+  test("a plugin-marker chapter is planned with the plugin loaded, markers verbatim", async () => {
+    // Without the manifest's plugins, `@sidebar` tokenizes as a plain
+    // paragraph — content-safe, but the plan would be judging a different
+    // document than the one that prints. With them, the wrapper round-trips
+    // as a structural node and its authored lines survive exactly.
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/marks.js\n",
+      "a.md": '@sidebar .tip "Note"\n\nKeep **both** hands on the rail.\n\n@end-sidebar\n',
+    });
+    await mkdir(join(dir, "plugins"), { recursive: true });
+    await writeFile(
+      join(dir, "plugins", "marks.js"),
+      `export default function (md) {
+  md.block.ruler.before("paragraph", "gp_test_marks", (state, startLine, _end, silent) => {
+    const pos = state.bMarks[startLine] + state.tShift[startLine];
+    const line = state.src.slice(pos, state.eMarks[startLine]).trim();
+    const m = /^@(sidebar|end-sidebar)\\b/.exec(line);
+    if (!m) return false;
+    if (silent) return true;
+    const t = state.push(m[1] === "sidebar" ? "sb_open" : "sb_close", "aside", m[1] === "sidebar" ? 1 : -1);
+    t.markup = line;
+    t.map = [startLine, startLine + 1];
+    state.line = startLine + 1;
+    return true;
+  });
+}
+`,
+      "utf-8",
+    );
+
+    const plan = await run(dir, false);
+    expect(plan.refused).toEqual([]);
+    // Already-canonical, so unchanged — the strongest form of "not damaged".
+    expect(plan.unchanged).toContain("a.md");
+  });
+
+  test("a plugin that cannot load ABORTS the plan instead of writing with the wrong dialect", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/broken.js\n",
+      "a.md": "# A\n",
+    });
+    await mkdir(join(dir, "plugins"), { recursive: true });
+    await writeFile(join(dir, "plugins", "broken.js"), "throw new Error('boom at import');\n", "utf-8");
+
+    const res = await (normalize as Handler)({ request: request({ projectDir: dir, apply: false }) })
+      .then((r) => ({ ok: true as const, r }))
+      .catch((e: unknown) => ({ ok: false as const, e }));
+    // defineRoute surfaces the throw as an HTTP error; either shape is fine —
+    // what matters is that NO plan is produced.
+    if (res.ok) expect(res.r.status).toBeGreaterThanOrEqual(500);
+  });
+});

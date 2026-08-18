@@ -29,11 +29,21 @@
  * This is a rule about provenance, not a list of known-generated markup, so it
  * keeps working if `markers.js` starts injecting something else.
  */
-import { createMarkdownRenderer } from "gutterpress/render";
+import { createMarkdownRenderer, type LoadedPlugin } from "gutterpress/render";
 import type MarkdownIt from "markdown-it";
 
-export function createEditorRenderer(): MarkdownIt {
-  const md = createMarkdownRenderer();
+export type { LoadedPlugin } from "gutterpress/render";
+
+/**
+ * `plugins` are the PROJECT'S manifest plugins — passed through to
+ * `createMarkdownRenderer`, which applies them at the same pipeline position
+ * the print path does (after the core plugins, before the source-metadata
+ * rules). The editor must parse with the dialect that prints, and that
+ * dialect includes the book's own plugins; see `$lib/editor/project-renderer`
+ * for how the desktop obtains them on each side of the process boundary.
+ */
+export function createEditorRenderer(plugins?: LoadedPlugin[]): MarkdownIt {
+  const md = createMarkdownRenderer(plugins && plugins.length > 0 ? plugins : undefined);
 
   md.core.ruler.push("editor_drop_generated", (state) => {
     state.tokens = state.tokens.filter(

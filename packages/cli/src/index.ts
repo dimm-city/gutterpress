@@ -26,7 +26,11 @@ export type { CheckContext, CheckResult } from "./checks/types.ts";
 export { resolveCheckSelectors, getChecks, getCheckById } from "./checks/registry.ts";
 export type { ResolvedSelectors } from "./checks/registry.ts";
 export type { CheckCategory, CheckPhase } from "./checks/types.ts";
-export { loadManifest } from "./lib/manifest.ts";
+export { loadManifest, resolveConfig } from "./lib/manifest.ts";
+export type { ResolvedPluginConfig } from "./schema/manifest.types.ts";
+// The desktop's normalize route builds the editor DIALECT with the project's
+// own plugins (host-side), exactly as the print path does.
+export { loadPlugins } from "./lib/markdown/plugins.ts";
 
 // ── Platform abstraction contract (#41) — consumed by the desktop ────────────
 export type { PlatformAdapter, FileStat, FileWriteResult } from "./platform.ts";

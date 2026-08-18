@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import { planNormalize, type NormalizeReport } from '$lib/editor/normalize-project';
+import { createEditorRenderer } from '$lib/editor/markdown-doc';
 import type { RequestHandler } from './$types';
 
 /**
@@ -72,7 +73,15 @@ export const POST: RequestHandler = defineRoute<{
       })),
     );
 
-    const report: NormalizeReport = planNormalize(files);
+    // The PROJECT'S dialect, plugins included — normalize writes files, and
+    // planning a plugin-using book with the bare pipeline would judge its
+    // marker structure as plain paragraphs. FAIL-FAST (no onError): a plugin
+    // that cannot load host-side aborts the plan with its own message rather
+    // than rewriting the book with an incomplete dialect — the loader's
+    // build/export rule, because this is a write path, not a preview.
+    const config = lib.resolveConfig({}, manifest ?? {});
+    const loaded = await lib.loadPlugins(config.plugins ?? [], body.projectDir);
+    const report: NormalizeReport = planNormalize(files, createEditorRenderer(loaded));
 
     // Every write is attempted, and each result is reported. A bare
     // `Promise.all` rejected on the first failure while the writes that had

@@ -147,6 +147,16 @@ import type { PreflightRow } from './preflight';
  * per file. `refused` names files the document model cannot represent — those
  * are left exactly as the author wrote them.
  */
+/** One manifest plugin, as `api.project.editorPlugins` resolves it. */
+export interface EditorPluginEntry {
+  ref: string;
+  /** Same-origin module URL to `import()`; absent when `error` is set. */
+  url?: string;
+  exportName?: string;
+  options?: Record<string, unknown>;
+  error?: string;
+}
+
 export interface NormalizePlan {
   applied: boolean;
   changed: Array<{ path: string; before: string; after: string }>;
@@ -561,6 +571,14 @@ export const api = {
      */
     normalize: (projectDir: string, apply = false, expected?: Record<string, string>) =>
       post<NormalizePlan>('/api/project/normalize', { projectDir, apply, expected }),
+
+    /**
+     * The manifest's plugins, resolved to same-origin module URLs the rich
+     * editor can `import()` — or to a stated reason each cannot be loaded.
+     * See `$lib/editor/project-plugins.ts`, the one consumer.
+     */
+    editorPlugins: (projectDir: string) =>
+      post<{ plugins: EditorPluginEntry[] }>('/api/project/editor-plugins', { projectDir }),
   },
 
   manifest: {

@@ -1202,6 +1202,10 @@
    * rich chunk, which is the only chunk that needs it.
    */
   let docModel = $state<typeof import("$lib/editor/markdown-doc") | null>(null);
+  /** The per-project dialect factory — lazy-loaded WITH the doc model. */
+  let projectRenderer = $state<typeof import("$lib/editor/project-renderer") | null>(null);
+  /** Manifest plugins the editor could not load (shown next to the surface). */
+  let richPluginIssues = $state<Array<{ ref: string; error: string }>>([]);
 
   // ── normalize-on-adoption ──────────────────────────────────────────────
   /** The plan awaiting the author's consent, or null when nothing is asked. */
@@ -1358,12 +1362,16 @@
     if (!editorOpen || !lifecycle.currentDir || RichEditor || richModuleLoading || richModuleFailed)
       return;
     richModuleLoading = true;
-    void import("$lib/editor/markdown-doc").then((m) => {
+    void Promise.all([
+      import("$lib/editor/markdown-doc"),
+      import("$lib/editor/project-renderer"),
+    ]).then(([m, pr]) => {
       docModel = m;
+      projectRenderer = pr;
       // The preflight for the already-open file could not run before the model
       // existed; run it now so a file that cannot be edited richly falls back
       // rather than sitting in a mode that will mis-serialize it.
-      evaluateRichSupport(editorFilePath, editorContent);
+      void evaluateRichSupport(editorFilePath, editorContent);
     });
     import("$lib/components/RichEditor.svelte")
       .then((m) => {
@@ -1398,12 +1406,17 @@
    * anything the schema does not model raises in the parser and the file
    * opens in source mode with the reason shown (CLAUDE.md §5).
    */
-  function evaluateRichSupport(path: string | null, content: string): void {
-    if (!path || !isMd(path) || !docModel) {
+  async function evaluateRichSupport(path: string | null, content: string): Promise<void> {
+    if (!path || !isMd(path) || !docModel || !projectRenderer) {
       richBlockedReason = null;
       return;
     }
-    const verdict = docModel.canEditRichly(docModel.createEditorRenderer(), content);
+    // The PROJECT'S dialect — plugins included — not the bare pipeline: a
+    // bare-pipeline verdict would accept a plugin-marker file the mounted
+    // editor (same dialect everywhere) then models differently.
+    const { md } = await projectRenderer.getProjectRenderer(lifecycle.currentDir);
+    if (editorFilePath !== path) return; // a newer handoff superseded this one
+    const verdict = docModel.canEditRichly(md, content);
     richBlockedReason = verdict.ok ? null : verdict.reason;
   }
 
@@ -1559,9 +1572,13 @@
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
   function showEditorContent(path: string, content: string): void {
-    // Decide rich-vs-source BEFORE handing the content over, so the right
-    // component is the one that receives it.
-    evaluateRichSupport(path, content);
+    // Decide rich-vs-source for this handoff. The verdict resolves async (the
+    // project dialect loads plugin modules on first use); until it lands the
+    // previous verdict picks the component, and the mounted editor's own
+    // fail-closed path (`setContent` → `onRichUnsupported`) covers the gap —
+    // content the schema cannot model is refused by the surface itself, never
+    // absorbed.
+    void evaluateRichSupport(path, content);
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
   }
@@ -3348,12 +3365,23 @@
                 Editing this file as markdown — {richBlockedReason}
               </p>
             {/if}
+            {#if effectiveEditorMode === "rich" && richPluginIssues.length > 0}
+              <!-- Degrade-and-report (§5): the dialect loaded without these
+                   plugins, so their markers show as plain markdown HERE ONLY.
+                   Preview and PDF still run them host-side. -->
+              <p class="editor-mode-note" role="status">
+                {richPluginIssues.length === 1 ? "A plugin" : "Plugins"} could not load in the
+                editor ({richPluginIssues.map((i) => i.ref).join(", ")}) — their markers show as
+                plain markdown here. Preview and PDF are unaffected.
+              </p>
+            {/if}
             {#if effectiveEditorMode === "rich"}
               {#if RichEditor}
                 <RichEditor
                   bind:this={editorRef}
                   filePath={editorFilePath}
                   content={editorContent}
+                  projectDir={lifecycle.currentDir}
                   {bookCss}
                   assetBase={lifecycle.previewUrl ?? ""}
                   columns={editorColumns}
@@ -3363,6 +3391,7 @@
                   onAnchorLine={(line, origin) =>
                     editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                   onUnsupported={onRichUnsupported}
+                  onPluginIssues={(issues) => (richPluginIssues = issues)}
                 />
               {:else}
                 <div class="editor-loading" role="status" aria-live="polite">

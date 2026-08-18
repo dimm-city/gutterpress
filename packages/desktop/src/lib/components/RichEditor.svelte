@@ -41,7 +41,10 @@
    * the same trap `PreviewFrame.svelte` documents. Unmount it instead.
    */
   import { onMount } from "svelte";
-  import { canEditRichly, createEditorRenderer } from "$lib/editor/markdown-doc";
+  import { canEditRichly } from "$lib/editor/markdown-doc";
+  import { getProjectRenderer } from "$lib/editor/project-renderer";
+  import type { ProjectPluginIssue } from "$lib/editor/project-plugins";
+  import type MarkdownIt from "markdown-it";
   import { nextEditorSheet, type EditorSheet } from "$lib/editor/paginate";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
@@ -57,6 +60,7 @@
   let {
     filePath = null,
     content = "",
+    projectDir = null,
     bookCss = "",
     assetBase = "",
     columns = 1,
@@ -65,9 +69,16 @@
     onSave,
     onAnchorLine,
     onUnsupported,
+    onPluginIssues,
   }: {
     filePath?: string | null;
     content?: string;
+    /**
+     * The open project. Read once at mount (like `bookCss`): it selects which
+     * plugin-loaded dialect this surface parses with. The host remounts the
+     * editor on project switches, so there is nothing to react to.
+     */
+    projectDir?: string | null;
     /** The book's fully-inlined CSS — the same text the preview renders with. */
     bookCss?: string;
     /**
@@ -105,10 +116,21 @@
      * show this file in source mode, with the reason.
      */
     onUnsupported?: (path: string | null, reason: string) => void;
+    /**
+     * Some manifest plugins could not be loaded into the editor's dialect.
+     * The host shows them next to the surface: the affected marker lines
+     * render as plain markdown here (content-safe; preview/PDF unaffected).
+     */
+    onPluginIssues?: (issues: ProjectPluginIssue[]) => void;
   } = $props();
 
-  /** Gutterpress's own markdown-it pipeline — the one that prints. */
-  const md = createEditorRenderer();
+  /**
+   * Gutterpress's own markdown-it pipeline WITH the project's plugins — the
+   * one that prints. Resolved async at mount (plugin modules are fetched from
+   * the host); every method that needs it runs against a mounted handle, which
+   * only exists once this is set.
+   */
+  let md: MarkdownIt | null = null;
 
   let frame: HTMLIFrameElement;
   let handle: RichEditorHandle | null = null;
@@ -257,7 +279,21 @@
     doc.body.appendChild(flow);
 
     applyCss(bookCss);
-    handle = mountRichEditor({ mount: flow, md, content, onChange, onSave, onAnchorLine, onChrome });
+
+    // The dialect resolves async (plugin modules come from the host). Props
+    // read inside the callback read their CURRENT values, so content pushed
+    // while the fetch was in flight still lands in the first mount.
+    let disposed = false;
+    void getProjectRenderer(projectDir).then(({ md: projectMd, issues }) => {
+      if (disposed) return;
+      md = projectMd;
+      // Unconditional: an empty list REPLACES a previous project's issues in
+      // the host, so a remount never inherits a stale banner.
+      onPluginIssues?.(issues);
+      handle = mountRichEditor({
+        mount: flow, md: projectMd, content, onChange, onSave, onAnchorLine, onChrome,
+      });
+    });
 
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onFrameGeometryChanged);
@@ -265,6 +301,7 @@
     window.addEventListener("resize", onFrameGeometryChanged);
 
     return () => {
+      disposed = true;
       window.removeEventListener("resize", onFrameGeometryChanged);
       observer?.disconnect();
       handle?.destroy();
@@ -322,8 +359,8 @@
    * under the new file's name.
    */
   function refuse(path: string | null, text: string): void {
-    const why = canEditRichly(md, text);
-    onUnsupported?.(path, why.ok ? "this file cannot be edited richly" : why.reason);
+    const why = md ? canEditRichly(md, text) : null;
+    onUnsupported?.(path, why && !why.ok ? why.reason : "this file cannot be edited richly");
   }
 
   /** The book's stylesheet changed (the author edited CSS, or a rebuild ran). */
