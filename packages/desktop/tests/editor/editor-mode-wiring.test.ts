@@ -245,8 +245,11 @@ describe("spread view wiring", () => {
     expect(PAGE.indexOf('{#if editorView === "activity"}')).toBeLessThan(
       PAGE.indexOf("<RichEditor"),
     );
-    // Zoom and page navigation are genuinely preview-only and must stay gated.
-    expect(PAGE).toContain("previewControlsDisabled={!lifecycle.previewUrl}");
+    // Zoom and page navigation are genuinely preview-only and must stay gated
+    // — including while rich mode has collapsed the pane they drive.
+    expect(PAGE).toContain(
+      "previewControlsDisabled={!lifecycle.previewUrl || richEditorShowing}",
+    );
     // All four view-mode controls (segmented pair + the collapsed menu's two
     // items) move together, or the narrow toolbar disagrees with the wide one.
     const viewMode = TOOLBAR.slice(
@@ -255,6 +258,38 @@ describe("spread view wiring", () => {
     );
     expect(viewMode.match(/disabled=\{viewModeDisabled\}/g)?.length).toBe(4);
     expect(viewMode).not.toContain("previewControlsDisabled");
+  });
+
+  test("rich mode takes the whole window; source mode keeps the split", () => {
+    // The rich editor renders the book's own pages, so a preview pane beside
+    // it is the same pages twice at half size — measured at 4.3px body text
+    // in the default split. While rich is showing the pane collapses and the
+    // editor gets the full grid track; SOURCE mode keeps the split, because
+    // raw markdown genuinely needs a rendered pane beside it.
+    expect(PAGE).toContain(
+      "let previewPaneHidden = $derived(previewHidden || richEditorShowing);",
+    );
+    // Every pane-layout site keys off the combined flag, not the raw toggle —
+    // one term forgotten and rich mode renders the double view again.
+    expect(PAGE).toContain("editorPaneOpen && !isNarrow && !previewPaneHidden && !focusMode");
+    expect(PAGE).toContain("editorPaneOpen && !isNarrow && previewPaneHidden && !focusMode");
+    expect(PAGE).toContain("class:preview-hidden={previewPaneHidden}");
+    expect(PAGE).toContain("{#if !isNarrow && !previewPaneHidden}");
+    // `previewHidden` itself stays the author's own eye-toggle state: leaving
+    // rich mode must restore their choice, so nothing may assign the combined
+    // state back into it.
+    expect(PAGE).not.toContain("previewHidden = previewPaneHidden");
+    // The toolbar reflects the pane that is actually on screen, and its
+    // show/hide toggle is disabled while rich mode owns the collapse — an
+    // enabled eye over a pane the mode will not let reopen is a dead control.
+    expect(PAGE).toContain("previewHidden={previewPaneHidden}");
+    expect(PAGE).toContain(
+      "previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen || richEditorShowing}",
+    );
+    // Page navigation drives the preview frame; hide it with the pane.
+    expect(PAGE).toContain(
+      "showPageNav={!!lifecycle.previewUrl && !isNarrow && !richEditorShowing}",
+    );
   });
 
   test("changing the view mode re-applies the stylesheet, not just the field", () => {

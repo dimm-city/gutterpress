@@ -245,6 +245,14 @@ Proposed refinements:
     enough to be correct. Offer a project-wide normalize on adoption so the
     churn lands in one deliberate commit instead of scattered across every
     later diff.
+  - **Rich mode owns the window; source mode keeps the split.** The rich
+    surface renders the book's own pages, so a preview pane beside it is the
+    same pages twice, each at half size (measured: 4.3px body text in the
+    default split). While rich is showing, the preview pane collapses and the
+    editor takes the full workspace; the preview keeps running underneath, so
+    builds, exports and the book-CSS feed stay live, and the author's own
+    show/hide-preview choice is restored on leaving rich mode. Source mode
+    keeps the split — raw markdown genuinely needs a rendered pane beside it.
   - Which mode a NEW project opens in is a product decision, not a technical
     one, and is not settled by this amendment.
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that

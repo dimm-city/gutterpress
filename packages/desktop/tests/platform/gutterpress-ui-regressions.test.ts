@@ -19,7 +19,7 @@ test("preview toolbar button toggles preview visibility so the editor can fill t
   const toolbar = read("src/lib/components/AppToolbar.svelte");
   expect(src).toContain("let previewHidden");
   expect(src).toContain("function togglePreview");
-  expect(src).toContain("class:preview-hidden={previewHidden}");
+  expect(src).toContain("class:preview-hidden={previewPaneHidden}");
   // The toggle control itself lives in the extracted AppToolbar now.
   expect(toolbar).toContain("title={previewHidden ? \"Show preview\" : \"Hide preview\"}");
   expect(toolbar).not.toContain("Preview only");

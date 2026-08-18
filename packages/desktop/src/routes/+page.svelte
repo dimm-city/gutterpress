@@ -1149,23 +1149,6 @@
   // preview's "Go to source"; the editor has no search surface of its own.
   let findBarOpen = $state(false);
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
-  const viewerVisibleForFind = $derived(
-    !!lifecycle.previewUrl &&
-      !previewHidden &&
-      !(isNarrow && (editorPaneOpen || editorView !== "editor")),
-  );
-
-  let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewHidden && !focusMode
-      ? splitTemplateColumns(zoomView.splitPaneRatio)
-      : "",
-  );
-  let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewHidden && !focusMode
-      ? "minmax(0, 1fr) 0 minmax(0, 0)"
-      : "",
-  );
-
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -1565,6 +1548,36 @@
    */
   let richEditorShowing = $derived(
     editorPaneOpen && editorView === "editor" && effectiveEditorMode === "rich",
+  );
+
+  /**
+   * The RICH editor IS the view — it renders the book's own pages, so a
+   * preview pane beside it is the same pages twice, each at half size (the
+   * measured cost: the editor landed at 4.3px body text in the default
+   * split). While rich is showing, the preview pane collapses and the editor
+   * takes the window; SOURCE mode keeps the split, because raw markdown
+   * genuinely needs a rendered pane beside it. The preview keeps running
+   * underneath either way — builds, exports and the book CSS feed all stay
+   * live. `previewHidden` remains the author's own eye-toggle state and is
+   * not overwritten, so leaving rich mode restores their choice.
+   */
+  let previewPaneHidden = $derived(previewHidden || richEditorShowing);
+
+  const viewerVisibleForFind = $derived(
+    !!lifecycle.previewUrl &&
+      !previewPaneHidden &&
+      !(isNarrow && (editorPaneOpen || editorView !== "editor")),
+  );
+
+  let splitGridColumns = $derived(
+    editorPaneOpen && !isNarrow && !previewPaneHidden && !focusMode
+      ? splitTemplateColumns(zoomView.splitPaneRatio)
+      : "",
+  );
+  let previewCollapseGridColumns = $derived(
+    editorPaneOpen && !isNarrow && previewPaneHidden && !focusMode
+      ? "minmax(0, 1fr) 0 minmax(0, 0)"
+      : "",
   );
 
   let editorSavePhase = $derived(buffer?.phase ?? "clean");
@@ -3187,7 +3200,7 @@
     onOpenInBrowser={openInBrowser}
     {pageNav}
     rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow}
+    showPageNav={!!lifecycle.previewUrl && !isNarrow && !richEditorShowing}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -3196,12 +3209,12 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {viewMode}
     {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
+    previewControlsDisabled={!lifecycle.previewUrl || richEditorShowing}
     viewModeDisabled={!lifecycle.previewUrl && !richEditorShowing}
     onApplyViewMode={(mode) => { contextMenu.close(); zoomView.applyViewMode(mode, true); }}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
-    {previewHidden}
-    previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen}
+    previewHidden={previewPaneHidden}
+    previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen || richEditorShowing}
     onTogglePreview={togglePreview}
     {editorOpen}
     editorToggleDisabled={!toolbarProjectOpen}
@@ -3296,8 +3309,8 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && editorPaneOpen}
       class:show-view={isNarrow && !editorPaneOpen}
-      class:preview-hidden={previewHidden}
-      class:preview-collapsed={previewHidden}
+      class:preview-hidden={previewPaneHidden}
+      class:preview-collapsed={previewPaneHidden}
       bind:this={workspaceEl}
       style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
@@ -3417,7 +3430,7 @@
             {/if}
           {/if}
         </section>
-        {#if !isNarrow && !previewHidden}
+        {#if !isNarrow && !previewPaneHidden}
           <!-- Focusable separator (ARIA window-splitter pattern): drag, or
                Arrow-key resize / double-click reset for the non-drag path
                (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
@@ -3454,8 +3467,8 @@
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        aria-hidden={previewHidden}
-        inert={previewHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
+        aria-hidden={previewPaneHidden}
+        inert={previewPaneHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
       >
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
