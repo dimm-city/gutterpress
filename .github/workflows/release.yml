@@ -307,30 +307,15 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # audit F3: pin Node to match the Windows desktop build (which pins 22).
-      # electron-builder runs under node/npm (see dist:* note below), so leaving
-      # this to the runner's ambient default let the three platforms package
-      # under different Node majors.
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build package dist
-        run: bun run build
-        working-directory: packages/cli
-
-      # IMPORTANT: package the desktop with `npm run`, never `bun run`. The
-      # `dist:*` scripts invoke electron-builder, which spawns worker processes
-      # via `process.execPath`; under Bun that points at the Bun ELF binary and
-      # the workers fail (Node can't parse it). Keep electron-builder on
-      # node/npm. (See electron-builder.yml `npmRebuild: false` for the related
-      # workspace:* guard.)
+      # Finding #62: the composite action is the single desktop packaging path
+      # — release and the download-a-build debug workflows share it, for every
+      # platform, so they never diverge. It pins node 22 (audit F3: all three
+      # platforms package under the same Node major) and keeps
+      # electron-builder on node/npm rather than bun.
       - name: Build Linux AppImage
-        working-directory: packages/desktop
-        run: npm run dist:linux
+        uses: ./.github/actions/build-gutterpress-desktop
+        with:
+          platform: linux
 
       # latest-linux.yml + .blockmap are the electron-updater feed files —
       # they must ship on the GitHub release next to the AppImage.
@@ -358,12 +343,12 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # Finding #62: the composite action is the single Windows-desktop
-      # packaging path — also used by the desktop debug workflow — so the two
-      # never diverge again (it pins node 22, matching the "never bun run"
-      # electron-builder/npm constraint documented above).
+      # Finding #62: see build-desktop-linux — one packaging path, every
+      # platform, release and debug workflows alike.
       - name: Build Windows installer and zip
-        uses: ./.github/actions/build-gutterpress-desktop-windows
+        uses: ./.github/actions/build-gutterpress-desktop
+        with:
+          platform: win
 
       # latest.yml + the installer .blockmap are the electron-updater feed —
       # they must ship on the GitHub release next to the installer.
@@ -389,27 +374,16 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # audit F3: pin Node to match the Windows desktop build (see build-desktop-
-      # linux for rationale) so all three platforms package under the same Node.
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
       # No version patch needed — this job checks out the tag the `version`
       # job already bumped and committed (ref: needs.version.outputs.tag).
 
-      - name: Build package dist
-        run: bun run build
-        working-directory: packages/cli
-
+      # Finding #62: see build-desktop-linux. The action carries
+      # CSC_IDENTITY_AUTO_DISCOVERY=false, which is what keeps this unsigned
+      # DMG build from searching a keychain that has no identity in it.
       - name: Build macOS Intel and Apple Silicon DMGs
-        working-directory: packages/desktop
-        run: npm run dist:mac
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+        uses: ./.github/actions/build-gutterpress-desktop
+        with:
+          platform: mac
 
       - name: Upload DMGs
         uses: actions/upload-artifact@v6
