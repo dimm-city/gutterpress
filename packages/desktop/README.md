@@ -145,6 +145,23 @@ artifact from the finished run's summary page; it arrives as a `.zip`, so
 unzip it and `chmod +x` the AppImage before running it. Artifacts are kept for
 14 days.
 
+The Linux one also starts from a **push**, two ways:
+
+```bash
+# a disposable tag…
+git tag build-appimage-my-branch && git push origin build-appimage-my-branch
+
+# …or a marker in the commit message
+git commit -m "wip: try the new editor [appimage]" && git push
+```
+
+Same job, same artifact; the pushed commit is what gets built. Every other
+push skips the job in a second without starting a runner.
+
+Both exist because dispatching a workflow requires `actions: write`, which
+an automation account may not have even though it can push — and some
+environments allow branch pushes while refusing tag refs.
+
 Both come through the same composite action the release workflow uses
 (`.github/actions/build-gutterpress-desktop`), so a branch build is packaged
 exactly the way a released one is. What they deliberately leave out is the
@@ -312,8 +329,8 @@ never touches electron-updater directly.
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge
-  (`pagedjs-bridge.js`) handles communication.
-- **Vendored assets** — paged.polyfill.js + desktop scripts are served from
-  the lib's process-wide embedded-assets dir, not copied into each preview
-  session's tempDir. See `packages/cli/src/preview/http-server.ts`
+  (`preview-bridge.js`) handles communication.
+- **Vendored assets** — the native engine's viewer bundle + desktop scripts
+  are served from the lib's process-wide embedded-assets dir, not copied into
+  each preview session's tempDir. See `packages/cli/src/preview/http-server.ts`
   `EMBEDDED_PREFIXES`.
