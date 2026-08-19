@@ -164,6 +164,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A sync interrupted between merge and checkout can no longer turn into a
+  silently pushed revert of other people's work.** A pull lands in two steps
+  — `git.merge` moves the branch ref, then a forced checkout materializes the
+  merged files — and dying between them (crash, power loss, a file locked
+  during checkout) left a repo that looked healthy but whose folder still
+  held the pre-merge tree. Snapshot-first then read that stale folder as
+  unsaved writing, committed it on top of the merged tip, and the next push
+  published a wholesale revert of files the author never touched as a clean
+  fast-forward — this is exactly how dc-op-manual's `main` lost the merged
+  refactor/native migration (161 files) on 2026-08-16. Sync now journals the
+  merge→checkout window (`gutterpress-checkout-pending` beside the existing
+  snapshot staging marker) and, before ANY snapshot can read the working
+  folder as author intent — sync, manual save, or auto-snapshot — reconciles
+  an interrupted window precisely: paths still matching the pre-merge tree
+  are re-materialized from the branch tip, while paths the author touched
+  after the crash are kept and saved as the real work they are.
+
 - **`@spread` written while a page is still open no longer prints a blank
   sheet.** A spread groups pages, so it can never live inside one — but with
   a `@page` (or its `@section`) still open, the spread wrapper opened inside

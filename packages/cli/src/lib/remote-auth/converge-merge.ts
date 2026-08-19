@@ -50,6 +50,7 @@ import {
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
+import { clearCheckoutPending, writeCheckoutPending } from "./checkout-journal.ts";
 import { isMergeConflictError } from "./recovery/classify.ts";
 import type { GitCache, ImageClash } from "./sync-types.ts";
 
@@ -213,6 +214,14 @@ export async function convergeMerge(params: {
   const { dir, cache, branch, theirs, author } = params;
 
   const ourTip = await git.resolveRef({ fs, dir, ref: branch });
+  // Crash-window journal: git.merge below moves the branch REF; the forced
+  // git.checkout that materializes the result into the working folder is a
+  // separate, later step. Dying between the two leaves a structurally-healthy
+  // repo whose folder silently reverts the merge the moment snapshot-first
+  // commits it (the dc-op-manual c84d16e clobber). The marker (written before
+  // the ref can move, cleared only after checkout) makes the state detectable,
+  // and healPendingCheckout() reconciles it before any snapshot can run.
+  writeCheckoutPending(dir, { branch, preMergeTip: ourTip });
   const [ourCommit, theirCommit] = await Promise.all([
     git.readCommit({ fs, dir, cache, oid: ourTip }),
     git.readCommit({ fs, dir, cache, oid: theirs }),
@@ -265,6 +274,10 @@ export async function convergeMerge(params: {
       message,
       authorName: params.authorName,
       authorEmail: params.authorEmail,
+      // These snapshots run deliberately INSIDE the guarded merge→checkout
+      // window (equalize/restore) — healing here would clear the journal
+      // while the window is still open.
+      skipCheckoutHeal: true,
     });
 
   /**
@@ -349,6 +362,11 @@ export async function convergeMerge(params: {
 
   // merge() moves the ref only — sync the working tree to the result.
   await git.checkout({ fs, dir, cache, ref: branch, force: true });
+  // The folder now matches the ref — close the crash window. A throw above
+  // leaves the marker in place on purpose: the next operation's
+  // healPendingCheckout() finishes the materialization before anything can
+  // snapshot the half-updated folder.
+  clearCheckoutPending(dir);
 
   // Restore the surviving content for the equalized-the-other-way files
   // (newer local binaries, edits that beat a deletion) as a visible,

@@ -23,6 +23,7 @@ import {
   detectProjectSource,
   findEnclosingRepoDir,
 } from "./project-source.ts";
+import { healPendingCheckout } from "./remote-auth/checkout-journal.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
@@ -74,6 +75,14 @@ export interface SnapshotOptions {
   repoRoot?: string;
   /** Optional log file for debugging snapshot operations. */
   logFile?: string;
+  /**
+   * INTERNAL — converge-merge only. Its equalize/restore snapshots run
+   * deliberately inside the guarded merge→checkout window; the heal that
+   * protects every OTHER snapshot from committing a half-landed pull
+   * (`healPendingCheckout`) must not fire there, or it would clear the
+   * checkout journal while the window is still open.
+   */
+  skipCheckoutHeal?: boolean;
 }
 
 /**
@@ -640,6 +649,15 @@ export async function snapshotWorkingTreeUnlocked(
   // One object cache for this snapshot operation only (diff + stage +
   // commit share it), released when the operation returns.
   const cache: GitCache = {};
+  // A snapshot reads the working folder as author intent — so a pull that
+  // died between moving the branch ref and materializing the merged tree
+  // (checkout) must be reconciled FIRST, or the stale folder gets committed
+  // as "unsaved work" and the next push publishes a silent wholesale revert
+  // (the dc-op-manual c84d16e clobber). No-op unless the checkout journal
+  // says the previous sync died inside that window.
+  if (!options.skipCheckoutHeal) {
+    await healPendingCheckout({ dir, cache, logger });
+  }
   // Crash-window marker: staging (git.add/remove) and git.commit are two
   // separate writes. A crash between them leaves the index matching the
   // workdir with NO commit — and because the changes walk compares

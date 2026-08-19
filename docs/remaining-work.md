@@ -190,17 +190,22 @@ Until this lands, "both books build clean" cannot be reproduced from
 `origin/main`, and the gallery baseline cannot be re-frozen because the
 gallery chapter on `main` is not the approved artifact.
 
-**Product action (this repo)** — a pre-sync snapshot must never silently
-commit wholesale deletions of files the author did not touch. Working rule 8
-applies directly: silent degradation is the expensive failure. The guard has
-to live at SNAPSHOT time: once the stale tree is committed on top of the
-pulled history, it is simply the newest commit — the sync's merge machinery
-sees nothing to conflict on, which is exactly how `c84d16e` sailed through.
-At minimum the snapshot path needs to refuse, or require explicit
-confirmation, when the tree it is about to commit deletes files that exist
-at the remote head and were not deleted by the author's own edits. A
-regression test should pin it: local folder stale + remote advanced ⇒ sync
-must not push deletions.
+**Product action (this repo) — LANDED 2026-08-19.** The mechanism, proven by
+code reading: `convergeMerge` lands a pull as `git.merge` (ref moves) then a
+separate forced `git.checkout` (folder materializes). Dying between the two
+leaves a structurally-healthy repo whose folder still holds the pre-merge
+tree; snapshot-first then commits that stale folder as author work on top of
+the merged tip, and the push is a clean fast-forward — the merge machinery
+never sees anything to conflict on, which is exactly how `c84d16e` sailed
+through. The fix is a checkout journal
+(`src/lib/remote-auth/checkout-journal.ts`, mirroring the snapshot staging
+marker): written before the merge can move the ref, cleared only after the
+checkout completes, and healed — precisely, three-way against the recorded
+pre-merge tip, folder AND index, keeping post-crash author edits — before
+any snapshot (sync, manual, or auto) can read the working folder as author
+intent. The regression is pinned in `checkout-journal.test.ts`: local folder
+stale + remote advanced ⇒ push publishes nothing (or only the author's real
+edits), never a revert.
 
 ### Field guide, measured on today's `main`
 

@@ -31,6 +31,7 @@ import {
   InsecureTransportError,
   RepoNeedsRecoveryError,
 } from "./recovery/classify.ts";
+import { healPendingCheckout } from "./checkout-journal.ts";
 import { inspectRepo } from "./recovery/inspect.ts";
 import type { OperationLogger } from "./operation-log.ts";
 import {
@@ -205,8 +206,15 @@ export async function snapshotBeforeAction(args: {
   authorName?: string;
   authorEmail?: string;
   cache: GitCache;
+  logger?: OperationLogger;
 }): Promise<string | undefined> {
   const { projectDir, dir, cache } = args;
+  // A previous pull that died between merge (ref moved) and checkout (folder
+  // materialized) leaves stale folder content that the pending-changes walk
+  // below would read as unsaved author work — snapshotting it publishes a
+  // silent wholesale revert on the next push (the dc-op-manual c84d16e
+  // clobber). Reconcile that state first; no-op when no journal marker exists.
+  await healPendingCheckout({ dir, cache, logger: args.logger });
   const hasChanges = await hasPendingChanges(dir, cache);
   const staleStaging = fs.existsSync(snapshotStagingMarkerPath(dir));
   if (!hasChanges && !staleStaging) return undefined;

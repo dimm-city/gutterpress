@@ -240,6 +240,7 @@ export async function pullChanges(
         authorName: options.authorName,
         authorEmail: options.authorEmail,
         cache,
+        logger,
       });
 
       const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
@@ -357,6 +358,7 @@ export async function pushChanges(
         authorName: options.authorName,
         authorEmail: options.authorEmail,
         cache,
+        logger,
       });
 
       const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
