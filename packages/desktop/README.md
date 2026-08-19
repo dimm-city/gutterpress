@@ -130,6 +130,33 @@ npm run dist:mac     # → dist/gutterpress-<version>-{arm64,x64}.dmg
 Each `dist:*` script runs the build and electron:build steps automatically
 before packaging.
 
+### Measuring the rich editor against the preview
+
+The preview is the surface held page-for-page to the PDF; the rich editor is
+a third view whose promise is that text looks the way it will print.
+`tools/editor-parity.mjs` measures how well it keeps that promise on a REAL
+book — it opens one chapter in both surfaces of the built app, walks every
+painted run of text in each, and reports where they disagree:
+
+```bash
+npm run parity -- --book /path/to/book --file 03-components.md
+# headless machine:
+xvfb-run -a npm run parity -- --book /path/to/book
+```
+
+It writes `parity-report/report.json` (plus a screenshot) and prints a
+summary: whether both surfaces produced the same runs in the same order,
+which page each run lands on, the spacing between blocks, per-run type, and
+what the editor could or could not load of the project's plugins.
+Measurements are normalised for each surface's own zoom first, so a
+difference in the report is one the author would SEE.
+
+Use `--keep-parent` for a project whose plugins or styles live in a sibling
+directory, and give chapters an id (`@chapter … #ch-name`) so the preview
+side can be scoped to the chapter under test.
+
+Requires the app to be built first (`npm run build && npm run electron:build`).
+
 ### Getting a build without cutting a release
 
 Two `workflow_dispatch` workflows package a branch and upload the result as a
