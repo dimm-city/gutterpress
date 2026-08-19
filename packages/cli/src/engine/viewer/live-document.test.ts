@@ -3,6 +3,7 @@ import { extract, resolvePage } from "../shared/gcpm-extract";
 import {
   breakMappingCss,
   editorScale,
+  editorSheetGrid,
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
@@ -368,4 +369,48 @@ test("an unmeasured frame or flow scales 1:1 instead of collapsing", () => {
   expect(editorScale(0, 1200)).toBe(1);
   expect(editorScale(1200, 0)).toBe(1);
   expect(editorScale(1200, 430, "not-a-number")).toBe(1);
+});
+
+/**
+ * The paper. The band gradient it replaces painted plain white over the
+ * book's own page paint, so a textured book looked like a different product
+ * in the editor. These pin the sheet-layer contract the host renders.
+ */
+test("the stylesheet carries a sheet LAYER, not a painted gradient", () => {
+  const css = editorStylesheet(BOOK_CSS);
+  expect(css).toContain(".gp-editor-sheets {");
+  expect(css).toContain(".gp-editor-sheet {");
+  expect(css).not.toContain("repeating-linear-gradient");
+  // The viewer's own sheet shadow, replacing the old hairline edge.
+  expect(css).toContain("box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);");
+});
+
+test("editorSheetGrid matches the flow's own arithmetic", () => {
+  const grid = editorSheetGrid(BOOK_CSS, { columns: 2 });
+  // 8.5x11in at 96dpi
+  expect(grid.pageW).toBe(816);
+  expect(grid.pageH).toBe(1056);
+  expect(grid.strideX).toBe(816 + 24);
+  expect(grid.strideY).toBe(1056 + 24);
+  expect(grid.columns).toBe(2);
+  // content box nets out the margins (0.875in sides, 0.875in top, 1in bottom)
+  expect(grid.contentW).toBe(816 - 2 * 84);
+  expect(grid.contentH).toBe(1056 - 84 - 96);
+});
+
+test("the grid carries the base @page background, attachment excluded", () => {
+  const css = `@page { size: 8.5in 11in; margin: 1in; background: url(paper.png) #eee; background-attachment: fixed; }`;
+  const grid = editorSheetGrid(css);
+  const props = grid.pageBackground.map(([p]) => p);
+  expect(props).toContain("background");
+  expect(props).not.toContain("background-attachment");
+});
+
+test("page-relative content is clamped to the page box, at zero specificity", () => {
+  const css = editorStylesheet(BOOK_CSS);
+  // In print, .page is one page tall; here it wraps its whole run, so art
+  // sized against it rendered gigantic. The clamp restates the print truth.
+  expect(css).toContain(":where(.gp-editor-page-flow) :where(img, svg, video)");
+  expect(css).toContain(":where(.gp-editor-page-flow) :where(.gp-pin)");
+  expect(css).toContain("max-height: 876px;");
 });

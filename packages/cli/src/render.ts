@@ -60,7 +60,9 @@ export type {
 export {
   MIN_LEGIBLE_SCALE,
   breakMappingCss,
+  captureCanvasBackground,
   editorScale,
+  editorSheetGrid,
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
@@ -69,4 +71,4 @@ export {
   paginationCss,
   scrollContainerCss,
 } from "./engine/viewer/live-document";
-export type { EditorSheet, PaginateOptions } from "./engine/viewer/live-document";
+export type { EditorSheet, EditorSheetGrid, PaginateOptions } from "./engine/viewer/live-document";

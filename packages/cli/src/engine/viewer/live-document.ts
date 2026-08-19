@@ -97,6 +97,8 @@
  */
 import { extract, mediaPrintBodies, resolvePage } from "../shared/gcpm-extract";
 import type { GcpmModel, PageGeometry } from "../shared/gcpm-extract";
+import { pageBackgroundEntries } from "./page-paint";
+export { captureCanvasBackground, pageBackgroundEntries } from "./page-paint";
 
 /** CSS px per PostScript point — `@page` geometry is in pt. */
 const PX_PER_PT = 96 / 72;
@@ -142,6 +144,30 @@ export interface EditorSheet {
   spreadPx: number;
   /** The text to put in the frame's `<style>`. */
   text: string;
+  /**
+   * Where the paper goes: the sheet grid the host paints real page elements
+   * onto (`.gp-editor-sheet`, one per page slot), plus the base `@page`
+   * background those sheets carry. All in CSS px, pre-derived here so the
+   * component only measures and paints — the layout DECISIONS stay in this
+   * module where they are testable without a DOM.
+   */
+  grid: EditorSheetGrid;
+}
+
+export interface EditorSheetGrid {
+  /** One sheet's size — the full page box, margins included. */
+  pageW: number;
+  pageH: number;
+  /** Distance between consecutive sheet origins, horizontally / vertically. */
+  strideX: number;
+  strideY: number;
+  /** Sheets abreast per row. */
+  columns: 1 | 2;
+  /** The page CONTENT box — what one column of the flow holds. */
+  contentW: number;
+  contentH: number;
+  /** The base `@page { background }` declarations, viewer-filtered. */
+  pageBackground: Array<[string, string]>;
 }
 
 /**
@@ -187,7 +213,36 @@ export function nextEditorSheet(
   const columns: 1 | 2 =
     requested === 2 && spreadPx > 0 && availablePx / spreadPx >= MIN_LEGIBLE_SCALE ? 2 : 1;
   if (sameCss && applied!.columns === columns) return null;
-  return { css, columns, spreadPx, text: `${css}\n\n${editorStylesheet(css, { columns })}` };
+  return {
+    css,
+    columns,
+    spreadPx,
+    text: `${css}\n\n${editorStylesheet(css, { columns })}`,
+    grid: editorSheetGrid(css, { columns }),
+  };
+}
+
+/**
+ * The sheet grid for a stylesheet — the same arithmetic `paginationCss()`
+ * lays the flow out with, expressed as the pixel geometry of the PAPER so
+ * the host can put a real page element under every page of content.
+ */
+export function editorSheetGrid(css: string, opts: PaginateOptions = {}): EditorSheetGrid {
+  const { columns = 1, gap = 24 } = opts;
+  const model = extract(css);
+  const { geometry, decls } = resolvePage(model);
+  const gapPt = gap / PX_PER_PT;
+  const toPx = (pt: number) => Math.round(pt * PX_PER_PT * 1000) / 1000;
+  return {
+    pageW: toPx(geometry.width),
+    pageH: toPx(geometry.height),
+    strideX: toPx(geometry.width + gapPt),
+    strideY: toPx(geometry.height + gapPt),
+    columns: columns as 1 | 2,
+    contentW: toPx(geometry.width - geometry.margin.left - geometry.margin.right),
+    contentH: toPx(geometry.height - geometry.margin.top - geometry.margin.bottom),
+    pageBackground: pageBackgroundEntries(decls),
+  };
 }
 
 const px = (pt: number) => `${Math.round(pt * PX_PER_PT * 1000) / 1000}px`;
@@ -247,31 +302,25 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   // path is unchanged.
   const flowW = contentW * columns + colGap * (columns - 1);
 
-  // The SHEETS behind the flow. Each page's paper is painted by the scale
-  // wrapper's ::before — repeating vertical white bands one page-pitch apart,
-  // one band-column per page abreast — so the author sees page edges without
-  // a single wrapper element entering the content flow (fragmentation stays
-  // exactly the multicol layout above). Geometry is shared with the flow by
-  // construction: band height = page height, band pitch = page height + the
-  // visual gutter, band x-offsets = page width + gutter.
+  // The SHEETS behind the flow are REAL ELEMENTS, not a painted gradient.
+  // The host keeps a `.gp-editor-sheets` layer (see RichEditor) with one
+  // absolutely-positioned `.gp-editor-sheet` per page slot, laid out on the
+  // grid `editorSheetGrid()` describes — the same origin arithmetic as the
+  // flow's columns, so paper and content agree by construction.
+  //
+  // A gradient band cannot be the paper, and the difference is the whole
+  // point: a printed page's paint is the author's `@page { background }`
+  // plus the CANVAS background print propagates onto every sheet — one
+  // `body { background: url(brick.png) }` textures a whole book. The band
+  // hack painted plain white over exactly that, so any book with paper
+  // texture looked like a different product in the editor (measured on a
+  // real field guide). Real elements take the real paint — the same
+  // page-paint recipe the viewer's `.gp-sheet` uses — and take the viewer's
+  // own box-shadow, which replaces the old hairline edge.
   const pageW = geometry.width;
   const pageH = geometry.height;
-  // Each band ends in a hairline, so the author can SEE where the page ends.
-  // The preview gives every sheet `box-shadow: 0 2px 12px …`; a background
-  // band cannot carry a per-band shadow, and without the line the sheets are
-  // invisible whenever the canvas is light — which is the default for a book
-  // whose `appearance.previewBg` is pale, and reads as "the editor has no
-  // pages" (observed on the design guide).
-  const edgePt = 2 / PX_PER_PT;
-  const band =
-    `repeating-linear-gradient(to bottom, var(--gp-editor-sheet, #ffffff) 0 ${px(pageH)}, ` +
-    `var(--gp-editor-sheet-edge, rgb(0 0 0 / 0.28)) ${px(pageH)} ${px(pageH + edgePt)}, ` +
-    `transparent ${px(pageH + edgePt)} ${px(pageH + gap / PX_PER_PT)})`;
-  const bands = Array.from({ length: columns }, () => band).join(", ");
-  const positions = Array.from({ length: columns }, (_, i) =>
-    `${px(i * (pageW + gap / PX_PER_PT))} 0`,
-  ).join(", ");
-  const sizes = Array.from({ length: columns }, () => `${px(pageW)} 100%`).join(", ");
+  const contentHpx = px(contentH);
+  const contentWpx = px(contentW);
 
   return `${root} {
   box-sizing: content-box;
@@ -299,9 +348,9 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
    Zero specificity, so an author rule about their own lists still wins. */
 :where([data-tight] > li) > p { margin-block: 0; }
 
-/* The scale wrapper (see RichEditor.svelte): hosts the sheet backdrop and the
+/* The scale wrapper (see RichEditor.svelte): hosts the sheet layer and the
    fit-width transform. flow-root so the flow's own margins stay INSIDE it —
-   collapsed-out margins would slide the sheets off the pages. The transform
+   collapsed-out margins would slide the paper off the pages. The transform
    is applied inline by the host and is VISUAL ONLY: layout inside is at print
    size, so pagination cannot move. */
 .gp-editor-scale {
@@ -310,17 +359,44 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   width: max-content;
   transform-origin: 0 0;
 }
-.gp-editor-scale::before {
-  content: "";
+
+/* The paper. The host owns the layer's children — one sheet per page slot,
+   positioned on the editorSheetGrid — and paints each with the same two
+   backgrounds the viewer's .gp-sheet carries: the base @page background,
+   then the document's canvas background on top. Behind the flow, inert to
+   the caret, and outside the editable root so ProseMirror never sees it. */
+.gp-editor-sheets {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: ${bands};
-  background-position: ${positions};
-  background-size: ${sizes};
-  background-repeat: no-repeat;
-  box-shadow: none;
-}`;
+  pointer-events: none;
+}
+.gp-editor-sheet {
+  position: absolute;
+  width: ${px(pageW)};
+  height: ${px(pageH)};
+  background: var(--gp-editor-sheet, #ffffff);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+}
+
+/* Page-relative content, BOUNDED to the page box. In print, .page is one
+   page tall, so art sized against it (a pinned decoration, height: 100%,
+   a huge intrinsic image) can never exceed one sheet — fragmentation has
+   no way to show it bigger. In this flow the .page DIV wraps its whole
+   run of content, so the same art resolved against a many-pages-tall box
+   and rendered gigantic (measured: a spot illustration at ~4x, spanning
+   screens). The clamp is the print truth restated: nothing shows larger
+   than the page's content box. Zero specificity, so an author rule that
+   sizes the element explicitly still wins. */
+:where(${root}) :where(img, svg, video) {
+  max-height: ${contentHpx};
+  max-width: 100%;
+}
+:where(${root}) :where(.gp-pin) {
+  max-height: ${contentHpx};
+  max-width: ${contentWpx};
+}
+`;
 }
 
 /**

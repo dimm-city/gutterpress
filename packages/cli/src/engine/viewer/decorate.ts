@@ -8,6 +8,10 @@
  * content is still fragmented exactly the same way.
  */
 import {
+  captureCanvasBackground as capturePagePaintCanvas,
+  pageBackgroundEntries,
+} from "./page-paint.ts";
+import {
   MARGIN_BOX_NAMES,
   resolvePage,
   type Declarations,
@@ -105,11 +109,8 @@ interface PageCtx {
  * skips it: `fixed` is viewport-relative and meaningless for a page box.
  */
 function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
-  for (const [prop, value] of Object.entries(decls)) {
-    const p = prop.toLowerCase();
-    if (p !== "background" && !p.startsWith("background-")) continue;
-    if (p === "background-attachment") continue;
-    sheet.style.setProperty(p, value);
+  for (const [prop, value] of pageBackgroundEntries(decls)) {
+    sheet.style.setProperty(prop, value);
   }
 }
 
@@ -561,16 +562,6 @@ export function decorate(
   return api;
 }
 
-const CANVAS_BG_PROPS = [
-  "background-color",
-  "background-image",
-  "background-repeat",
-  "background-position",
-  "background-size",
-  "background-origin",
-  "background-clip",
-  "background-blend-mode",
-] as const;
 
 /**
  * The document canvas background (`html`'s, or `body`'s when `html` paints
@@ -586,17 +577,11 @@ const CANVAS_BG_PROPS = [
  * `.gp-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
  */
 function captureCanvasBackground(): Array<[string, string]> {
-  for (const el of [document.documentElement, document.body]) {
-    const cs = getComputedStyle(el);
-    const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
-    if (cs.backgroundImage === "none" && transparent) continue;
-    const captured = CANVAS_BG_PROPS.map(
-      (p) => [p, cs.getPropertyValue(p)] as [string, string],
-    );
-    if (el === document.documentElement) el.style.background = "none";
-    return captured;
-  }
-  return [];
+  // Shared recipe (page-paint.ts); the viewer's own twist is neutralizing the
+  // painting element so the stage chrome shows between pages.
+  const { entries, from } = capturePagePaintCanvas(document);
+  if (from === document.documentElement) from.style.background = "none";
+  return entries;
 }
 
 function ensureRun(strip: StripInfo): HTMLElement {

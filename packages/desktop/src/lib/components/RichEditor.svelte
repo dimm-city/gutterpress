@@ -45,7 +45,7 @@
   import { getProjectRenderer } from "$lib/editor/project-renderer";
   import type { ProjectPluginIssue } from "$lib/editor/project-plugins";
   import type MarkdownIt from "markdown-it";
-  import { editorScale, nextEditorSheet, paginatedWidth, type EditorSheet } from "gutterpress/render";
+  import { captureCanvasBackground, editorScale, nextEditorSheet, paginatedWidth, type EditorSheet } from "gutterpress/render";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
     clearSlashQuery,
@@ -163,6 +163,12 @@
    * without layout; see its header.
    */
   let applied: EditorSheet | null = null;
+  /** The paper layer — real page elements behind the flow (see syncSheets). */
+  let sheetsEl: HTMLDivElement | null = null;
+  let flowEl: HTMLDivElement | null = null;
+  /** The canvas-painting element we neutralized, to restore before recapture. */
+  let canvasSource: { style: { background: string } } | null = null;
+  let sheetSyncQueued = false;
 
   /**
    * The frame's base URL.
@@ -292,16 +298,23 @@
 
     // Scale wrapper (fit-width) around the page flow. The transform is VISUAL
     // ONLY — layout inside stays at print size, so pagination is untouched —
-    // and it also hosts the sheet backdrop (see paginationCss). The wrapper
+    // and it also hosts the sheet layer (see syncSheets). The wrapper
     // sits between body and flow, outside the editable root, so it is neither
     // a document node nor anything the author's CSS addresses.
     scaleBox = doc.createElement("div");
     scaleBox.className = "gp-editor-scale";
     doc.body.appendChild(scaleBox);
 
+    // The paper, as real elements the book's own page paint lands on —
+    // behind the flow, outside the editable root, invisible to ProseMirror.
+    sheetsEl = doc.createElement("div");
+    sheetsEl.className = "gp-editor-sheets";
+    scaleBox.appendChild(sheetsEl);
+
     const flow = doc.createElement("div");
     flow.className = "gp-editor-page-flow";
     scaleBox.appendChild(flow);
+    flowEl = flow;
 
     applyCss(bookCss);
 
@@ -316,8 +329,19 @@
       // the host, so a remount never inherits a stale banner.
       onPluginIssues?.(issues);
       handle = mountRichEditor({
-        mount: flow, md: projectMd, content, onChange, onSave, onAnchorLine, onChrome,
+        mount: flow,
+        md: projectMd,
+        content,
+        // Every edit can move a page boundary; the paper follows the text.
+        onChange: (value) => {
+          syncSheets();
+          onChange?.(value);
+        },
+        onSave,
+        onAnchorLine,
+        onChrome,
       });
+      syncSheets();
     });
 
     const observer =
@@ -353,6 +377,7 @@
       styleEl.textContent = next.text;
     }
     applyScale();
+    syncSheets();
   }
 
   /**
@@ -384,6 +409,76 @@
   }
 
   /**
+   * Lay the PAPER under the content: one `.gp-editor-sheet` per page slot,
+   * positioned on the grid the engine derived (`applied.grid`), painted the
+   * way the viewer paints its `.gp-sheet` — base white, then the book's
+   * `@page { background }`, then the document's CANVAS background on top.
+   * The canvas capture is what puts a book's paper texture (one
+   * `body { background: url(…) }` rule) on every page here exactly as it
+   * prints; the painting element is then neutralized so the texture does not
+   * ALSO fill the area between pages (the host's backdrop shows there).
+   *
+   * How many pages: measured, not guessed. The flow's children report their
+   * fragments' union box, so the farthest bottom edge — in LAYOUT pixels,
+   * with the visual fit transform divided back out — says how many rows of
+   * the grid are in use. Scheduled through rAF so a burst of edits paints
+   * the paper once.
+   */
+  function syncSheets(): void {
+    if (sheetSyncQueued) return;
+    sheetSyncQueued = true;
+    requestAnimationFrame(() => {
+      sheetSyncQueued = false;
+      const doc = frame?.contentDocument;
+      const grid = applied?.grid;
+      if (!doc || !sheetsEl || !flowEl || !grid) return;
+
+      // Recapture the canvas each time: the book CSS may have changed. Undo
+      // the previous neutralization first or the capture reads our own
+      // "none" back and the texture is lost on the second sync.
+      if (canvasSource) {
+        canvasSource.style.background = "";
+        canvasSource = null;
+      }
+      const canvas = captureCanvasBackground(doc);
+      if (canvas.from) {
+        canvasSource = canvas.from;
+        canvas.from.style.background = "none";
+      }
+
+      const scaleNow = (() => {
+        const m = scaleBox ? /matrix\((\d*\.?\d+)/.exec(getComputedStyle(scaleBox).transform) : null;
+        return m ? Number(m[1]) : 1;
+      })();
+      const flowTop = flowEl.getBoundingClientRect().top;
+      let maxBottom = 0;
+      for (const child of flowEl.children) {
+        const b = child.getBoundingClientRect().bottom;
+        if (b > maxBottom) maxBottom = b;
+      }
+      const paintedH = Math.max(0, (maxBottom - flowTop) / scaleNow);
+      const rows = Math.max(1, Math.ceil((paintedH + 1) / grid.strideY));
+      const total = rows * grid.columns;
+
+      while (sheetsEl.children.length > total) sheetsEl.lastElementChild!.remove();
+      while (sheetsEl.children.length < total) {
+        sheetsEl.appendChild(doc.createElement("div"));
+      }
+      for (let i = 0; i < total; i++) {
+        const sheet = sheetsEl.children[i] as HTMLElement;
+        sheet.className = "gp-editor-sheet";
+        const col = i % grid.columns;
+        const row = Math.floor(i / grid.columns);
+        sheet.style.left = `${col * grid.strideX}px`;
+        sheet.style.top = `${row * grid.strideY}px`;
+        // Paint order is the viewer's: page background, canvas on top.
+        for (const [prop, value] of grid.pageBackground) sheet.style.setProperty(prop, value);
+        for (const [prop, value] of canvas.entries) sheet.style.setProperty(prop, value);
+      }
+    });
+  }
+
+  /**
    * Repaint at a new zoom.
    *
    * Called by the host when the toolbar's zoom menu changes (the imperative
@@ -411,12 +506,14 @@
     if (newPath === openPath && handle?.getMarkdown() === newContent) return;
     openPath = newPath;
     if (handle && !handle.setContent(newContent)) refuse(newPath, newContent);
+    syncSheets();
   }
 
   /** Same file, new bytes — an external-edit auto-reload. */
   export function updateContent(nextDoc: string): void {
     if (!handle || handle.getMarkdown() === nextDoc) return;
     if (!handle.setContent(nextDoc)) refuse(openPath, nextDoc);
+    syncSheets();
   }
 
   /**

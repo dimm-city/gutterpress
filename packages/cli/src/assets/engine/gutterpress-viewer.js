@@ -1732,6 +1732,45 @@
     return api;
   }
 
+  // src/engine/viewer/page-paint.ts
+  var CANVAS_BG_PROPS = [
+    "background-color",
+    "background-image",
+    "background-repeat",
+    "background-position",
+    "background-size",
+    "background-origin",
+    "background-clip",
+    "background-blend-mode"
+  ];
+  function pageBackgroundEntries(decls) {
+    const out = [];
+    for (const [prop, value] of Object.entries(decls)) {
+      const p = prop.toLowerCase();
+      if (p !== "background" && !p.startsWith("background-"))
+        continue;
+      if (p === "background-attachment")
+        continue;
+      out.push([p, value]);
+    }
+    return out;
+  }
+  function captureCanvasBackground(doc) {
+    for (const el of [doc.documentElement, doc.body]) {
+      if (!el)
+        continue;
+      const cs = doc.defaultView.getComputedStyle(el);
+      const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
+      if (cs.backgroundImage === "none" && transparent)
+        continue;
+      return {
+        entries: CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]),
+        from: el
+      };
+    }
+    return { entries: [], from: null };
+  }
+
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
@@ -1961,13 +2000,8 @@
     return document.getElementById(id);
   }
   function applyPageBackground(sheet, decls) {
-    for (const [prop, value] of Object.entries(decls)) {
-      const p = prop.toLowerCase();
-      if (p !== "background" && !p.startsWith("background-"))
-        continue;
-      if (p === "background-attachment")
-        continue;
-      sheet.style.setProperty(p, value);
+    for (const [prop, value] of pageBackgroundEntries(decls)) {
+      sheet.style.setProperty(prop, value);
     }
   }
   function decorate(layout, opts = {}) {
@@ -1986,7 +2020,7 @@
         document.body.dataset.designer = on ? "on" : "off";
       }
     };
-    const canvasBg = captureCanvasBackground();
+    const canvasBg = captureCanvasBackground2();
     document.body.classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
@@ -2278,28 +2312,11 @@
     draw();
     return api;
   }
-  var CANVAS_BG_PROPS = [
-    "background-color",
-    "background-image",
-    "background-repeat",
-    "background-position",
-    "background-size",
-    "background-origin",
-    "background-clip",
-    "background-blend-mode"
-  ];
-  function captureCanvasBackground() {
-    for (const el of [document.documentElement, document.body]) {
-      const cs = getComputedStyle(el);
-      const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
-      if (cs.backgroundImage === "none" && transparent)
-        continue;
-      const captured = CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]);
-      if (el === document.documentElement)
-        el.style.background = "none";
-      return captured;
-    }
-    return [];
+  function captureCanvasBackground2() {
+    const { entries, from } = captureCanvasBackground(document);
+    if (from === document.documentElement)
+      from.style.background = "none";
+    return entries;
   }
   function ensureRun(strip) {
     const parent = strip.el.parentElement;
