@@ -5,12 +5,26 @@ name: Gutterpress desktop debug build (Linux AppImage)
 # no npm publish. Use this to hand a testable build to someone (or to
 # yourself) while a branch is still in progress.
 #
-# To get a build: Actions -> this workflow -> "Run workflow" -> pick the
-# branch -> Run. When it finishes, download the artifact from the run's
-# summary page and `chmod +x` the AppImage before running it.
+# Two ways to start one:
+#
+#   - Actions -> this workflow -> "Run workflow" -> pick the branch -> Run.
+#   - Push a tag named `build-appimage-<anything>` at the commit you want
+#     built: `git tag build-appimage-plugin-fixes && git push origin --tags`.
+#     The tag exists to start a build and nothing else — delete it whenever.
+#
+# The tag path is not a convenience: dispatching a workflow needs
+# `actions: write`, which a bot or an app integration may not have, while
+# pushing a tag needs only the push rights it already used to get the commit
+# there. Same job either way; the tag's own commit is what gets built.
+#
+# When it finishes, download the artifact from the run's summary page and
+# `chmod +x` the AppImage before running it.
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "build-appimage-*"
 
 jobs:
   build:
