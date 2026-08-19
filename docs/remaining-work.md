@@ -78,6 +78,40 @@ Last updated 2026-08-19.
       fragmentation and field-guide ownership policies are indexed.
 
 ### Engineering
+- [ ] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
+      measured, deterministic, identical on pre-migration `main` and the
+      restored branch — pre-existing, not a restore regression).** All 14
+      chapters pass `canEditRichly`, so the app opens them richly (and
+      `editor.mode` defaults to rich) — but a save from rich mode strips
+      every component the dimm-city plugin creates through its CORE-ruler
+      transforms: `@lede`/`@end-lede`, `@toc`, sidebar/pullquote wrappers
+      vanish from the source (verified: normalize drops the `dc-intro` /
+      `dc-toc` divs from the rendered HTML). Measured with the
+      plugin-roundtrip harness against the restored book: rich-editable
+      14/14, **byte fixpoint 2/14, meaning preserved 0/14**, plus
+      typographer punctuation baked back into source and blank-line churn
+      between normalize passes.
+      Mechanism: `applyPlugins` stamps provenance on BLOCK rules only. The
+      dimm-city plugin is a core-rule token-stream transform that CONSUMES
+      the author's map-carrying marker paragraphs and synthesizes map-less
+      `html_block` wrappers; `renderer.ts` retags every map-less
+      `html_block` as `gp_generated` ("shown, never written back") — safe
+      for the `.chapter-opener` badge whose generator line stays in the
+      document, silently destructive here because the generator lines are
+      already gone from the stream. Nothing raises, so the fail-closed
+      contract (§5: "opens in SOURCE mode … rather than opening richly and
+      mis-serializing an author's book") is violated in exactly the way it
+      was written to prevent. The go/no-go fixture never catches it: its
+      token transform DECORATES existing tokens; it never consumes-and-
+      replaces them.
+      Decision needed (owner): (a) fail closed — refuse rich mode when a
+      plugin core rule consumed map-carrying tokens (honest, but sends the
+      flagship book to source mode), or (b) extend provenance/adoption to
+      core-rule transforms (before/after token-stream diff at registration,
+      same ground-truth standard as the block-rule stamp — design care
+      needed against §5's "never infer source from gaps"). Until one lands,
+      rich mode should not be the default surface for plugin books of this
+      shape.
 - [x] **Split card corner notch**: fragmentable cards use final-slice decoration;
       explicit `.allow-split` cards and the Field Guide's default-splitting
       specialty cards share that rule, while `.no-split` remains atomic. Gallery
