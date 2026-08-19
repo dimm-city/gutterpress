@@ -61,12 +61,23 @@ function layoutWrapper(): NodeSpec {
     content: "block+",
     group: "block",
     defining: true,
-    attrs: { marker: { default: "" }, class: { default: "" } },
+    attrs: { marker: { default: "" }, class: { default: "" }, viewAttrs: { default: null } },
     // Rendered for the editing view only. The PRINT path never sees this
     // schema — it renders through markdown-it exactly as it always has.
+    //
+    // `viewAttrs` is everything ELSE the pipeline put on the wrapper — the
+    // author's `#id`, `data-chapter-label`, any attribute a marker sets.
+    // Keeping only `class` meant a book styling `#ch-notes .lede` or
+    // `[data-chapter-label]` (the frozen chapter-opener pattern does exactly
+    // that) rendered differently here than in print, for no reason other
+    // than the attributes being dropped in transit.
     toDOM: (node) => [
       "div",
-      { class: (node.attrs.class as string) || "gp-layout", "data-marker": node.attrs.marker as string },
+      {
+        ...((node.attrs.viewAttrs as Record<string, string> | null) ?? {}),
+        class: (node.attrs.class as string) || "gp-layout",
+        "data-marker": node.attrs.marker as string,
+      },
       0,
     ],
   };
@@ -237,8 +248,40 @@ const markOrder = base.spec.marks.remove("link").addToStart("link", {
   attrs: { ...(base.spec.marks.get("link")!.attrs ?? {}), attrs: { default: null } },
 });
 
+/**
+ * A list that renders its own tightness.
+ *
+ * markdown-it emits a TIGHT list as `<li>text</li>` and a loose one as
+ * `<li><p>text</p></li>`; ProseMirror's list_item always holds a paragraph,
+ * so the editing surface emits the loose DOM either way and the book's own
+ * `p { margin: … }` then spaces a tight list out — visibly looser than the
+ * page it is meant to be showing. The tightness is already parsed onto the
+ * node, so the fix is to publish it to CSS and let the editor stylesheet
+ * (`engine/viewer/live-document.ts`) close those margins.
+ *
+ * Marking the LIST rather than the item keeps this one attribute at the one
+ * place markdown decides it: tightness is a property of the list.
+ */
+function tightAware(spec: NodeSpec, tag: "ul" | "ol"): NodeSpec {
+  return {
+    ...spec,
+    toDOM: (node) => [
+      tag,
+      {
+        ...(tag === "ol" && (node.attrs.order as number) !== 1
+          ? { start: node.attrs.order as number }
+          : {}),
+        ...(node.attrs.tight ? { "data-tight": "true" } : {}),
+      },
+      0,
+    ],
+  };
+}
+
 export const gutterpressSchema = new Schema({
   nodes: base.spec.nodes
+    .update("bullet_list", tightAware(base.spec.nodes.get("bullet_list")!, "ul"))
+    .update("ordered_list", tightAware(base.spec.nodes.get("ordered_list")!, "ol"))
     .update("image", withAttrs(base.spec.nodes.get("image")!))
     .update("heading", withAttrs(base.spec.nodes.get("heading")!))
     // ```js {.line-numbers} — the info string is `params`, the braces are not.

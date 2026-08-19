@@ -41,6 +41,57 @@ describe("parse -> serialize round trip", () => {
   }
 });
 
+describe("author HTML that WRAPS markdown", () => {
+  // A book writes components as an HTML wrapper with markdown inside; the
+  // blank lines are what keep the inside markdown. Modelling each tag as its
+  // own atom put the content BESIDE the wrapper instead of in it, and every
+  // style scoped to that wrapper stopped applying — measured on the design
+  // guide, where sidebar text rendered at body size because, in the editing
+  // DOM, it was not inside the sidebar.
+  const wrapped = '<div class="example">\n\nBody **markdown** here.\n\n</div>\n';
+
+  test("nests the content inside the wrapper", () => {
+    const doc = createDocParser(md()).parse(wrapped);
+    const block = doc.child(0);
+    expect(block.type.name).toBe("gp_plugin_block");
+    expect(block.attrs.tag).toBe("div");
+    expect((block.attrs.viewAttrs as Record<string, string>).class).toBe("example");
+    expect(block.childCount).toBe(1);
+    expect(block.child(0).textContent).toBe("Body markdown here.");
+  });
+
+  test("round-trips the author's own tags verbatim", () => {
+    expect(roundTrip(wrapped)).toBe(wrapped);
+    expect(roundTrip(roundTrip(wrapped))).toBe(roundTrip(wrapped));
+  });
+
+  test("nests through several levels", () => {
+    const src =
+      '<div class="example">\n\n<div class="sidebar">\n\nInner.\n\n</div>\n\n</div>\n';
+    const doc = createDocParser(md()).parse(src);
+    const outer = doc.child(0);
+    expect((outer.attrs.viewAttrs as Record<string, string>).class).toBe("example");
+    const inner = outer.child(0);
+    expect(inner.type.name).toBe("gp_plugin_block");
+    expect((inner.attrs.viewAttrs as Record<string, string>).class).toBe("sidebar");
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("a self-contained element stays a verbatim atom", () => {
+    // No markdown inside, nothing to nest: this is the html_block case, and
+    // its bytes must round-trip exactly as they always did.
+    const src = '<div class="note">Just <em>html</em>.</div>\n';
+    expect(roundTrip(src)).toBe(src);
+  });
+
+  test("an unbalanced tag is left alone rather than guessed at", () => {
+    const src = '<div class="open">\n\nText.\n';
+    const doc = createDocParser(md()).parse(src);
+    expect(doc.child(0).type.name).toBe("html_block");
+    expect(roundTrip(src)).toBe(src);
+  });
+});
+
 describe("Gutterpress layout markers", () => {
   const markers: Record<string, string> = {
     "@chapter": "@chapter C.01 #ch-one .fancy\n\nBody text.\n",
@@ -67,6 +118,27 @@ describe("Gutterpress layout markers", () => {
     });
   }
 });
+
+  test("a marker's own attributes reach the editing DOM, not just its class", () => {
+    // The wrapper the pipeline emits carries the author's `#id` and, for a
+    // labelled chapter, `data-chapter-label`. The editor kept only `class`,
+    // so a book styling `#ch-one .lede` or `[data-chapter-label]` — the
+    // frozen chapter-opener pattern does exactly that — rendered differently
+    // in the editor than in print for no reason but attributes lost in
+    // transit. View-only: none of them is ever serialized back.
+    const doc = createDocParser(md()).parse(
+      '@chapter "C.01" #ch-one .fancy\n\n@page\n\nBody text.\n',
+    );
+    const chapter = doc.child(0);
+    expect(chapter.type.name).toBe("gp_chapter");
+    const view = chapter.attrs.viewAttrs as Record<string, string>;
+    expect(view.id).toBe("ch-one");
+    expect(view["data-chapter-label"]).toBe("C.01");
+    // …and the class stays where it was, not duplicated into viewAttrs.
+    expect(view.class).toBeUndefined();
+    expect(chapter.attrs.class).toContain("fancy");
+    expect(serializeDoc(doc)).toBe('@chapter "C.01" #ch-one .fancy\n\n@page\n\nBody text.\n');
+  });
 
 describe("tables", () => {
   const src = "| A | B |\n| --- | --- |\n| 1 | 2 |\n";

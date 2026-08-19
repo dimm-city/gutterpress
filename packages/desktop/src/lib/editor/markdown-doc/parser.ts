@@ -37,14 +37,24 @@ function pluginPayload(tok: Token): PluginPayload {
   return (tok.meta as { gpPlugin: PluginPayload }).gpPlugin;
 }
 
-/** Pipeline-injected attributes that must not be presented as the plugin's. */
-const GENERATED_VIEW_ATTRS = /^(data-source-range|data-source-line|data-chapter-label)$/;
+/**
+ * SOURCE-COORDINATE attributes: editor/preview plumbing, not part of the
+ * book's rendering, so they are stripped from the view attributes carried
+ * into the editing DOM.
+ *
+ * `data-chapter-label` deliberately is NOT in this list, though the pipeline
+ * generates it too: it is an attribute books STYLE AGAINST (the frozen
+ * chapter-opener composite selects on it), so dropping it made the editor
+ * render a book differently from its own print output. The test is not "did
+ * the pipeline add it" but "does print lay out with it".
+ */
+const SOURCE_COORD_ATTRS = /^(data-source-range|data-source-line)$/;
 
 function viewAttrsOf(tok: Token): Record<string, string> | null {
   if (!tok.attrs || tok.attrs.length === 0) return null;
   const out: Record<string, string> = {};
   for (const [key, value] of tok.attrs) {
-    if (!GENERATED_VIEW_ATTRS.test(key)) out[key] = value;
+    if (!SOURCE_COORD_ATTRS.test(key)) out[key] = value;
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -209,6 +219,126 @@ function adoptPluginTokens(tokens: Token[], lines: string[], handled: Set<string
   return dropped.size ? tokens.filter((t) => !dropped.has(t)) : tokens;
 }
 
+/** `<div class="example">` → its tag and attributes; null if it is anything else. */
+function loneOpenTag(html: string): { tag: string; attrs: Record<string, string> } | null {
+  const m = /^<([a-zA-Z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*>$/.exec(
+    html.trim(),
+  );
+  if (!m) return null;
+  const attrs: Record<string, string> = {};
+  const attrRe = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let a: RegExpExecArray | null;
+  while ((a = attrRe.exec(m[2] ?? ""))) {
+    attrs[a[1]!] = a[2] ?? a[3] ?? a[4] ?? "";
+  }
+  return { tag: m[1]!.toLowerCase(), attrs };
+}
+
+/** `</div>` → `div`; null if it is anything else. */
+function loneCloseTag(html: string): string | null {
+  const m = /^<\/([a-zA-Z][\w-]*)\s*>$/.exec(html.trim());
+  return m ? m[1]!.toLowerCase() : null;
+}
+
+/**
+ * Nest markdown that an author WRAPPED IN HTML, instead of flattening it.
+ *
+ * A book writes a component as an HTML wrapper with markdown inside:
+ *
+ *     <div class="example">
+ *
+ *     Body **markdown** here.
+ *
+ *     </div>
+ *
+ * markdown-it emits the two tags as separate `html_block` tokens with the
+ * content between them as ordinary blocks (the blank lines are what make the
+ * inside markdown at all). The editor modelled each tag as its own ATOM, so
+ * the opening `<div>` rendered as an EMPTY element and the content became its
+ * SIBLING — every style scoped to that wrapper stopped applying. Measured on
+ * the design guide: text inside `div.sidebar` rendered at the body size
+ * because, in the editing DOM, it was not inside `div.sidebar` at all.
+ *
+ * So a matched pair is adopted onto the same generic wrapper node the plugin
+ * markers use: children nest inside it, the tag and its attributes drive the
+ * rendered element, and the AUTHORED opening and closing lines are what the
+ * serializer writes back — byte-for-byte, exactly as for a plugin marker.
+ * Unmatched or exotic HTML (a self-contained element, an unbalanced tag) is
+ * left as the atom it already was.
+ */
+function adoptHtmlWrappers(tokens: Token[]): Token[] {
+  // markdown-it consumes CONSECUTIVE tag lines into one html_block, and books
+  // open a component with several at once:
+  //
+  //     <div class="example">
+  //     <div class="sidebar">
+  //
+  // One token cannot become two wrapper nodes, so a block that is nothing but
+  // tag lines is expanded into one token per tag first. Any block with real
+  // content in it is left exactly as it was.
+  const expanded: Token[] = [];
+  for (const tok of tokens) {
+    const lines =
+      tok.type === "html_block"
+        ? tok.content.split("\n").map((l) => l.trim()).filter(Boolean)
+        : [];
+    if (
+      lines.length > 1 &&
+      lines.every((l) => loneOpenTag(l) !== null || loneCloseTag(l) !== null)
+    ) {
+      for (const line of lines) {
+        const copy = new (tok.constructor as new (t: string, g: string, n: number) => Token)(
+          "html_block",
+          "",
+          0,
+        );
+        copy.content = `${line}\n`;
+        copy.block = true;
+        copy.map = tok.map;
+        expanded.push(copy);
+      }
+      continue;
+    }
+    expanded.push(tok);
+  }
+  tokens = expanded;
+
+  const open: Array<{ tok: Token; tag: string; attrs: Record<string, string> }> = [];
+  for (const tok of tokens) {
+    if (tok.type !== "html_block") continue;
+
+    const closes = loneCloseTag(tok.content);
+    if (closes) {
+      // Match the NEAREST unclosed tag of this name; anything opened inside
+      // it never got a close, so it stays the atom it already was.
+      let pos = -1;
+      for (let i = open.length - 1; i >= 0; i--) {
+        if (open[i]!.tag === closes) { pos = i; break; }
+      }
+      if (pos === -1) continue;
+      const entry = open[pos]!;
+      open.length = pos;
+
+      entry.tok.type = "plugin_block_open";
+      entry.tok.meta = {
+        ...(entry.tok.meta as Record<string, unknown> | null),
+        gpPlugin: {
+          marker: entry.tok.content.trim(),
+          closeMarker: tok.content.trim(),
+          tag: entry.tag,
+          viewAttrs: Object.keys(entry.attrs).length > 0 ? entry.attrs : null,
+        },
+      };
+      tok.type = "plugin_block_close";
+      continue;
+    }
+
+    const opened = loneOpenTag(tok.content);
+    if (opened) open.push({ tok, tag: opened.tag, attrs: opened.attrs });
+  }
+  return tokens;
+}
+
 /** `listIsTight`, which prosemirror-markdown keeps private. */
 function listIsTight(tokens: readonly Token[], i: number): boolean {
   while (++i < tokens.length) {
@@ -244,9 +374,14 @@ export function createDocParser(md: MarkdownIt) {
    */
   const marker = (tok: Token) => {
     const line = (tok.meta as { line?: number } | null)?.line;
+    const viewAttrs = viewAttrsOf(tok);
+    if (viewAttrs) delete viewAttrs.class;
     return {
       marker: typeof line === "number" ? (lines[line - 1] ?? "") : "",
       class: tok.attrGet("class") ?? "",
+      // The author's `#id` and anything else the marker set — view-only, the
+      // same as `class`; only `marker` is ever serialized back.
+      viewAttrs: viewAttrs && Object.keys(viewAttrs).length > 0 ? viewAttrs : null,
     };
   };
 
@@ -369,7 +504,7 @@ export function createDocParser(md: MarkdownIt) {
   // token stream — `parse()`, and nothing else, is what MarkdownParser calls.
   const tokenizer = {
     parse: (src: string, env: Record<string, unknown>) =>
-      adoptPluginTokens(md.parse(src, env), lines, handled),
+      adoptPluginTokens(adoptHtmlWrappers(md.parse(src, env)), lines, handled),
   };
   const parser = new MarkdownParser(gutterpressSchema, tokenizer as unknown as MarkdownIt, specs);
 

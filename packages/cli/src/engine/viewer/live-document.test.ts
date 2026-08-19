@@ -83,12 +83,31 @@ test("a named page that only moves the top margin becomes padding", () => {
   expect(namedPageCss(model)).toContain(":where(h1) { padding-top: 156px; }");
 });
 
-test("a named page that resizes the page box is REFUSED, not approximated", () => {
+test("a named page that resizes the page box keeps base GEOMETRY, not its break", () => {
   const model = extract(BOOK_CSS);
   const base = resolvePage(model).geometry;
-  // `@page cover { margin: 0 }` is a different content box, not a shifted one.
+  // `@page cover { margin: 0 }` is a different content box, not a shifted one,
+  // so no padding can express it…
   expect(namedPageDelta(base, resolvePage(model, { name: "cover" }).geometry)).toBeNull();
-  expect(namedPageCss(model)).not.toContain(".cover-page");
+  const css = namedPageCss(model);
+  expect(css).not.toContain(":where(.cover-page) { padding-top");
+  // …but the page NAME still changes there, and a page-name change is a
+  // forced break in paged media whatever the box looks like. Dropping the
+  // whole assignment used to drop the break with it.
+  expect(css).toContain(":where(.cover-page) { break-before: column; }");
+});
+
+test("a named-page run breaks at BOTH edges, once each", () => {
+  // Print starts a page when the name changes and starts another when it
+  // changes back. Without the trailing break the editor ran a chapter's body
+  // onto its opener page — measured against the preview, which put the
+  // heading alone on its own page exactly as the PDF does.
+  const css = namedPageCss(extract(BOOK_CSS));
+  expect(css).toContain(":where(h1) { break-before: column; }");
+  expect(css).toContain(":where(h1):not(:has(+ :where(h1))) { break-after: column; }");
+  // The `:not(:has(+ …))` half is what keeps CONSECUTIVE elements sharing a
+  // page name together — they are one run, one page, not a page each.
+  expect(css.match(/break-after: column/g)?.length).toBe(2);
 });
 
 test("editorStylesheet re-injects @media print bodies as screen rules", () => {

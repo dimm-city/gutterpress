@@ -60,11 +60,12 @@
  *    column is the CONTENT box, so an element sized to the full sheet cannot
  *    fit in one and spills into the next. A book of full-bleed art therefore
  *    counts LONG here, where every other cause counts short.
- * 2. **Named pages that resize the page box.** `namedPageDelta()` absorbs a
- *    top-margin-only difference as padding — the design guide's
- *    `@page chapter { margin-top: 2.5in }` is exactly that shape — but a
- *    named page with a different sheet size or bottom margin has no multicol
- *    equivalent and is skipped.
+ * 2. **Named pages that resize the page box.** `namedPageCss()` reproduces
+ *    the two things a page name does that multicol can see — the forced break
+ *    at each edge of the named run, and a top-margin-only difference absorbed
+ *    as padding (the design guide's `@page chapter { margin-top: 2.5in }` is
+ *    exactly that shape). A named page with a different sheet size or bottom
+ *    margin has no multicol equivalent and keeps base geometry.
  * 3. **Multicol and paged media avoid breaks differently.** The residual.
  *
  * ## What the two-page view is, and what it deliberately is not
@@ -290,6 +291,14 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
   overflow: visible;
 }
 
+/* A TIGHT list prints its item text directly inside the li; the editing
+   surface always wraps item content in a paragraph (ProseMirror's list_item
+   schema), so the book's own paragraph margins spaced tight lists out — the
+   editor showed looser bullets than the page it was showing. The list
+   publishes its tightness (schema.ts, tightAware) and this closes the gap.
+   Zero specificity, so an author rule about their own lists still wins. */
+:where([data-tight] > li) > p { margin-block: 0; }
+
 /* The scale wrapper (see RichEditor.svelte): hosts the sheet backdrop and the
    fit-width transform. flow-root so the flow's own margins stay INSIDE it —
    collapsed-out margins would slide the sheets off the pages. The transform
@@ -457,10 +466,26 @@ export function namedPageCss(model: GcpmModel, root = ".gp-editor-page-flow"): s
   const base = resolvePage(model).geometry;
   const rules: string[] = [];
   for (const assignment of model.pageAssignments) {
+    const sel = `${root} :where(${assignment.selector})`;
+    // A change of page NAME is a forced page break in paged media (CSS Paged
+    // Media §3: a box whose used page differs from the preceding box's starts
+    // a new page). Nothing in a multicol box knows that, so the editor used to
+    // run a named page's content straight on: measured on a book whose
+    // `h1 { page: chapter }` gives every chapter an opener page, print put the
+    // heading alone on its page and the editor put the whole chapter with it —
+    // a page-for-page disagreement from the second heading onward.
+    //
+    // Both edges are needed. `break-before` starts the named run; the
+    // `:not(:has(+ …))` half ends it, and is written that way so a RUN of
+    // consecutive siblings sharing the page name breaks once at each end
+    // rather than between every pair — which is exactly what print does.
+    rules.push(`${sel} { break-before: column; }`);
+    rules.push(`${sel}:not(:has(+ :where(${assignment.selector}))) { break-after: column; }`);
+
     const named = resolvePage(model, { name: assignment.page }).geometry;
     const delta = namedPageDelta(base, named);
     if (!delta || delta.paddingTop === "0px") continue;
-    rules.push(`${root} :where(${assignment.selector}) { padding-top: ${delta.paddingTop}; }`);
+    rules.push(`${sel} { padding-top: ${delta.paddingTop}; }`);
   }
   return [...new Set(rules)].join("\n");
 }
