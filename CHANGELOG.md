@@ -7,6 +7,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`gutterpress build --allow-shrink`** exposes the engine's existing
+  `allowShrink` escape hatch on the CLI. The pre-print width check still
+  fails the build by default when a box extends past the page content box
+  (Chromium would silently print the whole book scaled down); with the flag,
+  the build proceeds eyes-open and every offender is reported as an
+  `engine.width.overflow` warning instead. Previously the error message told
+  authors to "pass allowShrink", but no CLI spelling of it existed.
+
 - **The editor is a writing surface now: your words, in your book's own type,
   on pages the size they will print at.** Rich mode lays your text out with
   the book's own stylesheet at its own `@page` geometry — real page boxes,

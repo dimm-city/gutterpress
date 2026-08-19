@@ -45,6 +45,8 @@ export interface NativePdfOptions {
   title?: string;
   author?: string;
   signature?: number;
+  /** CLI `--allow-shrink`: width-overflow offenders warn instead of failing the build. */
+  allowShrink?: boolean;
 }
 
 /**

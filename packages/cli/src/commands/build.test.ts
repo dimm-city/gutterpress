@@ -131,6 +131,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
         "--skip-pre-validate",
         "--skip-post-validate",
         "--strip-annotations",
+        "--allow-shrink",
       ],
     });
 
@@ -142,6 +143,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     expect(captured?.skipPreValidate).toBe(true);
     expect(captured?.skipPostValidate).toBe(true);
     expect(captured?.stripAnnotations).toBe(true);
+    expect(captured?.allowShrink).toBe(true);
   });
 
   test("skip flags default to false when omitted", async () => {
@@ -157,6 +159,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     expect(captured?.skipPreValidate).toBe(false);
     expect(captured?.skipPostValidate).toBe(false);
     expect(captured?.stripAnnotations).toBeUndefined();
+    expect(captured?.allowShrink).toBe(false);
   });
 
   test("an invalid --format is a usage error (exit 2); runBuild is never called", async () => {

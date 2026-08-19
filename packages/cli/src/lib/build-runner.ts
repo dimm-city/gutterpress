@@ -73,6 +73,13 @@ export interface BuildRunnerOptions {
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
   /**
+   * Downgrade the engine's pre-print width check from a build error to
+   * warnings + `engine.width.overflow` diagnostics (see
+   * `engine/compiler/build.ts`). Chromium then prints the WHOLE book scaled
+   * down to fit the widest box — an eyes-open escape hatch, never a default.
+   */
+  allowShrink?: boolean;
+  /**
    * Keep the pooled headless browser alive after the build returns. A one-shot
    * CLI build leaves this false so the process can exit; a long-lived
    * preview/watch server sets it true so the browser stays warm across rebuilds
@@ -772,6 +779,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
+          allowShrink: opts.allowShrink,
         },
         opts.engineBrowser
       );

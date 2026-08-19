@@ -210,6 +210,11 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
+  --allow-shrink          Build even when content is wider than the page content box.
+                          Chromium then prints the WHOLE book scaled down to fit the
+                          widest box; each offender is reported as a warning instead of
+                          failing the build. An eyes-open escape hatch — fix the widths
+                          for release output.
   --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
 ```
 

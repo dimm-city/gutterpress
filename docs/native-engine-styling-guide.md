@@ -76,7 +76,8 @@ smaller, more pages, different pagination) appears far from the cause.
   print scale-down.** One overflowing element on page 213 shrinks all 300
   pages. Left-side protrusion counts too (**[handled]** — the build's width
   check now flags both edges, names the element, and states the one-line fix;
-  it is a hard error unless you pass `allowShrink`). Ancestor
+  it is a hard error unless you opt out with `gutterpress build --allow-shrink`
+  / `allowShrink` in the API). Ancestor
   `overflow: hidden` does NOT contain absolutely positioned descendants for
   this purpose.
 - **Auto-width replaced elements (images) trigger it via their INTRINSIC

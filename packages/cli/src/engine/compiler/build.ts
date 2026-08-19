@@ -329,7 +329,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           );
         log(`WARNING: ${msg}`);
       } else {
-        throw new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`);
+        throw new Error(
+          `${msg}\nFix the offending widths, or build with --allow-shrink (allowShrink in the API) to proceed anyway.`,
+        );
       }
     }
     if (widthOffenders.intrinsics.length) {

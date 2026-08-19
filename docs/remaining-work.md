@@ -4,7 +4,7 @@
 let it drift into a historical record. Spans two repos: `gutterpress`
 (this one) and `dc-op-manual` (DC design guide + field guide).
 
-Last updated 2026-08-13.
+Last updated 2026-08-19.
 
 ---
 
@@ -49,6 +49,17 @@ Last updated 2026-08-13.
 - [x] **`book-diff.sh` contract**: the committed gallery is the fast default;
       full books are explicit local modes under `.book-baseline/`, so the stale
       local 292-page field-guide baseline cannot masquerade as the release gate.
+      - [ ] **The gate is not recoverable from a fresh clone (found 2026-08-19).**
+            Neither `book-diff.sh` nor the approved gallery baseline exists in
+            either repo's origin state: `dc-op-manual`'s origin history is now
+            desktop-sync "Snapshot before syncing" commits on `main` (the
+            `refactor/native` branch is gone from origin), and the gutterpress
+            repo never carried the script or the baseline. Until they are
+            committed somewhere clonable, the "portable release gate" only
+            exists on the machine that made it. The no-baseline invariant
+            layer (width guard, dead-column, layer-trapped, DPI floor, marker
+            leaks) still runs inside every build and is what a fresh
+            environment can verify today.
 - [x] **Desktop problems panel**: real Electron E2E proves malformed marker
       file/line navigation and an exported `engine.multicol.dead-column`
       finding through the Problems panel.
@@ -87,6 +98,11 @@ Last updated 2026-08-13.
 - [x] **#151 — authoritative build-time DOM check**: `engine.layer.trapped`
       inspects computed live ancestors. The fast CSS-source lint remains with
       an explicit limited-scope message.
+- [x] **`--allow-shrink` exposed on the CLI** (2026-08-19): the width guard's
+      escape hatch was API-only (`allowShrink`) while its own error message
+      told authors to pass it. `gutterpress build --allow-shrink` now
+      downgrades offenders to `engine.width.overflow` warnings; the guard
+      still fails builds by default.
 - [x] **Audit categories B/C/E reconciled** against current source and the
       rendered gallery. Earlier panel/column/dead-rule findings have landed;
       fresh built-DOM counts are recorded in the audit. The two live
@@ -97,6 +113,33 @@ Last updated 2026-08-13.
       `filter:none` reset on `.dc-card-grid` was removed.
 
 ---
+
+## Book-repo state (dc-op-manual — owner action, found 2026-08-19)
+
+A fresh clone of `dimm-city/dc-op-manual` no longer contains the migrated
+0.10.0 book state this document's "both books build clean" was measured
+against. `origin/main` (and its only other branch) is now the desktop app's
+sync history — live authoring snapshots — and that content is
+**pre-migration**: the field guide and design guide still author with
+`.two-column` (not `.gp-columns-2/3`), no `.dc-panel-sections` policy, and
+the Paged.js-era absolutely-positioned `.dc-sidebar.inset`
+(`position:absolute; top:0; right:-0.15in`) survives in `dc-components.css`.
+Measured consequences with the current engine (Chromium 148):
+
+- **Design guide** fails the pre-print width guard by default — 4 offenders
+  (`div.dc-sidebar.inset` at 842px = 828px box + the 0.15in right overhang;
+  three `h1.dc-chevron` up to 948px). Built with `--allow-shrink` it renders
+  172pp, and the forced render shows the real damage the guard predicts: the
+  scope-less abspos inset sidebar paints over the gallery opener (P.98). The
+  guard's one-line fixes are correct; this is book CSS debt, not an engine
+  defect.
+- **Field guide** carries 37 warn-level risky print properties in its CSS
+  (lint exit 0; rasterization is re-checked post-build).
+
+If the migrated book state still exists on the owner's machine (the old
+`refactor/native` work), pushing it — or re-landing the migration on the
+synced `main` — restores the "builds clean with no escape hatch" state and
+is a precondition for re-freezing the gallery baseline.
 
 ## Upstream Chromium gaps — documented, not fixable here
 
