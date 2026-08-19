@@ -111,7 +111,10 @@ Last updated 2026-08-19.
       same ground-truth standard as the block-rule stamp — design care
       needed against §5's "never infer source from gaps"). Until one lands,
       rich mode should not be the default surface for plugin books of this
-      shape.
+      shape. **Full option-B design for the dev team:
+      [`docs/editor-core-rule-provenance-plan.md`](./editor-core-rule-provenance-plan.md)**
+      (mechanism inventory, hunk-diff policy table, phased rollout, fixture
+      extension, and the acceptance numbers on the real book).
 - [x] **Split card corner notch**: fragmentable cards use final-slice decoration;
       explicit `.allow-split` cards and the Field Guide's default-splitting
       specialty cards share that rule, while `.no-split` remains atomic. Gallery
