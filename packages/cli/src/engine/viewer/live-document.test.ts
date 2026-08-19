@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { extract, resolvePage } from "../shared/gcpm-extract";
 import {
   breakMappingCss,
+  editorScale,
   editorStylesheet,
   namedPageCss,
   namedPageDelta,
@@ -316,4 +317,36 @@ test("scroll containers: reach the composed stylesheet", () => {
   const sheet = editorStylesheet(`@page { size: 400px 500px; margin: 20px } pre { overflow: hidden }`);
   expect(sheet).toContain("overflow-x: clip");
   expect(sheet).toContain("display: flow-root");
+});
+
+/**
+ * Fit-width is the DEFAULT zoom, so its behaviour is what every author sees
+ * first. The bug these pin: it used to magnify up to 2x, which turned a
+ * digest-format book in a wide window into a 200% mock-up of itself.
+ */
+test("fit-width shrinks a page too wide for the pane", () => {
+  expect(editorScale(600, 1200)).toBe(0.5);
+});
+
+test("fit-width NEVER magnifies — a small book stays at print size", () => {
+  // 5.5x8.5in digest (flow ~430px) in a 1900px window: the old clamp gave 2.
+  expect(editorScale(1900, 430)).toBe(1);
+  expect(editorScale(1000, 1000)).toBe(1);
+});
+
+test("fit-width stops shrinking at the floor rather than vanishing", () => {
+  expect(editorScale(10, 1200)).toBe(0.2);
+});
+
+test("an explicit zoom is honoured in both directions, clamped to 25%-400%", () => {
+  expect(editorScale(1900, 430, "1.5")).toBe(1.5);
+  expect(editorScale(600, 1200, "1")).toBe(1);
+  expect(editorScale(600, 1200, "9")).toBe(4);
+  expect(editorScale(600, 1200, "0.1")).toBe(0.25);
+});
+
+test("an unmeasured frame or flow scales 1:1 instead of collapsing", () => {
+  expect(editorScale(0, 1200)).toBe(1);
+  expect(editorScale(1200, 0)).toBe(1);
+  expect(editorScale(1200, 430, "not-a-number")).toBe(1);
 });

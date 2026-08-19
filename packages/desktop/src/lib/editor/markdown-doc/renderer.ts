@@ -23,8 +23,24 @@
  *
  * The discriminator is `token.map`. markdown-it gives every block token parsed
  * FROM SOURCE a source line range; a token synthesized during a core rule has
- * `map === null`. So: **content with no source position was not authored**,
- * and must not enter the document model.
+ * `map === null`. So: **content with no source position was not authored**.
+ *
+ * ## Retagged, not dropped
+ *
+ * Generated content is SHOWN — print shows it, and this editor's promise is
+ * that text looks as it will print — so the rule retags it to `gp_generated`
+ * rather than deleting it. That node is read-only in the view and serializes
+ * to nothing, so it still cannot reach the author's file.
+ *
+ * Retagging is what keeps the editor from carrying a SECOND copy of the
+ * pipeline's rules. The view used to synthesize its own chapter-opener widget
+ * from "does this @chapter have a label", which is not the pipeline's
+ * condition — `markers.js` emits the opener only when a labelled chapter also
+ * opens a `@page`. On a book whose chapters have no `@page` markers the
+ * editor therefore invented an opener print does not have, showed its label
+ * as stray body text, and pushed the chapter's own heading onto a second
+ * page. Now there is one rule, in the pipeline, and the editor shows its
+ * output wherever it lands.
  *
  * This is a rule about provenance, not a list of known-generated markup, so it
  * keeps working if `markers.js` starts injecting something else.
@@ -45,12 +61,18 @@ export type { LoadedPlugin } from "gutterpress/render";
 export function createEditorRenderer(plugins?: LoadedPlugin[]): MarkdownIt {
   const md = createMarkdownRenderer(plugins && plugins.length > 0 ? plugins : undefined);
 
-  md.core.ruler.push("editor_drop_generated", (state) => {
-    state.tokens = state.tokens.filter(
-      (token) => !(token.type === "html_block" && !token.map),
-    );
+  md.core.ruler.push("editor_tag_generated", (state) => {
+    for (const token of state.tokens) {
+      if (token.type === "html_block" && !token.map) token.type = "gp_generated";
+    }
     return true;
   });
+
+  // The retag must be invisible to anything that RENDERS with this instance
+  // (the preflight's semantic comparison, the normalize planner's before/after
+  // check): emit exactly what `html_block` would have. The type carries
+  // provenance for the document model, not a different output.
+  md.renderer.rules.gp_generated = (tokens, idx) => tokens[idx]!.content;
 
   return md;
 }

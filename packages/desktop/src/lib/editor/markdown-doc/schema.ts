@@ -253,6 +253,33 @@ export const gutterpressSchema = new Schema({
       gp_column_break: layoutAtom(),
       gp_plugin_block: pluginBlock(),
       gp_plugin_atom: pluginAtom(),
+      /**
+       * Content the PIPELINE generated — shown, never authored, never saved.
+       *
+       * `markers.js` injects markup the author never typed (today the
+       * chapter-opener badge). Print shows it, so the editor must too, or the
+       * surface is not showing the book. It cannot be an `html_block`: that
+       * node round-trips its bytes, which would materialize generated markup
+       * into the author's file on the next save.
+       *
+       * So it is its own node — atom, read-only in the view (see
+       * `rawHtmlView` in `rich-editor.ts`), and serialized to NOTHING. That
+       * last property is what makes it safe, and it is what the fixpoint gate
+       * checks on every corpus file.
+       *
+       * Why a node rather than a view decoration: position. A decoration has
+       * to be placed by rules the view maintains itself, and a second copy of
+       * the pipeline's rules is exactly what put an invented chapter-opener
+       * on books whose chapters have no `@page`. A node lands where the
+       * pipeline put it, by construction.
+       */
+      gp_generated: {
+        group: "block",
+        atom: true,
+        selectable: false,
+        attrs: { html: { default: "" } },
+        toDOM: (node) => ["div", { class: "gp-generated" }, node.attrs.html as string],
+      },
       /** A raw `html_block`, carried verbatim. */
       html_block: {
         group: "block",

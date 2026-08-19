@@ -328,6 +328,16 @@ export function createDocParser(md: MarkdownIt) {
     layout_page_break: { node: "gp_page_break", getAttrs: marker },
     layout_column_break: { node: "gp_column_break", getAttrs: marker },
 
+    // ── pipeline-generated content: shown, never written back ────────────
+    // Retagged from a map-less `html_block` by the editor renderer's
+    // `editor_tag_generated` rule — see renderer.ts on why provenance, not a
+    // list of known markup, is the discriminator.
+    gp_generated: {
+      node: "gp_generated",
+      noCloseToken: true,
+      getAttrs: (tok) => ({ html: tok.content }),
+    },
+
     // ── raw HTML, carried verbatim ───────────────────────────────────────
     html_block: { node: "html_block", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },
     html_inline: { node: "html_inline", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },

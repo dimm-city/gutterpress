@@ -45,7 +45,7 @@
   import { getProjectRenderer } from "$lib/editor/project-renderer";
   import type { ProjectPluginIssue } from "$lib/editor/project-plugins";
   import type MarkdownIt from "markdown-it";
-  import { nextEditorSheet, paginatedWidth, type EditorSheet } from "gutterpress/render";
+  import { editorScale, nextEditorSheet, paginatedWidth, type EditorSheet } from "gutterpress/render";
   import EditorChrome from "$lib/components/EditorChrome.svelte";
   import {
     clearSlashQuery,
@@ -64,6 +64,7 @@
     bookCss = "",
     assetBase = "",
     columns = 1,
+    zoom = "fit-width",
     backdrop = "",
     onChange,
     onSave,
@@ -97,6 +98,16 @@
      * props). A 2 is a REQUEST, not a guarantee — see `setColumns`.
      */
     columns?: 1 | 2;
+    /**
+     * The author's zoom choice — `"fit-width"` or a numeric factor.
+     *
+     * The app's `preview.defaultZoom`, the same setting the preview canvas
+     * reads: in rich mode this surface IS the view, so the toolbar's zoom
+     * menu has to drive it or the control is dead. Reactive, unlike the
+     * mount-time props above — changing it repaints the transform and
+     * nothing else, so there is no document to rebuild.
+     */
+    zoom?: string;
     /**
      * The colour around the pages — the author's `appearance.previewBg`.
      *
@@ -143,6 +154,8 @@
   let baseEl: HTMLBaseElement | null = null;
   /** What the app asked for; seeded from the prop in onMount. */
   let requestedColumns: 1 | 2 = 1;
+  /** The zoom currently painted; seeded from the prop in onMount. */
+  let appliedZoom = "fit-width";
   /**
    * The stylesheet the frame is carrying, and what it was derived from — the
    * whole of this component's pagination state. `nextEditorSheet()` owns the
@@ -238,6 +251,7 @@
   onMount(() => {
     openPath = filePath;
     requestedColumns = columns;
+    appliedZoom = zoom;
     const doc = frame.contentDocument;
     if (!doc) return;
 
@@ -359,11 +373,29 @@
       scaleBox.style.marginLeft = "";
       return;
     }
-    const s = Math.min(Math.max(frameW / flowW, 0.2), 2);
+    // The scale DECISION is the engine's (`editorScale`) — including the rule
+    // that fit-width never magnifies past print size. This function only
+    // measures and paints.
+    const s = editorScale(frameW, flowW, appliedZoom);
     scaleBox.style.transform = s === 1 ? "" : `scale(${s})`;
     // Center the scaled pages. `margin: auto` cannot — auto margins resolve
     // against LAYOUT width, and the transform changes only the painted width.
     scaleBox.style.marginLeft = `${Math.max(0, (frameW - flowW * s) / 2)}px`;
+  }
+
+  /**
+   * Repaint at a new zoom.
+   *
+   * Called by the host when the toolbar's zoom menu changes (the imperative
+   * seam every other prop-driven change uses here — see `setColumns`). Only
+   * the transform moves: layout inside the wrapper stays at print size, so
+   * pagination cannot shift, which is the same guarantee `applyScale` has
+   * always carried.
+   */
+  export function setZoom(next: string): void {
+    if (next === appliedZoom) return;
+    appliedZoom = next;
+    applyScale();
   }
 
   /**

@@ -245,11 +245,21 @@ describe("spread view wiring", () => {
     expect(PAGE.indexOf('{#if editorView === "activity"}')).toBeLessThan(
       PAGE.indexOf("<RichEditor"),
     );
-    // Zoom and page navigation are genuinely preview-only and must stay gated
-    // — including while rich mode has collapsed the pane they drive.
+    // Zoom moves with them: the rich editor is a VIEW, and an author whose
+    // page is narrower than the window must be able to enlarge it. Gating
+    // zoom on the preview alone left the control dead in the one mode that
+    // has no other way to change size.
     expect(PAGE).toContain(
-      "previewControlsDisabled={!lifecycle.previewUrl || richEditorShowing}",
+      "previewControlsDisabled={!lifecycle.previewUrl && !richEditorShowing}",
     );
+    // …and it reaches the surface: the setting drives an imperative push, the
+    // same channel the view mode uses (a mounted editor must not need a
+    // remount to repaint).
+    expect(PAGE).toContain("editorZoomSink(s.preview.defaultZoom)");
+    expect(PAGE).toContain("editorRef?.setZoom?.(value)");
+    expect(RICH).toContain("export function setZoom(next: string): void {");
+    // The scale DECISION lives in the engine, not in the component.
+    expect(RICH).toContain("editorScale(frameW, flowW, appliedZoom)");
     // All four view-mode controls (segmented pair + the collapsed menu's two
     // items) move together, or the narrow toolbar disagrees with the wide one.
     const viewMode = TOOLBAR.slice(

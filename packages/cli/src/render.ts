@@ -60,6 +60,7 @@ export type {
 export {
   MIN_LEGIBLE_SCALE,
   breakMappingCss,
+  editorScale,
   editorStylesheet,
   namedPageCss,
   namedPageDelta,

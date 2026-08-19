@@ -35,7 +35,7 @@ import { keymap } from "prosemirror-keymap";
 import type { MarkType, Node as PMNode, NodeType, ResolvedPos } from "prosemirror-model";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
 import { EditorState, NodeSelection, Plugin, Selection, type Command } from "prosemirror-state";
-import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
+import { EditorView } from "prosemirror-view";
 import type MarkdownIt from "markdown-it";
 import { createAnchorEmitter } from "./anchor-emitter";
 import { createDocParser, gutterpressSchema, resetSerializeCache, serializeDoc } from "./markdown-doc";
@@ -129,84 +129,6 @@ export interface RichEditorHandle {
   /** Scroll a 1-based source line into view, optionally focusing the editor. */
   revealLine(line: number, focusEditor?: boolean): void;
 }
-
-// ---------------------------------------------------------------------------
-// generated content
-// ---------------------------------------------------------------------------
-
-/**
- * Content the PIPELINE generates, shown but never editable.
- *
- * `markers.js` injects a `<div class="chapter-opener">` at the top of every
- * `@chapter`. It is not in the author's file, and `renderer.ts`'s provenance
- * filter deliberately keeps it out of the document model so it can never be
- * written back. But print SHOWS it, and this editor's whole promise is that
- * text looks as it will print — so it is rendered as a widget DECORATION.
- *
- * Decoration is exactly the right mechanism: a widget lives in the view and
- * not in the document, so there is no path by which it can reach the
- * serializer. Authored content is document; generated content is decoration.
- */
-/**
- * The chapter LABEL from its authored marker line — the same selection rule
- * as `parseMarkerLine` (markers.js): the first bare token, unquoted; classes,
- * ids and key=value arguments are not part of the label. Taking the whole
- * tail rendered `"Field Notes" #ch-notes` — quotes, id and all — as the badge.
- */
-function chapterLabel(marker: string): string | null {
-  const rest = /(?:^|\s)@chapter\s+(.*)$/.exec(marker || "")?.[1] ?? "";
-  for (const t of rest.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
-    if (t.startsWith('"') || t.startsWith("'")) return t.slice(1, -1).trim() || null;
-    if (t.startsWith(".") || t.startsWith("#") || t.includes("=")) continue;
-    return t;
-  }
-  return null;
-}
-
-function generatedContent(doc: PMNode): DecorationSet {
-  const decorations: Decoration[] = [];
-  doc.descendants((node, pos) => {
-    if (node.type !== schema.nodes.gp_chapter) return true;
-    const label = chapterLabel((node.attrs.marker as string) || "");
-    if (!label) return true;
-    // The pipeline injects the opener INSIDE the chapter's first page, not
-    // between the chapter and the page — a widget in that gap is content
-    // before the page's own forced break, which opened every labelled
-    // chapter with a page that was blank except for the badge. Descend
-    // through the leading layout wrappers to the same spot print uses.
-    let at = pos + 1;
-    let first = node.firstChild;
-    while (
-      first &&
-      (first.type === schema.nodes.gp_page || first.type === schema.nodes.gp_spread)
-    ) {
-      at += 1;
-      first = first.firstChild;
-    }
-    decorations.push(
-      Decoration.widget(
-        at,
-        () => {
-          const el = document.createElement("div");
-          el.className = "chapter-opener";
-          el.setAttribute("data-chapter-label", label);
-          el.setAttribute("contenteditable", "false");
-          el.textContent = label;
-          return el;
-        },
-        { side: -1, key: `chapter-opener:${label}` },
-      ),
-    );
-    return true;
-  });
-  return DecorationSet.create(doc, decorations);
-}
-
-const generatedContentPlugin = new Plugin({
-  props: {
-    decorations: (state) => generatedContent(state.doc),
-  },
-});
 
 // ---------------------------------------------------------------------------
 // input rules — the Obsidian/Typora typing feel
@@ -486,7 +408,6 @@ export function createEditorState(
       history(),
       dropCursor(),
       gapCursor(),
-      generatedContentPlugin,
       ...(onChrome ? [chromePlugin(onChrome)] : []),
     ],
   });
@@ -515,6 +436,9 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
   const view = new EditorView({ mount }, {
     state: createEditorState(md, content, onSave, onChrome),
     nodeViews: {
+      // Generated content renders exactly like raw HTML and is equally
+      // read-only; what differs is that it serializes to nothing (schema.ts).
+      gp_generated: rawHtmlView(false),
       html_block: rawHtmlView(false),
       html_inline: rawHtmlView(true),
     },

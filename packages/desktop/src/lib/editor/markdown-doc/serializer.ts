@@ -163,6 +163,17 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
     },
     gp_plugin_atom: layoutAtom,
 
+    /**
+     * Pipeline-generated content writes NOTHING.
+     *
+     * The one node whose serializer is deliberately empty: it was never in
+     * the author's file, and putting it back would materialize generated
+     * markup as source (the chapter-opener bug this node exists to prevent).
+     * The fixpoint gate is what keeps this honest — a book whose chapters
+     * generate openers must serialize back to its own bytes.
+     */
+    gp_generated() {},
+
     // ── raw HTML, verbatim ───────────────────────────────────────────────
     html_block(state, node) {
       state.write((node.attrs.html as string).replace(/\n+$/, ""));

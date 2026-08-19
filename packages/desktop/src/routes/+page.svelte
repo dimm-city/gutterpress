@@ -1066,6 +1066,8 @@
     setAssetBase?: (url: string) => void;
     /** Rich only: show one page or two abreast — `preview.viewMode`, mapped. */
     setColumns?: (columns: 1 | 2) => void;
+    /** Rich only: repaint at a new zoom — `preview.defaultZoom`. */
+    setZoom?: (zoom: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -1749,6 +1751,14 @@
   const editorViewModeSink = settingsChangeGuard<"single" | "two-column">((mode) =>
     editorRef?.setColumns?.(mode === "two-column" ? 2 : 1),
   );
+  // Zoom → the rich surface, for the same reason: in rich mode the editor IS
+  // the view, so the toolbar's zoom menu must move it or the control is dead
+  // chrome. Same channel discipline as the view mode — every writer lands in
+  // `preview.defaultZoom`, and a push dropped while unmounted costs nothing
+  // because the `zoom` prop seeds it again on mount.
+  const editorZoomSink = settingsChangeGuard<string>((value) =>
+    editorRef?.setZoom?.(value),
+  );
   onMount(() =>
     onSettingsChange((s) => {
       autoSaveDelaySink(s.editor.autoSaveDelay);
@@ -1757,6 +1767,7 @@
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
       editorViewModeSink(s.preview.viewMode);
+      editorZoomSink(s.preview.defaultZoom);
     }),
   );
 
@@ -3209,7 +3220,7 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {viewMode}
     {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl || richEditorShowing}
+    previewControlsDisabled={!lifecycle.previewUrl && !richEditorShowing}
     viewModeDisabled={!lifecycle.previewUrl && !richEditorShowing}
     onApplyViewMode={(mode) => { contextMenu.close(); zoomView.applyViewMode(mode, true); }}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
@@ -3392,6 +3403,7 @@
                   {bookCss}
                   assetBase={lifecycle.previewUrl ?? ""}
                   columns={editorColumns}
+                  {zoom}
                   backdrop={bgColor}
                   onChange={onEditorChange}
                   onSave={() => void handleForceSave()}

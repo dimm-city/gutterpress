@@ -334,6 +334,42 @@ export function paginatedWidth(css: string, opts: PaginateOptions = {}): number 
 }
 
 /**
+ * How far to scale the paginated surface so it sits in the pane, given the
+ * author's zoom choice.
+ *
+ * ## Fit-width NEVER magnifies
+ *
+ * The whole promise of this surface is that the text is the size it will
+ * print. `frameW / flowW` alone breaks that promise in the common case, and
+ * breaks it worst for the books this tool is FOR: a 5.5x8.5in digest laid
+ * out in a 1900px window computes 2.0, so 11pt body type paints at 22pt and
+ * a page is taller than the viewport — the author scrolls through a giant
+ * mock-up of their book and never sees a page edge. Measured on a real
+ * field guide, and it is why that book looked nothing like its own preview.
+ *
+ * So fit-width means "shrink until it fits", never "grow to fill". Wider
+ * pane than page: the pages stay at print size and are centred. This is the
+ * one direction the author cannot get any other way — a page too wide for
+ * the pane is unreadable, a page smaller than the pane is just a page.
+ *
+ * An explicit numeric zoom is the author overriding that on purpose, so it
+ * is honoured in both directions, over the same 25%-400% range the preview
+ * offers. `MIN_LEGIBLE_SCALE` does not apply here: it governs whether a
+ * SPREAD is worth showing at all (see `nextEditorSheet`), while this floor
+ * is only the point past which shrinking stops helping.
+ */
+export function editorScale(frameW: number, flowW: number, zoom = "fit-width"): number {
+  if (!(frameW > 0) || !(flowW > 0)) return 1;
+  if (zoom !== "fit-width") {
+    const requested = Number(zoom);
+    return Number.isFinite(requested) && requested > 0
+      ? Math.min(Math.max(requested, 0.25), 4)
+      : 1;
+  }
+  return Math.min(Math.max(frameW / flowW, 0.2), 1);
+}
+
+/**
  * Map the author's forced PAGE breaks onto column breaks.
  *
  * A `break-before: page` is inert inside a multicol box — only column breaks

@@ -1,3 +1,4 @@
+import { createMarkdownRenderer } from "gutterpress/render";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -157,23 +158,52 @@ describe("Gutterpress markers survive the surface", () => {
   });
 });
 
-describe("generated content is decoration, never document", () => {
-  test("the chapter opener is visible in the editor", () => {
-    // print shows it, so the editor must too
-    const e = editor("@chapter Introduction\n\nBody text.\n");
+describe("generated content is the PIPELINE's, shown but never saved", () => {
+  /**
+   * What the PRINT path emits for this source — the authority the editor is
+   * being held to. A separate instance on purpose: asserting against the
+   * editor's own renderer would prove only that it agrees with itself.
+   */
+  const printRenderer = createMarkdownRenderer();
+  const printed = (src: string) => printRenderer.render(src, {});
+
+  test("the chapter opener is shown exactly when print emits one", () => {
+    // `markers.js` injects the opener for a labelled chapter that opens a
+    // `@page` — not for every labelled chapter. The editor used to apply the
+    // looser rule from its own copy of it, so on a book whose chapters carry
+    // no `@page` it invented an opener, showed the label as stray body text,
+    // and pushed the chapter's own heading onto a second page. Measured on a
+    // digest-format book; this pair is that bug.
+    const withPage = "@chapter \"C.01\"\n\n@page\n\nBody text.\n";
+    expect(printed(withPage)).toContain("chapter-opener");
+    const shown = editor(withPage);
+    expect(shown.mount.innerHTML).toContain("chapter-opener");
+    expect(shown.mount.innerHTML).toContain("C.01");
+    shown.restore();
+
+    const noPage = "@chapter Introduction\n\nBody text.\n";
+    expect(printed(noPage)).not.toContain("chapter-opener");
+    const absent = editor(noPage);
+    expect(absent.mount.innerHTML).not.toContain("chapter-opener");
+    absent.restore();
+  });
+
+  test("it can never be written back to the file", () => {
+    // The postmortem's failure mode was generated content becoming authored
+    // content on save. `gp_generated` serializes to NOTHING, so there is no
+    // path from it to the file — and the source round-trips unchanged.
+    const src = "@chapter \"C.01\"\n\n@page\n\nBody text.\n";
+    const e = editor(src);
     expect(e.mount.innerHTML).toContain("chapter-opener");
-    expect(e.mount.innerHTML).toContain("Introduction");
+    expect(e.handle.getMarkdown()).toBe(src);
+    expect(e.handle.getMarkdown()).not.toContain("chapter-opener");
     e.restore();
   });
 
-  test("but it can never be written back to the file", () => {
-    // The postmortem's failure mode was generated content becoming authored
-    // content on save. A widget decoration lives in the view, not the
-    // document, so there is no path from it to the serializer.
-    const src = "@chapter Introduction\n\nBody text.\n";
-    const e = editor(src);
-    expect(e.handle.getMarkdown()).toBe(src);
-    expect(e.handle.getMarkdown()).not.toContain("chapter-opener");
+  test("it is not editable content — the author cannot type into it", () => {
+    const e = editor("@chapter \"C.01\"\n\n@page\n\nBody.\n");
+    const el = e.mount.querySelector(".chapter-opener")?.closest("[contenteditable]");
+    expect(el?.getAttribute("contenteditable")).toBe("false");
     e.restore();
   });
 });
@@ -196,9 +226,11 @@ describe("editor state", () => {
 
   test("the surface carries history, input rules and a keymap", () => {
     const state = createEditorState(md, "x\n");
-    // 7 plugins: keymap, baseKeymap, inputRules, history, dropCursor,
-    // gapCursor, generated-content decorations.
-    expect(state.plugins.length).toBe(7);
+    // 6 plugins: keymap, baseKeymap, inputRules, history, dropCursor,
+    // gapCursor. (The generated-content decoration plugin is gone: generated
+    // markup is a document node the pipeline placed, not a widget this layer
+    // re-derives — see the generated-content suite above.)
+    expect(state.plugins.length).toBe(6);
   });
 });
 

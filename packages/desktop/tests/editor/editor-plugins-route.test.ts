@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { POST as editorPlugins } from "../../src/routes/api/project/editor-plugins/+server";
-import { GET as pluginModule } from "../../src/routes/api/project/plugin-module/+server";
+import { GET as pluginModule } from "../../src/routes/api/project/plugin-module/[...path]/+server";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { request, caught } from "../support/route-test-helpers";
@@ -15,9 +15,18 @@ import { pickPluginExport } from "../../src/lib/editor/project-plugins";
  * same-origin module URLs (or stated reasons); the other serves the module
  * bytes. Both enumerate/serve files, so their guards get the same scrutiny
  * as the fs routes.
+ *
+ * The property these exist to protect, learned the hard way on a real book:
+ * **the editor must load exactly the plugins the PDF loads.** An editor that
+ * refuses one of them is not a degraded editor, it is an editor showing a
+ * different book — the author's branded components come out as raw marker
+ * lines. So the resolution rule here is the loader's rule
+ * (`resolve(projectDir, path)`, free to leave the project directory), and
+ * fail-closed is enforced by the MANIFEST being the authority over which
+ * files exist, not by a directory box the loader never had.
  */
 type PostHandler = (event: { request: Request }) => Promise<Response>;
-type GetHandler = (event: { url: URL }) => Promise<Response>;
+type GetHandler = (event: { params: { path: string } }) => Promise<Response>;
 
 const dirs: string[] = [];
 const HOST_KEY = "__gutterpressHost__";
@@ -30,20 +39,48 @@ afterEach(async () => {
   else g[HOST_KEY] = priorHost;
 });
 
-async function project(files: Record<string, string>): Promise<string> {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "gp-eplugins-")));
-  dirs.push(dir);
-  for (const [name, text] of Object.entries(files)) {
-    if (name.includes("/")) await mkdir(join(dir, name, ".."), { recursive: true });
-    await writeFile(join(dir, name), text, "utf-8");
-  }
+function approve(dir: string): void {
   registerHostServices(
     makeHostServices({
       desktop: { getUserDataPath: () => dir },
       fsGuard: { projectRoots: () => [dir], readOnlyRoots: () => [] as string[] },
     }),
   );
+}
+
+async function write(root: string, files: Record<string, string>): Promise<void> {
+  for (const [name, text] of Object.entries(files)) {
+    if (name.includes("/")) await mkdir(join(root, name, ".."), { recursive: true });
+    await writeFile(join(root, name), text, "utf-8");
+  }
+}
+
+/** A project directory, host-approved as the open project. */
+async function project(files: Record<string, string>): Promise<string> {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "gp-eplugins-")));
+  dirs.push(dir);
+  await write(dir, files);
+  approve(dir);
   return dir;
+}
+
+/**
+ * The shape a shared design system takes on disk: several books beside a
+ * folder of common plugins, referenced as `../shared/plugins/x.js`. This is
+ * what the loader accepts, so it is what the editor must accept.
+ */
+async function siblingProject(
+  bookFiles: Record<string, string>,
+  siblingFiles: Record<string, string>,
+): Promise<string> {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), "gp-eplugins-tree-")));
+  dirs.push(parent);
+  const book = join(parent, "book");
+  await mkdir(book, { recursive: true });
+  await write(book, bookFiles);
+  await write(parent, siblingFiles);
+  approve(book);
+  return book;
 }
 
 const PLUGIN = "export default function (md) { /* no-op */ }\n";
@@ -55,8 +92,14 @@ async function list(dir: string) {
   };
 }
 
+/** Fetch a module by the URL the list route handed out. */
+const getUrl = (url: string) =>
+  (pluginModule as GetHandler)({
+    params: { path: url.replace("/api/project/plugin-module/", "") },
+  });
+
 describe("api/project/editor-plugins", () => {
-  test("a local plugin resolves to a same-origin module URL", async () => {
+  test("a local plugin resolves to a path-shaped module URL", async () => {
     const dir = await project({
       "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
       "plugins/p.js": PLUGIN,
@@ -65,8 +108,27 @@ describe("api/project/editor-plugins", () => {
     const { plugins } = await list(dir);
     expect(plugins).toHaveLength(1);
     expect(plugins[0]!.error).toBeUndefined();
-    expect(plugins[0]!.url).toContain("/api/project/plugin-module?");
-    expect(plugins[0]!.url).toContain(encodeURIComponent("./plugins/p.js"));
+    // Path-shaped, not a query: a plugin's own relative imports resolve
+    // against this URL, and a query string would be dropped by that.
+    expect(plugins[0]!.url).toStartWith("/api/project/plugin-module/");
+    expect(plugins[0]!.url).not.toContain("?");
+    expect(plugins[0]!.url).toEndWith("/p.js");
+  });
+
+  test("a plugin BESIDE the project loads — the shape that shipped broken", async () => {
+    // `../shared/plugins/dc.js`: the loader accepts it, so preview and PDF
+    // render the book's components and the editor used to refuse them,
+    // showing the author raw marker lines instead of their own book.
+    const book = await siblingProject(
+      { "manifest.yaml": "title: T\nplugins:\n  - ../shared/plugins/dc.js\n", "a.md": "# A\n" },
+      { "shared/plugins/dc.js": PLUGIN },
+    );
+    const { plugins } = await list(book);
+    expect(plugins[0]!.error).toBeUndefined();
+    expect(plugins[0]!.url).toBeDefined();
+    const res = await getUrl(plugins[0]!.url!);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(PLUGIN);
   });
 
   test("a named export selection is carried through", async () => {
@@ -87,21 +149,22 @@ describe("api/project/editor-plugins", () => {
     expect(plugins[0]!.error).toContain("npm");
   });
 
-  test("a plugin path escaping the project is refused with a reason", async () => {
-    const dir = await project({
-      "manifest.yaml": "title: T\nplugins:\n  - ../outside.js\n",
-    });
-    const { plugins } = await list(dir);
-    expect(plugins[0]!.url).toBeUndefined();
-    expect(plugins[0]!.error).toContain("outside the project");
-  });
-
   test("a missing plugin file is reported by name", async () => {
     const dir = await project({
       "manifest.yaml": "title: T\nplugins:\n  - ./gone.js\n",
     });
     const { plugins } = await list(dir);
     expect(plugins[0]!.error).toContain("./gone.js");
+  });
+
+  test("a non-module path is reported rather than served", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./notes.md\n",
+      "notes.md": "# hi\n",
+    });
+    const { plugins } = await list(dir);
+    expect(plugins[0]!.url).toBeUndefined();
+    expect(plugins[0]!.error).toContain(".js");
   });
 
   test("a project with no manifest lists no plugins", async () => {
@@ -111,45 +174,98 @@ describe("api/project/editor-plugins", () => {
 });
 
 describe("api/project/plugin-module", () => {
-  const get = (dir: string, rel: string) =>
-    (pluginModule as GetHandler)({
-      url: new URL(
-        `http://local.test/api/project/plugin-module?dir=${encodeURIComponent(dir)}&rel=${encodeURIComponent(rel)}`,
-      ),
-    });
+  /** Build a URL by hand, the way an invented request would. */
+  const seg = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+  const path = (dir: string, root: string, file: string) =>
+    (pluginModule as GetHandler)({ params: { path: `${seg(dir)}/${seg(root)}/${file}` } });
 
   test("serves the module bytes as JavaScript, uncached", async () => {
-    const dir = await project({ "plugins/p.js": PLUGIN });
-    const res = await get(dir, "./plugins/p.js");
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+    });
+    const { plugins } = await list(dir);
+    const res = await getUrl(plugins[0]!.url!);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/javascript");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.text()).toBe(PLUGIN);
   });
 
-  test("refuses a path that resolves outside the project", async () => {
-    const dir = await project({});
-    const { status } = await caught(get(dir, "../evil.js"));
+  test("a plugin's own relative import resolves to a servable sibling", async () => {
+    // A plugin split across files is ordinary. The browser resolves
+    // `./rules/callout.js` against the module's URL, so the resolved URL must
+    // land on the sibling file — no source rewriting anywhere.
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": "import './rules/callout.js';\nexport default function (md) {}\n",
+      "plugins/rules/callout.js": "export const callout = 1;\n",
+    });
+    const { plugins } = await list(dir);
+    const resolved = new URL(plugins[0]!.url!, "http://local.test");
+    const sub = new URL("./rules/callout.js", resolved).pathname;
+    const res = await getUrl(sub);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("callout");
+  });
+
+  test("refuses a directory the manifest does not declare", async () => {
+    // The fail-closed edge: an approved PROJECT is not an approved plugin
+    // directory. Only folders the book's own manifest points into are served.
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+      "secrets/keys.js": "export const key = 'nope';\n",
+    });
+    const { status } = await caught(path(dir, join(dir, "secrets"), "keys.js"));
+    expect(status).toBe(403);
+  });
+
+  test("refuses a file that escapes its plugin directory", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+      "elsewhere.js": "export const x = 1;\n",
+    });
+    const { status } = await caught(path(dir, join(dir, "plugins"), "..%2Felsewhere.js"));
     expect(status).toBe(400);
   });
 
-  test("refuses a non-module extension", async () => {
-    const dir = await project({ "notes.md": "# hi\n" });
-    const { status } = await caught(get(dir, "notes.md"));
+  test("refuses a non-module extension inside an approved plugin directory", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+      "plugins/notes.md": "# hi\n",
+    });
+    const { status } = await caught(path(dir, join(dir, "plugins"), "notes.md"));
     expect(status).toBe(400);
   });
 
-  test("404s a missing module by its relative name", async () => {
-    const dir = await project({});
-    const { status, message } = await caught(get(dir, "gone.js"));
+  test("404s a missing module", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+    });
+    const { status, message } = await caught(path(dir, join(dir, "plugins"), "gone.js"));
     expect(status).toBe(404);
     expect(String(message)).toContain("gone.js");
   });
 
-  test("refuses a dir that is not an approved project root", async () => {
-    await project({}); // registers a DIFFERENT root
-    const { status } = await caught(get("/definitely/not/approved", "p.js"));
+  test("refuses a project dir that is not an approved project root", async () => {
+    const dir = await project({
+      "manifest.yaml": "title: T\nplugins:\n  - ./plugins/p.js\n",
+      "plugins/p.js": PLUGIN,
+    });
+    // Same plugin directory, a project root the host never approved.
+    const { status } = await caught(
+      path(join("/definitely/not", basename(dir)), join(dir, "plugins"), "p.js"),
+    );
     expect([400, 403]).toContain(status);
+  });
+
+  test("refuses an incomplete or malformed path", async () => {
+    await project({ "manifest.yaml": "title: T\n" });
+    expect((await caught(path("", "", ""))).status).toBe(400);
   });
 });
 

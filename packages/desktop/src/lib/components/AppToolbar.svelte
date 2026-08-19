@@ -115,13 +115,22 @@
     hidePreviewControls: boolean;
     viewMode: "single" | "two-column";
     zoom: string;
+    /**
+     * Zoom. Enabled whenever there is a VIEW to zoom — the preview, or the
+     * rich editor, which is a view in its own right (it renders the book's
+     * pages full-window). Leaving it gated on the preview alone made it dead
+     * chrome exactly when it was needed most: a book whose page is narrower
+     * than the window shows at print size, and enlarging it is the author's
+     * call, not something they can be denied.
+     */
     previewControlsDisabled: boolean;
     /**
      * Single / Two-page specifically. Separate from
-     * `previewControlsDisabled` because these two drive the rich EDITOR as well
-     * as the preview, and the editor runs — full-window, which is exactly the
-     * width a spread needs — while the preview server is still starting, or
-     * never starts at all.
+     * `previewControlsDisabled` because the page-navigation cluster shares
+     * that flag and is genuinely preview-only, while these two drive the rich
+     * EDITOR as well — and the editor runs (full-window, exactly the width a
+     * spread needs) while the preview server is still starting, or never
+     * starts at all.
      */
     viewModeDisabled: boolean;
     onApplyViewMode: (mode: "single" | "two-column") => void;
