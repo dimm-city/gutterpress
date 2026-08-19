@@ -133,7 +133,12 @@ Measured consequences with the current engine (Chromium 148):
   scope-less abspos inset sidebar paints over the gallery opener (P.98). The
   guard's one-line fixes are correct; this is book CSS debt, not an engine
   defect.
-- **Field guide** carries 37 warn-level risky print properties in its CSS
+- **Field guide** builds clean under the strict gate — 296pp (content has
+  grown since the 273pp reading), width guard silent, zero literal-marker
+  leaks in the text layer, the only empty-text pages are three intentional
+  full-art plates (6, 206, 210), outcome ladders render the five canonical
+  tiers, and the two accepted missing-art placeholders are the only
+  substitutions. Its CSS still carries 37 warn-level risky print properties
   (lint exit 0; rasterization is re-checked post-build).
 
 If the migrated book state still exists on the owner's machine (the old
@@ -182,6 +187,18 @@ Labelled `upstream` and written up for authors in
 ---
 
 ## Verified-and-closed this cycle
+
+**Fresh-environment re-verification, 2026-08-19** (clean container, Chromium
+148.0.7778.96, gs/qpdf/poppler installed): lib suite 1922 pass / 11 skip / 0
+fail — the two `bundle-freshness` failures a fresh clone shows are mtime
+artifacts, and rebuilding proved the committed engine bundles byte-identical ·
+open-design-plugin 7 pass · desktop 2398 pass, eslint + app-token check,
+svelte-check 0/0 across 884 files, electron tsc clean · CLI `tsc --noEmit` +
+engine-browser tsconfig clean · preview/PDF parity gate PASSES with an empty
+allowlist (fixtures 7/7, user guide 68/68, advanced book 14/14 pp) · renderer
+purity strict gate OK (148 client files) · release tooling checks pass ·
+both books rendered and inspected page-by-page samples (see book-repo state
+section for the two books' current standing).
 
 Drop-shadow `filter` removal (71.4s → 5.6s per chapter, text layer restored) ·
 `{.class}` marker spelling accepted · fail-loud marker diagnostics + problems
