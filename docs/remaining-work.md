@@ -150,17 +150,55 @@ precise failure the reverted comment describes.
 
 Nothing is lost: `origin/refactor/native` (`915826c`) still holds all of it.
 
-**Owner action** — restore `main` from `refactor/native` (a revert of the
-snapshot's deletions, not a re-migration), then re-run the gate. Until then,
-"both books build clean" cannot be reproduced from `origin/main`, and the
-gallery baseline cannot be re-frozen because the gallery chapter on `main` is
-not the approved artifact.
+**Owner action — a tested one-revert recovery (simulated end-to-end
+2026-08-19; every claim below was measured, not guessed):**
+
+The facts that make it easy: `refactor/native`'s tip (`915826c`) is
+byte-identical to the squash-merge tree (`git diff 915826c d500a40` is
+empty); `c84d16e` is the *only* mass-deletion commit; and the sum of all
+writing since the clobber is three field-guide chapter files plus two new
+images. Reverting `c84d16e` on today's `main` auto-merges 160 of 161 files —
+restoring the gate scripts, the 44-page gallery baseline, the CSS fixes, AND
+the two post-merge itlackey snapshots the clobber had also wiped
+(`7e237a7`, `029bd84`) — while keeping every post-clobber edit (the Burning
+condition, the new images, all snapshot writing). Exactly ONE conflict
+remains, and it resolves itself: keep `main`'s completed sentence in
+`chapter-02 7 Technosorcerer.md` ("choose the Practical Power, Reality
+Skewer, … abilities") over the pre-clobber unfinished placeholder.
+
+1. **Before anything else**: on the machine whose sync clobbered (`Hern`),
+   do not sync again until step 5 — a sync from the stale folder would
+   re-clobber the restore.
+2. `git branch backup/pre-restore-2026-08-19 origin/main && git push origin backup/pre-restore-2026-08-19`
+3. ```
+   git checkout -b restore/re-land-refactor-native origin/main
+   git revert c84d16e
+   git checkout --ours "field-guide/chapter-02 7 Technosorcerer.md"
+   git add "field-guide/chapter-02 7 Technosorcerer.md"
+   git revert --continue
+   ```
+4. Verify, then merge to `main` via PR — an ordinary merge, no force-push,
+   so no machine's history is invalidated. Verified in simulation: the
+   restored tree builds the design guide **strict-clean (width guard
+   passes, no `--allow-shrink`, 170pp)** and the previously damaged gallery
+   opener renders correctly. Re-run `tools/book-diff.sh` against the
+   restored baseline and rebuild the field guide before merging.
+5. On the `Hern` machine, pull/sync so the local folder fast-forwards to
+   the restored state — only then resume normal syncing.
+
+Until this lands, "both books build clean" cannot be reproduced from
+`origin/main`, and the gallery baseline cannot be re-frozen because the
+gallery chapter on `main` is not the approved artifact.
 
 **Product action (this repo)** — a pre-sync snapshot must never silently
 commit wholesale deletions of files the author did not touch. Working rule 8
-applies directly: silent degradation is the expensive failure. At minimum the
-snapshot path needs a guard that refuses, or requires explicit confirmation,
-when the staged tree deletes files that exist in the remote's merge base. A
+applies directly: silent degradation is the expensive failure. The guard has
+to live at SNAPSHOT time: once the stale tree is committed on top of the
+pulled history, it is simply the newest commit — the sync's merge machinery
+sees nothing to conflict on, which is exactly how `c84d16e` sailed through.
+At minimum the snapshot path needs to refuse, or require explicit
+confirmation, when the tree it is about to commit deletes files that exist
+at the remote head and were not deleted by the author's own edits. A
 regression test should pin it: local folder stale + remote advanced ⇒ sync
 must not push deletions.
 
