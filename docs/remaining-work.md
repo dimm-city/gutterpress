@@ -49,17 +49,13 @@ Last updated 2026-08-19.
 - [x] **`book-diff.sh` contract**: the committed gallery is the fast default;
       full books are explicit local modes under `.book-baseline/`, so the stale
       local 292-page field-guide baseline cannot masquerade as the release gate.
-      - [ ] **The gate is not recoverable from a fresh clone (found 2026-08-19).**
-            Neither `book-diff.sh` nor the approved gallery baseline exists in
-            either repo's origin state: `dc-op-manual`'s origin history is now
-            desktop-sync "Snapshot before syncing" commits on `main` (the
-            `refactor/native` branch is gone from origin), and the gutterpress
-            repo never carried the script or the baseline. Until they are
-            committed somewhere clonable, the "portable release gate" only
-            exists on the machine that made it. The no-baseline invariant
-            layer (width guard, dead-column, layer-trapped, DPI floor, marker
-            leaks) still runs inside every build and is what a fresh
-            environment can verify today.
+      - [ ] **The gate was merged and then deleted from `main` by our own sync
+            (found 2026-08-19).** It is intact on `origin/refactor/native`
+            (90 baseline files under `dc-design-guide/baseline/gallery/`, plus
+            `tools/book-diff.sh`, `book-diff-compare.py`,
+            `gallery-invariants.py`, `skill-card-fragment-policy.test.py`,
+            `field-guide-bottom-art.test.py`) — nothing is lost. See the
+            book-repo section below: restoring it is a revert, not a rebuild.
 - [x] **Desktop problems panel**: real Electron E2E proves malformed marker
       file/line navigation and an exported `engine.multicol.dead-column`
       finding through the Problems panel.
@@ -114,37 +110,69 @@ Last updated 2026-08-19.
 
 ---
 
-## Book-repo state (dc-op-manual — owner action, found 2026-08-19)
+## RELEASE BLOCKER: our sync reverted the merged migration on dc-op-manual
 
-A fresh clone of `dimm-city/dc-op-manual` no longer contains the migrated
-0.10.0 book state this document's "both books build clean" was measured
-against. `origin/main` (and its only other branch) is now the desktop app's
-sync history — live authoring snapshots — and that content is
-**pre-migration**: the field guide and design guide still author with
-`.two-column` (not `.gp-columns-2/3`), no `.dc-panel-sections` policy, and
-the Paged.js-era absolutely-positioned `.dc-sidebar.inset`
-(`position:absolute; top:0; right:-0.15in`) survives in `dc-components.css`.
-Measured consequences with the current engine (Chromium 148):
+**Found 2026-08-19. This is a Gutterpress defect, not book debt.**
 
-- **Design guide** fails the pre-print width guard by default — 4 offenders
-  (`div.dc-sidebar.inset` at 842px = 828px box + the 0.15in right overhang;
-  three `h1.dc-chevron` up to 948px). Built with `--allow-shrink` it renders
-  172pp, and the forced render shows the real damage the guard predicts: the
-  scope-less abspos inset sidebar paints over the gallery opener (P.98). The
-  guard's one-line fixes are correct; this is book CSS debt, not an engine
-  defect.
-- **Field guide** builds clean under the strict gate — 296pp (content has
-  grown since the 273pp reading), width guard silent, zero literal-marker
-  leaks in the text layer, the only empty-text pages are three intentional
-  full-art plates (6, 206, 210), outcome ladders render the five canonical
-  tiers, and the two accepted missing-art placeholders are the only
-  substitutions. Its CSS still carries 37 warn-level risky print properties
-  (lint exit 0; rasterization is re-checked post-build).
+`refactor/native` **was** squash-merged into `dc-op-manual`'s `main` on
+2026-08-15 (`d500a405`, itlackey — confirmed an ancestor of `main`). One day
+later a single commit reverted essentially all of it:
 
-If the migrated book state still exists on the owner's machine (the old
-`refactor/native` work), pushing it — or re-landing the migration on the
-synced `main` — restores the "builds clean with no escape hatch" state and
-is a precondition for re-freezing the gallery baseline.
+> `c84d16e` — 2026-08-16 — **"Snapshot before syncing"** — 161 files changed,
+> 4419 insertions, **7203 deletions**
+
+That message is ours: `SYNC_SNAPSHOT_MESSAGE` in
+`packages/cli/src/lib/remote-auth/sync-messages.ts:42`. The pre-sync snapshot
+committed a stale local working folder over merged remote work and pushed it.
+Cumulatively `d500a40..origin/main` differs by 163 files / 7394 deletions.
+What that one commit removed:
+
+- the entire release gate — `tools/book-diff.sh`, `book-diff-compare.py`,
+  `gallery-invariants.py`, `skill-card-fragment-policy.test.py`,
+  `field-guide-bottom-art.test.py`, `dimm-city-plugin.test.mjs`;
+- the owner-approved gallery baseline — all 90 files under
+  `dc-design-guide/baseline/gallery/` (rasters, `page-count.txt`, `dpi.txt`);
+- the CSS fixes, including the `.dc-sidebar.inset` repair. The merged version
+  carries the rationale verbatim: *"An inset is still an in-flow float.
+  Absolute positioning anchored it to the top of the nearest long-lived
+  `@page` wrapper, not to its authored paragraph, so a late sidebar could
+  paint over the first physical page of that wrapper."* `main` today is back
+  to `position:absolute; top:0; right:-0.15in`;
+- book markdown across the field guide and design guide (the gallery chapter
+  alone differs by 204 lines).
+
+**This reproduces the fixed defect exactly.** Building today's `main`, the
+design guide fails the width guard with 4 offenders (`div.dc-sidebar.inset`
+at 842px vs the 828px content box — the 0.15in overhang; three
+`h1.dc-chevron` up to 948px), and forcing it through with `--allow-shrink`
+renders the inset sidebar painting over the gallery opener on P.98 — the
+precise failure the reverted comment describes.
+
+Nothing is lost: `origin/refactor/native` (`915826c`) still holds all of it.
+
+**Owner action** — restore `main` from `refactor/native` (a revert of the
+snapshot's deletions, not a re-migration), then re-run the gate. Until then,
+"both books build clean" cannot be reproduced from `origin/main`, and the
+gallery baseline cannot be re-frozen because the gallery chapter on `main` is
+not the approved artifact.
+
+**Product action (this repo)** — a pre-sync snapshot must never silently
+commit wholesale deletions of files the author did not touch. Working rule 8
+applies directly: silent degradation is the expensive failure. At minimum the
+snapshot path needs a guard that refuses, or requires explicit confirmation,
+when the staged tree deletes files that exist in the remote's merge base. A
+regression test should pin it: local folder stale + remote advanced ⇒ sync
+must not push deletions.
+
+### Field guide, measured on today's `main`
+
+Builds clean under the strict gate — 296pp (content has grown since the 273pp
+reading), width guard silent, zero literal-marker leaks in the text layer,
+the only empty-text pages are three intentional full-art plates (6, 206,
+210), outcome ladders render the five canonical tiers, and the two accepted
+missing-art placeholders are the only substitutions. Its CSS carries 37
+warn-level risky print properties (lint exit 0; rasterization is re-checked
+post-build).
 
 ## Upstream Chromium gaps — documented, not fixable here
 
@@ -197,8 +225,9 @@ svelte-check 0/0 across 884 files, electron tsc clean · CLI `tsc --noEmit` +
 engine-browser tsconfig clean · preview/PDF parity gate PASSES with an empty
 allowlist (fixtures 7/7, user guide 68/68, advanced book 14/14 pp) · renderer
 purity strict gate OK (148 client files) · release tooling checks pass ·
-both books rendered and inspected page-by-page samples (see book-repo state
-section for the two books' current standing).
+both books rendered and inspected page-by-page samples. The tool side is
+green; the release is blocked on the sync regression recorded above, which
+that verification is what surfaced.
 
 Drop-shadow `filter` removal (71.4s → 5.6s per chapter, text layer restored) ·
 `{.class}` marker spelling accepted · fail-loud marker diagnostics + problems
