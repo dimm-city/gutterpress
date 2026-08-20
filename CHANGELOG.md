@@ -164,6 +164,41 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Rich editing no longer silently deletes what a plugin's core-rule
+  transforms built — it round-trips it, or refuses with the rule named.**
+  Plugins like the Dimm City book's register core-ruler transforms that
+  consume authored marker paragraphs (`@lede`, `@toc`, `> [!NOTE]` alerts)
+  and synthesize HTML wrappers in their place; the editor treated those
+  map-less wrappers as regenerable pipeline output and dropped them, so one
+  rich-mode save stripped the markers from the author's file — measured at
+  0/14 field-guide chapters surviving a save with meaning intact. The host
+  now observes every core rule a plugin registers (`withCoreRuleProvenance`,
+  beside the existing block-rule stamp — plugins stay plain markdown-it,
+  nothing changes for plugin authors) and attributes each consume-and-replace
+  to its authored lines from the transform's own input/output record: object
+  identity anchors the diff, close tokens attribute through their paired
+  open, a container split across hunks (the alerts shape) merges into one
+  region, and everything ambiguous — moves, copies, in-place inline edits,
+  overlapping or nested rewrites, consumed-to-nothing markers, even a
+  transform that eats the whole file — poisons, so the file opens in source
+  mode naming the offending rule instead of saving wrong bytes. Adopted
+  constructs serialize their authored lines verbatim and the pipeline
+  regenerates the presentation, so print and preview are untouched. The
+  field guide now measures 14/14 chapters rich-editable with byte-stable
+  saves and identical rendered meaning (13/14 on the unmodified book — the
+  one refusal names a genuinely dead `@end-callout` the plugin already
+  consumes silently).
+- **Saving from rich mode no longer rewrites the author's punctuation or
+  attribute spelling.** The document model is now parsed with typographer
+  and linkify off (render keeps them), so straight quotes, `--`, `...`,
+  `(c)` and bare URLs survive a save byte-identically; authored HTML
+  entities keep their bytes outside headings; the authored bullet character
+  (`-`/`+`/`*`) round-trips instead of canonicalizing (adjacent lists that
+  alternate markers stay separate lists, which also removed the last
+  normalize churn); trailing `{.class}` blocks on paragraphs, rules and
+  images bind to the element the author attached them to and survive saves
+  — including value-less forms like `{disabled}`.
+
 - **A sync interrupted between merge and checkout can no longer turn into a
   silently pushed revert of other people's work.** A pull lands in two steps
   — `git.merge` moves the branch ref, then a forced checkout materializes the

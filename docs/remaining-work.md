@@ -78,7 +78,24 @@ Last updated 2026-08-19.
       fragmentation and field-guide ownership policies are indexed.
 
 ### Engineering
-- [ ] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
+- [x] **FIXED 2026-08-20 — core-rule provenance shipped** (design + as-built
+      record: [`docs/editor-core-rule-provenance-plan.md`](./editor-core-rule-provenance-plan.md)).
+      `withCoreRuleProvenance` observes plugin core-ruler transforms at
+      registration, attributes every consume-and-replace to its authored
+      lines via the transform's own input/output record (close pairing,
+      span pairing, interior coverage), and poisons everything ambiguous so
+      the editor refuses with the rule named. Measured: field guide
+      **14/14 rich / 14/14 fixpoint / 14/14 meaning** (with the one-line
+      dead-marker book fix on dc-op-manual branch
+      `fix/field-guide-dead-end-callout`; 13/14 honest refusal without it),
+      design guide 19/19 / 19/19 / 18/19 (the one drift is the documented
+      pre-existing mark-order trade). §6.1 typographer/linkify baking fixed
+      (parse-time toggle, exception-safe); §6.2 churn eliminated via
+      authored-bullet fidelity. Implementation was adversarially reviewed
+      (17 confirmed findings, all fixed with sabotage-verified regressions).
+      Follow-ups recorded in the plan's as-built addendum. Original finding
+      kept below for the record.
+- [historical] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
       measured, deterministic, identical on pre-migration `main` and the
       restored branch — pre-existing, not a restore regression).** All 14
       chapters pass `canEditRichly`, so the app opens them richly (and

@@ -1,6 +1,6 @@
 # Core-Rule Provenance — making rich editing lossless for real plugin books
 
-**Status:** v2, implementation-ready · 2026-08-20
+**Status:** v3, AS BUILT (implemented + adversarially reviewed + fixed) · 2026-08-20 — see the As-built addendum before Appendix A for every deviation from v2 and the final measured numbers.
 **Scope:** `packages/cli/src/lib/markdown/plugin-provenance.ts` + `renderer.ts`, `packages/desktop/src/lib/editor/markdown-doc/*`, `docs/fixtures/advanced-book`
 **Decision this implements:** "Option B" from the finding in `docs/remaining-work.md` (§ Engineering, 2026-08-19): extend the provenance/adoption machinery to plugin **core-ruler transforms**, so books like the Dimm City Field Guide round-trip through the rich editor instead of being silently damaged by it.
 
@@ -523,7 +523,7 @@ Appendix A against the restored dc-op-manual tree:
 
 | Property | today | required |
 | --- | --- | --- |
-| rich-editable | 14/14 | **14/14** (no chapter may regress to refuse) |
+| rich-editable | 14/14 | **14/14** (no chapter may regress to refuse) — as-built: met with the one-line book fix; 13/14 honest refusal without it (see addendum) |
 | byte fixpoint | 2/14 | **14/14** |
 | meaning preserved | 0/14 | **14/14** |
 
@@ -547,6 +547,102 @@ Appendix A against the restored dc-op-manual tree:
   comment fix (rides with phase 1).
 
 ---
+
+## As-built addendum (v3, 2026-08-20)
+
+Phase 1 plus §6.1/§6.3 shipped in one pass: implementation → 5-dimension
+adversarial review (18 raw findings, 17 confirmed by independent verifiers
+with end-to-end reproductions) → fix stage with sabotage-verified regression
+tests (every new test was proven to FAIL against the pre-fix code). What
+shipped differs from v2 in the following ways — the v2 sections above remain
+the design rationale; this list is normative for the code:
+
+**Differ (`plugin-provenance.ts`) beyond v2:**
+- *Interior coverage* (third attribution clause): a removed token nested
+  inside a matched open/close pair of the same removed run is attributable
+  when that open carries a range — markdown-it leaves `map` off nested
+  construct furniture (`th_open`/`td_open`/cell inline), so consumed tables
+  poisoned under the literal v2 clause.
+- *Deep children fingerprint*: the morph check compares a recursive
+  per-child (type, content) signature in addition to the children array
+  reference — an in-place `child.content` edit (the markdown-it
+  `replacements` pattern) is a morph, not an invisible bake-into-source.
+- *Sticky poison (no laundering)*: every removed token and morph anchor is
+  probed for `gpCorePoison` before classification; a later rule that
+  consumes a poisoned token re-poisons its replacement span with the
+  ORIGINAL rule/reason (first poison wins, over `forcedReason` too).
+- *Orphan side channel*: a refusal with no token carrier (a transform
+  consumed the whole document) is recorded as
+  `env.gpCorePoisonOrphan = { rule, reason }` (`GP_CORE_POISON_ORPHAN`),
+  first-wins, fail-soft on hostile env objects.
+- *Stamp-aware overlap guard*: the guard uses `tokenRange()` (map OR stamp),
+  so chained rules cannot mint two regions over the same lines; consuming a
+  strict subset of an earlier stamped region poisons, whole-region
+  consumption still chains.
+- *Region containment guard*: a span-paired region poisons when any
+  swallowed survivor's range is not fully contained in the region range —
+  a mismatched cross-construct pair refuses instead of deleting the content
+  between it.
+- *Depth guard exemption*: survivor depth counts all surviving containers
+  EXCEPT `markers.js`'s structural layout family (chapter/spread/page/
+  section), which the editor serializes delim-free; without the exemption
+  every real chapter (transforms inside `@page`/`@section`) would refuse.
+- *Poison-target fallbacks*: consumed-to-nothing parks poison on the nearest
+  surviving neighbor; pure moves poison the displaced survivors (v2's
+  target set was empty for both shapes).
+
+**Editor (`markdown-doc/`) beyond v2:**
+- Facade adds `raiseOnOrphanPoison` (env key + an independent backstop:
+  non-blank source with an empty post-pipeline token stream refuses) ahead
+  of `raiseOnPoison` → `adoptCoreRegions` → guarded `adoptHtmlWrappers` →
+  `adoptPluginTokens`.
+- `adoptCoreRegions` applies the map-within-range test to same-id members
+  too — a too-narrow stamp refuses rather than truncating the atom's lines.
+- `editor_entity_source` (the §6.1 companion rule): authored entities are
+  retagged onto `html_inline` before `text_join` so saves keep their bytes —
+  EXCEPT inside headings, where the retag is skipped (heading content is
+  `(text | image)*`; the atom would silently delete the whole heading — the
+  confirmed critical). In a heading `&amp;` decodes on save (the pre-change
+  lesser loss, render-identical).
+- Fidelity slots (spec-silent in v2, required by the meaning column):
+  authored bullet character round-trips (`bullet_list.attrs.bullet` — this
+  REPLACED v2's §6.2 renderList override and changed the normalize canon:
+  bullets no longer canonicalize to `*`; CommonMark splits adjacent lists
+  only on marker change, which the field guide uses deliberately);
+  paragraph block-end braces round-trip (bound to the paragraph only when
+  whitespace precedes `{` — `) {.x}` is the paragraph's, `){.x}` the
+  image's); `horizontal_rule` braces; value-less braces carry (`{disabled}`
+  byte-stable; `{key=""}` canonicalizes to `{key}` — same parsed attribute);
+  a cell-text pass strips start-of-line escapes inside table cells (inline
+  context; the escapes were print-harmful there).
+- §6.1's `\--` first-save edge is **print-visible** (markdown-it 14 joins
+  text tokens after replacements, so `\--` prints literally as `--`, not an
+  en dash) — the tradeoff bullet in §6.1 reads accordingly.
+
+**Final measured numbers** (harness of Appendix A, after all fixes):
+
+| Book | rich | fixpoint | meaning |
+| --- | --- | --- | --- |
+| Field guide, restored tree + the one-line dead-marker fix | **14/14** | **14/14** | **14/14** |
+| Field guide, unmodified (`main` copy) | 13/14 | 13/13 | 13/13 |
+| Design guide (informational) | 19/19 | 19/19 | 18/19 |
+
+The unmodified book's one refusal is the honest consumed-to-nothing poison:
+chapter-02 0's `@end-callout` is dead text (the plugin's `@procedure`
+handler force-closes the callout first), named verbatim in the refusal. The
+render-identical one-line removal is pushed as dc-op-manual branch
+`fix/field-guide-dead-end-callout` (based on the restore branch); with it
+the acceptance table is met in full. The design guide's single meaning
+drift (`07-markdown-reference.md`) is the schema's documented link-first
+mark-order trade, proven pre-existing by full-revert comparison.
+
+**Known follow-ups recorded, deliberately out of scope:** the pre-existing
+block-rule adoption double-write when two sibling map-less tokens share one
+`gpEditorLines` range; the pre-existing silent drop of raw inline HTML in
+headings; softbreaks joining to spaces on first save (multi-line paragraphs
+become one line; idempotent after); ordered-list delimiter (`1.` vs `1)`)
+not captured (no occurrence in either book); phase 2 (§4.4 pairing for
+in-view wrapper fidelity) not started.
 
 ## Appendix A — measurement harness
 
