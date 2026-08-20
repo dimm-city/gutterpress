@@ -49,11 +49,16 @@ async function bookRenderer() {
   ]);
 }
 
-const chapters = mdFilesIn(BOOK).filter((p) => !p.endsWith("06-archive.md"));
+// 06-archive and 08-refused are the book's two DELIBERATE refusals (a
+// footnote/reference chapter, and the isolated consumed-to-nothing transform
+// marker); each has its own refusal test below.
+const chapters = mdFilesIn(BOOK).filter(
+  (p) => !p.endsWith("06-archive.md") && !p.endsWith("08-refused.md"),
+);
 
 describe("plugin round-trip (go/no-go)", () => {
   test("the fixture is present — this gate must not pass vacuously", () => {
-    expect(chapters.length).toBeGreaterThanOrEqual(6);
+    expect(chapters.length).toBeGreaterThanOrEqual(7);
   });
 
   test("every plugin-using chapter is rich-editable", async () => {
@@ -103,6 +108,67 @@ describe("plugin round-trip (go/no-go)", () => {
       '@stamp "Checked"',
     ]) {
       expect(out).toContain(`\n${line}\n`);
+    }
+  });
+
+  test("core-rule transform marker lines round-trip VERBATIM", async () => {
+    // The consuming transform (field_markers_transform) rewrites all of
+    // these at render time; the file must keep the authored lines, once.
+    const md = await bookRenderer();
+    const text = readFileSync(join(BOOK, "07-transforms.md"), "utf8");
+    const out = normalize(md, text);
+    for (const line of [
+      "@brief",
+      "@end-brief",
+      '@verdict "Cleared for reprint"',
+      "> [!TIP] Weather eye",
+      '@track "Ridge count"',
+      "@end-track",
+    ]) {
+      expect(out).toContain(`\n${line}\n`);
+      expect(out.split(`\n${line}\n`)).toHaveLength(2);
+    }
+  });
+
+  test("the 07-transforms transform is LIVE: rendered chrome present, constructs adopted", async () => {
+    // Liveness guard for the whole transform coverage: every "never reaches
+    // the file" / "round-trips verbatim" assertion in this suite would pass
+    // VACUOUSLY if the fixture's core-ruler transform stopped firing (the
+    // markers would just be plain paragraphs). So first prove the transform
+    // actually rewrites this chapter's render with its wrapper chrome…
+    const md = await bookRenderer();
+    const text = readFileSync(join(BOOK, "07-transforms.md"), "utf8");
+    const html = md.render(text, {});
+    for (const cls of ["fm-brief", "fm-verdict", "fm-alert fm-alert-tip", "fm-track"]) {
+      expect(html).toContain(cls);
+    }
+    // …and that the doc model holds each transformed construct as an adopted
+    // atom: @brief, @end-brief, @verdict, the [!TIP] alert, and @track.
+    const doc = createDocParser(md).parse(text);
+    let atoms = 0;
+    doc.descendants((node) => {
+      if (node.type.name === "gp_plugin_atom") atoms += 1;
+      return true;
+    });
+    expect(atoms).toBe(5);
+  });
+
+  test("a transform's SYNTHESIZED wrappers never reach the file", async () => {
+    // The materialization trap: the html_block wrappers the transform
+    // synthesizes must never be written back as authored source. The class
+    // names cannot legitimately appear in any chapter; the tag scans are
+    // restricted to the transform chapter because 05-appendix contains
+    // AUTHORED raw HTML that rightly round-trips.
+    const md = await bookRenderer();
+    for (const file of chapters) {
+      const out = normalize(md, readFileSync(file, "utf8"));
+      for (const leak of ["fm-brief", "fm-verdict", "fm-alert", "fm-track"]) {
+        expect(out).not.toContain(leak);
+      }
+    }
+    const transforms = normalize(md, readFileSync(join(BOOK, "07-transforms.md"), "utf8"));
+    for (const leak of ["<div", "</div>", "<ol"]) {
+      expect(transforms).not.toContain(leak);
     }
   });
 
@@ -159,6 +225,38 @@ describe("plugin round-trip (go/no-go)", () => {
     expect(atom.attrs.marker).toBe('@stamp "Checked"');
     expect(atom.attrs.text).toBe("Checked");
     expect(serializeDoc(doc)).toBe('@stamp "Checked"\n');
+  });
+
+  test("the TRUE alerts shape adopts as ONE atom carrying the whole blockquote", async () => {
+    // blockquote_open removed in one hunk, its map-less close removed in a
+    // separate later hunk, the interior surviving by reference, the lead
+    // inline replaced by a synthesized token — span pairing must merge it
+    // all into a single region attributed to the open's construct-spanning
+    // map, and the atom must serialize the authored blockquote once.
+    const md = await bookRenderer();
+    const src = "> [!TIP] Weather eye\n>\n> Watch the ridge.\n";
+    const doc = createDocParser(md).parse(src);
+    expect(doc.childCount).toBe(1);
+    const atom = doc.child(0);
+    expect(atom.type.name).toBe("gp_plugin_atom");
+    expect(atom.attrs.marker).toBe("> [!TIP] Weather eye\n>\n> Watch the ridge.");
+    expect(serializeDoc(doc)).toBe(src);
+  });
+
+  test("a lazy-continuation TAIL marker adopts via the merged hunk (list map covers it)", async () => {
+    // The terminator is absorbed into the last list item — no marker
+    // paragraph of its own. The region's range comes from
+    // `ordered_list_open.map`, which includes lazily-continued lines, so
+    // the atom carries marker, list and tail verbatim.
+    const md = await bookRenderer();
+    const src = '@track "Ridge count"\n\n1. Pace the line.\n2. Log the posts.\n@end-track\n';
+    const doc = createDocParser(md).parse(src);
+    expect(doc.childCount).toBe(1);
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(0).attrs.marker).toBe(
+      '@track "Ridge count"\n\n1. Pace the line.\n2. Log the posts.\n@end-track',
+    );
+    expect(normalize(md, src)).toBe(src);
   });
 
   test("a block rule's bare tokens (no map, no markup) are adopted via the stamped range", async () => {
@@ -240,10 +338,11 @@ describe("plugin round-trip (go/no-go)", () => {
   });
 
   test("a core-rule token injection (no consumed source) still fails closed", async () => {
-    // The stamp is granted only to tokens a BLOCK RULE pushed while
-    // consuming lines. A token synthesized in a core rule has no authored
-    // source; absorbing it would materialize generated content into the
-    // author's file (the chapter-opener bug, generalized). It must refuse.
+    // A token synthesized in a core rule has no authored source; absorbing
+    // it would materialize generated content into the author's file (the
+    // chapter-opener bug, generalized). The core-rule differ poisons the
+    // non-html injection, so the refusal names the plugin RULE the author
+    // must fix — not just the token type the library happens to choke on.
     const injector = (m: import("markdown-it")) => {
       m.core.ruler.push("inject_opaque", (state) => {
         const t = new state.Token("opaque_thing", "div", 0);
@@ -255,7 +354,164 @@ describe("plugin round-trip (go/no-go)", () => {
     const md = createEditorRenderer([{ name: "injector", plugin: injector, options: {} }]);
     const verdict = canEditRichly(md, "Just a paragraph.\n");
     expect(verdict.ok).toBe(false);
-    if (!verdict.ok) expect(verdict.reason).toContain("opaque_thing");
+    if (!verdict.ok) expect(verdict.reason).toContain("inject_opaque");
+  });
+
+  test("a COPYING transform fails closed — degradation is refusal, never misattribution", async () => {
+    // Rebuilds every survivor as a fresh object (maps preserved). Identity
+    // runs out, so no attribution is possible; the file must refuse with
+    // the rule named rather than guess which copy is the author's source.
+    const copier = (m: import("markdown-it")) => {
+      m.core.ruler.push("copy_all", (state) => {
+        state.tokens = state.tokens.map((t) => {
+          const copy = new state.Token(t.type, t.tag, t.nesting);
+          copy.content = t.content;
+          copy.map = t.map ? [t.map[0]!, t.map[1]!] : null;
+          copy.children = t.children;
+          copy.level = t.level;
+          copy.block = t.block;
+          copy.markup = t.markup;
+          return copy;
+        });
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "copier", plugin: copier, options: {} }]);
+    const verdict = canEditRichly(md, "Plain prose.\n");
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toContain("copy_all");
+  });
+
+  test("a non-html injection of a MODELED type fails closed — the second door", async () => {
+    // An injected `hr` is a token type the schema models, so before the
+    // differ it would have been silently absorbed as authored markdown —
+    // a `---` line the author never typed, written into the file on save.
+    const injector = (m: import("markdown-it")) => {
+      m.core.ruler.push("inject_rule", (state) => {
+        const t = new state.Token("hr", "hr", 0);
+        t.block = true;
+        t.markup = "---";
+        state.tokens.push(t);
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "ruler", plugin: injector, options: {} }]);
+    const verdict = canEditRichly(md, "Plain prose.\n");
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toContain("inject_rule");
+  });
+
+  test("a MOVING transform (same mapped objects, new place) fails closed", async () => {
+    const mover = (m: import("markdown-it")) => {
+      m.core.ruler.push("move_last", (state) => {
+        const toks = state.tokens;
+        state.tokens = [...toks.slice(-3), ...toks.slice(0, -3)];
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "mover", plugin: mover, options: {} }]);
+    const verdict = canEditRichly(md, "First.\n\nSecond.\n");
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toContain("move_last");
+  });
+
+  test("stamped LONE-TAG wrappers are never adopted as HTML wrappers", async () => {
+    // The materialization trap: `adoptHtmlWrappers` pairs authored lone-tag
+    // html_blocks — if it paired a transform's synthesized `<div>`/`</div>`,
+    // the SYNTHESIZED HTML would be written into the file as the marker.
+    // The stamped tokens must adopt as verbatim atoms instead.
+    const wrapizer = (m: import("markdown-it")) => {
+      m.core.ruler.push("wrapize", (state) => {
+        const toks = state.tokens;
+        const out: (typeof toks)[number][] = [];
+        const html = (content: string) => {
+          const t = new state.Token("html_block", "", 0);
+          t.content = content;
+          t.block = true;
+          return t;
+        };
+        const markerAt = (i: number, text: string) =>
+          toks[i]?.type === "paragraph_open" &&
+          toks[i + 1]?.type === "inline" &&
+          toks[i + 1]!.content === text &&
+          toks[i + 2]?.type === "paragraph_close";
+        for (let i = 0; i < toks.length; i++) {
+          if (markerAt(i, "%%note")) {
+            out.push(html('<div class="trap-note">\n'));
+            i += 2;
+            continue;
+          }
+          if (markerAt(i, "%%end")) {
+            out.push(html("</div>\n"));
+            i += 2;
+            continue;
+          }
+          out.push(toks[i]!);
+        }
+        state.tokens = out;
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "wrapizer", plugin: wrapizer, options: {} }]);
+    const src = "%%note\n\nInside prose.\n\n%%end\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    const out = normalize(md, src);
+    expect(out).toBe(src);
+    expect(out).not.toContain("<div");
+    expect(out).not.toContain("</div>");
+    const doc = createDocParser(md).parse(src);
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+    doc.forEach((node) => expect(node.type.name).not.toBe("gp_plugin_block"));
+  });
+
+  test("a stamped html_block of MULTIPLE tag lines stays ONE atom — no per-tag copies", async () => {
+    // adoptHtmlWrappers' expansion pass splits an authored multi-tag block
+    // into one meta-dropping copy per tag. On a stamped block that would
+    // shed the stamp and materialize each synthesized tag; the region must
+    // collapse to a single verbatim atom instead.
+    const panelizer = (m: import("markdown-it")) => {
+      m.core.ruler.push("panelize", (state) => {
+        const toks = state.tokens;
+        const out: (typeof toks)[number][] = [];
+        const html = (content: string) => {
+          const t = new state.Token("html_block", "", 0);
+          t.content = content;
+          t.block = true;
+          return t;
+        };
+        const markerAt = (i: number, text: string) =>
+          toks[i]?.type === "paragraph_open" &&
+          toks[i + 1]?.type === "inline" &&
+          toks[i + 1]!.content === text &&
+          toks[i + 2]?.type === "paragraph_close";
+        for (let i = 0; i < toks.length; i++) {
+          if (markerAt(i, "%%panel")) {
+            out.push(html('<div class="trap-outer">\n<div class="trap-inner">\n'));
+            i += 2;
+            continue;
+          }
+          if (markerAt(i, "%%endpanel")) {
+            out.push(html("</div>\n</div>\n"));
+            i += 2;
+            continue;
+          }
+          out.push(toks[i]!);
+        }
+        state.tokens = out;
+        return true;
+      });
+    };
+    const md = createEditorRenderer([{ name: "panelizer", plugin: panelizer, options: {} }]);
+    const src = "%%panel\n\nBody prose.\n\n%%endpanel\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    expect(normalize(md, src)).toBe(src);
+    const doc = createDocParser(md).parse(src);
+    expect(doc.childCount).toBe(3);
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(0).attrs.marker).toBe("%%panel");
+    expect(doc.child(2).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(2).attrs.marker).toBe("%%endpanel");
+    expect(normalize(md, src)).not.toContain("trap-outer");
   });
 
   test("the archive file (footnote + reference definition) is REFUSED with its reason", async () => {
@@ -263,5 +519,16 @@ describe("plugin round-trip (go/no-go)", () => {
     const verdict = canEditRichly(md, readFileSync(join(BOOK, "06-archive.md"), "utf8"));
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) expect(verdict.reason.length).toBeGreaterThan(0);
+  });
+
+  test("an ISOLATED consumed-to-nothing marker is REFUSED with the rule named", async () => {
+    // 08-refused.md separates `@track` from its list with a surviving
+    // paragraph, so the marker's hunk inserts nothing at its own site —
+    // its authored line would silently vanish on save. The refusal names
+    // the plugin rule the author has to hear about, not a token type.
+    const md = await bookRenderer();
+    const verdict = canEditRichly(md, readFileSync(join(BOOK, "08-refused.md"), "utf8"));
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toContain("field_markers_transform");
   });
 });

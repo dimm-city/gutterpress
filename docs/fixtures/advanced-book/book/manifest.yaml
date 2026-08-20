@@ -19,6 +19,8 @@ source:
     - 04-layout-lab.md
     - 05-appendix.md
     - 06-archive.md
+    - 07-transforms.md
+    - 08-refused.md
 
 page:
   width: 432   # 6in
