@@ -1,23 +1,31 @@
 # Core-Rule Provenance — making rich editing lossless for real plugin books
 
-**Status:** draft for team review · 2026-08-19
-**Scope:** `packages/cli/src/lib/markdown/plugin-provenance.ts`, `packages/desktop/src/lib/editor/markdown-doc/*`, `docs/fixtures/advanced-book`
-**Decision this implements:** "Option B" from the finding recorded in `docs/remaining-work.md` (§ Engineering, 2026-08-19): extend the provenance/adoption machinery to plugin **core-ruler transforms**, so books like the Dimm City Field Guide round-trip through the rich editor instead of being silently damaged by it.
+**Status:** v2, implementation-ready · 2026-08-20
+**Scope:** `packages/cli/src/lib/markdown/plugin-provenance.ts` + `renderer.ts`, `packages/desktop/src/lib/editor/markdown-doc/*`, `docs/fixtures/advanced-book`
+**Decision this implements:** "Option B" from the finding in `docs/remaining-work.md` (§ Engineering, 2026-08-19): extend the provenance/adoption machinery to plugin **core-ruler transforms**, so books like the Dimm City Field Guide round-trip through the rich editor instead of being silently damaged by it.
 
-Everything in this document is either measured on the real book or read from
-the code at the cited symbol. Nothing is inferred from behavior alone.
+**v2 (2026-08-20).** v1 was pressure-tested against source by a five-agent
+adversarial verification pass before any implementation. It found v1's policy
+table unsatisfiable (markdown-it never puts `map` on `*_close` tokens, so
+v1's flagship `@lede` case landed on *refuse*, not *adopt*), an
+enclosing-map double-write in the alerts shape, a non-`html_block` synthesis
+that already exists today (`dc_alerts` builds a fresh `inline` token), an
+unreachable adoption insertion point (the `handled`-skip runs first), an
+`adoptHtmlWrappers` interaction that would write the *synthesized HTML* into
+the author's file, and a serializer-delim hazard for hunks inside surviving
+containers. §4 is rewritten around those findings; §3, §6 and §7 carry the
+corrections. Every claim below is verified at the cited symbol.
 
 ---
 
 ## 1. The problem, measured
 
 The rich editor opens every Field Guide chapter richly — and a save from rich
-mode silently deletes the book's component markup. Measured with the same
-machinery `tests/editor/plugin-roundtrip.test.ts` uses (`createEditorRenderer`
-with the book's own `dimm-city-plugin.js`, `canEditRichly`, `isFixpoint`,
-`normalize`), against **both** the current dc-op-manual `main` and the
-restored `restore/re-land-refactor-native` tree — identical results, so this
-is not content drift; it is ours:
+mode silently deletes the book's component markup. Measured with the
+committed harness (`packages/desktop/tests/editor/plugin-book-roundtrip.manual.ts`,
+Appendix A) against **both** the current dc-op-manual `main` and the restored
+`restore/re-land-refactor-native` tree — identical results, so this is not
+content drift; it is ours:
 
 | Property | Result | Meaning |
 | --- | --- | --- |
@@ -51,10 +59,12 @@ One dialect, one pipeline. The editor parses with Gutterpress's own
 (`packages/desktop/src/lib/editor/markdown-doc/renderer.ts`).
 
 **Block-rule provenance** (`packages/cli/src/lib/markdown/plugin-provenance.ts`):
-while `applyPlugins` runs, every **block rule** a plugin registers is wrapped
-(`withBlockRuleProvenance` intercepts `md.block.ruler`'s `push/at/before/after`).
-On each successful non-silent invocation, every token the rule pushed without
-a `map` is stamped `token.meta.gpEditorLines = [startLine, state.line]` — the
+`applyPlugins` (which lives at `packages/cli/src/lib/markdown/renderer.ts:209-229`
+— `plugins.ts` only re-exports it) wraps the whole `md.use(plugin, options)`
+loop in `withBlockRuleProvenance(md, …)`, which intercepts
+`md.block.ruler`'s `push/at/before/after` for the duration. On each
+successful non-silent invocation, every token the rule pushed without a
+`map` is stamped `token.meta.gpEditorLines = [startLine, state.line]` — the
 exact line range the tokenizer consumed. Ground truth from the tokenizer, no
 obligations on the plugin (§5: plugins stay plain markdown-it).
 
@@ -65,36 +75,36 @@ their authored lines are recoverable — from `token.map`, else the
 `gpEditorLines` stamp, else `token.markup`. The recovered lines are stored in
 `meta.gpPlugin` and are **all the serializer ever writes back**
 (`serializer.ts` `gp_plugin_block` writes `marker` + content + `closeMarker`;
-`gp_plugin_atom` writes the marker line verbatim). Anything unrecoverable is
-left untouched and the ProseMirror parser **raises**
-(`Token type \`x\` not supported by Markdown parser`) — which is what
-`canEditRichly` catches and turns into a source-mode verdict.
+`gp_plugin_atom` writes the marker verbatim). Anything unrecoverable is left
+untouched and the ProseMirror parser **raises**
+(`Token type \`x\` not supported by Markdown parser`), which `canEditRichly`
+turns into a source-mode verdict. Note two mechanics that shape §4.3:
+`adoptPluginTokens` skips every token whose type is in the schema's `handled`
+set at the **top** of its loop (parser.ts:131), and `adoptHtmlWrappers` runs
+**before** it in the facade (parser.ts:505-508), splitting and pairing
+authored lone-tag `html_block` tokens.
 
 **The generated-content channel** (`renderer.ts`): `markers.js` injects
 content the author never wrote (the `.chapter-opener` badge) as a map-less
 `html_block`. The editor-only core rule `editor_tag_generated` retags every
 **map-less `html_block`** to `gp_generated`, which renders exactly like
-`html_block` in the view but **serializes to nothing** (`serializer.ts`
-`gp_generated() {}`). For the badge this is lossless *because its generator
-line (`@chapter …`) is still in the document* — re-rendering the serialized
-source regenerates the badge.
+`html_block` in the view but **serializes to nothing**. For the badge this is
+lossless *because its generator line (`@chapter …`) is still in the
+document* — re-rendering the serialized source regenerates it.
 
 ---
 
 ## 3. The gap, precisely
 
 The Dimm City plugin registers **no block rules and no inline rules**. Its
-entire vocabulary is two **core-ruler transforms**:
+entire vocabulary is two **core-ruler transforms** (`dc_alerts` and
+`dimm_city_transform`; at lines 732/755 in the `main` copy, 766/789 in the
+restored copy — the two differ slightly, and the fix must serve both).
 
-```
-md.core.ruler.push('dc_alerts', dcAlertsTransform);          // line ~766
-md.core.ruler.push('dimm_city_transform', function (state)…  // line ~789
-```
-
-`dimm_city_transform` is a single pass over `state.tokens` building
-`newTokens`. Surviving tokens are pushed **by object reference**
-(`newTokens.push(tok)`, 11 sites). Marker paragraphs are **consumed** — e.g.
-the `@lede` handling:
+`dimm_city_transform` is a single forward pass over `state.tokens` building
+`newTokens`. Surviving tokens are pushed **by object reference** (verified at
+8 sites; `dc_alerts` at 4 more; no site copies a token, and neither rule
+reorders or duplicates). Marker paragraphs are **consumed** — e.g. `@lede`:
 
 ```js
 const ledeMarker = parseMarker(tok, tokens, i, '@lede');
@@ -106,318 +116,452 @@ if (ledeMarker.matched) {
 }
 ```
 
-The three authored tokens (which **carry maps**) are dropped; a synthesized
-`html_block` (a plain object literal with `map: null` — all **79**
-`makeToken` call sites in the plugin synthesize `html_block`) takes their
-place.
+The consumed run is `paragraph_open` (map spans the whole paragraph),
+`inline` (map), and `paragraph_close` — which, like **every** markdown-it
+close token, carries **no map** (`rules_block/paragraph.mjs:43`; same for
+`heading_close`, `blockquote_close`, list/table closes). Any attribution rule
+that demands a map on every removed token is therefore unsatisfiable for
+essentially every consumption this plugin performs. The synthesized
+replacement is a plain object literal with `map: null` (84 `makeToken` sites
+in the `main` copy, all `html_block`).
 
-Now trace those synthesized wrappers through the editor:
+`dc_alerts` (`> [!NOTE] …` blockquotes) has a more hostile shape, and it ships
+in the acceptance set today (`chapter-00.md:89`, `chapter-02 1 Augmerc.md:170`):
 
-1. They pass through **no block rule**, so `withBlockRuleProvenance` never
-   sees them — no `gpEditorLines` stamp.
-2. `editor_tag_generated` retags them `gp_generated` (map-less `html_block`).
-3. `gp_generated` serializes to **nothing**.
-4. The authored `@lede` lines are not in the token stream at all (consumed in
-   step 0), so nothing else carries them.
+- `blockquote_open` — whose `map` spans the **entire** blockquote, interior
+  included — is removed in one place and replaced by an `html_block` open;
+- the interior paragraphs **survive by reference**;
+- the first `inline` token is removed and replaced by a **synthesized
+  `new state.Token('inline', …)`** with freshly re-parsed children and no map
+  — a non-`html_block` synthesis that exists **today**, inside a surviving
+  paragraph;
+- `blockquote_close` (map-less) is removed in a **separate, later** place and
+  replaced by the closing `html_block`.
 
-Net: the wrapper AND its authored source vanish on save. Nothing raises, so
-`canEditRichly` says yes, and the fail-closed contract is bypassed. The
-`gp_generated` invariant — *"dropping is lossless because the generator line
-is still in the document"* — holds for `markers.js`'s badge and does **not**
-hold for a transform that consumed its generator lines.
+Trace the `@lede` wrappers through the editor: no block rule saw them (no
+stamp) → `editor_tag_generated` retags map-less `html_block` →
+`gp_generated` → serializes to nothing — and the authored `@lede` lines were
+consumed in step 0, so nothing else carries them. Net: wrapper AND authored
+source vanish on save; nothing raises; `canEditRichly` says yes. The
+`gp_generated` invariant — *dropping is lossless because the generator line
+is still in the document* — holds for the badge and does **not** hold for a
+transform that consumed its generator lines.
 
-Two footnotes on the gap's shape:
+Two more notes that shape the fix:
 
-- **The fixture gate cannot see it.** `docs/fixtures/advanced-book`'s plugin
-  (the go/no-go gate) exercises block rules of every registration style plus
-  a token transform that **decorates** existing tokens. It never
-  consumes-and-replaces mapped tokens from a core rule. That is exactly the
-  dimm-city pattern, and it is the missing fixture coverage (§7).
-- **There is a second door.** Only `html_block` gets the `gp_generated`
-  retag. A core rule that synthesized, say, map-less `paragraph_open` or
-  table tokens would be absorbed as if authored and serialized as
-  *regenerated markdown* rather than the authored source — a different flavor
-  of silent loss. dimm-city doesn't do this today (79/79 are `html_block`),
-  but the design below must close both doors, not pattern-match one token
-  type.
-- **Doc drift to fix while here:** `plugin-provenance.ts`'s header says
-  core-rule injections *"fail closed — the same provenance rule as the
-  editor's `editor_drop_generated`"*. The implemented rule is named
-  `editor_tag_generated` and it does not fail closed — it retags to a
-  serialize-to-nothing node. The comment describes the design intent this
-  plan implements; update it when landing.
+- **The fixture gate cannot see any of this.** `advanced-book`'s only core
+  rule is decorate-only (`field_markers_decorate`, an `attrJoin` on
+  surviving `heading_open` tokens). It never consumes, never synthesizes,
+  never splits a container.
+- **Doc drift to fix while here:** `plugin-provenance.ts`'s header names a
+  rule `editor_drop_generated` that "must fail closed"; the implemented rule
+  is `editor_tag_generated` and it silently drops. Update the comment when
+  landing.
 
 ---
 
-## 4. Design: provenance for core-rule transforms
+## 4. Design v2: provenance for core-rule transforms
 
 ### 4.0 Constraints (all from CLAUDE.md §5 — non-negotiable)
 
-1. **No Gutterpress plugin API.** Plugins stay plain markdown-it. Everything
-   below is host-side observation at registration time, exactly like
-   `withBlockRuleProvenance`. A plugin author changes nothing.
+1. **No Gutterpress plugin API.** Host-side observation at registration time
+   only, exactly like `withBlockRuleProvenance`. A plugin author changes
+   nothing.
 2. **Fail closed on ambiguity.** Where authored source cannot be attributed
-   from ground truth, the file refuses rich mode with a named reason — never
-   a guess.
-3. **No inference from gaps.** Adoption must not deduce source "from gaps
-   between neighbours". The mechanism below satisfies this because a
-   before/after token-array diff is a deterministic record of *what the
-   transform itself did* — which tokens it removed and what it inserted in
-   their place — not a spatial guess. The removed tokens' own `map`s are the
-   tokenizer's ground truth; the diff only transfers that truth onto the
-   tokens that replaced them.
+   from ground truth, the file refuses rich mode with a reason that names the
+   offending plugin rule — never a guess.
+3. **No inference from gaps.** Every attribution below derives from the
+   transform's own input/output record — which token objects it removed,
+   which it inserted, and the removed tokens' own maps/stamps. Object
+   identity of survivors makes the diff exact; where identity or maps run
+   out, the answer is *refuse*, never *interpolate*.
 
-### 4.1 Where: a sibling wrapper in `plugin-provenance.ts`
+### 4.1 Where: `withCoreRuleProvenance` beside the block wrapper
 
-Add `withCoreRuleProvenance(md, apply)` alongside `withBlockRuleProvenance`,
-applied by the same `applyPlugins` window. It intercepts `md.core.ruler`'s
-registration methods (same `REGISTRATION_METHODS` table) and wraps each core
-rule a plugin registers. Base-pipeline core rules (registered before the
-window) and host rules (after) stay untouched — same scoping rule the block
-wrapper already has, and it is what keeps `markers.js`'s badge on the
-`gp_generated` path unchanged.
+Add it to `plugin-provenance.ts`, nested around the same `applyPlugins`
+callback at `renderer.ts:210` (core and block rulers are distinct `Ruler`
+instances; the interception transfers verbatim — same registration methods
+and fn indices in markdown-it 14.3.0, rules stored as the registered
+function, `__cache__` invalidated on registration). Capture the **rule name**
+at registration (`args[fnIndex-1]`) — the poison reason needs it. Base and
+host core rules (registered outside the window — `markers.js`'s
+`layout_transform`, `gp-pin-scope`, `inline-source`, `source_range`) stay
+untouched, so the chapter-opener badge path is byte-for-byte unchanged.
 
-### 4.2 What the wrapper does per invocation
+Two hard environmental constraints on this code: it joins the node-free
+`gutterpress/render` closure (`scripts/check-render-pure.mjs` bans node
+builtins and `createRequire` in `dist/render.js`), and the desktop SPA
+value-imports that closure into the **browser bundle** — the differ literally
+executes in-browser. Zero dependencies, pure JS.
+
+Core rules receive `(state)` with no ok/silent semantics — the block
+wrapper's `ok && !silent` gate has deliberately no analogue here.
+
+### 4.2 The differ: hunks → regions → policy
+
+Per wrapped rule invocation:
 
 ```
-before = state.tokens.slice()                    // array copy, same objects
-fingerprints = per-token (type, content, map ref) for morph detection
+before = state.tokens.slice()                 // same objects, array copy
+fp     = per-token fingerprint: (type, content, children ref)
 run the plugin's core rule
-diff before vs state.tokens by OBJECT IDENTITY   // two-pointer walk
+after  = state.tokens
 ```
 
-Because surviving tokens keep object identity (measured: dimm-city pushes
-them by reference; any rebuild-the-array transform that *copies* tokens would
-show them as removed+inserted, which degrades to fail-closed, never to a
-wrong attribution), the diff yields **hunks**: maximal runs of
-`{ removed: Token[], inserted: Token[] }` between surviving anchors. A
-surviving object whose `type` or `content` changed (fingerprint mismatch) is
-treated as a single-token hunk `{ removed: [old self], inserted: [new self] }`
-— it has its own `map`, so it attributes trivially.
+**Moves poison.** Compute the identity intersection of `before`/`after`. If
+the shared tokens' relative order differs, stamp every non-shared `after`
+token with poison (rule name, reason "reordered authored content") and stop —
+a moved mapped token is authored source in a new place, and neither dropping
+nor re-attributing it is ground truth. (Neither dimm-city rule reorders;
+`footnote_tail`-style movers are base-pipeline and never wrapped.)
 
-Per hunk, apply this policy table:
+**Morphs are hunks.** A shared token whose fingerprint changed in `type`,
+`content`, or `children` (array reference; the one children-mutating site in
+dimm-city co-rewrites `content`, but children-only edits are a one-line
+evasion for other plugins, so the reference is part of the fingerprint) is
+treated as a single-token hunk `{removed:[old self], inserted:[new self]}`.
+**Attrs-only changes are deliberately ignored** — `attrJoin`/`attrSet` on
+survivors is regenerated presentation (the fixture's decorate rule and
+dimm-city's measured `attrJoin` sites are the precedents); do not let a
+future reader "fix" this into a poison source.
 
-| removed | inserted | action | why it is lossless / honest |
-| --- | --- | --- | --- |
-| ≥1, **all** carrying `map` or an existing `gpEditorLines` stamp | ≥1 | Stamp every inserted token with `gpEditorLines = [min start, max end]` over the removed tokens' ranges, plus a shared `gpCoreHunk` group id. | The transform's own input/output record says these tokens replaced exactly those source lines. Serializing those lines verbatim and re-running the pipeline regenerates the same tokens. |
-| ≥1, **any** without map/stamp | any | Stamp inserted tokens `gpEditorUnattributable` (a poison marker). | Attribution is ambiguous → fail closed. The editor raises with a named reason (§4.3) instead of guessing. |
-| 0 | ≥1 | No stamp. Falls through to the existing `gp_generated` retag (for `html_block`) — and for **non-html** injected types, poison them too (the "second door", §3). | A pure injection consumed no source; the pipeline will regenerate it from the surviving source on every render. Dropping it from the model is provably lossless. |
-| ≥1 (mapped) | 0 | Phase 1: poison → refuse with a named reason. Phase 2 (only if a real plugin needs it): synthesize an invisible `plugin_atom` carrying the lines. | Consumed-to-nothing lines have no token to ride on. Refusing is honest; nothing in dimm-city or the fixture hits this row today. |
+**Hunks.** Between consecutive shared anchors: `{removed: before-segment,
+inserted: after-segment}`.
 
-Chained rules compose: a stamped token is "attributed" for a later rule's
-diff (the stamp is map-equivalent in the first policy row), so rule 2
-consuming rule 1's output propagates ranges correctly.
+**Attributing a removed run.** A removed token is *attributable* iff:
+
+- it carries `map` or a `gpEditorLines`/`gpCoreHunk` stamp, **or**
+- it is a close token (`nesting === -1`) whose matching open (by a nesting
+  walk over the removed run) is removed **in the same hunk** — markdown-it
+  guarantees the open's map spans the whole construct including the close
+  line, so the close adds no unattributed source.
+
+A close whose open is **not** in the hunk triggers span pairing (below). Any
+other unattributable removed token → poison. The hunk's range is the union of
+its removed tokens' maps/stamps. Without the close-token clause, every
+consumption in the real plugin — including `@lede` — lands on poison; this is
+the v1 flaw that made the acceptance table unreachable.
+
+**Span pairing (the `dc_alerts` shape).** When hunk A removes an open token
+whose matching close is removed in a later hunk B, merge A through B — every
+inserted, surviving, and morphed token between them — into **one region**
+attributed to the open token's map (which spans the whole construct). This
+remains the transform's own record — *which objects it removed* — not gap
+inference. It also resolves the synthesized-`inline` problem structurally:
+`dc_alerts`' replacement inline sits inside the region and is swallowed with
+it, never adopted at an illegal inline position.
+
+**Overlap guard.** A single-hunk attribution whose range covers any surviving
+token's map (and was not resolved into a region by span pairing) → poison.
+This is what prevents the double-write failure: an adopted atom serializing
+lines that surviving editable nodes serialize again.
+
+**Depth guard.** A region whose `after`-span sits inside a *surviving*
+container (blockquote/list — `token.level > 0` relative to survivors) →
+poison. Serializer delim mechanics (`prosemirror-markdown`'s `wrapBlock`)
+would double-prefix or under-prefix verbatim lines there. Top-level regions —
+including alerts, where the removed range covers the container itself — are
+unaffected.
+
+**Type guard.** A hunk whose inserted tokens are not all block-level and that
+is not swallowed by a region → poison (named reason). This closes the "second
+door" for **replacement** rows, not just injections.
+
+**Policy table (v2):**
+
+| Hunk | Action |
+| --- | --- |
+| removals attributable (incl. paired closes), insertions ≥ 1, top-level, no unresolved overlap | Stamp every `after` token in the region span with `meta.gpCoreHunk = { id, range:[start,end), rule }`. |
+| removals ≥ 1, insertions = 0 (isolated consumed-to-nothing) | Poison. Note: this **will** fire on plausible layouts — `@end-procedure`, stray `@skill`, the consumed `##### Outcomes` header insert nothing at their site and only merge into a neighbor hunk when no surviving token separates them. The field guide's shipped lazy `@end-procedure` (absorbed into the last list item) round-trips via the merged hunk whose range comes from `ordered_list_open.map`, which includes lazily-continued lines. |
+| removals = 0, insertions all map-less and stamp-less `html_block` | No stamp — the existing `gp_generated` path; provably lossless (the pipeline regenerates pure injections from surviving source). |
+| removals = 0, insertions containing a mapped token (a move) or a non-`html_block` type | Poison. A mapped "insertion" is authored source that moved; a map-less non-html injection would be absorbed as authored markdown. |
+| anything else (unattributable removal, unresolved overlap, nested region, inline-type replacement outside a region) | Poison: `meta.gpCorePoison = { rule, reason }` on the inserted/morphed tokens. |
+
+Poison is **meta-only** — token types are left untouched, so every render
+path (preview, semantic gates, normalize planner) is pixel-identical; only
+the editor's parse acts on it (§4.3).
+
+**Chaining.** Stamped tokens count as attributed for later rules' diffs
+(stamp ≡ map in the attribution clause), so `dimm_city_transform` consuming a
+`dc_alerts` product attributes through the stamp. Re-stamping overwrites with
+the merged range.
 
 ### 4.3 Editor-side changes (`packages/desktop/src/lib/editor/markdown-doc/`)
 
-**`renderer.ts` — `editor_tag_generated`:** it already runs after plugin core
-rules (registered after `createMarkdownRenderer(plugins)` returns). Narrow it:
+The v1 insertion point was unreachable (`adoptPluginTokens` skips `handled`
+types — `html_block`, `paragraph_open`, … — at the top of its loop) and
+`adoptHtmlWrappers` runs even earlier and would adopt dimm-city's lone-tag
+`<div class="dc-intro">` as an HTML wrapper, writing the **synthesized HTML**
+into the file as the "marker" — strictly worse than today. v2 therefore adds
+a dedicated pass that runs **first**, plus guards:
 
-- map-less `html_block` **with** `gpEditorLines` → leave alone (adoption will
-  take it).
-- **with** `gpEditorUnattributable` → retag to a type the parser has no
-  handler for (e.g. `gp_unattributable`), so the parse raises with a message
-  naming the plugin rule — same UX as every other refusal: the file opens in
-  source mode with the reason shown.
-- otherwise (map-less, unstamped `html_block`) → `gp_generated`, exactly as
-  today. The chapter-opener badge path is byte-for-byte unchanged.
+**Facade order** (parser.ts:505-508) becomes:
 
-**`parser.ts` — `adoptPluginTokens`:** add a branch ahead of the
-`_open`/`_close` pair logic: a token carrying `gpEditorLines` **and**
-`gpCoreHunk` (i.e. core-synthesized, attributed) rewrites its hunk group to a
-single `plugin_atom` whose `marker`/`text` is `lines.slice(start, end)`
-verbatim — the `authoredBlock` helper already computes exactly this from a
-stamp. Remaining tokens of the same hunk are dropped from the stream (they
-are part of the same replacement; their source is the same lines). Inner
-content between an open-hunk and a close-hunk is untouched — those tokens
-survived the transform with their maps and stay ordinary editable nodes.
+```
+md.parse → raiseOnPoison → adoptCoreRegions → adoptHtmlWrappers → adoptPluginTokens
+```
 
-**`serializer.ts`:** no changes. `gp_plugin_atom` already writes the authored
-lines verbatim; that is the entire round-trip guarantee.
+1. **`raiseOnPoison(tokens)`** — scan for `meta.gpCorePoison`; throw a
+   human sentence naming the rule (the `referenceLabels` precedent:
+   an explicit pre-parse raise, because the library's own message names only
+   a token type). `canEditRichly` forwards it and the file opens in source
+   mode with e.g. *"The plugin rule `dc_alerts` rewrote content whose source
+   can't be recovered."* Because poison is meta-only, `md.render` needs no
+   new renderer rule and stays visually identical.
+2. **`adoptCoreRegions(tokens, lines)`** — group contiguous tokens sharing a
+   `gpCoreHunk` id; verify every token between the first and last member
+   belongs (same id, or a survivor whose `map ⊆ range` — swallowed); replace
+   the whole span with **one** `plugin_atom` whose `gpPlugin.marker` (and
+   visible `text`) is `lines.slice(start, end)` **verbatim**. Any
+   contiguity violation → convert to poison and let step 1's next parse
+   refuse (defense in depth: convert and throw immediately).
+3. **`adoptHtmlWrappers`** — add a guard in **both** its passes (expansion
+   and pairing): skip any token carrying `gpCoreHunk`/`gpCorePoison`. Only
+   mapped, authored HTML participates. (After step 2 the hunked tokens are
+   already `plugin_atom`, but the guard keeps the invariant local and covers
+   the expansion pass's meta-dropping copies.)
+4. **`editor_tag_generated`** (renderer.ts) — predicate must be the exact
+   complement of adoption's: retag map-less `html_block` to `gp_generated`
+   **only** when it carries neither `gpCoreHunk` nor `gpCorePoison`. A
+   map-less `html_block` stamped by the *block*-rule provenance (stamp, no
+   hunk id) keeps today's `gp_generated` retag — the status quo for a shape
+   no fixture emits; do not silently widen it into plain-`html_block`
+   absorption.
 
-**Net effect on the Field Guide:** `@lede` becomes an atom serializing
-`@lede`; the paragraphs after it stay editable prose; `@end-lede` becomes an
-atom serializing `@end-lede`. Save reproduces the author's bytes; the
-pipeline regenerates the `dc-intro` wrapper on every render, so print and
-preview are untouched.
+**Serializer:** no changes. `gp_plugin_atom` writes the marker verbatim;
+`write()` preserves interior newlines at top level, and the depth guard
+(§4.2) excludes the container cases where delims would corrupt it. The atom's
+view chrome collapses whitespace — if multi-line atoms (alerts) should show
+line structure, that is one `white-space: pre-line` rule on the atom chrome,
+not a schema change.
+
+**Net effect on the Field Guide:** `@lede` / `@end-lede` become two atoms
+serializing their authored lines; the prose between them stays ordinary
+editable nodes. A `> [!NOTE]` alert becomes one atom carrying the whole
+blockquote verbatim (interior not richly editable — the price of the
+enclosing-map shape; still lossless). Save reproduces the author's bytes; the
+pipeline regenerates all wrappers on every render, so print and preview are
+untouched.
 
 ### 4.4 View fidelity: phase 1 honest, phase 2 pretty
 
-Phase 1 renders each adopted wrapper marker as the atom chrome
-(`pluginAtom` — visible labeled leaf), with the wrapper's interior styled as
-ordinary flow rather than nested inside the `dc-intro` box. Correctness
-first: the author's file can no longer be damaged; the editor view is
-slightly less print-faithful *inside* plugin wrappers.
-
-Phase 2 (optional, UX): pair an open-hunk whose inserted HTML is a single
-opening tag with the later hunk inserting its matching close tag (same
-synthesized nesting depth — deterministic from the transform's own output,
-still no guessing), and adopt the pair as one `gp_plugin_block`
-(`marker`/`closeMarker` = the two authored line sets). `pluginBlock().toDOM`
-then renders the real tag + attrs around editable content — full view
-fidelity, same serializer. Unpairable hunks stay atoms. Ship phase 1 alone if
-phase 2 slips; phase 1 is already strictly better than both today's silent
-loss and option A's blanket source-mode.
+Phase 1 (above) is correctness: no file can be damaged; wrapper markers show
+as labeled atoms. Phase 2 pairs an open-atom with its close-atom when the
+synthesized HTML forms a matching tag pair at the same synthesized depth
+(deterministic from the transform's own output) and adopts the pair as one
+`gp_plugin_block` — `pluginBlock().toDOM` then renders the real tag + attrs
+around editable content. Unpairable regions stay atoms. Ship phase 1 alone if
+phase 2 slips.
 
 ### 4.5 Performance
 
-One array copy + fingerprint pass + linear diff per plugin core rule per
-parse. The Field Guide's largest chapter is ~2k tokens × 2 rules — microseconds
-against a parse that already builds every token. The stamp is `meta`-only:
-nothing reaches the DOM, print output is byte-identical (same guarantee the
-block-rule stamp already documents).
+One array copy + fingerprint pass + linear identity diff per plugin core rule
+per parse; microseconds against tokenization. Meta-only stamps: DOM, print
+output, and preview are byte-identical.
 
 ---
 
 ## 5. Why not the alternatives
 
-- **Option A (blanket refuse when a core rule consumed mapped tokens)** is
-  the honest *stopgap* — it enforces the stated contract in ~a day. But it
-  sends every chapter of the flagship book to source mode permanently, i.e.
-  rich editing simply doesn't exist for the product's own reference book.
-  Ship it as the interim guard (§8 phase 0) only if B's timeline demands it.
-- **Teach the plugin to use block rules** (rewrite dimm-city as stamped block
-  rules): fixes one book, not the class. §5 exists because we cannot control
-  how the hundreds of markdown-it plugins on npm are written; GFM-alert-style
-  core transforms (`dc_alerts` consuming blockquote tokens) are a common
-  published pattern. The host must observe, not prescribe.
-- **Serialize the synthesized HTML instead of dropping it**: materializes
-  generated markup as source — the exact chapter-opener bug the
-  `gp_generated` channel was built to prevent, now at book scale.
+- **Option A (blanket refuse)** enforces the contract in ~a day but sends
+  every chapter of the flagship book to source mode permanently. Ship only as
+  the §8 phase-0 stopgap if phase 1's timeline demands it.
+- **Rewrite dimm-city as block rules**: fixes one book, not the class; §5
+  exists because we cannot control how npm plugins are written, and
+  GFM-alert-style core transforms are a common published pattern.
+- **Serialize the synthesized HTML**: materializes generated markup as source
+  — the chapter-opener bug at book scale (and exactly what the unguarded
+  `adoptHtmlWrappers` path would do by accident).
 
 ---
 
 ## 6. Adjacent defects to fix in the same epic (separate PRs)
 
-### 6.1 Typographer output baked into the author's source
+### 6.1 Typographer/linkify output baked into the author's source
 
-`normalize` writes `’`/`“”`/`—` substitutions into the file because the
-document model is built from typographer-processed inline tokens. Rendered
-HTML is unchanged (the substitution is idempotent), so the fixpoint and
-semantic gates are blind to it by construction — but it rewrites bytes the
-author never touched, which pollutes diffs and sync history. Proposed fix:
-the **doc-model parse** runs with `typographer: false, linkify: false` while
-the view/preview render keeps them (they are presentation, and the print
-path is untouched either way). Acceptance: normalize of a plugin-free file
-that only differs by straight quotes leaves the quotes alone; full corpus
-gate stays green.
+The doc model is built from typographer-processed inline tokens, so
+`normalize` writes `’`/`“”`/`–`/`…`/`©` substitutions and linkify rewrites
+into the file. Rendered HTML is unchanged (idempotent), so the fixpoint and
+semantic gates are blind to it by construction.
+
+**Fix:** flip `md.options.typographer` and `md.options.linkify` to `false`
+inside `createDocParser(...).parse()` — the single choke point every
+doc-model parse funnels through (`normalize`, `isFixpoint`, `canEditRichly`,
+editor mount, `replaceDoc`; verified: no other `md.parse` call sites in the
+SPA) — and restore the **prior values** in a `finally`. Non-negotiable
+details, all verified:
+
+- **Exception safety is the core of the fix, not hygiene:** throwing is the
+  *routine* path through this choke point (fail-closed refusals, reference
+  definitions), and the md instance is a session-long shared cache
+  (`project-renderer.ts`: every consumer must hold the same instance). A flip
+  without `try/finally` leaks `typographer:false` into every later render on
+  the first refused file — the semantic gates go quietly blind.
+- Per-call flipping is sound in markdown-it 14.3.0: `smartquotes`,
+  `replacements`, and both `linkify` rules re-read `state.md.options` at run
+  time; the default preset never disables rules at construction. Cite
+  markdown-it's "don't modify options on the fly" doc note as a performance
+  remark, *not* a correctness bar — a second instance is the worse
+  alternative (violates the same-instance requirement, doubles plugin
+  application).
+- Everything between flip and restore is synchronous (md.parse,
+  `MarkdownParser.parse`, `referenceLabels`, both adoption passes) — no
+  interleaving. Wrap the whole `parse()` body so `referenceLabels`' own
+  `md.parse` is covered too.
+- Straight quotes serialize back byte-identically (`esc()` never escapes
+  `'`/`"`; `escapeExtraCharacters` unset). One known first-save edge: a
+  paragraph line starting with `-` (previously typographered to `–`) now
+  hits the start-of-line escape and serializes as `\-…` — accept and
+  document, or add a corpus case.
+- **Product tradeoff to state and reconcile:** the rich-editor *view* renders
+  the ProseMirror doc, so it will show straight quotes/plain dashes while
+  print keeps typographer. Amend `renderer.ts`'s header promise ("text looks
+  as it will print") in the same PR.
+
+**Acceptance:** quotes, `--`/`...`, `(c)`/`(tm)`/`(r)`, and bare URLs all
+survive normalize byte-identically on a plugin-free file; a **leak
+regression** — parse a file that throws (footnote ref or `[label]: url`
+definition) on a shared instance, then assert `md.options.typographer ===
+true` and a subsequent `md.render` still emits curly quotes; full corpus gate
+stays green.
 
 ### 6.2 Blank-line churn (the 12/14 fixpoint instability)
 
-The observed churn is the serializer emitting double blank lines between
-loose-list items on pass 1 and single on pass 2 — measured only around
-content that pass 1 freed from stripped wrappers, and the first-party
-(plugin-free) corpus holds fixpoint in CI. Expectation: it disappears once
-wrappers are adopted instead of stripped (the list never gets re-parented).
-**Re-measure after §4 lands**; if any instability persists on a plugin-free
-reproduction, file it separately against the serializer's list spacing.
+Mechanism, located: `serializer.ts` contains no list-spacing code — the
+double blank comes from `prosemirror-markdown`'s
+`MarkdownSerializerState.renderList`, whose same-type-adjacency branch calls
+`flushClose(3)` (two blank lines) whenever two same-type list nodes serialize
+back-to-back. Today `gp_generated() {}` deletes the wrappers that separated
+two list fragments → same-type lists adjacent → double blank on pass 1 →
+pass-2 reparse merges them into one loose list → single blank → churn. §4's
+adoption removes the list split, so the churn is **expected** to disappear —
+**re-measure after §4 lands.** If any instability survives on a plugin-free
+reproduction, the in-repo fix address is an override of
+`bullet_list`/`ordered_list` in `gutterpressMarkdownSerializer`'s node table
+(serializer.ts:100-102), not a hunt through local serializer code.
 
 ### 6.3 Comment drift
 
 `plugin-provenance.ts` header (`editor_drop_generated`, "must fail closed")
-— update to describe the implemented three-way split (adopt / refuse /
-`gp_generated`) and name the real rule.
+→ describe the implemented three-way split (adopt / refuse / `gp_generated`)
+and name the real rule, `editor_tag_generated`.
 
 ---
 
 ## 7. Test plan
 
-**Close the fixture blind spot first** — extend
-`docs/fixtures/advanced-book/book/plugins/field-markers.js` with a core-ruler
-transform that mirrors the dimm-city shape, so the go/no-go gate exercises
-every policy row:
+**Close the fixture blind spot with the TRUE shapes** — a fixture that
+consumes a whole blockquote in one tidy hunk proves nothing about span
+pairing, the overlap guard, or the inline-type guard.
 
-1. a wrapper pair (`@lede`-like: consume marker paragraph → synthesize
-   map-less `html_block` open/close, inner tokens surviving by reference);
+In `docs/fixtures/advanced-book/book/plugins/field-markers.js`, add a
+core-ruler transform (plus `export const css` styling for its wrappers, kept
+fragmentation-neutral — plain block divs — so the parity gate stays green
+with its empty allowlist), exercised by a **new chapter `07-transforms.md`**
+registered in `manifest.yaml` `source.files`:
+
+1. a wrapper pair (`@lede`-like: consume the 3-token marker paragraph —
+   including its map-less `paragraph_close` — synthesize map-less
+   `html_block` open/close, inner tokens surviving by reference);
 2. an atom (consume one marker paragraph → synthesize one wrapper);
-3. an alerts-style morph (consume mapped `blockquote_open` run → synthesize
-   replacement, like `dc_alerts`);
-4. a **copying** transform variant (rebuilds surviving tokens as fresh
-   objects) → must land in the poison row, proving degradation is to
-   fail-closed, never to misattribution;
-5. a pure injection (no consumption) → must stay on the `gp_generated` path;
-6. a non-`html_block` synthesized token → must poison (second door).
+3. the **true alerts shape**: `blockquote_open` removed in one hunk, matching
+   close removed in a separate later hunk, interior surviving by reference,
+   first inline replaced by a synthesized `inline` token with re-parsed
+   children — must adopt as ONE atom via span pairing, and the saved bytes
+   must contain the whole authored blockquote once;
+4. a lazy-continuation tail (the field guide's shipped idiom: `@end-…`
+   absorbed into the last list item, no marker paragraph of its own) —
+   must adopt via the merged hunk attributed from `ordered_list_open.map`;
+5. an isolated consumed-to-nothing marker (a surviving paragraph between the
+   marker and its construct) — must **refuse** with the rule named. Put this
+   in a separate chapter added to the exclusion filter
+   (`plugin-roundtrip.test.ts:52` — the only exclusion mechanism) and to a
+   refusal test, or the 100% gates fail by construction.
 
-**Gates that must go green:**
+Implement the remaining rows as **inline throwaway plugins inside
+`plugin-roundtrip.test.ts`** (the existing pattern at lines ~169-259):
 
-- `tests/editor/plugin-roundtrip.test.ts` — extended fixture at 100%
-  rich-editable / fixpoint / semantic-preservation (rows 1–3), plus explicit
-  refusal-reason assertions (rows 4, 6).
-- `tests/editor/markdown-doc-corpus.test.ts` — unchanged corpus stays green
-  (proves the badge path and plugin-free books are untouched).
-- New unit tests for the hunk differ (identity anchors, morph detection,
-  chained rules, stamp-as-map equivalence).
-- A regression test that `editor_tag_generated` never retags a stamped token.
+6. a **copying** transform (rebuilds survivors as fresh objects) → poison —
+   degradation is to fail-closed, never misattribution;
+7. a non-`html_block` pure injection → poison (second door);
+8. a **moving** transform (same mapped objects re-appended elsewhere) →
+   poison;
+9. a stamped synthesized wrapper whose tags are lone `<div>`/`</div>` lines →
+   assert `adoptHtmlWrappers` does NOT adopt it (saved bytes contain the
+   authored marker, not the HTML) — the regression for the materialization
+   trap;
+10. a stamped `html_block` containing multiple tag lines → the expansion-pass
+    guard (no stamp-dropping, no atom-per-copy duplication).
 
-**Acceptance on the real book** (the numbers this whole plan exists to move),
-using the measurement harness in Appendix A against the restored
-dc-op-manual tree:
+Authoring constraints (all verified against the current gates): chapter
+prose must not contain the literal class/marker strings any
+`not.toContain(...)` assertion scans for; the new chapter joins the
+**bare-pipeline** corpus automatically (`mdFilesIn` scans the directory), so
+its marker paragraphs must hold bare fixpoint + semantic preservation as
+plain paragraphs; `normalize-project.test.ts`'s idempotence over the fixture
+and `native-parity-gate.ts` (fixture is in `DEFAULT_FIXTURES`; missing = hard
+error) must stay green; mirror `02-field-notes.md`'s verbatim marker-line
+round-trip pattern for the new markers.
+
+**Gates that must go green:** extended `plugin-roundtrip.test.ts` at 100%
+rich/fixpoint/semantic for included chapters + refusal-reason assertions
+(`verdict.reason` contains the rule name); `markdown-doc-corpus.test.ts`'s
+two hard assertions unchanged; new cli-side unit tests for the differ (close
+pairing, span pairing, overlap guard, depth guard, morphs incl.
+children-ref, moves, chained rules, attrs-ignored); the regression that
+`editor_tag_generated` never retags a stamped token.
+
+**Build order (bake into every stage):** any edit under `packages/cli/src`
+requires `bun run --cwd packages/cli build:library` before desktop tests or
+the manual harness observe it — `gutterpress/render` resolves to
+`dist/render.js` via the workspace symlink. `build:library` itself runs the
+engine-bundle build, `check-render-pure.mjs` (which now binds the differ),
+and `tsc -p tsconfig.build.json`.
+
+**Acceptance on the real book** (the numbers this plan exists to move), using
+Appendix A against the restored dc-op-manual tree:
 
 | Property | today | required |
 | --- | --- | --- |
-| rich-editable | 14/14 | 14/14 |
+| rich-editable | 14/14 | **14/14** (no chapter may regress to refuse) |
 | byte fixpoint | 2/14 | **14/14** |
 | meaning preserved | 0/14 | **14/14** |
 
-(§6.1's typographer toggle is needed for byte-level cleanliness of the first
-save, but fixpoint/semantic must hit 14/14 from §4 alone — verify both
-separately.)
+(§6.1 is needed for byte-clean *first* saves; fixpoint/semantic must hit
+14/14 from §4 alone — verify both separately.)
 
 ---
 
 ## 8. Rollout
 
 - **Phase 0 (optional interim, ~1 day):** poison-only — wrap core rules,
-  detect consumption of mapped tokens, refuse rich mode with the named
-  reason. Stops the silent damage immediately; Field Guide chapters open in
-  source mode until phase 1. Skip if phase 1 lands promptly. **Until
-  something ships, rich mode's `editor.mode: "rich"` default is actively
-  dangerous for plugin books of this shape** — weigh flipping the default or
-  phase-0 first.
-- **Phase 1 (the fix):** `withCoreRuleProvenance` + policy table + atom
-  adoption + fixture extension + gates. Lossless round-trip, atom-level view.
-- **Phase 2 (UX):** open/close hunk pairing → `gp_plugin_block` adoption for
-  full in-view wrapper fidelity.
-- **Alongside:** §6.1 typographer toggle (own PR, own corpus measurement),
-  §6.3 comment fix (ride along with phase 1).
+  poison every consuming hunk, refuse with the named reason. Stops the silent
+  damage immediately at the cost of source-mode for plugin books. Skip if
+  phase 1 lands promptly. **Until something ships, `editor.mode: "rich"` as
+  the default is actively dangerous for this book shape.**
+- **Phase 1 (the fix):** §4.1-4.3 + §7 fixture/gates. Lossless round-trip,
+  atom-level view.
+- **Phase 2 (UX):** §4.4 pairing → `gp_plugin_block` for in-view wrapper
+  fidelity.
+- **Alongside:** §6.1 typographer toggle (own PR, own measurements), §6.3
+  comment fix (rides with phase 1).
 
 ---
 
 ## Appendix A — measurement harness
 
-Place as e.g. `packages/desktop/tests/editor/field-guide-check.manual.ts`
-(kept out of `bun test` by the name) and run
-`bun tests/editor/field-guide-check.manual.ts <path-to-field-guide>`:
+Committed at `packages/desktop/tests/editor/plugin-book-roundtrip.manual.ts`
+(the `.manual.ts` name keeps it out of `bun test`). From `packages/desktop`:
 
-```ts
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import {
-  canEditRichly, createEditorRenderer, isFixpoint, normalize,
-} from "../../src/lib/editor/markdown-doc";
-import { semanticHtml } from "../support/semantic-html";
-
-const BOOK = process.argv[2]!;
-const mod = await import(join(BOOK, "..", "dc-design-guide", "plugins", "dimm-city-plugin.js"));
-const md = createEditorRenderer([{ name: "dimm-city", plugin: mod.default, options: {}, css: mod.css }]);
-
-let rich = 0, fix = 0, sem = 0;
-const files = readdirSync(BOOK).filter((f) => f.endsWith(".md")).sort();
-for (const f of files) {
-  const text = readFileSync(join(BOOK, f), "utf8");
-  const v = canEditRichly(md, text);
-  if (!v.ok) { console.log(`SOURCE-MODE ${f}: ${v.reason}`); continue; }
-  rich++;
-  if (isFixpoint(md, text).ok) fix++; else console.log(`NOT-FIXPOINT ${f}`);
-  if (semanticHtml(md.render(text, {})) === semanticHtml(md.render(normalize(md, text), {}))) sem++;
-  else console.log(`MEANING-DRIFT ${f}`);
-}
-console.log(`rich ${rich}/${files.length} · fixpoint ${fix}/${rich} · meaning ${sem}/${rich}`);
+```
+bun tests/editor/plugin-book-roundtrip.manual.ts <book-dir> [plugin.js]
 ```
 
-Verify determinism before trusting any failure (render and normalize the same
-text twice; compare) — that is what separates real lossiness from plugin
-statefulness.
+For the field guide the plugin path defaults to
+`../dc-design-guide/plugins/dimm-city-plugin.js` beside the book. The plugin
+exports `default` + `metadata` only (no `css` export — the harness's
+`css: mod.css` is deliberately tolerant of `undefined`). The harness verifies
+determinism before measuring; a non-deterministic plugin invalidates the run.
 
 ## Appendix B — evidence excerpt (chapter-00, one normalize pass)
 
@@ -431,19 +575,21 @@ statefulness.
 ```
 
 Rendered-HTML consequence: `<div class="dc-intro">…</div>` and
-`<div class="dc-toc">…</div>` are gone from the normalized render; the
-curly apostrophe is the §6.1 defect riding along.
+`<div class="dc-toc">…</div>` are gone from the normalized render; the curly
+apostrophe is the §6.1 defect riding along.
 
 ## Appendix C — file / symbol map
 
 | Piece | Location |
 | --- | --- |
 | Block-rule stamp (pattern to mirror) | `packages/cli/src/lib/markdown/plugin-provenance.ts` — `withBlockRuleProvenance`, `GP_EDITOR_LINES`, `REGISTRATION_METHODS` |
-| Plugin apply window | `packages/cli/src/lib/markdown/plugins.ts` — `applyPlugins` |
-| Generated-content retag | `packages/desktop/src/lib/editor/markdown-doc/renderer.ts` — `editor_tag_generated` (map-less `html_block` → `gp_generated`) |
-| Adoption + refusal | `packages/desktop/src/lib/editor/markdown-doc/parser.ts` — `adoptPluginTokens`, `authoredBlock`, raise site ("Token type … not supported") |
-| Generic nodes | `schema.ts` — `pluginBlock()` (renders tag+attrs around content), `pluginAtom()` (visible atom chrome) |
-| Verbatim write-back | `serializer.ts` — `gp_plugin_block`, `gp_plugin_atom`, `gp_generated() {}` |
-| The real-world consumer shape | `dc-op-manual/dc-design-guide/plugins/dimm-city-plugin.js` — `dc_alerts` (~766), `dimm_city_transform` (~789), `makeToken` (79 × `html_block`, `map: null`), `parseMarker` + `i += 2` consumption |
-| Go/no-go gate to extend | `docs/fixtures/advanced-book` + `packages/desktop/tests/editor/plugin-roundtrip.test.ts` |
-| Corpus gate (must stay green) | `packages/desktop/tests/editor/markdown-doc-corpus.test.ts` |
+| Plugin apply window (the seam) | `packages/cli/src/lib/markdown/renderer.ts:209-229` — `applyPlugins` (re-exported by `plugins.ts`) |
+| Generated-content retag | `packages/desktop/src/lib/editor/markdown-doc/renderer.ts` — `editor_tag_generated` |
+| Facade + adoption + refusal | `packages/desktop/src/lib/editor/markdown-doc/parser.ts` — facade :505-508, `handled`-skip :131, `adoptHtmlWrappers` :279-338, `adoptPluginTokens`, `referenceLabels` raise precedent :524-531 |
+| Generic nodes | `schema.ts` — `pluginBlock()` (tag+attrs around content), `pluginAtom()` (visible atom chrome) |
+| Verbatim write-back | `serializer.ts` — `gp_plugin_block`, `gp_plugin_atom`, `gp_generated() {}`; default list rules spread at :100-102 |
+| Loose-list double-blank emitter (§6.2) | `prosemirror-markdown` `MarkdownSerializerState.renderList` — same-type `flushClose(3)` |
+| The real-world consumer | `dc-op-manual/dc-design-guide/plugins/dimm-city-plugin.js` — `dc_alerts` + `dimm_city_transform` (732/755 on `main`, 766/789 restored), `makeToken` (84 × `html_block`, `map: null`), the synthesized `inline` in `dc_alerts`, `parseMarker` + `i += 2` consumption |
+| Go/no-go gate to extend | `docs/fixtures/advanced-book` + `packages/desktop/tests/editor/plugin-roundtrip.test.ts` (exclusion filter :52, throwaway-plugin pattern :169-259, never-leaks scan :109-117) |
+| Corpus gate (hard asserts) | `packages/desktop/tests/editor/markdown-doc-corpus.test.ts` (:125, :147) |
+| Acceptance harness | `packages/desktop/tests/editor/plugin-book-roundtrip.manual.ts` |
