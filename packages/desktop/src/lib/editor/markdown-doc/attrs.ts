@@ -106,6 +106,13 @@ export function authoredBlockAttrs(line: string | undefined): ExtraAttrs | null 
           value.length >= 2 && (value[0] === '"' || value[0] === "'") && value.endsWith(value[0]!)
             ? value.slice(1, -1)
             : value;
+      } else if (eq === -1) {
+        // Value-less attribute: `{disabled}`. markdown-it-attrs consumes the
+        // braces and sets `disabled=""` on the element (measured — it accepts
+        // essentially any bare word here), so dropping the token silently
+        // deleted a rendered attribute on save. Carried as the empty string;
+        // `attrsToBraces` writes the bare key back, byte-stably.
+        out[raw] = "";
       }
     }
   }
@@ -127,7 +134,12 @@ export function attrsToBraces(attrs: ExtraAttrs | null | undefined): string {
   if (attrs.id) parts.push(`#${attrs.id}`);
   for (const key of Object.keys(attrs).sort()) {
     if (key === "class" || key === "id") continue;
-    parts.push(`${key}=${quoteValue(attrs[key]!)}`);
+    const value = attrs[key]!;
+    // An empty value round-trips as the bare key: `{disabled}` was authored
+    // value-less, and markdown-it-attrs reads bare and `=""` identically, so
+    // the rare authored `{key=""}` merely canonicalizes to `{key}` — same
+    // attribute, stable on the second pass.
+    parts.push(value === "" ? key : `${key}=${quoteValue(value)}`);
   }
   return parts.length ? `{${parts.join(" ")}}` : "";
 }

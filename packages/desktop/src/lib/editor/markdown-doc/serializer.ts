@@ -89,6 +89,19 @@ function cellText(node: PMNode): string {
     gutterpressMarkdownSerializer
       .serialize(doc)
       .replace(/\n+$/, "")
+      // A cell is an INLINE context: none of the serializer's start-of-line
+      // escapes (list bullet, blockquote, heading, ordered item) can start a
+      // block here, and the escape is worse than inert — markdown-it 14
+      // joins text tokens AFTER `replacements`/`smartquotes`, so an escaped
+      // `\--` prints literally instead of typographing to an en dash.
+      // Measured on 01-typography.md's substitution demo table once the doc
+      // model stopped baking typographer output into the author's bytes.
+      // Only the start-of-line-ONLY escapes are stripped; `*` and the other
+      // inline delimiters stay escaped by the general rule (emphasis is
+      // real inside cells).
+      .replace(/^\\(\+[ ]|[\->])/, "$1")
+      .replace(/^(\s*)\\(#{1,6})(\s|$)/, "$1$2$3")
+      .replace(/^(\s*\d+)\\\.(\s)/, "$1.$2")
       // A newline inside a cell would end the row.
       .replace(/\n/g, " ")
       // Escape only pipes that are not already escaped, so a round trip does
@@ -109,6 +122,15 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
     heading(state, node) {
       state.write(`${state.repeat("#", node.attrs.level as number)} `);
       state.renderInline(node, false);
+      const braces = attrsToBraces(node.attrs.attrs as ExtraAttrs | null);
+      if (braces) state.write(` ${braces}`);
+      state.closeBlock(node);
+    },
+    // `![art](a.png) {.class}` — block-end braces attach to the PARAGRAPH
+    // (the space keeps them off the image). The default rule with the same
+    // brace emission the heading rule carries.
+    paragraph(state, node) {
+      state.renderInline(node);
       const braces = attrsToBraces(node.attrs.attrs as ExtraAttrs | null);
       if (braces) state.write(` ${braces}`);
       state.closeBlock(node);
@@ -136,6 +158,15 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
       state.text(node.textContent, false);
       state.write("\n");
       state.write(fence);
+      state.closeBlock(node);
+    },
+
+    // `---{.column-break}` — the default rule plus its braces, emitted the
+    // way the books author it (no separating space; both spellings bind to
+    // the rule on reparse).
+    horizontal_rule(state, node) {
+      const braces = attrsToBraces(node.attrs.attrs as ExtraAttrs | null);
+      state.write(`${(node.attrs.markup as string) || "---"}${braces}`);
       state.closeBlock(node);
     },
 

@@ -7,6 +7,7 @@ import {
   normalize,
   serializeDoc,
 } from "../../src/lib/editor/markdown-doc";
+import { semanticHtml } from "../support/semantic-html";
 
 /** A fresh instance per call, same configuration the print path uses. */
 const md = () => createEditorRenderer();
@@ -230,6 +231,132 @@ describe("normalization is accepted, but must be stable", () => {
     const out = normalize(md(), "Text.\n\n\n\n");
     expect(out.endsWith("\n")).toBe(true);
     expect(out.endsWith("\n\n")).toBe(false);
+  });
+});
+
+/**
+ * Byte- and meaning-fidelity found lacking on the REAL plugin books (the
+ * dc-op-manual acceptance run, spec §7): each case here was measured as a
+ * fixpoint or semantic-preservation failure on a shipped chapter before the
+ * fix it pins.
+ */
+describe("real-book fidelity", () => {
+  test("the authored bullet character round-trips", () => {
+    // Serializing every list as `*` merged the field guide's alternating
+    // `*`/`+` single-item lists into ONE loose list on reparse — a rendered
+    // DOM change plus a blank-line churn that broke the fixpoint.
+    expect(roundTrip("- one\n- two\n")).toBe("- one\n- two\n");
+    expect(roundTrip("+ one\n+ two\n")).toBe("+ one\n+ two\n");
+  });
+
+  test("adjacent distinct-marker lists stay separate lists", () => {
+    const src = "Intro:\n\n* first\n\n+ second\n";
+    const m = md();
+    const out = normalize(m, src);
+    expect(out).toContain("* first");
+    expect(out).toContain("+ second");
+    expect(isFixpoint(m, out).ok).toBe(true);
+    const uls = (html: string) => (html.match(/<ul/g) ?? []).length;
+    expect(uls(m.render(out, {}))).toBe(uls(m.render(src, {})));
+  });
+
+  test("block-end braces on a paragraph round-trip (the space binds them to the block)", () => {
+    // `![art](a.png) {.fg-x}` puts the class on the PARAGRAPH; it was
+    // silently dropped on save (chapter-00's `.fg-art-intro-creaturepunk`).
+    expect(roundTrip("![art](a.png) {.fg-x}\n")).toBe("![art](a.png) {.fg-x}\n");
+  });
+
+  test("image-bound braces are NOT also claimed by the paragraph", () => {
+    // `){.x}` touches the image and is the image's alone — the first cut of
+    // the paragraph rule re-emitted it at paragraph level too, which moved
+    // the class onto the <p> on reparse.
+    expect(roundTrip("![art](a.png){.fg-x}\n")).toBe("![art](a.png){.fg-x}\n");
+  });
+
+  test("braces on a horizontal rule round-trip", () => {
+    // `---{.column-break}` — the design guide's decorated-rule idiom.
+    expect(roundTrip("---{.column-break}\n")).toBe("---{.column-break}\n");
+  });
+
+  test("an authored HTML entity keeps its bytes AND its meaning", () => {
+    // `&quot;` is exempt from typographer; decoding it to `"` on save made
+    // the next render curl it (chapter-05's semantic drift).
+    const src = "&quot;The streets keep score.&quot;\n";
+    const m = md();
+    expect(normalize(m, src)).toBe(src);
+    expect(m.render(normalize(m, src), {})).toBe(m.render(src, {}));
+  });
+
+  test("an entity in a HEADING never deletes the heading", () => {
+    // REGRESSION: the entity->html_inline retag produced an atom that
+    // heading content (`(text | image)*`) refuses, and `createAndFill` then
+    // dropped the WHOLE heading node — `# A &amp; B` vanished from the file
+    // on save. In a heading the entity stays on the decoded-text path: the
+    // byte decodes (the pre-retag lesser loss), but the heading and its
+    // rendered meaning survive.
+    const m = md();
+    const src = "# A &amp; B\n\nBody &amp; text.\n";
+    const doc = createDocParser(m).parse(src);
+    expect(doc.child(0).type.name).toBe("heading");
+    expect(doc.child(0).textContent).toBe("A & B");
+    const out = normalize(m, src);
+    // The heading decodes its entity; the paragraph keeps its bytes.
+    expect(out).toBe("# A & B\n\nBody &amp; text.\n");
+    expect(m.render(out, {})).toBe(m.render(src, {}));
+    expect(isFixpoint(m, src).ok).toBe(true);
+  });
+
+  test("entities in headings survive across shapes (nbsp, link-wrapped)", () => {
+    const m = md();
+    for (const src of ["# Chapter&nbsp;One\n", "## A &ndash; B\n", "# See [a &amp; b](url)\n"]) {
+      const doc = createDocParser(m).parse(src);
+      expect({ src, first: doc.child(0).type.name }).toEqual({ src, first: "heading" });
+      // semanticHtml: decoding the entity legitimately changes the
+      // source-coordinate plumbing attrs (`data-gp-source-token`); the
+      // rendered CONTENT must not change.
+      expect(semanticHtml(m.render(normalize(m, src), {}))).toBe(semanticHtml(m.render(src, {})));
+      expect(isFixpoint(m, src).ok).toBe(true);
+    }
+  });
+
+  test("an entity in a paragraph still round-trips byte-exact", () => {
+    // The heading carve-out must not widen: outside headings the entity
+    // keeps its authored bytes via the html_inline retag.
+    const m = md();
+    for (const src of ["Body &amp; text.\n", "Fee&nbsp;schedule.\n"]) {
+      expect(normalize(m, src)).toBe(src);
+      expect(m.render(normalize(m, src), {})).toBe(m.render(src, {}));
+    }
+  });
+
+  test("value-less braces round-trip on every block that takes them", () => {
+    // `{disabled}` — markdown-it-attrs consumes the braces and sets
+    // `disabled=""` on the element; the brace parser dropped the bare token,
+    // so the attribute silently vanished from the file on save.
+    const m = md();
+    for (const src of [
+      "Hello world {disabled}\n",
+      "# Head {disabled}\n",
+      "---{disabled}\n",
+      "```js {disabled}\ncode\n```\n",
+      "![img](a.png){contenteditable}\n",
+    ]) {
+      expect({ src, out: normalize(m, src) }).toEqual({ src, out: src });
+      expect(m.render(normalize(m, src), {})).toBe(m.render(src, {}));
+    }
+  });
+
+  test("value-less braces mix canonically with valued ones", () => {
+    const m = md();
+    const src = "Hello world {disabled data-x=1}\n";
+    const out = normalize(m, src);
+    // Canonical emission: non-class/id keys alphabetically, bare key for the
+    // value-less one.
+    expect(out).toBe("Hello world {data-x=1 disabled}\n");
+    expect(isFixpoint(m, src).ok).toBe(true);
+    // semanticHtml: reordering the braces reorders the rendered attributes;
+    // the attribute SET must be unchanged.
+    expect(semanticHtml(m.render(out, {}))).toBe(semanticHtml(m.render(src, {})));
   });
 });
 

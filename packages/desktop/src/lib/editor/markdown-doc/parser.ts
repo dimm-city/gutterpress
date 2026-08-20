@@ -6,9 +6,12 @@
  * supply and map the resulting tokens through `ParseSpec` entries — and it
  * declares `markdown-it: ^14`, the same major the CLI ships. So the editor
  * parses with the identical pipeline that prints: same plugins, same
- * `markers.js`, same `typographer`/`linkify` settings. There is no second
- * markdown dialect anywhere in the product, which is the property ADR 0009
- * was protecting when it warned against a second parser.
+ * `markers.js`. There is no second markdown dialect anywhere in the product,
+ * which is the property ADR 0009 was protecting when it warned against a
+ * second parser. One deliberate divergence: `typographer`/`linkify` are
+ * flipped off for the duration of each doc-model parse (see `parse()` below)
+ * — they rewrite TEXT, not structure, and a doc model built from their
+ * output writes `’`/`“”`/`–` and linkified URLs back into the author's file.
  *
  * FAIL CLOSED. `MarkdownParser` throws on a token type it has no spec for
  * ("Token type `x` not supported by Markdown parser"). That is exactly the
@@ -35,6 +38,210 @@ interface PluginPayload {
 
 function pluginPayload(tok: Token): PluginPayload {
   return (tok.meta as { gpPlugin: PluginPayload }).gpPlugin;
+}
+
+/**
+ * Core-rule transform provenance, written by the cli differ
+ * (`plugin-provenance.ts`, `withCoreRuleProvenance`) and read here as literal
+ * meta keys — the same convention as `gpEditorLines` below: the browser
+ * bundle reads token meta directly rather than importing constants through
+ * `gutterpress/render`.
+ *
+ * `gpCoreHunk` marks every token of a RECOVERABLE transform region — the
+ * synthesized replacements AND the survivors the region swallowed (those
+ * keep their real `map` beside the stamp). `range` has `token.map`
+ * semantics: 0-based, half-open. `gpCorePoison` marks a transform whose
+ * authored source could not be attributed; the parse must refuse on it.
+ */
+interface CoreHunkStamp {
+  id: number;
+  range: [number, number];
+  rule: string;
+}
+
+function coreHunkOf(tok: Token): CoreHunkStamp | undefined {
+  const hunk = (tok.meta as { gpCoreHunk?: unknown } | null)?.gpCoreHunk as
+    | { id?: unknown; range?: unknown; rule?: unknown }
+    | null
+    | undefined;
+  if (!hunk || typeof hunk !== "object") return undefined;
+  return typeof hunk.id === "number" &&
+    Array.isArray(hunk.range) &&
+    hunk.range.length === 2 &&
+    typeof hunk.rule === "string"
+    ? (hunk as CoreHunkStamp)
+    : undefined;
+}
+
+/** Presence of EITHER key, well-formed or not — the fail-closed predicate. */
+function hasCoreProvenance(tok: Token): boolean {
+  const meta = tok.meta as Record<string, unknown> | null;
+  return (
+    meta != null && typeof meta === "object" && ("gpCoreHunk" in meta || "gpCorePoison" in meta)
+  );
+}
+
+/** The refusal sentence for an unattributable core-rule transform. */
+function corePoisonError(rule: string, reason: string): Error {
+  return new Error(
+    `The plugin rule \`${rule}\` ${reason}, so this file can't be edited richly.`,
+  );
+}
+
+/**
+ * The env key the cli differ writes when a refusal has NO token carrier —
+ * a transform consumed the entire document to nothing, so there is no
+ * surviving neighbor for `gpCorePoison` to sit on. Read as a literal string,
+ * like the meta keys above (the browser bundle never imports constants
+ * through `gutterpress/render`). Value shape: `{ rule, reason }`.
+ */
+const GP_CORE_POISON_ORPHAN = "gpCorePoisonOrphan";
+
+/**
+ * Refuse a parse whose poison has no token to ride on.
+ *
+ * Without this, a transform that eats the whole document reads as an EMPTY
+ * FILE: the doc model parses to nothing and a save would wipe the author's
+ * bytes. Two independent checks, both fail closed: the differ's orphan
+ * stamp (which names the rule), and — in case the stream reached us empty
+ * through a path the differ never saw — a bare "non-blank source, zero
+ * tokens" refusal.
+ */
+function raiseOnOrphanPoison(env: Record<string, unknown>, src: string, tokens: Token[]): void {
+  const orphan = env[GP_CORE_POISON_ORPHAN] as
+    | { rule?: unknown; reason?: unknown }
+    | null
+    | undefined;
+  if (orphan != null && typeof orphan === "object") {
+    throw corePoisonError(
+      typeof orphan.rule === "string" ? orphan.rule : "(unknown rule)",
+      typeof orphan.reason === "string"
+        ? orphan.reason
+        : "rewrote content whose source can't be recovered",
+    );
+  }
+  if (tokens.length === 0 && src.trim() !== "") {
+    throw new Error(
+      "a plugin transform consumed this file's entire content, so this file can't be edited richly",
+    );
+  }
+}
+
+/**
+ * Refuse a token stream carrying `gpCorePoison` — BEFORE any adoption pass.
+ *
+ * Poison marks a plugin core-rule transform whose authored source the differ
+ * could not attribute. It is meta-only, so every render path (preview,
+ * semantic gates) is pixel-identical; the editor's parse is the one consumer
+ * that must act on it, and it must act first — adopting or dropping the
+ * tokens would silently damage the author's file. Like the
+ * `referenceLabels` raise in `parse()`, this is an explicit check because
+ * the library's own failure would name a token type, not the plugin rule
+ * the author needs to hear about. Every token is scanned, not just
+ * synthesized ones: a consumed-to-nothing transform leaves no inserted
+ * token, so its poison sits on the nearest SURVIVING neighbor — often a
+ * plain mapped `paragraph_open`.
+ */
+function raiseOnPoison(tokens: Token[]): Token[] {
+  for (const tok of tokens) {
+    const poison = (tok.meta as { gpCorePoison?: unknown } | null)?.gpCorePoison as
+      | { rule?: unknown; reason?: unknown }
+      | null
+      | undefined;
+    if (poison == null) continue;
+    throw corePoisonError(
+      typeof poison.rule === "string" ? poison.rule : "(unknown rule)",
+      typeof poison.reason === "string"
+        ? poison.reason
+        : "rewrote content whose source can't be recovered",
+    );
+  }
+  return tokens;
+}
+
+/**
+ * Adopt a core-rule transform's stamped region as ONE verbatim atom.
+ *
+ * The differ stamps every token of a recoverable region with the same
+ * `gpCoreHunk` id and the authored line range the transform consumed. The
+ * whole span — synthesized wrappers, swallowed survivors, replaced inlines —
+ * collapses to a single `plugin_atom` carrying `lines.slice(start, end)`
+ * verbatim, which is all the serializer ever writes back; the pipeline
+ * regenerates the transform's output from those lines on every render.
+ *
+ * This must run FIRST among the adoption passes: `adoptHtmlWrappers` would
+ * otherwise pair a transform's lone-tag wrappers and write the SYNTHESIZED
+ * HTML into the author's file as the marker — materializing generated
+ * markup, the exact failure provenance exists to prevent.
+ *
+ * Contiguity is verified, never assumed: every token between a region's
+ * first and last member must carry the same id, or be a survivor whose
+ * `map` lies inside the region's range (swallowed with it). A gap means a
+ * stamp write was skipped (frozen meta) or the region was torn —
+ * unattributable, so it converts to poison and raises (fail closed).
+ *
+ * The map-within-range test applies to SAME-ID members too: a swallowed
+ * survivor keeps its real `map` beside the stamp, and if that map lies
+ * outside the stamped range the range is too narrow — `lines.slice` would
+ * silently truncate the survivor's authored lines out of the atom. Same
+ * verdict as a gap: unattributable, poison, refuse.
+ */
+function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
+  let out: Token[] | null = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    if (!hasCoreProvenance(tok)) {
+      out?.push(tok);
+      continue;
+    }
+    const stamp = coreHunkOf(tok);
+    // A malformed stamp cannot be attributed, and letting the token flow on
+    // would end with its synthesized content absorbed as authored HTML.
+    if (!stamp) throw corePoisonError("(unknown rule)", "rewrote content whose source can't be recovered");
+
+    let end = i;
+    for (let j = i + 1; j < tokens.length; j++) {
+      if (coreHunkOf(tokens[j]!)?.id === stamp.id) end = j;
+    }
+    const [start, stop] = stamp.range;
+    for (let j = i; j <= end; j++) {
+      const member = tokens[j]!;
+      const map = member.map;
+      const inRange = map != null && start <= map[0]! && map[1]! <= stop;
+      if (coreHunkOf(member)?.id === stamp.id) {
+        // Same-id member: a synthesized replacement carries no map and is
+        // fine; a swallowed survivor keeps its real map beside the stamp,
+        // and that map OUTSIDE the range means the stamp is too narrow —
+        // the slice below would truncate the survivor's authored lines.
+        if (map == null || inRange) continue;
+      } else if (inRange) {
+        // Unstamped survivor swallowed with the region.
+        continue;
+      }
+      // Convert the tear to poison, then refuse immediately — defense in
+      // depth for any caller that catches and re-reads the stream.
+      const meta = member.meta as Record<string, unknown> | null;
+      if (meta == null) {
+        member.meta = { gpCorePoison: { rule: stamp.rule, reason: "rewrote content whose source can't be recovered" } };
+      } else if (typeof meta === "object" && Object.isExtensible(meta) && !("gpCorePoison" in meta)) {
+        meta.gpCorePoison = { rule: stamp.rule, reason: "rewrote content whose source can't be recovered" };
+      }
+      throw corePoisonError(stamp.rule, "rewrote content whose source can't be recovered");
+    }
+
+    const marker = lines.slice(start, stop).join("\n");
+    tok.type = "plugin_atom";
+    tok.nesting = 0;
+    tok.block = true;
+    tok.meta = {
+      ...(tok.meta as Record<string, unknown> | null),
+      gpPlugin: { marker, tag: "div", viewAttrs: null, text: marker },
+    };
+    if (!out) out = tokens.slice(0, i);
+    out.push(tok);
+    i = end;
+  }
+  return out ?? tokens;
 }
 
 /**
@@ -265,6 +472,13 @@ function loneCloseTag(html: string): string | null {
  * serializer writes back — byte-for-byte, exactly as for a plugin marker.
  * Unmatched or exotic HTML (a self-contained element, an unbalanced tag) is
  * left as the atom it already was.
+ *
+ * Only AUTHORED HTML participates: both passes skip any token carrying
+ * core-rule provenance (`gpCoreHunk`/`gpCorePoison`). A transform's
+ * synthesized wrapper must adopt through its region (`adoptCoreRegions`) or
+ * refuse — pairing it here would write the synthesized HTML into the
+ * author's file as the marker, and the expansion pass's copies would drop
+ * the stamp on the way.
  */
 function adoptHtmlWrappers(tokens: Token[]): Token[] {
   // markdown-it consumes CONSECUTIVE tag lines into one html_block, and books
@@ -279,7 +493,7 @@ function adoptHtmlWrappers(tokens: Token[]): Token[] {
   const expanded: Token[] = [];
   for (const tok of tokens) {
     const lines =
-      tok.type === "html_block"
+      tok.type === "html_block" && !hasCoreProvenance(tok)
         ? tok.content.split("\n").map((l) => l.trim()).filter(Boolean)
         : [];
     if (
@@ -305,7 +519,7 @@ function adoptHtmlWrappers(tokens: Token[]): Token[] {
 
   const open: Array<{ tok: Token; tag: string; attrs: Record<string, string> }> = [];
   for (const tok of tokens) {
-    if (tok.type !== "html_block") continue;
+    if (tok.type !== "html_block" || hasCoreProvenance(tok)) continue;
 
     const closes = loneCloseTag(tok.content);
     if (closes) {
@@ -388,9 +602,32 @@ export function createDocParser(md: MarkdownIt) {
   const specs: Record<string, ParseSpec> = {
     // ── standard markdown ────────────────────────────────────────────────
     blockquote: { block: "blockquote" },
-    paragraph: { block: "paragraph" },
+    // Paragraph braces are block-END attrs on the LAST source line — headings
+    // read their first line because they are single-line constructs. The
+    // whitespace test is the binding rule: `){.x}` touches the image/link and
+    // belongs to IT (that node's own `extraAttrs` already carries it), while
+    // `) {.x}` belongs to the paragraph; claiming both wrote the same braces
+    // twice and moved the image's class onto the paragraph.
+    paragraph: {
+      block: "paragraph",
+      getAttrs: (tok) => {
+        const line = tok.map ? lines[tok.map[1] - 1] : undefined;
+        return {
+          attrs: line && /\s\{[^{}]*\}\s*$/.test(line) ? authoredBlockAttrs(line) : null,
+        };
+      },
+    },
     list_item: { block: "list_item" },
-    bullet_list: { block: "bullet_list", getAttrs: (_, tokens, i) => ({ tight: listIsTight(tokens, i) }) },
+    bullet_list: {
+      block: "bullet_list",
+      getAttrs: (tok, tokens, i) => ({
+        tight: listIsTight(tokens, i),
+        // The authored bullet character — a marker change is the only thing
+        // that splits adjacent lists, so it must survive the round trip
+        // (see schema.ts `withBullet`).
+        bullet: tok.markup === "-" || tok.markup === "+" ? tok.markup : "*",
+      }),
+    },
     ordered_list: {
       block: "ordered_list",
       getAttrs: (tok, tokens, i) => ({ order: +(tok.attrGet("start") ?? 1) || 1, tight: listIsTight(tokens, i) }),
@@ -415,7 +652,13 @@ export function createDocParser(md: MarkdownIt) {
       }),
       noCloseToken: true,
     },
-    hr: { node: "horizontal_rule" },
+    hr: {
+      node: "horizontal_rule",
+      // `---{.column-break}` — a leaf line, so any braces on it are its own.
+      getAttrs: (tok) => ({
+        attrs: authoredBlockAttrs(tok.map ? lines[tok.map[0]] : undefined),
+      }),
+    },
     image: {
       node: "image",
       getAttrs: (tok) => ({
@@ -500,11 +743,24 @@ export function createDocParser(md: MarkdownIt) {
     }
   }
 
-  // The parser tokenizes through this facade so the adoption pass sees every
-  // token stream — `parse()`, and nothing else, is what MarkdownParser calls.
+  // The parser tokenizes through this facade so the refusal and adoption
+  // passes see every token stream — `parse()`, and nothing else, is what
+  // MarkdownParser calls. The order is load-bearing: the ORPHAN poison (a
+  // refusal with no token to carry it — the stream may be empty) must be
+  // read from env first, token-borne poison must refuse before anything
+  // adopts, and core regions must collapse to atoms before
+  // `adoptHtmlWrappers` could mistake their synthesized wrappers for
+  // authored HTML.
   const tokenizer = {
-    parse: (src: string, env: Record<string, unknown>) =>
-      adoptPluginTokens(adoptHtmlWrappers(md.parse(src, env)), lines, handled),
+    parse: (src: string, env: Record<string, unknown>) => {
+      const tokens = md.parse(src, env);
+      raiseOnOrphanPoison(env, src, tokens);
+      return adoptPluginTokens(
+        adoptHtmlWrappers(adoptCoreRegions(raiseOnPoison(tokens), lines)),
+        lines,
+        handled,
+      );
+    },
   };
   const parser = new MarkdownParser(gutterpressSchema, tokenizer as unknown as MarkdownIt, specs);
 
@@ -522,17 +778,48 @@ export function createDocParser(md: MarkdownIt) {
      * point, so no layer can hold a weaker verdict than another.
      */
     parse(text: string): PMNode {
-      const refs = referenceLabels(md, text);
-      if (refs.length) {
-        throw new Error(
-          `this file defines link ${refs.length === 1 ? "reference" : "references"} ` +
-            `(${refs.map((r) => `[${r}]`).join(", ")}), which rich editing cannot represent`,
-        );
+      // Typographer and linkify run BEFORE the ProseMirror doc exists, so a
+      // doc model built with them on bakes their output into the author's
+      // bytes on save (`doesn't` -> `doesn’t`, a bare URL -> `<url>`) — and
+      // both round-trip gates are blind to it by construction: the loss is
+      // stable on the second pass (fixpoint holds) and render-identical
+      // (semantic gate holds). So the doc model parses with both OFF; print
+      // and preview keep them on. Flipping per parse on the SHARED instance
+      // is sound in markdown-it 14: `smartquotes`, `replacements`, and both
+      // linkify rules re-read `state.md.options` at run time, and the
+      // default preset never disables the rules at construction —
+      // markdown-it's "don't modify options on the fly" note is a
+      // performance remark (rules stay registered), not a correctness bar.
+      // A second typographer-less instance would be worse: every consumer
+      // must hold the SAME instance (`$lib/editor/project-renderer`) or the
+      // preflight could accept a file the mounted editor refuses, and it
+      // would apply the project's plugins twice. The `finally` is the core
+      // of the fix, not hygiene: throwing is the ROUTINE path through this
+      // choke point (fail-closed refusals, the reference-definition raise
+      // below), and a leaked `false` on the session-long instance would
+      // quietly blind every later render, semantic gates included.
+      // Everything between flip and restore is synchronous — including
+      // `referenceLabels`' own `md.parse`, which is why the whole body is
+      // inside the try.
+      const { typographer, linkify } = md.options;
+      md.options.typographer = false;
+      md.options.linkify = false;
+      try {
+        const refs = referenceLabels(md, text);
+        if (refs.length) {
+          throw new Error(
+            `this file defines link ${refs.length === 1 ? "reference" : "references"} ` +
+              `(${refs.map((r) => `[${r}]`).join(", ")}), which rich editing cannot represent`,
+          );
+        }
+        lines = text.split(/\r\n?|\n/);
+        const doc = parser.parse(text);
+        if (!doc) throw new Error("markdown parse produced no document");
+        return doc;
+      } finally {
+        md.options.typographer = typographer;
+        md.options.linkify = linkify;
       }
-      lines = text.split(/\r\n?|\n/);
-      const doc = parser.parse(text);
-      if (!doc) throw new Error("markdown parse produced no document");
-      return doc;
     },
   };
 }

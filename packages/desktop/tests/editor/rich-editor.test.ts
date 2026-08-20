@@ -329,14 +329,14 @@ describe("source-offset edits (CommitEngine)", () => {
   });
 
   test("REFUSES when the document does not match the offsets' basis", () => {
-    // The canonical form of `+ one` is `* one`, so a project that has not been
-    // normalized has offsets that point somewhere else. Writing anyway would
-    // corrupt the file at a position the author never chose.
-    const onDisk = "+ one\n";
+    // The canonical form of `__one__` is `**one**`, so a project that has not
+    // been normalized has offsets that point somewhere else. Writing anyway
+    // would corrupt the file at a position the author never chose.
+    const onDisk = "__one__\n";
     const e = editor(onDisk);
     expect(e.handle.canApplySourceOffsets(onDisk)).toBe(false);
     expect(e.handle.applyRangeEdit(onDisk, 2, 5, "two")).toBe(false);
-    expect(e.handle.getMarkdown()).toBe("* one\n");
+    expect(e.handle.getMarkdown()).toBe("**one**\n");
     e.restore();
   });
 

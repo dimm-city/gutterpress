@@ -203,6 +203,23 @@ const withAttrs = (spec: NodeSpec): NodeSpec => ({
 });
 
 /**
+ * The authored bullet character (`*`, `-` or `+`), kept on the list.
+ *
+ * A marker change is the ONLY thing that splits adjacent bullet lists in
+ * CommonMark — blank lines never do. Books use that deliberately (the field
+ * guide alternates `*`/`+`/`-` to produce separate single-item lists), so
+ * serializing every list as `*` merged them into one loose list on reparse:
+ * a rendered-DOM change the semantic gate catches, plus a blank-line churn
+ * that broke the fixpoint. The default serializer already emits
+ * `node.attrs.bullet || "*"`; declaring the attr is what lets the parser
+ * carry the authored character through.
+ */
+const withBullet = (spec: NodeSpec): NodeSpec => ({
+  ...spec,
+  attrs: { ...(spec.attrs ?? {}), bullet: { default: "*" } },
+});
+
+/**
  * `link` FIRST. Mark order decides nesting, and nesting decides whether the
  * serializer emits valid markdown.
  *
@@ -280,10 +297,16 @@ function tightAware(spec: NodeSpec, tag: "ul" | "ol"): NodeSpec {
 
 export const gutterpressSchema = new Schema({
   nodes: base.spec.nodes
-    .update("bullet_list", tightAware(base.spec.nodes.get("bullet_list")!, "ul"))
+    .update("bullet_list", withBullet(tightAware(base.spec.nodes.get("bullet_list")!, "ul")))
     .update("ordered_list", tightAware(base.spec.nodes.get("ordered_list")!, "ol"))
+    // `![art](a.png) {.class}` — a block-end brace block attaches to the
+    // PARAGRAPH (space before the braces), not the image; without the slot
+    // it was silently dropped on save. Same `attrs.ts` machinery as heading.
+    .update("paragraph", withAttrs(base.spec.nodes.get("paragraph")!))
     .update("image", withAttrs(base.spec.nodes.get("image")!))
     .update("heading", withAttrs(base.spec.nodes.get("heading")!))
+    // `---{.column-break}` — a decorated rule is a real book idiom.
+    .update("horizontal_rule", withAttrs(base.spec.nodes.get("horizontal_rule")!))
     // ```js {.line-numbers} — the info string is `params`, the braces are not.
     .update("code_block", withAttrs(base.spec.nodes.get("code_block")!))
     .append(tableNodes)

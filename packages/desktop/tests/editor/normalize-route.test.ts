@@ -71,32 +71,32 @@ async function run(dir: string, apply: boolean, expected?: Record<string, string
 
 describe("project/normalize", () => {
   test("planning writes NOTHING", async () => {
-    const dir = await project({ "a.md": "+ one\n" });
+    const dir = await project({ "a.md": "__one__\n" });
     const plan = await run(dir, false);
 
     expect(plan.applied).toBe(false);
     expect(plan.changed).toHaveLength(1);
-    expect(plan.changed[0]!.after).toBe("* one\n");
+    expect(plan.changed[0]!.after).toBe("**one**\n");
     // The file on disk is untouched — the author has not agreed yet.
-    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("+ one\n");
+    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("__one__\n");
   });
 
   test("the plan carries before AND after, so a diff can be shown", async () => {
-    const dir = await project({ "a.md": "+ one\n" });
+    const dir = await project({ "a.md": "__one__\n" });
     const plan = await run(dir, false);
-    expect(plan.changed[0]!.before).toBe("+ one\n");
-    expect(plan.changed[0]!.after).toBe("* one\n");
+    expect(plan.changed[0]!.before).toBe("__one__\n");
+    expect(plan.changed[0]!.after).toBe("**one**\n");
   });
 
   test("applying writes exactly the planned files", async () => {
     const dir = await project({
-      "a.md": "+ one\n",
+      "a.md": "__one__\n",
       "b.md": "# Already canonical\n",
     });
     const result = await run(dir, true);
 
     expect(result.applied).toBe(true);
-    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("* one\n");
+    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("**one**\n");
     // Untouched: it was already canonical, so it must not be rewritten at all.
     expect(await readFile(join(dir, "b.md"), "utf-8")).toBe("# Already canonical\n");
     expect(result.unchanged).toContain("b.md");
@@ -104,29 +104,29 @@ describe("project/normalize", () => {
 
   test("a file the model cannot represent is left byte-for-byte alone", async () => {
     const withFootnote = "Text[^1]\n\n[^1]: A note.\n";
-    const dir = await project({ "notes.md": withFootnote, "ok.md": "+ one\n" });
+    const dir = await project({ "notes.md": withFootnote, "ok.md": "__one__\n" });
     const result = await run(dir, true);
 
     expect(result.refused.map((r) => r.path)).toEqual(["notes.md"]);
     expect(await readFile(join(dir, "notes.md"), "utf-8")).toBe(withFootnote);
     // and one bad file does not stop the rest
-    expect(await readFile(join(dir, "ok.md"), "utf-8")).toBe("* one\n");
+    expect(await readFile(join(dir, "ok.md"), "utf-8")).toBe("**one**\n");
   });
 
   test("non-markdown files are never touched", async () => {
     const css = "body { color: red }\n";
-    const dir = await project({ "a.md": "+ one\n", "style.css": css });
+    const dir = await project({ "a.md": "__one__\n", "style.css": css });
     await run(dir, true);
     expect(await readFile(join(dir, "style.css"), "utf-8")).toBe(css);
   });
 
   test("applying twice is a no-op the second time", async () => {
     // The property that makes "one deliberate change" true.
-    const dir = await project({ "a.md": "+ one\n" });
+    const dir = await project({ "a.md": "__one__\n" });
     await run(dir, true);
     const second = await run(dir, true);
     expect(second.changed).toEqual([]);
-    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("* one\n");
+    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("**one**\n");
   });
 
   test("markdown-it-attrs and table alignment survive the rewrite", async () => {
@@ -144,23 +144,23 @@ describe("project/normalize", () => {
 
 describe("project/normalize: only what the author reviewed", () => {
   test("a file that changed since the plan is skipped and named", async () => {
-    const dir = await project({ "a.md": "# A\n\n- one\n", "b.md": "# B\n\n- two\n" });
+    const dir = await project({ "a.md": "# A\n\n__one__\n", "b.md": "# B\n\n__two__\n" });
     const plan = await run(dir, false);
     expect(plan.changed.length).toBeGreaterThan(0);
 
     // Someone else edits a.md while the dialog is open.
-    await writeFile(join(dir, "a.md"), "# A changed elsewhere\n\n- one\n", "utf-8");
+    await writeFile(join(dir, "a.md"), "# A changed elsewhere\n\n__one__\n", "utf-8");
 
     const expected = Object.fromEntries(plan.changed.map((c) => [c.path, c.before]));
     const applied = await run(dir, true, expected);
 
     expect(applied.stale).toEqual(["a.md"]);
     // The out-of-date file keeps the text that arrived, not the reviewed one.
-    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("# A changed elsewhere\n\n- one\n");
+    expect(await readFile(join(dir, "a.md"), "utf-8")).toBe("# A changed elsewhere\n\n__one__\n");
   });
 
   test("matching files still apply normally", async () => {
-    const dir = await project({ "a.md": "# A\n\n- one\n" });
+    const dir = await project({ "a.md": "# A\n\n__one__\n" });
     const plan = await run(dir, false);
     const expected = Object.fromEntries(plan.changed.map((c) => [c.path, c.before]));
     const applied = await run(dir, true, expected);
@@ -171,7 +171,7 @@ describe("project/normalize: only what the author reviewed", () => {
   });
 
   test("an apply with no expectations still works (nothing to compare against)", async () => {
-    const dir = await project({ "a.md": "# A\n\n- one\n" });
+    const dir = await project({ "a.md": "# A\n\n__one__\n" });
     const applied = await run(dir, true);
     expect(applied.stale).toEqual([]);
   });

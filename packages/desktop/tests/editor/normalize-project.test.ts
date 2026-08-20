@@ -13,13 +13,13 @@ describe("planNormalize", () => {
   });
 
   test("reports the canonical text for a file that needs reformatting", () => {
-    // `+` bullets and `__bold__` are valid markdown that the serializer
-    // spells differently (verified: the canonical bullet is `*`). That IS the
-    // churn this command exists to land in one commit.
-    const r = planNormalize([{ path: "a.md", text: "+ one\n+ two\n" }]);
+    // `__bold__` is valid markdown the serializer spells differently
+    // (canonically `**bold**`; bullet characters round-trip as authored).
+    // That IS the churn this command exists to land in one commit.
+    const r = planNormalize([{ path: "a.md", text: "__one__\n\n__two__\n" }]);
     expect(r.changed).toHaveLength(1);
     expect(r.changed[0]!.path).toBe("a.md");
-    expect(r.changed[0]!.text).toBe("* one\n* two\n");
+    expect(r.changed[0]!.text).toBe("**one**\n\n**two**\n");
   });
 
   test("REFUSES a file the document model cannot represent, with a reason", () => {
@@ -34,7 +34,7 @@ describe("planNormalize", () => {
 
   test("one refused file does not stop the rest of the project", () => {
     const r = planNormalize([
-      { path: "ok.md", text: "+ one\n" },
+      { path: "ok.md", text: "__one__\n" },
       { path: "bad.md", text: "Text[^1]\n\n[^1]: A note.\n" },
       { path: "fine.md", text: "# Done\n" },
     ]);
