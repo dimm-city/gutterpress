@@ -35,7 +35,7 @@ import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
 import { registerInlineSourceMetadata } from "./inline-source";
-import { withBlockRuleProvenance } from "./plugin-provenance";
+import { withBlockRuleProvenance, withCoreRuleProvenance } from "./plugin-provenance";
 
 /**
  * Plugin author API.
@@ -199,32 +199,38 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
  * a sign that the plugin is incompatible with this markdown-it version or
  * has a bug in its `apply` phase.
  *
- * Registration runs inside `withBlockRuleProvenance`: every block rule a
- * plugin registers is wrapped so the tokens it pushes carry the authored
- * line range (`meta.gpEditorLines`) the rich editor needs to round-trip
- * plugin markers — see plugin-provenance.ts. The plugins themselves stay
- * plain markdown-it plugins (CLAUDE.md §5); the host observes registration,
- * it does not extend the plugin API.
+ * Registration runs inside `withBlockRuleProvenance` and
+ * `withCoreRuleProvenance`: every block rule a plugin registers is wrapped
+ * so the tokens it pushes carry the authored line range
+ * (`meta.gpEditorLines`), and every core rule is wrapped with the
+ * per-invocation differ that stamps recoverable transform regions
+ * (`meta.gpCoreHunk`) and poisons unrecoverable ones (`meta.gpCorePoison`)
+ * so the rich editor can round-trip — or refuse — plugin rewrites; see
+ * plugin-provenance.ts. The plugins themselves stay plain markdown-it
+ * plugins (CLAUDE.md §5); the host observes registration, it does not
+ * extend the plugin API.
  */
 export function applyPlugins(md: MarkdownIt, plugins: LoadedPlugin[]): void {
   withBlockRuleProvenance(md, () => {
-    for (const { name, plugin, options, metadata } of plugins) {
-      try {
-        md.use(plugin, options);
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to apply plugin "${name}": ${errorMsg}`);
+    withCoreRuleProvenance(md, () => {
+      for (const { name, plugin, options, metadata } of plugins) {
+        try {
+          md.use(plugin, options);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          throw new Error(`Failed to apply plugin "${name}": ${errorMsg}`);
+        }
+        // Level-gated ON PURPOSE (was an unconditional console.log): this line
+        // fires on EVERY render — each preview rebuild, and the browser render
+        // path too — so default output stays quiet. `--verbose` (DEBUG level)
+        // restores the confirmation line.
+        if (metadata?.name) {
+          debug(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
+        } else {
+          debug(`Loaded plugin: ${name}`);
+        }
       }
-      // Level-gated ON PURPOSE (was an unconditional console.log): this line
-      // fires on EVERY render — each preview rebuild, and the browser render
-      // path too — so default output stays quiet. `--verbose` (DEBUG level)
-      // restores the confirmation line.
-      if (metadata?.name) {
-        debug(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
-      } else {
-        debug(`Loaded plugin: ${name}`);
-      }
-    }
+    });
   });
 }
 
