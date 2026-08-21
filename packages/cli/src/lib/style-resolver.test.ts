@@ -368,4 +368,51 @@ describe("resolveProjectCss", () => {
     expect(css).toContain("/* gutterpress markers */");
     expect(css).not.toContain("/* project css */");
   });
+
+  test("includes engineStyles.native — the layer that paints the page", async () => {
+    // The editor read `manifest.styles` directly while build and preview read
+    // `resolveConfig`, so the engine layer reached the PDF and the preview but
+    // never the editing surface. On the Dimm City field guide that layer is
+    // `native-furniture.css`, which is where the page background lives — the
+    // editor showed blank white paper for a book whose every page is a brick
+    // wall.
+    const dir = projectDir();
+    write(
+      dir,
+      "manifest.yaml",
+      "title: T\nstyles:\n  - styles/book.css\nengineStyles:\n  native:\n    - styles/furniture.css\n",
+    );
+    write(dir, "styles/book.css", ".mine { color: red }");
+    write(dir, "styles/furniture.css", "html { background: #402030 }");
+
+    const { css, styles } = await resolveProjectCss(dir);
+
+    expect(styles).toEqual(["styles/book.css", "styles/furniture.css"]);
+    expect(css).toContain(".mine { color: red }");
+    expect(css).toContain("html { background: #402030 }");
+    // Appended AFTER the author's own sheets, so furniture wins — the same
+    // order `resolveConfig` gives the build.
+    expect(css.indexOf(".mine")).toBeLessThan(css.indexOf("html { background: #402030 }"));
+  });
+
+  test("an explicit style list still wins over the manifest's", async () => {
+    // `manifestStyles` is the caller saying which sheets to use (the Design
+    // surface previewing an unsaved selection); resolving the config must not
+    // quietly append to it.
+    const dir = projectDir();
+    write(
+      dir,
+      "manifest.yaml",
+      "title: T\nstyles:\n  - styles/book.css\nengineStyles:\n  native:\n    - styles/furniture.css\n",
+    );
+    write(dir, "styles/book.css", ".mine { color: red }");
+    write(dir, "styles/furniture.css", "html { background: #402030 }");
+    write(dir, "styles/other.css", ".other { color: blue }");
+
+    const { css, styles } = await resolveProjectCss(dir, ["styles/other.css"]);
+
+    expect(styles).toEqual(["styles/other.css"]);
+    expect(css).toContain(".other { color: blue }");
+    expect(css).not.toContain("#402030");
+  });
 });

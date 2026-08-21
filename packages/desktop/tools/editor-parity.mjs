@@ -75,6 +75,22 @@ const DESKTOP = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const MAIN = join(DESKTOP, "out", "main", "main.js");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Close the "Tidy this book's markdown?" prompt if it is open.
+ *
+ * App chrome, not the book — and it opens over the editing pane, so both
+ * screenshots have to ask for it to go away before they are taken.
+ */
+const dismissTidy = (page) =>
+  page
+    .evaluate(() => {
+      const b = [...document.querySelectorAll("button")].find((x) =>
+        /decide later/i.test(x.textContent || ""),
+      );
+      b?.click();
+    })
+    .catch(() => {});
 const log = (m) => console.log(`[parity] ${m}`);
 
 // ── stage a disposable copy so the run cannot touch the author's files ─────
@@ -269,6 +285,12 @@ try {
   // The iframe ELEMENT, not the window: the two surfaces are then two images
   // of the same thing, croppable side by side. (The whole window goes to
   // `window.png` at the end, for layout questions.)
+  //
+  // Dismiss the tidy prompt FIRST. It is app chrome, not the book, and it
+  // opens over the editing pane — measured, it covered the middle of every
+  // editor.png this tool produced, which is the half of the evidence a
+  // reader looks at first.
+  await dismissTidy(page);
   await handle.screenshot({ path: join(OUT, "editor.png") }).catch(() => {});
 
   // ── the same chapter in the preview ─────────────────────────────────────
@@ -309,12 +331,7 @@ try {
   }
   // The tidy prompt can reappear over the pane; it is app chrome, not the
   // book, and it must not sit in the middle of the evidence.
-  await page
-    .evaluate(() => {
-      const b = [...document.querySelectorAll("button")].find((x) => /decide later/i.test(x.textContent || ""));
-      b?.click();
-    })
-    .catch(() => {});
+  await dismissTidy(page);
   await sleep(1000);
   const previewEl = await previewFrame.frameElement().catch(() => null);
   if (previewEl) await previewEl.screenshot({ path: join(OUT, "preview.png") }).catch(() => {});

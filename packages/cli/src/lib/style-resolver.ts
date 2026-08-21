@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { inlineStyles } from "./asset-inline.ts";
 import { composeBookCss } from "./markdown/assemble.ts";
 import { loadPluginsWithCss } from "./markdown/plugins.ts";
-import type { ResolvedPluginConfig } from "../schema/manifest.types.ts";
+import type { ResolvedConfig, ResolvedPluginConfig } from "../schema/manifest.types.ts";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest.ts";
@@ -260,9 +260,34 @@ export async function resolveProjectCss(
   const warnings: string[] = [];
   // One manifest read, shared with the plugin resolution below.
   const { manifest } = await loadManifestWithPath(projectDir);
+  /**
+   * The book's RESOLVED configuration, which is where `engineStyles.native`
+   * gets appended — the raw `manifest.styles` does not contain it.
+   *
+   * Reading the raw list here is how the editor lost the whole engine layer:
+   * on the Dimm City field guide that layer is `native-furniture.css`, which
+   * carries the page background (`html { background: <the brick wall> }`) and
+   * the sixteen margin boxes that paint the margin band. Build and preview
+   * both go through `resolveConfig` (`build-runner.ts`, `file-watcher.ts`), so
+   * the editor was the one surface painting blank white paper while the
+   * preview and the PDF painted the wall — exactly the drift the composition
+   * comment below says must not happen.
+   *
+   * Degraded, never fatal, for the same reason as the plugin branch: a
+   * manifest this cannot resolve should cost the engine layer, not the
+   * author's ability to edit.
+   */
+  let config: ResolvedConfig | null = null;
+  try {
+    config = resolveConfig({}, manifest);
+  } catch (err) {
+    warnings.push(
+      `book configuration unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const styles = await resolveActiveStyles(
     projectDir,
-    manifestStyles ?? (Array.isArray(manifest.styles) ? manifest.styles : []),
+    manifestStyles ?? config?.styles ?? (Array.isArray(manifest.styles) ? manifest.styles : []),
   );
   let projectCss = "";
   if (styles.length > 0) {
@@ -281,7 +306,7 @@ export async function resolveProjectCss(
   // getting none of it.
   let pluginCss = "";
   try {
-    const configs = plugins === undefined ? resolveConfig({}, manifest).plugins : plugins;
+    const configs = plugins === undefined ? (config?.plugins ?? []) : plugins;
     const loaded = await loadPluginsWithCss(configs, projectDir, (ref, err) =>
       warnings.push(`plugin ${ref} did not load: ${err.message}`),
     );
