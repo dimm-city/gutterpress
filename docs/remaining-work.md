@@ -68,11 +68,17 @@ never reached the editor), and no way to adjust an image. What is left:
       `marker: ""` around such runs would fix it and serializes to nothing,
       but it reshapes the token stream the core wrapper pairer indexes into —
       measure before attempting.
-- [ ] **No interaction gate.** Every editor gate is a parse/serialize
-      measurement; nothing types, clicks or drags. The three defects above
-      were all found by hand, and a UX regression cannot fail a test today.
-      `tools/editor-parity.mjs` already drives the packaged app under
-      Playwright and is the place to put one.
+- [x] **An interaction gate exists** (`npm run interaction`, 2026-08-21):
+      it drives the packaged app with a real pointer and checks five things
+      an author would notice — typing reaches the document, clicking an image
+      selects it and offers its options, the dialog opens on the real image
+      and applies, plugin regions show markup rather than source, and the
+      page is painted. Each check was verified to FAIL with its defect
+      reintroduced; the region check initially passed vacuously (it counted
+      layout wrappers on a chapter with no regions) and now refuses to report
+      green on an empty set. Point it at a region-heavy chapter.
+      - [ ] Widen it: nothing yet exercises the drag handle, the slash menu,
+            the selection bubble, undo across a region, or paste.
 - [ ] **Margin-box furniture is not painted on editor sheets.** The sheet
       layer applies the `@page` background and the canvas background, which
       is what the page's paper looks like; it does not render margin-box

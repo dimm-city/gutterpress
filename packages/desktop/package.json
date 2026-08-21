@@ -25,6 +25,7 @@
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
     "parity": "node tools/editor-parity.mjs",
+    "interaction": "node tools/editor-interaction.mjs",
     "test:ui": "node tests/integration/run-ui.mjs",
     "test:inline:packaged": "node tests/integration/inline-editing.pw.mjs --require-packaged",
     "perf-gate": "node tests/perf/render-gate.mjs",
