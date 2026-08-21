@@ -186,8 +186,80 @@ function raiseOnPoison(tokens: Token[]): Token[] {
  * silently truncate the survivor's authored lines out of the atom. Same
  * verdict as a gap: unattributable, poison, refuse.
  */
+/**
+ * A converted core region that might be half of a wrapper PAIR (phase 2 of
+ * the provenance plan): a single synthesized `html_block` whose content is
+ * one lone open/close tag. Recorded during the region scan and matched
+ * afterwards by {@link pairCoreWrapperRegions}. `at` indexes the OUTPUT
+ * array (later conversions only append, so earlier indices stay valid).
+ */
+type CoreWrapperCandidate =
+  | { at: number; kind: "open"; tag: string; attrs: Record<string, string>; marker: string }
+  | { at: number; kind: "close"; tag: string; marker: string };
+
+/**
+ * Upgrade matched open/close core-region atoms into ONE `gp_plugin_block`
+ * pair, so the editor renders the plugin's real tag + classes AROUND the
+ * editable content between the markers (the book's own stylesheet then
+ * applies in-view) instead of two labeled atoms with plain flow between.
+ *
+ * Pairing is deterministic from the transform's own output — the synthesized
+ * tag names, nearest-unclosed (the same discipline `adoptHtmlWrappers` uses
+ * for authored wrappers) — and STRICTLY view-level: a paired block
+ * serializes `marker` + content + `closeMarker` exactly as the two atoms
+ * plus the content between them would, so the bytes written back are
+ * identical either way. Every rejection therefore fails SOFT to the atom
+ * form, never to a refusal: an unmatched tag, an empty pair (`block+`
+ * content would be violated), or between-content whose token nesting is
+ * unbalanced (the pair would not sit at one level of the tree) simply stays
+ * two atoms.
+ */
+function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]): void {
+  const stack: Array<Extract<CoreWrapperCandidate, { kind: "open" }>> = [];
+  for (const cand of cands) {
+    if (cand.kind === "open") {
+      stack.push(cand);
+      continue;
+    }
+    let pos = -1;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i]!.tag === cand.tag) { pos = i; break; }
+    }
+    if (pos === -1) continue;
+    const open = stack[pos]!;
+    // Anything opened inside the match and never closed stays an atom.
+    stack.length = pos;
+
+    if (cand.at - open.at <= 1) continue; // empty pair — block+ needs content
+    let depth = 0;
+    let balanced = true;
+    for (let i = open.at + 1; i < cand.at; i++) {
+      depth += tokens[i]!.nesting;
+      if (depth < 0) { balanced = false; break; }
+    }
+    if (!balanced || depth !== 0) continue;
+
+    const openTok = tokens[open.at]!;
+    const closeTok = tokens[cand.at]!;
+    openTok.type = "plugin_block_open";
+    openTok.nesting = 1;
+    openTok.meta = {
+      ...(openTok.meta as Record<string, unknown> | null),
+      gpPlugin: {
+        marker: open.marker,
+        closeMarker: cand.marker,
+        tag: open.tag,
+        viewAttrs: Object.keys(open.attrs).length > 0 ? open.attrs : null,
+      },
+    };
+    closeTok.type = "plugin_block_close";
+    closeTok.nesting = -1;
+  }
+}
+
 function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
   let out: Token[] | null = null;
+  const wrapperCands: CoreWrapperCandidate[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i]!;
     if (!hasCoreProvenance(tok)) {
@@ -230,6 +302,13 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
     }
 
     const marker = lines.slice(start, stop).join("\n");
+    // Classify BEFORE overwriting the token: a single-member region whose
+    // synthesized content is one lone tag may pair up after the scan
+    // (phase 2). Multi-member regions (span-paired alerts, swallowed
+    // survivors, multi-tag synthesis) always stay atoms.
+    const lone = end === i && tok.type === "html_block";
+    const opened = lone ? loneOpenTag(tok.content) : null;
+    const closed = lone && !opened ? loneCloseTag(tok.content) : null;
     tok.type = "plugin_atom";
     tok.nesting = 0;
     tok.block = true;
@@ -239,9 +318,16 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
     };
     if (!out) out = tokens.slice(0, i);
     out.push(tok);
+    if (opened) {
+      wrapperCands.push({ at: out.length - 1, kind: "open", tag: opened.tag, attrs: opened.attrs, marker });
+    } else if (closed) {
+      wrapperCands.push({ at: out.length - 1, kind: "close", tag: closed, marker });
+    }
     i = end;
   }
-  return out ?? tokens;
+  const result = out ?? tokens;
+  if (wrapperCands.length > 0) pairCoreWrapperRegions(result, wrapperCands);
+  return result;
 }
 
 /**

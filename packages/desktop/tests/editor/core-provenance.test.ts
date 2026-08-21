@@ -121,22 +121,54 @@ const alertTransform: MdPlugin = (m) => {
 };
 
 describe("core-rule regions adopt as verbatim atoms", () => {
-  test("a single-line marker becomes one atom serializing its authored line", () => {
+  test("a matched marker pair adopts as ONE styled block wrapping editable content (phase 2)", () => {
     const md = mdWith("lede", ledeTransform);
     const src = "@lede\n\nBody prose here.\n\n@end-lede\n";
     expect(canEditRichly(md, src)).toEqual({ ok: true });
 
     const doc = createDocParser(md).parse(src);
-    expect(doc.childCount).toBe(3);
-    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(0).attrs.marker).toBe("@lede");
-    expect(doc.child(0).attrs.text).toBe("@lede");
-    expect(doc.child(1).type.name).toBe("paragraph");
-    expect(doc.child(2).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(2).attrs.marker).toBe("@end-lede");
+    expect(doc.childCount).toBe(1);
+    const block = doc.child(0);
+    expect(block.type.name).toBe("gp_plugin_block");
+    // The AUTHORED lines are the markers — never the synthesized HTML —
+    // and the synthesized tag + class carry into the view so the book's
+    // own stylesheet applies inside the editor.
+    expect(block.attrs.marker).toBe("@lede");
+    expect(block.attrs.closeMarker).toBe("@end-lede");
+    expect(block.attrs.tag).toBe("div");
+    expect(block.attrs.viewAttrs).toEqual({ class: "t-lede" });
+    expect(block.childCount).toBe(1);
+    expect(block.child(0).type.name).toBe("paragraph");
 
+    // Pairing is view-only: bytes identical to the atom form.
     expect(serializeDoc(doc)).toBe(src);
     expect(normalize(md, normalize(md, src))).toBe(src);
+  });
+
+  test("an unmatched open marker fails SOFT to the atom form", () => {
+    const md = mdWith("lede", ledeTransform);
+    const src = "@lede\n\nBody prose here.\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    const doc = createDocParser(md).parse(src);
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(0).attrs.marker).toBe("@lede");
+    expect(serializeDoc(doc)).toBe(src);
+  });
+
+  test("an EMPTY marker pair merges into one hunk and stays one verbatim atom", () => {
+    // Adjacent consumed paragraphs (no survivor between) are ONE hunk at
+    // the differ, so both markers land in a single region — no pair to
+    // form, nothing for `block+` to violate, bytes still exact. (The
+    // pairing pass's own empty-pair guard is defense in depth for regions
+    // that become adjacent some other way; it fails soft to atoms too.)
+    const md = mdWith("lede", ledeTransform);
+    const src = "@lede\n\n@end-lede\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    const doc = createDocParser(md).parse(src);
+    expect(doc.childCount).toBe(1);
+    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(0).attrs.marker).toBe("@lede\n\n@end-lede");
+    expect(serializeDoc(doc)).toBe(src);
   });
 
   test("a multi-line region (the alerts shape) becomes ONE atom carrying the whole blockquote", () => {
@@ -169,7 +201,14 @@ describe("core-rule regions adopt as verbatim atoms", () => {
     const md = mdWith("lede", ledeTransform);
     const src = "@lede\n\nBody prose here.\n\n@end-lede\n";
     const doc = createDocParser(md).parse(src);
-    expect(nodeTypes(doc)).not.toContain("gp_plugin_block");
+    // Phase 2 pairs the regions into a gp_plugin_block — but through region
+    // pairing, whose marker is the AUTHORED line. A block built by
+    // adoptHtmlWrappers would carry the synthesized `<div class="t-lede">`
+    // as its marker, and that is the materialization this test forbids.
+    const block = doc.child(0);
+    expect(block.type.name).toBe("gp_plugin_block");
+    expect(block.attrs.marker).toBe("@lede");
+    expect(block.attrs.marker).not.toContain("<div");
     const out = normalize(md, src);
     expect(out).not.toContain("<div");
     expect(out).not.toContain("</div>");

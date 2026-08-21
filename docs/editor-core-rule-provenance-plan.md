@@ -636,13 +636,37 @@ the acceptance table is met in full. The design guide's single meaning
 drift (`07-markdown-reference.md`) is the schema's documented link-first
 mark-order trade, proven pre-existing by full-revert comparison.
 
+**Phase 2 — SHIPPED (2026-08-20).** `adoptCoreRegions` records single-token
+regions whose synthesized content is one lone open/close tag as pairing
+candidates, and `pairCoreWrapperRegions` retags matched candidates
+(nearest-unclosed by tag, the same discipline `adoptHtmlWrappers` uses for
+authored wrappers) into one `gp_plugin_block` whose `marker`/`closeMarker`
+are the authored lines and whose `tag`/`viewAttrs` come from the synthesized
+open tag — so the editor renders the plugin's real element and classes
+around the editable content and the book's own stylesheet applies in-view.
+Pairing is strictly view-level: a paired block serializes byte-identically
+to the two atoms plus content (re-verified: all three harness runs
+unchanged, 14/14 ×3 on the fixed book), so every rejection fails SOFT to
+atoms — unmatched or crossed tags, unbalanced between-content, and the
+adjacent-pair shape, where two touching marker paragraphs merge into ONE
+differ hunk and stay one verbatim atom. Measured on the real book:
+chapter-00 now holds three `@lede → div.dc-intro` styled blocks (plus the
+authored `colophon-grid` HTML wrapper via the pre-existing path). Multi-tag
+constructs — the skill-card shells, span-paired alerts — remain labeled
+atoms by design; pairing them would need multi-token wrapper synthesis
+support (a possible phase 2.5, owner's call on value). Cosmetic: multi-line
+atom chrome renders whitespace-collapsed; the `white-space: pre-line` polish
+is deferred to the `editor-parity.mjs` visual pass on a machine that can
+render the app — styling a view this container cannot see would be a blind
+change.
+
 **Known follow-ups recorded, deliberately out of scope:** the pre-existing
 block-rule adoption double-write when two sibling map-less tokens share one
 `gpEditorLines` range; the pre-existing silent drop of raw inline HTML in
 headings; softbreaks joining to spaces on first save (multi-line paragraphs
 become one line; idempotent after); ordered-list delimiter (`1.` vs `1)`)
-not captured (no occurrence in either book); phase 2 (§4.4 pairing for
-in-view wrapper fidelity) not started.
+not captured (no occurrence in either book); multi-token wrapper pairing
+(phase 2.5) and the atom-chrome `white-space` polish, both above.
 
 ## Appendix A — measurement harness
 

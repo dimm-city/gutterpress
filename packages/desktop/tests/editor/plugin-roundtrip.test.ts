@@ -142,15 +142,23 @@ describe("plugin round-trip (go/no-go)", () => {
     for (const cls of ["fm-brief", "fm-verdict", "fm-alert fm-alert-tip", "fm-track"]) {
       expect(html).toContain(cls);
     }
-    // …and that the doc model holds each transformed construct as an adopted
-    // atom: @brief, @end-brief, @verdict, the [!TIP] alert, and @track.
+    // …and that the doc model holds each transformed construct as adopted:
+    // the @brief/@end-brief pair as ONE styled block (phase 2 — its
+    // synthesized class reaches the view so the fixture CSS applies
+    // in-editor), and @verdict, the [!TIP] alert, and @track as atoms.
     const doc = createDocParser(md).parse(text);
     let atoms = 0;
+    const blocks: Array<Record<string, unknown>> = [];
     doc.descendants((node) => {
       if (node.type.name === "gp_plugin_atom") atoms += 1;
+      if (node.type.name === "gp_plugin_block") blocks.push(node.attrs);
       return true;
     });
-    expect(atoms).toBe(5);
+    expect(atoms).toBe(3);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.marker).toBe("@brief");
+    expect(blocks[0]!.closeMarker).toBe("@end-brief");
+    expect((blocks[0]!.viewAttrs as Record<string, string>).class).toBe("fm-brief");
   });
 
   test("a transform's SYNTHESIZED wrappers never reach the file", async () => {
@@ -459,9 +467,16 @@ describe("plugin round-trip (go/no-go)", () => {
     expect(out).toBe(src);
     expect(out).not.toContain("<div");
     expect(out).not.toContain("</div>");
+    // Phase 2 pairs the regions into a block — through REGION pairing, whose
+    // marker is the authored %%note line. A block minted by adoptHtmlWrappers
+    // would carry the synthesized `<div class="trap-note">` as its marker
+    // (and write it to the file); that is what stays forbidden.
     const doc = createDocParser(md).parse(src);
-    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
-    doc.forEach((node) => expect(node.type.name).not.toBe("gp_plugin_block"));
+    const block = doc.child(0);
+    expect(block.type.name).toBe("gp_plugin_block");
+    expect(block.attrs.marker).toBe("%%note");
+    expect(block.attrs.closeMarker).toBe("%%end");
+    expect(String(block.attrs.marker)).not.toContain("<div");
   });
 
   test("a stamped html_block of MULTIPLE tag lines stays ONE atom — no per-tag copies", async () => {

@@ -188,6 +188,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   saves and identical rendered meaning (13/14 on the unmodified book — the
   one refusal names a genuinely dead `@end-callout` the plugin already
   consumes silently).
+- **Plugin wrappers now render styled in the rich editor.** A marker pair a
+  plugin turns into an HTML wrapper (`@lede`/`@end-lede` and kin) previously
+  showed as two labeled chips with plain prose between them; the editor now
+  pairs the two adopted regions into one block that renders the plugin's
+  real element and classes around the editable content, so the book's own
+  stylesheet applies inside the editor exactly as it does in print. The
+  saved bytes are identical either way, and any shape that cannot pair
+  deterministically (crossed tags, adjacent markers, multi-tag card shells,
+  alert blocks) simply keeps the labeled-chip form.
+
 - **Saving from rich mode no longer rewrites the author's punctuation or
   attribute spelling.** The document model is now parsed with typographer
   and linkify off (render keeps them), so straight quotes, `--`, `...`,
