@@ -278,6 +278,35 @@ function rawHtmlView(inline: boolean) {
   };
 }
 
+/**
+ * A plugin region the parser could not open up, shown as the markup the PLUGIN
+ * produced for it rather than as the author's raw source.
+ *
+ * `toDOM` cannot emit markup, so without this the node's only visible content
+ * was `text` — the author's markdown, verbatim. On a plugin-heavy book that is
+ * most of the page: the field guide's specialty chapters painted 300 blobs of
+ * `| AP | Technique |` and `@skill` where print shows branded cards, which is
+ * the single largest reason the rich view did not look like the book.
+ *
+ * Nothing here can reach the file. The node still serializes from `marker`
+ * (serializer.ts), and `html` is regenerated from the author's lines on every
+ * parse, so this is a view of the pipeline's output, never a second copy of it.
+ */
+function pluginAtomView(node: PMNode) {
+  const dom = document.createElement((node.attrs.tag as string) || "div");
+  for (const [key, value] of Object.entries(
+    (node.attrs.viewAttrs as Record<string, string> | null) ?? {},
+  )) {
+    dom.setAttribute(key, value);
+  }
+  dom.setAttribute("data-marker", node.attrs.marker as string);
+  const html = (node.attrs.html as string) || "";
+  if (html) dom.innerHTML = html;
+  else dom.textContent = (node.attrs.text as string) || "";
+  dom.contentEditable = "false";
+  return { dom, ignoreMutation: () => true, stopEvent: () => false };
+}
+
 // ---------------------------------------------------------------------------
 // state + mount
 // ---------------------------------------------------------------------------
@@ -441,6 +470,7 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
       gp_generated: rawHtmlView(false),
       html_block: rawHtmlView(false),
       html_inline: rawHtmlView(true),
+      gp_plugin_atom: pluginAtomView,
     },
     dispatchTransaction(tr) {
       const next = view.state.apply(tr);

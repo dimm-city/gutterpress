@@ -34,6 +34,9 @@ interface PluginPayload {
   tag: string;
   viewAttrs: Record<string, string> | null;
   text?: string;
+  /** The markup the PLUGIN produced for this region — view-only, never written
+   *  back. See `renderRegion` in `createDocParser`. */
+  html?: string;
 }
 
 function pluginPayload(tok: Token): PluginPayload {
@@ -461,9 +464,15 @@ function wrapperToken(like: Token): Token {
   return t;
 }
 
-function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
+function adoptCoreRegions(
+  tokens: Token[],
+  lines: string[],
+  renderRegion: (members: Token[]) => string,
+): Token[] {
   let out: Token[] | null = null;
   const wrapperCands: CoreWrapperCandidate[] = [];
+  /** What the transform has left open at this point — see `trackOpenTags`. */
+  const openTags: OpenTag[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i]!;
     if (!hasCoreProvenance(tok)) {
@@ -512,17 +521,37 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
     // survivors or any non-tag markup stays an opaque atom, and nothing may
     // pair across it.
     const ops = wrapperOps(tokens, i, end, stamp.id);
+    const first = ops?.ops[0];
+    // The transform's OWN output for this region, captured before the token is
+    // overwritten and used for the VIEW only.
+    //
+    // A region that pairs into wrappers (below) already renders as the plugin's
+    // real tag with the author's content inside it. One that does NOT had
+    // nothing to show but `text` — the author's raw markdown — so the editor
+    // painted `| AP | Technique |` and `@skill` as literal source text where
+    // print shows a branded card. Measured on the field guide: 300 such
+    // regions, 109k characters, most of nine chapters. `marker` is untouched,
+    // so what serializes is still the author's bytes either way.
+    // Rendered for EVERY region: a wrapper candidate that finds no partner
+    // below falls back to this atom form, and the fallback needs a preview
+    // too. A candidate that DOES pair becomes a `gp_plugin_block`, whose spec
+    // has no `html` — the plugin's tag and classes render it instead.
+    const rendered = renderRegion(tokens.slice(i, end + 1));
+    const html = rendered ? openTags.map((t) => t.open).join("") + rendered : "";
+    // Only opaque regions extend the stack. A paired wrapper's nesting is
+    // already in the document tree, so re-opening its tag around a later
+    // region would put that region inside the same box twice.
+    if (rendered && (!ops || !first)) trackOpenTags(openTags, rendered);
     tok.type = "plugin_atom";
     tok.nesting = 0;
     tok.block = true;
     tok.meta = {
       ...(tok.meta as Record<string, unknown> | null),
-      gpPlugin: { marker, tag: "div", viewAttrs: null, text: marker },
+      gpPlugin: { marker, tag: "div", viewAttrs: null, text: marker, html },
     };
     if (!out) out = tokens.slice(0, i);
     out.push(tok);
     const at = out.length - 1;
-    const first = ops?.ops[0];
     if (!ops || !first) {
       wrapperCands.push({ at, kind: "barrier" });
     } else if (ops.ops.length === 1 && first.kind === "open") {
@@ -839,6 +868,58 @@ function loneCloseTag(html: string): string | null {
  */
 /** Tags that never have a closing partner, so they can never open a pair. */
 const VOID_TAG = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
+
+/** One element a transform's output left open at a region boundary. */
+interface OpenTag {
+  tag: string;
+  /** The open tag as written, minus `id` — see {@link trackOpenTags}. */
+  open: string;
+}
+
+const HTML_TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+
+/**
+ * Follow the elements a transform's output opens and closes, across regions.
+ *
+ * A transform's HTML does not respect region boundaries. The field guide's
+ * plugin opens `.dc-skill-card > .dc-card-body > .dc-card-inner` in the region
+ * that begins a skill and closes them in the region that begins the NEXT one,
+ * with the skill's ability rows rendered by regions in between. Each region is
+ * its own node in the document, so its HTML gets auto-closed at the node's
+ * edge: the abilities landed OUTSIDE the card, painted on the page's brick
+ * background instead of the card's cream panel.
+ *
+ * Keeping the running stack lets each region re-open its ancestors, so
+ * contextual CSS resolves against the same ancestry print gives it. Ground
+ * truth again, not inference — these are the tags the transform itself wrote.
+ * `id` is dropped from the re-opened copies because an id may appear once;
+ * nothing else is touched, and none of it can reach the file (the region still
+ * serializes from `marker`).
+ */
+function trackOpenTags(stack: OpenTag[], html: string): void {
+  HTML_TAG.lastIndex = 0;
+  for (let m = HTML_TAG.exec(html); m; m = HTML_TAG.exec(html)) {
+    const tag = m[2]!.toLowerCase();
+    const rest = m[3] ?? "";
+    if (m[1]) {
+      // Close the nearest matching open. A close with nothing to match — the
+      // `</div></div></div>` that starts every skill region once the stack has
+      // been unwound — closes nothing, exactly as the browser treats it.
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i]!.tag === tag) {
+          stack.length = i;
+          break;
+        }
+      }
+      continue;
+    }
+    if (VOID_TAG.test(tag) || rest.trimEnd().endsWith("/")) continue;
+    stack.push({
+      tag,
+      open: `<${tag}${rest.replace(/\s+id\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")}>`,
+    });
+  }
+}
 
 /**
  * An authored inline HTML pair — `<a href="#ch-1">**Title**</a>` — adopted as
@@ -1184,9 +1265,27 @@ export function createDocParser(md: MarkdownIt) {
     parse: (src: string, env: Record<string, unknown>) => {
       const tokens = md.parse(src, env);
       raiseOnOrphanPoison(env, src, tokens);
+      /**
+       * The HTML a transform produced for one region — the plugin's own render
+       * rules over the plugin's own tokens, with the same env print uses, so
+       * the view shows what the page will show rather than the author's raw
+       * source. Rendering cannot reach the file: the result rides `viewAttrs`'
+       * sibling `html`, which no serializer reads.
+       *
+       * Failure is not fatal. A render rule that throws on a partial region
+       * costs the region its preview (it falls back to source text), not the
+       * author's ability to open the file.
+       */
+      const renderRegion = (members: Token[]): string => {
+        try {
+          return md.renderer.render(members, md.options, env);
+        } catch {
+          return "";
+        }
+      };
       return adoptInlineHtmlPairs(
         adoptPluginTokens(
-          adoptHtmlWrappers(adoptCoreRegions(raiseOnPoison(tokens), lines)),
+          adoptHtmlWrappers(adoptCoreRegions(raiseOnPoison(tokens), lines, renderRegion)),
           lines,
           handled,
         ),

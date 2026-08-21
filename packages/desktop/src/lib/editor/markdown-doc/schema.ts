@@ -142,9 +142,11 @@ function pluginBlock(): NodeSpec {
   };
 }
 
-/** A plugin's self-closing marker (`@stamp "Checked"`). `text` is the token's
- *  rendered content, shown so the atom is visible chrome rather than a blank
- *  box; only `marker` serializes. */
+/** A plugin's self-closing marker (`@stamp "Checked"`), or a transform region
+ *  whose interior could not be recovered. `html` is the markup the plugin
+ *  itself produced for the region and is what the view shows (`rich-editor.ts`
+ *  `pluginAtomView`); `text` is the flat fallback for a node that has none.
+ *  Only `marker` serializes. */
 function pluginAtom(): NodeSpec {
   return {
     group: "block",
@@ -155,6 +157,7 @@ function pluginAtom(): NodeSpec {
       tag: { default: "div" },
       viewAttrs: { default: null },
       text: { default: "" },
+      html: { default: "" },
     },
     toDOM: (node) => {
       const attrs = {
