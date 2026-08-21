@@ -35,6 +35,50 @@ Last updated 2026-08-19.
 
 ## Open — actionable now
 
+### Rich editor as the PRIMARY authoring surface (2026-08-21)
+
+The product requirement is that rich mode is the surface a non-technical
+author uses, and is EASIER than the markdown editor — an author should never
+have to learn markdown to use Gutterpress. Three defects blocking that were
+found and fixed this cycle (see CHANGELOG "Fixed"): transform regions
+displaying raw source, the missing page background (`engineStyles.native`
+never reached the editor), and no way to adjust an image. What is left:
+
+- [ ] **A transform region is still not TYPABLE.** The 305 regions the field
+      guide's plugin builds now LOOK right, but they are atoms — the author
+      cannot put a caret in a skill card's body or a rules table's cell and
+      type. Feasibility was measured, not assumed: re-parsing a region's
+      authored lines with the plugin's core rules suppressed preserves the
+      rendered meaning of 311 of 314 regions (99%), which would make 106,483
+      of 106,931 locked characters editable; the three losses are all
+      GFM-alert blockquotes (`> [!PULLQUOTE]`, `> [!NOTE]`) and would have to
+      stay atoms. The unsolved half is DISPLAY: the plugin's HTML is what
+      makes the card, and a region opened for editing renders as plain
+      markdown instead. The shape that gets both is a two-state node view —
+      the plugin's markup when the caret is elsewhere, editable content when
+      it is inside — with the swap driven by a node decoration rather than
+      component state. Do not ship the unlock without it; trading "looks
+      right, cannot type" for "can type, looks wrong" is not progress.
+- [ ] **Survivor content between regions has the wrong ancestry.** A region
+      re-opens the elements earlier regions left open, so its own contents
+      nest correctly. Ordinary paragraphs BETWEEN two regions are real
+      document nodes and cannot carry that prefix, so on the field guide's
+      specialty chapters a paragraph that print puts inside `.dc-path-shell`
+      renders on the page background. Nesting `gp_plugin_block` wrappers with
+      `marker: ""` around such runs would fix it and serializes to nothing,
+      but it reshapes the token stream the core wrapper pairer indexes into —
+      measure before attempting.
+- [ ] **No interaction gate.** Every editor gate is a parse/serialize
+      measurement; nothing types, clicks or drags. The three defects above
+      were all found by hand, and a UX regression cannot fail a test today.
+      `tools/editor-parity.mjs` already drives the packaged app under
+      Playwright and is the place to put one.
+- [ ] **Margin-box furniture is not painted on editor sheets.** The sheet
+      layer applies the `@page` background and the canvas background, which
+      is what the page's paper looks like; it does not render margin-box
+      CONTENT, so the folio and chapter chips the preview shows at the page
+      foot are absent in the editor.
+
 ### Verification (highest value — this is the debt that caused the 0.10.0 defects)
 - [x] **Owner sign-off on the gallery baseline**: the focused 44-page gallery
       manifest and portable 3.7MB baseline were approved on 2026-08-13 after

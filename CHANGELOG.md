@@ -164,6 +164,32 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The rich surface shows the plugin's cards, not the markdown that makes
+  them.** A transform region the editor cannot open up — a skill card, a
+  learning path, a rules table, anything a plugin's core rule rewrites as a
+  block — had nothing to display but the author's raw source, so a book like
+  the Dimm City field guide painted `| AP | Technique |` and `@skill` as
+  literal text where print shows branded chrome. Measured: 305 such regions,
+  109k characters, most of nine chapters. The editor now keeps the markup the
+  plugin itself produced for each region and renders that, carrying the
+  transform's open elements across region boundaries so a card's contents
+  land inside the card the way they do in print. The region still saves as
+  the author's own lines, unchanged.
+
+- **The editor paints the page.** It read the book's `styles:` list while the
+  build and the preview read the project's resolved configuration, so
+  `engineStyles.native` — the engine layer, which is where a book's page
+  background and margin-box furniture live — reached the PDF and the preview
+  and never the editing surface. A book whose every page is a brick wall was
+  edited on blank white paper.
+
+- **An image can be adjusted from the rich surface.** Position, size,
+  spacing, the `.gp-pin` edges and shape-wrap were reachable only by
+  right-clicking the image in the PREVIEW pane; selecting an image in the
+  editor now offers the same properties dialog, applied to the document.
+  Attributes the vocabulary does not recognize (`.my-note`, `#fig`,
+  `data-x="a b"`) come back byte-for-byte.
+
 - **Rich editing no longer silently deletes what a plugin's core-rule
   transforms built — it round-trips it, or refuses with the rule named.**
   Plugins like the Dimm City book's register core-ruler transforms that
