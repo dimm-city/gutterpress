@@ -54,6 +54,7 @@
     type RichEditorHandle,
   } from "$lib/editor/rich-editor";
   import { slashAction, type ChromeAnchor, type SlashItem } from "$lib/editor/rich-chrome.svelte";
+  import type { ImagePropertiesValue } from "$lib/editor/image-classes";
   import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-commands";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
 
@@ -71,6 +72,8 @@
     onAnchorLine,
     onUnsupported,
     onPluginIssues,
+    onImageProperties,
+    onImageError,
   }: {
     filePath?: string | null;
     content?: string;
@@ -133,6 +136,17 @@
      * render as plain markdown here (content-safe; preview/PDF unaffected).
      */
     onPluginIssues?: (issues: ProjectPluginIssue[]) => void;
+    /**
+     * Open the app's image-properties dialog. Resolves with the author's
+     * value, or null if they cancelled.
+     *
+     * The dialog is a modal and modals belong to the app shell, so this
+     * surface asks for one rather than owning a second copy — the same
+     * `promptImageProperties` the preview's context menu is given.
+     */
+    onImageProperties?: (initial: ImagePropertiesValue) => Promise<ImagePropertiesValue | null>;
+    /** Report a value the image vocabulary refused, for a toast. */
+    onImageError?: (message: string) => void;
   } = $props();
 
   /**
@@ -242,6 +256,24 @@
     if (chrome) chrome = null;
     if (requestedColumns === 2) applyCss(applied?.css ?? "");
     else applyScale();
+  }
+
+  /**
+   * Edit the selected image through the app's one image-properties dialog.
+   *
+   * The dialog itself is the host's (it is a modal, and modals belong to the
+   * app shell), so this hands out the current value and applies whatever
+   * comes back — the same round trip the preview's context menu does, against
+   * the document model instead of the source text.
+   */
+  async function openImageProperties(): Promise<void> {
+    const initial = handle?.getSelectedImage();
+    chrome = null;
+    if (!initial || !onImageProperties) return;
+    const next = await onImageProperties(initial);
+    if (next == null) return;
+    const error = handle?.setSelectedImage(next);
+    if (error) onImageError?.(error);
   }
 
   function runSlash(item: SlashItem): void {
@@ -633,6 +665,7 @@
 <EditorChrome
   anchor={chrome}
   onRunSlash={runSlash}
+  onImageProperties={openImageProperties}
   onFormat={(action) => {
     handle?.runToolbarAction(action);
     chrome = null;

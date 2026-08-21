@@ -48,6 +48,14 @@ import {
 } from "./rich-commands";
 import { lineForPos, posForLine, resetLineTableCache } from "./rich-lines";
 import { isSlashTrigger } from "./rich-chrome.svelte";
+import {
+  applyImageProperties,
+  imageAttrsToTokens,
+  readImageProperties,
+  tokensToImageAttrs,
+  type ImagePropertiesValue,
+} from "./image-classes";
+import type { ExtraAttrs } from "./markdown-doc/attrs";
 import { mountDragHandle } from "./rich-drag-handle";
 import { moveBlockDown, moveBlockUp } from "./rich-move-block";
 
@@ -82,7 +90,7 @@ export interface MountOptions {
 
 /** What the inline chrome should currently show. */
 export interface ChromeState {
-  kind: "slash" | "selection";
+  kind: "slash" | "selection" | "image";
   /** Anchor point, in the frame's viewport. */
   x: number;
   y: number;
@@ -107,6 +115,23 @@ export interface RichEditorHandle {
   runToolbarAction(action: RichToolbarAction, payload?: ToolbarPayloadLike): boolean;
   /** Selected text, for "save selection as snippet". */
   getSelectionText(): string;
+  /**
+   * The selected image's properties, or null when the selection is not one.
+   *
+   * Rich mode could INSERT an image and never adjust one: position, size,
+   * spacing, the `.gp-pin` edges and the shape-wrap toggle were reachable
+   * only by right-clicking the image in the PREVIEW. For a book laid out
+   * around its art that is most of the layout work, done in the wrong pane.
+   */
+  getSelectedImage(): ImagePropertiesValue | null;
+  /**
+   * Apply the dialog's value to the selected image.
+   *
+   * Returns the message to show the author when the value is not applicable,
+   * null on success — the same verdicts the preview's context menu gets,
+   * because both go through `applyImageProperties`.
+   */
+  setSelectedImage(value: ImagePropertiesValue): string | null;
   /** Insert literal text at the caret. */
   insertSnippet(text: string): void;
   /**
@@ -308,6 +333,18 @@ function pluginAtomView(node: PMNode) {
 }
 
 // ---------------------------------------------------------------------------
+// images
+// ---------------------------------------------------------------------------
+
+/** The image the selection is ON, or null. */
+function selectedImage(state: EditorState): PMNode | null {
+  const { selection } = state;
+  return selection instanceof NodeSelection && selection.node.type.name === "image"
+    ? selection.node
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // state + mount
 // ---------------------------------------------------------------------------
 
@@ -357,6 +394,21 @@ function chromePlugin(onChrome: (state: ChromeState | null) => void): Plugin {
           }
         } else {
           open = false;
+        }
+
+        // ── image ─────────────────────────────────────────────────────────
+        // An image is the one thing in the document the author manipulates
+        // instead of typing into, so it gets its own chrome rather than the
+        // formatting bubble (which has nothing to offer it).
+        if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+          const start = v.coordsAtPos(selection.from);
+          const end = v.coordsAtPos(selection.to);
+          onChrome({
+            kind: "image",
+            x: (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2,
+            y: Math.min(start.top, end.top),
+          });
+          return;
         }
 
         // ── selection toolbar ─────────────────────────────────────────────
@@ -579,6 +631,40 @@ export function mountRichEditor(opts: MountOptions): RichEditorHandle {
     },
 
     getSelectionText: () => selectionText(view.state),
+
+    getSelectedImage() {
+      const node = selectedImage(view.state);
+      return node
+        ? readImageProperties(
+            (node.attrs.src as string) ?? "",
+            (node.attrs.alt as string) ?? "",
+            imageAttrsToTokens(node.attrs.attrs as ExtraAttrs | null),
+          )
+        : null;
+    },
+
+    setSelectedImage(value) {
+      const { selection } = view.state;
+      const node = selectedImage(view.state);
+      if (!node) return "Select an image first.";
+      const tokens = imageAttrsToTokens(node.attrs.attrs as ExtraAttrs | null);
+      const applied = applyImageProperties(
+        tokens,
+        readImageProperties((node.attrs.src as string) ?? "", (node.attrs.alt as string) ?? "", tokens),
+        value,
+      );
+      if ("error" in applied) return applied.error;
+      view.dispatch(
+        view.state.tr.setNodeMarkup(selection.from, undefined, {
+          ...node.attrs,
+          src: value.src.trim(),
+          alt: value.alt || null,
+          attrs: tokensToImageAttrs(applied.tokens),
+        }),
+      );
+      view.focus();
+      return null;
+    },
 
     insertSnippet(text: string) {
       view.focus();

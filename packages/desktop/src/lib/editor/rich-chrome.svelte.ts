@@ -29,7 +29,7 @@ import type { RichToolbarAction, ToolbarPayloadLike } from "$lib/editor/rich-com
  * rect and the workspace it must stay inside, producing this.
  */
 export interface ChromeAnchor {
-  kind: "slash" | "selection";
+  kind: "slash" | "selection" | "image";
   x: number;
   y: number;
   query?: string;

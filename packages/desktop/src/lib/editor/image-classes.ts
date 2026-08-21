@@ -28,6 +28,8 @@
  * directly `bun test`-able — same posture as `context-menu-actions.ts`.
  */
 
+import { attrsToBraces, authoredBlockAttrs, type ExtraAttrs } from "./markdown-doc/attrs";
+
 export interface ImageClassOption {
   /** Canonical documented class, e.g. "gp-right". */
   class: string;
@@ -385,4 +387,110 @@ export function setShapeClass(tokens: readonly string[], on: boolean): string[] 
     (token) => token === `.${IMAGE_SHAPE_CLASS}`,
     on ? `.${IMAGE_SHAPE_CLASS}` : null,
   );
+}
+
+// ---------------------------------------------------------------------------
+// the whole dialog, read and applied
+// ---------------------------------------------------------------------------
+
+/**
+ * The dialog's value for an image, from its source pieces.
+ *
+ * Both surfaces that offer image properties — the preview's context menu
+ * (which addresses the markdown token) and the rich editor (which addresses
+ * a ProseMirror node) — need the identical mapping between the author's
+ * attribute tokens and the eight fields the dialog shows. Reading it here
+ * rather than at each call site is what keeps them from drifting into two
+ * slightly different ideas of what `.gp-pin` with no edge means.
+ */
+export function readImageProperties(
+  src: string,
+  alt: string,
+  tokens: readonly string[],
+): ImagePropertiesValue {
+  const position = getPositionClass(tokens);
+  return {
+    src,
+    alt,
+    width: getWidth(tokens),
+    position: position ? (normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? "") : "",
+    pinAlignment: getPinAlignment(tokens) ?? "center",
+    size: getSizeClass(tokens) ?? "",
+    spacing: getSpacingClass(tokens) ?? "",
+    shape: hasShapeClass(tokens),
+    layer: getLayerClass(tokens) ?? "",
+  };
+}
+
+/**
+ * The dialog's value applied back to attribute tokens, or the message to show
+ * the author when it cannot be.
+ *
+ * Facet by facet, and only where the value CHANGED — a facet the author did
+ * not touch keeps its token exactly as written, including a spelling this
+ * vocabulary would canonicalize (`.float-right` stays `.float-right`). Every
+ * rejection is a sentence rather than a silent no-op, because the alternative
+ * measured worse: a dialog that accepts a width AND a preset size and quietly
+ * honours one of them.
+ */
+export function applyImageProperties(
+  tokens: readonly string[],
+  initial: ImagePropertiesValue,
+  next: ImagePropertiesValue,
+): { tokens: readonly string[] } | { error: string } {
+  if (!next.src.trim()) return { error: "Choose an image path or URL." };
+  const inList = (options: readonly { class: string }[], value: string) =>
+    !value || options.some((option) => option.class === value);
+  if (
+    !inList(IMAGE_POSITION_OPTIONS, next.position) ||
+    !IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next.pinAlignment) ||
+    !inList(IMAGE_SIZE_OPTIONS, next.size) ||
+    !inList(IMAGE_SPACING_OPTIONS, next.spacing) ||
+    !inList(IMAGE_LAYER_OPTIONS, next.layer)
+  ) {
+    return { error: "Choose image options from the lists." };
+  }
+  if (next.width.trim() && next.size) {
+    return { error: "Choose either a custom width or a preset size, not both." };
+  }
+  const width = next.width.trim();
+  let out = tokens;
+  if (width !== initial.width) out = setWidth(out, width || null);
+  if (next.position !== initial.position) out = setPositionClass(out, next.position || null);
+  // Pin alignment is meaningless off a pin, and re-applying it when the image
+  // has just BECOME pinned is what puts the edge words back in order.
+  if (
+    next.position === IMAGE_PIN_CLASS &&
+    (initial.position !== IMAGE_PIN_CLASS || next.pinAlignment !== initial.pinAlignment)
+  ) {
+    out = setPinAlignment(out, next.pinAlignment);
+  }
+  if (next.size !== initial.size) out = setSizeClass(out, next.size || null);
+  if (next.spacing !== initial.spacing) out = setSpacingClass(out, next.spacing || null);
+  if (next.shape !== initial.shape) out = setShapeClass(out, next.shape);
+  if (next.layer !== initial.layer) out = setLayerClass(out, next.layer || null);
+  return { tokens: out };
+}
+
+/**
+ * An image node's authored attributes as tokens, and back.
+ *
+ * Two representations, for two jobs, both already written and tested: the
+ * document model keeps an attribute MAP (`markdown-doc/attrs.ts`, which is
+ * what serializes), while this vocabulary edits an ordered TOKEN LIST so an
+ * attribute it does not recognize survives an edit byte-for-byte. Converting
+ * through `attrsToBraces`/`authoredBlockAttrs` — the same pair the serializer
+ * and the parser use — is what stops a third spelling of "what a `{…}` suffix
+ * means" from appearing anywhere.
+ */
+export function imageAttrsToTokens(attrs: ExtraAttrs | null): string[] {
+  const braces = attrsToBraces(attrs);
+  return braces ? tokenizeImageAttrs(braces.slice(1, -1)) : [];
+}
+
+export function tokensToImageAttrs(tokens: readonly string[]): ExtraAttrs | null {
+  const braces = serializeImageAttrs([...tokens]);
+  // `authoredBlockAttrs` reads a trailing brace block off a SOURCE LINE, so
+  // it is given one; the leading `x` is never read back.
+  return braces ? authoredBlockAttrs(`x ${braces}`) : null;
 }

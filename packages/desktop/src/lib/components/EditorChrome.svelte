@@ -30,12 +30,15 @@
     anchor,
     onRunSlash,
     onFormat,
+    onImageProperties,
     onClose,
   }: {
     /** Where and what to show, already translated into app coordinates. */
     anchor: ChromeAnchor | null;
     onRunSlash: (item: SlashItem) => void;
     onFormat: (action: "bold" | "italic" | "strikethrough" | "code" | "link") => void;
+    /** Open the image-properties dialog for the selected image. */
+    onImageProperties: () => void;
     onClose: () => void;
   } = $props();
 
@@ -48,12 +51,15 @@
 
   let items = $derived(anchor?.kind === "slash" ? filterSlashItems(anchor.query ?? "") : []);
 
+  const IMAGE_W = 150;
+
   let placed = $derived.by(() => {
     if (!anchor) return { x: 0, y: 0 };
     const slash = anchor.kind === "slash";
+    const width = slash ? SLASH_W : anchor.kind === "image" ? IMAGE_W : BUBBLE_W;
     return flipClamp(
       { x: anchor.x, y: anchor.y },
-      slash ? SLASH_W : BUBBLE_W,
+      width,
       slash ? SLASH_H : BUBBLE_H,
       anchor.workspace,
       !slash,
@@ -147,6 +153,31 @@
       {/each}
     {/if}
   </div>
+{:else if anchor?.kind === "image"}
+  <!-- A selected image. One button, because everything the author can change
+       about an image lives in the one dialog the preview's context menu
+       already opens — this is a way to REACH it from the surface the author
+       is editing on, not a second set of controls. -->
+  <div
+    class="gp-bubble gp-image"
+    role="toolbar"
+    tabindex="-1"
+    aria-label="Image"
+    style="left: {placed.x}px; top: {placed.y}px;"
+    onkeydown={onToolbarKeydown}
+  >
+    <button
+      type="button"
+      class="gp-image-btn"
+      onmousedown={(e) => {
+        e.preventDefault();
+        onImageProperties();
+      }}
+    >
+      <Icon name="image" size={15} />
+      <span>Image options…</span>
+    </button>
+  </div>
 {:else if anchor?.kind === "selection"}
   <!-- ARIA toolbar pattern: the container is programmatically focusable
        (tabindex="-1", NOT a tab stop) and the roving tabindex lives on the
@@ -177,6 +208,16 @@
 {/if}
 
 <style>
+  .gp-image-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+  }
+
   .gp-slash,
   .gp-bubble {
     position: fixed;

@@ -3411,6 +3411,8 @@
                     editorSync.onEditorAnchorLine(line, origin, editorChapter)}
                   onUnsupported={onRichUnsupported}
                   onPluginIssues={(issues) => (richPluginIssues = issues)}
+                  onImageProperties={promptImageProperties}
+                  onImageError={(message) => toast?.error(message)}
                 />
               {:else}
                 <div class="editor-loading" role="status" aria-live="polite">

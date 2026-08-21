@@ -36,28 +36,9 @@ import {
   type LinkResolution,
 } from "$lib/editor/context-menu-actions";
 import {
-  IMAGE_PIN_ALIGNMENT_OPTIONS,
-  IMAGE_PIN_CLASS,
-  IMAGE_LAYER_OPTIONS,
-  IMAGE_POSITION_OPTIONS,
-  IMAGE_SIZE_OPTIONS,
-  IMAGE_SPACING_OPTIONS,
-  getPinAlignment,
-  getLayerClass,
-  getPositionClass,
-  getSizeClass,
-  getSpacingClass,
-  getWidth,
-  hasShapeClass,
-  normalizeClassInput,
+  applyImageProperties,
+  readImageProperties,
   serializeImageAttrs,
-  setPinAlignment,
-  setLayerClass,
-  setPositionClass,
-  setShapeClass,
-  setSizeClass,
-  setSpacingClass,
-  setWidth,
   tokenizeImageAttrs,
   type ImagePropertiesValue,
 } from "$lib/editor/image-classes";
@@ -430,51 +411,18 @@ export class ContextMenuController {
         run: async () => {
           if (!match) return;
           const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const position = getPositionClass(tokens);
-          const initial: ImagePropertiesValue = {
-            src: match.src,
-            alt: match.alt,
-            width: getWidth(tokens),
-            position: position ? normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? "" : "",
-            pinAlignment: getPinAlignment(tokens) ?? "center",
-            size: getSizeClass(tokens) ?? "",
-            spacing: getSpacingClass(tokens) ?? "",
-            shape: hasShapeClass(tokens),
-            layer: getLayerClass(tokens) ?? "",
-          };
+          const initial = readImageProperties(match.src, match.alt, tokens);
           const next = await this.deps.promptImageProperties(initial);
           if (next == null) return;
-          if (!next.src.trim()) {
-            this.deps.toastError("Choose an image path or URL.");
+          // Read and applied by `image-classes`, so this surface and the rich
+          // editor's image chrome cannot end up with two different ideas of
+          // what the dialog's eight fields mean.
+          const applied = applyImageProperties(tokens, initial, next);
+          if ("error" in applied) {
+            this.deps.toastError(applied.error);
             return;
           }
-          const validPosition = !next.position || IMAGE_POSITION_OPTIONS.some((option) => option.class === next.position);
-          const validAlignment = IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next.pinAlignment);
-          const validSize = !next.size || IMAGE_SIZE_OPTIONS.some((option) => option.class === next.size);
-          const validSpacing = !next.spacing || IMAGE_SPACING_OPTIONS.some((option) => option.class === next.spacing);
-          const validLayer = !next.layer || IMAGE_LAYER_OPTIONS.some((option) => option.class === next.layer);
-          if (!validPosition || !validAlignment || !validSize || !validSpacing || !validLayer) {
-            this.deps.toastError("Choose image options from the lists.");
-            return;
-          }
-          if (next.width.trim() && next.size) {
-            this.deps.toastError("Choose either a custom width or a preset size, not both.");
-            return;
-          }
-          const width = next.width.trim();
-          let updated = tokens;
-          if (width !== initial.width) updated = setWidth(updated, width || null);
-          if (next.position !== initial.position) {
-            updated = setPositionClass(updated, next.position || null);
-          }
-          if (next.position === IMAGE_PIN_CLASS &&
-              (initial.position !== IMAGE_PIN_CLASS || next.pinAlignment !== initial.pinAlignment)) {
-            updated = setPinAlignment(updated, next.pinAlignment);
-          }
-          if (next.size !== initial.size) updated = setSizeClass(updated, next.size || null);
-          if (next.spacing !== initial.spacing) updated = setSpacingClass(updated, next.spacing || null);
-          if (next.shape !== initial.shape) updated = setShapeClass(updated, next.shape);
-          if (next.layer !== initial.layer) updated = setLayerClass(updated, next.layer || null);
+          const updated = applied.tokens;
           const sourceChanges: { src?: string; alt?: string; attrsRaw?: string } = {};
           if (updated !== tokens) sourceChanges.attrsRaw = serializeImageAttrs(updated);
           if (next.src.trim() !== initial.src) sourceChanges.src = next.src.trim();
