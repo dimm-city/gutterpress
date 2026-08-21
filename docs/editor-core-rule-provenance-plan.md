@@ -649,16 +649,81 @@ to the two atoms plus content (re-verified: all three harness runs
 unchanged, 14/14 ×3 on the fixed book), so every rejection fails SOFT to
 atoms — unmatched or crossed tags, unbalanced between-content, and the
 adjacent-pair shape, where two touching marker paragraphs merge into ONE
-differ hunk and stay one verbatim atom. Measured on the real book:
-chapter-00 now holds three `@lede → div.dc-intro` styled blocks (plus the
-authored `colophon-grid` HTML wrapper via the pre-existing path). Multi-tag
-constructs — the skill-card shells, span-paired alerts — remain labeled
-atoms by design; pairing them would need multi-token wrapper synthesis
+differ hunk and stay one verbatim atom. Measured on the real book (after
+the cross-pair barrier below): chapter-00 holds two `@lede → div.dc-intro`
+styled blocks — the credits and introduction pages — plus the authored
+`colophon-grid` HTML wrapper via the pre-existing path; the chapter's FIRST
+`@lede` stays a labeled atom because its true closer merged into the
+`@end-lede`/`@toc` barrier atom (see below). Multi-tag
+constructs — the skill-card shells, span-paired alerts, the `@callout`
+family (its synthesized open is `<div>` + label `<span>` in one token, not a
+lone tag) — remain labeled atoms by design; pairing them would need
+multi-token wrapper synthesis
 support (a possible phase 2.5, owner's call on value). Cosmetic: multi-line
 atom chrome renders whitespace-collapsed; the `white-space: pre-line` polish
 is deferred to the `editor-parity.mjs` visual pass on a machine that can
 render the app — styling a view this container cannot see would be a blind
 change.
+
+**Phase 2 correction — the cross-pair barrier (2026-08-21).** Rendered-view
+screenshots of chapter-00 (the editor's DOM under the book's own built CSS,
+Chrome 148) exposed a pairing defect the byte gates could not see — a paired
+block serializes byte-identically to its atoms, so a WRONG pair is invisible
+to fixpoint and meaning checks. The defect: multi-member regions produced no
+pairing candidate at all, so nearest-unclosed tag matching paired ACROSS
+them — and a multi-member atom is exactly where a swallowed true closer
+lives (adjacent marker paragraphs merge into one hunk: `@end-lede` + `@toc`
+became one atom holding both the lede's `</div>` and the toc's open). On
+chapter-00 the first `@lede`'s opener paired with the TOC's later `</div>`,
+nesting the entire TOC inside the lede's `dc-intro` box in the editing view.
+
+The fix makes every non-candidate region an explicit **barrier** that clears
+the open-pair stack, and additionally fails a pair soft when an AUTHORED
+lone-tag `html_block` sits between the markers (its own `adoptHtmlWrappers`
+pair, formed later, may cross this one's boundary — its nesting is still 0
+during the balance scan). Both halves carry sabotage-verified regression
+tests in `core-provenance.test.ts`: the chapter-00 shape (a clean pair
+before the merged atom must still style; the swallowed-closer opener must
+stay an atom; the toc list must remain a top-level sibling) and the
+authored-tag crossing (the authored wrapper wins, both markers stay atoms).
+
+Audit of what the barrier kills, measured by re-running the block census
+with the barrier disabled: exactly four pre-fix blocks across the book were
+cross-pairs — chapter-00 (`@lede` × toc's close), chapter-02 0
+(`@definition` × the NEXT definition's close, fusing two panels), chapter-04
+(same definition-chain shape), chapter-05 (`@gear` × a later card's close,
+fusing gear cards) — and all four are the unsound kind: each spanned a
+barrier atom holding its true closer. Every sound pair in the corpus
+survived (chapter-00's two, ch01, ch02-6/7/8, ch04's four, ch05's clean
+`@gear` pair). Zero collateral: in this corpus the conservative barrier
+never dropped a correct pairing.
+
+**Proof against the canonical fixed book** (`fix/field-guide-dead-end-callout`,
+identity-verified copy):
+- Roundtrip harness: **14/14 rich · 14/14 fixpoint · 14/14 meaning**, three
+  consecutive runs identical (determinism).
+- Edit-cycle harness (`plugin-book-edit-cycle.manual.ts`, real ProseMirror
+  transactions): mid-paragraph insertion changes **exactly one line** in the
+  saved bytes on 14/14 chapters; the same edit inside a styled wrapper keeps
+  both authored marker lines byte-identical on 7/7 chapters that hold one
+  (was 8 pre-barrier — the eighth "wrapper" was chapter-02 0's unsound
+  cross-pair); edited bytes are their own normal form on every chapter.
+- Strict PDF build of the canonical book: 269 pages, clean.
+- Rendered-view evidence (DOMSerializer + the live app's `rawHtmlView`
+  emulated — the static `toDOM` shows raw HTML as text, the app overlays
+  NodeViews that render it, so the harness sets `innerHTML` on
+  `.gp-generated`/`.gp-raw-html`/`.gp-raw-html-inline` before
+  screenshotting): zero escaped markup rendered as text in ch00/ch01/ch04;
+  chapter-00's 13 TOC anchors are real `<a>` elements and its HTML comment
+  is a real (invisible) comment node; the TOC sits OUTSIDE the `dc-intro`
+  box while credits + introduction render styled.
+- Fixture book (`advanced-book`): 7/9 rich with both refusals the DESIGNED
+  ones (a link-reference definition; the consume-to-nothing chapter naming
+  `field_markers_transform`), 7/7 fixpoint, 7/7 meaning. Design guide:
+  19/19 rich, 19/19 fixpoint, 18/19 meaning — the one drift is
+  `07-markdown-reference.md`'s single `**[x]**` → `[**x**]` mark-order
+  normalization (`<strong><a>` → `<a><strong>`, render-equivalent), proven
+  pre-existing by re-running with the barrier disabled.
 
 **Known follow-ups recorded, deliberately out of scope:** the pre-existing
 block-rule adoption double-write when two sibling map-less tokens share one
@@ -682,6 +747,13 @@ For the field guide the plugin path defaults to
 exports `default` + `metadata` only (no `css` export — the harness's
 `css: mod.css` is deliberately tolerant of `undefined`). The harness verifies
 determinism before measuring; a non-deterministic plugin invalidates the run.
+
+The edit-cycle companion (`plugin-book-edit-cycle.manual.ts`, same CLI shape)
+goes beyond parse/serialize: it applies a real ProseMirror transaction
+(mid-paragraph `insertText`) to every chapter's normal form and requires the
+save to be EXACTLY the edit — one changed line differing only by the
+insertion, wrapper marker lines untouched for the inside-a-styled-block
+variant, and the edited bytes their own normal form.
 
 ## Appendix B — evidence excerpt (chapter-00, one normalize pass)
 
@@ -713,3 +785,5 @@ apostrophe is the §6.1 defect riding along.
 | Go/no-go gate to extend | `docs/fixtures/advanced-book` + `packages/desktop/tests/editor/plugin-roundtrip.test.ts` (exclusion filter :52, throwaway-plugin pattern :169-259, never-leaks scan :109-117) |
 | Corpus gate (hard asserts) | `packages/desktop/tests/editor/markdown-doc-corpus.test.ts` (:125, :147) |
 | Acceptance harness | `packages/desktop/tests/editor/plugin-book-roundtrip.manual.ts` |
+| Edit-cycle harness | `packages/desktop/tests/editor/plugin-book-edit-cycle.manual.ts` |
+| Cross-pair barrier | `parser.ts` — `CoreWrapperCandidate` `"barrier"` kind, `pairCoreWrapperRegions`; regression tests in `core-provenance.test.ts` ("BARRIERS later pairing", "AUTHORED lone-tag") |

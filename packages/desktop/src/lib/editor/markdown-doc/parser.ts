@@ -195,7 +195,16 @@ function raiseOnPoison(tokens: Token[]): Token[] {
  */
 type CoreWrapperCandidate =
   | { at: number; kind: "open"; tag: string; attrs: Record<string, string>; marker: string }
-  | { at: number; kind: "close"; tag: string; marker: string };
+  | { at: number; kind: "close"; tag: string; marker: string }
+  /**
+   * An opaque region — multi-member, or synthesized content that is not one
+   * lone tag. It may CONTAIN the real closer for an earlier opener (adjacent
+   * marker paragraphs merge into one hunk, swallowing e.g. `</div>` +
+   * `<div class="dc-toc">` into a single atom), so nothing may pair across
+   * it: measured on chapter-00, tag-name matching across such an atom nested
+   * the whole TOC inside the lede's `dc-intro` box.
+   */
+  | { at: number; kind: "barrier" };
 
 /**
  * Upgrade matched open/close core-region atoms into ONE `gp_plugin_block`
@@ -217,6 +226,10 @@ type CoreWrapperCandidate =
 function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]): void {
   const stack: Array<Extract<CoreWrapperCandidate, { kind: "open" }>> = [];
   for (const cand of cands) {
+    if (cand.kind === "barrier") {
+      stack.length = 0;
+      continue;
+    }
     if (cand.kind === "open") {
       stack.push(cand);
       continue;
@@ -234,7 +247,20 @@ function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]):
     let depth = 0;
     let balanced = true;
     for (let i = open.at + 1; i < cand.at; i++) {
-      depth += tokens[i]!.nesting;
+      const between = tokens[i]!;
+      // An AUTHORED lone-tag html_block between the markers is an
+      // adoptHtmlWrappers candidate whose own pair may cross this one's
+      // boundary (its nesting is still 0 here — that pass runs later, so the
+      // balance sum below cannot see it). Fail soft rather than build a
+      // block a later pass can splice across.
+      if (
+        between.type === "html_block" &&
+        (loneOpenTag(between.content) !== null || loneCloseTag(between.content) !== null)
+      ) {
+        balanced = false;
+        break;
+      }
+      depth += between.nesting;
       if (depth < 0) { balanced = false; break; }
     }
     if (!balanced || depth !== 0) continue;
@@ -322,6 +348,8 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
       wrapperCands.push({ at: out.length - 1, kind: "open", tag: opened.tag, attrs: opened.attrs, marker });
     } else if (closed) {
       wrapperCands.push({ at: out.length - 1, kind: "close", tag: closed, marker });
+    } else {
+      wrapperCands.push({ at: out.length - 1, kind: "barrier" });
     }
     i = end;
   }

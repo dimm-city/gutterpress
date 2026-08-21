@@ -196,7 +196,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   stylesheet applies inside the editor exactly as it does in print. The
   saved bytes are identical either way, and any shape that cannot pair
   deterministically (crossed tags, adjacent markers, multi-tag card shells,
-  alert blocks) simply keeps the labeled-chip form.
+  alert blocks) simply keeps the labeled-chip form. Pairing also refuses to
+  reach ACROSS an opaque adopted region: two adjacent markers merge into one
+  region that can swallow the first pair's real closer, and matching by tag
+  name across it nested a chapter's whole table of contents inside the
+  intro box above it (view-only — the saved bytes were never wrong). Such
+  regions now act as hard barriers, and a pair with the author's own raw
+  HTML tag between its markers steps aside so the authored wrapper pairs
+  instead; both cases keep the labeled-chip form.
 
 - **Saving from rich mode no longer rewrites the author's punctuation or
   attribute spelling.** The document model is now parsed with typographer

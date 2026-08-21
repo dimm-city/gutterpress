@@ -253,6 +253,106 @@ describe("core-rule regions adopt as verbatim atoms", () => {
     expect(out).toBe(src);
     expect(out.split("@twin").length - 1).toBe(1);
   });
+
+  test("a closer swallowed into a multi-member atom BARRIERS later pairing (the chapter-00 cross-pair)", () => {
+    // ONE core rule owning two marker families — the real dimm-city shape.
+    // `@end-lede` + `@toc` sit adjacent (no survivor between), so the differ
+    // merges the lede's TRUE closer and the toc's opener into one
+    // multi-member hunk → one opaque atom. Measured on chapter-00, tag-name
+    // matching then paired the lede's opener with the TOC's LATER `</div>`,
+    // nesting the whole TOC inside the lede box. Bytes were exact either way
+    // — the regression is view-level — so this pins the TREE shape.
+    const twoFamilyTransform: MdPlugin = (m) => {
+      m.core.ruler.push("t_two", (state) => {
+        const REPLACE: Record<string, string> = {
+          "@lede": '<div class="t-lede">\n',
+          "@end-lede": "</div>\n",
+          "@toc": '<div class="t-toc">\n',
+          "@end-toc": "</div>\n",
+        };
+        const toks = state.tokens;
+        const out: typeof toks = [];
+        for (let i = 0; i < toks.length; i++) {
+          const tok = toks[i]!;
+          if (tok.type === "paragraph_open" && toks[i + 1]?.type === "inline") {
+            const repl = REPLACE[toks[i + 1]!.content.trim()];
+            if (repl !== undefined) {
+              const html = new state.Token("html_block", "", 0);
+              html.content = repl;
+              html.block = true;
+              out.push(html);
+              i += 2;
+              continue;
+            }
+          }
+          out.push(tok);
+        }
+        state.tokens = out;
+        return true;
+      });
+    };
+    const md = mdWith("two", twoFamilyTransform);
+    const src =
+      "@lede\n\nFirst lede body.\n\n@end-lede\n\nInterlude.\n\n" +
+      "@lede\n\nSecond lede body.\n\n@end-lede\n\n@toc\n\n- item one\n- item two\n\n@end-toc\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+
+    const doc = createDocParser(md).parse(src);
+    // The FIRST pair is clean (survivors on both sides keep its hunks
+    // separate) and must still style — the barrier clears only OPEN pairs.
+    expect(doc.childCount).toBe(7);
+    const styled = doc.child(0);
+    expect(styled.type.name).toBe("gp_plugin_block");
+    expect(styled.attrs.marker).toBe("@lede");
+    expect(styled.attrs.closeMarker).toBe("@end-lede");
+    expect(doc.child(1).type.name).toBe("paragraph");
+    // The SECOND lede's closer merged into the barrier atom, so its opener
+    // must stay an atom — and the toc's `</div>` must NOT adopt it. Its body
+    // sits between them as a plain top-level paragraph.
+    expect(doc.child(2).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(2).attrs.marker).toBe("@lede");
+    expect(doc.child(3).type.name).toBe("paragraph");
+    expect(doc.child(4).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(4).attrs.marker).toBe("@end-lede\n\n@toc");
+    // The list is a TOP-LEVEL sibling — inside nothing.
+    expect(doc.child(5).type.name).toBe("bullet_list");
+    expect(doc.child(6).type.name).toBe("gp_plugin_atom");
+    expect(doc.child(6).attrs.marker).toBe("@end-toc");
+
+    expect(serializeDoc(doc)).toBe(src);
+    expect(normalize(md, src)).toBe(src);
+  });
+
+  test("an AUTHORED lone-tag html_block between the markers fails the pair soft", () => {
+    // The author's own `<div>` open sits inside the marker pair and its
+    // `</div>` closes AFTER `@end-lede` — a wrapper whose pairing (done by
+    // the later adoptHtmlWrappers pass, invisible to the balance sum here)
+    // crosses the core pair's boundary. The core pair must decline so the
+    // authored wrapper can pair cleanly; both markers stay atoms.
+    const md = mdWith("lede", ledeTransform);
+    const src =
+      "@lede\n\nBody one.\n\n<div class=\"authored\">\n\n@end-lede\n\nBody two.\n\n</div>\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+
+    const doc = createDocParser(md).parse(src);
+    const blocks: PMNode[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === "gp_plugin_block") blocks.push(node);
+      return true;
+    });
+    // Exactly one styled block — the AUTHORED wrapper, never the core pair.
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.attrs.marker).toBe('<div class="authored">');
+    const atomMarkers: string[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === "gp_plugin_atom") atomMarkers.push(node.attrs.marker as string);
+      return true;
+    });
+    expect(atomMarkers).toEqual(["@lede", "@end-lede"]);
+
+    expect(serializeDoc(doc)).toBe(src);
+    expect(normalize(md, src)).toBe(src);
+  });
 });
 
 describe("poison refuses rich mode", () => {

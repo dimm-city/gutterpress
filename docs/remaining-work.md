@@ -93,8 +93,16 @@ Last updated 2026-08-19.
       (parse-time toggle, exception-safe); §6.2 churn eliminated via
       authored-bullet fidelity. Implementation was adversarially reviewed
       (17 confirmed findings, all fixed with sabotage-verified regressions).
-      Follow-ups recorded in the plan's as-built addendum. Original finding
-      kept below for the record.
+      2026-08-21: phase-2 styled-wrapper pairing corrected with the
+      cross-pair BARRIER (rendered-view screenshots caught tag matching
+      pairing across a merged atom that held the true closer — view-only,
+      bytes were never wrong; audit showed all four killed pre-fix pairs
+      unsound, zero sound pairs lost), and the editor was proven against the
+      canonical fixed book: roundtrip 14/14/14 ×3 runs, ProseMirror
+      edit-cycle exactly-one-line locality 14/14 with wrapper markers
+      byte-stable 7/7, strict 269-page PDF, rendered-view evidence with the
+      live `rawHtmlView` semantics emulated. Follow-ups recorded in the
+      plan's as-built addendum. Original finding kept below for the record.
 - [historical] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
       measured, deterministic, identical on pre-migration `main` and the
       restored branch — pre-existing, not a restore regression).** All 14
