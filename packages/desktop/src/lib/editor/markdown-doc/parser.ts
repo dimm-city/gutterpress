@@ -23,7 +23,7 @@
 import { MarkdownParser, type ParseSpec } from "prosemirror-markdown";
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { gutterpressSchema } from "./schema";
 import { authoredBlockAttrs, extraAttrs } from "./attrs";
 
@@ -837,6 +837,72 @@ function loneCloseTag(html: string): string | null {
  * author's file as the marker, and the expansion pass's copies would drop
  * the stamp on the way.
  */
+/** Tags that never have a closing partner, so they can never open a pair. */
+const VOID_TAG = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
+
+/**
+ * An authored inline HTML pair — `<a href="#ch-1">**Title**</a>` — adopted as
+ * ONE mark, so the element WRAPS its text the way the printed page does.
+ *
+ * Without this the open tag, the text and the close tag are three siblings:
+ * each raw tag is its own atom, and a nodeView setting `innerHTML` on the
+ * first one produces an EMPTY `<a>` with the text beside it. Measured on the
+ * field guide's contents page, that is exactly what happened — thirteen
+ * entries whose `.dc-toc ol>li>a` styling matched an empty element while the
+ * words next to it stayed body text.
+ *
+ * Pairing is nearest-unclosed by tag name, the same discipline the block
+ * wrapper passes use, and every rejection falls back to today's atoms: an
+ * unmatched tag, a void element, a pair with nothing between it (a mark over
+ * no text would vanish, taking the author's tags with it), or a pair that
+ * crosses another. The mark carries the authored strings verbatim and the
+ * serializer writes those, so the bytes are unchanged either way; `tag` and
+ * `attrs` exist only to build the element in the view.
+ */
+function adoptInlineHtmlPairs(tokens: Token[]): Token[] {
+  for (const tok of tokens) {
+    if (tok.type === "inline" && tok.children) pairInlineHtml(tok.children);
+  }
+  return tokens;
+}
+
+function pairInlineHtml(children: Token[]): void {
+  const open: Array<{ tok: Token; tag: string; attrs: Record<string, string>; at: number }> = [];
+  for (let i = 0; i < children.length; i++) {
+    const tok = children[i]!;
+    if (tok.type !== "html_inline") continue;
+    const opened = loneOpenTag(tok.content);
+    if (opened) {
+      if (!VOID_TAG.test(opened.tag)) open.push({ tok, tag: opened.tag, attrs: opened.attrs, at: i });
+      continue;
+    }
+    const closed = loneCloseTag(tok.content);
+    if (!closed) continue;
+    let pos = -1;
+    for (let k = open.length - 1; k >= 0; k--) {
+      if (open[k]!.tag === closed) { pos = k; break; }
+    }
+    if (pos === -1) continue;
+    const match = open[pos]!;
+    // Anything opened inside the match and never closed stays an atom.
+    open.length = pos;
+    if (i - match.at <= 1) continue; // nothing between — a mark would vanish
+    match.tok.type = "raw_html_open";
+    match.tok.nesting = 1;
+    match.tok.meta = {
+      ...(match.tok.meta as Record<string, unknown> | null),
+      gpRawHtml: {
+        tag: match.tag,
+        attrs: Object.keys(match.attrs).length > 0 ? match.attrs : null,
+        open: match.tok.content,
+        close: tok.content,
+      },
+    };
+    tok.type = "raw_html_close";
+    tok.nesting = -1;
+  }
+}
+
 function adoptHtmlWrappers(tokens: Token[]): Token[] {
   // markdown-it consumes CONSECUTIVE tag lines into one html_block, and books
   // open a component with several at once:
@@ -1076,6 +1142,12 @@ export function createDocParser(md: MarkdownIt) {
     // ── raw HTML, carried verbatim ───────────────────────────────────────
     html_block: { node: "html_block", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },
     html_inline: { node: "html_inline", noCloseToken: true, getAttrs: (tok) => ({ html: tok.content }) },
+    // A PAIRED authored tag: one mark around the text it wraps (see
+    // `adoptInlineHtmlPairs`), not two atoms beside it.
+    raw_html: {
+      mark: "raw_html",
+      getAttrs: (tok) => (tok.meta as { gpRawHtml?: Record<string, unknown> }).gpRawHtml ?? {},
+    },
 
     // ── project-plugin markers, adopted generically ──────────────────────
     // Rewritten onto these types by `adoptPluginTokens` below — only when the
@@ -1112,14 +1184,35 @@ export function createDocParser(md: MarkdownIt) {
     parse: (src: string, env: Record<string, unknown>) => {
       const tokens = md.parse(src, env);
       raiseOnOrphanPoison(env, src, tokens);
-      return adoptPluginTokens(
-        adoptHtmlWrappers(adoptCoreRegions(raiseOnPoison(tokens), lines)),
-        lines,
-        handled,
+      return adoptInlineHtmlPairs(
+        adoptPluginTokens(
+          adoptHtmlWrappers(adoptCoreRegions(raiseOnPoison(tokens), lines)),
+          lines,
+          handled,
+        ),
       );
     },
   };
   const parser = new MarkdownParser(gutterpressSchema, tokenizer as unknown as MarkdownIt, specs);
+
+  // `prosemirror-markdown` closes a mark by TYPE — `markType.removeFromSet`
+  // drops EVERY mark of that type. That is right for markdown's own marks
+  // (emphasis cannot nest inside emphasis) and wrong for authored HTML, which
+  // nests all the time: `<span><em>x</em> and y</span>` lost the span the
+  // moment `</em>` closed, and " and y" came back outside it. Closing the
+  // INNERMOST one is the whole fix, and there is no way to say that in the
+  // token spec, so this one handler is replaced on our own parser instance.
+  // Same-type marks keep insertion order in the set, so the last is innermost.
+  (parser as unknown as { tokenHandlers: Record<string, (state: unknown) => void> }).tokenHandlers
+    .raw_html_close = (state: unknown) => {
+    const top = (state as { top(): { marks: readonly Mark[] } }).top();
+    for (let i = top.marks.length - 1; i >= 0; i--) {
+      if (top.marks[i]!.type.name === "raw_html") {
+        top.marks = [...top.marks.slice(0, i), ...top.marks.slice(i + 1)];
+        return;
+      }
+    }
+  };
 
   return {
     /**

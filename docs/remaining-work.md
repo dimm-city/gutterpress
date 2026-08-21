@@ -110,11 +110,21 @@ Last updated 2026-08-19.
       and component boxes whose label the plugin generates. Chapter-00 is at
       zero style divergences of those classes; chapter-04's remaining 89 are
       ALL one cause. Three gaps stay, measured and recorded in the plan:
-      tight-list `<p>` (book CSS using child combinators through a list item
-      cannot match — fixing it means an inline-content list item and would
-      break Enter in lists), typographic punctuation (the editor parses with
-      typographer off so saves keep the author's quotes), and pagination
-      (documented: check layout against the preview). Original finding kept
+      tight-list `<p>`, typographic punctuation and pagination. 2026-08-21
+      (third pass): the first is FIXED — the tight-list paragraph is out of
+      the cascade (`all: unset` in `paginationCss`) and rules reaching through
+      it get a specificity-neutral copy (`withTightListVariants`) — as is a
+      fourth cause the fix exposed: authored inline HTML pairs now wrap their
+      text as one `raw_html` mark instead of rendering an empty element beside
+      it. Chapters 00 and 04 of the field guide are at ZERO style divergences
+      against the preview. The parity tool was itself corrected (repeated text
+      paired by occurrence; gaps compared only within a column), which
+      accounted for a third of what it had been reporting. What remains is two
+      deliberate differences: typographic punctuation (the editor parses with
+      typographer off so saves keep the author's quotes — closing it means
+      normalizing 786 characters of book source, print-identical, an owner
+      call) and pagination (37 vs 33 pages on chapter 4 — the documented
+      boundary: check layout against the preview). Original finding kept
       below for the record.
 - [historical] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
       measured, deterministic, identical on pre-migration `main` and the

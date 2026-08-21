@@ -27,7 +27,7 @@
  * from the library rather than from a list we have to remember to maintain.
  */
 import { schema as base } from "prosemirror-markdown";
-import { Schema, type DOMOutputSpec, type NodeSpec } from "prosemirror-model";
+import { Schema, type DOMOutputSpec, type MarkSpec, type NodeSpec } from "prosemirror-model";
 import type { ExtraAttrs } from "./attrs";
 
 /**
@@ -301,7 +301,37 @@ const withBullet = (spec: NodeSpec): NodeSpec => ({
  * character is bold, which no renderer can show. `roundtrip.test.ts` holds
  * that matrix so a future reorder has to face the same evidence.
  */
-const markOrder = base.spec.marks.remove("link").addToStart("link", {
+/**
+ * An authored inline HTML pair, carried as a mark so the element wraps its
+ * text (`adoptInlineHtmlPairs` in parser.ts explains why it must).
+ *
+ * OUTERMOST of all marks — ahead of `link` — because that is where the author
+ * wrote it: `<a href="#x">**Title**</a>` serializes with the tag outside the
+ * emphasis, exactly as typed. `open`/`close` are the authored strings and are
+ * all the serializer writes; `tag`/`attrs` build the element for the view and
+ * never reach the file.
+ */
+const rawHtmlMark: MarkSpec = {
+  attrs: { tag: { default: "span" }, attrs: { default: null }, open: { default: "" }, close: { default: "" } },
+  // Not `inclusive`: typing at the edge of an authored tag pair should write
+  // ordinary text, not silently extend markup the author wrote by hand.
+  inclusive: false,
+  // A mark normally excludes its own type, which would make `<span><b>x</b>`
+  // keep only the inner tag — authored HTML nests, so this type must be able
+  // to stack with itself. The set keeps insertion order, so the tags render
+  // and serialize in the order they were written.
+  excludes: "",
+  toDOM: (mark) => [
+    (mark.attrs.tag as string) || "span",
+    { ...((mark.attrs.attrs as Record<string, string> | null) ?? {}) },
+    0,
+  ],
+};
+
+const markOrder = base.spec.marks
+  .addToStart("raw_html", rawHtmlMark)
+  .remove("link")
+  .addToStart("link", {
   ...base.spec.marks.get("link")!,
   // `[docs](url){target="_blank"}` — the same `markdown-it-attrs` braces the
   // heading and image nodes carry, on the one INLINE construct that takes

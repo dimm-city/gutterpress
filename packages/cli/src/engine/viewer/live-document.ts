@@ -217,7 +217,7 @@ export function nextEditorSheet(
     css,
     columns,
     spreadPx,
-    text: `${css}\n\n${editorStylesheet(css, { columns })}`,
+    text: `${withTightListVariants(css)}\n\n${editorStylesheet(css, { columns })}`,
     grid: editorSheetGrid(css, { columns }),
   };
 }
@@ -246,6 +246,166 @@ export function editorSheetGrid(css: string, opts: PaginateOptions = {}): Editor
 }
 
 const px = (pt: number) => `${Math.round(pt * PX_PER_PT * 1000) / 1000}px`;
+
+/**
+ * The one place the editing DOM cannot match the printed one, compensated in
+ * the editor's copy of the book's CSS.
+ *
+ * markdown-it prints a TIGHT list item's text straight inside the `li`;
+ * ProseMirror's `list_item` always holds a paragraph, so the editor's DOM has
+ * one element the page does not. `paginationCss` takes that paragraph out of
+ * the cascade, which handles every rule that would land ON it — but not the
+ * rules that reach THROUGH it. `.dc-toc ol>li>a` selects the item's link in
+ * print and selects nothing in the editor, so the field guide's contents page
+ * lost its 20px bold links: measured, every style divergence left on that
+ * chapter was this one selector shape.
+ *
+ * The fix is a COPY of each such rule, with the paragraph named in the place
+ * the DOM actually has it, inserted immediately after the original so the
+ * cascade order the author wrote is preserved exactly. `:where()` carries no
+ * specificity, so the copy weighs the same as the rule it came from, and the
+ * copy only ever matches inside a tight list — a loose list has the paragraph
+ * in print too, and there the author's own selector is already right.
+ *
+ * The author's CSS itself is never rewritten: rules are copied, never
+ * modified, and anything this cannot read with certainty (a selector carrying
+ * parentheses or brackets, an at-rule that is not a plain grouping one) is
+ * passed through untouched. A book stylesheet that yields no copies comes back
+ * byte-identical.
+ */
+export function withTightListVariants(css: string): string {
+  return mapStyleRules(css, (prelude, block, raw) => {
+    const variant = tightListVariantSelector(prelude);
+    return variant === null ? raw : `${raw}\n${variant} {${block}}`;
+  });
+}
+
+/** The paragraph the editor inserts, named as a zero-specificity condition. */
+const TIGHT_P = ":where([data-tight] > li > p)";
+
+/**
+ * `.dc-toc ol>li>a` → `.dc-toc ol>li > :where([data-tight] > li > p) >a`, or
+ * null when the selector list holds nothing that reaches through a list item.
+ *
+ * Only the selectors that need the copy are returned: the others are already
+ * carried by the rule this copy follows.
+ */
+export function tightListVariantSelector(prelude: string): string | null {
+  const out: string[] = [];
+  for (const selector of splitSelectorList(prelude)) {
+    // A functional pseudo (`:not(li > a)`) or an attribute value can contain
+    // the very characters this rewrite reads. Rather than parse them, skip —
+    // the original rule still applies wherever the DOM already agrees.
+    if (/[([]/.test(selector)) continue;
+    const variant = selector.replace(
+      /(^|[\s>+~])li((?:[.:#][^\s>+~]*)*)\s*>/g,
+      `$1li$2 > ${TIGHT_P} >`,
+    );
+    if (variant !== selector) out.push(variant.trim());
+  }
+  return out.length > 0 ? out.join(", ") : null;
+}
+
+/** Selectors of a comma-separated list, split outside parens and brackets. */
+function splitSelectorList(prelude: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < prelude.length; i++) {
+    const c = prelude[i]!;
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === "," && depth === 0) {
+      out.push(prelude.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(prelude.slice(start));
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+
+/** At-rules whose body is more rules, so the copies belong INSIDE them. */
+const GROUPING_AT_RULE = /^@(media|supports|layer|container|scope)\b/i;
+
+/**
+ * Walk a stylesheet's style rules, rebuilding it from what `visit` returns.
+ *
+ * A deliberately small reader: it tracks comments, strings and brace depth,
+ * hands every plain style rule to `visit`, recurses into grouping at-rules so
+ * a copy lands beside its original rather than after the whole block, and
+ * copies everything else through verbatim.
+ */
+function mapStyleRules(
+  css: string,
+  visit: (prelude: string, block: string, raw: string) => string,
+): string {
+  let out = "";
+  let i = 0;
+  let preludeStart = 0;
+  while (i < css.length) {
+    const c = css[i]!;
+    if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      i = end === -1 ? css.length : end + 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      i = endOfString(css, i);
+      continue;
+    }
+    if (c === ";" || c === "}") {
+      out += css.slice(preludeStart, i + 1);
+      preludeStart = i + 1;
+      i++;
+      continue;
+    }
+    if (c !== "{") {
+      i++;
+      continue;
+    }
+    const blockStart = i + 1;
+    const blockEnd = endOfBlock(css, i);
+    if (blockEnd === -1) break; // unbalanced — copy the rest untouched
+    const prelude = css.slice(preludeStart, i);
+    const block = css.slice(blockStart, blockEnd);
+    const raw = css.slice(preludeStart, blockEnd + 1);
+    if (prelude.trimStart().startsWith("@")) {
+      out += GROUPING_AT_RULE.test(prelude.trimStart())
+        ? `${prelude}{${mapStyleRules(block, visit)}}`
+        : raw;
+    } else {
+      out += visit(prelude, block, raw);
+    }
+    i = blockEnd + 1;
+    preludeStart = i;
+  }
+  return out + css.slice(preludeStart);
+}
+
+/** Index just past the string starting at `i`. */
+function endOfString(css: string, i: number): number {
+  const quote = css[i];
+  for (let j = i + 1; j < css.length; j++) {
+    if (css[j] === "\\") j++;
+    else if (css[j] === quote) return j + 1;
+  }
+  return css.length;
+}
+
+/** Index of the `}` closing the block whose `{` is at `i`, or -1. */
+function endOfBlock(css: string, i: number): number {
+  let depth = 0;
+  for (let j = i; j < css.length; j++) {
+    const c = css[j]!;
+    if (c === "/" && css[j + 1] === "*") {
+      const end = css.indexOf("*/", j + 2);
+      j = end === -1 ? css.length : end + 1;
+    } else if (c === '"' || c === "'") j = endOfString(css, j) - 1;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return j;
+  }
+  return -1;
+}
 
 /**
  * The whole editor stylesheet, from the book's own CSS text.
@@ -342,11 +502,23 @@ export function paginationCss(geometry: PageGeometry, opts: PaginateOptions = {}
 
 /* A TIGHT list prints its item text directly inside the li; the editing
    surface always wraps item content in a paragraph (ProseMirror's list_item
-   schema), so the book's own paragraph margins spaced tight lists out — the
-   editor showed looser bullets than the page it was showing. The list
-   publishes its tightness (schema.ts, tightAware) and this closes the gap.
-   Zero specificity, so an author rule about their own lists still wins. */
-:where([data-tight] > li) > p { margin-block: 0; }
+   schema), so that paragraph is an element the printed book DOES NOT HAVE.
+   Everything the book says about paragraphs therefore lands on it wrongly —
+   measured against the real app, a global p { color: … } overrode the light
+   text an alert box gives its list items, and the book's own paragraph
+   margins spaced tight bullets out.
+
+   So the element steps out of the cascade entirely: unset makes every
+   inherited property inherit (from the li — which is where the text sits in
+   print) and every other property initial, which is precisely "as if this
+   element were not here". !important because the point is that NO book rule
+   applies, and a book rule can always out-specify a selector; this is not the
+   editor styling the author's book, it is the editor deleting itself from
+   the author's cascade. display is restored to block so the item keeps a
+   line box of its own — an inline box would collapse an empty bullet to
+   nothing to click on. Reaching THROUGH this paragraph (li > a) is the
+   other half of the same artifact, handled by withTightListVariants. */
+:where([data-tight] > li) > p { all: unset !important; display: block !important; }
 
 /* The scale wrapper (see RichEditor.svelte): hosts the sheet layer and the
    fit-width transform. flow-root so the flow's own margins stay INSIDE it —

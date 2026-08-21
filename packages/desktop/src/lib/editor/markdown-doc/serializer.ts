@@ -294,6 +294,17 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
       mixable: true,
       expelEnclosingWhitespace: true,
     },
+    /**
+     * An authored inline HTML pair: the author's own bytes, both ends.
+     *
+     * Neither `mixable` nor `expelEnclosingWhitespace` — a raw tag is not a
+     * markdown delimiter, so it may not be reordered against other marks or
+     * slid past a space. Whatever the author typed is what comes back.
+     */
+    raw_html: {
+      open: (_state, mark) => mark.attrs.open as string,
+      close: (_state, mark) => mark.attrs.close as string,
+    },
   },
 );
 

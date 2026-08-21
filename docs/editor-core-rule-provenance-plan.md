@@ -773,25 +773,75 @@ unmoved: roundtrip 14/14/14, edit-cycle locality 14/14 with wrapper-interior
 edits now covering 12/12 chapters (was 7/7 — more chapters have styled
 wrappers to edit inside), design guide 19/19/18, fixture book 7/9 by design.
 
-**The three parity gaps that remain, with their causes** (measured, not
-guessed — these are what the tool still reports on the field guide):
+**The parity pass, round two (2026-08-21).** Two of the three gaps above are
+now closed, and the tool that found them was wrong about a third of what it
+reported. Measured on the canonical field guide, chapters 00 and 04 are at
+**ZERO style divergences** — every run of text in the editor is painted at the
+size, weight, colour, family and alignment the preview paints it.
 
-- **Tight-list `<p>`** — every style divergence left on both chapters (52 on
-  chapter-00 before phase 2.5, 89 on chapter-04). markdown-it renders a
-  tight list item's text with no `<p>`; the editing model always holds a
-  paragraph inside `list_item`, so book CSS that reaches through an item
-  with a CHILD combinator (`.dc-toc ol>li>a`) does not match in the editor.
-  Fixing it means an inline-content list item — a schema change that breaks
-  `splitListItem` and the Enter behaviour authors expect — so it is recorded
-  here rather than attempted. Descendant selectors are unaffected.
-- **Typographic punctuation** — 28 of the 29 text differences on chapter-04.
-  The document model is parsed with typographer OFF so a save cannot rewrite
-  the author's quotes and dashes (§6.1); print applies it. Closing this
-  would need display-only decorations over untouched bytes.
-- **Pagination** — 314 run-to-page differences on chapter-04 (37 preview
-  pages vs 33 editor). The documented editor limitation: it lays each page
-  out once, the preview corrects itself against print. The CHANGELOG already
-  tells authors to check layout against the preview.
+1. **The tight-list paragraph is out of the cascade.** ProseMirror's
+   `list_item` always holds a paragraph; a tight list has none in print. So
+   the book's paragraph rules were landing on an element the page does not
+   have — a global `p { color: … }` overrode the light text an alert gives its
+   list items. `paginationCss` now says
+   `:where([data-tight] > li) > p { all: unset !important; display: block }`:
+   inherited properties come from the `li` (where the text sits in print),
+   everything else is initial. `!important` because the point is that NO book
+   rule applies — this is the editor deleting itself from the author's
+   cascade, not styling their book.
+2. **Rules that reach THROUGH that paragraph get a copy.** `.dc-toc ol>li>a`
+   selects in print and selected nothing in the editor.
+   `withTightListVariants` copies each such rule with the paragraph named
+   where the DOM actually has it (`li > :where([data-tight] > li > p) > a`),
+   inserted immediately after the original so cascade order still decides
+   ties, at identical specificity because `:where()` weighs nothing. The
+   author's CSS is copied, never rewritten; anything uncertain (parentheses,
+   brackets, non-grouping at-rules) is passed through, and a stylesheet with
+   nothing to copy comes back byte-identical.
+3. **Authored inline HTML pairs wrap their text.** `<a href="#ch-1">Title</a>`
+   was three siblings — open atom, text, close atom — so the anchor rendered
+   EMPTY and the words beside it stayed body text, which is why the contents
+   page lost its 20px bold links. A paired tag is now one `raw_html` mark
+   carrying the authored strings verbatim; `tag`/`attrs` build the element for
+   the view and never reach the file. Unmatched tags, void elements, empty
+   pairs and crossed pairs all keep today's atoms. Two mechanics were needed:
+   the mark does not exclude its own type (authored HTML nests), and
+   `prosemirror-markdown` closes marks by TYPE — which drops every mark of
+   that type — so the `raw_html_close` handler is replaced on our own parser
+   instance to close the innermost one.
+
+**The measurement tool was also wrong**, and that mattered more than one of
+the fixes: it paired repeated text to the FIRST occurrence, so a chapter that
+says "Equipment:" once as a heading and once as a label reported four
+divergences that did not exist, and it compared vertical gaps across column
+boundaries, where the number is a column height rather than a gap. Both are
+fixed (nth-occurrence pairing; gaps only within one column), and
+`--dump-runs` now writes every measured run for questions the summary cannot
+answer. Chapter 04 went from 89 reported style divergences to 0 — two thirds
+real and fixed, one third the tool's own error.
+
+**What still differs, and why it is not a bug to fix here:**
+
+- **Typographic punctuation.** The editor's document model is parsed with
+  typographer OFF so a save cannot rewrite the author's quotes and dashes
+  (§6.1); print applies it. So a file holding `don't` shows `don't` in the
+  editor and `don’t` on the page. Every route to closing this is a product
+  decision, not an implementation detail: reversing it on save would rewrite
+  the 508 curly apostrophes the field guide already contains, and a
+  display-only substitution is not expressible in ProseMirror without hiding
+  real text under widgets. The clean option, if the owner wants it, is to
+  normalize the SOURCE once through the existing "Tidy this book's markdown?"
+  flow — 786 characters across the field guide, print-identical either way,
+  after which the two surfaces agree byte for byte.
+- **Pagination.** 37 preview pages against 33 editor pages for chapter 4,
+  unchanged by any of this work. That is the documented design boundary: the
+  editor lays each page out once, where the preview goes back over its own
+  work and corrects it against print. Closing it means running the real
+  fragmenter on every keystroke, which is the one thing the live editor exists
+  not to do. Check a layout against the preview.
+- **Residual spacing.** Nine gap divergences on chapter 4 and two on chapter
+  00 survive the column filter, mostly ±24px (one line). They sit at
+  fragmentation boundaries, which is the same phenomenon as the page count.
 
 **Known follow-ups recorded, deliberately out of scope:** the pre-existing
 block-rule adoption double-write when two sibling map-less tokens share one
@@ -856,4 +906,6 @@ apostrophe is the §6.1 defect riding along.
 | Edit-cycle harness | `packages/desktop/tests/editor/plugin-book-edit-cycle.manual.ts` |
 | Cross-pair barrier / boundary | `parser.ts` — `CoreWrapperCandidate` (`"barrier"`, `"boundary"`), `wrapperOps`, `pairCoreWrapperRegions`; tests in `core-provenance.test.ts` |
 | Authored braces in the view | `schema.ts` — `renderAuthoredAttrs`, `withFenceLanguage`; `tests/editor/view-attrs.test.ts` |
+| Tight-list compensation | `packages/cli/src/engine/viewer/live-document.ts` — the `all: unset` rule in `paginationCss`, `withTightListVariants`; `src/engine/viewer/tight-list-variants.test.ts` |
+| Inline HTML pairs | `parser.ts` — `adoptInlineHtmlPairs`, the `raw_html_close` handler override; `schema.ts` — `rawHtmlMark`; `tests/editor/inline-html-pairs.test.ts` |
 | Real-app parity tool | `packages/desktop/tools/editor-parity.mjs` (`npm run parity -- --book … --file …`), run under `xvfb-run` |

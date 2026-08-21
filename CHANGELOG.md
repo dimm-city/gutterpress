@@ -214,6 +214,23 @@ This project follows [Semantic Versioning](https://semver.org/).
     exactly as you typed them, undivided: the editor never guesses which of
     two adjacent markers produced which box.
 
+- **Tight bullet lists look like the printed page.** A tight list prints its
+  text straight inside the bullet; the editor has to keep a paragraph there,
+  and that paragraph was collecting every rule your book writes for
+  paragraphs — a global text colour overriding the light text inside a dark
+  callout, your paragraph spacing pushing bullets apart. That paragraph is now
+  out of the cascade entirely, so bullet text takes its styling from the
+  bullet, exactly as it does in print. Rules you write against a bullet's
+  direct children (`.dc-toc ol>li>a`) reach the editor too — they were
+  selecting nothing there, which is why a styled contents page came back as
+  plain body text. Your stylesheet is untouched: the editor works from a copy.
+
+- **Raw HTML you wrote around your text now WRAPS your text.** An authored
+  `<a href="#chapter-1">Title</a>` used to show as an empty link with the
+  words sitting beside it, so anything you styled on that element styled a
+  ghost. The pair is now one piece of markup around its text — nested tags
+  included — and the file still gets back the exact bytes you typed.
+
 - **Your `{.class}` and `{#id}` now style the editor, not just the file.**
   Braces you attach to a heading, paragraph, image or rule reached the saved
   markdown but never the editing view, so a branded heading showed as plain

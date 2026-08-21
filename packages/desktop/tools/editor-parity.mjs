@@ -25,6 +25,8 @@
  *   --width <px>     window width, default 1500
  *   --keep-parent    stage the book's PARENT directory too, for a project
  *                    whose plugins or styles live in a sibling folder
+ *   --dump-runs      also write runs.json — every measured run from both
+ *                    sides, for questions the summary cannot answer
  *
  * On a headless machine, run it under a virtual display:
  *   xvfb-run -a npm run parity -- --book …
@@ -352,9 +354,27 @@ try {
   const pText = preview.map((r) => r.text);
   const eText = editor.map((r) => r.text);
   const sameSequence = pText.length === eText.length && pText.every((t, i) => t === eText[i]);
+  // When the two sides do not produce the same run sequence, runs are matched
+  // by text — but BY OCCURRENCE, not by first hit. A chapter says "Equipment:"
+  // once as a heading and once as a bold label, and matching both to the first
+  // one reported four style divergences that did not exist. Nth occurrence to
+  // Nth occurrence keeps repeated text honest.
+  const previewByText = new Map();
+  for (const p of preview) {
+    const list = previewByText.get(p.text) ?? [];
+    list.push(p);
+    previewByText.set(p.text, list);
+  }
+  const takenSoFar = new Map();
   const pairs = sameSequence
     ? preview.map((p, i) => [p, editor[i]])
-    : editor.map((e) => [preview.find((p) => p.text === e.text), e]).filter(([p]) => p);
+    : editor
+        .map((e) => {
+          const n = takenSoFar.get(e.text) ?? 0;
+          takenSoFar.set(e.text, n + 1);
+          return [previewByText.get(e.text)?.[n], e];
+        })
+        .filter(([p]) => p);
 
   const missing = pText.filter((t) => !eText.includes(t));
   const extra = eText.filter((t) => !pText.includes(t));
@@ -379,6 +399,14 @@ try {
     const [pa, ea] = pairs[i - 1];
     const [pb, eb] = pairs[i];
     if (pa.page !== pb.page || ea.page !== eb.page) continue;
+    // …and in the same COLUMN. A chapter of `.gp-columns-2` sections lays its
+    // text out in nested columns, where "distance down the page" says nothing
+    // about the space between two blocks: the pair straddles a column break
+    // and the number is the height of the column, not a gap. Consecutive
+    // blocks in one column share a left edge, so a moved edge means a moved
+    // column — measured on chapter 4, this is the difference between 40
+    // reported gap divergences and the handful that are about spacing.
+    if (Math.abs(pa.dx - pb.dx) > 8 || Math.abs(ea.dx - eb.dx) > 8) continue;
     const pg = pb.dy - pa.dy;
     const eg = eb.dy - ea.dy;
     if (Math.abs(pg - eg) > 2) gapDiffs.push({ after: pa.text, before: pb.text, preview: pg, editor: eg, delta: eg - pg });
@@ -406,6 +434,12 @@ try {
   });
 
   writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
+  // Every measured run from both sides, for questions the summary cannot
+  // answer ("is this paragraph one line taller, or is its margin bigger?").
+  if (flag("dump-runs")) {
+    writeFileSync(join(OUT, "runs.json"), JSON.stringify({ preview, editor }, null, 1));
+    log(`runs        ${join(OUT, "runs.json")}`);
+  }
 
   log(`book        ${BOOK}`);
   log(`chapter     ${FILE}${chapterId ? ` (#${chapterId})` : " (no id — preview not scoped)"}`);
