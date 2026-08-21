@@ -193,16 +193,57 @@ function raiseOnPoison(tokens: Token[]): Token[] {
  * afterwards by {@link pairCoreWrapperRegions}. `at` indexes the OUTPUT
  * array (later conversions only append, so earlier indices stay valid).
  */
+/** One wrapper half a transform's synthesized output amounts to. */
+type WrapperOp =
+  | { kind: "open"; tag: string; attrs: Record<string, string> }
+  | { kind: "close"; tag: string };
+
+/** A region's wrapper halves, plus any generated markup that sits INSIDE the
+ *  last wrapper it opens (shown in the view, never written back). */
+type WrapperOps = { ops: WrapperOp[]; generated: string | null };
+
 type CoreWrapperCandidate =
-  | { at: number; kind: "open"; tag: string; attrs: Record<string, string>; marker: string }
+  | {
+      at: number;
+      kind: "open";
+      tag: string;
+      attrs: Record<string, string>;
+      marker: string;
+      generated: string | null;
+    }
   | { at: number; kind: "close"; tag: string; marker: string }
   /**
-   * An opaque region — multi-member, or synthesized content that is not one
-   * lone tag. It may CONTAIN the real closer for an earlier opener (adjacent
-   * marker paragraphs merge into one hunk, swallowing e.g. `</div>` +
-   * `<div class="dc-toc">` into a single atom), so nothing may pair across
-   * it: measured on chapter-00, tag-name matching across such an atom nested
-   * the whole TOC inside the lede's `dc-intro` box.
+   * A region whose synthesized output is NOTHING BUT lone tags, closing some
+   * wrappers and opening others at one point in the document (phase 2.5).
+   *
+   * This is what adjacent marker paragraphs produce: `@end-lede` + `@toc` are
+   * one differ hunk, and the transform's output for it is `</div>` followed by
+   * `<div class="dc-toc">`. The region can therefore close the lede and open
+   * the TOC — and it must, or every chained component in the book (the field
+   * guide's TOC, its `@definition` runs, its `@gear` cards: 51 regions against
+   * 40 that pair as single tags) renders unstyled in the editor while print
+   * shows the box.
+   *
+   * What it must NOT do is guess WHICH authored line produced which tag —
+   * that attribution does not exist in the record, and getting it wrong would
+   * write the author's markers back in the wrong order. So the region's lines
+   * stay ONE undivided string, written by the first wrapper the boundary
+   * emits; the rest write nothing. The bytes are identical to the atom form
+   * either way; only the nesting changes.
+   */
+  | {
+      at: number;
+      kind: "boundary";
+      ops: WrapperOp[];
+      marker: string;
+      generated: string | null;
+    }
+  /**
+   * An opaque region — one holding survivors, or synthesized content that is
+   * not purely lone tags. It may CONTAIN the real closer for an earlier
+   * opener, so nothing may pair across it: measured on chapter-00, tag-name
+   * matching across such an atom nested the whole TOC inside the lede's
+   * `dc-intro` box.
    */
   | { at: number; kind: "barrier" };
 
@@ -223,30 +264,37 @@ type CoreWrapperCandidate =
  * unbalanced (the pair would not sit at one level of the tree) simply stays
  * two atoms.
  */
-function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]): void {
-  const stack: Array<Extract<CoreWrapperCandidate, { kind: "open" }>> = [];
-  for (const cand of cands) {
-    if (cand.kind === "barrier") {
-      stack.length = 0;
-      continue;
-    }
-    if (cand.kind === "open") {
-      stack.push(cand);
-      continue;
-    }
-    let pos = -1;
-    for (let i = stack.length - 1; i >= 0; i--) {
-      if (stack[i]!.tag === cand.tag) { pos = i; break; }
-    }
-    if (pos === -1) continue;
-    const open = stack[pos]!;
-    // Anything opened inside the match and never closed stays an atom.
-    stack.length = pos;
+function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]): Token[] {
+  /** An open wrapper waiting for its close, and where its token sits. */
+  type Pending = { at: number; tag: string; attrs: Record<string, string>; marker: string; emit: Emission };
+  /** One wrapper half a candidate will actually emit, once matching is known. */
+  type Emission = { cand: CoreWrapperCandidate; index: number; role: "open" | "close"; open?: Pending };
 
-    if (cand.at - open.at <= 1) continue; // empty pair — block+ needs content
+  const stack: Pending[] = [];
+  /**
+   * Opens that never got a close, or whose span turned out unbalanced. They
+   * emit NOTHING — an open wrapper with no close would leave the token stream
+   * unbalanced and the document model would fail to build. Every path that
+   * abandons a pending open has to come through here.
+   */
+  const abandoned = new Set<Emission>();
+  const abandon = (from: number) => {
+    for (const p of stack.slice(from)) abandoned.add(p.emit);
+    stack.length = from;
+  };
+  /** Per candidate (by `at`), the wrapper halves it emits, in order. */
+  const emissions = new Map<number, Emission[]>();
+  const record = (cand: CoreWrapperCandidate, e: Emission) => {
+    const list = emissions.get(cand.at) ?? [];
+    list.push(e);
+    emissions.set(cand.at, list);
+  };
+
+  /** Can a block spanning `from`…`to` sit at one level of the tree? */
+  const spanIsBalanced = (from: number, to: number): boolean => {
+    if (to - from <= 1) return false; // empty pair — `block+` needs content
     let depth = 0;
-    let balanced = true;
-    for (let i = open.at + 1; i < cand.at; i++) {
+    for (let i = from + 1; i < to; i++) {
       const between = tokens[i]!;
       // An AUTHORED lone-tag html_block between the markers is an
       // adoptHtmlWrappers candidate whose own pair may cross this one's
@@ -257,30 +305,160 @@ function pairCoreWrapperRegions(tokens: Token[], cands: CoreWrapperCandidate[]):
         between.type === "html_block" &&
         (loneOpenTag(between.content) !== null || loneCloseTag(between.content) !== null)
       ) {
-        balanced = false;
-        break;
+        return false;
       }
       depth += between.nesting;
-      if (depth < 0) { balanced = false; break; }
+      if (depth < 0) return false;
     }
-    if (!balanced || depth !== 0) continue;
+    return depth === 0;
+  };
 
-    const openTok = tokens[open.at]!;
-    const closeTok = tokens[cand.at]!;
-    openTok.type = "plugin_block_open";
-    openTok.nesting = 1;
-    openTok.meta = {
-      ...(openTok.meta as Record<string, unknown> | null),
-      gpPlugin: {
-        marker: open.marker,
-        closeMarker: cand.marker,
-        tag: open.tag,
-        viewAttrs: Object.keys(open.attrs).length > 0 ? open.attrs : null,
-      },
-    };
-    closeTok.type = "plugin_block_close";
-    closeTok.nesting = -1;
+  /** Close the nearest unclosed `tag`, or report that nothing matched. */
+  const closeNearest = (tag: string, at: number, cand: CoreWrapperCandidate, index: number): boolean => {
+    let pos = -1;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i]!.tag === tag) { pos = i; break; }
+    }
+    if (pos === -1) return false;
+    const open = stack[pos]!;
+    // Anything opened INSIDE the match and never closed stays an atom; the
+    // match itself is popped without being abandoned — it is about to pair.
+    abandon(pos + 1);
+    stack.length = pos;
+    if (!spanIsBalanced(open.at, at)) {
+      abandoned.add(open.emit);
+      return false;
+    }
+    record(cand, { cand, index, role: "close", open });
+    return true;
+  };
+
+  for (const cand of cands) {
+    if (cand.kind === "barrier") {
+      abandon(0);
+      continue;
+    }
+    if (cand.kind === "open") {
+      const emit: Emission = { cand, index: 0, role: "open" };
+      record(cand, emit);
+      stack.push({ at: cand.at, tag: cand.tag, attrs: cand.attrs, marker: cand.marker, emit });
+      continue;
+    }
+    if (cand.kind === "close") {
+      closeNearest(cand.tag, cand.at, cand, 0);
+      continue;
+    }
+    // A boundary: close what it closes, then open what it opens. A close that
+    // matches nothing simply does not become a wrapper — the region keeps its
+    // atom bytes and the surrounding text stays unwrapped, never mis-nested.
+    let index = 0;
+    for (const op of cand.ops) {
+      if (op.kind === "close") {
+        if (closeNearest(op.tag, cand.at, cand, index)) index++;
+      } else {
+        const emit: Emission = { cand, index, role: "open" };
+        record(cand, emit);
+        stack.push({ at: cand.at, tag: op.tag, attrs: op.attrs, marker: cand.marker, emit });
+        index++;
+      }
+    }
   }
+
+  // Opens still pending at the end never closed either.
+  abandon(0);
+
+  // ── apply ────────────────────────────────────────────────────────────────
+  // Only now is it known how many wrappers each candidate emits, so the token
+  // array is rebuilt: a candidate that emits none keeps its atom, and one that
+  // emits several replaces its atom with that many wrapper tokens. The
+  // authored lines ride the FIRST wrapper emitted (a close writes them after
+  // its block's content, an open before — either way exactly where the atom
+  // would have written them, exactly once).
+  const out: Token[] = [];
+  /** The token each emitted half became, so a close can reach its open. */
+  const emitted = new Map<Emission, Token>();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    const list = (emissions.get(i) ?? []).filter(
+      (e) => !(e.role === "open" && abandoned.has(e)),
+    );
+    if (list.length === 0) {
+      out.push(tok);
+      continue;
+    }
+    const marker = markerOf(tok);
+    list.sort((a, b) => a.index - b.index);
+    for (const [n, e] of list.entries()) {
+      // The atom token becomes the first wrapper; any further halves are new
+      // tokens (they carry no authored bytes of their own).
+      const t = n === 0 ? tok : wrapperToken(tok);
+      const mine = n === 0 ? marker : "";
+      if (e.role === "close") {
+        t.type = "plugin_block_close";
+        t.nesting = -1;
+        t.meta = null;
+        const payload = (emitted.get(e.open!.emit)?.meta as
+          | { gpPlugin?: Record<string, unknown> }
+          | null
+          | undefined)?.gpPlugin;
+        if (payload) payload.closeMarker = mine;
+      } else {
+        const op = e.cand.kind === "boundary" ? e.cand.ops[e.index]! : null;
+        const tag = op ? op.tag : (e.cand as { tag: string }).tag;
+        const attrs =
+          op && op.kind === "open"
+            ? op.attrs
+            : ((e.cand as { attrs?: Record<string, string> }).attrs ?? {});
+        t.type = "plugin_block_open";
+        t.nesting = 1;
+        t.meta = {
+          gpPlugin: {
+            marker: mine,
+            closeMarker: "",
+            tag,
+            viewAttrs: Object.keys(attrs).length > 0 ? attrs : null,
+          },
+        };
+      }
+      emitted.set(e, t);
+      out.push(t);
+      // Markup the transform wrote INSIDE the wrapper it just opened (the
+      // alert's label span). It rides the last open the region emits, is
+      // rendered like every other generated node, and serializes to nothing.
+      const generated = n === list.length - 1 ? generatedOf(e.cand) : null;
+      if (generated && e.role === "open") out.push(generatedToken(t, generated));
+    }
+  }
+  return out;
+}
+
+/** The authored lines an adopted region carries. */
+function markerOf(tok: Token): string {
+  const payload = (tok.meta as { gpPlugin?: { marker?: unknown } } | null)?.gpPlugin;
+  return typeof payload?.marker === "string" ? payload.marker : "";
+}
+
+/** The markup a candidate carries inside its last opened wrapper, if any. */
+function generatedOf(cand: CoreWrapperCandidate): string | null {
+  return cand.kind === "open" || cand.kind === "boundary" ? cand.generated : null;
+}
+
+/** A `gp_generated` token — shown in the view, never written back. */
+function generatedToken(like: Token, html: string): Token {
+  const t = wrapperToken(like);
+  t.type = "gp_generated";
+  t.nesting = 0;
+  t.content = html;
+  return t;
+}
+
+/** A further wrapper token for a boundary that emits more than one half. */
+function wrapperToken(like: Token): Token {
+  const Ctor = (like as unknown as { constructor: new (t: string, g: string, n: number) => Token })
+    .constructor;
+  const t = new Ctor("plugin_block_open", "", 1);
+  t.block = true;
+  return t;
 }
 
 function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
@@ -328,13 +506,12 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
     }
 
     const marker = lines.slice(start, stop).join("\n");
-    // Classify BEFORE overwriting the token: a single-member region whose
-    // synthesized content is one lone tag may pair up after the scan
-    // (phase 2). Multi-member regions (span-paired alerts, swallowed
-    // survivors, multi-tag synthesis) always stay atoms.
-    const lone = end === i && tok.type === "html_block";
-    const opened = lone ? loneOpenTag(tok.content) : null;
-    const closed = lone && !opened ? loneCloseTag(tok.content) : null;
+    // Classify BEFORE overwriting the token: a region whose synthesized output
+    // is nothing but lone tags can become wrappers after the scan (phase 2 for
+    // one tag, phase 2.5 for a close/open boundary). A region holding
+    // survivors or any non-tag markup stays an opaque atom, and nothing may
+    // pair across it.
+    const ops = wrapperOps(tokens, i, end, stamp.id);
     tok.type = "plugin_atom";
     tok.nesting = 0;
     tok.block = true;
@@ -344,18 +521,84 @@ function adoptCoreRegions(tokens: Token[], lines: string[]): Token[] {
     };
     if (!out) out = tokens.slice(0, i);
     out.push(tok);
-    if (opened) {
-      wrapperCands.push({ at: out.length - 1, kind: "open", tag: opened.tag, attrs: opened.attrs, marker });
-    } else if (closed) {
-      wrapperCands.push({ at: out.length - 1, kind: "close", tag: closed, marker });
+    const at = out.length - 1;
+    const first = ops?.ops[0];
+    if (!ops || !first) {
+      wrapperCands.push({ at, kind: "barrier" });
+    } else if (ops.ops.length === 1 && first.kind === "open") {
+      wrapperCands.push({
+        at,
+        kind: "open",
+        tag: first.tag,
+        attrs: first.attrs,
+        marker,
+        generated: ops.generated,
+      });
+    } else if (ops.ops.length === 1) {
+      wrapperCands.push({ at, kind: "close", tag: first.tag, marker });
     } else {
-      wrapperCands.push({ at: out.length - 1, kind: "barrier" });
+      wrapperCands.push({ at, kind: "boundary", ops: ops.ops, marker, generated: ops.generated });
     }
     i = end;
   }
   const result = out ?? tokens;
-  if (wrapperCands.length > 0) pairCoreWrapperRegions(result, wrapperCands);
-  return result;
+  return wrapperCands.length > 0 ? pairCoreWrapperRegions(result, wrapperCands) : result;
+}
+
+/**
+ * The wrapper halves a region's synthesized output amounts to, or null if the
+ * region is not purely wrappers.
+ *
+ * Ground truth, not inference: these are the tags the TRANSFORM ITSELF wrote,
+ * read in emission order. A region qualifies only when every member is a
+ * synthesized `html_block` and every line of every member is one lone tag —
+ * a survivor, a tag with text beside it (the `dc-alert` label span), or
+ * anything else disqualifies the whole region.
+ *
+ * The order must also be every close before every open. A boundary sits at
+ * ONE point in the document, so `</a></b><c><d>` describes that point exactly
+ * — while `<c></a>` would need the region's authored lines split across two
+ * places, and which line went where is not recorded anywhere. Those stay
+ * atoms.
+ */
+function wrapperOps(tokens: Token[], from: number, to: number, id: number): WrapperOps | null {
+  const ops: WrapperOp[] = [];
+  const lines: string[] = [];
+  for (let i = from; i <= to; i++) {
+    const member = tokens[i]!;
+    if (coreHunkOf(member)?.id !== id) return null; // a swallowed survivor
+    if (member.type !== "html_block") return null;
+    for (const line of member.content.split("\n")) if (line.trim()) lines.push(line);
+  }
+  if (lines.length === 0) return null;
+
+  let i = 0;
+  for (; i < lines.length; i++) {
+    const opened = loneOpenTag(lines[i]!);
+    if (opened) {
+      ops.push({ kind: "open", tag: opened.tag, attrs: opened.attrs });
+      continue;
+    }
+    const closed = loneCloseTag(lines[i]!);
+    if (!closed) break;
+    ops.push({ kind: "close", tag: closed });
+  }
+  const rest = lines.slice(i);
+  if (rest.length > 0) {
+    // Markup that is not a lone tag ends the wrapper run. It can only be the
+    // INSIDE of what those tags just opened (an unclosed `<div>` is still
+    // open, so everything after it is within it) — the `dc-alert` label span
+    // is the real case. So it is kept as generated content in the first
+    // wrapper, shown and never written back. That holds only while nothing
+    // in the remainder closes a wrapper again: a `</div>` further down would
+    // mean part of this region sits OUTSIDE the boxes, and where the author's
+    // lines belong then is not recorded. Those regions stay atoms.
+    if (ops.length === 0 || ops.some((o) => o.kind === "close")) return null;
+    if (rest.some((l) => loneOpenTag(l) !== null || loneCloseTag(l) !== null)) return null;
+  }
+  const firstOpen = ops.findIndex((o) => o.kind === "open");
+  if (firstOpen !== -1 && ops.slice(firstOpen).some((o) => o.kind === "close")) return null;
+  return { ops, generated: rest.length > 0 ? rest.join("\n") + "\n" : null };
 }
 
 /**

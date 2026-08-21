@@ -27,7 +27,8 @@
  * from the library rather than from a list we have to remember to maintain.
  */
 import { schema as base } from "prosemirror-markdown";
-import { Schema, type NodeSpec } from "prosemirror-model";
+import { Schema, type DOMOutputSpec, type NodeSpec } from "prosemirror-model";
+import type { ExtraAttrs } from "./attrs";
 
 /**
  * A Gutterpress layout wrapper.
@@ -200,7 +201,51 @@ const tableNodes: Record<string, NodeSpec> = {
 const withAttrs = (spec: NodeSpec): NodeSpec => ({
   ...spec,
   attrs: { ...(spec.attrs ?? {}), attrs: { default: null } },
+  toDOM: spec.toDOM
+    ? (node) => renderAuthoredAttrs(spec.toDOM!(node), node.attrs.attrs as ExtraAttrs | null)
+    : spec.toDOM,
 });
+
+/**
+ * Put the author's braces on the editing DOM, on the SAME element the print
+ * pipeline puts them on.
+ *
+ * Carrying `{.dc-chevron}` through a save (above) is only half the promise:
+ * an editing surface that keeps the class in the file but not in the view
+ * shows the author a heading their book does not have — measured against the
+ * real app, `# Contents {.dc-chevron}` painted as a bare `h1` in magenta while
+ * the preview and the PDF painted the branded chevron rule. Every style
+ * divergence the parity tool found on the field guide's headings was this.
+ *
+ * The target element is the INNERMOST one of the node's own output, which is
+ * what markdown-it does for all five constructs that can carry braces:
+ * `<code>` inside `<pre>` for a fence, and the single element for a heading,
+ * paragraph, image or rule. `class` is merged (a fence's `language-js` must
+ * survive); everything else the author wrote wins, and `attrs.ts` has already
+ * filtered out the keys the node models itself or the pipeline generated.
+ */
+function renderAuthoredAttrs(out: DOMOutputSpec, authored: ExtraAttrs | null): DOMOutputSpec {
+  if (!authored || !Array.isArray(out) || typeof out[0] !== "string") return out;
+  const spec = out.slice() as unknown[];
+  // Recurse to the innermost element spec (`["pre", ["code", 0]]` → the code).
+  const lastIdx = spec.length - 1;
+  const last = spec[lastIdx];
+  if (lastIdx > 0 && Array.isArray(last)) {
+    spec[lastIdx] = renderAuthoredAttrs(last as unknown as DOMOutputSpec, authored);
+    return spec as unknown as DOMOutputSpec;
+  }
+  const existing =
+    spec.length > 1 && typeof spec[1] === "object" && spec[1] !== null && !Array.isArray(spec[1])
+      ? { ...(spec[1] as Record<string, string>) }
+      : null;
+  const merged: Record<string, string> = { ...(existing ?? {}) };
+  for (const [k, v] of Object.entries(authored)) {
+    merged[k] = k === "class" && merged.class ? `${merged.class} ${v}` : v;
+  }
+  if (existing) spec[1] = merged;
+  else spec.splice(1, 0, merged);
+  return spec as unknown as DOMOutputSpec;
+}
 
 /**
  * The authored bullet character (`*`, `-` or `+`), kept on the list.
@@ -295,6 +340,31 @@ function tightAware(spec: NodeSpec, tag: "ul" | "ol"): NodeSpec {
   };
 }
 
+/**
+ * `language-js` on the fence's `<code>`, the way markdown-it writes it.
+ *
+ * `prosemirror-markdown` keeps the info string as `data-params` on the `<pre>`
+ * and emits no language class at all, so a highlighter theme or any book rule
+ * written against `code.language-css` styled the printed page and not the
+ * editing surface. The first-party corpus has 168 language-tagged fences (83
+ * of them `markdown`, in the design guide), so this is the common case, not an
+ * edge one. Only the first word of the info string is the language — the rest
+ * is the fence's own metadata, exactly as markdown-it treats it.
+ */
+function withFenceLanguage(spec: NodeSpec): NodeSpec {
+  return {
+    ...spec,
+    toDOM: (node) => {
+      const lang = String(node.attrs.params ?? "").trim().split(/\s+/)[0];
+      return [
+        "pre",
+        node.attrs.params ? { "data-params": node.attrs.params as string } : {},
+        ["code", lang ? { class: `language-${lang}` } : {}, 0],
+      ];
+    },
+  };
+}
+
 export const gutterpressSchema = new Schema({
   nodes: base.spec.nodes
     .update("bullet_list", withBullet(tightAware(base.spec.nodes.get("bullet_list")!, "ul")))
@@ -308,7 +378,7 @@ export const gutterpressSchema = new Schema({
     // `---{.column-break}` — a decorated rule is a real book idiom.
     .update("horizontal_rule", withAttrs(base.spec.nodes.get("horizontal_rule")!))
     // ```js {.line-numbers} — the info string is `params`, the braces are not.
-    .update("code_block", withAttrs(base.spec.nodes.get("code_block")!))
+    .update("code_block", withAttrs(withFenceLanguage(base.spec.nodes.get("code_block")!)))
     .append(tableNodes)
     .append({
       gp_chapter: layoutWrapper(),

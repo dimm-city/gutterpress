@@ -725,6 +725,74 @@ identity-verified copy):
   normalization (`<strong><a>` → `<a><strong>`, render-equivalent), proven
   pre-existing by re-running with the barrier disabled.
 
+**Phase 2.5 + the real-app parity pass — SHIPPED (2026-08-21).** The barrier
+fix above was found by rendering the editor's DOM; the next step was to run
+the REAL app and diff it against the preview, with
+`packages/desktop/tools/editor-parity.mjs` (Electron under `xvfb`, both
+surfaces walked run-by-run, now also writing `editor.png` / `preview.png` /
+`window.png` — the preview pane brought forward and scrolled to the same
+chapter). Three divergence classes came out of chapter-00 and chapter-04 of
+the canonical book, and all three are fixed:
+
+1. **Authored `{…}` braces never reached the editing DOM.** `withAttrs` kept
+   them for the save but the base `toDOM` ignored them, so
+   `# Contents {.dc-chevron}` painted as a bare `h1` while print painted the
+   branded chevron. `renderAuthoredAttrs` now merges them onto the same
+   element markdown-it uses — the innermost of the node's own output
+   (`<code>` inside `<pre>`; the single element everywhere else) — with
+   `class` merged rather than replaced. The fence also emits
+   `language-<lang>` on its `<code>` the way markdown-it does (168
+   language-tagged fences in the corpus, 83 of them in the design guide).
+   Pinned by `tests/editor/view-attrs.test.ts`, which compares against the
+   print output construct by construct.
+2. **Chained wrappers rendered unstyled** — the barrier's cost. A region
+   whose synthesized output is NOTHING BUT lone tags now acts as a
+   BOUNDARY: it closes the wrappers it closes and opens the ones it opens,
+   at one point in the document (`wrapperOps` + the `boundary` candidate).
+   It never splits the region's authored lines, because which line produced
+   which tag is not recorded anywhere — the lines ride the FIRST wrapper
+   half the boundary emits and every other half writes nothing (empty
+   `marker`/`closeMarker`, which the serializer now skips silently). The
+   order must be every close before every open; `OCO` and friends stay
+   atoms. Census on the canonical book: 51 regions qualify as boundaries
+   against 40 that pair as single tags, and styled blocks per chapter went
+   e.g. 1 → 47 (chapter-01), 4 → 20 (chapter-04), 1 → 10 (chapter-05).
+3. **Component boxes with a generated label rendered unstyled** — the
+   `dc-alert` family, whose synthesized open is a `<div>` plus a label
+   `<span>` in one token. A region may now carry markup that is not a lone
+   tag PROVIDED it comes after the opens and closes nothing: everything
+   after an unclosed open tag is inside it, so it becomes a `gp_generated`
+   node in the block — shown, never written back. A remainder that closes a
+   wrapper again (a self-contained widget) stays an atom, with a
+   sabotage-verified test for exactly that shape.
+
+**Measured after all three** (canonical fixed field guide, real app):
+chapter-00 went 56 → 0 style divergences of its own classes, chapter-04 115
+→ 89, and every one of the 89 left is a single cause (below). Byte gates
+unmoved: roundtrip 14/14/14, edit-cycle locality 14/14 with wrapper-interior
+edits now covering 12/12 chapters (was 7/7 — more chapters have styled
+wrappers to edit inside), design guide 19/19/18, fixture book 7/9 by design.
+
+**The three parity gaps that remain, with their causes** (measured, not
+guessed — these are what the tool still reports on the field guide):
+
+- **Tight-list `<p>`** — every style divergence left on both chapters (52 on
+  chapter-00 before phase 2.5, 89 on chapter-04). markdown-it renders a
+  tight list item's text with no `<p>`; the editing model always holds a
+  paragraph inside `list_item`, so book CSS that reaches through an item
+  with a CHILD combinator (`.dc-toc ol>li>a`) does not match in the editor.
+  Fixing it means an inline-content list item — a schema change that breaks
+  `splitListItem` and the Enter behaviour authors expect — so it is recorded
+  here rather than attempted. Descendant selectors are unaffected.
+- **Typographic punctuation** — 28 of the 29 text differences on chapter-04.
+  The document model is parsed with typographer OFF so a save cannot rewrite
+  the author's quotes and dashes (§6.1); print applies it. Closing this
+  would need display-only decorations over untouched bytes.
+- **Pagination** — 314 run-to-page differences on chapter-04 (37 preview
+  pages vs 33 editor). The documented editor limitation: it lays each page
+  out once, the preview corrects itself against print. The CHANGELOG already
+  tells authors to check layout against the preview.
+
 **Known follow-ups recorded, deliberately out of scope:** the pre-existing
 block-rule adoption double-write when two sibling map-less tokens share one
 `gpEditorLines` range; the pre-existing silent drop of raw inline HTML in
@@ -786,4 +854,6 @@ apostrophe is the §6.1 defect riding along.
 | Corpus gate (hard asserts) | `packages/desktop/tests/editor/markdown-doc-corpus.test.ts` (:125, :147) |
 | Acceptance harness | `packages/desktop/tests/editor/plugin-book-roundtrip.manual.ts` |
 | Edit-cycle harness | `packages/desktop/tests/editor/plugin-book-edit-cycle.manual.ts` |
-| Cross-pair barrier | `parser.ts` — `CoreWrapperCandidate` `"barrier"` kind, `pairCoreWrapperRegions`; regression tests in `core-provenance.test.ts` ("BARRIERS later pairing", "AUTHORED lone-tag") |
+| Cross-pair barrier / boundary | `parser.ts` — `CoreWrapperCandidate` (`"barrier"`, `"boundary"`), `wrapperOps`, `pairCoreWrapperRegions`; tests in `core-provenance.test.ts` |
+| Authored braces in the view | `schema.ts` — `renderAuthoredAttrs`, `withFenceLanguage`; `tests/editor/view-attrs.test.ts` |
+| Real-app parity tool | `packages/desktop/tools/editor-parity.mjs` (`npm run parity -- --book … --file …`), run under `xvfb-run` |

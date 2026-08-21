@@ -39,6 +39,11 @@
  *   style        font size / weight / colour / family / alignment per run
  *   plugins      what the editor could and could not load, with reasons
  *
+ * Alongside it: `editor.png` and `preview.png` — the two surfaces as images,
+ * plus `window.png` for the whole app. Some divergences (a wrapper element
+ * the editor never built, an authored class that never reached the view) are
+ * only obvious as pictures.
+ *
  * Measurements are normalised before comparison — the preview paints at the
  * author's zoom and the editor at its own fit scale — so a difference in the
  * report is a difference the author would SEE, not a difference in zoom.
@@ -259,7 +264,10 @@ try {
     const col = Math.max(0, Math.round((box.left - r.left) / (colW + colGap)));
     return { top: r.top + row * (h + rowGap), left: r.left + col * (colW + colGap), scale: ${editorScale} };
   })`);
-  await page.screenshot({ path: join(OUT, "editor.png") });
+  // The iframe ELEMENT, not the window: the two surfaces are then two images
+  // of the same thing, croppable side by side. (The whole window goes to
+  // `window.png` at the end, for layout questions.)
+  await handle.screenshot({ path: join(OUT, "editor.png") }).catch(() => {});
 
   // ── the same chapter in the preview ─────────────────────────────────────
   let previewFrame = null;
@@ -276,6 +284,38 @@ try {
   }
   if (!previewFrame) throw new Error("the preview never paginated (did the build fail?)");
   report.previewSheets = sheets;
+  // Both surfaces as images: the run diff below says WHAT differs, the pair
+  // of pictures says what it LOOKS like. A style divergence that reads as one
+  // line of JSON ("color: rgb(240,238,233) vs rgb(192,38,211)") is a heading
+  // painted the wrong colour on the page, and that is easier to judge than to
+  // imagine.
+  await page.screenshot({ path: join(OUT, "window.png") });
+  // The preview pane sits BEHIND the editor pane while editing, so it has to
+  // be brought forward before it can be photographed — same toggle the author
+  // uses (Ctrl+E). Measurement is already done; this only affects the image.
+  await page
+    .evaluate(() => document.querySelector('button[aria-label="Toggle markdown editor"]').click())
+    .catch(() => {});
+  await sleep(2500);
+  // Scroll the preview to the SAME chapter the editor is showing, or the
+  // image would be page 1 of the book beside chapter N of the editor.
+  if (chapterId) {
+    await previewFrame
+      .evaluate((id) => document.getElementById(id)?.scrollIntoView({ block: "start" }), chapterId)
+      .catch(() => {});
+    await sleep(1500);
+  }
+  // The tidy prompt can reappear over the pane; it is app chrome, not the
+  // book, and it must not sit in the middle of the evidence.
+  await page
+    .evaluate(() => {
+      const b = [...document.querySelectorAll("button")].find((x) => /decide later/i.test(x.textContent || ""));
+      b?.click();
+    })
+    .catch(() => {});
+  await sleep(1000);
+  const previewEl = await previewFrame.frameElement().catch(() => null);
+  if (previewEl) await previewEl.screenshot({ path: join(OUT, "preview.png") }).catch(() => {});
 
   const previewZoom = await previewFrame.evaluate(() => {
     const stage = document.querySelector(".gp-stage") ?? document.body;
@@ -378,7 +418,7 @@ try {
   log(`page diffs  ${pageDiffs.length}`);
   log(`style diffs ${styleDiffs.length}  ${JSON.stringify(styleDiffs.slice(0, 3))}`);
   log(`gap diffs   ${gapDiffs.length}  ${JSON.stringify(gapDiffs.slice(0, 3))}`);
-  log(`report      ${join(OUT, "report.json")}  (+ editor.png)`);
+  log(`report      ${join(OUT, "report.json")}  (+ editor.png, preview.png, window.png)`);
 } catch (e) {
   report.error = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
   writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));

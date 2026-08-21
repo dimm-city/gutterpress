@@ -185,12 +185,29 @@ const gutterpressMarkdownSerializer = new MarkdownSerializer(
     // Both authored lines round-trip verbatim from the node's own attributes;
     // the closing line is per-NODE (each plugin names its own terminator),
     // which is why this is not a `layoutWrapper(closing)` call.
+    /**
+     * The author's marker lines, then the content, then the closing lines.
+     *
+     * Either marker may be EMPTY, and an empty one writes nothing at all (not
+     * a blank line): a phase-2.5 boundary — one region that closes a wrapper
+     * and opens the next, `@end-gear` + `@gear` in one breath — keeps those
+     * lines undivided on the FIRST wrapper it emits, because which line opened
+     * which box is not recorded anywhere and must not be guessed. The other
+     * wrappers of that boundary carry "" and stay silent, so the bytes come
+     * back exactly as the atom form would have written them.
+     */
     gp_plugin_block(state, node) {
-      state.write((node.attrs.marker as string).trim());
-      state.closeBlock(node);
+      const marker = (node.attrs.marker as string).trim();
+      const closeMarker = (node.attrs.closeMarker as string).trim();
+      if (marker) {
+        state.write(marker);
+        state.closeBlock(node);
+      }
       state.renderContent(node);
-      state.write((node.attrs.closeMarker as string).trim());
-      state.closeBlock(node);
+      if (closeMarker) {
+        state.write(closeMarker);
+        state.closeBlock(node);
+      }
     },
     gp_plugin_atom: layoutAtom,
 

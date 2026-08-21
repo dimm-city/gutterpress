@@ -102,7 +102,20 @@ Last updated 2026-08-19.
       edit-cycle exactly-one-line locality 14/14 with wrapper markers
       byte-stable 7/7, strict 269-page PDF, rendered-view evidence with the
       live `rawHtmlView` semantics emulated. Follow-ups recorded in the
-      plan's as-built addendum. Original finding kept below for the record.
+      plan's as-built addendum. 2026-08-21 (second pass): the REAL app was
+      driven against the preview under xvfb (`npm run parity`, which now also
+      writes editor/preview screenshots), and the three divergence classes it
+      found were fixed — authored `{…}` braces never reaching the editing DOM,
+      chained wrappers left unstyled by the barrier (phase 2.5 boundaries),
+      and component boxes whose label the plugin generates. Chapter-00 is at
+      zero style divergences of those classes; chapter-04's remaining 89 are
+      ALL one cause. Three gaps stay, measured and recorded in the plan:
+      tight-list `<p>` (book CSS using child combinators through a list item
+      cannot match — fixing it means an inline-content list item and would
+      break Enter in lists), typographic punctuation (the editor parses with
+      typographer off so saves keep the author's quotes), and pagination
+      (documented: check layout against the preview). Original finding kept
+      below for the record.
 - [historical] **Rich editing is silently LOSSY for the Field Guide (found 2026-08-19;
       measured, deterministic, identical on pre-migration `main` and the
       restored branch — pre-existing, not a restore regression).** All 14

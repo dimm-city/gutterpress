@@ -204,6 +204,24 @@ This project follows [Semantic Versioning](https://semver.org/).
   regions now act as hard barriers, and a pair with the author's own raw
   HTML tag between its markers steps aside so the authored wrapper pairs
   instead; both cases keep the labeled-chip form.
+  - **Chained components render too.** Where one marker closes a box and the
+    next opens another on the following line — a table of contents after an
+    intro, a run of definitions, a row of gear cards — the editor now closes
+    the first and opens the second instead of showing chips, and a box whose
+    label the plugin generates (the callout family) renders with its label.
+    Across the Dimm City Field Guide that is 1 → 47 styled components in
+    chapter 1, 4 → 20 in chapter 4. Your marker lines are written back
+    exactly as you typed them, undivided: the editor never guesses which of
+    two adjacent markers produced which box.
+
+- **Your `{.class}` and `{#id}` now style the editor, not just the file.**
+  Braces you attach to a heading, paragraph, image or rule reached the saved
+  markdown but never the editing view, so a branded heading showed as plain
+  text while the PDF showed the brand. They now land on the same element the
+  printed page puts them on, and a fenced code block carries its
+  `language-…` class the way the rendered book does. Found by comparing the
+  real app's two surfaces side by side — every byte-level check had been
+  green through all of it.
 
 - **Saving from rich mode no longer rewrites the author's punctuation or
   attribute spelling.** The document model is now parsed with typographer

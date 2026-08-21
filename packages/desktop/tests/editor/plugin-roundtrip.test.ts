@@ -521,12 +521,31 @@ describe("plugin round-trip (go/no-go)", () => {
     expect(canEditRichly(md, src)).toEqual({ ok: true });
     expect(normalize(md, src)).toBe(src);
     const doc = createDocParser(md).parse(src);
-    expect(doc.childCount).toBe(3);
-    expect(doc.child(0).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(0).attrs.marker).toBe("%%panel");
-    expect(doc.child(2).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(2).attrs.marker).toBe("%%endpanel");
+    // Both tag lines are the transform's OWN output, so the region opens both
+    // wrappers (phase 2.5) and the closing region closes both — the book's
+    // real nesting, rendered in the editor. What must never happen is the
+    // token being COPIED per tag line: the copies drop meta, and with it the
+    // stamp, and the synthesized HTML would land in the author's file as the
+    // marker. The authored lines stay on the outermost halves, once each.
+    expect(doc.childCount).toBe(1);
+    const outer = doc.child(0);
+    expect(outer.type.name).toBe("gp_plugin_block");
+    expect(outer.attrs.viewAttrs).toEqual({ class: "trap-outer" });
+    const inner = outer.child(0);
+    expect(inner.type.name).toBe("gp_plugin_block");
+    expect(inner.attrs.viewAttrs).toEqual({ class: "trap-inner" });
+    // Each authored line is written ONCE, by the first wrapper half its region
+    // emits — the outermost open (`%%panel`) and the innermost close
+    // (`%%endpanel`), which are exactly the positions the author typed them
+    // in. The other two halves stay silent.
+    expect(outer.attrs.marker).toBe("%%panel");
+    expect(inner.attrs.marker).toBe("");
+    expect(inner.attrs.closeMarker).toBe("%%endpanel");
+    expect(outer.attrs.closeMarker).toBe("");
+    expect(inner.child(0).type.name).toBe("paragraph");
     expect(normalize(md, src)).not.toContain("trap-outer");
+    expect(normalize(md, src).split("%%panel").length - 1).toBe(1);
+    expect(normalize(md, src).split("%%endpanel").length - 1).toBe(1);
   });
 
   test("the archive file (footnote + reference definition) is REFUSED with its reason", async () => {

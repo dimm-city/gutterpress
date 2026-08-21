@@ -254,14 +254,16 @@ describe("core-rule regions adopt as verbatim atoms", () => {
     expect(out.split("@twin").length - 1).toBe(1);
   });
 
-  test("a closer swallowed into a multi-member atom BARRIERS later pairing (the chapter-00 cross-pair)", () => {
+  test("a close+open region closes one wrapper and OPENS the next — never nests them (phase 2.5)", () => {
     // ONE core rule owning two marker families — the real dimm-city shape.
     // `@end-lede` + `@toc` sit adjacent (no survivor between), so the differ
-    // merges the lede's TRUE closer and the toc's opener into one
-    // multi-member hunk → one opaque atom. Measured on chapter-00, tag-name
-    // matching then paired the lede's opener with the TOC's LATER `</div>`,
-    // nesting the whole TOC inside the lede box. Bytes were exact either way
-    // — the regression is view-level — so this pins the TREE shape.
+    // merges the lede's closer and the toc's opener into ONE hunk whose
+    // synthesized output is `</div>` then `<div class="t-toc">`. That is a
+    // BOUNDARY: it closes the lede and opens the toc, at one point in the
+    // document. Measured on chapter-00, matching by tag name alone instead
+    // paired the lede's opener with the TOC's LATER `</div>`, nesting the
+    // whole TOC inside the lede box — so this pins the TREE, which the byte
+    // gates cannot see (both shapes serialize identically).
     const twoFamilyTransform: MdPlugin = (m) => {
       m.core.ruler.push("t_two", (state) => {
         const REPLACE: Record<string, string> = {
@@ -298,28 +300,155 @@ describe("core-rule regions adopt as verbatim atoms", () => {
     expect(canEditRichly(md, src)).toEqual({ ok: true });
 
     const doc = createDocParser(md).parse(src);
-    // The FIRST pair is clean (survivors on both sides keep its hunks
-    // separate) and must still style — the barrier clears only OPEN pairs.
-    expect(doc.childCount).toBe(7);
-    const styled = doc.child(0);
-    expect(styled.type.name).toBe("gp_plugin_block");
-    expect(styled.attrs.marker).toBe("@lede");
-    expect(styled.attrs.closeMarker).toBe("@end-lede");
+    expect(doc.childCount).toBe(4);
+    // A clean pair (survivors on both sides) is unaffected.
+    expect(doc.child(0).type.name).toBe("gp_plugin_block");
+    expect(doc.child(0).attrs.marker).toBe("@lede");
+    expect(doc.child(0).attrs.closeMarker).toBe("@end-lede");
     expect(doc.child(1).type.name).toBe("paragraph");
-    // The SECOND lede's closer merged into the barrier atom, so its opener
-    // must stay an atom — and the toc's `</div>` must NOT adopt it. Its body
-    // sits between them as a plain top-level paragraph.
-    expect(doc.child(2).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(2).attrs.marker).toBe("@lede");
-    expect(doc.child(3).type.name).toBe("paragraph");
-    expect(doc.child(4).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(4).attrs.marker).toBe("@end-lede\n\n@toc");
-    // The list is a TOP-LEVEL sibling — inside nothing.
-    expect(doc.child(5).type.name).toBe("bullet_list");
-    expect(doc.child(6).type.name).toBe("gp_plugin_atom");
-    expect(doc.child(6).attrs.marker).toBe("@end-toc");
+
+    // The boundary: the second lede closes carrying BOTH authored lines…
+    const lede = doc.child(2);
+    expect(lede.type.name).toBe("gp_plugin_block");
+    expect(lede.attrs.viewAttrs).toEqual({ class: "t-lede" });
+    expect(lede.attrs.closeMarker).toBe("@end-lede\n\n@toc");
+    expect(lede.childCount).toBe(1);
+    expect(lede.child(0).type.name).toBe("paragraph");
+
+    // …and the toc opens as its SIBLING, writing no marker of its own (those
+    // bytes are already accounted for) — never as its child.
+    const toc = doc.child(3);
+    expect(toc.type.name).toBe("gp_plugin_block");
+    expect(toc.attrs.viewAttrs).toEqual({ class: "t-toc" });
+    expect(toc.attrs.marker).toBe("");
+    expect(toc.attrs.closeMarker).toBe("@end-toc");
+    expect(toc.child(0).type.name).toBe("bullet_list");
 
     expect(serializeDoc(doc)).toBe(src);
+    expect(normalize(md, src)).toBe(src);
+    expect(normalize(md, normalize(md, src))).toBe(src);
+  });
+
+  test("an OPAQUE region still barriers pairing across it", () => {
+    // The boundary above is safe because the region is nothing BUT tags — the
+    // transform's own output says exactly what it closes and opens. A region
+    // that swallowed a survivor says no such thing: it may hold the pending
+    // wrapper's real closer anywhere inside. Pairing across it is the
+    // chapter-00 defect, so it stays forbidden and both markers stay atoms.
+    const md = mdWith("mixed", (m) => {
+      ledeTransform(m);
+      alertTransform(m);
+    });
+    const src = "@lede\n\nBody.\n\n> [!NOTE] Keep dry\n> Ink runs in rain.\n\n@end-lede\n";
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+    const doc = createDocParser(md).parse(src);
+    const kinds: string[] = [];
+    doc.descendants((n) => {
+      if (n.type.name.startsWith("gp_plugin")) kinds.push(n.type.name);
+      return true;
+    });
+    expect(kinds).toEqual(["gp_plugin_atom", "gp_plugin_atom", "gp_plugin_atom"]);
+    expect(serializeDoc(doc)).toBe(src);
+  });
+
+  test("markup INSIDE the wrapper a region opens is shown, and never written back", () => {
+    // The `dc-alert` shape: the transform opens a box and writes the label
+    // span inside it, in one map-less token. The box must render (it is the
+    // component the author sees in print), the label with it, and the
+    // author's file must still hold nothing but the marker lines.
+    const alertBox: MdPlugin = (m) => {
+      m.core.ruler.push("t_box", (state) => {
+        const toks = state.tokens;
+        const out: typeof toks = [];
+        for (let i = 0; i < toks.length; i++) {
+          const tok = toks[i]!;
+          if (tok.type === "paragraph_open" && toks[i + 1]?.type === "inline") {
+            const text = toks[i + 1]!.content.trim();
+            const open = /^@callout label="([^"]*)"$/.exec(text);
+            if (open || text === "@end-callout") {
+              const html = new state.Token("html_block", "", 0);
+              html.content = open
+                ? `<div class="t-alert">\n<span class="t-label">${open[1]}</span>\n`
+                : "</div>\n";
+              html.block = true;
+              out.push(html);
+              i += 2;
+              continue;
+            }
+          }
+          out.push(tok);
+        }
+        state.tokens = out;
+        return true;
+      });
+    };
+    const md = mdWith("box", alertBox);
+    const src = '@callout label="Keep dry"\n\nInk runs in rain.\n\n@end-callout\n';
+    expect(canEditRichly(md, src)).toEqual({ ok: true });
+
+    const doc = createDocParser(md).parse(src);
+    expect(doc.childCount).toBe(1);
+    const box = doc.child(0);
+    expect(box.type.name).toBe("gp_plugin_block");
+    expect(box.attrs.viewAttrs).toEqual({ class: "t-alert" });
+    expect(box.attrs.marker).toBe('@callout label="Keep dry"');
+    expect(box.attrs.closeMarker).toBe("@end-callout");
+    // The label rides INSIDE the box, as generated content…
+    expect(box.child(0).type.name).toBe("gp_generated");
+    expect(box.child(0).attrs.html).toContain('<span class="t-label">Keep dry</span>');
+    expect(box.child(1).type.name).toBe("paragraph");
+
+    // …and generated content writes nothing.
+    expect(serializeDoc(doc)).toBe(src);
+    const out = normalize(md, src);
+    expect(out).toBe(src);
+    expect(out).not.toContain("t-label");
+    expect(out).not.toContain("t-alert");
+  });
+
+  test("a region whose extra markup CLOSES a wrapper again stays an atom", () => {
+    // `<div>…text…</div>` in one region is a self-contained widget, not an
+    // open box: part of the region sits outside the wrapper, and which
+    // authored line belongs there is not recorded. Fail soft.
+    const widget: MdPlugin = (m) => {
+      m.core.ruler.push("t_widget", (state) => {
+        const toks = state.tokens;
+        const out: typeof toks = [];
+        for (let i = 0; i < toks.length; i++) {
+          const tok = toks[i]!;
+          if (tok.type === "paragraph_open" && toks[i + 1]?.type === "inline") {
+            const text = toks[i + 1]!.content.trim();
+            if (text === "@widget" || text === "@end-outer") {
+              const html = new state.Token("html_block", "", 0);
+              html.content =
+                text === "@widget"
+                  ? '<div class="t-widget">\n<b>Self contained</b>\n</div>\n'
+                  : "</div>\n";
+              html.block = true;
+              out.push(html);
+              i += 2;
+              continue;
+            }
+          }
+          out.push(tok);
+        }
+        state.tokens = out;
+        return true;
+      });
+    };
+    const md = mdWith("widget", widget);
+    // A LATER close is present, so a wrongly-opened widget would capture the
+    // prose between them — the shape that makes this guard matter.
+    const src = "@widget\n\nProse after.\n\n@end-outer\n";
+    const doc = createDocParser(md).parse(src);
+    const kinds: string[] = [];
+    doc.descendants((n) => {
+      if (n.type.name.startsWith("gp_plugin")) kinds.push(n.type.name);
+      return true;
+    });
+    expect(kinds).toEqual(["gp_plugin_atom", "gp_plugin_atom"]);
+    expect(doc.child(0).attrs.marker).toBe("@widget");
+    expect(doc.child(1).type.name).toBe("paragraph");
     expect(normalize(md, src)).toBe(src);
   });
 
