@@ -85,6 +85,33 @@ never reached the editor), and no way to adjust an image. What is left:
       CONTENT, so the folio and chapter chips the preview shows at the page
       foot are absent in the editor.
 
+### Viewer output vs release/0.10.0 — measured 2026-08-21
+
+Prompted by a report that the viewer had regressed on this branch. Measured
+with `packages/cli/scripts/viewer-revision-diff.mjs` (added for this) against
+both dc-op-manual books, built on `origin/release/0.10.0` and on this branch:
+
+- `book.html` is **byte-identical** for both books, so the pipeline's DOM and
+  CSS output is unchanged — this clears `markers.js`, including the breaking
+  `.col-split` removal (`61717ff`). No markdown in dc-op-manual authors
+  `.col-split`; the design guide's `.section.col-split .col` rules are dead
+  Paged.js-era selectors.
+- Field guide: 287 viewer pages on both, **0 differing pages**.
+- Design guide: **168 → 170** viewer pages, 11 pages differ. Bisecting the
+  engine bundle attributes all of it to `4e96c56` ("propagate a forced break
+  out of a first in-flow child"); the three later viewer commits hold at 170.
+- Print is **172 pages either way** — proven by swapping the old bundle into
+  this branch's asset path and rebuilding the PDF, not inferred. So print did
+  not change; the viewer moved from four pages short of print to two.
+
+- [ ] **The design guide's preview still under-counts print by two pages.**
+      `4e96c56` closed half the gap. The remaining two are unexplained and are
+      exactly what the now-running parity gate (`bf1b78e`) exists to catch.
+      Note the design guide only builds with `--allow-shrink` (its
+      `h1.dc-chevron` is 948px against an 828px content box), so its PDF is
+      not a clean reference until those widths are fixed — a pre-existing
+      content defect, not something this branch caused.
+
 ### Verification (highest value — this is the debt that caused the 0.10.0 defects)
 - [x] **Owner sign-off on the gallery baseline**: the focused 44-page gallery
       manifest and portable 3.7MB baseline were approved on 2026-08-13 after
