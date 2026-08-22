@@ -6,6 +6,8 @@
 
 Deliberately historical material is EXCLUDED throughout and must not be "cleaned": `docs/engine-history/`, `docs/audits/`, `docs/migrations/`, `docs/native-engine-parity-evidence-archive.md`, `docs/native-engine-acceptance-gate.md`, `CHANGELOG.md`, `.archive/`.
 
+> **This exclusion was violated two days later.** Commit `5e3b209` ("clean up", 2026-08-13) deleted all three files in `docs/migrations/` plus `docs/native-engine-acceptance-gate.md` and `docs/native-engine-parity-evidence-archive.md` — five of the seven paths named above. The migration guides were restored on 2026-08-21, because six live pointers (the CHANGELOG, the user guide, the shipped `manifest.schema.json`, and three source comments including a `warnOnce()` string printed to users) still cited them. The two `native-engine-*` files remain deleted; `packages/cli/src/engine/viewer/fragment.ts` and `packages/cli/src/preview/nav-native.test.ts` still cite the acceptance gate. **Deleting a file that live code points at is not cleanup.** Check inbound references before removing anything under `docs/`.
+
 ---
 
 ## The rule this inventory applies
