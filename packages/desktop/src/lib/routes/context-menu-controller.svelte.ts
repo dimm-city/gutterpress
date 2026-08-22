@@ -142,6 +142,19 @@ export interface ContextMenuItem {
   run: () => void | Promise<void>;
 }
 
+/**
+ * `getContextTargetAt()`'s secondary `pageMarker` field (protocol v7): the
+ * enclosing `.page`/`.spread`/`.chapter` marker's own source line, populated
+ * whenever the point sits inside one, regardless of `kind`. Typed locally —
+ * previews older than v7 simply omit the field, so consumers feature-detect
+ * by presence (never by version) and treat `undefined` as null.
+ */
+export interface PageMarkerTarget {
+  chapter: string | null;
+  range: SourceRange | null;
+  blockTag: string | null;
+}
+
 /** Default size estimate used to clamp the menu on open, BEFORE the component
  *  has mounted and can report its real size via {@link ContextMenuController.reportMenuSize}. */
 const ESTIMATED_WIDTH = 240;
@@ -231,9 +244,13 @@ export class ContextMenuController {
       link: detail.link ?? null,
       selection: detail.selection ?? null,
     };
+    // Protocol v7 secondary field; absent from older previews (tolerant read
+    // — see PageMarkerTarget's comment).
+    const pageMarker =
+      (detail as { pageMarker?: PageMarkerTarget | null }).pageMarker ?? null;
 
     const anchor = { x: detail.x ?? 0, y: detail.y ?? 0 };
-    const items = await this.buildItems(target, anchor);
+    const items = await this.buildItems(target, anchor, pageMarker);
     // A render/navigation could have raced the async item-build above.
     if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
@@ -335,6 +352,7 @@ export class ContextMenuController {
   private async buildItems(
     target: ContextTarget,
     anchor: { x: number; y: number },
+    pageMarker: PageMarkerTarget | null,
   ): Promise<ContextMenuItem[]> {
     if (target.kind === "selection") {
       if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
@@ -351,9 +369,9 @@ export class ContextMenuController {
       case "link":
         return this.linkItems(target, blockSlice, gen);
       case "marker":
-        return this.markerItems(target, gen);
+        return this.markerItems(target, gen, pageMarker);
       case "block":
-        return this.blockItems(target, gen, anchor);
+        return this.blockItems(target, gen, anchor, pageMarker);
       default:
         return [];
     }
@@ -579,7 +597,70 @@ export class ContextMenuController {
 
   // ── Marker (plan §4.3–4.4) ──────────────────────────────────────────────────
 
-  private markerItems(target: ContextTarget, gen: number): ContextMenuItem[] {
+  /** The shared "Edit marker…" flow: prompt with the marker's raw source line
+   *  and commit the edited line. Used by both the primary marker target and
+   *  the secondary page-marker item below. */
+  private async promptEditMarkerLine(
+    chapter: string,
+    range: SourceRange,
+    gen: number,
+    title: string,
+  ): Promise<void> {
+    const source = await this.readChapterSource(chapter);
+    const slice = source != null ? this.sliceRange(source, range) : null;
+    if (slice == null) {
+      this.deps.toastError("Couldn't locate this marker in the source.");
+      this.close();
+      return;
+    }
+    const trailingNl = slice.match(/(\r\n?|\n)$/)?.[0] ?? "";
+    const rawLine = slice.slice(0, slice.length - trailingNl.length);
+    const next = await this.deps.promptText({
+      title,
+      label: "Marker line",
+      initialValue: rawLine,
+    });
+    if (next == null) return;
+    await this.commit(chapter, range, slice, next + trailingNl, gen);
+  }
+
+  /**
+   * The secondary "Edit page marker…" item (protocol v7): offered when the
+   * point sits inside a `.page`/`.spread`/`.chapter` whose marker line is NOT
+   * already the primary target — e.g. inside a `@section`, where the
+   * innermost annotated block shadows the enclosing `@page` marker. Empty
+   * when the payload has no `pageMarker` (older preview) or when it matches
+   * the primary target's own range (the primary items already edit it).
+   */
+  private pageMarkerItems(
+    target: ContextTarget,
+    pageMarker: PageMarkerTarget | null,
+    gen: number,
+  ): ContextMenuItem[] {
+    const chapter = pageMarker?.chapter;
+    const range = pageMarker?.range;
+    if (!chapter || !isSafeChapterId(chapter) || !range) return [];
+    const sameAsPrimary =
+      chapter === target.chapter &&
+      !!target.range &&
+      target.range[0] === range[0] &&
+      target.range[1] === range[1];
+    if (sameAsPrimary) return [];
+    return [
+      {
+        id: "page-marker-edit",
+        label: "Edit page marker…",
+        enabled: true,
+        run: () => this.promptEditMarkerLine(chapter, range, gen, "Edit page marker"),
+      },
+    ];
+  }
+
+  private markerItems(
+    target: ContextTarget,
+    gen: number,
+    pageMarker: PageMarkerTarget | null,
+  ): ContextMenuItem[] {
     const chapter = target.chapter!;
     const range = target.range!;
     const items: ContextMenuItem[] = [
@@ -587,25 +668,9 @@ export class ContextMenuController {
         id: "marker-edit",
         label: "Edit marker…",
         enabled: true,
-        run: async () => {
-          const source = await this.readChapterSource(chapter);
-          const slice = source != null ? this.sliceRange(source, range) : null;
-          if (slice == null) {
-            this.deps.toastError("Couldn't locate this marker in the source.");
-            this.close();
-            return;
-          }
-          const trailingNl = slice.match(/(\r\n?|\n)$/)?.[0] ?? "";
-          const rawLine = slice.slice(0, slice.length - trailingNl.length);
-          const next = await this.deps.promptText({
-            title: "Edit marker",
-            label: "Marker line",
-            initialValue: rawLine,
-          });
-          if (next == null) return;
-          await this.commit(chapter, range, slice, next + trailingNl, gen);
-        },
+        run: () => this.promptEditMarkerLine(chapter, range, gen, "Edit marker"),
       },
+      ...this.pageMarkerItems(target, pageMarker, gen),
       this.goToSourceItem(target),
     ];
     return items;
@@ -617,6 +682,7 @@ export class ContextMenuController {
     target: ContextTarget,
     gen: number,
     anchor: { x: number; y: number },
+    pageMarker: PageMarkerTarget | null,
   ): ContextMenuItem[] {
     const chapter = target.chapter!;
     const range = target.range!;
@@ -652,6 +718,7 @@ export class ContextMenuController {
           await this.commit(chapter, [range[1], range[1]], "", "@page-break\n\n", gen);
         },
       },
+      ...this.pageMarkerItems(target, pageMarker, gen),
       this.goToSourceItem(target),
     ];
     return items;

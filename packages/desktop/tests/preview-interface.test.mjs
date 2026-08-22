@@ -432,6 +432,104 @@ async function main() {
 
   console.log("[desktop-test] PASS getContextTargetAt kind precedence + protocol v4");
 
+  // ── @page marker reachability (protocol v7): the pageMarker secondary
+  // field + the margin-band fallback ─────────────────────────────────────────
+  const pageMarkerHtml = `
+    <div class="gp-run">
+      <div class="gp-layer"><div class="gp-sheet" data-page="1"></div></div>
+      <div class="gp-strip">
+        <div class="chapter" data-chapter-src="a.md" data-source-range="0:1">
+          <div class="page" id="pg" data-source-range="2:3">
+            <div class="section" id="sec" data-source-range="4:5">
+              <p id="inner" data-source-range="6:8">Body text</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // pageMarker is populated from the ENCLOSING .page even when the innermost
+  // annotated block (here a paragraph inside a @section) wins the primary
+  // slot — resolveAnnotatedBlock() alone can never surface the @page marker
+  // from inside a section.
+  {
+    const { document, api } = loadInterfaceWithDom(pageMarkerHtml);
+    document.elementFromPoint = () => document.getElementById("inner");
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "block");
+    assert.deepEqual(detail.range, [6, 8]);
+    assert.deepEqual(detail.pageMarker, {
+      chapter: "a.md",
+      range: [2, 3],
+      blockTag: "div",
+    });
+    const roundTripped = JSON.parse(JSON.stringify(detail));
+    assert.deepEqual(roundTripped, detail, "pageMarker stays JSON-cloneable");
+  }
+
+  // A hit on the .page itself: the primary target IS the page marker, and
+  // pageMarker reports the same range (the SPA suppresses the duplicate).
+  {
+    const { document, api } = loadInterfaceWithDom(pageMarkerHtml);
+    document.elementFromPoint = () => document.getElementById("pg");
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "marker");
+    assert.deepEqual(detail.range, [2, 3]);
+    assert.deepEqual(detail.pageMarker.range, [2, 3]);
+  }
+
+  // No enclosing page wrapper: pageMarker is null.
+  {
+    const { document, api } = loadInterfaceWithDom(contextHtml);
+    document.elementFromPoint = () => document.getElementById("running");
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "none");
+    assert.equal(detail.pageMarker, null);
+  }
+
+  // Margin band: a point inside a .gp-sheet's box but outside every author
+  // box (the hit lands on un-annotated chrome/body) resolves to the sheet's
+  // owning .page — right-click anywhere on the paper reaches the @page
+  // marker. happy-dom has no layout, so the geometric rects are stubbed:
+  // the sheet covers 0,0-400,600 and the page's content box 50,50-350,550.
+  {
+    const { document, api } = loadInterfaceWithDom(pageMarkerHtml);
+    const sheet = document.querySelector(".gp-sheet");
+    sheet.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 600, width: 400, height: 600 });
+    const pg = document.getElementById("pg");
+    pg.getClientRects = () => [];
+    pg.getBoundingClientRect = () => ({ left: 50, top: 50, right: 350, bottom: 550, width: 300, height: 500 });
+    // The margin-band hit: the strip box itself (never annotated).
+    document.elementFromPoint = () => document.querySelector(".gp-strip");
+    const detail = api.getContextTargetAt({ x: 10, y: 10 });
+    assert.equal(detail.kind, "marker", "margin band resolves to the owning .page marker");
+    assert.deepEqual(detail.range, [2, 3]);
+    assert.equal(detail.chapter, "a.md");
+  }
+
+  // Margin band over a page with NO author @page wrapper: nothing to offer —
+  // kind stays 'none' and native browser behavior is kept.
+  {
+    const html = `
+      <div class="gp-run">
+        <div class="gp-layer"><div class="gp-sheet" data-page="1"></div></div>
+        <div class="gp-strip">
+          <div class="chapter" data-chapter-src="a.md" data-source-range="0:1">
+            <p id="plain" data-source-range="1:2">Flowed content, no page wrapper.</p>
+          </div>
+        </div>
+      </div>`;
+    const { document, api } = loadInterfaceWithDom(html);
+    const sheet = document.querySelector(".gp-sheet");
+    sheet.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 600, width: 400, height: 600 });
+    document.elementFromPoint = () => document.querySelector(".gp-strip");
+    const detail = api.getContextTargetAt({ x: 10, y: 10 });
+    assert.equal(detail.kind, "none");
+    assert.equal(detail.pageMarker, null);
+  }
+
+  console.log("[desktop-test] PASS @page marker reachability (protocol v7)");
+
   // ── Behind-layered images (`.gp-behind`, z-index:-1): the elementsFromPoint
   // hit-stack probe. A plate layered under the page's own text NEVER wins
   // elementFromPoint — the covering paragraph/page box does — so before the
@@ -757,10 +855,11 @@ async function main() {
     );
   }
 
-  // getProtocolVersion() bumped to 6.
+  // getProtocolVersion() bumped to 7 (pageMarker secondary field + the
+  // margin-band fallback — see the "@page marker reachability" section).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 6);
+    assert.equal(api.getProtocolVersion(), 7);
   }
 
   // ── Native engine getRectsFor: no clone-grouping — a spec resolves to AT

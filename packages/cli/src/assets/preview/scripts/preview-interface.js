@@ -378,6 +378,45 @@
     return null;
   }
 
+  // The .gp-sheet whose box contains a viewport point, or null. The sheet
+  // chrome lives in the hit-transparent .gp-layer (viewer.css), so it can
+  // never appear in the hit stack — this is a geometric scan of the cached
+  // page list (refreshPages), not a DOM hit test.
+  function sheetAtPoint(x, y) {
+    if (pages.length === 0) refreshPages();
+    for (var i = 0; i < pages.length; i++) {
+      var r = pages[i].getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return pages[i];
+    }
+    return null;
+  }
+
+  // The annotated .page/.spread wrapper that OWNS a sheet: greatest
+  // client-rect intersection with the sheet's box — the same rect-vs-sheet
+  // resolution nativeRectsFor() uses. Null when the page has no author
+  // @page/@spread wrapper (plain flowed content) — callers then keep the
+  // plain hit result.
+  function pageMarkerElForSheet(sheet) {
+    var sheetRect = sheet.getBoundingClientRect();
+    var candidates = document.querySelectorAll('.page[data-source-range], .spread[data-source-range]');
+    var best = null;
+    var bestArea = 0;
+    for (var i = 0; i < candidates.length; i++) {
+      var rects = rectsOf(candidates[i]);
+      for (var j = 0; j < rects.length; j++) {
+        var r = rects[j];
+        var width = Math.min(r.right, sheetRect.right) - Math.max(r.left, sheetRect.left);
+        var height = Math.min(r.bottom, sheetRect.bottom) - Math.max(r.top, sheetRect.top);
+        var area = width > 0 && height > 0 ? width * height : 0;
+        if (area > bestArea) {
+          bestArea = area;
+          best = candidates[i];
+        }
+      }
+    }
+    return best;
+  }
+
   // The element getContextTargetAt() resolves the payload from. `topmostOnly`
   // (the keyboard path) skips the behind-image probe: its anchor is a
   // SYNTHETIC block-center point (keyboardAnchorPoint()), not a user-aimed
@@ -395,7 +434,20 @@
     // context menu even when a full-bleed plate runs beneath it — the
     // contextmenu listener's kind==='none' contract below.
     if (topEl.closest('.gp-marginbox')) return topEl;
-    return behindImageInStack(stack) || topEl;
+    var behind = behindImageInStack(stack);
+    if (behind) return behind;
+    // Margin band (protocol v7): the point sits in a page's margin — outside
+    // every author box, so nothing annotated is under it (the sheet chrome
+    // and the run/strip boxes are hit-transparent viewer chrome). When the
+    // point still lies inside a .gp-sheet, resolve to the annotated
+    // .page/.spread that owns that sheet, so right-clicking anywhere on the
+    // paper reaches the @page marker, not just the content box.
+    if (!resolveAnnotatedBlock(topEl)) {
+      var sheet = sheetAtPoint(x, y);
+      var owner = sheet ? pageMarkerElForSheet(sheet) : null;
+      if (owner) return owner;
+    }
+    return topEl;
   }
 
   function elementOf(node) {
@@ -521,6 +573,21 @@
 
     var block = resolveAnnotatedBlock(pointEl);
 
+    // Secondary page-marker target (protocol v7): resolveAnnotatedBlock()
+    // returns the INNERMOST annotated block, so inside a @section the
+    // enclosing @page marker never wins the primary slot. Surface the
+    // enclosing .page/.spread/.chapter wrapper's own marker line as a
+    // secondary field — the same always-populated pattern image/link/
+    // selection use — so the menu can offer "Edit page marker…" when it
+    // differs from the primary target.
+    var pageMarkerEl = pointEl && pointEl.closest ? pointEl.closest('.page, .spread, .chapter') : null;
+    var pageMarkerRange = pageMarkerEl ? sourceRangeOf(pageMarkerEl) : null;
+    var pageMarker = pageMarkerRange ? {
+      chapter: chapterOf(pageMarkerEl),
+      range: pageMarkerRange,
+      blockTag: pageMarkerEl.tagName ? pageMarkerEl.tagName.toLowerCase() : null
+    } : null;
+
     var kind;
     if (selection) kind = 'selection';
     else if (image) kind = 'image';
@@ -538,7 +605,8 @@
       rect: plainRect(block || pointEl),
       image: image,
       link: link,
-      selection: selection
+      selection: selection,
+      pageMarker: pageMarker
     };
   }
 
@@ -727,7 +795,12 @@
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
     // {ref} form entirely — {chapter, range} is the only target shape now
     // (the native viewer never mints a ref — it never clones).
-    getProtocolVersion: function () { return 6; },
+    // v7: getContextTargetAt() gained the `pageMarker` secondary field (the
+    // enclosing .page/.spread/.chapter marker) and the margin-band fallback
+    // (a point inside a .gp-sheet but outside every author box resolves to
+    // the sheet's owning .page/.spread). An older SPA simply ignores the
+    // extra field; a newer SPA feature-detects by the field's presence.
+    getProtocolVersion: function () { return 7; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.

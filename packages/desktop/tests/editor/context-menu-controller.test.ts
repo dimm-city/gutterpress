@@ -472,6 +472,107 @@ describe("marker kind", () => {
   });
 });
 
+// ── page marker (protocol v7's secondary `pageMarker` field) ─────────────────
+
+/** detail() plus a v7 `pageMarker` field (not yet in PreviewEvent's detail
+ *  type — the controller reads it tolerantly, so the tests inject it the same
+ *  way the wire payload delivers it). */
+function detailWithPageMarker(
+  over: Partial<PreviewEvent["detail"]>,
+  pageMarker: { chapter: string | null; range: [number, number] | null; blockTag: string | null } | null,
+): PreviewEvent["detail"] {
+  return { ...detail(over), pageMarker } as unknown as PreviewEvent["detail"];
+}
+
+describe("page marker (protocol v7)", () => {
+  test("a block inside a @section offers Edit page marker… and edits the enclosing @page line", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@page .cover\n\np1\np2\n";
+    h.promptResult = "@page .cover.dark";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detailWithPageMarker({ kind: "block", range: [2, 3] }, {
+        chapter: "ch1.md",
+        range: [0, 1],
+        blockTag: "div",
+      }),
+    });
+    await flush();
+    const item = h.ctrl.items.find((i) => i.id === "page-marker-edit")!;
+    expect(item).toBeDefined();
+    expect(item.enabled).toBe(true);
+    await h.ctrl.runItem(item);
+    expect(h.promptCalls).toEqual([
+      { title: "Edit page marker", label: "Marker line", initialValue: "@page .cover" },
+    ]);
+    expect(h.commitEngine.calls).toEqual([
+      {
+        chapter: "ch1.md",
+        range: [0, 1],
+        expected: "@page .cover\n",
+        replacement: "@page .cover.dark\n",
+        expectedGeneration: 0,
+      },
+    ]);
+  });
+
+  test("a @section marker target also offers the enclosing @page marker", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@page\n\n@section .gp-columns-2\n\ntext\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detailWithPageMarker({ kind: "marker", range: [2, 3] }, {
+        chapter: "ch1.md",
+        range: [0, 1],
+        blockTag: "div",
+      }),
+    });
+    await flush();
+    expect(h.ctrl.items.map((i) => i.id)).toEqual(["marker-edit", "page-marker-edit", "go-to-source"]);
+  });
+
+  test("suppressed when the primary target IS the page marker (same chapter + range)", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "@page\np1\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detailWithPageMarker({ kind: "marker", range: [0, 1] }, {
+        chapter: "ch1.md",
+        range: [0, 1],
+        blockTag: "div",
+      }),
+    });
+    await flush();
+    expect(h.ctrl.items.some((i) => i.id === "page-marker-edit")).toBe(false);
+    expect(h.ctrl.items.some((i) => i.id === "marker-edit")).toBe(true);
+  });
+
+  test("an older preview payload without pageMarker still builds the normal menu (tolerant read)", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [1, 2] }) });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+    expect(h.ctrl.items.some((i) => i.id === "page-marker-edit")).toBe(false);
+  });
+
+  test("rejects an unsafe page-marker chapter before reading or committing", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detailWithPageMarker({ kind: "block", range: [1, 2] }, {
+        chapter: "../../etc/passwd",
+        range: [0, 1],
+        blockTag: "div",
+      }),
+    });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+    expect(h.ctrl.items.some((i) => i.id === "page-marker-edit")).toBe(false);
+  });
+});
+
 describe("image kind", () => {
   test("offers one Set properties action instead of separate image facet actions", async () => {
     const h = make();
