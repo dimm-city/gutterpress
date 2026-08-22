@@ -432,6 +432,185 @@ async function main() {
 
   console.log("[desktop-test] PASS getContextTargetAt kind precedence + protocol v4");
 
+  // ── Behind-layered images (`.gp-behind`, z-index:-1): the elementsFromPoint
+  // hit-stack probe. A plate layered under the page's own text NEVER wins
+  // elementFromPoint — the covering paragraph/page box does — so before the
+  // probe the image context menu was unreachable at EVERY point. happy-dom has
+  // no elementsFromPoint (and no layout engine), so each case stubs the full
+  // stack explicitly, top-most first, the way a real browser reports it. The
+  // fixture's <style> gives .gp-behind its real computed z-index (-1 via the
+  // --gp-z-behind ladder, exactly as gutterpress-css.ts defines it).
+  const behindHtml = `
+    <style>:root { --gp-z-behind: -1; } .gp-behind { z-index: var(--gp-z-behind); }</style>
+    <div class="chapter" data-chapter-src="a.md" data-source-range="0:20">
+      <div class="page" data-source-range="0:20">
+        <p id="plate-block" data-source-range="1:2"><img id="plate" class="gp-pin gp-behind" src="plate.jpg" alt="Backdrop" data-gp-source-token="![Backdrop](plate.jpg)" data-gp-source-occurrence="0"></p>
+        <p id="upper-block" data-source-range="2:3"><img id="upper" class="gp-pin gp-behind" src="upper.jpg" alt="Upper" data-gp-source-token="![Upper](upper.jpg)" data-gp-source-occurrence="0"></p>
+        <p id="cover" data-source-line="3" data-source-range="3:4">Body text over the plate <a id="cover-link" href="https://example.com/" data-gp-source-token="[x](https://example.com/)" data-gp-source-occurrence="0">x</a></p>
+        <p id="inflow-block" data-source-range="4:5"><img id="inflow" src="art.jpg" alt="Art" data-gp-source-token="![Art](art.jpg)" data-gp-source-occurrence="0"></p>
+      </div>
+    </div>
+    <div class="gp-marginbox" data-box="bottom-center"><span id="folio">7</span></div>`;
+
+  // THE regression: a right-click point covered by a text block still resolves
+  // the gp-behind image beneath it — kind 'image', and the payload targets the
+  // IMAGE's own annotated block, not the covering paragraph's.
+  {
+    const { document, api } = loadInterfaceWithDom(behindHtml);
+    const cover = document.getElementById("cover");
+    document.elementFromPoint = () => cover;
+    document.elementsFromPoint = () => [
+      cover,
+      document.querySelector(".page"),
+      document.querySelector(".chapter"),
+      document.getElementById("plate"),
+      document.body,
+    ];
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "image", "buried gp-behind image wins over the covering text block");
+    assert.deepEqual(detail.image, {
+      src: "plate.jpg",
+      alt: "Backdrop",
+      source: { token: "![Backdrop](plate.jpg)", occurrence: 0 },
+    });
+    assert.deepEqual(detail.range, [1, 2], "range targets the plate's OWN block, not the covering paragraph's");
+    assert.equal(detail.blockTag, "p");
+    assert.equal(detail.chapter, "a.md");
+    assert.equal(detail.link, null, "the covering paragraph's link is NOT misattributed to the image");
+    assert.deepEqual(JSON.parse(JSON.stringify(detail)), detail, "payload stays JSON-cloneable");
+  }
+
+  // Two overlapping plates: the TOP-MOST one in paint order (first in the
+  // elementsFromPoint stack) wins.
+  {
+    const { document, api } = loadInterfaceWithDom(behindHtml);
+    const cover = document.getElementById("cover");
+    document.elementsFromPoint = () => [
+      cover,
+      document.querySelector(".page"),
+      document.getElementById("upper"),
+      document.getElementById("plate"),
+      document.body,
+    ];
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "image");
+    assert.equal(detail.image.src, "upper.jpg", "the upper of two overlapping plates wins");
+    assert.deepEqual(detail.range, [2, 3]);
+  }
+
+  // A normally-layered image (z-index auto) beneath the point is NOT
+  // preferred: it is already reachable at its uncovered points, and stealing
+  // the covering content's right-clicks would invert the bug.
+  {
+    const { document, api } = loadInterfaceWithDom(behindHtml);
+    const cover = document.getElementById("cover");
+    document.elementsFromPoint = () => [
+      cover,
+      document.querySelector(".page"),
+      document.getElementById("inflow"),
+      document.body,
+    ];
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "block");
+    assert.deepEqual(detail.range, [3, 4], "the covering paragraph keeps the click");
+    assert.equal(detail.image, null);
+  }
+
+  // A right-click ON a link's own text keeps the link menu even over a plate
+  // (visible interactive content is never probed beneath).
+  {
+    const { document, api } = loadInterfaceWithDom(behindHtml);
+    const link = document.getElementById("cover-link");
+    document.elementsFromPoint = () => [
+      link,
+      document.getElementById("cover"),
+      document.querySelector(".page"),
+      document.getElementById("plate"),
+      document.body,
+    ];
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "link");
+    assert.equal(detail.link.href, "https://example.com/");
+    assert.equal(detail.image, null);
+  }
+
+  // Margin-box furniture keeps its native-menu contract (kind 'none', no
+  // preventDefault) even when a full-bleed plate runs beneath it.
+  {
+    const { window, document } = loadInterfaceWithDom(behindHtml);
+    const folio = document.getElementById("folio");
+    document.elementFromPoint = () => folio;
+    document.elementsFromPoint = () => [
+      folio,
+      document.querySelector(".gp-marginbox"),
+      document.getElementById("plate"),
+      document.body,
+    ];
+    let received = null;
+    window.addEventListener("contextMenuRequested", (e) => {
+      received = e.detail;
+    });
+    const ev = new window.MouseEvent("contextmenu", { clientX: 1, clientY: 1, bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    assert.equal(ev.defaultPrevented, false, "native copy on furniture text survives a plate beneath it");
+    assert.equal(received, null);
+  }
+
+  // Mouse listener end-to-end: right-click over the covered plate dispatches
+  // the image menu request and suppresses the native menu.
+  {
+    const { window, document } = loadInterfaceWithDom(behindHtml);
+    const cover = document.getElementById("cover");
+    document.elementsFromPoint = () => [cover, document.querySelector(".page"), document.getElementById("plate")];
+    let received = null;
+    window.addEventListener("contextMenuRequested", (e) => {
+      received = e.detail;
+    });
+    const ev = new window.MouseEvent("contextmenu", { clientX: 12, clientY: 34, bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    assert.ok(ev.defaultPrevented);
+    assert.ok(received);
+    assert.equal(received.kind, "image");
+    assert.equal(received.image.src, "plate.jpg");
+    assert.equal(received.via, "mouse");
+  }
+
+  // The keyboard path opts OUT of the probe: its anchor is a synthetic
+  // block-center point, not a user-aimed pointer position — Shift+F10 on a
+  // page with a background plate must still target the anchor block.
+  {
+    const { window, document } = loadInterfaceWithDom(behindHtml);
+    const cover = document.getElementById("cover");
+    cover.getBoundingClientRect = () => ({ top: 0, left: 0, bottom: 40, right: 400, width: 400, height: 40 });
+    window.innerHeight = 900;
+    document.elementFromPoint = () => cover;
+    document.elementsFromPoint = () => [cover, document.querySelector(".page"), document.getElementById("plate")];
+    let received = null;
+    window.addEventListener("contextMenuRequested", (e) => {
+      received = e.detail;
+    });
+    const ev = new window.KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    assert.ok(received);
+    assert.equal(received.kind, "block", "keyboard menus never get hijacked by a plate under the anchor");
+    assert.deepEqual(received.range, [3, 4]);
+  }
+
+  // Hosts without elementsFromPoint degrade to the old single-element hit
+  // (the plate stays unreachable there, but nothing else regresses). This is
+  // also the path every OTHER case in this file exercises, since happy-dom
+  // ships no elementsFromPoint.
+  {
+    const { document, api } = loadInterfaceWithDom(behindHtml);
+    assert.equal(typeof document.elementsFromPoint, "undefined", "precondition: happy-dom has no elementsFromPoint");
+    document.elementFromPoint = () => document.getElementById("cover");
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "block");
+    assert.deepEqual(detail.range, [3, 4]);
+  }
+
+  console.log("[desktop-test] PASS gp-behind image hit-stack probe (elementsFromPoint)");
+
   // ── contextmenu listener: preventDefault + dispatch only when kind !== 'none' ─
   {
     const html = `

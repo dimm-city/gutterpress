@@ -492,6 +492,45 @@ describe("image kind", () => {
     ]);
   });
 
+  test("a gp-behind image buried under page text still opens the image menu", async () => {
+    // Regression companion to preview-interface.test.mjs's hit-stack probe:
+    // a right-click over a `.gp-behind` (z-index:-1) plate covered by a text
+    // block resolves to kind:"image" with the IMAGE's own block range. The
+    // controller must build the ordinary image menu from that payload, and
+    // Set properties must seed the Layer facet from the buried image's
+    // source — not from the covering paragraph the pointer actually hit.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] =
+      "Body text that visually covers the plate.\n" +
+      "![Backdrop](plate.jpg){.gp-pin .gp-behind}\n";
+    h.imagePropertiesResult = null; // cancel the dialog — seeding is the assertion
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [1, 2],
+        image: { src: "plate.jpg", alt: "Backdrop", source: { token: "![Backdrop](plate.jpg)", occurrence: 0 } },
+      }),
+    });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+    expect(h.ctrl.items.map((item) => item.id)).toEqual(["image-properties", "image-reveal", "go-to-source"]);
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.imagePropertiesCalls).toEqual([{
+      src: "plate.jpg",
+      alt: "Backdrop",
+      width: "",
+      position: "gp-pin",
+      pinAlignment: "center",
+      size: "",
+      spacing: "",
+      shape: false,
+      flush: false,
+      layer: "gp-behind",
+    }]);
+    expect(h.commitEngine.calls).toEqual([]);
+  });
+
   test("Set properties seeds every supported option and applies multiple changes in one commit", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] =
