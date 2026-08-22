@@ -139,6 +139,74 @@ export function forcedColumnBreaksSupported(): boolean {
 }
 
 /**
+ * Sub-pixel tolerance for fragmentainer geometry, in CSS px.
+ *
+ * `synthesizeColumnBreaks` reads a box's position by measuring its fragment
+ * rects against its column. Two effects put that measurement up to (but
+ * under) 1px away from the whole number the box logically sits at, and both
+ * are properties of block fragmentation, not of any one browser:
+ *
+ *   - the reserve spacer's height is `Math.ceil`ed so it is guaranteed to
+ *     overflow the column (an exact fit may leave the following box in
+ *     place). That overshoot is `ceil(x) - x`, i.e. strictly < 1px, and it
+ *     re-appears at the top of the next column, so the box the break moved
+ *     starts up to 1px BELOW the column top instead of exactly on it;
+ *   - a box pushed to the next column can be left with a hairline leading
+ *     fragment at the tail of the previous one. Gecko emits one (measured:
+ *     0.3px); Blink does not.
+ *
+ * Neither is visible on screen, and neither may be read as "this box still
+ * has room in the current column" — that misreading is what turned a 0.3px
+ * hairline into two blank pages of Firefox over-pagination (the issue #46
+ * cross-browser smoke test measured firefox 6pp against chromium 4pp).
+ */
+const FRAGMENT_EPSILON_PX = 1;
+
+/**
+ * The fragment rect where `site`'s content actually starts (`atEnd` false)
+ * or ends (`atEnd` true).
+ *
+ * A multicol box spanning a column boundary reports one rect per fragment,
+ * and a fragment thinner than `FRAGMENT_EPSILON_PX` is fragmentation
+ * residue holding no content — the box visibly starts (or ends) in the
+ * neighbouring column, so the residue must not be mistaken for its content
+ * edge. Falls back to the raw rects when every fragment is that thin, which
+ * is the only case where a hairline IS the content.
+ */
+export function contentEdgeRect(site: Element, atEnd: boolean): DOMRect | undefined {
+  const rects = Array.from(site.getClientRects());
+  const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
+  const pool = solid.length ? solid : rects;
+  return atEnd ? pool.at(-1) : pool[0];
+}
+
+/**
+ * Height of the reserve spacer that pushes a break site past its current
+ * column, or null when the forced break is ALREADY satisfied and print puts
+ * nothing more in this column either.
+ *
+ * `offset` is the site's content edge measured down from the column's top —
+ * the strip is `column-fill: auto` with a fixed `--gp-content-h`, so every
+ * column shares the strip's top edge and one number locates the site in
+ * whichever column it landed in.
+ *
+ * Both "already satisfied" verdicts are refusals to manufacture a wholly
+ * blank page: a `break-before` site already at its column's top, or a
+ * `break-after` site already at its column's bottom, needs no spacer, and
+ * reserving one would add a page the PDF does not have. They are also what
+ * dedupes a wrapper/inner-heading pair carrying the same forced break — the
+ * loop remeasures between insertions, so the second site of the pair sees
+ * itself already moved. Each is `FRAGMENT_EPSILON_PX` tolerant because the
+ * `Math.ceil` below can leave a moved site a sub-pixel off the column top.
+ */
+export function columnReserve(offset: number, columnHeight: number): number | null {
+  const remaining = columnHeight - offset;
+  if (remaining < FRAGMENT_EPSILON_PX) return null; // already at the column's end
+  if (remaining > columnHeight - FRAGMENT_EPSILON_PX) return null; // already at its start
+  return Math.ceil(remaining);
+}
+
+/**
  * Geometry-aware screen synthesis for author `break-*: page|left|right`.
  * It runs in every browser: even where forced column breaks are supported, a
  * CSS-only `page -> column` mapping cannot tell that a named-run boundary or
@@ -223,16 +291,12 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
       site = target;
     }
     if (prop === "break-after" && !el.nextElementSibling) continue;
-    const rects = Array.from(site.getClientRects());
-    const rect = prop === "break-after" ? rects.at(-1) : rects[0];
+    const rect = contentEdgeRect(site, prop === "break-after");
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
     const edge = prop === "break-after" ? rect.bottom : rect.top;
-    const offset = edge - stripTop;
-    if (prop === "break-before" && offset < 0.5) continue;
-    if (prop === "break-after" && strip.clientHeight - offset < 0.5) continue;
-    const reserve = Math.ceil(strip.clientHeight - offset);
-    if (reserve <= 0) continue;
+    const reserve = columnReserve(edge - stripTop, strip.clientHeight);
+    if (reserve === null) continue;
     const spacer = document.createElement("div");
     spacer.className = "gp-column-break-spacer";
     spacer.setAttribute("aria-hidden", "true");

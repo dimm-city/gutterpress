@@ -33,9 +33,11 @@
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
     forcedColumnBreaksSupported: () => forcedColumnBreaksSupported,
+    contentEdgeRect: () => contentEdgeRect,
     compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
+    columnReserve: () => columnReserve,
     collectCssText: () => collectCssText,
     buildStrips: () => buildStrips,
     blankPageIndices: () => blankPageIndices,
@@ -1036,6 +1038,21 @@
   function forcedColumnBreaksSupported() {
     return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("break-before", "column") && CSS.supports("break-after", "column");
   }
+  var FRAGMENT_EPSILON_PX = 1;
+  function contentEdgeRect(site, atEnd) {
+    const rects = Array.from(site.getClientRects());
+    const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
+    const pool = solid.length ? solid : rects;
+    return atEnd ? pool.at(-1) : pool[0];
+  }
+  function columnReserve(offset, columnHeight) {
+    const remaining = columnHeight - offset;
+    if (remaining < FRAGMENT_EPSILON_PX)
+      return null;
+    if (remaining > columnHeight - FRAGMENT_EPSILON_PX)
+      return null;
+    return Math.ceil(remaining);
+  }
   function synthesizeColumnBreaks(model) {
     const sites = [];
     const seen = new WeakMap;
@@ -1081,19 +1098,13 @@
       }
       if (prop === "break-after" && !el.nextElementSibling)
         continue;
-      const rects = Array.from(site.getClientRects());
-      const rect = prop === "break-after" ? rects.at(-1) : rects[0];
+      const rect = contentEdgeRect(site, prop === "break-after");
       if (!rect)
         continue;
       const stripTop = strip.getBoundingClientRect().top;
       const edge = prop === "break-after" ? rect.bottom : rect.top;
-      const offset = edge - stripTop;
-      if (prop === "break-before" && offset < 0.5)
-        continue;
-      if (prop === "break-after" && strip.clientHeight - offset < 0.5)
-        continue;
-      const reserve = Math.ceil(strip.clientHeight - offset);
-      if (reserve <= 0)
+      const reserve = columnReserve(edge - stripTop, strip.clientHeight);
+      if (reserve === null)
         continue;
       const spacer = document.createElement("div");
       spacer.className = "gp-column-break-spacer";
