@@ -72,3 +72,4 @@ packages/desktop/version.json
 
 # Local-only plan/history docs (moved out of the repo to keep assets small)
 .docs-archive/
+packages/cli/final-check.mjs
