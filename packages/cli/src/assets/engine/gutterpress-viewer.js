@@ -148,6 +148,23 @@
 .gp-run {
   position: relative;
   margin: 0 0 var(--gp-sheet-gap);
+  /* Hit-transparent, like \`.gp-layer\` below: in wrap mode a recto-starting
+     run is pulled up over the previous run's last row (decorate.ts's
+     cross-run negative margin-top — the spread-composition overlap), and
+     its leading \`.gp-wrap-spacer\` slot is visually empty. The covered page
+     paints through, but the run's full-width box used to win
+     elementFromPoint there, so clicks, right-clicks, link hits, and text
+     selection were all dead on every covered page (measured: 60/60 dead
+     probe points in two-column view). Runs are viewer chrome — only author
+     content may capture hits. */
+  pointer-events: none;
+}
+
+/* …and the author's content re-enables hit testing. Equal specificity with
+   \`.gp-run { pointer-events: none }\` above, so ORDER is load-bearing:
+   \`auto\` must come after \`none\`. */
+.gp-strip > * {
+  pointer-events: auto;
 }
 
 .gp-layer {

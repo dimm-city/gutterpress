@@ -70,6 +70,12 @@ interface SpreadReport {
   rows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
   singleRows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
   singleSheetLefts: number[];
+  overlapHit: {
+    coveredPage: number;
+    hitId: string | null;
+    hitIsChrome: boolean;
+    hitPage: number | null;
+  } | null;
 }
 
 testIf(
@@ -200,6 +206,53 @@ testIf(
               row.sheets.slice(1).map((sheet, i) => Math.round(sheet.l - row.sheets[i]!.r)),
             );
 
+            // HIT-TRANSPARENCY over the cross-run overlap (viewer.css's
+            // `.gp-run { pointer-events: none }` + `.gp-strip > * { auto }`):
+            // a recto-starting run's box blankets the previous run's last row
+            // (the margin pull asserted below), and used to WIN
+            // elementFromPoint over the covered page — its empty
+            // `.gp-wrap-spacer` slot let the page paint through while
+            // swallowing every click/right-click/selection on it. Probe a
+            // content element on the covered page: the hit must resolve
+            // inside that page's own content (pageOf agrees), never a
+            // `.gp-strip`/`.gp-run` chrome box. (This fixture has no author
+            // `.page` wrappers — page identity comes from `pageOf()`, the
+            // parity-gated answer.) NOTE: this probe scrolls, so it runs
+            // after every geometry read above.
+            const overlapHit = (() => {
+              for (const spacer of Array.from(
+                document.querySelectorAll<HTMLElement>(".gp-strip > .gp-wrap-spacer"),
+              )) {
+                const run = spacer.parentElement?.closest(".gp-run");
+                const prevRun = run?.previousElementSibling;
+                if (!(prevRun instanceof HTMLElement) || !prevRun.classList.contains("gp-run"))
+                  continue; // the book's own first page also gets a spacer — no covered row there
+                let coveredPage = -1;
+                for (const sh of Array.from(prevRun.querySelectorAll<HTMLElement>(".gp-sheet"))) {
+                  coveredPage = Math.max(coveredPage, Number(sh.dataset.page) - 1);
+                }
+                const probe = probeEls.find((el) => gp.pageOf(el) === coveredPage);
+                if (!probe) continue;
+                probe.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+                const r = probe.getClientRects()[0] ?? probe.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  (r.left + r.right) / 2,
+                  (r.top + r.bottom) / 2,
+                );
+                const hitEl = hit instanceof HTMLElement ? hit : null;
+                return {
+                  coveredPage: coveredPage + 1,
+                  hitId: hitEl ? hitEl.id || hitEl.tagName.toLowerCase() : null,
+                  hitIsChrome: !!hitEl &&
+                    ["gp-run", "gp-strip", "gp-wrap-spacer", "gp-layer", "gp-sheet"].some((c) =>
+                      hitEl.classList.contains(c),
+                    ),
+                  hitPage: hitEl?.closest(".gp-strip") ? gp.pageOf(hitEl) + 1 : null,
+                };
+              }
+              return null;
+            })();
+
             return {
               supported:
                 CSS.supports("column-wrap", "wrap") && CSS.supports("column-height", "100px"),
@@ -217,6 +270,7 @@ testIf(
               rows,
               singleRows,
               singleSheetLefts,
+              overlapHit,
             } as SpreadReport;
           });
         } finally {
@@ -298,6 +352,16 @@ testIf(
         const allowedSolos = new Set([1]);
         if (report.totalPages % 2 === 0) allowedSolos.add(report.totalPages);
         expect(soloPages.filter((p) => !allowedSolos.has(p))).toEqual([]);
+
+        // …and the overlap that composes those cross-run pairs must be
+        // hit-TRANSPARENT: elementFromPoint over the covered page's own
+        // content resolves to that page's content, never the overlapping
+        // run/strip chrome (the regression: 60/60 dead pointer probes on
+        // every covered page in two-column view — right-click,
+        // click-to-source, links, and text selection all dead).
+        expect(report.overlapHit).not.toBeNull();
+        expect(report.overlapHit!.hitIsChrome).toBe(false);
+        expect(report.overlapHit!.hitPage).toBe(report.overlapHit!.coveredPage);
       } finally {
         await close();
       }
