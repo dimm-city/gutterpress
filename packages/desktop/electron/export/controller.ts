@@ -45,6 +45,14 @@ export interface ExportBuildArgs {
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
+  /**
+   * Proceed past the engine's over-wide-content check instead of failing on
+   * it. The engine's error tells the author to pass this; without it here the
+   * advice is unreachable from the desktop, which is the only export path a
+   * non-technical author has. Opt-in per export — the build still reports the
+   * whole-document shrink scale and every offender as diagnostics.
+   */
+  allowShrink?: boolean;
 }
 
 /**
@@ -280,6 +288,7 @@ export class ExportController {
           skipLint: args.skipLint,
           skipPreValidate: args.skipPreValidate,
           skipPostValidate: args.skipPostValidate,
+          allowShrink: args.allowShrink,
           // Render with Electron's own Chromium unless explicitly opted out.
           engineBrowser: this.deps.usePuppeteer() ? undefined : this.deps.engineBrowser,
           rawArgs: { input: args.input, format, out: args.out },

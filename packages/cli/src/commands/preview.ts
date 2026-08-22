@@ -87,6 +87,7 @@ export default defineCommand({
         skipLint: !!args["skip-lint"],
         skipPreValidate: !!args["skip-pre-validate"],
         skipPostValidate: !!args["skip-post-validate"],
+        allowShrink: !!args["allow-shrink"],
         engine,
         rawArgs: args as Record<string, unknown>,
       });

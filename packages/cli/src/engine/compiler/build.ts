@@ -511,14 +511,27 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     if (widthOffenders.boxes.length) {
       // Laid-out box overflow is a PROVEN trigger class (every measured
       // real-book shrink was one) — a hard error unless the caller opts out.
-      const msg =
-        `content wider than the page content box triggers Chromium print ` +
-        `shrink-to-fit (the WHOLE book scales down, silently):\n${describe(widthOffenders.boxes)}`;
+      const scale = shrinkScale(widthOffenders.boxes, widthOffenders.limitPx);
+      const headline =
+        scale === null
+          ? `content outside the page content box risks Chromium print ` +
+            `shrink-to-fit (the WHOLE book scales down, silently)`
+          : `content wider than the page content box: Chromium print shrink-to-fit ` +
+            `scales the WHOLE document — every page, every measurement — to about ` +
+            `${scale.toFixed(2)}x its declared size (12pt type prints at ` +
+            `${(12 * scale).toFixed(1)}pt). The page size and page count do not ` +
+            `change, so the shrink is invisible in the PDF`;
+      const msg = `${headline}:\n${describe(widthOffenders.boxes)}`;
       if (opts.allowShrink) {
+        // The measured numbers have to travel on the DIAGNOSTICS channel, not
+        // `log`: `log` is `opts.onProgress`, which the product build paths
+        // (`buildNativePdf`) never supply — opting IN used to make the report
+        // strictly less informative than the error it replaced.
+        if (scale !== null) diagnose("engine.width.overflow", `${headline}.`);
         for (const o of widthOffenders.boxes)
           diagnose(
             "engine.width.overflow",
-            `${o.desc} is wider than the page — Chromium shrinks the WHOLE book to fit it. ${o.left < -1 ? "Keep it inside the page content box." : "Give it an explicit width that fits."}`,
+            `${o.desc} is ${Math.round(o.px)}px wide, past the ${Math.round(widthOffenders.limitPx)}px page content box. ${o.left < -1 ? "Keep it inside the page content box." : "Give it an explicit width that fits."}`,
           );
         log(`WARNING: ${msg}`);
       } else {
@@ -1224,6 +1237,54 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
 async function printPdf(page: Session): Promise<Uint8Array> {
   await page.waitForReady();
   return page.printToPDF();
+}
+
+/**
+ * Chromium's shrink-to-fit factor for a document whose content overflows the
+ * page content box, as a scale the author can read (0.72 = everything prints
+ * at 72% of its declared size). Derived from the width check's OWN measured
+ * boxes — nothing extra is measured, and nothing is guessed.
+ *
+ * Two facts, both measured on Chrome 151 (6x9in page, 0.75in margins → a
+ * 432px content box; observed scale read off `pdftotext -bbox` glyph widths
+ * against an otherwise identical control build):
+ *
+ * | widest right edge | limit/right | observed |
+ * |     433px         |   0.99769   | 0.99769  |
+ * |     500px         |   0.86400   | 0.86400  |
+ * |     600px         |   0.72000   | 0.72000  |
+ * |     648px         |   0.66667   | 0.66667  |
+ * |     660px         |   0.65455   | 0.66667  |
+ * |     700px         |   0.61714   | 0.66667  |
+ * |    1200px         |   0.36000   | 0.66667  |
+ *
+ * 1. The factor is the widest RIGHT edge against the content-box limit —
+ *    exact, not approximate, in the unclamped range.
+ * 2. Chromium clamps the shrink at 1.5x ({@link MAX_SHRINK}); past that it
+ *    stops scaling and clips instead. Reporting the unclamped ratio there
+ *    would state a scale the PDF does not have.
+ *
+ * `null` when no box overflows the RIGHT edge — a box pulled off the LEFT
+ * edge measured as no shrink at all (it clips), so there is no factor to
+ * report even though the check still flags it. This function does not decide
+ * what is flagged; it only describes the consequence of what was.
+ *
+ * A right edge is recoverable from what the check already returns: a
+ * DOMRect's `right` is `left + width`, and `px` is `max(width, right)`, so
+ * `px + min(0, left)` is the right edge either way.
+ *
+ * Approximate for one reason the check already carries: `limitPx` is the
+ * WIDEST page context in the document, so a book with a full-bleed page can
+ * shrink harder than the number says.
+ */
+const MAX_SHRINK = 1.5;
+function shrinkScale(
+  boxes: Array<{ px: number; left: number }>,
+  limitPx: number,
+): number | null {
+  const maxRight = Math.max(...boxes.map((o) => o.px + Math.min(0, o.left)));
+  if (!(maxRight > limitPx)) return null;
+  return Math.max(1 / MAX_SHRINK, limitPx / maxRight);
 }
 
 /**

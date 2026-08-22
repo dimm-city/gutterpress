@@ -107,7 +107,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     expect(captured?.pdfFileOverride).toBe(path.resolve("/tmp/out-dir/custom.pdf"));
   });
 
-  test("boolean skip flags and title/manifest/icc/pdfx-flavor all reach runBuild", async () => {
+  test("boolean skip/allow flags and title/manifest/icc/pdfx-flavor all reach runBuild", async () => {
     let captured: buildRunnerMod.BuildRunnerOptions | undefined;
     stubRunBuild(async (opts) => {
       captured = opts;
@@ -130,6 +130,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
         "--skip-lint",
         "--skip-pre-validate",
         "--skip-post-validate",
+        "--allow-shrink",
         "--strip-annotations",
       ],
     });
@@ -141,6 +142,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     expect(captured?.skipLint).toBe(true);
     expect(captured?.skipPreValidate).toBe(true);
     expect(captured?.skipPostValidate).toBe(true);
+    expect(captured?.allowShrink).toBe(true);
     expect(captured?.stripAnnotations).toBe(true);
   });
 
@@ -156,6 +158,9 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     expect(captured?.skipLint).toBe(false);
     expect(captured?.skipPreValidate).toBe(false);
     expect(captured?.skipPostValidate).toBe(false);
+    // --allow-shrink is opt-in: the over-wide-content check stays a hard error
+    // unless the author asked for the shrink.
+    expect(captured?.allowShrink).toBe(false);
     expect(captured?.stripAnnotations).toBeUndefined();
   });
 
