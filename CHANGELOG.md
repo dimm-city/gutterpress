@@ -5,6 +5,57 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Marker warnings now name the escape.** A marker is any line whose first
+  character is `@` followed by a marker word — including a line your paragraph
+  merely *wrapped* onto, which is how a sentence about `@page` splits your page
+  in two. There is no new syntax for this (markdown's own `\@page` already
+  renders as text, as does `` `@page` ``); what was missing was anywhere that
+  said so. The "not something a marker understands" and "several plain words"
+  warnings now end with the escape for that marker's own kind, and the user
+  guide has a short section on writing about markers without triggering them.
+
+### Added
+
+- **`.gp-flush` — pinned art can sit on the paper's edge**, set from the
+  image's own properties (a checkbox in the desktop app's image dialog, or the
+  class in markdown: `{.gp-pin .gp-bottom .gp-flush}`). Any edge or corner
+  works; a centred pin touches no edge, so the class is inert there.
+
+  A page's margins are not printable area, so nothing can *reach* the paper
+  from inside the page — measured in Chromium 148, a pinned box pulled into
+  the margin with negative insets fragments onto the NEXT sheet, one moved
+  there with a transform is clipped away entirely, and a margin box in a
+  near-zero margin does not render under any compensation. The engines
+  therefore implement flush as per-page geometry: the compiler aliases that
+  page's own context under a generated name (verbatim rule copies — the
+  author's named page keeps its margins, background, and furniture) with the
+  flushed margins freed, and the viewer applies the same policy in JS. The
+  flushed edge's folio and running head are re-drawn inside the page at their
+  original coordinates with engine-resolved values, so nothing the author
+  declared stops printing. Preview and print are held together by shared
+  policy (`engine/shared/flush.ts`) and measured by twin tests on both
+  renderers.
+
+### Fixed
+
+- **`.gp-pin` reaches the page edges again.** A pinned image (`{.gp-pin
+  .gp-bottom}`, a corner colophon, a full-page watermark) was landing against
+  the end of the page's *prose* instead of the page itself — a bottom-pinned
+  image on a short page sat directly under the last paragraph. The pin
+  resolves against its `@page`/`@spread` container, and nothing had sized that
+  container to the page since Paged.js was removed: the polyfill used to
+  stretch each page root to the page area for free, and the native engine
+  replaced it with nothing, so the container shrink-wrapped its text. Both
+  renderers now publish the page's content height for the page context an
+  element is in (per named page, from the author's own `@page` rules — the
+  compiler on `:root` plus every `page:` selector, the viewer on each strip),
+  and core CSS sizes page roots to it. Preview and print agree on this by
+  construction: the parity gate's divergences on the CSS-authoring fixture
+  dropped from 14 to 2, with viewer and print page counts now identical on
+  every fixture.
+
 ## [0.10.0] - 2026-08-12
 
 ### Added
