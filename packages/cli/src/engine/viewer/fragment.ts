@@ -211,14 +211,19 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
     // A forced page break is only valid between sibling boxes in the same
-    // fragmentation flow. When the site's preceding sibling is absent, CSS
-    // Break §3 has no break opportunity there — Chromium print ignores the
-    // declaration. The common real shape is a final `.page` nested inside a
-    // chapter/section shell whose previous authored page is outside that
-    // immediate container. Do not manufacture a screen-only page for it.
-    if (prop === "break-before" && !el.previousElementSibling) continue;
+    // fragmentation flow, so the break lands at the class-A point before the
+    // outermost box CSS Break §3.1's first-child propagation carries it to —
+    // `propagatedBreakTarget` resolves that box (usually `el` itself). When
+    // the propagation chain reaches the strip's own leading edge instead,
+    // print ignores the break, so no spacer is manufactured for it.
+    let site: Element = el;
+    if (prop === "break-before") {
+      const target = propagatedBreakTarget(el, strip);
+      if (!target) continue;
+      site = target;
+    }
     if (prop === "break-after" && !el.nextElementSibling) continue;
-    const rects = Array.from(el.getClientRects());
+    const rects = Array.from(site.getClientRects());
     const rect = prop === "break-after" ? rects.at(-1) : rects[0];
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
@@ -233,8 +238,57 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
     if (prop === "break-after") el.after(spacer);
-    else el.before(spacer);
+    else site.before(spacer);
   }
+}
+
+/**
+ * The box a forced `break-before` on `el` actually breaks before.
+ *
+ * CSS Break §3.1 propagates a forced break-before on a parent's FIRST
+ * in-flow child to the parent itself, recursively — so the break
+ * opportunity is the sibling boundary before the outermost box of that
+ * first-child chain, and Chromium print honours exactly that. Measured on
+ * docs/fixtures/css-authoring-spike: `.page { break-before: page }` nested
+ * first inside a `.chapter` wrapper starts the whole wrapper — PDF named
+ * destination included — on the new page, while skipping the site (the
+ * pre-0.10.0 behavior) left the wrapper's first fragment at the tail of the
+ * previous column and shifted every cross-reference to it one page early.
+ *
+ * Returns `el` itself when it has a preceding sibling (the common case —
+ * nothing propagates), the outermost chain ancestor with a preceding
+ * sibling when it doesn't, or null when the chain reaches the strip with no
+ * preceding sibling anywhere: that is the strip's leading edge, where a
+ * forced break is spec-ignorable (`clearLeadingForcedBreaks`'s call).
+ *
+ * The walk is deliberately conservative — it only steps up while the chain
+ * is a plain in-flow first-child chain, since that is the only shape §3.1
+ * propagates through:
+ *   - rendered text before `site` inside the parent forms an anonymous
+ *     sibling BOX — a class-A break point of its own — so the break lands
+ *     right there: return `site` unpropagated (print splits the parent
+ *     between its leading text and `site`);
+ *   - `site` out of flow (absolute/fixed/floated — print ignores its
+ *     break-* entirely) returns null, the old skip;
+ *   - a parent that is not a plain block container, or is itself a multicol
+ *     container (a nested fragmentation context does not propagate page
+ *     breaks out into the strip's own flow), returns null likewise.
+ */
+function propagatedBreakTarget(el: Element, strip: HTMLElement): Element | null {
+  let site = el;
+  while (!site.previousElementSibling) {
+    const parent = site.parentElement;
+    if (!parent || parent === strip) return null;
+    const cs = getComputedStyle(site);
+    if (cs.position === "absolute" || cs.position === "fixed" || cs.float !== "none") return null;
+    for (let node = site.previousSibling; node; node = node.previousSibling) {
+      if (node.nodeType === 3 && (node.textContent ?? "").trim() !== "") return site;
+    }
+    const pcs = getComputedStyle(parent);
+    if (!/^(block|flow-root)$/.test(pcs.display) || pcs.columnCount !== "auto") return null;
+    site = parent;
+  }
+  return site;
 }
 
 /** Named page assigned directly ON `el` itself (not a descendant). */

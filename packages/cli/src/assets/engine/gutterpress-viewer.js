@@ -1072,11 +1072,16 @@
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
-      if (prop === "break-before" && !el.previousElementSibling)
-        continue;
+      let site = el;
+      if (prop === "break-before") {
+        const target = propagatedBreakTarget(el, strip);
+        if (!target)
+          continue;
+        site = target;
+      }
       if (prop === "break-after" && !el.nextElementSibling)
         continue;
-      const rects = Array.from(el.getClientRects());
+      const rects = Array.from(site.getClientRects());
       const rect = prop === "break-after" ? rects.at(-1) : rects[0];
       if (!rect)
         continue;
@@ -1097,8 +1102,28 @@
       if (prop === "break-after")
         el.after(spacer);
       else
-        el.before(spacer);
+        site.before(spacer);
     }
+  }
+  function propagatedBreakTarget(el, strip) {
+    let site = el;
+    while (!site.previousElementSibling) {
+      const parent = site.parentElement;
+      if (!parent || parent === strip)
+        return null;
+      const cs = getComputedStyle(site);
+      if (cs.position === "absolute" || cs.position === "fixed" || cs.float !== "none")
+        return null;
+      for (let node = site.previousSibling;node; node = node.previousSibling) {
+        if (node.nodeType === 3 && (node.textContent ?? "").trim() !== "")
+          return site;
+      }
+      const pcs = getComputedStyle(parent);
+      if (!/^(block|flow-root)$/.test(pcs.display) || pcs.columnCount !== "auto")
+        return null;
+      site = parent;
+    }
+    return site;
   }
   function directPageName(el, model) {
     for (const a of model.pageAssignments) {
