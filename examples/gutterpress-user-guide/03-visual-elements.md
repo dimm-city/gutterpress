@@ -130,6 +130,7 @@ the page is simply where it appears in your markdown):
 | `.gp-full` | Fills the page's content width (`width: 100%`) |
 | `.gp-bleed` | Own page, edge-to-edge — see [Full-bleed artwork](#full-bleed-artwork) |
 | `.gp-pin` | Pins to a spot on the page instead of flowing — see [Pinned images](#pinned-images) |
+| `.gp-flush` | With `.gp-pin` + an edge: sits on the paper's edge, not the margin |
 
 **Sizes** (work with any position, including `.gp-pin`; an explicit size
 overrides the floats' 50% cap):
@@ -210,11 +211,55 @@ Two rules keep pinning predictable:
   page to anchor to — the image would resolve against the whole document
   and can print on a completely different sheet, so the build and preview
   warn (`pin_outside_page`) when you do it.
-- **The pin anchors to the `@page` container, not the paper.** For the
-  single-page layouts pinning is meant for — title pages, chapter openers,
-  watermark pages — those are the same thing. If one `@page` block runs
-  long and fragments across several sheets, `.gp-bottom` means the bottom
+- **The pin anchors to the `@page` container.** Gutterpress sizes that
+  container to the page's own content box — the sheet less its margins — so
+  `.gp-bottom` sits on the bottom margin edge even when the page holds two
+  lines of text. The two only part company if one `@page` block runs long
+  and fragments across several sheets: there `.gp-bottom` means the bottom
   of that whole block, not of each sheet.
+
+#### Pinning art to the paper's edge {#pinned-images-flush}
+
+`.gp-bottom` stops at the bottom **margin**, because that margin is where the
+page's printable area ends. Add `.gp-flush` and the art sits on the paper
+instead:
+
+```markdown
+@page
+
+## A page whose art runs off the bottom edge
+
+...text...
+
+![Wall art](assets/wall.png){.gp-pin .gp-bottom .gp-flush .gp-behind}
+```
+
+`.gp-flush` works with any edge, including corners — `{.gp-pin .gp-bottom
+.gp-right .gp-flush}` puts the art in the bottom-right corner of the paper. A
+centred pin touches no edge, so the class does nothing there. In the desktop
+app it is the **"Sit flush with the page edge"** checkbox in an image's
+properties; you never write the class by hand.
+
+Under the hood, Gutterpress frees that one page's margin on the edges the pin
+uses — the only way anything reaches the paper — and takes care of what that
+would otherwise cost you:
+
+- **Your page numbers and running heads keep printing.** A margin box lives
+  *in* the margin, so freeing the margin would normally erase that edge's
+  folio; Gutterpress re-draws it inside the page at exactly its usual spot,
+  with the same values, on top of the art. Furniture on every other edge is
+  untouched.
+- **Your page's own setup is preserved.** A named page's margins, background,
+  and furniture all still apply on the flushed page.
+
+One consequence remains yours to design for: the printable area really is
+bigger on that edge, so on a full page, text can flow into the freed strip —
+on a short page (the usual case for pinned art) nothing changes.
+
+This is trim-edge flush, not printer bleed: nothing in Gutterpress extends art
+*past* the trim. If your printer wants bleed overage, build it into the artwork
+and your PDF export settings, the same as for [full-bleed
+artwork](#full-bleed-artwork).
 
 ### Full-bleed artwork {#full-bleed-artwork}
 

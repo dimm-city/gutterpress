@@ -104,6 +104,7 @@ export interface ImagePropertiesValue {
   size: string;
   spacing: string;
   shape: boolean;
+  flush: boolean;
   layer: string;
 }
 
@@ -389,6 +390,33 @@ export function setShapeClass(tokens: readonly string[], on: boolean): string[] 
   );
 }
 
+/**
+ * The flush facet is a boolean too: `.gp-flush` lets a PINNED image sit on
+ * the paper instead of on the text block, by having core drop that page's
+ * margin on the edges the pin uses (core's `flushPageCss`, a `:has()`-driven
+ * named page — the desktop only toggles the class).
+ *
+ * It is one class rather than part of the pin-alignment token set, because it
+ * is orthogonal to WHICH edge: every alignment except "center" composes with
+ * it, and a centered pin touches no edge so the class is simply inert. That
+ * also keeps it reachable from this dialog at all — the whole reason it
+ * exists as an image class is that the editor sets image classes and cannot
+ * write the `@page` rules an author would otherwise need.
+ */
+export const IMAGE_FLUSH_CLASS = "gp-flush";
+
+export function hasFlushClass(tokens: readonly string[]): boolean {
+  return tokens.includes(`.${IMAGE_FLUSH_CLASS}`);
+}
+
+export function setFlushClass(tokens: readonly string[], on: boolean): string[] {
+  return setFacetToken(
+    tokens,
+    (token) => token === `.${IMAGE_FLUSH_CLASS}`,
+    on ? `.${IMAGE_FLUSH_CLASS}` : null,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // the whole dialog, read and applied
 // ---------------------------------------------------------------------------
@@ -418,6 +446,7 @@ export function readImageProperties(
     size: getSizeClass(tokens) ?? "",
     spacing: getSpacingClass(tokens) ?? "",
     shape: hasShapeClass(tokens),
+    flush: hasFlushClass(tokens),
     layer: getLayerClass(tokens) ?? "",
   };
 }
@@ -468,6 +497,7 @@ export function applyImageProperties(
   if (next.size !== initial.size) out = setSizeClass(out, next.size || null);
   if (next.spacing !== initial.spacing) out = setSpacingClass(out, next.spacing || null);
   if (next.shape !== initial.shape) out = setShapeClass(out, next.shape);
+  if (next.flush !== initial.flush) out = setFlushClass(out, next.flush);
   if (next.layer !== initial.layer) out = setLayerClass(out, next.layer || null);
   return { tokens: out };
 }

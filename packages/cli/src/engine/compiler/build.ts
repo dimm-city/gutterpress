@@ -15,7 +15,18 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchChromium, type Browser, type Session } from "../shared/cdp.ts";
-import { extract, resolvePage, type GcpmModel } from "../shared/gcpm-extract.ts";
+import { extract, resolvePage, type Declarations, type GcpmModel } from "../shared/gcpm-extract.ts";
+import {
+  flushMargins,
+  flushPageName,
+  marginBoxesOnEdges,
+  type FlushEdge,
+} from "../shared/flush.ts";
+import {
+  isIgnoredMarginBoxProperty,
+  marginBoxAlign,
+  marginBoxRectPt,
+} from "../shared/margin-box-support.ts";
 import {
   counterStyleName,
   cssQuote,
@@ -26,6 +37,7 @@ import {
   planRectoBlanks,
   restartedPageValues,
   stringSymbols,
+  stringValueAt,
   toFolioPage,
   wantsRecto,
   type StringEntry,
@@ -120,7 +132,8 @@ export type BuildDiagnosticCode =
   | "engine.layer.trapped"
   | "engine.multicol.dead-column"
   | "engine.content.overheight"
-  | "engine.image.low-dpi";
+  | "engine.image.low-dpi"
+  | "engine.flush.margin-box";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -131,6 +144,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.multicol.dead-column",
   "engine.content.overheight",
   "engine.image.low-dpi",
+  "engine.flush.margin-box",
 ];
 
 export interface BuildDiagnostic {
@@ -239,9 +253,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
 
     // ---- read the author's CSS (never rewrite it) -----------------------
     const cssText = await page.evaluate<string>(`window.__gp.collectCss()`);
-    const model: GcpmModel = extract(cssText);
-    const { tier3Reasons } = classify(model);
-
+    let model: GcpmModel = extract(cssText);
     // ---- deterministic viewport = the sheet -----------------------------
     // Viewport-relative units (vw/vh — 143 uses in one real book) resolve
     // against the LAYOUT viewport even in print, so print output silently
@@ -269,6 +281,187 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Set once, kept for the build's whole life, same as the viewport pin.
     await page.send("Emulation.setEmulatedMedia", { media: "print" });
     log(`print media emulated for audits and measurement`);
+
+    // ---- .gp-flush: free the pinned edges' margins, per page -------------
+    // A pinned image reaches the paper only if the page area does (Chromium's
+    // printable area IS the page area — see shared/flush.ts for the
+    // measurements that closed every other route), and the only lever that
+    // moves a page area is an `@page` context. Chromium implements no page
+    // selector that can address one arbitrary page (`:nth()` measured as a
+    // no-op), so each flush root's own page context is ALIASED under a
+    // generated name — verbatim rule copies, never a resolved flatten, which
+    // is the "re-implement the @page cascade" trap tier2's history records —
+    // with the flushed margins zeroed on top and the root assigned to it via
+    // the `data-gp-flush` attribute the agent stamps. The author's page
+    // assignment, margins, and furniture on every OTHER edge keep working
+    // because their rules were copied bytes-for-bytes; universal and
+    // pseudo-only `@page` rules apply to the generated name on their own.
+    //
+    // The re-extract at the end makes the generated pages first-class model
+    // citizens: the content-height publication, tier-2 bleed, tier-3 string
+    // rewrites, and the audits all see them through the ordinary paths with
+    // no special cases.
+    const flushRoots = await page.evaluate<
+      Array<{ id: string; page: string; edges: FlushEdge[]; key: string }>
+    >(`window.__gp.flushRoots()`);
+    interface FlushGroup {
+      authorPage?: string;
+      edges: FlushEdge[];
+      genName: string;
+      key: string;
+    }
+    const flushGroups = new Map<string, FlushGroup>();
+    for (const root of flushRoots) {
+      if (flushGroups.has(root.key)) continue;
+      const authorPage = root.page === "auto" ? undefined : root.page;
+      flushGroups.set(root.key, {
+        authorPage,
+        edges: root.edges,
+        genName: flushPageName(authorPage, root.edges),
+        key: root.key,
+      });
+    }
+    if (flushGroups.size) {
+      const lines: string[] = [];
+      for (const group of flushGroups.values()) {
+        const relocated = new Set(marginBoxesOnEdges(group.edges));
+        const pseudoSets: string[][] = [[]];
+        if (group.authorPage) {
+          for (const rule of model.pageRules) {
+            if (rule.name !== group.authorPage) continue;
+            const pseudo = rule.pseudos.length ? `:${rule.pseudos.join(":")}` : "";
+            if (
+              rule.pseudos.length &&
+              !pseudoSets.some(
+                (ps) =>
+                  ps.length === rule.pseudos.length && rule.pseudos.every((x) => ps.includes(x)),
+              )
+            )
+              pseudoSets.push(rule.pseudos);
+            const body: string[] = [];
+            for (const [prop, value] of Object.entries(rule.decls))
+              body.push(`  ${prop}: ${value};`);
+            for (const [box, decls] of Object.entries(rule.marginBoxes)) {
+              // Flushed-edge boxes are RELOCATED into the page area (below),
+              // never copied: under a bleed build the flushed margin becomes
+              // slug-width, and a copied box would print a second folio there.
+              if (relocated.has(box.slice(1))) continue;
+              body.push(`  ${box} {`);
+              for (const [prop, value] of Object.entries(decls)) body.push(`    ${prop}: ${value};`);
+              body.push(`  }`);
+            }
+            lines.push(`@page ${group.genName}${pseudo} {\n${body.join("\n")}\n}`);
+          }
+        }
+        // The margin override per copied pseudo set: a copied `name:left`
+        // margin (specificity f+h) would otherwise beat the bare generated
+        // override (f alone). Flushed-edge boxes are suppressed in the same
+        // breath so nothing native ever paints where the relocation will.
+        for (const pseudos of pseudoSets) {
+          const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
+          const body: string[] = [];
+          for (const edge of group.edges) body.push(`  margin-${edge}: 0;`);
+          for (const box of relocated) body.push(`  @${box} { content: none; }`);
+          lines.push(`@page ${group.genName}${pseudo} {\n${body.join("\n")}\n}`);
+        }
+        // 0-4-0 so the assignment outranks class-based author `page:` rules
+        // at any realistic specificity; an id-based author assignment still
+        // wins, which the post-injection check below turns into a warning
+        // instead of a silent nothing.
+        lines.push(
+          `:where(.page, .spread)[data-gp-flush="${group.key}"][data-gp-flush][data-gp-flush][data-gp-flush] { page: ${group.genName}; }`,
+        );
+      }
+      const flushCss = lines.join("\n");
+      await page.evaluate(`window.__gp.addCss("gp-flush-css", ${JSON.stringify(flushCss)})`);
+      model = extract(`${cssText}\n${flushCss}`);
+      log(
+        `.gp-flush: ${flushRoots.length} pinned root(s) -> ${flushGroups.size} generated page context(s)`,
+      );
+    }
+    const { tier3Reasons } = classify(model);
+
+    // ---- page content heights, per page context -------------------------
+    // A DOM element's computed `page` value tells a browser-side pass only the
+    // named page, not whether the resulting sheet is :left, :right, :first,
+    // etc. Enumerate compatible combinations and take the MINIMUM content
+    // height for each name. Deliberately conservative, and both consumers
+    // need it that way: the overheight audit must not let a leaf escape its
+    // warning because the unqualified named page is taller, and the
+    // `--gp-content-h` publication below must not stretch a page root past
+    // the shortest sheet it can land on (which would print a spurious blank).
+    const pseudoContexts = pagePseudoContexts(model);
+    const contentHeightPt = (name?: string): number =>
+      Math.min(
+        ...pseudoContexts.map((pseudos) => {
+          const geometry = resolvePage(model, { name, pseudos }).geometry;
+          return geometry.height - geometry.margin.top - geometry.margin.bottom;
+        }),
+      );
+    const contentHeightPx = (contentHeightPt() * 96) / 72;
+    const namedContentHeightsPx = Object.fromEntries(
+      model.pageNames.map((name) => [name, (contentHeightPt(name) * 96) / 72]),
+    );
+    // Minimum content height across every page context (base + named pages),
+    // for the multicol fragmentation check below: that check needs a
+    // conservative (never too generous) threshold, since a named page with
+    // smaller margins has a shorter content box than the default page and
+    // would otherwise under-report fragmentation there.
+    const minContentHeightPx =
+      (Math.min(contentHeightPt(), ...model.pageNames.map((name) => contentHeightPt(name))) * 96) /
+      72;
+
+
+    // ---- publish the page content box to CSS ----------------------------
+    // MARKER_CSS gives `.page`/`.spread` `min-height: var(--gp-content-h)`,
+    // which is what makes a page root the containing block for the PAGE
+    // rather than for its own prose (see that rule's comment: this is what
+    // Paged.js used to do with `height: inherit`). Only an engine knows the
+    // number, because it is `size` minus the vertical margins of the `@page`
+    // context the element actually lands in — author CSS, not the manifest.
+    // The viewer's twin publishes the same property on each `.gp-strip`
+    // (fragment.ts); custom properties inherit, so both reach a page root at
+    // any wrapper depth and the two renderers agree by construction.
+    //
+    // Named pages come from the author's own `page:` assignment selectors, so
+    // the declaration lands on exactly the elements Chromium sends to that
+    // sheet, and inherits to the page roots inside them. Injected before the
+    // width check and every audit so the whole build measures the same boxes
+    // that print.
+    const pageVarsCss = [
+      `:root { --gp-content-h: ${contentHeightPx}px; }`,
+      ...model.pageAssignments.map(
+        (a) =>
+          `${a.selector} { --gp-content-h: ${namedContentHeightsPx[a.page] ?? contentHeightPx}px; }`,
+      ),
+    ].join("\n");
+    await page.evaluate(`window.__gp.addCss("gp-page-vars", ${JSON.stringify(pageVarsCss)})`);
+    log(`page geometry published (--gp-content-h: ${Math.round(contentHeightPx)}px)`);
+
+    // ---- .gp-flush furniture: what must be relocated ---------------------
+    // Margin boxes on a flushed edge cannot render natively (their margin is
+    // gone — measured, including every thin-margin/padding compensation
+    // trick), so the engine re-homes them into the page area at their
+    // original coordinates with resolved text. Knowing WHICH text needs the
+    // physical page number (folio, per-side mirroring), so any book with
+    // furniture on a flushed edge takes the measurement path below.
+    const relocationBoxes = (
+      group: { authorPage?: string; edges: FlushEdge[] },
+      pseudos: string[],
+    ): Array<[string, Declarations]> => {
+      const ctx = resolvePage(model, { name: group.authorPage, pseudos });
+      return marginBoxesOnEdges(group.edges)
+        .map((name) => [name, ctx.marginBoxes[`@${name}`]] as [string, Declarations | undefined])
+        .filter((pair): pair is [string, Declarations] => {
+          const c = pair[1]?.content?.trim();
+          return !!c && c !== "none" && c !== "normal";
+        });
+    };
+    const furnitureRoots = flushRoots.filter((root) => {
+      const group = flushGroups.get(root.key)!;
+      return pseudoContexts.some((pseudos) => relocationBoxes(group, pseudos).length > 0);
+    });
+    const flushDiagnosed = new Set<string>();
 
     // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
@@ -360,7 +553,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       tier3Reasons.length > 0 ||
       consumedStrings(model).size > 0 ||
       rectoDecls.length > 0 ||
-      model.counterResets.length > 0;
+      model.counterResets.length > 0 ||
+      furnitureRoots.length > 0;
     let tier: 1 | 2 | 3 =
       tier2.geometry.bleed > 0 || tier2.geometry.slug > 0 ? 2 : 1;
     let passes = 1;
@@ -418,6 +612,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const s of sites) if (s.href.startsWith("#")) targets.add(s.href.slice(1));
       for (const s of rectoSites) targets.add(s.id);
       for (const s of resetSites) targets.add(s.id);
+      for (const r of furnitureRoots) targets.add(r.id);
       await page.evaluate(
         `window.__gp.instrument(${JSON.stringify([...targets])})`,
       );
@@ -553,6 +748,95 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           );
           genCss = genCss.split("\n/* Tier 3 */")[0] + `\n/* Tier 3 */\n${mapCss}`;
         }
+
+        // (c) flushed-edge furniture, re-homed into the page area (F1's
+        // discipline applies here too: same folio conversion, same
+        // `stringValueAt` policy the counter-style map and the viewer use,
+        // so a relocated folio can never disagree with a native one).
+        if (furnitureRoots.length) {
+          // Chromium's /Dests emission for injected gp-anchors is not fully
+          // reliable — measured on this exact furniture fixture, the string
+          // SOURCE's anchor got no destination while the flush root's did,
+          // pagination-dependent. The native margin boxes ride that out by
+          // accident (a stale-but-correct predicted `gp-gen-strings` sheet
+          // survives when mapCss returns empty); relocated text must not be
+          // worse, so any id print did not measure falls back to the
+          // PREDICTED map — the viewer's opinion, which the parity gate
+          // holds to print's page map.
+          const pageAt = (id: string): number | undefined =>
+            map[id] ?? predictedForResult?.pageMap[id];
+          const byName = new Map<string, StringEntry[]>();
+          for (const s of sources) {
+            const p = pageAt(s.id);
+            if (!p) continue;
+            const list = byName.get(s.name) ?? [];
+            list.push({ page: p, value: s.text });
+            byName.set(s.name, list);
+          }
+          for (const entries of byName.values()) entries.sort((a, b) => a.page - b.page);
+          const PXPT = 96 / 72;
+          const items: Array<{
+            id: string;
+            boxes: Array<{
+              box: string; x: number; y: number; w: number; h: number;
+              align: "start" | "center" | "end"; text: string; decls: Record<string, string>;
+            }>;
+          }> = [];
+          for (const root of furnitureRoots) {
+            const physical = pageAt(root.id);
+            if (!physical) continue;
+            const group = flushGroups.get(root.key)!;
+            // Page 1 is a recto; recto pages are odd — decorate.ts's own rule.
+            const pseudos: string[] = [physical % 2 === 1 ? "right" : "left"];
+            if (physical === 1) pseudos.push("first");
+            const ctx = resolvePage(model, { name: group.authorPage, pseudos });
+            const g = ctx.geometry; // ORIGINAL margins — the slots' home
+            const eff = flushMargins(g.margin, group.edges); // page-area origin
+            const boxes: (typeof items)[number]["boxes"] = [];
+            for (const [name, decls] of relocationBoxes(group, pseudos)) {
+              const text = evaluate(decls.content!, {
+                page: toFolioPage(physical, pageValues),
+                pages: pageCount,
+                strings: (n, w) => stringValueAt(byName.get(n) ?? [], physical, parseWhich(w)),
+                targetPage: (u) => {
+                  const p = pageAt(u.replace(/^#/, ""));
+                  return p === undefined ? undefined : toFolioPage(p, pageValues);
+                },
+              });
+              if (!text) {
+                if (!flushDiagnosed.has(name)) {
+                  flushDiagnosed.add(name);
+                  diagnose(
+                    "engine.flush.margin-box",
+                    `@${name} sits on an edge a .gp-flush pin frees, and its content could not be ` +
+                      `re-homed into the page (unsupported content value: ${decls.content}). It will ` +
+                      `not print on that page — simplify the box's content, or drop .gp-flush there.`,
+                  );
+                }
+                continue;
+              }
+              const r = marginBoxRectPt(name, g);
+              const outDecls: Record<string, string> = {};
+              for (const [prop, value] of Object.entries(decls)) {
+                if (prop.toLowerCase() === "content" || isIgnoredMarginBoxProperty(prop)) continue;
+                outDecls[prop] = value;
+              }
+              boxes.push({
+                box: name,
+                x: (r.x - eff.left) * PXPT,
+                y: (r.y - eff.top) * PXPT,
+                w: r.w * PXPT,
+                h: r.h * PXPT,
+                align: marginBoxAlign(name),
+                text,
+                decls: outDecls,
+              });
+            }
+            items.push({ id: root.id, boxes });
+          }
+          if (items.length)
+            await page.evaluate(`window.__gp.setFlushFurniture(${JSON.stringify(items)})`);
+        }
       };
 
       // §10 predict-then-verify: guess the page map from the viewer's multicol
@@ -635,33 +919,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
 
     // Print-quality audit against the settled layout, just before the artifact
     // is final: content taller than the page (where screen and print diverge)
-    // and rasters below the print resolution bar.
-    // A DOM element's computed `page` value tells the browser-side audit only
-    // the named page, not whether the resulting sheet is :left, :right,
-    // :first, etc. Enumerate compatible combinations and pass the MINIMUM
-    // content height for each name. That is deliberately conservative: a leaf
-    // that cannot fit one real variant must never escape the warning merely
-    // because the unqualified named page is taller.
-    const pseudoContexts = pagePseudoContexts(model);
-    const contentHeightPt = (name?: string): number =>
-      Math.min(
-        ...pseudoContexts.map((pseudos) => {
-          const geometry = resolvePage(model, { name, pseudos }).geometry;
-          return geometry.height - geometry.margin.top - geometry.margin.bottom;
-        }),
-      );
-    const contentHeightPx = (contentHeightPt() * 96) / 72;
-    const namedContentHeightsPx = Object.fromEntries(
-      model.pageNames.map((name) => [name, (contentHeightPt(name) * 96) / 72]),
-    );
-    // Minimum content height across every page context (base + named pages),
-    // for the multicol fragmentation check below: that check needs a
-    // conservative (never too generous) threshold, since a named page with
-    // smaller margins has a shorter content box than the default page and
-    // would otherwise under-report fragmentation there.
-    const minContentHeightPx =
-      (Math.min(contentHeightPt(), ...model.pageNames.map((name) => contentHeightPt(name))) * 96) /
-      72;
+    // and rasters below the print resolution bar. Content heights come from
+    // the per-page-context table computed once at the top of the build.
     {
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
         `window.__gp.auditContent(${JSON.stringify({
@@ -713,9 +972,24 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // declarations written directly on `.page`/`.spread`, but it cannot know a
     // downstream book's wrapper names. The live DOM can: walk from every
     // visible `.gp-behind` to its closest page/spread boundary and report any
-    // intervening stacking context or clipping box. This build-time result is
-    // authoritative; findings are capped like the sibling audits so malformed
-    // generated markup cannot flood the Problems panel.
+    // intervening stacking context, plus any clipping ancestor that actually
+    // CUTS the art. Clipping never reorders layers — MEASURED (Chromium 151,
+    // this pipeline's PDF rasterized at 96dpi, solid-color pin + text block):
+    // a within-bounds pin under `.page { overflow-x: clip }` (a real book's
+    // declaration) printed pixel-identical to the uncontained page — image
+    // whole, still under the text — while the old any-clipping-ancestor test
+    // warned on it. What DOES cut art, all measured to the pixel: an
+    // ancestor in the element's containing-block chain cuts exactly the part
+    // of the border box past its padding-box edge on an axis whose overflow
+    // is not `visible` (a mid-page clip edge at x=54 cut a 20px overhang at
+    // 54 exactly), a `visible` axis never cuts (the same overhang under
+    // overflow-x: visible + overflow-y: clip survived whole, all four
+    // edges), and a STATIC wrapper's overflow — hidden or clip — never
+    // binds an abspos pin at all (a pin entirely outside such a wrapper's
+    // box printed complete and still behind the text). The check below
+    // mirrors exactly that. This build-time result is authoritative;
+    // findings are capped like the sibling audits so malformed generated
+    // markup cannot flood the Problems panel.
     {
       const { leaks, multicol, layerTraps } = JSON.parse(
         await page.evaluate<string>(`(() => {
@@ -754,6 +1028,26 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             if (/\\b(transform|opacity|filter|perspective|clip-path|mask)\\b/.test(cs.willChange))
               reasons.push("will-change: " + cs.willChange);
             return reasons;
+          };
+
+          // Does this box establish the containing block for an absolutely
+          // positioned descendant? Overflow clipping binds an abspos
+          // .gp-pin only from its containing block outward — MEASURED: a
+          // pin whose box lay entirely outside a STATIC overflow:hidden
+          // (and overflow:clip) wrapper printed complete and still behind
+          // the page text; the wrapper's clip never touched it.
+          const establishesAbsContainingBlock = (cs) => {
+            if (cs.position !== "static") return true;
+            for (const prop of [
+              "transform", "translate", "rotate", "scale", "perspective",
+              "filter", "backdropFilter",
+            ]) {
+              const value = cs[prop];
+              if (value && value !== "none") return true;
+            }
+            if (/\\b(layout|paint|strict|content)\\b/.test(cs.contain)) return true;
+            if (cs.containerType && cs.containerType !== "normal") return true;
+            return /\\b(transform|translate|rotate|scale|perspective|filter)\\b/.test(cs.willChange);
           };
 
           for (const el of document.querySelectorAll("*")) {
@@ -796,20 +1090,58 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             ) {
               const boundary = el.closest(".page, .spread");
               if (boundary) {
+                const elRect = el.getBoundingClientRect();
+                // Clip binding: an in-flow .gp-behind is bound by every
+                // ancestor's overflow, but an abspos one only from its
+                // containing block outward — static wrappers in between
+                // never clip it (measured; see the pass comment above).
+                let clipBinds = cs.position !== "absolute" && cs.position !== "fixed";
                 for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
                   const ancestorStyle = getComputedStyle(ancestor);
+                  if (!clipBinds && establishesAbsContainingBlock(ancestorStyle)) clipBinds = true;
                   const reasons = stackingReasons(ancestor, ancestorStyle);
-                  const clips = ancestorStyle.overflowX !== "visible" ||
-                    ancestorStyle.overflowY !== "visible";
-                  if ((reasons.length || clips) && !seenLayerTraps.has(ancestor)) {
+                  // Clipping never reorders layers — it can only CUT the
+                  // art (measured, pass comment above): warn only where the
+                  // border box crosses a binding ancestor's clip edge on an
+                  // axis whose overflow is not \`visible\`. The clip edge is
+                  // the padding box, grown by overflow-clip-margin where
+                  // that axis's value is \`clip\` (px values only; keyword
+                  // forms parse NaN -> 0, i.e. the ungrown padding box).
+                  // 1px epsilon: the measured cut lands exactly at the
+                  // edge, and sub-pixel layout rounding is not an overhang.
+                  const cuts = [];
+                  if (clipBinds && (ancestorStyle.overflowX !== "visible" || ancestorStyle.overflowY !== "visible")) {
+                    const r = ancestor.getBoundingClientRect();
+                    const clipMargin = parseFloat(ancestorStyle.overflowClipMargin) || 0;
+                    if (ancestorStyle.overflowX !== "visible") {
+                      const grow = ancestorStyle.overflowX === "clip" ? clipMargin : 0;
+                      const left = r.left + parseFloat(ancestorStyle.borderLeftWidth) - grow;
+                      const right = r.right - parseFloat(ancestorStyle.borderRightWidth) + grow;
+                      if (elRect.left < left - 1)
+                        cuts.push(Math.round(left - elRect.left) + "px past its left clip edge");
+                      if (elRect.right > right + 1)
+                        cuts.push(Math.round(elRect.right - right) + "px past its right clip edge");
+                    }
+                    if (ancestorStyle.overflowY !== "visible") {
+                      const grow = ancestorStyle.overflowY === "clip" ? clipMargin : 0;
+                      const top = r.top + parseFloat(ancestorStyle.borderTopWidth) - grow;
+                      const bottom = r.bottom - parseFloat(ancestorStyle.borderBottomWidth) + grow;
+                      if (elRect.top < top - 1)
+                        cuts.push(Math.round(top - elRect.top) + "px past its top clip edge");
+                      if (elRect.bottom > bottom + 1)
+                        cuts.push(Math.round(elRect.bottom - bottom) + "px past its bottom clip edge");
+                    }
+                  }
+                  if ((reasons.length || cuts.length) && !seenLayerTraps.has(ancestor)) {
                     seenLayerTraps.add(ancestor);
                     const effects = [];
                     if (reasons.length)
                       effects.push("creates a stacking context (" + reasons.join(", ") + ")");
-                    if (clips)
+                    if (cuts.length)
                       effects.push(
-                        "clips descendants (overflow-x: " + ancestorStyle.overflowX +
-                        ", overflow-y: " + ancestorStyle.overflowY + ")"
+                        "clips it (overflow-x: " + ancestorStyle.overflowX +
+                        ", overflow-y: " + ancestorStyle.overflowY +
+                        ") — the art extends " + cuts.join(" and ") + " and is cut off there"
                       );
                     layerTraps.push({
                       behind: desc(el),
@@ -953,8 +1285,12 @@ async function findWidthOffenders(
     // one literal name) keeps the guard intact when core adds another
     // injected page; `gp-` is core's documented namespace, so an
     // author-declared named page still (correctly) raises the limit.
+    // `gp--flush-*` is the exception inside the exception: those pages exist
+    // only in books that actually contain a flush pin, and a side-flushed
+    // page's content box legitimately reaches the sheet edge — excluding
+    // them would hard-error every book that uses the feature.
     ...model.pageNames
-      .filter((n) => !n.startsWith("gp-"))
+      .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--flush-"))
       .map((n) => resolvePage(model, { name: n })),
   ];
   const maxContentPt =
@@ -1113,7 +1449,13 @@ async function predictPageMap(
     await page.evaluate(viewerScript);
 
     // Same calls, same order as the print page (build()'s Tier 3 setup):
-    // stringSources -> forcedBreakSites -> xrefSites -> counterResetSites.
+    // flushRoots -> stringSources -> forcedBreakSites -> xrefSites ->
+    // counterResetSites. The order IS the id contract: every call hands out
+    // `gp-m-N` anchors from one counter, so a call the print page makes that
+    // this page skips shifts every later id onto the wrong element — the
+    // flush pass measured exactly that as a predicted map pointing at the
+    // string source instead of the flush root.
+    await page.evaluate(`window.__gp.flushRoots()`);
     await page.evaluate(`window.__gp.stringSources(${JSON.stringify(args.stringSets)})`);
     if (args.rectoDecls.length)
       await page.evaluate(

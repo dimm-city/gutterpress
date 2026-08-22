@@ -441,6 +441,96 @@ declare global {
   }
 }
 
+
+/**
+ * `.gp-flush` support, part 1 — find every page root whose pins ask for a
+ * flushed edge, stamp it so the compiler's generated stylesheet can address
+ * it (`data-gp-flush`), and report its AUTHOR page context (computed BEFORE
+ * the generated assignment exists — the caller invokes this exactly once,
+ * before it injects any flush CSS). The anchor id doubles as the root's
+ * measurement id when furniture relocation needs to know its physical page.
+ */
+export function flushRoots(): Array<{ id: string; page: string; edges: string[]; key: string }> {
+  const out: Array<{ id: string; page: string; edges: string[]; key: string }> = [];
+  for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
+    const edges = ["top", "right", "bottom", "left"].filter((edge) =>
+      root.querySelector(`.gp-pin.gp-flush.gp-${edge}`),
+    );
+    if (!edges.length) continue;
+    const page = getComputedStyle(root).page;
+    const key = `${page === "auto" ? "" : page}|${edges.map((e) => e[0]).join("")}`;
+    (root as HTMLElement).dataset.gpFlush = key;
+    out.push({ id: ensureAnchor(root), page, edges, key });
+  }
+  return out;
+}
+
+/**
+ * `.gp-flush` support, part 2 — paint the flushed edge's margin boxes as
+ * page-area content, at the slot rectangles the compiler computed from the
+ * page's ORIGINAL geometry. Chromium cannot render a margin box whose margin
+ * is gone (measured; see shared/flush.ts), so on flushed pages the engine is
+ * the furniture painter — exactly as the viewer already is on every page.
+ *
+ * Coordinates are px relative to the page ROOT's border box, which the flush
+ * machinery has already stretched to the (grown) page area — the same
+ * root-is-the-page-area assumption `.gp-pin` itself rests on. Idempotent per
+ * root: each call replaces the previous furniture, so fixpoint passes
+ * converge instead of stacking copies. Styling mirrors the viewer's
+ * `.gp-marginbox` slot/content split; z-index puts furniture above content,
+ * as CSS Paged Media §3.1 paints native margin boxes.
+ */
+export function setFlushFurniture(
+  items: Array<{
+    id: string;
+    boxes: Array<{
+      box: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      align: "start" | "center" | "end";
+      text: string;
+      decls: Record<string, string>;
+    }>;
+  }>,
+): number {
+  let painted = 0;
+  for (const item of items) {
+    const host = anchorHost(item.id) as HTMLElement | null;
+    if (!host) continue;
+    let layer = host.querySelector(":scope > .gp-flush-furniture") as HTMLElement | null;
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.className = "gp-flush-furniture";
+      layer.setAttribute("aria-hidden", "true");
+      layer.setAttribute(
+        "style",
+        "position:absolute;inset:0;pointer-events:none;z-index:10;",
+      );
+      host.appendChild(layer);
+    }
+    layer.textContent = "";
+    for (const b of item.boxes) {
+      const slot = document.createElement("div");
+      slot.dataset.box = b.box;
+      const justify = b.align === "center" ? "center" : b.align === "end" ? "flex-end" : "flex-start";
+      slot.setAttribute(
+        "style",
+        `position:absolute;left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;` +
+          `display:flex;align-items:center;justify-content:${justify};overflow:hidden;white-space:pre;`,
+      );
+      const content = document.createElement("span");
+      content.textContent = b.text;
+      for (const [prop, value] of Object.entries(b.decls)) content.style.setProperty(prop, value);
+      slot.appendChild(content);
+      layer.appendChild(slot);
+      painted++;
+    }
+  }
+  return painted;
+}
+
 const api = {
   auditContent,
   collectCss,
@@ -454,6 +544,8 @@ const api = {
   instrument,
   addCss,
   setGenerated,
+  flushRoots,
+  setFlushFurniture,
 };
 
 if (typeof window !== "undefined") window.__gp = api;

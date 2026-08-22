@@ -992,6 +992,20 @@
 `);
   }
 
+  // src/engine/shared/flush.ts
+  var FLUSH_EDGES = ["top", "right", "bottom", "left"];
+  function flushEdgesIn(root) {
+    return FLUSH_EDGES.filter((edge) => root.querySelector(`.gp-pin.gp-flush.gp-${edge}`));
+  }
+  function flushMargins(margin, edges) {
+    return {
+      top: edges.includes("top") ? 0 : margin.top,
+      right: edges.includes("right") ? 0 : margin.right,
+      bottom: edges.includes("bottom") ? 0 : margin.bottom,
+      left: edges.includes("left") ? 0 : margin.left
+    };
+  }
+
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
   function injectViewerCss(doc = document) {
@@ -1138,12 +1152,13 @@
     }
     return false;
   }
-  function pushRun(runs, page, nodes) {
+  function pushRun(runs, page, nodes, flushEdges) {
+    const key = (r) => `${r.page ?? ""}\x00${(r.flushEdges ?? []).join(",")}`;
     const last = runs[runs.length - 1];
-    if (last && last.page === page)
+    if (last && key(last) === key({ page, flushEdges }))
       last.nodes.push(...nodes);
     else
-      runs.push({ page, nodes });
+      runs.push({ page, nodes, flushEdges: flushEdges?.length ? flushEdges : undefined });
   }
   function explodeChildren(container, model, ambient) {
     const runs = [];
@@ -1155,7 +1170,7 @@
       pending = [];
       const last = runs[runs.length - 1];
       if (last) {
-        pushRun(runs, last.page, held);
+        pushRun(runs, last.page, held, last.flushEdges);
         return [];
       }
       if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
@@ -1171,7 +1186,7 @@
         for (const n of r.nodes)
           shell.appendChild(n);
         kid.before(shell);
-        pushRun(runs, r.page, [...lead, shell]);
+        pushRun(runs, r.page, [...lead, shell], flushEdgesIn(shell));
         lead = [];
       }
       kid.remove();
@@ -1184,6 +1199,7 @@
       const kid = node;
       if (kid.classList.contains("gp-layer"))
         continue;
+      const flush = flushEdgesIn(kid);
       const own = directPageName(kid, model);
       if (own !== undefined) {
         if (hasDescendantPageAssignment(kid, model)) {
@@ -1193,11 +1209,11 @@
             continue;
           }
         }
-        pushRun(runs, own, [...carry(), kid]);
+        pushRun(runs, own, [...carry(), kid], flush);
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
-        pushRun(runs, ambient, [...carry(), kid]);
+        pushRun(runs, ambient, [...carry(), kid], flush);
         continue;
       }
       const inner = explodeChildren(kid, model, ambient);
@@ -1370,21 +1386,29 @@
       strip.className = "gp-strip";
       if (run.page)
         strip.dataset.page = run.page;
-      const w = pt(geometry.width - geometry.margin.left - geometry.margin.right);
-      const h = pt(geometry.height - geometry.margin.top - geometry.margin.bottom);
+      const margin = run.flushEdges?.length ? flushMargins(geometry.margin, run.flushEdges) : geometry.margin;
+      const w = pt(geometry.width - margin.left - margin.right);
+      const h = pt(geometry.height - margin.top - margin.bottom);
       strip.style.setProperty("--gp-content-w", `${w}px`);
       strip.style.setProperty("--gp-content-h", `${h}px`);
       strip.style.setProperty("--gp-sheet-gap", `${gap}px`);
       strip.style.setProperty("--gp-page-w", `${pt(geometry.width)}px`);
       strip.style.setProperty("--gp-page-h", `${pt(geometry.height)}px`);
-      strip.style.setProperty("--gp-margin-top", `${pt(geometry.margin.top)}px`);
-      strip.style.setProperty("--gp-margin-right", `${pt(geometry.margin.right)}px`);
-      strip.style.setProperty("--gp-margin-bottom", `${pt(geometry.margin.bottom)}px`);
-      strip.style.setProperty("--gp-margin-left", `${pt(geometry.margin.left)}px`);
+      strip.style.setProperty("--gp-margin-top", `${pt(margin.top)}px`);
+      strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
+      strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
+      strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
       run.nodes[0].before(strip);
       for (const n of run.nodes)
         strip.appendChild(n);
-      strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
+      strips.push({
+        el: strip,
+        page: run.page,
+        geometry,
+        flushEdges: run.flushEdges,
+        pages: 0,
+        offset: 0
+      });
     }
     for (const s of strips) {
       clearLeadingForcedBreaks(s.el);
@@ -1986,6 +2010,37 @@
   function isIgnoredMarginBoxProperty(property) {
     return MARGIN_BOX_IGNORED_PROPERTIES.has(property.toLowerCase());
   }
+  function marginBoxRectPt(name, g) {
+    const { top, right, bottom, left } = g.margin;
+    const cw = g.width - left - right;
+    const ch = g.height - top - bottom;
+    const third = (n) => n / 3;
+    const T = {
+      "top-left-corner": [0, 0, left, top],
+      "top-left": [left, 0, third(cw), top],
+      "top-center": [left + third(cw), 0, third(cw), top],
+      "top-right": [left + 2 * third(cw), 0, third(cw), top],
+      "top-right-corner": [g.width - right, 0, right, top],
+      "bottom-left-corner": [0, g.height - bottom, left, bottom],
+      "bottom-left": [left, g.height - bottom, third(cw), bottom],
+      "bottom-center": [left + third(cw), g.height - bottom, third(cw), bottom],
+      "bottom-right": [left + 2 * third(cw), g.height - bottom, third(cw), bottom],
+      "bottom-right-corner": [g.width - right, g.height - bottom, right, bottom],
+      "left-top": [0, top, left, third(ch)],
+      "left-middle": [0, top + third(ch), left, third(ch)],
+      "left-bottom": [0, top + 2 * third(ch), left, third(ch)],
+      "right-top": [g.width - right, top, right, third(ch)],
+      "right-middle": [g.width - right, top + third(ch), right, third(ch)],
+      "right-bottom": [g.width - right, top + 2 * third(ch), right, third(ch)]
+    };
+    const [x, y, w, h] = T[name] ?? [0, 0, 0, 0];
+    return { x, y, w, h };
+  }
+  function marginBoxAlign(name) {
+    if (name.includes("center") || name.includes("middle"))
+      return "center";
+    return /right/.test(name) ? "end" : "start";
+  }
 
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
@@ -2237,7 +2292,7 @@
         box.className = "gp-marginbox";
         box.dataset.box = name;
         Object.assign(box.style, rectFor(name, g));
-        box.dataset.align = name.includes("center") || name.includes("middle") ? "center" : /right/.test(name) ? "end" : "start";
+        box.dataset.align = marginBoxAlign(name);
         const content = document.createElement("span");
         content.className = "gp-marginbox-content";
         content.textContent = text;
@@ -2332,30 +2387,8 @@
     return run;
   }
   function rectFor(name, g) {
-    const { top, right, bottom, left } = g.margin;
-    const cw = g.width - left - right;
-    const ch = g.height - top - bottom;
-    const third = (n) => n / 3;
-    const T = {
-      "top-left-corner": [0, 0, left, top],
-      "top-left": [left, 0, third(cw), top],
-      "top-center": [left + third(cw), 0, third(cw), top],
-      "top-right": [left + 2 * third(cw), 0, third(cw), top],
-      "top-right-corner": [g.width - right, 0, right, top],
-      "bottom-left-corner": [0, g.height - bottom, left, bottom],
-      "bottom-left": [left, g.height - bottom, third(cw), bottom],
-      "bottom-center": [left + third(cw), g.height - bottom, third(cw), bottom],
-      "bottom-right": [left + 2 * third(cw), g.height - bottom, third(cw), bottom],
-      "bottom-right-corner": [g.width - right, g.height - bottom, right, bottom],
-      "left-top": [0, top, left, third(ch)],
-      "left-middle": [0, top + third(ch), left, third(ch)],
-      "left-bottom": [0, top + 2 * third(ch), left, third(ch)],
-      "right-top": [g.width - right, top, right, third(ch)],
-      "right-middle": [g.width - right, top + third(ch), right, third(ch)],
-      "right-bottom": [g.width - right, top + 2 * third(ch), right, third(ch)]
-    };
-    const [x, y, w, h] = T[name] ?? [0, 0, 0, 0];
-    return { left: px(x), top: px(y), width: px(w), height: px(h) };
+    const r = marginBoxRectPt(name, g);
+    return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };
   }
 
   // src/engine/viewer/index.ts

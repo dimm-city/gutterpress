@@ -492,6 +492,45 @@ describe("image kind", () => {
     ]);
   });
 
+  test("a gp-behind image buried under page text still opens the image menu", async () => {
+    // Regression companion to preview-interface.test.mjs's hit-stack probe:
+    // a right-click over a `.gp-behind` (z-index:-1) plate covered by a text
+    // block resolves to kind:"image" with the IMAGE's own block range. The
+    // controller must build the ordinary image menu from that payload, and
+    // Set properties must seed the Layer facet from the buried image's
+    // source — not from the covering paragraph the pointer actually hit.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] =
+      "Body text that visually covers the plate.\n" +
+      "![Backdrop](plate.jpg){.gp-pin .gp-behind}\n";
+    h.imagePropertiesResult = null; // cancel the dialog — seeding is the assertion
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [1, 2],
+        image: { src: "plate.jpg", alt: "Backdrop", source: { token: "![Backdrop](plate.jpg)", occurrence: 0 } },
+      }),
+    });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+    expect(h.ctrl.items.map((item) => item.id)).toEqual(["image-properties", "image-reveal", "go-to-source"]);
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.imagePropertiesCalls).toEqual([{
+      src: "plate.jpg",
+      alt: "Backdrop",
+      width: "",
+      position: "gp-pin",
+      pinAlignment: "center",
+      size: "",
+      spacing: "",
+      shape: false,
+      flush: false,
+      layer: "gp-behind",
+    }]);
+    expect(h.commitEngine.calls).toEqual([]);
+  });
+
   test("Set properties seeds every supported option and applies multiple changes in one commit", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] =
@@ -505,6 +544,7 @@ describe("image kind", () => {
       size: "gp-large",
       spacing: "gp-loose",
       shape: true,
+      flush: false,
       layer: "gp-front",
     };
     h.client.emit({
@@ -527,6 +567,7 @@ describe("image kind", () => {
       size: "gp-small",
       spacing: "gp-tight",
       shape: true,
+      flush: false,
       layer: "",
     }]);
     expect(h.commitEngine.calls).toEqual([{
@@ -537,6 +578,72 @@ describe("image kind", () => {
         String.raw`![New \] alt](<new path.png> "Caption"){.gp-pin .gp-bottom .gp-right .gp-large .gp-loose .gp-shape .custom #hero data-x="y" .gp-front}` + "\n",
       expectedGeneration: 0,
     }]);
+  });
+
+  test("Set properties can flush a pinned image to the page edge", async () => {
+    // The point of the facet: a non-technical author reaches page-edge art
+    // from this dialog. Nothing else in the token set changes, and the class
+    // core keys its `:has()` page assignment off is what lands in the source.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-bottom .gp-behind}\n";
+    h.imagePropertiesResult = {
+      src: "x.png",
+      alt: "Art",
+      width: "",
+      position: "gp-pin",
+      pinAlignment: "bottom",
+      size: "",
+      spacing: "",
+      shape: false,
+      flush: true,
+      layer: "gp-behind",
+    };
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [0, 1],
+        image: { src: "x.png", alt: "Art", source: { token: "![Art](x.png)", occurrence: 0 } },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+
+    // Seeded from the source: an unflushed pin reads back as unchecked.
+    expect(h.imagePropertiesCalls[0]!.flush).toBe(false);
+    expect(h.commitEngine.calls[0]!.replacement).toBe(
+      "![Art](x.png){.gp-pin .gp-bottom .gp-behind .gp-flush}\n",
+    );
+  });
+
+  test("Set properties seeds flush from the source and can clear it", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-bottom .gp-flush}\n";
+    h.imagePropertiesResult = {
+      src: "x.png",
+      alt: "Art",
+      width: "",
+      position: "gp-pin",
+      pinAlignment: "bottom",
+      size: "",
+      spacing: "",
+      shape: false,
+      flush: false,
+      layer: "",
+    };
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [0, 1],
+        image: { src: "x.png", alt: "Art", source: { token: "![Art](x.png)", occurrence: 0 } },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+
+    expect(h.imagePropertiesCalls[0]!.flush).toBe(true);
+    expect(h.commitEngine.calls[0]!.replacement).toBe("![Art](x.png){.gp-pin .gp-bottom}\n");
   });
 
   test("changing only size preserves the exact escaped destination, formatted alt, and title", async () => {
@@ -552,6 +659,7 @@ describe("image kind", () => {
       size: "gp-large",
       spacing: "",
       shape: false,
+      flush: false,
       layer: "",
     };
     h.client.emit({
@@ -621,6 +729,7 @@ describe("image kind", () => {
       size: "",
       spacing: "",
       shape: false,
+      flush: false,
       ...value,
     };
     h.client.emit({
@@ -645,6 +754,7 @@ describe("image kind", () => {
       size: "",
       spacing: "",
       shape: false,
+      flush: false,
       layer: "",
     };
     h.client.emit({

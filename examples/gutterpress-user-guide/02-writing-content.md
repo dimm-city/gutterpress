@@ -392,6 +392,28 @@ Layout directives are `@`-prefixed markers that control how content flows across
 
 @end-section
 
+### Writing about a marker without triggering it
+
+A marker is **any line whose first character is `@` followed by one of the
+words above** — including a line your paragraph happened to wrap onto. Write a
+sentence about the `@page` marker and your editor may reflow it so `@page`
+lands at the start of a line, and Gutterpress will split your page there.
+
+Escape it with a backslash, exactly as you would escape any other markdown
+punctuation, or write it as inline code:
+
+```markdown
+A pinned image sets itself against the
+\@page container it sits in.
+
+A pinned image sets itself against the
+`@page` container it sits in.
+```
+
+Both render the text `@page` and leave your page alone. If you ever see a page
+break you did not ask for, look for a line that begins with `@` — Gutterpress
+warns about most of these, and the warning names the escape.
+
 ### @chapter — chapter wrapper (with automatic chapter-opener)
 
 `@chapter` is the flagship layout marker. It wraps everything until the next `@chapter` (or end of file) in `<div class="chapter">`. When given a bare label, it also auto-injects a **chapter-opener** element into the first `@page` inside it — the only element Gutterpress generates on your behalf:

@@ -331,6 +331,73 @@
     return null;
   }
 
+  // Full hit stack at a point, top-most first. Degrades to the single
+  // elementFromPoint() hit on hosts without elementsFromPoint().
+  function elementStackAtPoint(x, y) {
+    try {
+      if (typeof document.elementsFromPoint === 'function') {
+        var els = document.elementsFromPoint(x, y);
+        if (els && els.length) return Array.prototype.slice.call(els);
+      }
+    } catch (_e) { /* fall through to the single-element path */ }
+    var el = elementAtPoint(x, y);
+    return el ? [el] : [];
+  }
+
+  // Computed z-index as a number; NaN for 'auto'/unset/unsupported hosts
+  // (NaN < 0 is false, so those never qualify as behind-layered below).
+  function zIndexOf(el) {
+    try {
+      if (typeof window.getComputedStyle === 'function') {
+        return parseFloat(window.getComputedStyle(el).zIndex);
+      }
+    } catch (_e) { /* unsupported host */ }
+    return NaN;
+  }
+
+  // Why elementsFromPoint (plural) exists here: a `.gp-behind` image — the
+  // image-properties "Layer" facet sets `z-index: -1` to paint a pinned
+  // plate UNDER the page's own text (gutterpress-css.ts's depth ladder) —
+  // hit-tests beneath the covering paragraph boxes and the annotated
+  // `.page`/`.section` containers too, so document.elementFromPoint() can
+  // NEVER return it. Every right-click used to resolve the covering element
+  // instead, leaving the image's context menu unreachable at EVERY point.
+  // Probe the full hit stack for the first (= top-most in paint order, so
+  // the upper of two overlapping plates wins) image layered at negative z.
+  // ONLY negative-z images qualify: a normally-layered image that merely
+  // overlaps other content is already reachable at its uncovered points,
+  // and stealing the covering content's right-clicks would invert the bug.
+  // Computed style, not a `gp-behind` class test, mirrors the build-time
+  // engine.layer.trapped audit — book CSS can layer an image behind with a
+  // bare `z-index: -1` of its own.
+  function behindImageInStack(stack) {
+    for (var i = 0; i < stack.length; i++) {
+      var el = stack[i];
+      if (el.tagName && el.tagName.toLowerCase() === 'img' && zIndexOf(el) < 0) return el;
+    }
+    return null;
+  }
+
+  // The element getContextTargetAt() resolves the payload from. `topmostOnly`
+  // (the keyboard path) skips the behind-image probe: its anchor is a
+  // SYNTHETIC block-center point (keyboardAnchorPoint()), not a user-aimed
+  // pointer position — probing beneath it would hijack every keyboard menu
+  // on a page with a background plate.
+  function contextPointEl(x, y, topmostOnly) {
+    var stack = elementStackAtPoint(x, y);
+    var topEl = stack.length ? stack[0] : null;
+    if (topmostOnly || !topEl || !topEl.closest) return topEl;
+    // The user aimed at visible interactive content — a directly-hit image
+    // (an <img> only ever matches closest('img') as itself: images have no
+    // descendants) or a link's own text — never probe beneath those.
+    if (topEl.closest('img') || topEl.closest('a')) return topEl;
+    // Margin-box furniture (running headers, page numbers) keeps its native
+    // context menu even when a full-bleed plate runs beneath it — the
+    // contextmenu listener's kind==='none' contract below.
+    if (topEl.closest('.gp-marginbox')) return topEl;
+    return behindImageInStack(stack) || topEl;
+  }
+
   function elementOf(node) {
     if (!node) return null;
     return node.nodeType === 1 ? node : (node.parentElement || null);
@@ -664,9 +731,12 @@
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
+    // Point resolution prefers a behind-layered (negative z-index) image the
+    // top-most hit covers — see contextPointEl(); `spec.topmostOnly` opts a
+    // synthetic-anchor caller (the keyboard listener) out of that probe.
     getContextTargetAt: function (spec) {
       spec = spec || {};
-      return buildContextTarget(elementAtPoint(spec.x, spec.y));
+      return buildContextTarget(contextPointEl(spec.x, spec.y, spec.topmostOnly));
     },
 
     // All fragment rects for one logical block (protocol v6, §5.3), targeted
@@ -976,7 +1046,9 @@
       var isMenuKey = e.key === 'ContextMenu';
       if (!isShiftF10 && !isMenuKey) return;
       var anchor = keyboardAnchorPoint();
-      var detail = api.getContextTargetAt({ x: anchor.x, y: anchor.y });
+      // topmostOnly: the anchor is a synthetic block-center point, so the
+      // behind-image probe must not run — see contextPointEl().
+      var detail = api.getContextTargetAt({ x: anchor.x, y: anchor.y, topmostOnly: true });
       detail.x = anchor.x;
       detail.y = anchor.y;
       detail.via = 'keyboard';

@@ -54,6 +54,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.multicol.dead-column": "Empty column",
   "engine.content.overheight": "Taller than the page",
   "engine.image.low-dpi": "Image resolution",
+  "engine.flush.margin-box": "Running head on a flushed edge",
 };
 
 export function friendlySource(checkId: string): string {

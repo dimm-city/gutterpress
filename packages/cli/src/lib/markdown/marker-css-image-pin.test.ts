@@ -26,11 +26,18 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  *   - source order: pin-edge modifiers after `.gp-pin`, sizes after the
  *     float rules (cases 2/3/5 fail if reordered).
  *
- * The fixture gives `.page` an explicit height because that is the pin
- * CONTRACT: gp-pin pins within its @page/@spread container (whatever size
- * that container is), NOT "the sheet edge". The PDF assertion at the end
- * proves the out-of-flow pins never perturb fragmentation (5 divs that each
- * exactly fill a sheet still print as exactly 5 sheets).
+ * The first fixture gives `.page` an explicit height, which isolates the
+ * alignment mechanics from where the container's own box comes from. The
+ * PDF assertion at the end proves the out-of-flow pins never perturb
+ * fragmentation (5 divs that each exactly fill a sheet still print as
+ * exactly 5 sheets).
+ *
+ * The SECOND test covers the case a hard-coded fixture height can never
+ * catch: a page root with short prose and no height of its own. There the
+ * container's box comes from `--gp-content-h`, published per page context by
+ * the compiler and the viewer — remove that publication (as deleting
+ * Paged.js's `height: inherit` silently did) and the page root shrink-wraps,
+ * putting `.gp-bottom` under the last paragraph instead of at the page foot.
  */
 
 const RENDER_TEST_TIMEOUT_MS = 60_000;
@@ -184,3 +191,90 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS
 );
+
+// ---------------------------------------------------------------------------
+// page root sizing — where the pin's containing block comes from
+// ---------------------------------------------------------------------------
+
+const SHORT_PAGE_W = 384;
+const SHORT_SHEET_H = 560;
+const SHORT_MARGIN = 40;
+const SHORT_CONTENT_H = SHORT_SHEET_H - 2 * SHORT_MARGIN;
+
+// `:root { --gp-content-h }` is exactly what the compiler injects
+// (build.ts, "publish the page content box to CSS") and what the viewer sets
+// on each `.gp-strip`. Nothing here gives `.page` a height of its own — the
+// whole point is that a real book never does.
+const shortFixture = `<!doctype html><meta charset="utf-8"><style>
+${MARKER_CSS}
+${GUTTERPRESS_CSS}
+@page { size: ${SHORT_PAGE_W}px ${SHORT_SHEET_H}px; margin: ${SHORT_MARGIN}px; }
+:root { --gp-content-h: ${SHORT_CONTENT_H}px; }
+p { margin: 0; font: 12px/1.2 monospace; }
+</style>
+<div class="page" id="sp1"><p>One short line of prose.</p>
+<p><img id="si1" class="gp-pin gp-bottom" src="${SRC}" alt=""></p></div>
+<div class="page" id="sp2" style="--gp-content-h: 0px"><p>One short line of prose.</p>
+<p><img id="si2" class="gp-pin gp-bottom" src="${SRC}" alt=""></p></div>`;
+
+testIf(
+  "a page root with short prose still pins to the page foot, from the published --gp-content-h",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-imgpin-short-"));
+    try {
+      const file = path.join(dir, "fixture.html");
+      await fsp.writeFile(file, shortFixture, "utf8");
+      const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+      const page = await browser.newPage();
+      try {
+        await page.goto(`file://${file}`, { waitUntil: "networkidle0" });
+        const m = (await page.evaluate(
+          `(() => {
+            const box = (id) => document.getElementById(id).getBoundingClientRect();
+            const rel = (imgId, pageId) => {
+              const i = box(imgId), p = box(pageId);
+              return { top: i.top - p.top, bottom: p.bottom - i.bottom };
+            };
+            return {
+              pageHeight: box("sp1").height,
+              pinned: rel("si1", "sp1"),
+              shrinkWrappedHeight: box("sp2").height,
+              shrinkWrapped: rel("si2", "sp2"),
+            };
+          })()`
+        )) as {
+          pageHeight: number;
+          pinned: { top: number; bottom: number };
+          shrinkWrappedHeight: number;
+          shrinkWrapped: { top: number; bottom: number };
+        };
+
+        // The page root IS the page content box (less MARKER_CSS's 1px
+        // fragmentation cushion), so the pin's own bottom edge is the page's
+        // bottom margin edge — not the end of the prose.
+        expect(m.pageHeight).toBeCloseTo(SHORT_CONTENT_H - 1, 0);
+        expect(m.pinned.bottom).toBeCloseTo(0, 0);
+        expect(m.pinned.top).toBeCloseTo(SHORT_CONTENT_H - 1 - IMG_H, 0);
+
+        // Control: the same markup with the property zeroed is the
+        // regression shape — a container barely taller than one line, so the
+        // art overflows it instead of resting on a page floor, and its
+        // bottom edge lands hundreds of px above the sheet's.
+        expect(m.shrinkWrappedHeight).toBeLessThan(IMG_H);
+        expect(m.shrinkWrapped.bottom).toBeLessThan(0);
+
+        // Stretching page roots must not cost a sheet: two roots that each
+        // fill their content box still print as exactly two sheets.
+        const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const facts = await inspectPdf(new Uint8Array(bytes));
+        expect(facts.pageCount).toBe(2);
+      } finally {
+        await page.close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS
+);
+

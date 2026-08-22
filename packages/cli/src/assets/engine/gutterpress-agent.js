@@ -44,8 +44,10 @@
     targetTexts: () => targetTexts,
     stringSources: () => stringSources,
     setGenerated: () => setGenerated,
+    setFlushFurniture: () => setFlushFurniture,
     instrument: () => instrument,
     forcedBreakSites: () => forcedBreakSites,
+    flushRoots: () => flushRoots,
     fillLeaders: () => fillLeaders,
     counterResetSites: () => counterResetSites,
     collectCss: () => collectCss,
@@ -557,6 +559,50 @@
     addCss("gp-generated-content", css);
     return entries.length;
   }
+  function flushRoots() {
+    const out = [];
+    for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
+      const edges = ["top", "right", "bottom", "left"].filter((edge) => root.querySelector(`.gp-pin.gp-flush.gp-${edge}`));
+      if (!edges.length)
+        continue;
+      const page = getComputedStyle(root).page;
+      const key = `${page === "auto" ? "" : page}|${edges.map((e) => e[0]).join("")}`;
+      root.dataset.gpFlush = key;
+      out.push({ id: ensureAnchor(root), page, edges, key });
+    }
+    return out;
+  }
+  function setFlushFurniture(items) {
+    let painted = 0;
+    for (const item of items) {
+      const host = anchorHost(item.id);
+      if (!host)
+        continue;
+      let layer = host.querySelector(":scope > .gp-flush-furniture");
+      if (!layer) {
+        layer = document.createElement("div");
+        layer.className = "gp-flush-furniture";
+        layer.setAttribute("aria-hidden", "true");
+        layer.setAttribute("style", "position:absolute;inset:0;pointer-events:none;z-index:10;");
+        host.appendChild(layer);
+      }
+      layer.textContent = "";
+      for (const b of item.boxes) {
+        const slot = document.createElement("div");
+        slot.dataset.box = b.box;
+        const justify = b.align === "center" ? "center" : b.align === "end" ? "flex-end" : "flex-start";
+        slot.setAttribute("style", `position:absolute;left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;` + `display:flex;align-items:center;justify-content:${justify};overflow:hidden;white-space:pre;`);
+        const content = document.createElement("span");
+        content.textContent = b.text;
+        for (const [prop, value] of Object.entries(b.decls))
+          content.style.setProperty(prop, value);
+        slot.appendChild(content);
+        layer.appendChild(slot);
+        painted++;
+      }
+    }
+    return painted;
+  }
   var api = {
     auditContent,
     collectCss,
@@ -569,7 +615,9 @@
     fillLeaders,
     instrument,
     addCss,
-    setGenerated
+    setGenerated,
+    flushRoots,
+    setFlushFurniture
   };
   if (typeof window !== "undefined")
     window.__gp = api;

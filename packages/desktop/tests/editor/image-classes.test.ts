@@ -12,6 +12,7 @@ import {
   IMAGE_PIN_ALIGNMENT_OPTIONS,
   IMAGE_LAYER_OPTIONS,
   IMAGE_POSITION_OPTIONS,
+  IMAGE_FLUSH_CLASS,
   IMAGE_SHAPE_CLASS,
   IMAGE_SIZE_OPTIONS,
   IMAGE_SPACING_OPTIONS,
@@ -21,12 +22,14 @@ import {
   getSizeClass,
   getSpacingClass,
   getWidth,
+  hasFlushClass,
   hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
   setPinAlignment,
   setLayerClass,
   setPositionClass,
+  setFlushClass,
   setShapeClass,
   setSizeClass,
   setSpacingClass,
@@ -248,6 +251,43 @@ describe("normalizeClassInput", () => {
     // The old prompt suggested "left" but wrote a nonexistent {.left} — the
     // short name must now resolve to the real class instead.
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "left")).toBe("gp-left");
+  });
+});
+
+// `.gp-flush` is what lets a pinned image sit on the paper instead of on the
+// text block (core drops that page's margin on the pinned edges). It is a
+// boolean facet rather than part of the alignment token set because it is
+// orthogonal to WHICH edge — and it has to be an image class at all because
+// this dialog can set image classes and nothing else.
+describe("flush facet (boolean)", () => {
+  test("toggles .gp-flush on and off without touching anything else", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .my-note}");
+    const on = setFlushClass(tokens, true);
+    expect(serializeImageAttrs(on)).toBe("{.gp-pin .gp-bottom .my-note .gp-flush}");
+    expect(hasFlushClass(on)).toBe(true);
+    const off = setFlushClass(on, false);
+    expect(serializeImageAttrs(off)).toBe("{.gp-pin .gp-bottom .my-note}");
+    expect(hasFlushClass(off)).toBe(false);
+  });
+
+  test("the class name matches the core vocabulary the CSS keys off", () => {
+    expect(IMAGE_FLUSH_CLASS).toBe("gp-flush");
+  });
+
+  test("survives an alignment change — the two facets are independent", () => {
+    let tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-flush}");
+    tokens = setPinAlignment(tokens, "top-right");
+    expect(hasFlushClass(tokens)).toBe(true);
+    expect(serializeImageAttrs(tokens)).toBe("{.gp-pin .gp-top .gp-right .gp-flush}");
+  });
+
+  test("clearing the pin leaves no orphan flush behaviour to explain", () => {
+    // Position and flush are separate facets, so clearing the position keeps
+    // the class in the source — inert, because core's selectors all require
+    // `.gp-pin` alongside it. This is the same shape `.gp-top` already has.
+    const tokens = setPositionClass(tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-flush}"), null);
+    expect(hasFlushClass(tokens)).toBe(true);
+    expect(serializeImageAttrs(tokens)).toBe("{.gp-flush}");
   });
 });
 

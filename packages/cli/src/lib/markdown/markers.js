@@ -351,6 +351,31 @@ function warn(env, line, type, message, marker) {
   env.layoutWarnings.push({ line, type, message, marker });
 }
 
+/**
+ * The other half of every "that isn't marker syntax" warning: the line may
+ * not be a marker at all.
+ *
+ * A marker is any line whose first non-space character is `@` followed by a
+ * known kind — including a line a PARAGRAPH happened to wrap onto. A book
+ * that writes about Gutterpress hits this the moment a sentence breaks
+ * before "@page container", and the author sees a page split mid-sentence
+ * with a warning that only explains class syntax. MEASURED on this repo's
+ * own gp-image-positioning fixture, which shipped that exact split.
+ *
+ * The remedy is standard markdown, not a Gutterpress escape: `\@page`
+ * renders as literal `@page` (CommonMark lists `@` as escapable ASCII
+ * punctuation, and this rule never sees the line because it no longer
+ * starts with `@`), and so does an inline-code span. Naming it in the
+ * warning is what turns a confusing diagnostic into a fix — the author who
+ * trips this never typed an escape, because they never intended a marker.
+ */
+function proseEscapeHint(kind) {
+  return (
+    ` If this line is prose that happens to begin with "@${kind}" — a wrapped sentence, for` +
+    ` instance — escape it as \\@${kind} or write it as \`@${kind}\` in backticks, and it stays text.`
+  );
+}
+
 function addClasses(token, baseClass, extraClass) {
   const cls = [];
   if (baseClass) cls.push(baseClass);
@@ -419,7 +444,8 @@ export default function plugin(md, pluginOptions = {}) {
           state.env,
           startLine + 1,
           'unrecognized_marker_token',
-          `@${parsed.kind}: "${t}" is not something a marker understands, so it was kept verbatim as a class name. Write a class as .my-class (or {.my-class}), an id as #my-id, and anything else as key=value.`,
+          `@${parsed.kind}: "${t}" is not something a marker understands, so it was kept verbatim as a class name. Write a class as .my-class (or {.my-class}), an id as #my-id, and anything else as key=value.` +
+            proseEscapeHint(parsed.kind),
           parsed
         );
       }
@@ -441,8 +467,8 @@ export default function plugin(md, pluginOptions = {}) {
               ' '
             )}"), or write classes as .${tokens.slice(1).join(' .')}.`
           : `@${parsed.kind}: ${list} are several plain words, but a marker has only one name slot — so NONE of them was used as the name and they all became class names instead. Quote a name that contains spaces ("${tokens.join(
-              ' '
-            )}"), or write classes as .${tokens.join(' .')}.`,
+                ' '
+              )}"), or write classes as .${tokens.join(' .')}.` + proseEscapeHint(parsed.kind),
         parsed
       );
     }
@@ -1001,6 +1027,56 @@ export default function plugin(md, pluginOptions = {}) {
  * on its own page instead of resolving against the document canvas and
  * painting on the last page of the book.
  *
+ * `min-height: var(--gp-content-h)` is the other half of that contract: a
+ * page root that only shrink-wraps its text is a containing block whose
+ * `bottom` edge is the end of the PROSE, so `.gp-pin .gp-bottom` (and every
+ * hand-written `position: absolute; bottom: 0`) lands under the last
+ * paragraph instead of at the page foot. Paged.js used to supply this height
+ * for free — `.pagedjs_pagebox > .pagedjs_area > .pagedjs_page_content > div
+ * { height: inherit; }` stretched the page root to the page area — and
+ * deleting the polyfill (native-only migration, Phase 6) silently took
+ * page-boundary pinning with it. Both renderers now publish the page
+ * CONTENT height as `--gp-content-h` for the page context the element is in
+ * (the viewer on each `.gp-strip`; the compiler on `:root` plus every
+ * `page:` assignment selector), and custom properties inherit, so this one
+ * rule reaches a page root at any wrapper depth. Undefined var (plain
+ * markdown-it use, no engine) falls back to `1px`, which the cushion below
+ * takes back to zero — the rule is inert outside the pipeline, leaving the
+ * page root shrink-wrapped exactly as it is today.
+ *
+ * It is `min-height`, not `height`: a `.page` whose content runs past one
+ * sheet must still fragment normally. The whole rule is `:where()`, so an
+ * author who wants any of it back sets their own value at any specificity.
+ *
+ * `box-sizing` and `display` are what make a page-sized min-height safe, and
+ * both were found by MEASURING a real book (docs/fixtures/css-authoring-spike)
+ * print one extra sheet without them:
+ *
+ *   - `border-box`, because a page root with padding (that fixture's cover
+ *     has `padding-top: 2.5in`) would otherwise be one content box PLUS its
+ *     padding tall, which is one sheet plus 2.5in — the overflow lands on a
+ *     spurious blank sheet.
+ *   - `flow-root`, because a child margin collapsing THROUGH the root's edge
+ *     survives the forced break and eats into the new sheet: that fixture's
+ *     last page opens with an `<h2>` whose 22.4px margin-top pushed a
+ *     719px-tall root down 22.4px on a 720px sheet, spilling it. A page root
+ *     is a page; containing its children's margins is what a page does. The
+ *     viewer already forces `flow-root` on displaced page roots for exactly
+ *     this reason (`stabilizeFullHeightPageRoots`, fragment.ts) — declaring
+ *     it once in core means both renderers start from the same box. Zero
+ *     specificity, so an authored `display: flex`/`grid` page root still
+ *     wins, which is the case that function's comment warns about.
+ *
+ * The `- 1px` is the fragmentation cushion, and it is load-bearing. A box
+ * whose bottom edge lands EXACTLY on the fragmentainer's edge costs an empty
+ * fragment: MEASURED (Chromium 148, 384x480px sheet, 24px margins, one
+ * short page root) `min-height: 432px` prints 2 sheets with the second
+ * blank while `431px` prints 1 — and the viewer's multicol strip does the
+ * same, which is how it first showed up (an 8pp preview of a 7pp book on
+ * the gp-image-positioning fixture). One px at 96dpi is 0.75pt: it moves a
+ * pinned foot up by less than a point and absorbs sub-pixel rounding in the
+ * published value. Do not "clean it up" — the sheet it costs is silent.
+ *
  * The break/orphan rules below (`break-after` on headings, image sizing,
  * first-child glue) are all `:where()` so they carry zero specificity —
  * author CSS at any specificity wins outright, reusing this same
@@ -1035,7 +1111,7 @@ body { margin: 0; }
 .gp-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }
-:where(.page, .spread) { position: relative; }
+:where(.page, .spread) { position: relative; display: flow-root; box-sizing: border-box; min-height: calc(var(--gp-content-h, 1px) - 1px); }
 .gp-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
 
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }

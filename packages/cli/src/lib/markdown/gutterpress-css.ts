@@ -41,6 +41,14 @@
  *   .gp-pin       — pins within the nearest @page/@spread container;
  *                   centered on both axes unless combined with the edge
  *                   modifiers .gp-top/.gp-bottom/.gp-left/.gp-right.
+ *   .gp-flush     — with .gp-pin + an edge, the art sits on the PAPER's
+ *                   edge rather than on the text block's. No CSS rule here:
+ *                   the class is a marker both ENGINES implement (see
+ *                   engine/shared/flush.ts), because reaching the paper
+ *                   requires freeing that page's margin — per page — and
+ *                   relocating the furniture that lived in it, neither of
+ *                   which a stylesheet can do. Inert without .gp-pin + an
+ *                   edge word, and inert under plain markdown-it.
  *   .gp-bleed     — forces its own page (break-before) and spans it
  *                   edge-to-edge horizontally. This does NOT cancel the
  *                   top/bottom margins, extend past the trim into printer
@@ -257,8 +265,14 @@ img.gp-shape {
        opacity, filter, transform on it traps the negative layer inside).
        Core keeps .page/.spread at 'position: relative; z-index: auto'
        precisely so they are not stacking contexts.
-     - a clipping ancestor (overflow other than visible), the same mechanism
-       that clips a .gp-bleed plate back to the wrapper's width.
+     - a clipping ancestor (overflow other than visible) — but only where
+       the art actually overhangs that ancestor's clip box on a clipped
+       axis: the overhang is cut off, the same mechanism that clips a
+       .gp-bleed plate back to the wrapper's width. Clipping never reorders
+       layers — within-bounds art under a clipping .page prints whole and
+       still behind (measured; see the build audit's comment in
+       engine/compiler/build.ts), and a static wrapper's overflow never
+       binds an abspos .gp-pin at all.
    The build-time engine.layer.trapped audit reports both against the live
    ancestor chain. printsafe/page-containment is only an early source hint for
    declarations written directly on .page/.spread. */
