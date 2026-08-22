@@ -15,7 +15,11 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement } from "../shared/content-value.ts";
-import { isIgnoredMarginBoxProperty } from "../shared/margin-box-support.ts";
+import {
+  isIgnoredMarginBoxProperty,
+  marginBoxAlign,
+  marginBoxRectPt,
+} from "../shared/margin-box-support.ts";
 import {
   generatedContentCss,
   leaderFillCount,
@@ -455,11 +459,7 @@ export function decorate(
       box.className = "gp-marginbox";
       box.dataset.box = name;
       Object.assign(box.style, rectFor(name, g));
-      box.dataset.align = name.includes("center") || name.includes("middle")
-        ? "center"
-        : /right/.test(name)
-          ? "end"
-          : "start";
+      box.dataset.align = marginBoxAlign(name);
 
       // The absolutely positioned element above is the margin box's SLOT.
       // Keep its resolved third-of-the-margin geometry intact, and replay the
@@ -612,30 +612,10 @@ function ensureRun(strip: StripInfo): HTMLElement {
   return run;
 }
 
-/** Geometry of each of the 16 margin boxes, per CSS Paged Media §5.3. */
+/** Slot rect for one margin box, from the SHARED §5.3 geometry (the compiler's
+ * `.gp-flush` furniture relocation uses the same function — one spot, both
+ * painters). */
 function rectFor(name: string, g: PageGeometry): Partial<CSSStyleDeclaration> {
-  const { top, right, bottom, left } = g.margin;
-  const cw = g.width - left - right;
-  const ch = g.height - top - bottom;
-  const third = (n: number) => n / 3;
-  const T: Record<string, [number, number, number, number]> = {
-    "top-left-corner": [0, 0, left, top],
-    "top-left": [left, 0, third(cw), top],
-    "top-center": [left + third(cw), 0, third(cw), top],
-    "top-right": [left + 2 * third(cw), 0, third(cw), top],
-    "top-right-corner": [g.width - right, 0, right, top],
-    "bottom-left-corner": [0, g.height - bottom, left, bottom],
-    "bottom-left": [left, g.height - bottom, third(cw), bottom],
-    "bottom-center": [left + third(cw), g.height - bottom, third(cw), bottom],
-    "bottom-right": [left + 2 * third(cw), g.height - bottom, third(cw), bottom],
-    "bottom-right-corner": [g.width - right, g.height - bottom, right, bottom],
-    "left-top": [0, top, left, third(ch)],
-    "left-middle": [0, top + third(ch), left, third(ch)],
-    "left-bottom": [0, top + 2 * third(ch), left, third(ch)],
-    "right-top": [g.width - right, top, right, third(ch)],
-    "right-middle": [g.width - right, top + third(ch), right, third(ch)],
-    "right-bottom": [g.width - right, top + 2 * third(ch), right, third(ch)],
-  };
-  const [x, y, w, h] = T[name] ?? [0, 0, 0, 0];
-  return { left: px(x), top: px(y), width: px(w), height: px(h) };
+  const r = marginBoxRectPt(name, g);
+  return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };
 }

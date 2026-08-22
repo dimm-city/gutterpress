@@ -1197,7 +1197,29 @@ describe("MARKER_CSS export", () => {
   // a mispinned bottom:0 fails locally instead of painting on the book's last
   // page. :where() so author CSS at any specificity can opt back to static.
   test("makes .page/.spread positioned containing blocks at zero specificity", () => {
-    expect(MARKER_CSS).toContain(":where(.page, .spread) { position: relative; }");
+    expect(MARKER_CSS).toContain(
+      ":where(.page, .spread) { position: relative; display: flow-root; box-sizing: border-box; " +
+        "min-height: calc(var(--gp-content-h, 1px) - 1px); }",
+    );
+  });
+
+  // The other half of that contract: a page root that only shrink-wraps its
+  // prose is a containing block whose bottom edge is the end of the TEXT, so
+  // `.gp-pin .gp-bottom` lands under the last paragraph. The engines publish
+  // the page content height as --gp-content-h; the 1px fallback, less the
+  // 1px cushion, keeps the rule inert for plain markdown-it use with no
+  // engine.
+  test("stretches page roots to the published page content height, min-height only", () => {
+    const rule = MARKER_CSS.match(/:where\(\.page, \.spread\)\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toContain("min-height: calc(var(--gp-content-h, 1px) - 1px)");
+    // `height` would stop a long .page from fragmenting across sheets.
+    expect(rule![0]).not.toMatch(/[^-]height:\s*var/);
+    // Both measured on a real book: padding would push a content-box
+    // min-height onto a spurious sheet, and a child margin collapsing
+    // through the root's edge would eat into the sheet it starts.
+    expect(rule![0]).toContain("box-sizing: border-box");
+    expect(rule![0]).toContain("display: flow-root");
   });
 });
 
@@ -1362,6 +1384,19 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(GUTTERPRESS_CSS.indexOf(".gp-pin")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
+  test(".gp-flush ships no CSS — the engines implement it", () => {
+    // The class is a marker consumed by the compiler and the viewer
+    // (engine/shared/flush.ts): reaching the paper requires freeing that
+    // page's margins and relocating the furniture that lived in them,
+    // neither of which a static stylesheet can do. An earlier attempt DID
+    // ship it as CSS — `:has()` reassigning the root to a gp-flush-* named
+    // page — and stole the author's own `page:` assignment (every
+    // declaration on their named page, furniture included, vanished). No
+    // rule may come back here.
+    expect(GUTTERPRESS_CSS).not.toContain("gp-flush");
+    expect(GUTTERPRESS_CSS).not.toContain(":has(.gp-pin");
+  });
+
   test("pin edge modifiers come after .gp-pin so they beat its center defaults", () => {
     expect(GUTTERPRESS_CSS).toMatch(/\.gp-top\s*\{\s*align-self:\s*start;\s*\}/);
     expect(GUTTERPRESS_CSS).toMatch(/\.gp-bottom\s*\{\s*align-self:\s*end;\s*\}/);
@@ -1385,7 +1420,9 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
   test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
     // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
     // namespace from its page-width Math.max; every name added here widens
-    // that exclusion and must be deliberate.
+    // that exclusion and must be deliberate. (`gp--flush-*` pages exist too,
+    // but the COMPILER generates those per build — they are never in this
+    // static stylesheet, and the width guard readmits them explicitly.)
     expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toHaveLength(1);
   });
 });
@@ -1519,6 +1556,65 @@ describe("marker arguments accept the {.class} spelling", () => {
  * bare `.section` for two days. Rendering is deliberately unchanged: the
  * point is that the author is now told.
  */
+/**
+ * Writing about markers without triggering them.
+ *
+ * There is no Gutterpress escape syntax and there must not be one: markdown
+ * already has this. `\@page` renders as literal `@page` because CommonMark
+ * lists `@` among the escapable ASCII punctuation, and because this plugin
+ * only claims a line whose first non-space character is `@` — a line starting
+ * with `\` is never offered to `parseMarkerLine` at all.
+ *
+ * That is a conjunction of two behaviors owned by two different layers, and
+ * nothing else asserts it. A future move to a block rule that scans further
+ * into the line (or a tokenizer that strips escapes before this rule sees the
+ * source) would quietly re-arm the trap, so the contract is pinned here.
+ */
+describe("escaping a marker so it stays prose", () => {
+  const KINDS = [
+    "@chapter",
+    "@spread",
+    "@page",
+    "@section",
+    "@continue",
+    "@end-section",
+    "@page-break",
+    "@column-break",
+  ];
+
+  test("a backslash keeps every marker kind as text, with no warning", () => {
+    for (const kind of KINDS) {
+      const { html, env } = renderPaged(`\\${kind} is written like this.\n`);
+      expect(html).toContain(`${kind} is written like this.`);
+      expect(html).not.toContain("<div");
+      expect(env.layoutWarnings ?? []).toEqual([]);
+    }
+  });
+
+  test("the real trap — a sentence that WRAPS onto a marker word — is escapable", () => {
+    const src =
+      "A pinned image sets itself against its\n\\@page container — centered by default.\n";
+    const { html, env } = renderPaged(src);
+    expect(html).toContain("@page container");
+    // One paragraph: the sentence was never split by a page wrapper.
+    expect(html.match(/<p>/g)).toHaveLength(1);
+    expect(html).not.toContain('class="page');
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+
+  test("control: the same line without the backslash IS a marker", () => {
+    const src = "A pinned image sets itself against its\n@page container — centered by default.\n";
+    const { html } = renderPaged(src);
+    expect(html).toContain('class="page');
+  });
+
+  test("an inline-code span is the other way to name a marker in prose", () => {
+    const { html, env } = renderPaged("Start a page with `@page` on its own line.\n");
+    expect(html).toContain("<code>@page</code>");
+    expect(env.layoutWarnings ?? []).toEqual([]);
+  });
+});
+
 describe("marker mistakes are reported (not silently absorbed)", () => {
   const warnings = (src: string) => {
     const { env } = renderPaged(src);
@@ -1553,6 +1649,33 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
       expect(warnings("@page {.a} {#b}\nHi\n")).toEqual([]);
       expect(warnings('@page title="Hello World"\nHi\n')).toEqual([]);
       expect(warnings("@page C.01 .chapter-1\nHi\n")).toEqual([]);
+    });
+  });
+
+  // The trap this hint exists for: a marker is any line whose first non-space
+  // character is `@` + a known kind, INCLUDING a line a paragraph wrapped onto.
+  // The author never typed a marker, so a message that only explains class
+  // syntax leaves them with a page split mid-sentence and no idea why. This
+  // repo's own gp-image-positioning fixture shipped exactly that split.
+  describe("the prose-escape hint", () => {
+    test("unrecognized_marker_token names the escape for its own kind", () => {
+      const w = ofType(
+        "A pinned image sets itself against its\n@page container — centered by default.\n",
+        "unrecognized_marker_token"
+      );
+      expect(w.length).toBeGreaterThan(0);
+      expect(w[0]!.message).toContain("\\@page");
+      expect(w[0]!.message).toContain("`@page`");
+    });
+
+    test("the several-plain-words case names it too, with that marker's kind", () => {
+      const w = ofType("@section one of the tide tables\nHi\n", "extra_bare_marker_token");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain("\\@section");
+    });
+
+    test("a well-formed marker never gets the hint (nothing to second-guess)", () => {
+      expect(warnings("@page cover .a #id class=c,d\nHi\n")).toEqual([]);
     });
   });
 

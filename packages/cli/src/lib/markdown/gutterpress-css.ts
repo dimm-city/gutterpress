@@ -41,6 +41,14 @@
  *   .gp-pin       — pins within the nearest @page/@spread container;
  *                   centered on both axes unless combined with the edge
  *                   modifiers .gp-top/.gp-bottom/.gp-left/.gp-right.
+ *   .gp-flush     — with .gp-pin + an edge, the art sits on the PAPER's
+ *                   edge rather than on the text block's. No CSS rule here:
+ *                   the class is a marker both ENGINES implement (see
+ *                   engine/shared/flush.ts), because reaching the paper
+ *                   requires freeing that page's margin — per page — and
+ *                   relocating the furniture that lived in it, neither of
+ *                   which a stylesheet can do. Inert without .gp-pin + an
+ *                   edge word, and inert under plain markdown-it.
  *   .gp-bleed     — forces its own page (break-before) and spans it
  *                   edge-to-edge horizontally. This does NOT cancel the
  *                   top/bottom margins, extend past the trim into printer

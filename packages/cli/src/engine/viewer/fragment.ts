@@ -13,6 +13,7 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { isRectoVersoBreak, planRectoBlanks, wantsRecto } from "../shared/synthesis.ts";
+import { flushEdgesIn, flushMargins, type FlushEdge } from "../shared/flush.ts";
 
 export const PX_PER_PT = 96 / 72;
 
@@ -20,7 +21,12 @@ export interface StripInfo {
   el: HTMLElement;
   /** named page for this run, undefined = default page context */
   page?: string;
+  /** the AUTHOR context's geometry — decoration (sheets, margin-box slots,
+   * guides) always uses this. A flush run's grown content box lives only in
+   * the strip's CSS custom properties (see stripify). */
   geometry: PageGeometry;
+  /** edges freed by `.gp-flush` pins in this run (shared/flush.ts) */
+  flushEdges?: FlushEdge[];
   /** page count of this run */
   pages: number;
   /** page index (0-based, book-wide) of this run's first page */
@@ -258,12 +264,24 @@ function hasDescendantPageAssignment(el: Element, model: GcpmModel): boolean {
 interface Run {
   page?: string;
   nodes: ChildNode[];
+  /** `.gp-flush` edges of this run's root — part of the partition key, so a
+   * flush root always gets its own strip: its content box differs from its
+   * neighbours' even when they share a page name, exactly as in print, where
+   * the compiler gives the root its own generated page context. */
+  flushEdges?: FlushEdge[];
 }
 
-function pushRun(runs: Run[], page: string | undefined, nodes: ChildNode[]) {
+function pushRun(
+  runs: Run[],
+  page: string | undefined,
+  nodes: ChildNode[],
+  flushEdges?: FlushEdge[],
+) {
+  const key = (r: { page?: string; flushEdges?: FlushEdge[] }) =>
+    `${r.page ?? ""}\u0000${(r.flushEdges ?? []).join(",")}`;
   const last = runs[runs.length - 1];
-  if (last && last.page === page) last.nodes.push(...nodes);
-  else runs.push({ page, nodes });
+  if (last && key(last) === key({ page, flushEdges })) last.nodes.push(...nodes);
+  else runs.push({ page, nodes, flushEdges: flushEdges?.length ? flushEdges : undefined });
 }
 
 /**
@@ -308,7 +326,11 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     pending = [];
     const last = runs[runs.length - 1];
     if (last) {
-      pushRun(runs, last.page, held);
+      // The FULL partition key, not just the page name: text riding behind a
+      // flush run must stay in that run, or the whitespace after a flush root
+      // opens a spurious same-name strip — measured as a 5pp preview of a
+      // 4pp book.
+      pushRun(runs, last.page, held, last.flushEdges);
       return [];
     }
     // Nothing precedes it: text with real content opens its own default-page
@@ -328,13 +350,14 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     const kid = node as HTMLElement;
     if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
+    const flush = flushEdgesIn(kid);
     const own = directPageName(kid, model);
     if (own !== undefined) {
-      pushRun(runs, own, [...carry(), kid]);
+      pushRun(runs, own, [...carry(), kid], flush);
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
-      pushRun(runs, undefined, [...carry(), kid]);
+      pushRun(runs, undefined, [...carry(), kid], flush);
       continue;
     }
     const inner = explodeChildren(kid, model);
@@ -350,7 +373,7 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       const shell = kid.cloneNode(false) as HTMLElement;
       for (const n of r.nodes) shell.appendChild(n);
       kid.before(shell);
-      pushRun(runs, r.page, [...lead, shell]);
+      pushRun(runs, r.page, [...lead, shell], flushEdgesIn(shell));
       lead = [];
     }
     kid.remove();
@@ -589,20 +612,39 @@ export function buildStrips(
     const strip = doc.createElement("div");
     strip.className = "gp-strip";
     if (run.page) strip.dataset.page = run.page;
-    const w = pt(geometry.width - geometry.margin.left - geometry.margin.right);
-    const h = pt(geometry.height - geometry.margin.top - geometry.margin.bottom);
+    // `.gp-flush` frees the pinned edges' margins for this run only — the
+    // print twin is the compiler's generated page context. Every derived
+    // var below uses the freed margins, so the strip's content box grows to
+    // the sheet edge, its translate lands on the paper where flushed, and
+    // the sheet-pitch arithmetic (content + margins + gap) is unchanged by
+    // construction. Decoration keeps the AUTHOR geometry via strip.geometry:
+    // sheets and margin-box slots do not move — margin boxes on a flushed
+    // edge keep painting at their original coordinates, exactly where the
+    // compiler relocates them in print.
+    const margin = run.flushEdges?.length
+      ? flushMargins(geometry.margin, run.flushEdges)
+      : geometry.margin;
+    const w = pt(geometry.width - margin.left - margin.right);
+    const h = pt(geometry.height - margin.top - margin.bottom);
     strip.style.setProperty("--gp-content-w", `${w}px`);
     strip.style.setProperty("--gp-content-h", `${h}px`);
     strip.style.setProperty("--gp-sheet-gap", `${gap}px`);
     strip.style.setProperty("--gp-page-w", `${pt(geometry.width)}px`);
     strip.style.setProperty("--gp-page-h", `${pt(geometry.height)}px`);
-    strip.style.setProperty("--gp-margin-top", `${pt(geometry.margin.top)}px`);
-    strip.style.setProperty("--gp-margin-right", `${pt(geometry.margin.right)}px`);
-    strip.style.setProperty("--gp-margin-bottom", `${pt(geometry.margin.bottom)}px`);
-    strip.style.setProperty("--gp-margin-left", `${pt(geometry.margin.left)}px`);
+    strip.style.setProperty("--gp-margin-top", `${pt(margin.top)}px`);
+    strip.style.setProperty("--gp-margin-right", `${pt(margin.right)}px`);
+    strip.style.setProperty("--gp-margin-bottom", `${pt(margin.bottom)}px`);
+    strip.style.setProperty("--gp-margin-left", `${pt(margin.left)}px`);
     run.nodes[0]!.before(strip);
     for (const n of run.nodes) strip.appendChild(n);
-    strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
+    strips.push({
+      el: strip,
+      page: run.page,
+      geometry,
+      flushEdges: run.flushEdges,
+      pages: 0,
+      offset: 0,
+    });
   }
   // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
   // that inside the loop above would force one synchronous style recalc per
