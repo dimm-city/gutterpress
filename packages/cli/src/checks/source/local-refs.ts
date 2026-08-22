@@ -4,7 +4,13 @@ import { dirname, resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
-import { decodeRef, proseImageRefError } from "../../lib/asset-inline";
+import {
+  decodeRef,
+  isNonFilesystemRef,
+  proseImageRefError,
+} from "../../lib/asset-inline";
+import { loadPlugins } from "../../lib/markdown/plugins";
+import { createRenderedLocalRefCollector, type RenderedRefKind } from "./local-ref-parser";
 
 const check: Check = {
   id: "source.links.local-refs",
@@ -17,49 +23,63 @@ const check: Check = {
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];
+    // Match the authored book grammar. The loader's path-module cache avoids
+    // repeating module-level plugin side effects when another source check or
+    // the build already loaded the same unchanged plugin; application happens
+    // once to this check's parser and that parser is reused for every chapter.
+    const plugins = await loadPlugins(ctx.config.plugins, ctx.inputDir, (ref, error) => {
+      results.push(
+        inspectionFailed(
+          check.id,
+          `Plugin "${ref}" could not be loaded, so local references it defines were not checked: ${error.message}`,
+        ),
+      );
+    });
+    const collectRenderedLocalRefs = createRenderedLocalRefCollector(plugins);
 
     for (const file of files) {
       try {
         const content = await readFile(file, "utf8");
-        const lines = content.split("\n");
-        let inFence = false;
+        for (const { ref, kind, line } of collectRenderedLocalRefs(content)) {
+          // The parser deliberately returns every rendered link/image. Only
+          // filesystem-backed destinations belong to this check: page-local
+          // fragments and URLs are resolved by the reader, not on disk.
+          if (isNonFilesystemRef(ref)) continue;
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i] ?? "";
-          if (/^\s*(```|~~~)/.test(line)) {
-            inFence = !inFence;
-            continue;
-          }
-          if (inFence) continue;
-
-          for (const { ref, kind } of extractLocalRefs(line)) {
-            // R5: a prose IMAGE must live inside the book. `proseImageRefError`
-            // is the SAME predicate the build's `planImageCopies` rejects with,
-            // so this pre-build check can't drift from what the build enforces
-            // — it used to green-light an escaping ref that happened to exist and
-            // let the build fail later instead.
-            const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
-            if (escape) {
-              results.push(
-                finding(check.id, {
-                  severity: "error",
-                  message: escape,
-                  file,
-                  line: i + 1,
-                })
-              );
-              continue;
-            }
-            if (localRefExists(ref, kind, file, ctx.inputDir)) continue;
+          // R5: a prose IMAGE must live inside the book. `proseImageRefError`
+          // is the SAME predicate the build's `planImageCopies` rejects with,
+          // so this pre-build check can't drift from what the build enforces
+          // — it used to green-light an escaping ref that happened to exist and
+          // let the build fail later instead.
+          const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
+          if (escape) {
             results.push(
               finding(check.id, {
                 severity: "error",
-                message: `Local reference not found: ${ref}`,
+                message: escape,
                 file,
-                line: i + 1,
+                line,
               })
             );
+            continue;
           }
+          if (localRefExists(ref, kind, file, ctx.inputDir)) continue;
+          results.push(
+            finding(check.id, {
+              // Missing prose images are recoverable: the build's asset
+              // planner writes a loud magenta PNG and rewrites the rendered
+              // URL. Missing links have no such fallback and remain errors.
+              // Keep source file/line so the finding is directly fixable.
+              severity: kind === "image" ? "warning" : "error",
+              code: kind === "image" ? "missing-image-placeholder" : undefined,
+              message:
+                kind === "image"
+                  ? `Local image not found; build will substitute a magenta placeholder: ${ref}`
+                  : `Local reference not found: ${ref}`,
+              file,
+              line,
+            })
+          );
         }
       } catch {
         results.push(
@@ -74,10 +94,6 @@ const check: Check = {
   },
 };
 
-function stripInlineCode(line: string): string {
-  return line.replace(/`[^`]*`/g, (match) => " ".repeat(match.length));
-}
-
 /**
  * Which frame a ref must be resolved in, mirroring the two frames the actual
  * BUILD uses (see `localRefExists`'s doc comment for the full rationale):
@@ -87,69 +103,13 @@ function stripInlineCode(line: string): string {
  *   - `link`   — an inline `[text](dest)` with no `!` — never touched by the
  *     renderer; it ships as a plain relative href a reader resolves relative
  *     to the LINKING file (e.g. a chapter linking to another chapter file).
- *   - `ambiguous` — a reference-style definition (`[label]: dest`). Its
- *     consumer (`[text][label]` vs `![alt][label]`) lives on a different line
- *     this check never correlates back to the definition, so which frame
- *     applies is unknowable here.
+ * Reference definitions need no ambiguous third frame: the parser-aligned
+ * collector sees their actual consumers as either rendered links or images.
  */
-type RefKind = "image" | "link" | "ambiguous";
 
-interface LocalRef {
-  ref: string;
-  kind: RefKind;
-}
-
-function extractLocalRefs(line: string): LocalRef[] {
-  const refs: LocalRef[] = [];
-  const stripped = stripInlineCode(line);
-  const inlinePattern = /!?\[[^\]]*\]\(([^)]+)\)/g;
-  const defPattern = /^\s*\[[^\]]+\]:\s*(\S+)/;
-
-  for (const match of stripped.matchAll(inlinePattern)) {
-    const raw = match[1];
-    if (!raw) continue;
-    const ref = normalizeDestination(raw);
-    if (!ref || !isLocalRef(ref)) continue;
-    // match[0] keeps the leading "!" (if any) from the `!?` in the pattern,
-    // so this is exactly CommonMark's own image-vs-link distinction.
-    refs.push({ ref, kind: match[0].startsWith("!") ? "image" : "link" });
-  }
-
-  const defMatch = stripped.match(defPattern);
-  if (defMatch?.[1]) {
-    const ref = normalizeDestination(defMatch[1]);
-    if (ref && isLocalRef(ref)) refs.push({ ref, kind: "ambiguous" });
-  }
-
-  return refs;
-}
-
-function normalizeDestination(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-
-  let dest = trimmed;
-  if (trimmed.startsWith("<") && trimmed.includes(">")) {
-    dest = trimmed.slice(1, trimmed.indexOf(">"));
-  } else {
-    const spaceIndex = trimmed.search(/\s/);
-    if (spaceIndex > 0) {
-      dest = trimmed.slice(0, spaceIndex);
-    }
-  }
-
-  const withoutFragments = dest.split(/[?#]/)[0] ?? "";
-  return withoutFragments.trim();
-}
-
-function isLocalRef(ref: string): boolean {
-  const lower = ref.toLowerCase();
-  if (!ref || ref.startsWith("#")) return false;
-  if (lower.startsWith("http://") || lower.startsWith("https://")) return false;
-  if (lower.startsWith("mailto:") || lower.startsWith("tel:")) return false;
-  if (lower.startsWith("data:") || lower.startsWith("javascript:")) return false;
-  if (ref.startsWith("//")) return false;
-  return true;
+/** Match the build's URL-to-filesystem normalization. */
+function filesystemRef(ref: string): string {
+  return decodeRef(ref).replace(/[?#].*$/, "");
 }
 
 /**
@@ -181,34 +141,26 @@ function isLocalRef(ref: string): boolean {
  *        is never touched by the renderer — it ships as an ordinary relative
  *        href that a reader's browser/PDF desktop resolves relative to the
  *        LINKING file, so that stays the frame this check uses too.
- *      - A reference-style definition (`kind: "ambiguous"`) is accepted in
- *        EITHER frame: this check has no way to see whether the label it
- *        defines is later consumed by `[text][label]` or `![alt][label]`, so
- *        picking one frame would risk flagging a legitimate reference as
- *        broken. Accepting either trades a small amount of missed-detection
- *        risk (a truly-broken ambiguous ref that happens to coincide with a
- *        real file in the OTHER frame) for never false-positiving on a
- *        correct one — the same fail-open bias `isNonFileUrl` already uses
- *        for anything this check can't confidently classify.
+ *      - A reference-style consumer already has a concrete rendered kind, so
+ *        it follows the same link/image frame without guessing from the
+ *        definition in isolation.
  */
 
 function localRefExists(
   ref: string,
-  kind: RefKind,
+  kind: RenderedRefKind,
   sourceFile: string,
   projectRoot: string
 ): boolean {
-  const decoded = decodeRef(ref);
-  const fileRelative = resolve(dirname(sourceFile), decoded);
-  const rootRelative = resolve(projectRoot, decoded);
+  const cleaned = filesystemRef(ref);
+  const fileRelative = resolve(dirname(sourceFile), cleaned);
+  const rootRelative = resolve(projectRoot, cleaned);
 
   switch (kind) {
     case "image":
       return existsSync(rootRelative);
     case "link":
       return existsSync(fileRelative);
-    case "ambiguous":
-      return existsSync(fileRelative) || existsSync(rootRelative);
   }
 }
 

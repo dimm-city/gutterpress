@@ -24,6 +24,9 @@
     // cli.ts imports ../package.json (outside rootDir) — exclude them from the
     // declaration build.
     "src/cli.ts",
-    "src/commands"
+    "src/commands",
+    "src/engine/dev-cli.ts",
+    "src/engine/viewer",
+    "src/engine/compiler/agent.ts"
   ]
 }

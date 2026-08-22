@@ -56,10 +56,12 @@ export async function renderChapters(
     pluginCss?: string;
     /** Wrap each source file for incremental preview pagination. */
     wrapChapters?: boolean;
+    /** Add source-file ids to source-mapped preview blocks without wrappers. */
+    annotateSourceChapters?: boolean;
     /**
      * ARCH finding #4: per-chapter author-mistake warnings computed by
-     * markdown-it-paged (`env.layoutWarnings`), forwarded straight through
-     * from {@link assembleBookHtml}. See that option's docstring — omitting
+     * Gutterpress's marker parser (`env.layoutWarnings`), forwarded straight
+     * through from {@link assembleBookHtml}. See that option's docstring — omitting
      * it is fully backward compatible.
      */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
@@ -104,6 +106,7 @@ export async function renderChapters(
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
     wrapChapters: opts.wrapChapters,
+    annotateSourceChapters: opts.annotateSourceChapters,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
   });

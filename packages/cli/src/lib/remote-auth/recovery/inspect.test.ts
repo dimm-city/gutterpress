@@ -142,7 +142,7 @@ describe("inspectRepo — pre-classified ctx.source is reused (#87)", () => {
     const sub = path.join(root, "book");
     fs.mkdirSync(sub, { recursive: true });
 
-    const health = await inspectRepo({ repoDir: sub, source: null });
+    const health = await inspectRepo({ repoDir: sub });
 
     expect(health.hasGitDir).toBe(true);
   });

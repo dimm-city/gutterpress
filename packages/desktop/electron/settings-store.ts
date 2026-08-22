@@ -33,6 +33,9 @@ export type DeepPartialSettings = {
   [K in keyof AppSettings]?: Partial<AppSettings[K]>;
 };
 
+const SETTINGS_SCHEMA_VERSION = 2;
+type StoredSettings = DeepPartialSettings & { settingsSchemaVersion?: number };
+
 export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
   return deepMergeSettings(base, patch);
 }
@@ -45,18 +48,32 @@ export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): Ap
  * toggle meant ("get prereleases before the stable release"). A file that
  * already has `channel` is left alone, so this cannot fight the new setting.
  */
-function migrateLegacySettings(stored: DeepPartialSettings): DeepPartialSettings {
-  const updates = stored.updates as
+function migrateLegacySettings(stored: StoredSettings): DeepPartialSettings {
+  let migrated: DeepPartialSettings = stored;
+  const updates = migrated.updates as
     | { channel?: unknown; includePrereleases?: unknown }
     | undefined;
   if (updates && updates.channel === undefined && typeof updates.includePrereleases === "boolean") {
     const { includePrereleases, ...rest } = updates;
-    return {
-      ...stored,
+    migrated = {
+      ...migrated,
       updates: { ...rest, channel: includePrereleases ? "beta" : "stable" },
     } as DeepPartialSettings;
   }
-  return stored;
+  // v2 shortened the normal edit→preview loop. Older stores commonly contain
+  // the old 2500ms default because settings writes persist the full object.
+  // Gate the exact-default migration on a schema marker so an author can still
+  // deliberately choose 2500ms after upgrading and keep that preference.
+  if (
+    (stored.settingsSchemaVersion ?? 1) < SETTINGS_SCHEMA_VERSION &&
+    migrated.editor?.autoSaveDelay === 2500
+  ) {
+    migrated = {
+      ...migrated,
+      editor: { ...migrated.editor, autoSaveDelay: 500 },
+    };
+  }
+  return migrated;
 }
 
 export interface SettingsStoreDeps {
@@ -96,7 +113,7 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
       throw err;
     }
     try {
-      const stored = migrateLegacySettings(JSON.parse(raw) as DeepPartialSettings);
+      const stored = migrateLegacySettings(JSON.parse(raw) as StoredSettings);
       return mergeSettings(DEFAULT_SETTINGS, stored);
     } catch (err) {
       // The file exists but isn't valid JSON. Preserve it instead of
@@ -132,7 +149,11 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
     // `.tmp` truncated but the real settings file untouched; `rename` on
     // POSIX and Windows (NTFS) both replace the destination in one syscall,
     // so readers never observe a partially-written app-settings.json.
-    await deps.fs.writeFile(tmp, JSON.stringify(settings, null, 2), "utf8");
+    await deps.fs.writeFile(
+      tmp,
+      JSON.stringify({ settingsSchemaVersion: SETTINGS_SCHEMA_VERSION, ...settings }, null, 2),
+      "utf8",
+    );
     await deps.fs.rename(tmp, target);
   }
 

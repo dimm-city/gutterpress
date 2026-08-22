@@ -12,8 +12,8 @@
  * Notes on two health facts:
  *   - hasGitDir is true whenever `.git/` EXISTS, even with a missing/corrupt
  *     HEAD (a damaged repo is still a repo — see the inline note at the check).
- *   - hasStaleLock uses the stale-lock handler's OWN lock scanner
- *     (findLockCandidates in recover-stale-lock.ts) — one implementation, so
+ *   - hasStaleLock uses the lock sweep's OWN scanner
+ *     (findLockCandidates in locks.ts) — one implementation, so
  *     health and handler can never disagree about which locks exist.
  *
  * All probes are best-effort and throw-free (the caller must never see an
@@ -28,8 +28,9 @@ import git from "isomorphic-git";
 import { detectProjectSource } from "../../project-source.ts";
 import { gitDirFor, gitScopeFor, hasPendingChanges } from "../../source-provider.ts";
 import type { LogData } from "../operation-log.ts";
-import { findLockCandidates } from "./recover-stale-lock.ts";
-import type { RepoHealth, RecoveryContext, SyncErrorKind } from "./types.ts";
+import { findLockCandidates } from "./locks.ts";
+import type { RepairNeed } from "./classify.ts";
+import type { RepoHealth } from "./types.ts";
 
 /**
  * Probe the local repository and return a RepoHealth snapshot.
@@ -42,7 +43,7 @@ import type { RepoHealth, RecoveryContext, SyncErrorKind } from "./types.ts";
  * mandate: no redundant walks on the hot path).
  */
 export async function inspectRepo(
-  ctx: Pick<RecoveryContext, "repoDir" | "source">,
+  ctx: { repoDir: string; source?: import("../../project-source.ts").ProjectSource },
   opts: { checkLocalChanges?: boolean } = {},
 ): Promise<RepoHealth> {
   // CRITICAL: resolve the ACTUAL git root. A project is often opened at a
@@ -121,9 +122,9 @@ export async function inspectRepo(
 
   // ── Stale lock ────────────────────────────────────────────────────────────
   //
-  // Detect EVERY known git lock via the stale-lock handler's own scanner —
-  // one implementation for health and handler. lockAgeMs reflects the
-  // YOUNGEST lock, matching the handler's "if any lock is fresh, wait" rule
+  // Detect EVERY known git lock via the sweep's own scanner —
+  // one implementation for health and sweep. lockAgeMs reflects the
+  // YOUNGEST lock, matching the sweep's "if any lock is fresh, wait" rule
   // (the smallest age decides whether to back off).
   const lockCandidates = await findLockCandidates(gitDir, Date.now());
   const hasStaleLock = lockCandidates.length > 0;
@@ -170,15 +171,12 @@ export async function inspectRepo(
  * its commit, and read its root tree. Throws when any step fails (missing or
  * corrupt object/ref); resolves when the repo is fully readable.
  *
- * This is the SAME verification recover-missing-objects.ts performs to check
- * whether a fetch actually repaired the object store — it is exported here so
- * that check and the repair command's diagnosis step share ONE implementation
- * rather than two copies that could drift. `inspectRepo`'s health flags are
+ * Exported so the repair
+ * command's diagnosis step and any host check share ONE implementation. `inspectRepo`'s health flags are
  * all filesystem-presence checks (no object is ever read), so they cannot
  * detect object-store corruption on their own — callers that need to catch
- * `corrupt_index` / `missing_or_corrupt_objects` / `unrelated_histories` /
- * `wrong_remote_or_branch` must run this probe and feed a caught error
- * through `classifyGitError`.
+ * unreadable objects/refs must run this probe and feed a caught error through
+ * `isLikelyRepoCorruption` (classify.ts) to decide whether to repairRepo().
  */
 export async function verifyRepoReadable(dir: string): Promise<void> {
   const headOid = await git.resolveRef({ fs, dir, ref: "HEAD" });
@@ -231,24 +229,13 @@ export function isUnbornRepo(repoDir: string): boolean {
  * classifyFromHealth returned (a pure mapping — it cannot drift from the
  * classifier's decision order, because it never re-implements it).
  */
-export function preflightStructuralReason(kind: SyncErrorKind | null): string {
+export function preflightStructuralReason(kind: RepairNeed | null): string {
   switch (kind) {
-    case "missing_git_dir":
-      return "health.missingGitDir";
     case "stale_lock":
       return "health.hasStaleLock";
-    case "interrupted_merge":
-      return "health.hasInterruptedMerge";
-    case "interrupted_rebase":
-      return "health.hasInterruptedRebase";
-    case "interrupted_cherry_pick":
-      return "health.hasInterruptedCherryPick";
-    case "detached_head":
-      return "health.isDetachedHead";
+    case "needs_repair":
+      return "health.structural";
     case null:
-      return "none";
-    default:
-      // Kinds that cannot come from a health-only classification.
       return "none";
   }
 }
@@ -263,7 +250,7 @@ export function buildPreflightDiagnostics(
   openedDir: string,
   repoDir: string,
   health: RepoHealth,
-  kind: SyncErrorKind | null,
+  kind: RepairNeed | null,
 ): LogData {
   return {
     openedDir,

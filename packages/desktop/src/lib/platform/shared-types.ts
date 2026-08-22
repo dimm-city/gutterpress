@@ -132,6 +132,13 @@ export interface AppSettings {
      * as `viewMode` relates to `ProjectState.viewMode` below.
      */
     splitRatio: number;
+    /**
+     * Right-click (or Shift+F10) context menu over the paginated preview
+     * (inline-editing plan §4.5). Default true — an explicit-invocation
+     * affordance, not seamless WYSIWYG, so the UX contract's opt-in rule for
+     * the latter does not apply here.
+     */
+    contextMenu: boolean;
   };
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
@@ -182,7 +189,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 2500,
+    autoSaveDelay: 500,
     crashRecovery: true,
   },
   appearance: {
@@ -199,6 +206,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
+    contextMenu: true,
   },
   updates: {
     channel: "stable",
@@ -429,27 +437,33 @@ export interface ProjectRemoteDiagnosis {
     | "ssh-use-own-tools";
 }
 
-// ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
+// ── Sync (#15 sync phase, ADR 0006 D5; converge ruling 2026-08-14) ───────
 //
 // Mirrors the lib's sync types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
+// value-imports the lib (§8 / ADR 0004). Sync ALWAYS converges: there is no
+// "conflict" arm, no per-file choices, and no resolve call. Overlapping text
+// edits land in the file inside standard git conflict markers
+// (`combinedFiles`); clashing binaries keep the newer side (`imageClashes`
+// for images); the other version is always reachable in history.
 
-/** How one conflicted file differs between the two copies. */
-export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
-
-/** One file that changed in both the local and the online copy. */
-export interface ConflictFileInfo {
+/**
+ * One image file that changed on both sides. Sync already converged (the
+ * NEWER side's bytes are committed — the safe default); this record drives
+ * the non-blocking side-by-side picker. Both blob oids are pinned by the
+ * merge commit's parents, so the picker can never go stale.
+ */
+export interface ImageClash {
+  /** Repo-relative path of the image. */
   path: string;
-  kind: ConflictKind;
+  /** Blob oid of the local version. */
+  localOid: string;
+  /** Blob oid of the online version. */
+  remoteOid: string;
+  /** Which side the automatic newer-wins policy kept on disk. */
+  kept: "local" | "online";
 }
 
-/** The author's per-file decision (Keep mine / Use online / Keep both). */
-export interface ConflictResolutionChoice {
-  path: string;
-  choice: "mine" | "theirs" | "both";
-}
-
-/** Outcome of a sync (or conflict-resolution) attempt. */
+/** Outcome of a sync attempt. */
 export type SyncOutcome =
   | {
       status: "synced";
@@ -457,42 +471,28 @@ export type SyncOutcome =
       snapshotId?: string;
       mergedRemoteChanges: boolean;
       filesChanged?: boolean;
+      /** Files whose text now holds BOTH versions inside git conflict markers. */
+      combinedFiles?: string[];
+      /** Clashing images (newer kept) for the non-blocking picker. */
+      imageClashes?: ImageClash[];
     }
   | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "error";
       message: string;
       /**
-       * Stable machine-readable signal for the small set of "the project isn't
-       * set up right" failures (no online address / SSH address / no named
-       * version line) the lib can identify. Lets the host route to its
-       * connect/setup surface without matching against `message` text (which
-       * stays free to reword) — mirrors the lib's SyncOutcome (sync-types.ts).
+       * Stable machine-readable signal so the UI can route without matching
+       * against `message` text — mirrors the lib's SyncOutcome:
+       * "needs-connection-setup" — the project isn't set up right (no online
+       * address / SSH address / no named version line); route to the
+       * connect/setup surface.
        */
       code?: "needs-connection-setup";
       snapshotId?: string;
       filesChanged?: boolean;
     };
-
-/** Inputs for applying the author's conflict choices. */
-export interface ResolveSyncConflictsArgs {
-  projectDir: string;
-  resolutions: ConflictResolutionChoice[];
-  /** Echo of the conflict outcome's `localId`. */
-  localId: string;
-  /** Echo of the conflict outcome's `remoteId`. */
-  remoteId: string;
-}
 
 /** Inputs for the generic "Connect a Git server" token flow. */
 export interface ConnectGenericHostArgs {
@@ -654,6 +654,13 @@ export interface PreviewStartSuccess {
   port: number;
   input: string;
   title: string | null;
+  /**
+   * The engine actually rendering this preview. Paged.js has been removed
+   * (native-only-migration-plan.md Phase 6) — always "native" now; the field
+   * is kept for wire-compatibility with `"paged"` responses from an
+   * un-upgraded host.
+   */
+  engine: "paged" | "native";
 }
 
 export interface PreviewStartFailure {
@@ -687,18 +694,25 @@ export interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
   downloadUrl?: string;
+  /**
+   * Print-quality findings the render produced (native engine only). Defined
+   * locally, decoupled from the lib (§8) — the renderer never value-imports
+   * `gutterpress`. Maps into the Problems panel.
+   */
+  diagnostics?: BuildDiagnosticDto[];
+}
+
+/** One print-quality finding, mirrored from the lib's `BuildDiagnostic`. */
+export interface BuildDiagnosticDto {
+  /** Stable check id, e.g. "engine.multicol.dead-column". */
+  code: string;
+  severity: "warning" | "info";
+  message: string;
 }
 
 export interface ExportProgressEvent {
   exportId: string;
-  /**
-   * `conflict` (M29, 2026-07-10 UX review): the pre-export sync safety gate
-   * (electron/export/controller.ts) can discover an unresolved conflict
-   * before a PDF is built. Included here so both sides of the IPC boundary
-   * (and any renderer switch over `state`) see it — the compiler catches the
-   * next drift instead of a silently-dropped event.
-   */
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error" | "conflict";
+  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
   pages?: number;
   message?: string;
 }

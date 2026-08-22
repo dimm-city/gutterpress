@@ -75,7 +75,7 @@ Forces a page break **without** generating a `<div class="page">` wrapper elemen
 
 **Key distinction from `@page`:**
 - `@page` wraps all following content in `<div class="page [class]">` — CSS rules targeting `.page` apply to it.
-- `@page-break` emits `<div class="md-page-break" aria-hidden="true"></div>` — no wrapper for content to live inside, and it does not close any open `@section`/`@page`/`@spread`.
+- `@page-break` emits `<div class="gp-page-break" aria-hidden="true"></div>` — no wrapper for content to live inside, and it does not close any open `@section`/`@page`/`@spread`.
 
 **Syntax** — `@page-break` on its own line.
 
@@ -120,7 +120,7 @@ Specimen content here...
 @section .no-break
 
 <span class="callout-label">Note</span>
-This callout is wrapped in a `@section .no-break` block. Paged.js will push the entire block to the next page rather than split it mid-block.
+This callout is wrapped in a `@section .no-break` block. The engine will push the entire block to the next page rather than split it mid-block.
 
 @end-section
 

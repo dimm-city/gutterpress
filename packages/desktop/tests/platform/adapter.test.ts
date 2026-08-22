@@ -451,20 +451,19 @@ test("WebAdapter.startPreview renders book.html in-browser → blob URL (#33 Pha
     expect(result.title).toBe("my-book");
     expect(urls.created).toHaveLength(1);
 
-    // The assembled HTML contains the rendered markdown + the paged runtime +
-    // the inlined project CSS.
+    // The assembled HTML contains the rendered markdown + the native viewer
+    // bundle + the inlined project CSS.
     const html = await urls.blobs.get(result.url)!.text();
     expect(html).toContain(">Intro</h1>"); // from 01-intro.md (# Intro)
     expect(html).toContain("Sentinel content here."); // from 02-body.md
-    expect(html).toContain("paged.polyfill.js");
     expect(html).toContain("data-project-css"); // theme.css inlined
     expect(html).toContain("body{}"); // theme.css contents inlined
 
-    // #33 Phase 4: the paged.js runtime must be referenced from a SAME-ORIGIN,
-    // service-worker-cacheable path (so preview works OFFLINE), NOT from the
-    // unpkg CDN the pure render core defaults to. A blob: document inherits the
-    // creating page's origin, so an absolute-path URL resolves same-origin.
-    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    // #33 Phase 4: the viewer bundle must be referenced from a SAME-ORIGIN,
+    // service-worker-cacheable path (so preview works OFFLINE). A blob:
+    // document inherits the creating page's origin, so an absolute-path URL
+    // resolves same-origin.
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
     expect(html).not.toContain("unpkg.com");
   } finally {
     urls.restore();
@@ -506,6 +505,31 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
     // The first URL is revoked when the second is minted (no blob leak).
     expect(urls.revoked).toContain(first.url);
     expect(urls.revoked).not.toContain(second.url);
+  } finally {
+    urls.restore();
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.startPreview renders natively regardless of the manifest's (ignored) engine field", async () => {
+  // Paged.js has been removed (native-only-migration-plan.md Phase 6) — the
+  // native viewer bundle is what renders every project on the browser/PWA
+  // target now, whatever the manifest's `engine:` field says.
+  const root = makeFsaTree();
+  root.addFile("manifest.yaml", "title: Legacy Book\nengine: paged\n");
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  const urls = stubObjectUrls();
+  try {
+    const p = new WebAdapter(new InMemoryWebStore());
+    const ref = (await p.openFolder())!;
+
+    const result = await p.startPreview({ input: ref });
+
+    const html = await urls.blobs.get(result.url)!.text();
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
+    expect(result.engine).toBe("native");
   } finally {
     urls.restore();
     // @ts-expect-error test global
@@ -559,13 +583,13 @@ test("WebAdapter.build({format:'html'}) returns a blob downloadUrl with the rend
     expect(result.htmlPath).toMatch(/\.html$/);
 
     // The blob contains the SAME rendered book.html as startPreview: rendered
-    // markdown + inlined project CSS + the same-origin paged.js polyfill.
+    // markdown + inlined project CSS + the same-origin native viewer bundle.
     const html = await urls.blobs.get(result.downloadUrl!)!.text();
     expect(html).toContain(">Intro</h1>"); // from 01-intro.md (# Intro)
     expect(html).toContain("Sentinel content here."); // from 02-body.md
     expect(html).toContain("data-project-css"); // theme.css inlined
     expect(html).toContain("body{}"); // theme.css contents inlined
-    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
     expect(html).not.toContain("unpkg.com");
   } finally {
     urls.restore();

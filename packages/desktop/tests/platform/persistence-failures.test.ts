@@ -77,8 +77,10 @@ test("the page routes every destructive buffer transition and close through the 
   expect(page).toContain("flushBuffer: () => flushEditorBuffer()"); // project close/switch lifecycle
   expect(page).toContain("onFlushBeforeClose(() => flushEditorBuffer(buffer, false))");
   expect(page).toContain("return flushEditorBuffer(buffer);"); // tree rename/delete
-  expect(page).toContain("if (!(await flushEditorBuffer(buf))) return false;"); // file switch
-  expect(page).toContain("if (!(await flushEditorBuffer(buf))) return;"); // mobile CSS -> Markdown
+
+  // File replacement is delegated to the behavior-tested editor session,
+  // which flushes the outgoing one-file buffer before atomic activation.
+  expect(page).not.toContain("flushEditorBuffer(buf)");
 
   const fileTree = readFileSync(
     path.resolve(import.meta.dir, "../../src/lib/components/FileTree.svelte"),

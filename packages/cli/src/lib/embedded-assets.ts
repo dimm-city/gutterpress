@@ -1,5 +1,5 @@
 /**
- * Embedded preview assets (favicon, manifest schema, paged.js polyfill,
+ * Embedded preview assets (favicon, manifest schema, native engine bundles,
  * iframe interface + cross-origin bridge).
  *
  * `with { type: "file" }` imports are the canonical embedding mechanism for
@@ -34,11 +34,18 @@ import { fileURLToPath } from "node:url";
 
 import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
-import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
-import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
+import previewInterfaceJs from "../assets/preview/scripts/preview-interface.js" with { type: "file" };
+import previewBridgeJs from "../assets/preview/scripts/preview-bridge.js" with { type: "file" };
 import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { type: "file" };
-import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
+
+// Gutterpress engine bundles (native pagination — `--engine native`).
+// Prebuilt by `scripts/build-engine-bundles.mjs` (part of `npm run build`)
+// from `src/engine/{viewer,compiler}` — CLAUDE.md §1 bans a live bundler
+// inside packages/cli/src at runtime, so these are ordinary generated/
+// committed assets, embedded the same way as the vendored paged.polyfill.js.
+import engineViewerJs from "../assets/engine/gutterpress-viewer.js" with { type: "file" };
+import engineAgentJs from "../assets/engine/gutterpress-agent.js" with { type: "file" };
 
 // New-project starter templates (#25). Baked in so `gutterpress new` (compiled
 // binary) and the desktop wizard scaffold from one embedded source.
@@ -70,11 +77,12 @@ const filePath = (v: unknown): string => v as string;
 const EMBEDDED_ASSETS: Record<string, string> = {
   "favicon.ico":                            abs(favicon),
   "manifest.schema.json":                   abs(filePath(manifestSchema)),
-  "preview/scripts/pagedjs-interface.js":   abs(filePath(pagedjsInterfaceJs)),
-  "preview/scripts/pagedjs-bridge.js":      abs(filePath(pagedjsBridgeJs)),
+  "preview/scripts/preview-interface.js":   abs(filePath(previewInterfaceJs)),
+  "preview/scripts/preview-bridge.js":      abs(filePath(previewBridgeJs)),
   "preview/scripts/preview-shell.js":       abs(filePath(previewShellJs)),
-  "vendor/paged.polyfill.js":               abs(filePath(pagedPolyfill)),
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),
+  "engine/gutterpress-viewer.js":           abs(filePath(engineViewerJs)),
+  "engine/gutterpress-agent.js":            abs(filePath(engineAgentJs)),
   "templates/book/manifest.yaml":           abs(filePath(tplBookManifest)),
   "templates/book/chapter-01.md":           abs(filePath(tplBookChapter01)),
   "templates/zine/manifest.yaml":           abs(filePath(tplZineManifest)),
@@ -105,7 +113,16 @@ async function extractAssets(): Promise<string> {
 // A sentinel asset whose presence proves the extracted dir is still intact.
 // The OS tmp reaper, lifecycle shutdown cleanup, or external cleanup can remove
 // the per-process temp dir out from under us; in that case we must re-extract.
-const SENTINEL_ASSET = "vendor/paged.polyfill.js";
+//
+// This MUST be an asset shipped on both the native and paged legs (ideally one
+// that outlives Paged.js entirely). `vendor/paged.polyfill.js` — the previous
+// sentinel — is Paged.js-only: once the
+// polyfill is finally deleted, a sentinel that still names it would never exist
+// on disk again, so `existsSync` below would be false forever and every call to
+// `getAssetsDir()` would re-extract from scratch. The native engine's viewer
+// bundle is embedded unconditionally on every build, so it is safe to depend on
+// past Paged.js removal.
+const SENTINEL_ASSET = "engine/gutterpress-viewer.js";
 
 export async function getAssetsDir(): Promise<string> {
   if (extractPromise) {

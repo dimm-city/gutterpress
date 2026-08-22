@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* MARKER_CSS + GUTTERPRESS_CSS are injected by the test, exactly as
+         assemble.ts injects them into a real book — this fixture supplies
+         only what an author writes. */
+      @page {
+        size: 400px 500px;
+        margin: 40px;
+      }
+      body { margin: 0; }
+      p { margin: 0; font: 12px/1 monospace; }
+      .art { display: block; width: 80px; height: 60px; background: #36c; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page" id="plain">
+        <p>An ordinary pinned foot stops at the margin.</p>
+        <p><span class="art gp-pin gp-bottom" id="plain-art"></span></p>
+      </div>
+      <div class="page" id="flush">
+        <p>A flush pinned foot reaches the paper.</p>
+        <p><span class="art gp-pin gp-bottom gp-flush" id="flush-art"></span></p>
+      </div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

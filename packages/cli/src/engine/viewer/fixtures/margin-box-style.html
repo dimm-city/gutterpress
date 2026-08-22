@@ -1,0 +1,95 @@
+<!--
+  Regression fixture: the viewer must replay the complete declaration list on
+  page-margin boxes, not only their text/font/color. The two bottom chips use
+  the same features as the Dimm City Field Guide furniture whose preview
+  regressed to bare `C1` / `P7` labels while the PDF remained styled.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Margin-box style replay</title>
+<style>
+:root {
+  --folio-face: #f4efe4;
+  --chapter-face: #ded0b8;
+}
+@page {
+  size: 5in 3in;
+  margin: 0.4in 0.5in 0.6in;
+}
+@page :right {
+  @bottom-left {
+    /* The chapter's coupon face belongs on the inside edge. */
+    content: "C." counter(page);
+    width: fit-content;
+    height: 0.3in;
+    line-height: 0.3in;
+    box-sizing: content-box;
+    padding: 0 10px 0 7px;
+    border: 2px dashed #c218d4;
+    background: var(--chapter-face);
+    transform: rotate(-12deg);
+    box-shadow: 6px 6px 0 #c00;
+    color: #921812;
+    font: 700 11pt/0.3in monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  @bottom-right {
+    /* The `@bottom-right` folio stays on the outside edge. */
+    content: "P." counter(page);
+    width: fit-content;
+    height: 0.3in;
+    line-height: 0.3in;
+    padding: 0 11px 0 8px;
+    border: 1px solid #292321;
+    background: var(--folio-face);
+    transform: rotate(12deg);
+    box-shadow: 6px 6px 0 #c00;
+    color: #292321;
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+}
+@page :left {
+  @bottom-left {
+    content: "P." counter(page);
+    width: fit-content;
+    height: 0.3in;
+    line-height: 0.3in;
+    padding: 0 11px 0 8px;
+    border: 1px solid #292321;
+    background: var(--folio-face);
+    color: #292321;
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  @bottom-right {
+    content: "C." counter(page);
+    width: fit-content;
+    height: 0.3in;
+    line-height: 0.3in;
+    box-sizing: content-box;
+    padding: 0 10px 0 7px;
+    border: 2px dashed #c218d4;
+    background: var(--chapter-face);
+    color: #921812;
+    font: 700 11pt/0.3in monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+body { font: 11pt/1.35 Georgia, serif; margin: 0; }
+p { margin: 0; }
+.next { break-before: page; }
+</style>
+</head>
+<body>
+<p id="p1">One page with styled furniture.</p>
+<p id="p2" class="next">A second page verifies verso furniture.</p>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

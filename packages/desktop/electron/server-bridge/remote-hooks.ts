@@ -11,11 +11,7 @@
  */
 
 import { getHostServices } from './host-services';
-import type {
-  CloneRepositoryArgs,
-  ResolveSyncConflictsArgs,
-  SyncOutcome,
-} from '../bridge-types';
+import type { CloneRepositoryArgs } from '../bridge-types';
 
 export interface TokenStore {
   get(host: string): Promise<{ token: string; host: string; username?: string; kind: string; label?: string; createdAt: number } | null>;
@@ -49,12 +45,6 @@ export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = Token
    * `mainWindow` reference) only ever calls this one method.
    */
   cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
-  /**
-   * Apply the author's per-file conflict choices and sync the combined result.
-   * Bound in main.ts: also clears/re-arms the auto-sync conflict latch for the
-   * project on success, mirroring what the resolve flow always did inline.
-   */
-  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 }
 
 /**

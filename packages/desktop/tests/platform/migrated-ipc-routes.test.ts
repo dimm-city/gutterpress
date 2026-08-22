@@ -23,7 +23,7 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as setAutoSyncRoute } from "../../src/routes/api/sync/set-auto-sync/+server";
 import { POST as cloneRepositoryRoute } from "../../src/routes/api/remote/clone-repository/+server";
-import { POST as resolveSyncConflictsRoute } from "../../src/routes/api/remote/resolve-sync-conflicts/+server";
+import { POST as keepImageVersionRoute } from "../../src/routes/api/sync/keep-image-version/+server";
 import { GET as updaterGetStatusRoute } from "../../src/routes/api/updater/get-status/+server";
 import { POST as updaterCheckRoute } from "../../src/routes/api/updater/check/+server";
 import { POST as updaterDownloadRoute } from "../../src/routes/api/updater/download/+server";
@@ -192,79 +192,32 @@ describe("POST /api/remote/clone-repository", () => {
   });
 });
 
-// ── remote/resolve-sync-conflicts ────────────────────────────────────────────
+// ── sync/keep-image-version ─────────────────────────────────────────────────
 
-describe("POST /api/remote/resolve-sync-conflicts", () => {
-  const remoteBase = { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" };
+describe("POST /api/sync/keep-image-version", () => {
+  const vcsBase = { loadLib: async () => ({}), operationLogPath: () => "/tmp/op.log" };
   const validBody = {
     projectDir: "/abs/project",
-    resolutions: [{ path: "chapter-01.md", choice: "mine" as const }],
-    localId: "a".repeat(40),
-    remoteId: "b".repeat(40),
+    path: "images/cover.png",
+    oid: "a".repeat(40),
   };
 
-  test("400 when resolutions is empty", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: { ...remoteBase, cloneRepository: async () => { throw new Error("unused"); }, resolveSyncConflicts: async () => { throw new Error("unused"); } } as never,
-    });
+  test("400 when the file path is missing", async () => {
+    registerHostServices({ ...baseServices(), vcs: vcsBase as never });
     const { status, message } = await caught(
-      resolveSyncConflictsRoute({ request: request({ ...validBody, resolutions: [] }) } as never),
+      keepImageVersionRoute({ request: request({ ...validBody, path: "" }) } as never),
     );
     expect(status).toBe(400);
-    expect(message).toBe("remote:resolveSyncConflicts requires a non-empty resolutions list");
+    expect(message).toBe("sync:keepImageVersion requires a file path");
   });
 
-  test("400 when localId/remoteId are not 40-char hex", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: { ...remoteBase, cloneRepository: async () => { throw new Error("unused"); }, resolveSyncConflicts: async () => { throw new Error("unused"); } } as never,
-    });
+  test("400 when the oid is not 40-char hex", async () => {
+    registerHostServices({ ...baseServices(), vcs: vcsBase as never });
     const { status, message } = await caught(
-      resolveSyncConflictsRoute({ request: request({ ...validBody, localId: "not-a-sha" }) } as never),
+      keepImageVersionRoute({ request: request({ ...validBody, oid: "not-a-sha" }) } as never),
     );
     expect(status).toBe(400);
-    expect(message).toBe("remote:resolveSyncConflicts requires valid version ids");
-  });
-
-  test("400 when a resolution has an invalid choice", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: { ...remoteBase, cloneRepository: async () => { throw new Error("unused"); }, resolveSyncConflicts: async () => { throw new Error("unused"); } } as never,
-    });
-    const { status } = await caught(
-      resolveSyncConflictsRoute({
-        request: request({ ...validBody, resolutions: [{ path: "a.md", choice: "invalid" }] }),
-      } as never),
-    );
-    expect(status).toBe(400);
-  });
-
-  test("503 when remote hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(
-      resolveSyncConflictsRoute({ request: request(validBody) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("Remote hooks not available");
-  });
-
-  test("calls hooks.resolveSyncConflicts with the validated body and returns its result", async () => {
-    const calls: unknown[] = [];
-    registerHostServices({
-      ...baseServices(),
-      remote: {
-        ...remoteBase,
-        cloneRepository: async () => { throw new Error("unused"); },
-        resolveSyncConflicts: async (args: unknown) => {
-          calls.push(args);
-          return { status: "synced", message: "ok", mergedRemoteChanges: true };
-        },
-      } as never,
-    });
-    const res = await resolveSyncConflictsRoute({ request: request(validBody) } as never);
-    expect(await res.json()).toEqual({ status: "synced", message: "ok", mergedRemoteChanges: true });
-    expect(calls).toEqual([validBody]);
+    expect(message).toBe("sync:keepImageVersion requires a valid version id");
   });
 });
 

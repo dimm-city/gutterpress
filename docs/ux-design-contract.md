@@ -216,6 +216,104 @@ Proposed refinements:
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
+### 1b. Inline editing in the preview
+
+**Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
+implementation plan `docs/inline-editing-plan.md`, rationale
+`docs/adr/0009-inline-editing-source-ranges.md`).
+
+The paginated preview is an editing surface, not only a viewer. This does
+**not** supersede the opt-in WYSIWYG rule above: these are explicit,
+user-invoked actions on a specific target, not a seamless typing surface.
+The source pane remains the default editing model.
+
+Shipped behavior:
+
+- **Click-to-source.** Clicking a block in the preview reveals it in the
+  editor, opening the editor pane if it is closed. Always on — navigation,
+  not mutation.
+- **Context menu** on right-click, with items matched to the target:
+  image (alt text, width, position, replace, reveal in Media panel), link
+  (edit, copy target), selected text (bold, italic, strikethrough, inline
+  code, make link), block (edit this block, insert page break
+  before/after, go to source), and `@marker` (edit marker, go to source).
+  The block and `@marker` menus carry one further item, **"Edit page
+  marker…"**, placed last before "Go to source": it edits the marker line
+  of the `.page`/`.spread`/`.chapter` enclosing the point, and is offered
+  only when that line is not already the primary target — the same chapter
+  plus an identical source range suppresses it, because the primary items
+  edit that line already. Without it the enclosing `@page` marker is
+  unreachable from inside a `@section`, whose innermost annotated block
+  always wins the primary slot. A preview that does not report the
+  enclosing marker (older than bridge protocol v7) offers no such item.
+  Gated by the `preview.contextMenu` setting, default on.
+- **Block overlay.** "Edit this block" opens that block's **markdown
+  source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
+  cancel on `Escape`.
+
+Rules (normative):
+
+- **Keyboard parity is required, not optional.** `Shift+F10` / the menu key
+  opens the menu, satisfying the Accessibility checklist's "context menus
+  reachable via keyboard menu key / `Shift+F10`". The listener necessarily
+  lives inside the preview iframe — keystrokes focused in a cross-origin
+  iframe never reach the SPA, so an app-side listener cannot satisfy this.
+- **Page furniture keeps native behavior; the empty margin band does not.**
+  A right-click whose top-most hit element is inside a margin box (running
+  header, page number — any `.gp-marginbox`) resolves to no target: the
+  menu does not open and the native one is not suppressed, so that text
+  stays copyable. That check runs before both probes below, so furniture
+  wins over anything layered beneath it. A right-click that lands inside a
+  sheet's box but resolves to no annotated block — the empty margin band
+  around the content box — MUST instead resolve to the annotated
+  `.page`/`.spread` that owns that sheet (the wrapper with the greatest
+  rect overlap with it), and open that marker's menu: the `@page` marker is
+  reachable from anywhere on its paper, not only from the content box. A
+  sheet whose page has no author `@page`/`@spread` wrapper keeps native
+  behavior. Note that the viewer draws its own margin boxes
+  into the hit-transparent sheet layer (next rule), so they are not
+  normally in the hit stack at all and a right-click over one falls through
+  to the margin-band rule; the furniture check governs the case where
+  furniture is hit-testable.
+- **Only author content captures pointer hits.** The viewer's own chrome —
+  runs, strips, sheet layers, and the sheets and margin boxes they hold —
+  is pointer-transparent, and author content re-enables hits. Chrome must
+  never win a hit for pixels it does not paint: a run pulled up over the
+  previous row in a wrapped/spread composition blankets the page beneath
+  it, and while that box captured hits, right-click, click-to-source, link
+  clicks, and text selection were all dead on every covered page.
+- **Content layered behind the page stays reachable.** Target resolution
+  probes the whole hit stack, not only the top-most element, and prefers
+  the top-most image under the point whose **computed** z-index is negative
+  — the `.gp-behind` depth ladder, or any book CSS that layers an image
+  behind, since the test is the computed value and never the class.
+  Otherwise such an image has no reachable right-click point anywhere. Only
+  negative-z images qualify — stealing a covering block's
+  right-clicks for a normally layered image would invert the bug — and a
+  directly hit image, link text, or margin box is never probed beneath. The
+  keyboard path targets top-most-only: its anchor is a synthetic
+  block-center point, not a place the author aimed at.
+- **Never guess an edit.** When a chapter has unsaved changes, or the
+  rendered selection cannot be mapped back to source unambiguously, the
+  affected item is **disabled with a stated reason** and the author is
+  directed to the editor. A wrong edit in an author's book is the worst
+  outcome this surface can produce; a refused action is always preferable.
+- **No destructive items** while an unmounted editor means no undo. Marker
+  removal is deliberately absent from v1.
+- Edits flow through the same buffer as the editor pane, so save,
+  crash-recovery, external-edit conflict handling, and undo (when the
+  editor is mounted) are identical.
+
+Deferred, with tracking issues: **touch long-press invocation** (the
+Accessibility checklist's "long-press on touch" applies once the menu
+reaches touch layouts — it is not registered there in 0.10.0); Tier 2
+editor-pane live preview, which remains governed by the opt-in WYSIWYG
+rule in §1.
+
+Anti-patterns: opening a menu with no keyboard path; suppressing the
+native menu without offering a replacement; silently applying an edit
+whose source location was inferred rather than verified.
+
 ### 2. Toolbar
 
 **Status: SHIPPED baseline** (`EditorToolbar`, #31 — fixed compact bar above
@@ -264,7 +362,7 @@ the plan wins.**
 - **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
   disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
   snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 2500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
+  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
   indicator is subtle (no modal) — see Anti-Patterns.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).

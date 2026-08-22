@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { size: 400px 400px; margin: 40px; }
+      @page fit { size: 400px 400px; margin: 40px; }
+      @page fit-second { size: 400px 400px; margin: 40px; }
+      @page too-tall { size: 400px 400px; margin: 40px; }
+      @page non-avoid { size: 400px 400px; margin: 40px; }
+      body { margin: 0; }
+      .case { break-before: page; }
+      .fit { page: fit; }
+      .fit-second { page: fit-second; }
+      .too-tall { page: too-tall; }
+      .non-avoid { page: non-avoid; }
+      .previous { height: 180px; margin: 0 0 40px; }
+      /* Intentionally declare the later DOM site's selector first: the
+         compatibility pass must still compensate in document order. */
+      .second-atomic { height: 120px; break-inside: avoid; }
+      .atomic { height: 120px; break-inside: avoid; }
+      .too-tall .atomic { height: 150px; }
+      .ordinary { height: 120px; break-inside: auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="case fit"><div id="fit-prev" class="previous"></div><div id="fit-block" class="atomic"></div></div>
+      <div class="case fit-second"><div id="second-prev" class="previous"></div><div id="second-block" class="second-atomic"></div></div>
+      <div class="case too-tall"><div id="tall-prev" class="previous"></div><div id="tall-block" class="atomic"></div></div>
+      <div class="case non-avoid"><div id="ordinary-prev" class="previous"></div><div id="ordinary-block" class="ordinary"></div></div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

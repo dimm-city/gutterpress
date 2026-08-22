@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Generates the synthetic perf-gate fixture book: a plain folder of markdown
- * chapters big enough to take paged.js well over a measurement window
+ * chapters big enough to take the viewer well over a measurement window
  * (~150+ rendered pages). Idempotent — skips generation when the folder
  * already exists with the expected chapter count (pass --force to regenerate).
  *

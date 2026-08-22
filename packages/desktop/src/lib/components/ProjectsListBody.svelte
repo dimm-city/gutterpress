@@ -34,6 +34,7 @@
     onOpenUrl,
     onOpenGitHub,
     onNewProject,
+    onShowWelcome,
     onBrowse,
     currentProjectPath = null,
     currentProjectDisplayName = null,
@@ -47,6 +48,9 @@
     onOpenUrl?: (url: string) => void;
     /** Hand off to the GitHub connect flow. */
     onOpenGitHub?: () => void;
+    /** Show the start screen over the workspace (left-panel mount only —
+     *  the start screen itself never passes this). */
+    onShowWelcome?: () => void;
     /** Hand off to the new-project wizard. */
     onNewProject?: () => void;
     /** Trigger a native folder picker and call onChosen with the result. */
@@ -529,8 +533,13 @@
 
   <!-- Actions footer — omitted entirely when the host provides its own action
        surface (the start screen), so no empty bordered strip renders. -->
-  {#if onOpenGitHub || onNewProject}
+  {#if onOpenGitHub || onNewProject || onShowWelcome}
     <div class="actions-footer">
+      {#if onShowWelcome}
+        <button class="footer-action" onclick={onShowWelcome} title="Show the welcome screen">
+          <Icon name="book-open" size={14} /> Welcome screen
+        </button>
+      {/if}
       {#if onOpenGitHub}
         <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
           <Icon name="github" size={14} /> Open from GitHub

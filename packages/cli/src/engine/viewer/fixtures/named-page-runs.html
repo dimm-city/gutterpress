@@ -1,0 +1,40 @@
+<!--
+  Regression fixture: named-page context is per-BOX, not per-run.
+
+  One wrapper div holds an `h1 { page: chapter }` opener, body text, a block
+  on a second named page (`.boxed { page: wide }`), and loose TEXT NODES
+  directly inside the wrapper. Chromium print puts each of those on the page
+  template its own box asks for and reverts right after it, so the viewer's
+  fragmenter has to split the wrapper into shells — while MOVING every node,
+  including the loose text, which an element-only walk silently deleted.
+
+  Verified page-for-page against `Page.printToPDF` of this same file (5pp:
+  loose text, opener, body, wide block, tail). See `standalone.test.ts`.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Named page runs</title>
+<style>
+@page { size: 5in 5in; margin: 0.5in; }
+@page chapter { margin-top: 2in; }
+@page wide { margin: 0.25in; }
+body { font: 12pt/1.4 Georgia, serif; margin: 0; }
+h1 { font-size: 18pt; page: chapter; break-before: page; margin: 0 0 12pt; }
+.boxed { page: wide; background: #eee; }
+p { margin: 0 0 10pt; }
+</style>
+</head>
+<body>
+<div class="chapter" id="c1">
+  LOOSE-TEXT-BEFORE
+  <h1 id="h-one">One</h1>
+  <p id="p1">Body one. Body one. Body one. Body one. Body one. Body one. Body one. Body one. Body one.</p>
+  <div class="boxed" id="b1"><p id="p2">Wide page content.</p></div>
+  <p id="p3">After the wide block. After the wide block. After the wide block.</p>
+  LOOSE-TEXT-AFTER
+</div>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

@@ -70,6 +70,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **Develop on the desktop app or the lib**
 → [Architecture](ARCHITECTURE.md)
 
+**My CSS looks right but nothing painted in the PDF**
+→ [Known limitations](./known-limitations.md) — the browser-level gaps that fail silently
+
 ## Quick Reference
 
 ### Common Commands
@@ -100,7 +103,7 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 @continue                   Continue current @section with a matching new section box
 @end-section                Close current @section
 @spread                     Start a two-page spread
-@section .two-column        Two-column layout
+@section .gp-columns-2       Two-column layout (also .gp-columns-3)
 ```
 
 ### Common Callouts
@@ -130,6 +133,7 @@ docs/
 ├── best-practices.md                      # Extended reference for best practices
 ├── contextual-cascade-principle.md        # ★ Recommended CSS architecture pattern
 ├── installing.md                           # Install channels, platform support, unsigned-app guidance
+├── known-limitations.md                   # Silent Chromium print gaps (upstream-tracked)
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 │   └── 2026-05-removing-container-syntax.md

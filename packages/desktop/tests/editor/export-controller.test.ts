@@ -207,20 +207,6 @@ test("markCanceling during the syncing phase shows Canceling…, not the stale s
   expect(ctrl.pdfProgress).toBe("Canceling export…");
 });
 
-// ── M29: a 'conflict' progress event resets the pill instead of being
-//    silently dropped (the actual conflict-resolution UI is driven by the
-//    separate sync:status channel — this just stops the pill fighting it) ──
-
-test("syncProgress on a 'conflict' state resets the export pill (M29)", () => {
-  const { ctrl, clock } = makeController();
-  ctrl.start();
-  ctrl.syncProgress(ev({ exportId: "exp-1", state: "conflict" }));
-  expect(ctrl.exporting).toBe(false);
-  expect(ctrl.state).toBe("idle");
-  expect(ctrl.activeExportId).toBe(null);
-  expect(ctrl.pdfProgress).toBe(null);
-  expect(clock.running).toBe(false);
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Host intents: savePdf / exportHtml / cancelExport (Phase 5 slice 2 — moved

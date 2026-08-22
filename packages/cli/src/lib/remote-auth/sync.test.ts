@@ -1,5 +1,6 @@
 /**
- * Sync / conflict-resolution tests (#15 sync phase, ADR 0006 D5).
+ * Sync / convergence tests (#15 sync phase, ADR 0006 D5; converge ruling
+ * 2026-08-14).
  *
  * These run against the REAL in-process smart-HTTP server (upload-pack AND
  * receive-pack — see test-support/git-http-server.ts), so the full wire
@@ -9,7 +10,9 @@
  * Invariants asserted throughout:
  *  - The pre-sync snapshot ALWAYS exists before any merge/network step
  *    (author work can never be lost).
- *  - A conflict NEVER leaves merge markers or a dirty working tree.
+ *  - Sync ALWAYS converges: a both-edited passage keeps BOTH versions in the
+ *    one file (standard git markers); binaries keep the newer side; an edit
+ *    always survives a deletion. The other version stays in history.
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -21,16 +24,13 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
 import {
-  onlineCopyPath,
   pullChanges,
   pushChanges,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
-  resolveConflicts,
-  type SyncOutcome,
 } from "./sync.ts";
+import { mergeWithMarkers } from "./converge-merge.ts";
 import type { HostCredential } from "./token-store.ts";
-import { MSG_NO_BRANCH } from "./sync-messages.ts";
 import {
   createFixtureRepo,
   FLUSH,
@@ -312,7 +312,7 @@ describe("syncProject", () => {
     }
   });
 
-  test("true conflict → status conflict, tree stays CLEAN, no merge markers", async () => {
+  test("both edited the same passage → sync CONVERGES: both versions in the ONE file", async () => {
     const h = await setupClone();
     try {
       await serverCommit(
@@ -320,31 +320,33 @@ describe("syncProject", () => {
         { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
         "online edit",
       );
-      const localText = "# One\n\nLocal rewrite.\n";
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), localText);
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nLocal rewrite.\n",
+      );
 
       const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      expect(outcome.files).toEqual([
-        { path: "chapter-01.md", kind: "both-edited" },
-      ]);
-      expect(outcome.localId).toMatch(/^[0-9a-f]{40}$/);
-      expect(outcome.remoteId).toMatch(/^[0-9a-f]{40}$/);
+      // No conflict outcome exists: sync lands, both versions in the file.
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
+      expect(outcome.mergedRemoteChanges).toBe(true);
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
 
-      // The working tree is clean (the snapshot IS the current state) and the
-      // file contains the author's text — never markers.
-      expect(await isClean(h.projectDir)).toBe(true);
       const content = await readFile(
         path.join(h.projectDir, "chapter-01.md"),
         "utf8",
       );
-      expect(content).toBe(localText);
-      expect(content).not.toContain("<<<<<<<");
-      // The safety snapshot exists and is the local tip.
-      const [headLog] = await git.log({ fs, dir: h.projectDir, depth: 1 });
-      expect(headLog!.commit.message.trim()).toBe(SYNC_SNAPSHOT_MESSAGE);
-      expect(headLog!.oid).toBe(outcome.localId);
+      expect(content).toContain("<<<<<<< your version");
+      expect(content).toContain("Local rewrite.");
+      expect(content).toContain("Online rewrite.");
+      expect(content).toContain(">>>>>>> online version");
+      // The server received the SAME combined content — one file, no copies.
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(content);
+      expect(await isClean(h.projectDir)).toBe(true);
+      // The merge commit is honest: two parents (both histories intact).
+      const head = await serverHead(h.serverDir);
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: head });
+      expect(commit.parent).toHaveLength(2);
     } finally {
       await h.cleanup();
     }
@@ -493,7 +495,7 @@ describe("syncProject", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("at the same moment");
+      expect(outcome.message).toContain("try Sync again in a moment");
       // The snapshot protected the work; nothing was lost or left dirty.
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
@@ -536,148 +538,8 @@ describe("test server receive-pack validation", () => {
   });
 });
 
-describe("resolveConflicts", () => {
-  /** Drive sync into the standard both-edited conflict. */
-  async function conflictSetup(): Promise<{
-    h: Harness;
-    conflict: Extract<SyncOutcome, { status: "conflict" }>;
-    localText: string;
-    onlineText: string;
-  }> {
-    const h = await setupClone();
-    const onlineText = "# One\n\nOnline rewrite.\n";
-    await serverCommit(h.serverDir, { "chapter-01.md": onlineText }, "online edit");
-    const localText = "# One\n\nLocal rewrite.\n";
-    await writeFile(path.join(h.projectDir, "chapter-01.md"), localText);
-    const outcome = await syncProject({ projectDir: h.projectDir });
-    if (outcome.status !== "conflict") {
-      await h.cleanup();
-      throw new Error(`expected conflict, got ${outcome.status}`);
-    }
-    return { h, conflict: outcome, localText, onlineText };
-  }
-
-  async function expectPushedTwoParentMerge(h: Harness): Promise<void> {
-    const head = await serverHead(h.serverDir);
-    const { commit } = await git.readCommit({ fs, dir: h.serverDir, oid: head });
-    // The pushed history contains a two-parent merge commit (the head itself,
-    // or — for delete-style resolutions — the parent of a small follow-up).
-    const merge =
-      commit.parent.length === 2
-        ? commit
-        : (await git.readCommit({ fs, dir: h.serverDir, oid: commit.parent[0]! }))
-            .commit;
-    expect(merge.parent).toHaveLength(2);
-  }
-
-  test('"Keep my version" → my content everywhere, merge pushed with two parents', async () => {
-    const { h, conflict, localText } = await conflictSetup();
-    try {
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
-      expect(outcome.status).toBe("synced");
-      expect(
-        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-      ).toBe(localText);
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
-      expect(await isClean(h.projectDir)).toBe(true);
-      await expectPushedTwoParentMerge(h);
-
-      // No conflict markers anywhere in the project.
-      const text = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
-      expect(text).not.toContain("<<<<<<<");
-      expect(text).not.toContain(">>>>>>>");
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test('"Use the online version" → online content everywhere', async () => {
-    const { h, conflict, onlineText } = await conflictSetup();
-    try {
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "theirs" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
-      expect(outcome.status).toBe("synced");
-      expect(
-        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-      ).toBe(onlineText);
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(onlineText);
-      expect(await isClean(h.projectDir)).toBe(true);
-      await expectPushedTwoParentMerge(h);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test('"Keep both copies" → mine at the original path, online copy alongside', async () => {
-    const { h, conflict, localText, onlineText } = await conflictSetup();
-    try {
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "both" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
-      expect(outcome.status).toBe("synced");
-      const copyName = onlineCopyPath("chapter-01.md");
-      expect(copyName).toBe("chapter-01 (online copy).md");
-      expect(
-        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-      ).toBe(localText);
-      expect(
-        await readFile(path.join(h.projectDir, copyName), "utf8"),
-      ).toBe(onlineText);
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
-      expect(await serverFile(h.serverDir, copyName)).toBe(onlineText);
-      expect(await isClean(h.projectDir)).toBe(true);
-      await expectPushedTwoParentMerge(h);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("delete-vs-edit conflict: keeping my deletion wins on both sides", async () => {
-    const h = await setupClone();
-    try {
-      await serverCommit(
-        h.serverDir,
-        { "chapter-01.md": "# One\n\nOnline edit to a file I deleted.\n" },
-        "online edit",
-      );
-      await rm(path.join(h.projectDir, "chapter-01.md"));
-
-      const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      expect(outcome.files).toEqual([
-        { path: "chapter-01.md", kind: "you-deleted" },
-      ]);
-
-      const resolved = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: outcome.localId,
-        remoteId: outcome.remoteId,
-      });
-      expect(resolved.status).toBe("synced");
-      expect(fs.existsSync(path.join(h.projectDir, "chapter-01.md"))).toBe(false);
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBeNull();
-      expect(await isClean(h.projectDir)).toBe(true);
-      await expectPushedTwoParentMerge(h);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("edit-vs-online-delete conflict: keeping my edit restores the file on both sides", async () => {
+describe("sync convergence policy", () => {
+  test("delete-vs-edit: my edit survives an online deletion, on both sides", async () => {
     const h = await setupClone();
     try {
       // The online copy DELETED the file; the author edited it.
@@ -686,199 +548,132 @@ describe("resolveConflicts", () => {
       await writeFile(path.join(h.projectDir, "chapter-01.md"), myText);
 
       const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      expect(outcome.files).toEqual([
-        { path: "chapter-01.md", kind: "online-deleted" },
-      ]);
-
-      const resolved = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: outcome.localId,
-        remoteId: outcome.remoteId,
-      });
-      expect(resolved.status).toBe("synced");
+      expect(outcome.status).toBe("synced");
       expect(
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
       ).toBe(myText);
       expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(myText);
       expect(await isClean(h.projectDir)).toBe(true);
-      await expectPushedTwoParentMerge(h);
     } finally {
       await h.cleanup();
     }
   });
 
-  test('"Keep both copies" never overwrites a pre-existing "(online copy)" file', async () => {
-    const { h, conflict, localText, onlineText } = await conflictSetup();
+  test("delete-vs-edit: an online edit survives my deletion, on both sides", async () => {
+    const h = await setupClone();
     try {
-      // A file with the default copy name ALREADY exists (e.g. from an
-      // earlier "Keep both"). It must survive untouched.
-      const existingName = "chapter-01 (online copy).md";
-      const existingText = "# Pre-existing online copy — do not clobber.\n";
-      await writeFile(path.join(h.projectDir, existingName), existingText);
+      const onlineText = "# One\n\nOnline edit to a file I deleted.\n";
+      await serverCommit(h.serverDir, { "chapter-01.md": onlineText }, "online edit");
+      await rm(path.join(h.projectDir, "chapter-01.md"));
 
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "both" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("synced");
-      // The pre-existing file is byte-identical…
-      expect(
-        await readFile(path.join(h.projectDir, existingName), "utf8"),
-      ).toBe(existingText);
-      // …and the online version landed under the uniquified name.
-      const uniquified = "chapter-01 (online copy 2).md";
-      expect(
-        await readFile(path.join(h.projectDir, uniquified), "utf8"),
-      ).toBe(onlineText);
+      // The EDIT wins — a deletion is trivially re-doable, a lost edit is not.
       expect(
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-      ).toBe(localText);
-      expect(await serverFile(h.serverDir, uniquified)).toBe(onlineText);
+      ).toBe(onlineText);
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(onlineText);
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();
     }
   });
 
-  test("remote moves (no overlap) between conflict and confirm → recovery merge, synced", async () => {
-    const { h, conflict, localText } = await conflictSetup();
+  test("both add the same NEW text file differently → both versions in the one file", async () => {
+    const h = await setupClone();
     try {
-      // Someone syncs a NON-conflicting file while the choices dialog is
-      // open: the resolution push is rejected, the recovery pass fetches the
-      // new tip, merges it cleanly, and pushes again — no author interaction.
-      await serverCommit(
-        h.serverDir,
-        { "chapter-03.md": "# Three\n\nSynced mid-resolution.\n" },
-        "mid-resolution add",
-      );
+      const onlineText = "# Nine\n\nAdded online.\n";
+      await serverCommit(h.serverDir, { "chapter-09.md": onlineText }, "online add");
+      const myText = "# Nine\n\nAdded on this computer.\n";
+      await writeFile(path.join(h.projectDir, "chapter-09.md"), myText);
 
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("synced");
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
-      expect(await serverFile(h.serverDir, "chapter-03.md")).toBe(
-        "# Three\n\nSynced mid-resolution.\n",
+      if (outcome.status !== "synced") throw new Error("unreachable");
+      // Same convergence as any both-edited text: markers, one file.
+      expect(outcome.combinedFiles).toEqual(["chapter-09.md"]);
+      const content = await readFile(
+        path.join(h.projectDir, "chapter-09.md"),
+        "utf8",
       );
-      expect(
-        await readFile(path.join(h.projectDir, "chapter-03.md"), "utf8"),
-      ).toBe("# Three\n\nSynced mid-resolution.\n");
+      expect(content).toContain("Added on this computer.");
+      expect(content).toContain("Added online.");
+      expect(content).toContain("<<<<<<< your version");
+      expect(await serverFile(h.serverDir, "chapter-09.md")).toBe(content);
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();
     }
   });
 
-  test("remote moves the SAME file between conflict and confirm → fresh conflict with the NEW tip", async () => {
-    const { h, conflict, localText } = await conflictSetup();
+  test("unrelated histories (wrong online address) → plain error, NOTHING spliced or committed", async () => {
+    const h = await setupClone();
     try {
-      // The contested file changes online AGAIN while the dialog is open.
-      const newerText = "# One\n\nOnline rewrite, take two.\n";
-      const newerTip = await serverCommit(
-        h.serverDir,
-        { "chapter-01.md": newerText },
-        "online edit two",
-      );
-
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
+      // Point origin at a completely unrelated repository.
+      // A truly UNRELATED repository: its own root commit, no shared history
+      // (createFixtureRepo is deterministic — two fixture repos share oids —
+      // so this one is built from scratch).
+      const otherDir = await tempDir("gutterpress-unrelated-");
+      await git.init({ fs, dir: otherDir, defaultBranch: "main" });
+      await writeFile(path.join(otherDir, "other-book.md"), "# A different book\n");
+      await git.add({ fs, dir: otherDir, filepath: "other-book.md" });
+      await git.commit({
+        fs,
+        dir: otherDir,
+        message: "different project",
+        author: { name: "Other", email: "other@test.local", timestamp: 1700000000, timezoneOffset: 0 },
       });
-      // NOT a dead-end "try again": a fresh conflict carrying the NEW online
-      // tip so the next confirm targets reality.
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      expect(outcome.remoteId).toBe(newerTip);
-      expect(outcome.files).toEqual([
-        { path: "chapter-01.md", kind: "both-edited" },
-      ]);
-      expect(await isClean(h.projectDir)).toBe(true);
+      const otherServer = await startGitServer(otherDir);
+      try {
+        await git.setConfig({
+          fs,
+          dir: h.projectDir,
+          path: "remote.origin.url",
+          value: otherServer.url,
+        });
+        const before = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
 
-      // Confirming against the fresh ids completes the sync.
-      const second = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: outcome.localId,
-        remoteId: outcome.remoteId,
-      });
-      expect(second.status).toBe("synced");
-      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
-      expect(await isClean(h.projectDir)).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("recovery merges the racer cleanly but the retry push STILL races → friendly race message, work safe", async () => {
-    const { h, conflict } = await conflictSetup();
-    try {
-      // A racer commits a NON-conflicting file before EVERY push attempt: the
-      // resolution push is rejected, the single recovery pass fetches the new
-      // tip and merges it cleanly, but the retry push is rejected too. The one
-      // recovery pass is exhausted, so the author gets the friendly race
-      // message — never a dead-end — and the entry snapshot keeps the work safe.
-      let n = 0;
-      const httpClient = racingHttpClient(async () => {
-        n++;
-        await serverCommit(h.serverDir, { [`racer-${n}.md`]: `racer ${n}\n` }, `racer ${n}`);
-      }, 10);
-
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-        httpClient,
-      });
-      expect(outcome.status).toBe("error");
-      if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("at the same moment");
-      // The work is not lost or left dirty; the merged racer changes landed
-      // locally even though the push could not.
-      expect(await isClean(h.projectDir)).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("setup error (detached HEAD → no named branch) → status error, code needs-connection-setup", async () => {
-    const { h, conflict } = await conflictSetup();
-    try {
-      // Detach HEAD directly (isomorphic-git's currentBranch() returns
-      // undefined once HEAD is a raw oid instead of a symbolic ref) so
-      // resolveConflicts's own currentBranchOrThrow() throws MSG_NO_BRANCH —
-      // the same setup-error path the desktop's ConflictChoicesDialog must
-      // route to its connect surface instead of rendering verbatim.
-      const oid = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
-      fs.writeFileSync(path.join(h.projectDir, ".git", "HEAD"), `${oid}\n`);
-
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: conflict.remoteId,
-      });
-      expect(outcome.status).toBe("error");
-      if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.code).toBe("needs-connection-setup");
-      expect(outcome.message).toBe(MSG_NO_BRANCH);
-      // Nothing was touched: the working tree is untouched, no snapshot taken.
-      expect(await isClean(h.projectDir)).toBe(true);
+        const outcome = await syncProject({ projectDir: h.projectDir });
+        expect(outcome.status).toBe("error");
+        if (outcome.status !== "error") throw new Error("unreachable");
+        expect(outcome.message).toContain("different project");
+        // NOTHING was merged or committed — the local history is untouched.
+        expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(before);
+      } finally {
+        await otherServer.close();
+        await rm(otherDir, { recursive: true, force: true });
+      }
     } finally {
       await h.cleanup();
     }
   });
 });
+
+describe("mergeWithMarkers", () => {
+  test("clean hunks merge; clashing hunks keep BOTH versions inside git markers", () => {
+    const base = "intro\nmiddle\nend\n";
+    const ours = "intro\nMY middle\nend\n";
+    const theirs = "intro\nTHEIR middle\nend\n";
+    const merged = mergeWithMarkers(base, ours, theirs);
+    expect(merged).toBe(
+      "intro\n" +
+        "<<<<<<< your version\n" +
+        "MY middle\n" +
+        "=======\n" +
+        "THEIR middle\n" +
+        ">>>>>>> online version\n" +
+        "end\n",
+    );
+  });
+
+  test("non-overlapping edits merge with NO markers", () => {
+    const base = "one\ntwo\nthree\n";
+    const merged = mergeWithMarkers(base, "ONE\ntwo\nthree\n", "one\ntwo\nTHREE\n");
+    expect(merged).toBe("ONE\ntwo\nTHREE\n");
+    expect(merged).not.toContain("<<<<<<<");
+  });
+});
+
 
 // ── Opening a subfolder syncs the WHOLE enclosing repo (no per-book scoping) ──
 
@@ -1024,23 +819,21 @@ describe("push rejection precision (BUG 2)", () => {
 
 // ── BUG 3: a MIXED text+binary conflict must keep binary bytes byte-identical ──
 
-describe("resolveConflicts binary safety (BUG 3)", () => {
+describe("binary convergence (newer wins, byte-exact)", () => {
   /**
-   * Build a TRUE mixed conflict: a base commit (text + binary) is the common
+   * Build a TRUE mixed clash: a base commit (text + binary) is the common
    * ancestor of BOTH sides, then the server and the local clone each diverge
-   * by editing BOTH files differently — so a sync merge conflicts on both.
+   * by editing BOTH files differently.
    *
-   * The clone happens AFTER the binary base lands on the server so the client
-   * shares that ancestor (otherwise a fast-forward would erase the divergence).
+   * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock so the
+   * newer-wins policy can be exercised in both directions deterministically.
    */
-  async function setupBinaryConflict(myPng: Uint8Array): Promise<{
-    h: Harness;
-    onlinePng: Uint8Array;
-  }> {
+  async function setupBinaryClash(
+    myPng: Uint8Array,
+    localTimestamp?: number,
+  ): Promise<{ h: Harness; onlinePng: Uint8Array }> {
     const serverDir = await tempDir("gutterpress-bin-server-");
     await createFixtureRepo(serverDir);
-    // Base commit on the server: a binary cover + a text chapter (the shared
-    // ancestor both sides will diverge from).
     await commitBinary(serverDir, "cover.png", PNG_BYTES);
     await writeFile(path.join(serverDir, "chapter-01.md"), "# One\n\nBase.\n");
     await git.add({ fs, dir: serverDir, filepath: "chapter-01.md" });
@@ -1054,7 +847,6 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
     const server = await startGitServer(serverDir);
     const parent = await tempDir("gutterpress-bin-client-");
     const projectDir = path.join(parent, "project");
-    // Clone NOW — the client gets the binary base as its common ancestor.
     await cloneRepository({ url: server.url, dir: projectDir });
 
     // The ONLINE copy diverges: a distinct binary variant + a text edit.
@@ -1066,8 +858,7 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
       "online edits both",
     );
 
-    // The LOCAL copy diverges differently on BOTH files (committed, not just
-    // working-tree edits, so the snapshot captures a real divergent tip).
+    // The LOCAL copy diverges differently on BOTH files.
     await writeFile(path.join(projectDir, "cover.png"), myPng);
     await writeFile(path.join(projectDir, "chapter-01.md"), "# One\n\nLocal rewrite.\n");
     await git.add({ fs, dir: projectDir, filepath: "cover.png" });
@@ -1076,7 +867,13 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
       fs,
       dir: projectDir,
       message: "local edits both",
-      author: { name: "Local", email: "local@test.local" },
+      author: {
+        name: "Local",
+        email: "local@test.local",
+        ...(localTimestamp !== undefined
+          ? { timestamp: localTimestamp, timezoneOffset: 0 }
+          : {}),
+      },
     });
 
     const h: Harness = {
@@ -1092,139 +889,83 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
     return { h, onlinePng };
   }
 
-  test("mixed .png + .md conflict → MY binary bytes are byte-identical after resolve", async () => {
+  test("LOCAL tip newer → my binary bytes win byte-exactly; image clash reported", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
-    myPng[44] = 0x03; // a THIRD distinct binary variant — the author's bytes
-    const { h } = await setupBinaryConflict(myPng);
+    myPng[44] = 0x03; // a THIRD distinct variant — the author's bytes
+    const { h } = await setupBinaryClash(myPng); // local commit is last → newer
     try {
       const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      // The mixed conflict reports BOTH files.
-      const paths = outcome.files.map((f) => f.path).sort();
-      expect(paths).toEqual(["chapter-01.md", "cover.png"]);
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
 
-      // Resolve: keep MY version for both files.
-      const resolved = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [
-          { path: "chapter-01.md", choice: "mine" },
-          { path: "cover.png", choice: "mine" },
-        ],
-        localId: outcome.localId,
-        remoteId: outcome.remoteId,
-      });
-      expect(resolved.status).toBe("synced");
-
-      // CRITICAL: the binary file's bytes on disk are byte-identical to MY
-      // chosen bytes — NOT UTF-8 corrupted by the text merge driver.
-      const onDisk = new Uint8Array(
-        await readFile(path.join(h.projectDir, "cover.png")),
-      );
+      // The text file converged with markers…
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
+      const text = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
+      expect(text).toContain("<<<<<<< your version");
+      // …and the binary kept MY (newer) bytes, byte-identical — never routed
+      // through the string merge driver.
+      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
       expect(onDisk).toEqual(myPng);
-      // And it has NO U+FFFD replacement bytes (the EF BF BD signature that a
-      // UTF-8 round-trip of binary data would introduce).
       const raw = await readFile(path.join(h.projectDir, "cover.png"));
       expect(raw.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false);
-      // The text file kept my version too.
-      expect(
-        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-      ).toBe("# One\n\nLocal rewrite.\n");
+      // The clash is reported for the desktop's non-blocking picker.
+      expect(outcome.imageClashes).toHaveLength(1);
+      expect(outcome.imageClashes![0]!.path).toBe("cover.png");
+      expect(outcome.imageClashes![0]!.kept).toBe("local");
+      expect(outcome.imageClashes![0]!.localOid).toMatch(/^[0-9a-f]{40}$/);
+      expect(outcome.imageClashes![0]!.remoteOid).toMatch(/^[0-9a-f]{40}$/);
+      // Pushed: the server has the same bytes.
       expect(await isClean(h.projectDir)).toBe(true);
+      const serverOid = await serverHead(h.serverDir);
+      const { blob } = await git.readBlob({
+        fs,
+        dir: h.serverDir,
+        oid: serverOid,
+        filepath: "cover.png",
+      });
+      expect(new Uint8Array(blob)).toEqual(myPng);
     } finally {
       await h.cleanup();
     }
   });
 
-  test("keeping the ONLINE binary in a mixed conflict is also byte-identical", async () => {
+  test("ONLINE tip newer → online bytes win; my version stays reachable in history", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
     myPng[44] = 0x07;
-    const { h, onlinePng } = await setupBinaryConflict(myPng);
+    // Local commit stamped 10 minutes in the past → the online tip is newer.
+    const past = Math.floor(Date.now() / 1000) - 600;
+    const { h, onlinePng } = await setupBinaryClash(myPng, past);
     try {
       const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
 
-      const resolved = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [
-          { path: "chapter-01.md", choice: "theirs" },
-          { path: "cover.png", choice: "theirs" },
-        ],
-        localId: outcome.localId,
-        remoteId: outcome.remoteId,
-      });
-      expect(resolved.status).toBe("synced");
-
-      // The online binary bytes land byte-identical.
-      const onDisk = new Uint8Array(
-        await readFile(path.join(h.projectDir, "cover.png")),
-      );
+      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
       expect(onDisk).toEqual(new Uint8Array(onlinePng));
-      const raw = await readFile(path.join(h.projectDir, "cover.png"));
-      expect(raw.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false);
+      expect(outcome.imageClashes).toHaveLength(1);
+      expect(outcome.imageClashes![0]!.kept).toBe("online");
+      // MY bytes remain reachable in history (the equalization commit's
+      // parent — walk the log and find them).
+      const log = await git.log({ fs, dir: h.projectDir, depth: 30 });
+      let found = false;
+      for (const entry of log) {
+        try {
+          const { blob } = await git.readBlob({
+            fs,
+            dir: h.projectDir,
+            oid: entry.oid,
+            filepath: "cover.png",
+          });
+          if (Buffer.compare(new Uint8Array(blob), myPng) === 0) {
+            found = true;
+            break;
+          }
+        } catch {
+          // file absent at this commit — keep walking
+        }
+      }
+      expect(found).toBe(true);
       expect(await isClean(h.projectDir)).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-});
-
-// ── BUG 5: resolveConflicts must reject unverified (nonexistent) OIDs ──────────
-
-describe("resolveConflicts OID verification (BUG 5)", () => {
-  test("a valid-hex but NONEXISTENT remoteId → friendly expired-choices error", async () => {
-    const h = await setupClone();
-    try {
-      await serverCommit(h.serverDir, { "chapter-01.md": "# One\n\nOnline.\n" }, "online");
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal.\n");
-      const conflict = await syncProject({ projectDir: h.projectDir });
-      expect(conflict.status).toBe("conflict");
-      if (conflict.status !== "conflict") throw new Error("unreachable");
-
-      // A well-formed but bogus 40-hex id that is NOT a real commit object.
-      const fakeRemoteId = "0123456789abcdef0123456789abcdef01234567";
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: conflict.localId,
-        remoteId: fakeRemoteId,
-      });
-      // The SAME friendly message as the regex-fail path — never an unhandled
-      // throw or a generic "error" with no guidance.
-      expect(outcome.status).toBe("error");
-      if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toBe(
-        "Those combine choices have expired. Please run Sync again.",
-      );
-      // Work stays safe (clean tree).
-      expect(await isClean(h.projectDir)).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("a valid-hex but NONEXISTENT localId → friendly expired-choices error", async () => {
-    const h = await setupClone();
-    try {
-      await serverCommit(h.serverDir, { "chapter-01.md": "# One\n\nOnline.\n" }, "online");
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal.\n");
-      const conflict = await syncProject({ projectDir: h.projectDir });
-      expect(conflict.status).toBe("conflict");
-      if (conflict.status !== "conflict") throw new Error("unreachable");
-
-      const fakeLocalId = "fedcba9876543210fedcba9876543210fedcba98";
-      const outcome = await resolveConflicts({
-        projectDir: h.projectDir,
-        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-        localId: fakeLocalId,
-        remoteId: conflict.remoteId,
-      });
-      expect(outcome.status).toBe("error");
-      if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toBe(
-        "Those combine choices have expired. Please run Sync again.",
-      );
     } finally {
       await h.cleanup();
     }
@@ -1290,7 +1031,7 @@ describe("syncProject retry budget (BUG 6)", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("at the same moment");
+      expect(outcome.message).toContain("try Sync again in a moment");
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
       // The loop is BOUNDED: it tried exactly `attempts` times, no more.
@@ -1365,7 +1106,7 @@ describe("syncProject — structural preflight", () => {
         thrown = e;
       }
       expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-      expect((thrown as { kind?: string })?.kind).toBe("interrupted_merge");
+      expect((thrown as { kind?: string })?.kind).toBe("needs_repair");
 
       // Nothing was committed locally (the conflict markers were NOT
       // snapshotted into history) and nothing reached the remote.
@@ -1393,7 +1134,7 @@ describe("syncProject — structural preflight", () => {
           thrown = e;
         }
         expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-        expect((thrown as { kind?: string })?.kind).toBe("interrupted_merge");
+        expect((thrown as { kind?: string })?.kind).toBe("needs_repair");
       }
       // Neither operation snapshotted the damaged tree.
       expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);

@@ -7,17 +7,10 @@
    * each user edit. No Gutterpress extension awareness yet (a follow-on per the
    * issue).
    *
-   * ONE EditorView for the component's lifetime (UX review M8). The exported
-   * `switchFile(path, content)` swaps the open document via `view.setState(...)`
-   * with a freshly built or cache-restored `EditorState` — it never tears the
-   * view down. The outgoing file's live state (doc, selection, undo history) is
-   * stashed in `stateCache` (`$lib/editor/editor-state-cache.ts`, a bounded
-   * LRU) keyed by its file path, along with its scroll offset; switching back
-   * to a recently open file restores all three instead of starting cold. This
-   * used to be exactly what this header claimed and the code didn't do: the
-   * parent wrapped this component in `{#key editorFilePath}`, which destroyed
-   * and rebuilt the whole view (discarding undo/selection/scroll) on every
-   * switch. That wrapper is gone; this file now does what it always said it did.
+   * ONE EditorView displays ONE source file. `switchFile(path, content)` builds
+   * that file's state and applies it synchronously with `view.setState(...)`.
+   * There is no deferred per-file scroll restoration that can land after a
+   * newer file switch, and the view itself is never torn down between files.
    *
    * Neither the initial file switch nor a same-file external content change
    * (an auto-reload while this file stays open) is driven by watching the
@@ -36,7 +29,6 @@
     Compartment,
     type Extension,
   } from "@codemirror/state";
-  import { EditorStateCache } from "$lib/editor/editor-state-cache";
   import {
     defaultKeymap,
     history,
@@ -139,23 +131,10 @@
   const cssLintCompartment = new Compartment();
   const cssCompletionCompartment = new Compartment();
   const markdownCompletionCompartment = new Compartment();
-  // The language the view is currently configured for. Seeded at mount;
-  // updated by switchFile() when a file switch changes it. Each `buildState()`
-  // call bakes the resolved language into the new/restored EditorState via
-  // these same Compartment instances, so a `setState()` swap always carries
-  // the right language/lint/completion config with it.
-  let currentLanguage: EditorLanguage = "plain";
   // The filePath the view's document currently belongs to. Used by
   // switchFile() to no-op a call that doesn't actually change the open file.
   // Seeded at mount alongside the initial document.
   let appliedPath: string | null = null;
-  // Per-file EditorState + scroll cache (UX review M8) — see the header
-  // comment. Lives for the component's lifetime, not reset on file switch.
-  const stateCache = new EditorStateCache<{
-    state: EditorState;
-    scrollTop: number;
-    scrollLeft: number;
-  }>(20);
 
   /** Build the language extension for a given resolved language mode. */
   function languageExtension(lang: EditorLanguage): Extension {
@@ -311,7 +290,6 @@
   let detachScroll: (() => void) | null = null;
   onMount(() => {
     if (!host) return;
-    currentLanguage = languageForPath(filePath);
     appliedPath = filePath;
     view = new EditorView({ state: buildState(content, filePath), parent: host });
     // Editor→preview scroll sync: emit the top visible line as the user
@@ -340,11 +318,8 @@
 
   /**
    * Switch the live view to `newPath`/`newContent` without destroying it
-   * (UX review M8). Stashes the outgoing file's state + scroll into
-   * `stateCache`, then either restores a cached state for `newPath` (when its
-   * cached doc still matches the incoming content — i.e. nothing changed on
-   * disk while the author was away) or builds a fresh one (first visit, or a
-   * stale cache entry invalidated by an external change).
+   * with one synchronous state replacement. A fresh state intentionally
+   * starts at the top; no old file can schedule a later scroll write into it.
    *
    * Called EXPLICITLY by the parent whenever it changes which file is open
    * (chapter navigation, crash-recovery restore) — not driven by a reactive
@@ -360,37 +335,13 @@
    */
   export function switchFile(newPath: string | null, newContent: string): void {
     if (!view || newPath === appliedPath) return;
-    if (appliedPath) {
-      stateCache.set(appliedPath, {
-        state: view.state,
-        scrollTop: view.scrollDOM.scrollTop,
-        scrollLeft: view.scrollDOM.scrollLeft,
-      });
-    }
     appliedPath = newPath;
-    currentLanguage = languageForPath(newPath);
     if (newPath == null) return; // nothing open — template hides the host
-
-    const cached = stateCache.get(newPath);
-    let nextState: EditorState;
-    let scrollTop = 0;
-    let scrollLeft = 0;
-    if (cached && cached.state.doc.toString() === newContent) {
-      nextState = cached.state;
-      scrollTop = cached.scrollTop;
-      scrollLeft = cached.scrollLeft;
-    } else {
-      // No cache entry, or the disk content changed while this file wasn't
-      // open — a stale cached doc must never resurrect over fresh content.
-      stateCache.delete(newPath);
-      nextState = buildState(newContent, newPath);
-    }
-    view.setState(nextState);
-    const v = view;
-    requestAnimationFrame(() => {
-      v.scrollDOM.scrollTop = scrollTop;
-      v.scrollDOM.scrollLeft = scrollLeft;
-    });
+    // A document swap moves the viewport; that is not the author scrolling, so
+    // don't let it drive the preview.
+    suppressEmitUntil = Date.now() + 300;
+    lastEmittedLine = -1;
+    view.setState(buildState(newContent, newPath));
   }
 
   /**
@@ -403,29 +354,56 @@
     if (!view) return;
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
-    applyingExternal = true;
-    // Same-file content replace: clamp existing selection into the new document
-    // and keep the viewport anchored to the caret.
+    const scrollTop = view.scrollDOM.scrollTop;
+    const scrollLeft = view.scrollDOM.scrollLeft;
+    // Same-file content replace: keep both selection and the visible viewport.
     const prevSel = view.state.selection;
     const docLen = nextDoc.length;
     const clampedSel = prevSel.ranges.map((r) =>
       EditorSelection.range(Math.min(r.anchor, docLen), Math.min(r.head, docLen)),
     );
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
-      selection: EditorSelection.create(
-        clampedSel,
-        Math.min(prevSel.mainIndex, clampedSel.length - 1),
-      ),
-      effects: EditorView.scrollIntoView(Math.min(prevSel.main.head, docLen)),
-      scrollIntoView: false,
-    });
-    applyingExternal = false;
+    suppressEmitUntil = Date.now() + 300;
+    applyingExternal = true;
+    try {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+        selection: EditorSelection.create(
+          clampedSel,
+          Math.min(prevSel.mainIndex, clampedSel.length - 1),
+        ),
+        scrollIntoView: false,
+      });
+      view.scrollDOM.scrollTop = scrollTop;
+      view.scrollDOM.scrollLeft = scrollLeft;
+    } finally {
+      applyingExternal = false;
+    }
   }
 
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+
+  /** True only when this editor is displaying the requested file. */
+  export function hasFile(path: string): boolean {
+    return view != null && appliedPath === path;
+  }
+
+  /**
+   * Apply one undoable edit when the requested file is the displayed file.
+   * A range can never cross into another file because another file is never in
+   * this document.
+   */
+  export function applyRangeEditIn(
+    path: string,
+    from: number,
+    to: number,
+    insert: string,
+  ): void {
+    if (!view || appliedPath !== path) return;
+    view.dispatch({ changes: { from, to, insert } });
   }
 
   /** Current selection text (empty string when there is no selection) (#29). */
@@ -483,8 +461,8 @@
         break;
       }
       case "image": {
-        const img = payload as { src: string; alt: string; width?: string; position?: string } | undefined;
-        if (img) applyImage(view, img.src, img.alt, img.width, img.position);
+        const img = payload as { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } | undefined;
+        if (img) applyImage(view, img.src, img.alt, img.width, img.position, img.size, img.shape);
         break;
       }
       case "layout-block": {
@@ -495,11 +473,8 @@
     }
   }
 
-  /**
-   * Scroll/move the caret to a 1-based source line (preview→editor sync).
-   * Suppresses the cursor-line echo so it doesn't bounce back to the preview.
-   */
-  export function revealLine(line: number): void {
+  /** Reveal a 1-based line. Deliberate navigation also places the caret/focus. */
+  export function revealLine(line: number, focusEditor = false): void {
     if (!view) return;
     const doc = view.state.doc;
     const clamped = Math.max(1, Math.min(line, doc.lines));
@@ -513,8 +488,10 @@
     // top keeps both panes agreeing on the same anchor point. Centering here
     // gave a constant ~half-viewport disagreement (QA finding RC1-5).
     view.dispatch({
+      selection: focusEditor ? { anchor: pos } : undefined,
       effects: EditorView.scrollIntoView(pos, { y: "start" }),
     });
+    if (focusEditor) view.focus();
   }
 </script>
 

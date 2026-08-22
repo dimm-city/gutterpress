@@ -2,7 +2,8 @@
  * Pure (node-free) book-HTML assembly.
  *
  * §1/§8 / ADR 0004: imports ONLY the pure render core (`renderer.ts`,
- * `markdown-it-paged.js`, `chapter-id.ts`) — NO `node:*`, NO `fs`/`path`. The
+ * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
+ * `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
@@ -12,22 +13,28 @@
  * wrapper is the ONLY node-coupled part of the old `renderChapters`, so the pure
  * markdown→HTML→book.html work lives here and the wrapper just supplies inputs.
  */
-import { PAGED_CSS } from "./markdown-it-paged.js";
+import { MARKER_CSS } from "./markers.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
-import { pagedjsPolyfillTag } from "../pagedjs-marker";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
 
 /**
- * One author-mistake warning emitted by `markdown-it-paged` (ARCH finding #4).
- * Mirrors the shape `markdown-it-paged.js`'s `warn()` pushes onto
- * `env.layoutWarnings` — see that file's header comment for the 8 warning
- * `type`s (`ambiguous_marker_token`, `section_without_page`, `nested_spread`,
+ * One author-mistake warning emitted by Gutterpress's marker parser (ARCH finding #4).
+ * Mirrors the shape `markers.js`'s `warn()` pushes onto
+ * `env.layoutWarnings` — see that file's header comment for the warning
+ * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
+ * `extra_bare_marker_token`, `unknown_marker`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `implicit_page`).
+ * `page_outside_spread`, `pin_outside_page`).
+ *
+ * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
+ * @section with no open @page is valid authoring (audited, 17/17 false
+ * positives across two real books), and the `implicitPage` option that
+ * produced the latter was unreachable and latently broken.
  */
 export interface LayoutWarning {
   line: number;
@@ -49,9 +56,9 @@ export interface AssembleBookHtmlOptions {
    * Inlining is what makes a stylesheet's location irrelevant to the output, so
    * themes (`themes/<id>/theme.css`) and shared design systems
    * (`../design-guide/styles/guide.css`) need no copying, no flattening and no
-   * destination indirection. It is also what Paged.js does to the document
-   * anyway — it deletes every `<link>`/`<style>` and re-emits the CSS inline —
-   * so a `<link>` never survived the render path to begin with.
+   * destination indirection. The assembled document therefore has one
+   * deterministic CSS payload, with no output-relative stylesheet links to
+   * relocate or lose during staging.
    */
   projectCss?: string;
   title?: string;
@@ -64,10 +71,12 @@ export interface AssembleBookHtmlOptions {
    * output is unaffected.
    */
   wrapChapters?: boolean;
+  /** Add a layout-neutral source-file id to source-mapped preview blocks. */
+  annotateSourceChapters?: boolean;
   /**
    * ARCH finding #4: per-chapter callback receiving any `env.layoutWarnings`
-   * `markdown-it-paged` computed while rendering `file` (only called when
-   * that chapter produced at least one). `file` is the same canonical
+   * Gutterpress's marker parser computed while rendering `file` (only called
+   * when that chapter produced at least one). `file` is the same canonical
    * chapter id used for `data-chapter-src`, so a host can attribute a warning
    * to the exact source file. Additive/optional — omitting it reproduces the
    * prior throwaway-env behavior exactly, so this cannot change output for
@@ -109,8 +118,8 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
 
   // Build source files concatenate directly into the body. Incremental preview
   // adds one file-level wrapper so each source can be page-isolated. @chapter is
-  // a CORE markdown-it-paged marker (parsed + wrapped + labeled by
-  // `markdown-it-paged.js`'s `openChapter`, not any project-specific plugin —
+  // a core Gutterpress marker (parsed + wrapped + labeled by `markers.js`'s
+  // `openChapter`, not any project-specific plugin —
   // see CLAUDE.md's "frozen chapter-opener" note) that owns author-facing
   // chapter wrappers and IDs; the preview wrapper is internal-only.
   let bodyContent = "";
@@ -128,13 +137,14 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       throw new Error(`Failed to read file ${file}: ${errorMsg}`);
     }
     // Thread a per-chapter env through md.render (ARCH #4): previously this was
-    // a bare `md.render(content)`, so every `env.layoutWarnings` markdown-it-paged
-    // computed landed in markdown-it's own throwaway internal env and was
+    // a bare `md.render(content)`, so every marker warning computed into
+    // `env.layoutWarnings` landed in markdown-it's own throwaway internal env and was
     // discarded the instant this call returned. Passing our own env here is the
     // ONLY change needed to make ~150 lines of already-written, already-tested
-    // author-mistake diagnostics (§6: the plugin still owns computing them)
+    // author-mistake diagnostics (§6: the marker parser still owns computing them)
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[] } & ImageRefEnv = {};
+    const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
+    if (opts.annotateSourceChapters) env.sourceChapter = chapterId;
     // Always use the public render path: standard markdown-it plugins may
     // legitimately wrap md.render(), and preview/build must both observe it.
     const rendered = md.render(content, env);
@@ -157,14 +167,16 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     opts.onImageRefs([...imageRefs]);
   }
 
-  // Inject markdown-it-paged + user-plugin CSS as a single <style> block.
-  // PAGED_CSS is treated identically to user plugin css — the only built-in
-  // plugin that ships CSS routes through the same pipeline as user plugins,
-  // so the cascade story is uniform.
-  // Cascade order: layout primitives, then plugin CSS, then the author's own
+  // Inject built-in + user-plugin CSS as a single <style> block.
+  // Cascade order: Gutterpress's marker layout primitives, then its `gp-*`
+  // vocabulary, then user plugin CSS, then the author's own
   // stylesheets last so project rules win at equal specificity.
+  // The two core blocks stay separate by ownership: MARKER_CSS supports the
+  // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
+  // author vocabulary.
   const inlineCss = [
-    `/* markdown-it-paged */\n${PAGED_CSS.trim()}`,
+    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
+    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
@@ -176,7 +188,6 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style data-project-css>\n${inlineCss}\n</style>
-  ${pagedjsPolyfillTag()}
 </head>
 <body>
 ${bodyContent}

@@ -1,0 +1,39 @@
+/* style.css — deliberately plain author CSS. This fixture exists to prove
+   the core gp-* image vocabulary (PAGED_CSS) paginates identically in the
+   preview and in print; the book supplies only ordinary typography and a
+   folio, never image rules of its own, so everything image-shaped on these
+   pages is core's doing. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 {
+  font-size: 22pt;
+  margin: 0 0 0.6em;
+}
+
+h2 {
+  font-size: 14pt;
+  margin: 1.2em 0 0.4em;
+}
+
+p {
+  margin: 0 0 0.6em;
+  text-align: justify;
+}

@@ -310,7 +310,14 @@ describe("requireChromiumExecutable — error message quality", () => {
       // Sourced from the single INSTALL_HINTS registry (ARCH finding #15) —
       // not a hand-copied duplicate that could drift.
       expect(message).toContain(INSTALL_HINTS.chromium.body);
-      expect(message).toContain("desktop app includes its own browser");
+      // The desktop app renders with its own bundled Electron Chromium (it
+      // injects `engineBrowser`; see packages/desktop/electron/engine-browser.ts),
+      // so this message is about the CLI. It must say so rather than imply the
+      // desktop needs a separate browser installation too.
+      expect(message).toContain("uses its own bundled browser for");
+      expect(message).toContain("PDF export");
+      expect(message).toContain("This message is about the CLI");
+      expect(message).not.toContain("always drives a separate, external Chromium");
       expect(message).not.toContain("undefined");
     }
   });

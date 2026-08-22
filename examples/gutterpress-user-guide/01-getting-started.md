@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using Chromium and Paged.js for rendering.
+Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using a native Chromium print engine for rendering.
 
 @end-section
 

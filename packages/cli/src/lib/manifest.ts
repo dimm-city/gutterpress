@@ -323,6 +323,31 @@ function resolveWithPreset(
     );
   }
 
+  // Pagination engine (native-only-migration-plan.md Phase 6): Paged.js has
+  // been removed — the native engine is the only engine. `engine:`/`--engine`
+  // still parse (so an old manifest/CLI invocation doesn't hard-fail) but are
+  // now a no-op: every build resolves to "native" regardless of the value
+  // requested, and an explicit "paged" gets a one-line warning instead of
+  // silently changing behavior.
+  const requestedEngine = c.engine ?? m.engine ?? "native";
+  if (requestedEngine !== "paged" && requestedEngine !== "native") {
+    throw new UsageError(`Unknown engine "${String(requestedEngine)}". Expected: paged | native`);
+  }
+  if (requestedEngine === "paged") {
+    warnOnce(
+      "engine-paged-removed",
+      "[gutterpress] Paged.js has been removed; the native engine is the " +
+        "only engine. \"engine: paged\" is ignored — building natively."
+    );
+  }
+  if ((m.engineStyles?.paged?.length ?? 0) > 0) {
+    warnOnce(
+      "engine-styles-paged-removed",
+      "[gutterpress] engineStyles.paged is ignored — Paged.js has been removed."
+    );
+  }
+  const engine = "native" as const;
+
   // Resolve plugins from CLI overrides or manifest. A plugin entry with
   // `enabled: false` (#30 per-project toggle) stays in the manifest but is
   // skipped here so it is never loaded at build/preview time.
@@ -335,15 +360,27 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    engine,
     // ARCH #2: no preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
     // defeated that documented fallback chain on every real render path.
-    styles: c.styles ?? m.styles,
+    // Engine-conditional stylesheets append AFTER the base list (see
+    // GutterpressManifest.engineStyles). Loaded last so furniture wins.
+    // `engineStyles.paged` is ignored (warned above) — only `.native` applies.
+    styles: (() => {
+      const base = c.styles ?? m.styles;
+      const extra = m.engineStyles?.native;
+      if (!extra || extra.length === 0) return base;
+      return [...(base ?? []), ...extra];
+    })(),
     plugins,
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
+    // Default (both presets) is signature: 1 = no padding — postprocess only
+    // pads when > 1, so a book that never asks for one gets none.
+    print: mergeShape(c.print, m.print, preset.print),
     page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),
     lint: mergeShape(c.lint, m.lint, preset.lint),

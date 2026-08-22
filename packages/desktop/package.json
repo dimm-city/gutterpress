@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-desktop",
   "private": true,
-  "version": "0.9.0-alpha.2",
+  "version": "0.10.0-alpha.4",
   "type": "module",
   "main": "out/main/main.js",
   "desktopName": "city.dimm.gutterpress.desktop",
@@ -12,7 +12,7 @@
     "build:runtime": "bun run --cwd ../cli build:library",
     "build": "npm run build:runtime && vite build && node ../../tools/check-render-purity.mjs build/client --strict",
     "preview": "vite preview",
-    "test": "svelte-kit sync && node tests/pagedjs-interface.test.mjs && node tests/preview-bridge.test.mjs && node tests/preview-shell-regression.test.mjs && bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media",
+    "test": "svelte-kit sync && node tests/preview-interface.test.mjs && node tests/preview-bridge.test.mjs && node tests/preview-shell-regression.test.mjs && bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media",
     "electron:build": "electron-vite build && node --check out/main/main.js && node --check out/preload/preload.cjs",
     "electron:dev": "npm run build && npm run electron:build && electron out/main/main.js",
     "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron out/main/main.js\"",
@@ -24,6 +24,7 @@
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",
+    "test:inline:packaged": "node tests/integration/inline-editing.pw.mjs --require-packaged",
     "perf-gate": "node tests/perf/render-gate.mjs",
     "rerender-gate": "node tests/perf/rerender-latency-gate.mjs",
     "rerender-ci": "node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000",
@@ -42,7 +43,8 @@
     "gutterpress": "workspace:*",
     "@lezer/highlight": "^1.2.3",
     "electron-updater": "^6.6.2",
-    "semver": "~7.7.3"
+    "semver": "~7.7.3",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.5.7",
@@ -59,6 +61,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-svelte": "^2.46.0",
     "happy-dom": "^20.0.11",
+    "markdown-it": "^14.1.0",
     "playwright-core": "^1.60.0",
     "svelte": "^5.55.8",
     "svelte-check": "^4.0.0",

@@ -30,6 +30,7 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
+  import LogsPanel from "$lib/components/LogsPanel.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -126,24 +127,27 @@
     onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
-  // ── Tabs (Projects / Settings / Help) ─────────────────────────────────────
+  // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
   // The landing is the app's front door: Projects carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
-  // sub-tabs and all; Help carries the former help modal's content. Because
-  // both are tabs here, the brand row no longer needs its own settings and
-  // help buttons. The host can land on a specific tab (help button → "help";
+  // sub-tabs and all; Help carries the former help modal's content; Logs
+  // shows the app's diagnostic logs for easy copy/paste sharing. Because
+  // settings and help are tabs here, the brand row no longer needs its own
+  // buttons. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help";
+  type LandingTab = "projects" | "settings" | "help" | "logs";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Projects" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
+    { id: "logs", label: "Logs" },
   ];
   let activeTab = $state<LandingTab>("projects");
   let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
     projects: undefined,
     settings: undefined,
     help: undefined,
+    logs: undefined,
   });
 
   /** Host-driven tab switch (help button, launch-time identity nudge). */
@@ -188,7 +192,7 @@
   }
 
   // Stall watchdog for the continue card: the render pipeline has no failure
-  // event (a paged.js hang inside the iframe never fires renderingComplete),
+  // event (a stalled viewer inside the iframe never fires renderingComplete),
   // so if the status stops progressing we tell the author instead of spinning
   // forever. A use: action with update() — the param changes on every status
   // label/detail tick, re-arming the timer; "ready" disarms it.
@@ -280,7 +284,6 @@
       <header class="brand-row">
         <div class="brand-left">
           <BrandMark size={64} />
-          <span class="brand-name">Gutterpress</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
@@ -448,6 +451,13 @@
           {onCrashRecoveryChange}
         />
       </section>
+      {:else if activeTab === "logs"}
+      <section class="logs-sec" aria-label="Diagnostic logs">
+        <!-- Keyed so each visit re-lists (a sync may have written since). -->
+        {#key activeTab}
+          <LogsPanel />
+        {/key}
+      </section>
       {:else}
       <section class="help-sec" aria-label="Help and about">
         <HelpContent
@@ -534,7 +544,6 @@
   }
   .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .brand-name { font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-muted); }
 
   .update-chip {
@@ -598,7 +607,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec, .logs-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

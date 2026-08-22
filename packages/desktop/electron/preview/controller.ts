@@ -54,6 +54,8 @@ export interface PreviewOpenArgs {
 export interface PreviewOpenControllerDeps {
   /** Lazily load gutterpress. Cached by the caller. */
   loadLib: () => Promise<LibModule>;
+  /** Drop the prior random-origin preview's HTTP cache before a new open. */
+  clearPreviewAssetCache: () => Promise<void>;
   /** main.ts's single module-level `activePreview` slot. */
   getActivePreview: () => PreviewHandle | null;
   setActivePreview: (preview: PreviewHandle | null) => void;
@@ -164,16 +166,26 @@ export class PreviewOpenController {
     }
     this.deps.setActivePreview(null);
     this.deps.setActiveRepositoryRoot(null);
+    // Cache cleanup bounds storage used by the desktop's random preview origins,
+    // but it is housekeeping: a cleanup failure must not leave a stopped handle
+    // active or prevent the author from opening the next book.
+    await this.deps.clearPreviewAssetCache().catch(() => {});
     this.deps.setActiveWorkspaceRoot(openedDir);
 
     let lib: LibModule | null = null;
     let title = path.basename(openedDir);
+    // Default "native": if the manifest can't be loaded (malformed/missing),
+    // startPreviewServer's own generation reports that failure below, and
+    // "native" matches the CLI's own no-manifest default (manifest.ts's
+    // `c.engine ?? m.engine ?? "native"`).
+    let engine: "paged" | "native" = "native";
     let result: PreviewStartResult;
     try {
       lib = await this.deps.loadLib();
       try {
         const { manifest } = await lib.loadManifestWithPath(openedDir);
         if (manifest.title) title = manifest.title;
+        engine = manifest.engine ?? "native";
       } catch {
         /* malformed/missing manifest is reported by preview generation below */
       }
@@ -195,6 +207,7 @@ export class PreviewOpenController {
         port: activePreview.port,
         input: openedDir,
         title,
+        engine,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

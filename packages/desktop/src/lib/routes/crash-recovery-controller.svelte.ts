@@ -7,7 +7,7 @@
  * reacting to already-computed events, so — like `ProjectLifecycleController`
  * — its host coupling is injected (§8 / ADR 0004): the recovery-list/clear
  * round-trips, the sidecar file read, the buffer restore, the editor-pane
- * open/switch, and the toast surface. `RecoveryItem` is a type-only import
+ * open, and the toast surface. `RecoveryItem` is a type-only import
  * from `CrashRecoveryDialog.svelte` (already how `+page.svelte` imports it) —
  * zero `node:*` / lib value imports.
  *
@@ -42,15 +42,9 @@ export interface CrashRecoveryDeps {
   clearRecovery: (filePath: string) => Promise<unknown>;
   readRecoveryFile: (recoveryPath: string) => Promise<string>;
   /** Loads the recovered bytes into the live edit buffer (`buf.restoreContent`). */
-  restoreIntoBuffer: (filePath: string, content: string) => Promise<void>;
-  /** The buffer's open file path AFTER `restoreIntoBuffer` resolves. */
-  bufferFilePath: () => string | null;
-  /** The buffer's content AFTER `restoreIntoBuffer` resolves. */
-  bufferContent: () => string;
-  switchEditorFile: (path: string, content: string) => void;
-  openEditorPane: () => void;
-  loadEditorModule: () => void;
-  focusEditorWhenReady: () => void;
+  restoreIntoBuffer: (filePath: string, content: string) => Promise<boolean>;
+  /** Explicitly reveal and focus the restored file in the editor UI. */
+  showEditor: () => void;
   toast: () => CrashRecoveryToast | null;
   friendlyHostError: (message: string) => string;
 }
@@ -62,6 +56,8 @@ export class CrashRecoveryController {
   private deps: CrashRecoveryDeps;
   /** Guards against re-scanning the same folder twice (moved verbatim). */
   private scanDir: string | null = null;
+  /** Invalidates async scan/restore continuations on project teardown. */
+  private generation = 0;
 
   constructor(deps: CrashRecoveryDeps) {
     this.deps = deps;
@@ -77,9 +73,12 @@ export class CrashRecoveryController {
     if (!d.isDesktop()) return;
     if (this.scanDir === dir) return;
     this.scanDir = dir;
+    const generation = ++this.generation;
+    this.items = [];
     if (!d.crashRecoveryEnabled()) return;
     try {
       const entries = await d.listRecovery(dir);
+      if (generation !== this.generation) return;
       this.items = entries.map((e) => ({
         filePath: e.filePath,
         recoveryPath: e.recoveryPath,
@@ -87,7 +86,7 @@ export class CrashRecoveryController {
         savedAt: e.savedAt,
       }));
     } catch {
-      this.items = [];
+      if (generation === this.generation) this.items = [];
     }
   }
 
@@ -99,24 +98,34 @@ export class CrashRecoveryController {
    */
   async restore(item: RecoveryItem): Promise<void> {
     const d = this.deps;
+    const generation = this.generation;
+    const itemIndex = Math.max(0, this.items.findIndex((i) => i.filePath === item.filePath));
     this.items = this.items.filter((i) => i.filePath !== item.filePath);
     if (!d.isDesktop()) return;
     try {
       const recovered = await d.readRecoveryFile(item.recoveryPath);
-      await d.restoreIntoBuffer(item.filePath, recovered);
-      // Push to the live editor view (UX review M8 — see selectEditorFile's
-      // comment in +page.svelte for the race-guard rationale this mirrors).
-      if (d.bufferFilePath() === item.filePath) {
-        d.switchEditorFile(item.filePath, d.bufferContent());
+      if (generation !== this.generation) return;
+      const restored = await d.restoreIntoBuffer(item.filePath, recovered);
+      if (!restored) {
+        this.reoffer(item, itemIndex, generation);
+        return;
       }
-      d.openEditorPane();
-      d.loadEditorModule();
-      d.focusEditorWhenReady();
+      if (generation !== this.generation) return;
+      d.showEditor();
     } catch (e) {
+      if (generation !== this.generation) return;
+      this.reoffer(item, itemIndex, generation);
       d.toast()?.error(
         `Could not restore: ${d.friendlyHostError(e instanceof Error ? e.message : String(e))}`,
       );
     }
+  }
+
+  private reoffer(item: RecoveryItem, index: number, generation: number): void {
+    if (generation !== this.generation || this.items.some((i) => i.filePath === item.filePath)) return;
+    const next = [...this.items];
+    next.splice(Math.min(index, next.length), 0, item);
+    this.items = next;
   }
 
   /** Delete the recovery sidecar only — never the real file. */
@@ -140,6 +149,7 @@ export class CrashRecoveryController {
    * live at each of the divergent teardown sites — see H5).
    */
   reset(): void {
+    this.generation++;
     this.scanDir = null;
     this.items = [];
   }

@@ -74,6 +74,7 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.links.local-refs");
     expect(sourceIds).toContain("source.accessibility.alt-text");
     expect(sourceIds).toContain("source.accessibility.heading-order");
+    expect(sourceIds).toContain("source.markdown.layout-markers");
   });
 
   test("all expected asset checks are registered", () => {
@@ -192,7 +193,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 6 source + 7 asset + 4 heuristic = 32
+    // 15 pdf + 7 source + 7 asset + 4 heuristic = 33
     // (source.callout-validation removed with ::: container syntax, 2026-05-17;
     // asset.font.missing-refs removed — lib/asset-inline.ts's `inlineStyles`
     // now READS every referenced font to embed it, so a missing font is
@@ -201,7 +202,7 @@ describe("Check Registry", () => {
     // treated commented-out @font-face blocks as live, never percent-decoded
     // (so a correct url("Source%20Sans%20Pro.ttf") failed the build), and
     // mis-diagnosed protocol-relative //host/f.woff2 refs.)
-    expect(all.length).toBe(32);
+    expect(all.length).toBe(33);
   });
 });
 
@@ -738,7 +739,7 @@ describe("Manifest validate section", () => {
 // ---------------------------------------------------------------------------
 
 describe("Local markdown refs check", () => {
-  test("reports missing local link and image refs", async () => {
+  test("missing images warn for placeholder fallback while missing links remain errors", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     const mainFile = join(dir, "main.md");
     await writeFile(join(dir, "ok.md"), "# ok\n");
@@ -748,7 +749,9 @@ describe("Local markdown refs check", () => {
         "[ok](./ok.md)",
         "[missing](./missing.md)",
         "![img](./missing.png)",
+        "",
         "[ref]: ./also-missing.md",
+        "[reference consumer][ref]",
         "[external](https://example.com)",
       ].join("\n")
     );
@@ -758,7 +761,507 @@ describe("Local markdown refs check", () => {
     const results = await check.run(ctx);
 
     expect(results).toHaveLength(3);
-    expect(results.every((r) => r.severity === "error")).toBe(true);
+    expect(results.filter((r) => r.severity === "error")).toHaveLength(2);
+    const image = results.find((r) => r.code === "missing-image-placeholder");
+    expect(image?.severity).toBe("warning");
+    expect(image?.message).toContain("./missing.png");
+    expect(image?.file).toBe(mainFile);
+    expect(image?.line).toBe(3);
+  });
+
+  test("ignores URL and fragment destinations while probing local paths without suffixes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-url-suffix-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(join(dir, "exists.md"), "# Existing\n");
+    await writeFile(
+      mainFile,
+      [
+        "[same page](#section)",
+        "[query only](?print=1)",
+        "[external](https://example.com/file.pdf#section)",
+        "https://example.com/linkified.pdf",
+        "[mail](mailto:reader@example.com)",
+        "[ftp](ftp://example.com/file.pdf)",
+        "[blob](blob:https://example.com/id)",
+        "[protocol relative](//cdn.example.com/file.pdf)",
+        "[existing anchor](./exists.md#section)",
+        "[existing query](./exists.md?print=1)",
+        "[missing anchor](./missing.md#section)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+    expect(results).toHaveLength(1);
+    expect(results[0]?.line).toBe(11);
+    expect(results[0]?.message).toContain("./missing.md#section");
+  });
+
+  test("uses project plugins that disable rendered link and image syntax", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-plugin-disable-"));
+    try {
+      const mainFile = join(dir, "main.md");
+      await writeFile(
+        join(dir, "disable-refs.mjs"),
+        `export default function (md) { md.inline.ruler.disable(["link", "image"]); }\n`,
+      );
+      await writeFile(mainFile, "[not rendered](missing.pdf) ![also not rendered](missing.png)\n");
+      const config = resolveConfig({}, {
+        preset: "book",
+        plugins: [{ path: "./disable-refs.mjs" }],
+      });
+
+      const check = getCheckById("source.links.local-refs")!;
+      expect(
+        await check.run(makeCtx({ config, inputDir: dir, markdownFiles: [mainFile] })),
+      ).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("checks plugin-synthesized link and image tokens at their inline block", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-plugin-add-"));
+    try {
+      const mainFile = join(dir, "main.md");
+      await writeFile(
+        join(dir, "add-refs.mjs"),
+        [
+          "export default function (md) {",
+          '  md.core.ruler.push("add_local_refs", (state) => {',
+          '    const inline = state.tokens.find((token) => token.type === "inline");',
+          "    if (!inline) return;",
+          '    const link = new state.Token("link_open", "a", 1);',
+          '    link.attrSet("href", "plugin-local.pdf");',
+          '    const image = new state.Token("image", "img", 0);',
+          '    image.attrSet("src", "plugin-local.png");',
+          '    const fileImage = new state.Token("image", "img", 0);',
+          '    fileImage.attrSet("src", "file:///etc/passwd");',
+          "    inline.children = [...(inline.children || []), link, image, fileImage];",
+          "  });",
+          "}",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(mainFile, "Plugin-authored block.\n");
+      const config = resolveConfig({}, {
+        preset: "book",
+        plugins: [{ path: "./add-refs.mjs" }],
+      });
+
+      const check = getCheckById("source.links.local-refs")!;
+      const results = await check.run(
+        makeCtx({ config, inputDir: dir, markdownFiles: [mainFile] }),
+      );
+      expect(results).toHaveLength(3);
+      expect(
+        results.some(
+          (result) =>
+            result.line === 1 &&
+            result.severity === "error" &&
+            result.message.includes("plugin-local.pdf"),
+        ),
+      ).toBe(true);
+      expect(
+        results.some(
+          (result) =>
+            result.line === 1 &&
+            result.severity === "error" &&
+            result.message.includes("must be relative to the project"),
+        ),
+      ).toBe(true);
+      expect(
+        results.some(
+          (result) =>
+            result.line === 1 &&
+            result.severity === "warning" &&
+            result.code === "missing-image-placeholder" &&
+            result.message.includes("plugin-local.png"),
+        ),
+      ).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores Markdown-looking refs in raw HTML and code blocks", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-literals-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "<table>",
+        '<tr><td>![example](not-an-image.png) and [example](not-a-link.pdf)</td></tr>',
+        "</table>",
+        "",
+        "```markdown",
+        "![fenced](also-not-an-image.png)",
+        "```",
+        "",
+        "    [indented](also-not-a-link.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    expect(await check.run(ctx)).toEqual([]);
+  });
+
+  test("does not treat footnote definition prose as a link destination", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-footnotes-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "A note.[^demo] Another.[^second] Continued.[^continued]",
+        "",
+        "[^demo]: This is ordinary footnote prose.",
+        "[^second]: A second footnote.",
+        "[^continued]: Introductory footnote prose.",
+        "    [live link](missing-footnote.pdf) and ![live art](missing-footnote.png)",
+        "",
+        "[still checked](missing.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(3);
+    expect(
+      results.some(
+        (r) =>
+          r.line === 6 &&
+          r.severity === "error" &&
+          r.message.includes("missing-footnote.pdf"),
+      ),
+    ).toBe(true);
+    expect(
+      results.some(
+        (r) =>
+          r.line === 6 &&
+          r.severity === "warning" &&
+          r.code === "missing-image-placeholder" &&
+          r.message.includes("missing-footnote.png"),
+      ),
+    ).toBe(true);
+    expect(
+      results.some(
+        (r) => r.line === 8 && r.severity === "error" && r.message.includes("missing.pdf"),
+      ),
+    ).toBe(true);
+  });
+
+  test("checks caret reference definitions rejected by the footnote grammar", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-caret-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "[^]: missing-empty-caret.pdf",
+        "[empty caret reference][^]",
+        "",
+        "[^ spaced]: missing-spaced-caret.pdf",
+        "[spaced caret reference][^ spaced]",
+        "",
+        "[^valid]: This valid footnote prose is not a destination.",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(2);
+    expect(
+      results.some((r) => r.line === 2 && r.message.includes("missing-empty-caret.pdf")),
+    ).toBe(true);
+    expect(
+      results.some((r) => r.line === 5 && r.message.includes("missing-spaced-caret.pdf")),
+    ).toBe(true);
+  });
+
+  test("masks arbitrary backtick code spans but checks real refs on the same line", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-code-span-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "``[literal](missing-double.pdf)`` and [live](missing-live.pdf)",
+        "````![literal](missing-four.png)```` and ![live](missing-live.png)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(2);
+    expect(
+      results.some(
+        (r) => r.line === 1 && r.severity === "error" && r.message.includes("missing-live.pdf"),
+      ),
+    ).toBe(true);
+    expect(
+      results.some(
+        (r) =>
+          r.line === 2 &&
+          r.severity === "warning" &&
+          r.code === "missing-image-placeholder" &&
+          r.message.includes("missing-live.png"),
+      ),
+    ).toBe(true);
+    expect(results.some((r) => r.message.includes("missing-double.pdf"))).toBe(false);
+    expect(results.some((r) => r.message.includes("missing-four.png"))).toBe(false);
+  });
+
+  test("masks inline HTML attributes and comments but checks same-line Markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-inline-html-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        '<span data-demo="[literal](missing-attr.pdf)">text</span> [real](missing-real.pdf)',
+        "Text <!-- [literal](missing-comment.pdf) --> [also](missing-also.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(2);
+    expect(
+      results.some(
+        (r) => r.line === 1 && r.severity === "error" && r.message.includes("missing-real.pdf"),
+      ),
+    ).toBe(true);
+    expect(
+      results.some(
+        (r) => r.line === 2 && r.severity === "error" && r.message.includes("missing-also.pdf"),
+      ),
+    ).toBe(true);
+    expect(results.some((r) => r.message.includes("missing-attr.pdf"))).toBe(false);
+    expect(results.some((r) => r.message.includes("missing-comment.pdf"))).toBe(false);
+  });
+
+  test("masks multiline code spans while checking a real ref after the close", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-multiline-code-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "``literal starts",
+        "[literal](missing-code-multiline.pdf)",
+        "ends`` [real](missing-after-code.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.line).toBe(3);
+    expect(results[0]?.message).toContain("missing-after-code.pdf");
+    expect(results[0]?.message).not.toContain("missing-code-multiline.pdf");
+  });
+
+  test("masks multiline HTML comments while checking a real ref after the close", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-multiline-comment-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "Text <!-- comment starts",
+        "[literal](missing-comment-multiline.pdf)",
+        "--> [real](missing-after-comment.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.line).toBe(3);
+    expect(results[0]?.message).toContain("missing-after-comment.pdf");
+    expect(results[0]?.message).not.toContain("missing-comment-multiline.pdf");
+  });
+
+  test("masks multiline HTML tags while checking body and following Markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-multiline-tag-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "<span",
+        ' data-demo="[literal](missing-tag-multiline.pdf)">[body](missing-body.pdf)',
+        "</span> [real](missing-after-tag.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(2);
+    expect(
+      results.some((r) => r.line === 2 && r.message.includes("missing-body.pdf")),
+    ).toBe(true);
+    expect(
+      results.some((r) => r.line === 3 && r.message.includes("missing-after-tag.pdf")),
+    ).toBe(true);
+    expect(results.some((r) => r.message.includes("missing-tag-multiline.pdf"))).toBe(false);
+  });
+
+  test("unmatched inline delimiters cannot consume refs across block boundaries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-unmatched-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "` unmatched [inside code](missing-unmatched-code.pdf)",
+        "",
+        "[after code](missing-after-unmatched-code.pdf)",
+        "Text <!-- unmatched [inside comment](missing-unmatched-comment.pdf)",
+        "",
+        "[after comment](missing-after-unmatched-comment.pdf)",
+        'Text <span data-demo="[inside tag](missing-unmatched-tag.pdf)"',
+        "",
+        "[after tag](missing-after-unmatched-tag.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+    expect(results).toHaveLength(6);
+    for (const line of [1, 3, 4, 6, 7, 9]) {
+      expect(results.some((r) => r.line === line && r.severity === "error")).toBe(true);
+    }
+  });
+
+  test("follows markdown-it HTML grammar and keeps pointy destinations live", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-html-grammar-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "[pointy](<missing file.pdf>)",
+        "Text <?probe [pi literal](missing-pi.pdf)?> [after pi](missing-after-pi.pdf)",
+        "Text <!DECL [decl literal](missing-decl.pdf)> [after decl](missing-after-decl.pdf)",
+        "Text <![CDATA[[cdata literal](missing-cdata.pdf)]]> [after cdata](missing-after-cdata.pdf)",
+        '<span data-demo="[tag literal](missing-tag.pdf)">body</span> [after tag](missing-after-valid-tag.pdf)',
+        'Text <span? data-demo="[invalid tag](missing-invalid-tag.pdf)"> [after invalid](missing-after-invalid-tag.pdf)',
+        'Text \\<span data-demo="[escaped tag](missing-escaped-tag.pdf)"> [after escaped](missing-after-escaped-tag.pdf)',
+        "Text <! -- [invalid comment](missing-invalid-comment.pdf)> [after invalid comment](missing-after-invalid-comment.pdf)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+    expect(results).toHaveLength(11);
+    expect(results.some((r) => r.line === 1 && r.message.includes("missing%20file.pdf"))).toBe(true);
+    for (const hidden of ["missing-pi.pdf", "missing-decl.pdf", "missing-cdata.pdf", "missing-tag.pdf"]) {
+      expect(results.some((r) => r.message.includes(hidden))).toBe(false);
+    }
+    for (const live of [
+      "missing-after-pi.pdf",
+      "missing-after-decl.pdf",
+      "missing-after-cdata.pdf",
+      "missing-after-valid-tag.pdf",
+      "missing-invalid-tag.pdf",
+      "missing-after-invalid-tag.pdf",
+      "missing-escaped-tag.pdf",
+      "missing-after-escaped-tag.pdf",
+      "missing-invalid-comment.pdf",
+      "missing-after-invalid-comment.pdf",
+    ]) {
+      expect(results.some((r) => r.message.includes(live))).toBe(true);
+    }
+  });
+
+  test("extracts parser-approved nested, escaped, multiline, and reference links", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-parser-shapes-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "[nested [label]",
+        "continued](missing-nested-label.pdf)",
+        "[escaped \\] label](missing-escaped-label.pdf)",
+        "",
+        "[next-line-ref]:",
+        "  missing-next-line.pdf",
+        "[reference consumer][next-line-ref]",
+        "\\[literal](missing-escaped-open.pdf)",
+        "\\![escaped bang is a link](missing-bang-link.pdf)",
+        "[escaped destination](missing\\(nested\\).pdf)",
+        "![nested [alt]](missing-nested-image.png)",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+    expect(results).toHaveLength(6);
+    expect(results.some((r) => r.line === 1 && r.message.includes("missing-nested-label.pdf"))).toBe(true);
+    expect(results.some((r) => r.line === 3 && r.message.includes("missing-escaped-label.pdf"))).toBe(true);
+    expect(results.some((r) => r.line === 7 && r.message.includes("missing-next-line.pdf"))).toBe(true);
+    expect(results.some((r) => r.message.includes("missing-escaped-open.pdf"))).toBe(false);
+    expect(
+      results.some(
+        (r) => r.line === 9 && r.severity === "error" && r.message.includes("missing-bang-link.pdf"),
+      ),
+    ).toBe(true);
+    expect(results.some((r) => r.line === 10 && r.message.includes("missing(nested).pdf"))).toBe(true);
+    expect(
+      results.some(
+        (r) =>
+          r.line === 11 &&
+          r.severity === "warning" &&
+          r.code === "missing-image-placeholder" &&
+          r.message.includes("missing-nested-image.png"),
+      ),
+    ).toBe(true);
+  });
+
+  test("normalizes lone CR and CRLF without shifting source lines", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-newlines-"));
+    const fencedFile = join(dir, "fenced.md");
+    const crFile = join(dir, "cr.md");
+    const crlfFile = join(dir, "crlf.md");
+    await writeFile(
+      fencedFile,
+      "```markdown\r[literal](missing-cr-fence.pdf)\r```\r[real](missing-after-cr-fence.pdf)",
+    );
+    await writeFile(crFile, "plain\r[second](missing-cr-line-2.pdf)\r![third](missing-cr-line-3.png)");
+    await writeFile(
+      crlfFile,
+      "plain\r\n[second](missing-crlf-line-2.pdf)\r\n![third](missing-crlf-line-3.png)",
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [fencedFile, crFile, crlfFile] });
+    const results = await check.run(ctx);
+    expect(results).toHaveLength(5);
+    expect(
+      results.some(
+        (r) =>
+          r.file === fencedFile &&
+          r.line === 4 &&
+          r.message.includes("missing-after-cr-fence.pdf"),
+      ),
+    ).toBe(true);
+    expect(results.some((r) => r.message.includes("missing-cr-fence.pdf"))).toBe(false);
+    for (const [file, link, image] of [
+      [crFile, "missing-cr-line-2.pdf", "missing-cr-line-3.png"],
+      [crlfFile, "missing-crlf-line-2.pdf", "missing-crlf-line-3.png"],
+    ] as const) {
+      expect(results.some((r) => r.file === file && r.line === 2 && r.message.includes(link))).toBe(true);
+      expect(
+        results.some(
+          (r) =>
+            r.file === file &&
+            r.line === 3 &&
+            r.severity === "warning" &&
+            r.message.includes(image),
+        ),
+      ).toBe(true);
+    }
   });
 
   // ARCH: local-refs previously called existsSync on the still-percent-encoded
@@ -1117,34 +1620,6 @@ describe("Source checks skip when tool is disabled", () => {
     }
   });
 
-  test("stylelint flags selectors that will be skipped by Paged.js", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "gutterpress-stylelint-"));
-
-    try {
-      const cssFile = join(dir, "test.css");
-
-      // Both :nth-of-type+sibling and :is()+sibling are flagged — they fail
-      // DocumentFragment.querySelectorAll and are silently skipped by Paged.js.
-      await writeFile(
-        cssFile,
-        ".page.rolling-die > .wrapper:first-of-type ul + p { margin-top: 0; }\n" +
-        ":is(h2, h3) + p { break-before: avoid; }\n"
-      );
-
-      const check = getCheckById("source.stylelint")!;
-      const ctx = makeCtx({ inputDir: dir, cssFiles: [cssFile] });
-      const results = await check.run(ctx);
-
-      expect(results).toHaveLength(2);
-      expect(results[0]!.checkId).toBe("source.stylelint");
-      expect(results[0]!.message).toContain("printsafe/no-pagedjs-crash-selectors");
-      expect(results[0]!.message).toContain("skipped by Paged.js");
-      expect(results[1]!.message).toContain("printsafe/no-pagedjs-crash-selectors");
-      expect(results[0]!.file).toBe(cssFile);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------

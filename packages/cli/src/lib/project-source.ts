@@ -154,6 +154,13 @@ export async function syncRemoteFor(
 /**
  * What sits at `<dir>/.git`: a directory (standard repo), a file (a `gitdir:`
  * pointer — worktree/submodule checkout), or nothing.
+ *
+ * Deliberately lenient: a `.git` directory with a missing or unreadable HEAD
+ * is a CORRUPT repo, not a plain folder, and classification depends on that
+ * (see the corrupt-HEAD tests in project-source.test.ts — the recovery
+ * subsystem must see a damaged repo to repair, never a fresh folder to set
+ * up). Validity is checked at the one call site where leniency is harmful:
+ * {@link findEnclosingRepoDir}.
  */
 async function gitEntryKind(dir: string): Promise<"dir" | "file" | "none"> {
   try {
@@ -161,6 +168,36 @@ async function gitEntryKind(dir: string): Promise<"dir" | "file" | "none"> {
     return s.isDirectory() ? "dir" : "file";
   } catch {
     return "none";
+  }
+}
+
+/**
+ * Does `<dir>/.git` look like an actual repository, as opposed to something
+ * merely NAMED `.git`?
+ *
+ * Only the ancestor walk asks this, and the asymmetry is the point. For the
+ * folder the author opened, "damaged repo" is the useful reading — it routes
+ * to recovery. For an ancestor nobody named, a junk `.git` capturing every
+ * folder beneath it is pure harm: observed 2026-08-12, a `/tmp/.git`
+ * containing one unrelated file (no HEAD, no objects, no refs; `git` itself
+ * said "not a git repository") made every `mkdtemp` consumer under `/tmp`
+ * report as living "inside a versioned project", and `initVersionHistory`
+ * refused to work anywhere in the OS temp dir.
+ *
+ * HEAD is the probe: git treats a gitdir as valid on HEAD + objects + refs,
+ * and HEAD is the one a freshly-`init`ed repo always has and that no
+ * ordinary directory acquires by accident. A `.git` FILE is trusted as
+ * before — its contents are a `gitdir:` pointer isomorphic-git resolves.
+ */
+async function looksLikeRepo(dir: string): Promise<boolean> {
+  const kind = await gitEntryKind(dir);
+  if (kind === "none") return false;
+  if (kind === "file") return true;
+  try {
+    await stat(path.join(dir, ".git", "HEAD"));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -189,7 +226,7 @@ export async function findEnclosingRepoDir(
     if (parent === dir) return undefined; // filesystem root reached
     dir = parent;
     if (dir === home) return undefined; // never treat home as an enclosing repo
-    if ((await gitEntryKind(dir)) !== "none") return dir;
+    if (await looksLikeRepo(dir)) return dir;
   }
   return undefined;
 }

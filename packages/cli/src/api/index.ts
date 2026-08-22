@@ -20,9 +20,15 @@ export {
   type BuildRunnerOptions,
   type BuildRunnerResult,
   type SplitOutPath,
-  type PdfRenderer,
-  type PdfRenderInput,
+  type EngineBrowser,
+  type EngineSession,
 } from "../lib/build-runner";
+
+// Host implementations of the EngineBrowser/EngineSession contract (the
+// desktop's Electron host) share these contract-level values with the CLI's
+// own CDP sessions — one definition of "document ready" and one print-quality
+// contract, so the hosts cannot drift.
+export { DEFAULT_PRINT_OPTS, readyProbeExpr } from "../engine/shared/cdp";
 
 export {
   startPreviewServer,
@@ -330,8 +336,6 @@ export {
   syncProject,
   pullChanges,
   pushChanges,
-  resolveConflicts,
-  onlineCopyPath,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
@@ -340,11 +344,12 @@ export type {
   PullOutcome,
   PushOutcome,
   SyncProjectOptions,
-  ResolveConflictsOptions,
-  ConflictFile,
-  ConflictKind,
-  ConflictResolution,
+  ImageClash,
 } from "../lib/remote-auth/sync.ts";
+
+// Image-clash picker support (converge ruling 2026-08-14): read one version's
+// bytes by blob oid; apply the writer's pick with a snapshot.
+export { keepImageVersion, readImageVersion } from "../lib/remote-auth/image-clash.ts";
 
 export type {
   SnapshotEntry,
@@ -410,40 +415,29 @@ export type {
   CommandResult,
 } from "../lib/publish/types.ts";
 
-// ── Sync recovery (#15, ADR 0006 D5 — node-side only; never imported by renderer) ──
-// The recovery subsystem lives entirely in the host (main process / CLI).
-// Import-type is safe in the SPA; value imports must only reach the host.
+// ── Repo repair (node-side only; never imported by renderer) ─────────────────
+// One automatic pipeline (2026-08-14 simplification): health probe → lock
+// sweep → in-place fixes → re-clone with salvage. Working files are never
+// touched; every readable commit stays reachable.
+export { repairRepo } from "../lib/remote-auth/recovery/repair.ts";
+export type { RepairOptions, RepairResult } from "../lib/remote-auth/recovery/repair.ts";
 export {
-  recover,
-  classifyGitError,
   classifyFromHealth,
+  isLikelyRepoCorruption,
+  RepoNeedsRecoveryError,
+  isRepoNeedsRecoveryError,
+  STALE_LOCK_MIN_AGE_MS,
+} from "../lib/remote-auth/recovery/classify.ts";
+export type { RepairNeed } from "../lib/remote-auth/recovery/classify.ts";
+export {
   inspectRepo,
-  buildRecoveryContext,
   preflightStructuralReason,
   buildPreflightDiagnostics,
   verifyRepoReadable,
   isUnbornRepo,
-  RepoNeedsRecoveryError,
-  isRepoNeedsRecoveryError,
-} from "../lib/remote-auth/recovery/dispatch.ts";
+} from "../lib/remote-auth/recovery/inspect.ts";
+export type { RepoHealth } from "../lib/remote-auth/recovery/types.ts";
 
 // Structured operation logger (node-side only; the SPA never value-imports it).
-// Exposed so the host can write preflight diagnostics to the SAME operation-log
-// file the recovery subsystem writes to, in the SAME format.
 export { resolveLogger, shortOid } from "../lib/remote-auth/operation-log.ts";
 export type { OperationLogger, LogData } from "../lib/remote-auth/operation-log.ts";
-
-export type {
-  RecoverFn,
-  RecoveryContext,
-  RecoveryResult,
-  SyncErrorKind,
-  RecoveryRisk,
-  ManualGuidance,
-  RepoHealth,
-  RecoveryBackup,
-  RepairConfirmation,
-  ConfirmationGate,
-  FaultInjector,
-  FaultPoint,
-} from "../lib/remote-auth/recovery/dispatch.ts";

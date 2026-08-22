@@ -102,8 +102,9 @@ export async function initializePreviewDirectories(): Promise<string> {
   // Mark this dir as ours so a future startup can detect orphan-ship.
   await writeFile(path.join(tempDir, PID_FILE_NAME), `${process.pid}\n`, 'utf8');
 
-  // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
-  // favicon) are served directly from the process-wide embedded-assets dir by
+  // Preview assets (the native engine's viewer bundle, preview-bridge.js,
+  // preview-interface.js, favicon) are served directly from the process-wide
+  // embedded-assets dir by
   // the HTTP server (see http-server.ts EMBEDDED_PREFIXES/EMBEDDED_EXACT), not
   // copied into the per-project temp dir. manifest.schema.json is embedded too
   // but is NOT served or read at runtime — it is editor-facing only (authors
@@ -132,10 +133,11 @@ export async function validateInputPath(inputPath: string): Promise<void> {
  */
 export async function initializeConfiguration(
   inputPath: string,
+  engine?: "paged" | "native",
 ): Promise<ResolvedConfig> {
-  if (!inputPath) return resolveConfig({}, {});
+  if (!inputPath) return resolveConfig({ engine }, {});
   const manifest = await loadManifest(inputPath);
-  return resolveConfig({}, manifest);
+  return resolveConfig({ engine }, manifest);
 }
 
 /**
@@ -158,7 +160,7 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   state.currentInputPath = newInputPath;
 
   const manifest = await loadManifest(newInputPath);
-  state.config = resolveConfig({}, manifest);
+  state.config = resolveConfig({ engine: state.options.engine }, manifest);
 
   await generateAndWriteHtml(newInputPath, state.tempDir, state.config, state.cssAssets);
 

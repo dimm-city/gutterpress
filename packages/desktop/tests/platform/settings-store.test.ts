@@ -204,6 +204,21 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
+test("readSettings migrates the old persisted 2500ms default once", async () => {
+  const legacy = makeStore({
+    readFileImpl: async () => JSON.stringify({ editor: { autoSaveDelay: 2500 } }),
+  });
+  expect((await legacy.store.readSettings()).editor.autoSaveDelay).toBe(500);
+
+  const current = makeStore({
+    readFileImpl: async () => JSON.stringify({
+      settingsSchemaVersion: 2,
+      editor: { autoSaveDelay: 2500 },
+    }),
+  });
+  expect((await current.store.readSettings()).editor.autoSaveDelay).toBe(2500);
+});
+
 test("readSettings fills in preview.splitRatio default for a stored file missing it (#103)", async () => {
   const { store } = makeStore({
     readFileImpl: async () =>
@@ -261,10 +276,11 @@ test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>
   expect(mkdirs[0]!.path).toBe(userDataDir);
   expect(mkdirs[0]!.opts).toEqual({ recursive: true });
 
-  // writeFile(settingsPath + ".tmp", JSON.stringify(settings, null, 2), "utf8").
+  // The schema marker makes the old-default migration one-time while keeping
+  // a later explicit 2500ms choice intact.
   expect(writes).toHaveLength(1);
   expect(writes[0]!.path).toBe(`${store.settingsPath()}.tmp`);
-  expect(writes[0]!.data).toBe(JSON.stringify(settings, null, 2));
+  expect(JSON.parse(writes[0]!.data)).toEqual({ settingsSchemaVersion: 2, ...settings });
   expect(writes[0]!.enc).toBe("utf8");
 
   // rename(settingsPath + ".tmp", settingsPath).
@@ -413,7 +429,7 @@ test("first-run updateSettings (ENOENT) still writes defaults merged with the pa
   expect(next.editor.fontSize).toBe(22);
   expect(next.preview).toEqual(DEFAULT_SETTINGS.preview);
   expect(writes).toHaveLength(1);
-  expect(JSON.parse(writes[0]!.data)).toEqual(next);
+  expect(JSON.parse(writes[0]!.data)).toEqual({ settingsSchemaVersion: 2, ...next });
   expect(renames).toHaveLength(1);
   expect(renames[0]!.to).toBe(store.settingsPath());
 });

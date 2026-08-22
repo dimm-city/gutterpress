@@ -115,7 +115,7 @@ test("friendlyPdfError directs a loose preview folder to the existing setup acti
   );
 });
 
-// ARCH #27 fix-round gap: `electron/pdf-export.ts`'s waitForPagedRendered
+// ARCH #27 fix-round gap: `electron/pdf-export.ts`'s waitForEngineRendered
 // throws a typed BuildError on deadline ("Rendering did not finish after N
 // minutes — the export was stopped to avoid an incomplete PDF"). That error
 // crosses the `api:build` ipcMain.handle/ipcRenderer.invoke boundary, which

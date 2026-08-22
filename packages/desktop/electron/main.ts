@@ -46,7 +46,6 @@ import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
-import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
@@ -81,14 +80,6 @@ import {
   shouldShowLinuxBasicTextStorageNotice,
 } from "./credential-store";
 import {
-  handleConfirmResponse,
-  rejectAllPendingConfirms,
-  buildRecoveryContext,
-  conflictBaseDir,
-  getConflictPreviewImpl,
-  preExportSyncGateBlockError,
-} from "./recovery-bridge";
-import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
@@ -115,7 +106,6 @@ import type {
   ApplyThemeTarget,
   CheckResult,
   CloneProgressEvent,
-  ConfirmationGate,
   CreateProjectOptions,
   CreateProjectResult,
   PluginValidationResult,
@@ -125,7 +115,6 @@ import type {
   ProjectRemoteDiagnosis,
   ProjectStyle,
   RecommendedPlugin,
-  RecoveryContext,
   RepoHealth,
   RemoteAccessResult,
   RemoteBranch,
@@ -145,7 +134,6 @@ import {
 } from "./recovery-paths";
 import {
   ExportCanceledError,
-  electronPdfRenderer,
   getActiveExportSession,
   initPdfExport,
   sendExportProgress,
@@ -153,6 +141,7 @@ import {
   throwIfExportCanceled,
   type ExportSession,
 } from "./pdf-export";
+import { createElectronEngineBrowser } from "./engine-browser";
 import {
   registerAppProtocol,
   startSvelteKitServer,
@@ -166,6 +155,7 @@ import {
   resolveDevServerUrl,
   type OriginPolicyConfig,
 } from "./navigation-policy";
+import { version as APP_VERSION } from "../package.json";
 
 // Module directory, ESM-safe. We do NOT rely on electron-vite's injected
 // `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
@@ -194,6 +184,18 @@ function slog(msg: string): void {
 }
 slog("main.js evaluated");
 
+// `electron out/main/main.js` (electron:dev / electron:hmr) hands Electron a
+// FILE, so default_app never finds a package.json and app.getVersion()
+// falls back to the Electron version (42.x). Packaged runs read the real
+// version from app.asar/package.json, so correct dev only — never override
+// the packaged value, which electron-updater compares releases against.
+// app.setVersion() is real at runtime (default_app itself calls it when it
+// loads a folder's package.json) but absent from the public electron.d.ts,
+// hence the narrow cast.
+if (!app.isPackaged) {
+  (app as unknown as { setVersion(version: string): void }).setVersion(APP_VERSION);
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
 //
@@ -212,6 +214,7 @@ interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
+  diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
 }
 
 type LibModule = typeof import("gutterpress");
@@ -375,15 +378,9 @@ const autoSnapshot = new AutoSnapshotScheduler({
       projectDir: dir,
       lastSyncAt: null,
       logFile: operationLogPathForDir(dir),
-      guidance: {
-        userSummary:
-          "Version history needs attention — the last few automatic backups of this project didn't complete.",
-        recommendedNextStep:
-          "Try saving a version now. If it keeps failing, make sure no other program has the project folder open or locked.",
-        recommendedAction: "Try again",
-        recommendedActionKey: "restore_repo",
-        supportDetails: `Auto-snapshot failed ${consecutiveFailures} times in a row for ${dir}: ${detail}`,
-      },
+      message:
+        "Version history needs attention — the last few automatic backups of this project didn't complete. " +
+        "Try saving a version now; if it keeps failing, make sure no other program has the project folder open or locked.",
     });
   },
 });
@@ -507,7 +504,6 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  buildRecoveryContext,
   // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
   // timer added for it (every autoSync.run() call refreshes the heartbeat).
   refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
@@ -666,8 +662,8 @@ function createWindow() {
     // Created hidden, then shown right after loadURL is dispatched (below) —
     // the in-window start screen (WelcomeLanding) is the launch surface; the
     // old external splash window is gone. The window must be VISIBLE during
-    // the first render so paged.js's requestAnimationFrame loop produces
-    // frames (a hidden window stalls it on real hardware).
+    // the first render so the viewer's requestAnimationFrame-driven layout
+    // produces frames (a hidden window stalls it on real hardware).
     show: false,
     webPreferences: {
       // NOTE: .cjs — a sandboxed preload cannot be ESM (see
@@ -682,7 +678,7 @@ function createWindow() {
       // third-party content in the cross-origin preview iframe.
       sandbox: true,
       // CRITICAL: Electron background-throttles hidden/occluded windows —
-      // timers and rAF drop to ~1/sec — which collapses the first paged.js
+      // timers and rAF drop to ~1/sec — which collapses the first viewer
       // render to ~1 page/sec (the "12 pages in 30s" regression) whenever the
       // window is covered or minimized. Keep throttling off so layout always
       // runs at full speed.
@@ -827,7 +823,7 @@ function createWindow() {
 
   // Show the window immediately — the in-window start screen (WelcomeLanding)
   // is the launch surface, and a visible window is THE first-render-speed fix:
-  // paged.js drives its pagination loop with requestAnimationFrame, and on
+  // The live viewer drives pagination with requestAnimationFrame, and on
   // real hardware a hidden window (show:false) produces no compositor frames,
   // so rAF stalls and layout collapses to ~1 page/sec — the "12 pages in 30s"
   // regression.
@@ -885,8 +881,6 @@ function createWindow() {
     flushSession.reset();
     if (activeRendererFlush?.session === flushSession) activeRendererFlush = null;
     stopFolderWatch();
-    // Reject any pending recovery confirm requests so they don't hang.
-    rejectAllPendingConfirms();
     if (mainWindow === win) mainWindow = null;
   });
   return win;
@@ -915,7 +909,7 @@ const skAuthToken = randomBytes(32).toString("hex");
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
 // multi-second blank window was profile-lock contention between two instances
 // (see the single-instance lock below). So we keep hardware acceleration at its
-// Electron default; forcing software rendering only slows the paged.js preview.
+// Electron default; forcing software rendering only slows the live preview.
 
 // Register the scheme as standard (must happen before app.whenReady) so fetch
 // and origin-scoped browser APIs such as IndexedDB work from the app:// page.
@@ -1275,13 +1269,10 @@ const GITHUB_HOST = "github.com";
 // The routes live in a separate Vite bundle and cannot directly import from
 // main.ts; they access these through the collapsed host object instead.
 //
-// cloneRepository/resolveSyncConflicts (ARCH review #8) are bound closures —
-// not raw pieces — for the same reason: the routes that call them cannot see
-// `mainWindow`/`autoSync` directly, so each closure below does the FULL
-// operation (validation, lib call, and any main-process-only side effect like
-// the clone-progress push or the conflict-latch re-arm) that the old
-// `remote:cloneRepository`/`remote:resolveSyncConflicts` IPC handlers used to
-// do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
+// cloneRepository (ARCH review #8) is a bound closure — not a raw piece —
+// for the same reason: the route that calls it cannot see `mainWindow`
+// directly, so the closure below does the FULL operation (validation, lib
+// call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks<LibModule> = {
@@ -1331,56 +1322,6 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       ? path.join(result.projectDir, ...subPath.split("/"))
       : result.projectDir;
     return { projectDir: openDir };
-  },
-  resolveSyncConflicts: async (args) => {
-    if (!args || typeof args.projectDir !== "string") {
-      throw new Error("remote:resolveSyncConflicts requires { projectDir }");
-    }
-    const dir = requireAbsoluteDir("remote:resolveSyncConflicts", args.projectDir);
-    if (
-      !Array.isArray(args.resolutions) ||
-      args.resolutions.length === 0 ||
-      !args.resolutions.every(
-        (r) =>
-          r &&
-          typeof r.path === "string" &&
-          r.path.length > 0 &&
-          (r.choice === "mine" || r.choice === "theirs" || r.choice === "both"),
-      )
-    ) {
-      throw new Error(
-        "remote:resolveSyncConflicts requires a non-empty resolutions list",
-      );
-    }
-    if (
-      typeof args.localId !== "string" ||
-      typeof args.remoteId !== "string" ||
-      !/^[0-9a-f]{40}$/i.test(args.localId) ||
-      !/^[0-9a-f]{40}$/i.test(args.remoteId)
-    ) {
-      throw new Error("remote:resolveSyncConflicts requires valid version ids");
-    }
-    const lib = await loadLib();
-    const outcome = await lib.resolveConflicts({
-      projectDir: dir,
-      resolutions: args.resolutions,
-      localId: args.localId,
-      remoteId: args.remoteId,
-      tokenStore: electronTokenStore,
-      logFile: operationLogPathForDir(dir),
-    });
-    // §6.1: After successful resolution, clear the conflict latch so auto-sync
-    // resumes the transparent flow. The latch was set (and the timer cancelled)
-    // when the conflict was first detected; re-arm it now so the resolved content
-    // is pushed without requiring the user to toggle Settings off/on.
-    const resolvedKey = path.resolve(dir);
-    if (autoSync.hasState(resolvedKey)) {
-      autoSync.unlatch(resolvedKey);
-      // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
-      // call even if a timer is already running).
-      autoSync.schedule(resolvedKey);
-    }
-    return outcome;
   },
 };
 
@@ -1466,52 +1407,10 @@ function sanitizeBookSubPath(subPath: unknown): string {
 
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
 // remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository, remote:resolveSyncConflicts —
-// migrated to SvelteKit server routes (Phase 2F / ARCH review #8:
-// src/routes/api/remote/*). The cloneRepository/resolveSyncConflicts
-// operations themselves are bound closures on remoteHooksImpl above (they
-// need mainWindow/autoSync, which the route's separate Vite bundle can't
-// reach directly). Accessed via __gutterpressRemoteHooks__ / __gutterpressHost__.
-
-// ── Sync recovery IPC (Foundation — §8 / ADR 0004) ──────────────────────────
-
-/**
- * The renderer answers a risky-repair confirmation request. Main's pending
- * resolver map (in recovery-bridge.ts) receives the answer and unblocks the
- * awaiting recover() call.
- */
-secureHandle(
-  "recovery:confirm-response",
-  (_e, { requestId, approved }: { requestId: string; approved: boolean }) => {
-    if (typeof requestId !== "string" || typeof approved !== "boolean") {
-      throw new Error("recovery:confirm-response requires { requestId: string, approved: boolean }");
-    }
-    const found = handleConfirmResponse(requestId, approved);
-    if (!found) {
-      console.warn(`[recovery] stale/unknown requestId ignored: ${requestId}`);
-    }
-  },
-);
-
-// sync:getConflictPreview — migrated to SvelteKit server route
-// (src/routes/api/sync/get-conflict-preview). Exposed via the collapsed host object.
-const conflictPreviewHooksImpl: ConflictPreviewHooks = {
-  getConflictPreview: async (
-    projectDir: string,
-    relativePath: string,
-    kind: "both-edited" | "you-deleted" | "online-deleted",
-  ) => {
-    const lib = await loadLib();
-    // A conflict is a property of the whole REPOSITORY (R9), and the paths the
-    // sync engine reports are repo-root-relative — so the base comes from
-    // host-detected state, not from the `projectDir` the renderer sent (which
-    // is the opened BOOK folder, and joining a repo-relative path onto it
-    // produced `<repo>/books/<book>/books/<book>/…` and a blank preview in
-    // every multi-book repo). See `conflictBaseDir`.
-    const base = conflictBaseDir(activeRepositoryRoot, activeWorkspaceRoot, projectDir);
-    return getConflictPreviewImpl(base, relativePath, kind, lib.onlineCopyPath);
-  },
-};
+// remote:sync, remote:cloneRepository — migrated to SvelteKit server routes
+// (Phase 2F / ARCH review #8: src/routes/api/remote/*). cloneRepository is a
+// bound closure on remoteHooksImpl above (it needs mainWindow, which the
+// route's separate Vite bundle can't reach directly).
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
@@ -1586,12 +1485,10 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
     // audit A2 fixed one function away.
     await updateSettings({ versionHistory: { autoSync: enabled } });
 
-    // When re-enabling, clear the conflict latch for the open project and arm
-    // the periodic timer — the author is explicitly asking to resume sync.
+    // When re-enabling, arm the periodic timer — the author is explicitly
+    // asking to resume sync.
     const watchedDir = folderWatch.getWatchedDir();
     if (enabled && watchedDir) {
-      autoSync.unlatch(watchedDir);
-      // Re-arm: scheduleAutoSync will start the interval.
       autoSync.schedule(watchedDir);
     }
     // When disabling, cancel all timers for the open project.
@@ -1632,7 +1529,6 @@ const updaterHooksImpl: UpdaterHooks = {
 registerHostServices({
   app: appHooksImpl,
   appImage: appImageHooksImpl,
-  conflictPreview: conflictPreviewHooksImpl,
   desktop: desktopHooksImpl,
   doctor: doctorHooksImpl,
   fsGuard: fsGuardImpl,
@@ -1661,6 +1557,7 @@ registerHostServices({
 // last). main.ts wires the live host touch-points and keeps a thin delegator.
 const previewOpen = new PreviewOpenController({
   loadLib,
+  clearPreviewAssetCache: () => session.defaultSession.clearCache(),
   getActivePreview: () => activePreview,
   setActivePreview: (preview) => {
     activePreview = preview;
@@ -1711,11 +1608,7 @@ const exportController = new ExportController({
   gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
   usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
-  pdfRenderer: electronPdfRenderer,
-  sync: {
-    isConflictLatched: (dir) => autoSync.isConflictLatched(dir),
-    latchConflict: (dir, files) => autoSync.latchConflict(dir, files),
-  },
+  engineBrowser: createElectronEngineBrowser,
   getActiveExportSession,
   setActiveExportSession,
   sendProgress: sendExportProgress,
@@ -1778,7 +1671,7 @@ secureHandle("updater:applyNow", () => installNow());
 // ── Never throttle the renderer (THE first-render-speed fix) ────────────────
 // Chromium throttles hidden/occluded windows: once a window has been
 // visible→hidden, background timer throttling clamps the setTimeout()s
-// paged.js yields on between pages, collapsing layout to ~1 page/sec
+// the viewer yields on between pages, collapsing layout to ~1 page/sec
 // (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 —
 // and worse on real hardware with the 1s clamp). That was the "12 pages in
 // 30s" report, back when an external splash window covered the main window at

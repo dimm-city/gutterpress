@@ -25,6 +25,12 @@
   import { api } from "$lib/api";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
   import {
+    IMAGE_POSITION_OPTIONS,
+    IMAGE_SIZE_OPTIONS,
+    type ImagePositionClass,
+    type ImageSizeClass,
+  } from "$lib/editor/image-classes";
+  import {
     visibleToolbarItems,
     LAYOUT_BLOCK_ITEMS,
     type ToolbarItemDef,
@@ -73,7 +79,7 @@
   export type ToolbarPayload =
     | { level: 1 | 2 | 3 | 4 }           // heading
     | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string } // image
+    | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
     | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
@@ -211,12 +217,15 @@
   }
 
   // ── Image insert dialog ──────────────────────────────────────────────────────
+  // Position/size options come from the shared class table
+  // ($lib/editor/image-classes) — the same table the context menu and the
+  // attrs round-trip helpers read, so the lists cannot drift apart.
   let imageOpen = $state(false);
   let imageAlt = $state("");
   let imageWidth = $state("");
-  let imagePosition = $state<
-    "" | "float-left" | "float-right" | "center" | "full-width" | "full-bleed"
-  >("");
+  let imagePosition = $state<"" | ImagePositionClass>("");
+  let imageSize = $state<"" | ImageSizeClass>("");
+  let imageShape = $state(false);
   let imageSrc = $state("");        // picked absolute path from host
   let imageBusy = $state(false);
   let imageError = $state("");
@@ -268,12 +277,16 @@
       alt: imageAlt || basenameOf(finalSrc) || "image",
       width: imageWidth || undefined,
       position: imagePosition || undefined,
+      size: imageSize || undefined,
+      shape: imageShape || undefined,
     });
     // Reset dialog state.
     imageSrc = "";
     imageAlt = "";
     imageWidth = "";
     imagePosition = "";
+    imageSize = "";
+    imageShape = false;
     imageOpen = false;
     imageBusy = false;
     // Focus restoration to `imageDialogTriggerEl` is handled by the
@@ -285,6 +298,8 @@
     imageAlt = "";
     imageWidth = "";
     imagePosition = "";
+    imageSize = "";
+    imageShape = false;
     imageError = "";
     imageOpen = false;
     imageBusy = false;
@@ -662,14 +677,40 @@
       aria-label="Image position"
     >
       <option value="">None (inline)</option>
-      <option value="center">Center</option>
-      <option value="float-left">Float left</option>
-      <option value="float-right">Float right</option>
-      <option value="full-width">Full width</option>
-      <option value="full-bleed">Full bleed (own page, edge-to-edge)</option>
+      {#each IMAGE_POSITION_OPTIONS as opt (opt.class)}
+        <option value={opt.class}>{opt.label}</option>
+      {/each}
+    </select>
+  </div>
+
+  <div class="image-field">
+    <label class="image-label" for="img-size">Size (optional)</label>
+    <select
+      id="img-size"
+      class="image-select"
+      bind:value={imageSize}
+      aria-label="Image size"
+    >
+      <option value="">Natural (fit the column)</option>
+      {#each IMAGE_SIZE_OPTIONS as opt (opt.class)}
+        <option value={opt.class}>{opt.label}</option>
+      {/each}
     </select>
     <p class="image-hint">
-      These are standard Gutterpress image classes documented in the user guide.
+      These are the standard gp-* image classes documented in the user guide;
+      position and size compose (e.g. a small right float).
+    </p>
+  </div>
+
+  <div class="image-field">
+    <label class="image-check-row">
+      <input type="checkbox" bind:checked={imageShape} aria-label="Wrap text to image shape" />
+      Wrap text to the image's shape
+    </label>
+    <p class="image-hint">
+      For floated images with transparency (cut-out PNGs): text follows the
+      visible silhouette instead of the rectangular box. Has no effect
+      without a float position.
     </p>
   </div>
 
@@ -994,6 +1035,15 @@
     font-size: 10px;
     color: var(--app-text-muted);
     line-height: 1.4;
+  }
+
+  .image-check-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--app-text);
+    cursor: pointer;
   }
 
   .image-select {

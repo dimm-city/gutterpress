@@ -30,8 +30,8 @@ What they emit:
 | `@section` | `<div class="section …" data-section="name" data-region="…">` |
 | `@continue` | closes the open `@section` and opens a matching continuation |
 | `@end-section` | closes the nearest open `@section` |
-| `@page-break` | `<div class="md-page-break" aria-hidden="true">` |
-| `@column-break` | `<div class="md-column-break" aria-hidden="true">` |
+| `@page-break` | `<div class="gp-page-break" aria-hidden="true">` |
+| `@column-break` | `<div class="gp-column-break" aria-hidden="true">` |
 
 A chapter's label propagates to its child pages as `data-chapter-label`, so CSS
 can reach it from any descendant with `attr(data-chapter-label)` — that is the
@@ -68,23 +68,19 @@ a more specific override of every declaration.
 
 ## Selectors that do not survive pagination
 
-Paged.js rewrites the document into generated page boxes. Never target that
-generated structure:
+Pagination rewrites the document into generated page/sheet boxes. Never target
+that generated structure:
 
-- **No `.pagedjs_*` selectors.** They describe a layout artifact, not your
-  content, and they change with the polyfill.
+- **No engine-generated selectors** (`.gp-*` sheets, strips, and margin
+  boxes). They describe a layout artifact, not your content, and they change
+  with the engine.
 - **No page-ordinal targeting.** "The third page" is an output of pagination;
   styling it changes pagination, which changes which page is third.
 
-`gutterpress lint` additionally flags, as errors:
-
-- **remote `url()`** — `http(s)://` and protocol-relative references, which may
-  not be reachable at print time;
-- **sibling combinators combined with `:is()`/`:where()`/`:not()` or
-  `:first-of-type`/`:last-of-type`/`:nth-of-type`** — Paged.js silently skips
-  these selectors, so the rule quietly does nothing.
-
-And warns on properties that can force rasterization in print: `filter`,
+`gutterpress lint` additionally flags, as an error, **remote `url()`** —
+`http(s)://` and protocol-relative references, which may not be reachable at
+print time. And it warns on properties that can force rasterization in print:
+`filter`,
 `backdrop-filter`, `mix-blend-mode`, `background-blend-mode`, `isolation`,
 `animation`, `transition`, `will-change`, `clip-path`.
 

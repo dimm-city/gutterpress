@@ -14,9 +14,10 @@
   --font-display: "Impact", "Haettenschweiler", "Arial Black", sans-serif;
   --font-mono:    "Courier New", monospace;
 
-  --scale-h1: 2.8rem;
-  --scale-h2: 1.8rem;
-  --scale-h3: 1.3rem;
+  --fs-body: 10pt;
+  --fs-h1: 2.8rem;
+  --fs-h2: 1.8rem;
+  --fs-h3: 1.3rem;
   --leading:  1.4;
 }
 
@@ -30,7 +31,7 @@ body {
   background: var(--color-paper);
   font-family: var(--font-body);
   line-height: var(--leading);
-  font-size: 10pt;
+  font-size: var(--fs-body);
 }
 
 h1, h2, h3 {
@@ -41,9 +42,9 @@ h1, h2, h3 {
   line-height: 0.95;
   font-weight: 900;
 }
-h1 { font-size: var(--scale-h1); margin: 0 0 0.4em; }
-h2 { font-size: var(--scale-h2); margin: 1.1em 0 0.3em; }
-h3 { font-size: var(--scale-h3); margin: 1em 0 0.25em; }
+h1 { font-size: var(--fs-h1); margin: 0 0 0.4em; }
+h2 { font-size: var(--fs-h2); margin: 1.1em 0 0.3em; }
+h3 { font-size: var(--fs-h3); margin: 1em 0 0.25em; }
 
 p { margin: 0 0 0.6em; }
 

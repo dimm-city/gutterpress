@@ -56,7 +56,7 @@ is always what is rendered.
 
 ## Page geometry
 
-CSS `@page` is the real page geometry — it is what Paged.js lays out and what
+CSS `@page` is the real page geometry — it is what the engine lays out and what
 Chromium prints. The manifest's `page:` block (`width`, `height`, `tolerance`)
 states the **expected** trim size for validation; changing it does not resize
 anything. To change the page, change `@page` in the stylesheet that owns it.
@@ -82,8 +82,8 @@ dist/**              # dist/<title-slug>/ — the whole generated output bundle
 
 `book.html` contains the rendered Markdown, inlined stylesheets, and embedded
 fonts, but a complete HTML build may also contain copied large images,
-navigation scripts, `index.html`, a build fingerprint, and the Paged.js runtime
-fallback. Treat the output directory as one bundle. None of it is source;
+navigation scripts, `index.html`, a build fingerprint, and the engine's viewer
+bundle. Treat the output directory as one bundle. None of it is source;
 saving a serialized preview DOM back over any source file destroys the authoring
 model.
 

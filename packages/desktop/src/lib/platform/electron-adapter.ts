@@ -34,9 +34,7 @@ import type {
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
-  ResolveSyncConflictsArgs,
   SyncStatus,
-  RecoveryConfirmRequest,
   FolderRef,
   PlatformCapabilities,
   MarkdownFileLaunchEvent,
@@ -200,24 +198,10 @@ export class ElectronAdapter implements Platform {
     await api.sync.setAutoSync(enabled);
   }
 
-  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
-
-  onRecoveryConfirm(handler: (req: RecoveryConfirmRequest) => void): () => void {
-    return bridge().onRecoveryConfirm(handler as (data: unknown) => void);
-  }
-
-  respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void> {
-    return bridge().respondRecoveryConfirm(requestId, approved);
-  }
-
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
+  // Repair runs in the host as one automatic pipeline (2026-08-14
+  // simplification) — no renderer confirmation/guidance seam remains.
 
   // syncChanges — migrated to server route (Phase 2F).
-
-  // ARCH review #8: was IPC despite being a plain request/response.
-  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
-    return api.remote.resolveSyncConflicts(args);
-  }
 
   // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "release/**"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "release/**"]
 
 env:
   # Skip Puppeteer download during dependency installation
@@ -105,11 +105,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
+
+      - name: Configure Puppeteer to use system Chrome
+        run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
       # The desktop suite imports gutterpress by name (resolves to its
       # built dist/), so build the package before running desktop tests — same

@@ -7,8 +7,6 @@ import type {
   RemoteBranch,
   RepoBook,
   CloneProgressEvent,
-  ConflictFileInfo,
-  ConflictResolutionChoice,
   RawPreviewStartArgs,
   PreviewStartResult,
   RawBuildArgs,
@@ -25,7 +23,7 @@ import type {
  * version-skew gate.
  *
  * 3 -> 4 (ARCH review #8): removed updater:getStatus/check/download,
- * sync:setAutoSync, remote:cloneRepository, remote:resolveSyncConflicts —
+ * sync:setAutoSync, remote:cloneRepository —
  * migrated to SvelteKit server routes (plain request/response, no push
  * stream or live-BrowserWindow need).
  * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
@@ -224,17 +222,8 @@ contextBridge.exposeInMainWorld("electron", {
     forwardPush("sync:status", cb),
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ─────────────────────
-  // Main sends 'recovery:confirm-request' push events when the recovery subsystem
-  // needs the author to approve a risky repair. The renderer answers via
-  // respondRecoveryConfirm (invoke, awaited by main's pending-resolver map).
-
-  /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
-  onRecoveryConfirm: (cb: (data: unknown) => void): (() => void) =>
-    forwardPush("recovery:confirm-request", cb),
-
-  /** Send the author's approval/rejection to main. */
-  respondRecoveryConfirm: (requestId: string, approved: boolean): Promise<void> =>
-    ipcRenderer.invoke("recovery:confirm-response", { requestId, approved }),
+  // Repair is one automatic pipeline (2026-08-14) — the recovery confirm
+  // channel is gone.
 
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 

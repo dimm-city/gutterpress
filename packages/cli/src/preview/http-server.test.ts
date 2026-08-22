@@ -10,7 +10,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, utimes } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -236,6 +236,37 @@ describe('createPreviewServer', () => {
     const res = await fetch(`http://localhost:${port}/note.txt`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('hello world');
+  });
+
+  test('project assets reuse unchanged bytes but revalidate a same-size edit with a preserved timestamp', async () => {
+    const asset = join(projectDir, 'image.png');
+    const fixedTime = new Date('2026-01-01T00:00:00.000Z');
+    await writeFile(asset, 'first-image');
+    await utimes(asset, fixedTime, fixedTime);
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const first = await fetch(`http://localhost:${port}/image.png`);
+    const etag = first.headers.get('etag');
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toBe('private, no-cache');
+    expect(etag).toBeTruthy();
+    expect(await first.text()).toBe('first-image');
+
+    const unchanged = await fetch(`http://localhost:${port}/image.png`, {
+      headers: { 'if-none-match': etag! },
+    });
+    expect(unchanged.status).toBe(304);
+
+    await writeFile(asset, 'other-image');
+    await utimes(asset, fixedTime, fixedTime);
+    const changed = await fetch(`http://localhost:${port}/image.png`, {
+      headers: { 'if-none-match': etag! },
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get('etag')).not.toBe(etag);
+    expect(await changed.text()).toBe('other-image');
   });
 
   test('serves the double-buffered preview shell for "/" by default', async () => {
@@ -617,7 +648,7 @@ describe('/__chapter route', () => {
     const body = await res.text();
     expect(body).toContain('Hello Chapter');
     expect(body).toContain('data-chapter-src="chapter1.md"');
-    expect(body).toContain('/vendor/paged.polyfill.js');
+    expect(body).toContain('/engine/gutterpress-viewer.js');
     expect(body).not.toContain('Other Chapter');
   });
 

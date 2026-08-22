@@ -2,7 +2,7 @@
  * Project-scoping guard coverage for the route families that ARC review #37
  * never reached (2026-07-29 file-operations audit, Theme 1).
  *
- * `fs/*`, `media/*`, `log/read`, `sync/get-conflict-preview` and
+ * `fs/*`, `media/*`, `log/read`, `sync/keep-image-version` and
  * `plugin/add-npm` confined their renderer-supplied path to the host-owned
  * `projectRoots()` allow-list; every OTHER route taking a `projectDir`
  * validated it with `requireAbsolute` alone — a bare `isAbsolute` check. Any
@@ -44,7 +44,7 @@ import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-sna
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
-import { POST as remoteResolveSyncConflicts } from "../../src/routes/api/remote/resolve-sync-conflicts/+server";
+import { POST as syncKeepImageVersion } from "../../src/routes/api/sync/keep-image-version/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
 import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
@@ -95,14 +95,9 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
   {
-    name: "remote/resolve-sync-conflicts",
-    handler: remoteResolveSyncConflicts as RouteHandler,
-    body: (d) => ({
-      projectDir: d,
-      resolutions: [{ path: "chapter-01.md", choice: "mine" }],
-      localId: HEX40_A,
-      remoteId: HEX40_B,
-    }),
+    name: "sync/keep-image-version",
+    handler: syncKeepImageVersion as RouteHandler,
+    body: (d) => ({ projectDir: d, path: "images/cover.png", oid: HEX40_A }),
   },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "publish/run", handler: publishRun as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch" }) },

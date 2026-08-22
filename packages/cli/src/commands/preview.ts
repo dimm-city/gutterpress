@@ -10,6 +10,7 @@ import {
   openPath,
 } from "../index.ts";
 import {
+  parseEngine,
   parseFormat,
   parsePdfxFlavor,
   rejectExtraPositionals,
@@ -43,6 +44,7 @@ export default defineCommand({
       }
 
       const openFlag = args.open;
+      const engine = parseEngine(args.engine);
 
       if (format === "html") {
         if (typeof args.manifest === "string") {
@@ -58,6 +60,7 @@ export default defineCommand({
           verbose: !!args.verbose,
           openBrowser: openFlag,
           debug: !!args.debug,
+          engine,
         });
         return;
       }
@@ -84,6 +87,8 @@ export default defineCommand({
         skipLint: !!args["skip-lint"],
         skipPreValidate: !!args["skip-pre-validate"],
         skipPostValidate: !!args["skip-post-validate"],
+        allowShrink: !!args["allow-shrink"],
+        engine,
         rawArgs: args as Record<string, unknown>,
       });
 

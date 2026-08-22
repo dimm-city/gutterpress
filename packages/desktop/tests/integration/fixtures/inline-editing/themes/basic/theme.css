@@ -1,0 +1,26 @@
+@page {
+  size: 6in 9in;
+  margin: 1in;
+
+  @top-center {
+    content: "Inline Editing Smoke Test — Running Header";
+  }
+  @bottom-center {
+    content: counter(page);
+  }
+}
+
+@page image {
+  size: 6in 9in;
+  margin: 1in;
+}
+
+[data-page="image"] {
+  page: image;
+}
+
+body {
+  font-family: sans-serif;
+  font-size: 12pt;
+  line-height: 1.5;
+}

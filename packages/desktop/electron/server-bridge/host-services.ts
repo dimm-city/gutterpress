@@ -32,7 +32,6 @@
  */
 import { createHostBridge } from "./create-host-bridge";
 import type { AppHooks } from "./app-hooks";
-import type { ConflictPreviewHooks } from "./conflict-preview-hooks";
 import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./host-hooks";
 import type { FsGuardHooks } from "./fs-guard";
 import type { MediaHooks } from "./media-hooks";
@@ -63,7 +62,6 @@ export type LibModule = typeof import("gutterpress");
 export interface HostServices {
   app: AppHooks;
   appImage: AppImageHooks;
-  conflictPreview: ConflictPreviewHooks;
   desktop: DesktopHooks;
   doctor: DoctorHooks;
   fsGuard: FsGuardHooks;

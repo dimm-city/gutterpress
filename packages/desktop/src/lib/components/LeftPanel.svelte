@@ -62,6 +62,7 @@
     onOpenUrl,
     onOpenGitHub,
     onNewProject,
+    onShowWelcome,
     onSyncReconnect,
     onPanelStateChange,
   }: {
@@ -93,6 +94,8 @@
     onOpenUrl?: (url: string) => void;
     onOpenGitHub?: () => void;
     onNewProject?: () => void;
+    /** Show the start screen over the workspace. */
+    onShowWelcome?: () => void;
     onSyncReconnect?: () => void;
     /** Called whenever tab or width changes so the parent can persist the state. */
     onPanelStateChange?: () => void;
@@ -447,6 +450,7 @@
         onOpenUrl={(url) => { onOpenUrl?.(url); }}
         onOpenGitHub={isDesktop() ? onOpenGitHub : undefined}
         onNewProject={onNewProject}
+        onShowWelcome={onShowWelcome}
       />
     </div>
 

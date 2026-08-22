@@ -25,7 +25,14 @@ import {
 } from "./token-store.ts";
 // The single source of truth for git error decoding lives in the recovery
 // classifier — sync.ts consumes it rather than keeping parallel copies.
-import { classifyTransportFailure, InsecureTransportError } from "./recovery/classify.ts";
+import {
+  classifyFromHealth,
+  classifyTransportFailure,
+  InsecureTransportError,
+  RepoNeedsRecoveryError,
+} from "./recovery/classify.ts";
+import { inspectRepo } from "./recovery/inspect.ts";
+import type { OperationLogger } from "./operation-log.ts";
 import {
   MSG_AUTH,
   MSG_INSECURE_TRANSPORT,
@@ -35,7 +42,7 @@ import {
   MSG_SSH_REMOTE,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync-messages.ts";
-import type { ConflictFile, GitCache, RemoteTransport } from "./sync-types.ts";
+import type { GitCache, RemoteTransport } from "./sync-types.ts";
 
 /**
  * The git repo directory for a project dir. A project IS its git repo, so this
@@ -171,20 +178,6 @@ export function failureOutcome(
   };
 }
 
-export function conflictFilesFrom(data: {
-  filepaths: string[];
-  bothModified: string[];
-  deleteByUs: string[];
-  deleteByTheirs: string[];
-}): ConflictFile[] {
-  const byUs = new Set(data.deleteByUs ?? []);
-  const byThem = new Set(data.deleteByTheirs ?? []);
-  return (data.filepaths ?? []).map((p) => ({
-    path: p,
-    kind: byUs.has(p) ? "you-deleted" : byThem.has(p) ? "online-deleted" : "both-edited",
-  }));
-}
-
 /** Friendly setup-problem message for the expected gate errors, else null. */
 export function setupErrorMessage(e: unknown): string | null {
   if (
@@ -225,6 +218,29 @@ export async function snapshotBeforeAction(args: {
     authorEmail: args.authorEmail,
   });
   return snap.id;
+}
+
+/**
+ * Structural preflight — never touch the tree of a damaged repo. An interrupted
+ * merge/rebase/cherry-pick, detached HEAD, stale lock, or missing `.git` must be
+ * REPAIRED before any sync work: snapshot-first would otherwise commit whatever
+ * is on disk (e.g. the literal conflict markers a half-done native-git merge
+ * leaves in tracked files) and push it to every collaborator. Throwing the
+ * typed error routes the caller through the recover() path.
+ * `checkLocalChanges: false` — only the structural flags matter here.
+ *
+ * Runs INSIDE the caller's repo lock. Shared by pullChanges and pushChanges.
+ */
+export async function assertNoStructuralDamage(
+  projectDir: string,
+  logger: OperationLogger,
+): Promise<void> {
+  const health = await inspectRepo({ repoDir: projectDir }, { checkLocalChanges: false });
+  const structural = classifyFromHealth(health);
+  if (structural) {
+    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
+    throw new RepoNeedsRecoveryError(structural);
+  }
 }
 
 export async function currentBranchOrThrow(dir: string): Promise<string> {

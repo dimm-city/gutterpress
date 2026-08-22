@@ -15,19 +15,20 @@ This document describes the architecture, design decisions, and implementation d
 
 ## Overview
 
-**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses Chromium + Paged.js for PDF generation and Paged.js for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
+**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses its native Chromium print engine for PDF generation and the same engine's viewer for live preview. It is designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
 
 ### Monorepo structure
 
 The repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` over `src/index.ts` + `src/api/index.ts` + `src/cli.ts` (`--target=node --packages=external --splitting`), with `src/render.ts` compiled as a SEPARATE non-split invocation so the node-free `/render` subpath never shares a chunk with Node code (enforced by `scripts/check-render-pure.mjs`; see `CLAUDE.md` §8), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
 
 ### Key Features
 
 - **Multi-format output**: PDF, HTML, and preview bundles
-- **Live preview server**: Bun-native HTTP+WebSocket with full-reload on file change
+- **Live preview server**: Node-compatible `node:http` + WebSocket, with
+  automatic full-document swaps after source changes
 - **Extensible markdown**: Plugin system for custom syntax
 - **CSS Paged Media**: Full control over print layout
 - **Bun-native**: Fast runtime with native TypeScript support
@@ -100,7 +101,6 @@ packages/cli/src/
 │   ├── pdf-parse.ts        # PDF parsing utilities
 │   ├── ghostscript.ts      # PDF/X CMYK conversion
 │   ├── chromium.ts         # Chromium executable resolution
-│   ├── pagedjs.ts          # Paged.js HTML patching
 │   ├── asset-inline.ts     # Inlines CSS/fonts, plans image copies from references
 │   ├── output-paths.ts     # dist/<title-slug>/ + <slug>-<format> artifact naming
 │   ├── logger.ts           # Colored console output
@@ -108,7 +108,7 @@ packages/cli/src/
 │       ├── index.ts        # Main renderer (createMarkdownRenderer)
 │       ├── plugins.ts      # Plugin loader
 │       ├── images.ts       # Records every image reference the render emits
-│       └── markdown-it-paged.js  # Inlined paged layout plugin
+│       └── markers.js       # Built-in @marker parser and structural CSS
 ├── schema/
 │   └── manifest.types.ts   # GutterpressManifest + ResolvedConfig
 ├── preview/                # Preview server modules
@@ -122,7 +122,7 @@ packages/cli/src/
 │   └── logger.ts           # Leveled logger + command-facing log facade
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
-    └── preview/            # Embedded desktop preview assets (Paged.js, pagedjs-interface)
+    └── preview/            # Embedded native viewer and preview-interface assets
 ```
 
 ### Data Flow
@@ -140,7 +140,7 @@ Pipeline Orchestrator (run.ts — 6 steps)
     ├── 4. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
     │      inlined, fonts embedded as data: URIs, referenced images copied —
     │      nothing is copied that the book doesn't actually reference)
-    ├── 5. HTML → PDF Build (Chromium + Paged.js)
+    ├── 5. HTML → PDF Build (native Chromium print engine)
     └── 6. Post-build Validation (PDF + heuristic checks)
     ↓
 Output (PDF + validation report)
@@ -175,9 +175,11 @@ Formatter (formatter.ts)
 ```
 
 **33 checks across 4 categories:**
-- **Source (6)**: markdownlint + htmlhint wrappers, print-safety CSS checks (postcss), local link/ref checks, alt-text and heading-order accessibility checks
+- **Source (7)**: markdownlint + htmlhint wrappers, print-safety CSS checks
+  (PostCSS), local link/ref checks, layout-marker diagnostics, and alt-text and
+  heading-order accessibility checks
 - **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
-- **Asset (8)**: Image size/DPI/color space/alpha, font references/licenses
+- **Asset (7)**: Image size/DPI/color space/alpha/TAC and font approval/license checks
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
 
 ## Build Pipeline
@@ -225,7 +227,10 @@ function resolveConfig(
 
 #### Plugin Architecture
 
-The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
+The `createMarkdownRenderer()` factory function creates a fully configured
+MarkdownIt instance with Gutterpress's built-in marker plugin and attribute
+support. Custom plugins from the manifest are applied at creation time via
+`applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -233,7 +238,7 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
   md.use(markdownItAttrs);
-  md.use(markdownItPaged, { implicitPage: false }); // Primary layout: @spread, @page, @section, @end-section, @page-break, @column-break
+  md.use(gutterpressMarkers); // Local markers.js plugin: @spread, @page, @section, @end-section, @page-break, @column-break
 
   // markdown-it-container removed 2026-05-17; @-marker family is canonical.
 
@@ -248,7 +253,7 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 **Design Rationale**:
 - Factory function creates fresh instance per render call
-- `markdown-it-paged` registered early as the primary layout plugin (`@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
+- Gutterpress's built-in `markers.js` registered early as the primary layout plugin (`@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
 - Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
 
 #### CSS Cascade
@@ -256,11 +261,13 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 All CSS ships as ONE inlined `<style data-project-css>` block in `book.html` —
 never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
 
-1. **Layout primitives** - `PAGED_CSS`, exported by `markdown-it-paged.js`
+1. **Marker primitives** — `MARKER_CSS`, exported by `markers.js`
    (page/section/spread mechanics). Always present.
-2. **Plugin CSS** - the `css` export of any loaded markdown-it plugin, in
+2. **Core utilities** — `GUTTERPRESS_CSS`, exported by
+   `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
+3. **Plugin CSS** - the `css` export of any loaded markdown-it plugin, in
    plugin order.
-3. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
+4. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
    (so project rules win at equal specificity) by `lib/asset-inline.ts`: each
    file is *read*, not linked — local `@import`s are followed and inlined in
    place, and every CSS `url()` resolves relative to the stylesheet that
@@ -276,56 +283,36 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
 - Self-contained HTML output (no external dependencies, no `<link>` that can 404)
 - Predictable cascade order: layout, then plugins, then the author's own styles
 - A missing stylesheet or font is a build error naming the file, instead of a
-  silent 404 during pagination that Paged.js parsed as CSS and shipped unstyled
+  silent 404 during pagination that would ship an unstyled artifact
 
 ### 3. HTML-to-PDF Build
 
-**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/lib/build-runner.ts:552`; `commands/build.ts` only calls `runBuild`)
+**Location**: `packages/cli/src/lib/engine.ts` (`buildNativePdf`) and
+`packages/cli/src/engine/compiler/build.ts` (`build`).
 
-`renderHtmlToPdf` renders HTML to PDF through an injectable `PdfRenderer`. There are no separate format strategy classes; the default renderer drives a pooled puppeteer-core Chromium instance:
+`buildNativePdf` attaches the engine's CDP client to the pooled Chromium used by
+the CLI. The desktop may instead inject an engine browser backed by Electron's
+own Chromium. The compiler reads the author's CSS, pins the viewport and print
+media to the resolved sheet, synthesizes the CSS Paged Media features Chromium
+does not provide directly, prints to a fixpoint when generated page references
+require it, runs computed-DOM print-quality audits, and postprocesses the final
+bytes.
 
 ```typescript
-export async function renderHtmlToPdf(
-  htmlFile: string,
-  outPdf: string,
-  renderer: PdfRenderer = puppeteerPdfRenderer,
-  captureStaticHtmlTo?: string
-) {
-  // 1. Serve outDir DIRECTLY — book.html is already self-contained (CSS and
-  //    fonts inlined by lib/asset-inline.ts) and its images already sit in
-  //    outDir, so there is no second staging copy to build first. The
-  //    pagination engine itself is supplied as an in-memory overlay
-  //    (pagination.ts's createStaticFileServer), never written to disk.
-  const outDir = path.dirname(path.resolve(htmlFile));
-  const server = await createStaticFileServer(outDir, path.basename(htmlFile), overlays);
-
-  // 2. Default renderer drives a pooled puppeteer-core Chromium instance
-  //    (browser-pool.ts's getBrowser — reused across renders; only the page
-  //    closes after each one). The packaged Electron desktop injects a
-  //    different PdfRenderer backed by webContents.printToPDF instead — see
-  //    docs/adr/0002-pdf-rendering-and-pure-js-tooling.md.
-  await renderer({ url: `http://127.0.0.1:${server.port}/${htmlFilename}`, outPdf, timeoutMs, captureStaticHtmlTo });
-}
-
-// Inside the default renderer: navigate, wait for Paged.js to finish
-// paginating, then print at the paginated page's own computed size.
-await paginateAndCapture(page, url, timeoutMs);
-await page.pdf({
-  path: outPdf,
-  printBackground: true,
-  width: pagedInfo.width ?? "8.625in",
-  height: pagedInfo.height ?? "11.25in",
-  margin: { top: "0", right: "0", bottom: "0", left: "0" },
-});
+const engineBrowser = await connectChromium((await getBrowser()).wsEndpoint());
+const result = await build({ input: htmlFile, browser: engineBrowser, title, author });
+await writeFile(outPdf, result.bytes);
+return result.diagnostics;
 ```
 
 **Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
-- A pooled, injectable `PdfRenderer` lets the CLI and the packaged Electron
-  desktop share one render path while using different Chromium sources
-- A `node:http` local file server avoids file:// protocol issues, and stays
-  Node-compatible so the same renderer path runs inside Electron
+- An injectable engine `Browser` lets the CLI and packaged Electron desktop
+  share one compiler while using pooled external Chromium or Electron's own
+  Chromium respectively
+- The engine controls printing through its raw-CDP session (`printToPDF`) while
+  Puppeteer is limited to launching and pooling the CLI browser
 - Ghostscript post-processing handles CMYK conversion separately from rendering
 
 ## Preview Server
@@ -334,9 +321,12 @@ await page.pdf({
 
 **Location**: `packages/cli/src/preview/http-server.ts`
 
-Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`
-for live reload) that handles static files, the one `/api/status` route, and a
-`/__gutterpress-hmr` WebSocket for full-reload broadcasts. It deliberately does
+Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`)
+that handles static files, the one `/api/status` route, and a
+`/__gutterpress-hmr` WebSocket. A single Markdown edit may use the focused
+`content-update` notification, while wider changes use `full-reload`; the
+preview shell deliberately handles both by swapping the complete regenerated
+book so pagination never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
@@ -348,14 +338,15 @@ User Browser / Electron Desktop → http://127.0.0.1:{port}
     ↓
 http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
     ├─→ /__gutterpress-hmr  WebSocket upgrade → broadcastReload()
-    │    (subscribers receive {type:"full-reload"} on file change)
+    │    (subscribers receive a content update or {type:"full-reload"};
+    │     both replace the complete generated book)
     ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
     │    (the only API route; a separate route-table module was removed as
     │    unneeded scaffolding for one hard-coded endpoint)
     ├─→ /vendor/*, /preview/scripts/*, /favicon.ico
     │                    the process-wide embedded-assets dir, with a
-    │                    version ETag (the ~900 KB Paged.js polyfill is
-    │                    never copied per project)
+    │                    version ETag (the native viewer bundle is never
+    │                    copied per project)
     ├─→ assets/<hash>.*  the inliner's CSS asset plan (state.cssAssets) —
     │                    an exact URL→source map for images too large to
     │                    embed that live OUTSIDE the book (art referenced
@@ -538,7 +529,7 @@ export async function loadManifest(pathOrDir?: string): Promise<GutterpressManif
   // Returns empty object if no manifest found
 }
 
-// resolveConfig ensures every field has a value via cascade
+// resolveConfig fills configured/defaulted fields via the cascade; styles stays optional
 export function resolveConfig(
   cliOverrides: Partial<GutterpressManifest>,
   manifest: GutterpressManifest
@@ -552,8 +543,12 @@ export function resolveConfig(
 ```
 
 **Design Rationale**:
-- No separate validation step needed; YAML parsing + TypeScript types handle structure
-- Preset defaults ensure every field has a value even with empty manifests
+- YAML syntax is checked while parsing; TypeScript describes the internal shape
+  but does not validate user data at runtime. `resolveConfig()` applies presets,
+  defaults, and explicit field checks. The bundled JSON schema supports editors
+  and tooling rather than acting as blanket runtime enforcement.
+- Preset defaults fill the required resolved fields even with empty manifests;
+  `styles` deliberately remains optional so active-style discovery can choose it
 - Preview static-file serving performs its own path containment check (`resolveStaticPath` in `packages/cli/src/lib/static-serve.ts`, used by `packages/cli/src/preview/http-server.ts`)
 
 ## Extension System
@@ -661,21 +656,22 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 
 **Reasons**:
 - Open-source and cross-platform (macOS, Linux, Windows)
-- Chromium engine supports full CSS Paged Media
+- Chromium supplies native paged layout and PDF printing; the Gutterpress
+  engine synthesizes the CSS Paged Media features Chromium does not implement
 - puppeteer-core ships no bundled browser (we resolve a system/bundled Chromium ourselves)
 - Direct page rendering eliminates subprocess overhead
-- Built-in PDF generation with `page.pdf()`
+- Direct raw-CDP `printToPDF` generation
 - Better TypeScript support
-- Predictable rendering with Paged.js polyfill
+- One native engine shared by CLI export, desktop export, and browser preview
 
 ### 3. Why node:http + ws for Preview (not Vite, not Bun.serve)?
 
 **Chosen over**: Vite, webpack-dev-server, `Bun.serve`.
 
 **Reasons**:
-- Gutterpress does not bundle code at preview time — it serves a pre-rendered
-  `book.html` and triggers full-reload on file change. A bundler-based dev
-  server is the wrong tool.
+- Gutterpress does not bundle code at preview time — it serves rendered HTML
+  and swaps the complete regenerated document after an update notification.
+  A bundler-based dev server is the wrong tool.
 - `node:http` + the `ws` package provides everything needed (static files,
   WebSocket pub/sub, request routing) without the transitive native bindings
   (rollup, lightningcss, fsevents) that break under `bun build --compile`.
@@ -729,7 +725,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 **Reasons**:
 - Fresh instance per render avoids state leakage
 - Custom plugins applied at creation time via manifest config
-- Built-in containers always registered in predictable order
+- Built-in markers and attributes always registered in predictable order
 - Factory pattern allows different plugin sets per render
 
 ### 7. Why Custom Error Classes?
@@ -765,8 +761,8 @@ export function resolveWithinRoot(relPath: string, root: string): string | null 
 ```
 
 `resolveStaticPath` decodes a URL pathname and delegates to
-`resolveWithinRoot`; both the preview server (`preview/http-server.ts`) and
-the build-time pagination/PDF static servers (`lib/pagination.ts`) use it.
+`resolveWithinRoot`; the preview server (`preview/http-server.ts`) uses both to
+confine author assets and chapter-update requests to the selected project.
 
 ### Input Sanitization
 
@@ -786,8 +782,9 @@ the build-time pagination/PDF static servers (`lib/pagination.ts`) use it.
 ### Preview Performance
 
 - **Debouncing**: File changes debounced (100ms) to prevent excessive rebuilds
-- **Full-Reload over WebSocket**: file changes publish a `full-reload`
-  message; clients refresh and receive freshly-rendered HTML
+- **Incremental updates over WebSocket**: a single Markdown edit republishes
+  only that chapter; CSS, manifest, multi-file, and structural changes publish
+  a full-document reload
 - **Orphan cleanup**: leftover preview temp dirs from a run that didn't shut
   down cleanly are removed on the next startup via a PID-liveness check, not
   an idle-connection timer
@@ -814,5 +811,5 @@ the build-time pagination/PDF static servers (`lib/pagination.ts`) use it.
 
 ---
 
-**Last Updated**: 2026-07-27
-**Version**: 0.8.3 (packages/cli + packages/desktop)
+**Last Updated**: 2026-08-12
+**Version**: 0.10.0 release candidate (packages/cli + packages/desktop)

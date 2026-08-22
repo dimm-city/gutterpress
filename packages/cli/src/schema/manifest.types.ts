@@ -70,6 +70,27 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
+   * Pagination engine. Paged.js has been removed (native-only-migration-
+   * plan.md Phase 6) — the Gutterpress engine (`src/engine/`, native Chromium
+   * pagination) is the only engine. This field and `--engine` on the CLI are
+   * accepted-but-ignored for backward compatibility: an explicit "paged"
+   * produces a one-line warning and the build proceeds natively regardless.
+   */
+  engine?: "paged" | "native";
+  /**
+   * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
+   * only list that still applies; `.paged` is accepted-but-ignored (a warning
+   * fires if it has entries) now that Paged.js has been removed.
+   */
+  engineStyles?: {
+    /**
+     * REMOVED — Paged.js has been deleted. Accepted for backward-compatible
+     * manifest parsing only; entries here are ignored with a warning.
+     */
+    paged?: string[];
+    native?: string[];
+  };
+  /**
    * Where the book is published (ADR 0008): publish-target ids whose
    * validation policies this book is checked against. Absent = the preset's
    * defaults (`dtrpg` -> ["dtrpg"]; `book`/`custom` -> []). The registry in
@@ -85,6 +106,15 @@ export interface GutterpressManifest {
     flavor?: "x1a" | "x3";
     icc?: string;
     stripAnnotations?: boolean;
+  };
+  /**
+   * Native-engine print-production options with no other manifest home
+   * (`engine/compiler/postprocess.ts` already implements them; this is the
+   * missing manifest surface for reaching them — B.12).
+   */
+  print?: {
+    /** Pad the PDF with blank pages until pageCount is a multiple of this. */
+    signature?: number;
   };
   page?: {
     width?: number;
@@ -165,6 +195,11 @@ export interface ResolvedPluginConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /**
+   * Resolved pagination engine — always "native"; Paged.js has been removed.
+   * See {@link GutterpressManifest.engine}.
+   */
+  engine: "paged" | "native";
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];
@@ -176,6 +211,9 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
+  };
+  print: {
+    signature: number;
   };
   page: {
     width: number;

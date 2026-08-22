@@ -8,6 +8,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 interface Harness {
   ctrl: PreviewEventController;
   log: string[];
+  /** Every injectStyles(id, css) the controller made, in order. */
+  injectedCss: Array<{ id: string; css: string }>;
   client: {
     calls: Array<{ cmd: string; args: unknown[] }>;
     rejectSetZoom: boolean;
@@ -33,38 +35,29 @@ interface Harness {
   rendering: boolean;
   renderProgressPage: number;
   overlay: boolean;
+  updating: boolean;
   viewportWidth: number;
-  now: number;
   pendingRestore: { page: number | null; viewMode: "single" | "two-column" | null };
-  // editor-sync ambient state
-  suppressUntil: number;
-  editorPaneOpen: boolean;
-  editorChapter: string | null;
-  currentDir: string | null;
-  bufferDirty: boolean;
 }
 
 function make(): Harness {
   const log: string[] = [];
+  const injectedCss: Array<{ id: string; css: string }> = [];
   const h = {
     log,
+    injectedCss,
     hasClient: true,
     zoom: "fit-width",
     viewMode: "two-column" as "single" | "two-column",
     rendering: false,
     renderProgressPage: 0,
     overlay: false,
+    updating: false,
     viewportWidth: 1400,
-    now: 1000,
     pendingRestore: { page: null, viewMode: null } as {
       page: number | null;
       viewMode: "single" | "two-column" | null;
     },
-    suppressUntil: 0,
-    editorPaneOpen: true,
-    editorChapter: "ch1.md" as string | null,
-    currentDir: "/proj" as string | null,
-    bufferDirty: false,
   } as Harness;
 
   h.client = {
@@ -91,8 +84,9 @@ function make(): Harness {
     if (cmd === "getTotalPages") return Promise.resolve(client.getTotalPagesResult);
     return Promise.resolve(undefined);
   };
-  client.injectStyles = (id: string) => {
+  client.injectStyles = (id: string, css: string) => {
     log.push(`inject:${id}`);
+    injectedCss.push({ id, css });
   };
 
   h.pageNav = {
@@ -116,14 +110,8 @@ function make(): Harness {
     pageNav: h.pageNav,
     zoomView: h.zoomView,
     editorSync: {
-      suppressPreviewSyncUntil: () => h.suppressUntil,
-      editorPaneOpen: () => h.editorPaneOpen,
-      editorChapter: () => h.editorChapter,
-      currentDir: () => h.currentDir,
-      bufferDirty: () => h.bufferDirty,
+      invalidatePending: () => log.push("invalidateEditorSync"),
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
-      revealEditorLine: (line) => log.push(`revealEditorLine:${line}`),
-      followChapterInEditor: (chapter, line) => log.push(`follow:${chapter}:${line}`),
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -142,6 +130,10 @@ function make(): Harness {
       h.overlay = v;
       log.push(`overlay:${v}`);
     },
+    setPreviewUpdating: (v) => {
+      h.updating = v;
+      log.push(`updating:${v}`);
+    },
     resetOutline: () => log.push("resetOutline"),
     consumePendingRestore: () => {
       const r = h.pendingRestore;
@@ -153,7 +145,6 @@ function make(): Harness {
     revealSettledPages: () => log.push("reveal"),
     toastSuccess: (m) => log.push(`toast:${m}`),
     viewportWidth: () => h.viewportWidth,
-    now: () => h.now,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
   });
   return h;
@@ -179,7 +170,6 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
     "setRendering:false",
     "overlay:true",
     "inject:desktop-canvas",
-    "inject:debug",
     "applyViewMode:two-column:false",
     "call:setZoom",
     "toast:Your book is ready — 12 pages",
@@ -193,6 +183,13 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   // Reveal is the LAST thing to happen, only after the zoom round-trip settles.
   expect(h.log[h.log.length - 1]).toBe("reveal");
   expect(h.client.calls).toContainEqual({ cmd: "setZoom", args: [0.5] });
+
+  // Only the engine-agnostic preview canvas background is injected. The rest
+  // of the native viewer's chrome (zoom, sheet background, view modes, debug
+  // guides) lives in decorate.ts + viewer.css, not injected from the toolbar.
+  const canvas = h.injectedCss.filter((i) => i.id === "desktop-canvas");
+  expect(canvas.length).toBe(1);
+  expect(canvas[0]!.css).toContain("background-color: #123456 !important");
 });
 
 test("renderingComplete fit-width path measures-and-fits, never assumes 100%", async () => {
@@ -351,44 +348,51 @@ test("ready flips into rendering, clears outline, and peeks total pages", async 
   h.client.getTotalPagesResult = 6;
   h.ctrl.handleEvent({ name: "ready", detail: {} });
   expect(h.log).toContain("setRendering:true");
+  expect(h.log).toContain("invalidateEditorSync");
   expect(h.log).toContain("setProgress:0");
   expect(h.log).toContain("resetOutline");
   await flush();
   expect(h.pageNav.totalPages).toBe(6);
 });
 
-// ── sourceLineChanged ────────────────────────────────────────────────────────
-
-test("sourceLineChanged always updates the active outline", () => {
+test("renderingStarted invalidates pending editor scroll commands before frame replacement", () => {
   const h = make();
-  h.suppressUntil = h.now + 1000; // sync suppressed
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch1.md" } });
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.log).toEqual(["invalidateEditorSync", "updating:true"]);
+});
+
+test("hot reload exposes a non-blocking updating state until the replacement is visible", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(true);
+  expect(h.rendering).toBe(false);
+
+  h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(false);
+});
+
+test("a cancelled replacement clears the non-blocking updating state", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(true);
+
+  h.ctrl.handleEvent({ name: "renderingCancelled", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(false);
+});
+
+// ── preview → editor policy ──────────────────────────────────────────────────
+
+test("sourceLineChanged updates outline state but never moves the editor", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch2.md" } });
   expect(h.log).toContain("updateActiveOutline:42");
-  // suppression blocks the editor follow.
-  expect(h.log).not.toContain("revealEditorLine:42");
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
-test("sourceLineChanged reveals the line in the editor for the same chapter", () => {
+test("normal preview activation never moves or opens the editor; Go to source owns navigation", () => {
   const h = make();
-  h.editorChapter = "ch1.md";
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:12");
-});
-
-test("sourceLineChanged follows into a different chapter when the buffer is clean", () => {
-  const h = make();
-  h.editorChapter = "ch1.md";
-  h.bufferDirty = false;
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("follow:ch2.md:8");
-});
-
-test("sourceLineChanged does NOT yank the file when the buffer is dirty", () => {
-  const h = make();
-  h.editorChapter = "ch1.md";
-  h.bufferDirty = true;
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log.some((l) => l.startsWith("follow:"))).toBe(false);
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
 // ── subscribe wiring ─────────────────────────────────────────────────────────

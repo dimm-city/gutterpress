@@ -259,18 +259,6 @@ export class ExportController {
     // earliest event the host can send.
     if (!this.activeExportId) this.activeExportId = event.exportId;
     if (event.pages) this.pages = event.pages;
-    if (event.state === "conflict") {
-      // M29: the pre-export sync safety gate found an unresolved conflict.
-      // The SAME conflict is already routed to ConflictChoicesDialog via the
-      // independent sync:status channel (AutoSyncOrchestrator.latchConflict →
-      // SyncStatusPill → SyncController.onPillConflict) — this event only
-      // needs to stop the export pill being left stuck on "Preparing PDF…"
-      // underneath that dialog. build()'s rejected promise (SYNC_CONFLICT)
-      // also calls reset() in savePdf()'s finally; this is the earlier,
-      // idempotent path so the pill clears the instant the host knows.
-      this.reset();
-      return;
-    }
     if (event.state === "started") {
       this.state = "started";
       // Pre-export sync safety gate (M28, electron/export/controller.ts):
@@ -341,8 +329,8 @@ export class ExportController {
     this.start();
     let offProgress: (() => void) | undefined;
     try {
-      // Live progress: Paged.js pagination of large books takes minutes, so show
-      // the growing page count instead of an opaque spinner.
+      // Live progress: pagination of large books can take time, so show the
+      // growing page count instead of an opaque spinner.
       offProgress = h.onBuildProgress((p) => {
         if (p.state === "canceled") {
           this.markCanceling();

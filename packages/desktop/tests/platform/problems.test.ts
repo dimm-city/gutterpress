@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import {
   closesPanelOnEscape,
   closesPanelOnSelect,
+  buildProblems,
   friendlySource,
   groupProblems,
   problemCounts,
@@ -116,4 +117,32 @@ test("SOURCE_LABELS covers every registered source-category CLI check", async ()
   for (const check of sourceChecks) {
     expect(friendlySource(check.id)).not.toBe(check.id);
   }
+});
+
+// The same discipline for the render's own print-quality findings: they reach
+// the panel from an export rather than the source lint, and their codes are a
+// closed set in the lib, so a new engine check cannot ship rendering its raw
+// id ("engine.multicol.dead-column") at a non-technical author.
+test("SOURCE_LABELS covers every engine build-diagnostic code", async () => {
+  const { BUILD_DIAGNOSTIC_CODES } = await import("gutterpress");
+  expect(BUILD_DIAGNOSTIC_CODES.length).toBeGreaterThan(0);
+  for (const code of BUILD_DIAGNOSTIC_CODES) {
+    expect(friendlySource(code)).not.toBe(code);
+  }
+});
+
+test("buildProblems maps diagnostics to panel entries without inventing a source location", () => {
+  const entries = buildProblems([
+    { code: "engine.xref.broken", severity: "warning", message: "The link \"#nope\" doesn't point at anything" },
+    { code: "engine.layer.trapped", severity: "warning", message: "div.overlay is trapped inside div.page" },
+    { code: "engine.image.low-dpi", severity: "info", message: "img.art is below the 300 DPI print bar" },
+  ]);
+  expect(entries).toEqual([
+    { severity: "warning", message: 'The link "#nope" doesn\'t point at anything', source: "engine.xref.broken" },
+    { severity: "warning", message: "div.overlay is trapped inside div.page", source: "engine.layer.trapped" },
+    { severity: "info", message: "img.art is below the 300 DPI print bar", source: "engine.image.low-dpi" },
+  ]);
+  // A pagination finding names a rendered element, not a source line — the
+  // panel's "jump to line" must not send the author somewhere arbitrary.
+  expect(entries.every((e) => e.file === undefined && e.line === undefined)).toBe(true);
 });

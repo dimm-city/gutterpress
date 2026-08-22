@@ -105,9 +105,9 @@ Alignment:
 | Text   | Text   |    42 |
 ```
 
-GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Paged.js can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
+GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
 
-Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; wrap a table in `@section` (see [Layout Directives](#layout-directives)) if you need core to keep it together.
+Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
 Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
 
@@ -120,12 +120,12 @@ Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` sy
 
 Paragraph with custom styling. {.highlight}
 
-![Image](photo.jpg){.center width="80%"}
+![Image](photo.jpg){.gp-center .gp-medium}
 
 [Link text](page.html){.download}
 ```
 
-`.center` above is one of core Gutterpress's built-in image/block utility classes — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
+`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
 
 ### Cross-References
 
@@ -141,7 +141,7 @@ Headings do **not** get an automatic id from their text — core Gutterpress has
 
 ## Layout Directives {#layout-directives}
 
-Layout directives are `@`-prefixed markers that control how content flows across pages. They are provided by the built-in `markdown-it-paged` plugin — this is core behavior, present in every Gutterpress project regardless of theme.
+Layout directives are `@`-prefixed markers that control how content flows across pages. They are built into Gutterpress — this is core behavior, present in every project regardless of theme.
 
 ### Quick syntax reference
 
@@ -153,12 +153,34 @@ Layout directives are `@`-prefixed markers that control how content flows across
 | `@spread` | Start a two-page spread group |
 | `@page` | Start a new page (optionally named and/or classed) |
 | `@page-break` | Hard break, no page wrapper emitted |
-| `@section` | Group content together to avoid mid-section breaks |
+| `@section` | Wrap related content in a structural group for styling and layout |
 | `@end-section` | Close the current `@section` (no-op if none is open); stays on the same page |
-| `@continue` | Close the current `@section` and reopen a matching one, marked `.gutterpress-continued` |
+| `@continue` | Close the current `@section` and reopen a matching one, marked `.gp-continued` |
 | `@column-break` | Force a column break inside a multi-column section |
 
 @end-section
+
+### Writing about a marker without triggering it
+
+A marker is **any line whose first character is `@` followed by one of the
+words above** — including a line your paragraph happened to wrap onto. Write a
+sentence about the `@page` marker and your editor may reflow it so `@page`
+lands at the start of a line, and Gutterpress will split your page there.
+
+Escape it with a backslash, exactly as you would escape any other markdown
+punctuation, or write it as inline code:
+
+```markdown
+A pinned image sets itself against the
+\@page container it sits in.
+
+A pinned image sets itself against the
+`@page` container it sits in.
+```
+
+Both render the text `@page` and leave your page alone. If you ever see a page
+break you did not ask for, look for a line that begins with `@` — Gutterpress
+warns about most of these, and the warning names the escape.
 
 ### @chapter — chapter wrapper (with automatic chapter-opener)
 
@@ -186,7 +208,7 @@ Renders:
 </div>
 ```
 
-- The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (Paged.js may split the chapter wrapper itself into an empty leading sheet).
+- The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (the engine may split the chapter wrapper itself into an empty leading sheet).
 - `.chapter-opener` is a plain, unstyled `<div>` — style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
 - `#id` / `.class` work like on any other marker: `@chapter #ch-bestiary .bestiary`.
 - No bare label means no `.chapter-opener` — there's no label to show.
@@ -210,6 +232,10 @@ Starts a new page. A **single** bare word names the page; `.class` shorthand (or
 - `@page .cover .sidebar` (or `@page class=cover,sidebar`) → `<div class="page cover sidebar">`.
 - `@page intro .cover` (name + shorthand) → `<div class="page cover" data-page="intro">`.
 
+Marker classes may also use markdown-it-attrs braces. For example,
+`@page {.cover .sidebar}` is equivalent to `@page .cover .sidebar`, and
+`@section {.gp-columns-2}` is equivalent to `@section .gp-columns-2`.
+
 **Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
 
 ### @page-break — hard break
@@ -224,11 +250,17 @@ Content above.
 Content below, on a new page.
 ```
 
-Renders `<div class="md-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
+Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
 
 ### @section and @end-section
 
-`@section` groups content to avoid mid-section page breaks (`.section { break-inside: avoid; }`, from core `PAGED_CSS`). Close with `@end-section` — which stays on the current page rather than forcing a break:
+`@section` wraps related content in a structural group. Core keeps the group's
+first child from being stranded by itself at a page boundary, but deliberately
+does **not** put `break-inside: avoid` on the whole section: long sections must
+be allowed to fragment. Add that stronger rule to an explicitly classed
+section in your project CSS only when the entire group really must stay
+together. Close with `@end-section`, which stays on the current page rather
+than forcing a break:
 
 ```markdown
 @section
@@ -249,7 +281,7 @@ Continues on the same page as the section above.
 
 ### @continue — split a named section without losing its identity
 
-`@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `gutterpress-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
+`@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `gp-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
 
 ```markdown
 @section Notes
@@ -269,7 +301,7 @@ Renders:
 <div class="section" data-section="Notes">
   <p>First part of a long note...</p>
 </div>
-<div class="section gutterpress-continued" data-section="Notes">
+<div class="section gp-continued" data-section="Notes">
   <p>The overflow, continuing.</p>
 </div>
 ```
@@ -281,7 +313,7 @@ Renders:
 `@column-break` forces a break inside a multi-column section. `@spread` groups content into a two-page spread:
 
 ```markdown
-@section .two-column
+@section {.gp-columns-2}
 
 Left column content.
 
@@ -291,6 +323,48 @@ Right column content.
 
 @end-section
 ```
+
+`.gp-columns-2` and `.gp-columns-3` are the core two- and three-column
+utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
+`@section`; an enclosing `@page` is not required. Themes may add decoration to
+an explicitly themed class, but should not redefine generic column vocabulary.
+
+### Grids: .gp-grid-2 and .gp-grid-3
+
+Columns flow; grids place. A `.gp-columns-2` section pours one run of text
+down the first column and continues it in the second. A `.gp-grid-2` (or
+`.gp-grid-3`) section instead places each block — paragraph, image, card —
+into the next open slot, across then down. Reach for a grid when the pieces
+are separate things that belong in a fixed arrangement (stat blocks,
+image-and-caption pairs, card layouts); reach for columns when it is one
+text that should read continuously.
+
+```markdown
+@section {.gp-grid-2}
+
+The first block takes the top-left slot.
+
+The second block sits beside it.
+
+The third starts the next row.
+
+@end-section
+```
+
+The gutter between slots is `--gp-grid-gap` (default `1.5em`) — set it in
+your stylesheet the same way as `--gp-column-gap`. A grid taller than the
+page is safe: rows continue onto the next page identically in the preview
+and the printed PDF.
+
+Two grid-specific notes:
+
+- On a full-height page (a grid class directly on `@page`), rows spread
+  apart to fill the page by default. If you want them packed at the top,
+  add `align-content: start` to the grid class in your stylesheet.
+- Do not put `@page-break` or `@column-break` directly inside a grid
+  section: the break becomes a grid slot of its own and scrambles the
+  layout (Gutterpress warns when this happens). Close the grid first with
+  `@end-section`, then break.
 
 ## Writing Guidelines
 

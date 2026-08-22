@@ -14,9 +14,10 @@
   --font-display: "Georgia", "Times New Roman", serif;
   --font-mono:    "Menlo", "Consolas", monospace;
 
-  --scale-h1: 2.1rem;
-  --scale-h2: 1.5rem;
-  --scale-h3: 1.2rem;
+  --fs-body: 11pt;
+  --fs-h1: 2.1rem;
+  --fs-h2: 1.5rem;
+  --fs-h3: 1.2rem;
   --leading:  1.55;
 }
 
@@ -30,7 +31,7 @@ body {
   background: var(--color-paper);
   font-family: var(--font-body);
   line-height: var(--leading);
-  font-size: 11pt;
+  font-size: var(--fs-body);
 }
 
 h1, h2, h3 {
@@ -39,9 +40,9 @@ h1, h2, h3 {
   line-height: 1.2;
   font-weight: 600;
 }
-h1 { font-size: var(--scale-h1); margin: 0 0 0.6em; }
-h2 { font-size: var(--scale-h2); margin: 1.4em 0 0.4em; }
-h3 { font-size: var(--scale-h3); margin: 1.2em 0 0.3em; }
+h1 { font-size: var(--fs-h1); margin: 0 0 0.6em; }
+h2 { font-size: var(--fs-h2); margin: 1.4em 0 0.4em; }
+h3 { font-size: var(--fs-h3); margin: 1.2em 0 0.3em; }
 
 p { margin: 0 0 0.8em; text-align: justify; hyphens: auto; }
 

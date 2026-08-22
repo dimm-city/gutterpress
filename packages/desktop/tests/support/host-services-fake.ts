@@ -77,9 +77,6 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       install: unstubbed("appImage.install"),
       remove: unstubbed("appImage.remove"),
     },
-    conflictPreview: {
-      getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }),
-    },
     desktop: {
       showOpenDialog: async () => ({ canceled: true, filePaths: [] as string[] }),
       showSaveDialog: async () => ({ canceled: true }),
@@ -114,7 +111,6 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       tokenStore: {} as TokenStore,
       GITHUB_HOST: "github.com",
       cloneRepository: unstubbed("remote.cloneRepository"),
-      resolveSyncConflicts: unstubbed("remote.resolveSyncConflicts"),
     },
     savePaths: { register: noop, consume: () => false },
     sync: {

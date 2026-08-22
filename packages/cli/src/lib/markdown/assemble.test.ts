@@ -50,12 +50,11 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
     });
 
     expect(pureHtml).toBe(nodeHtml);
-    // Sanity: the assembled HTML carries the rendered markdown + the paged runtime.
+    // Sanity: the assembled HTML carries the rendered markdown.
     expect(pureHtml).toContain(">Intro</h1>");
     expect(pureHtml).toContain("<strong>world</strong>");
-    // Core emits the stable polyfill MARKER, never a live CDN URL — the
-    // un-rewritten book.html must have no network dependency.
-    expect(pureHtml).toContain("data-pagedjs-polyfill");
+    // The un-rewritten book.html must have no network dependency (native
+    // engine ships no runtime pagination polyfill at all).
     expect(pureHtml).not.toMatch(/https?:\/\//);
     expect(pureHtml).not.toMatch(/unpkg/);
     // CSS is INLINED, never <link>ed — that is what makes a stylesheet's

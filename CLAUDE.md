@@ -5,8 +5,8 @@
 This repo is a Bun workspace with two packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
-  ALL runtime logic (markdown rendering, preview HTTP server, PDF generation via
-  puppeteer-core, lint, validation — under `src/`) **and** the CLI entry
+  ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
+  generation, lint, validation — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
   (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
@@ -71,6 +71,99 @@ via `bun packages/cli/src/cli.ts` during development.
 - Allow authors to convert markdown and CSS into print ready PDFs
 - Simplify the process of creating 
 
+### What Gutterpress is — and what the engine is not
+
+**Gutterpress is the TOOLING around authoring books with markdown and CSS**:
+the authoring workflow, plugins, themes, validation, preview, and publishing
+tools. That tooling is the product and is permanent.
+
+**The rendering engine and every polyfill/shim are NOT the product.** They
+exist only to fill gaps in Chrome's CSS Paged Media / GCPM implementation,
+and they are **expected to be removed** as Chrome's support improves. This
+expectation is a design constraint on every engine/shim change:
+
+1. **Thin over capable.** A shim implements the missing slice of the
+   standard and nothing more. No engine-private extensions, no behavior the
+   spec doesn't describe, no features that would give the shim a reason to
+   outlive the gap it fills.
+2. **Standards-based in and out.** Authors write standard CSS Paged Media /
+   GCPM (`@page`, margin boxes, `string-set`, `target-counter()`,
+   `leader()`); documents the pipeline produces stay near-pure standard
+   HTML+CSS. When Chrome ships a feature natively, the author's CSS must
+   already be the CSS that feature expects — removal of our shim should be a
+   no-op for every book.
+3. **Track the spec, not our shims.** Where our implementation and the spec
+   disagree, the implementation is what changes. Never let book CSS, docs,
+   or tooling depend on a shim-specific behavior, DOM shape, or property
+   (this is how the Paged.js migration got expensive — books coupled to
+   `.pagedjs_*` internals and polyfill quirks).
+4. **Design for deletion.** Each shim's boundary should be sharp enough that
+   deleting it when Chrome catches up is a small, safe change — feature-
+   detect where possible, keep shims out of the author-facing surface, and
+   record in each shim's header which spec gap it fills so its removal
+   trigger is knowable.
+
+### Where "standards-based" binds strictly, and where it relaxes
+
+The standards rules above apply with FULL force to everything that
+**processes author HTML and CSS** — the markdown pipeline, `MARKER_CSS`, the
+compiler, the print path, and anything that decides what the author's
+document *means* or what lands in the PDF. That code is standards-based, its
+shims are thin and removable, and it may not invent behavior a future Chrome
+feature could not replace.
+
+The rules **relax for code that exists only to support the tooling** — the
+preview/viewer chrome, the desktop UI, editor integration. No future browser
+feature is going to replace "a preview application", so that code may be
+implemented in whatever way best serves the authoring experience.
+
+Two constraints survive the relaxation, and they are what keep it honest:
+
+1. **It must READ standard CSS.** The viewer consumes the same standard
+   `@page`/GCPM the print path does. Authors never write viewer-specific CSS,
+   and no book may depend on viewer internals (DOM shape, classes, custom
+   properties) — that coupling is exactly what made the Paged.js migration
+   expensive.
+2. **It must not change what the document means.** Tooling may re-present the
+   author's pages; it may not re-decide them. Where the viewer derives
+   pagination by any means other than the print fragmenter, the preview↔print
+   parity gate (`scripts/native-parity-gate.ts`) is what proves it still
+   agrees with the PDF — and it must stay green with an empty allowlist.
+
+**Boundary rulings** (ratified by the product owner, 2026-08-08 — these
+resolve the categorization questions future work will hit):
+
+- **The on-screen viewer is PERMANENT tooling**, not a shim. The Paged Media
+  spec targets print; browsers show no intent to paginate on screen, so the
+  viewer (preview, HTML publishing, embeds) has no official replacement
+  coming. It stays thin and standards-FED — it reads only standard CSS —
+  but its UX (navigation, zoom, view modes) is a product feature worth
+  investing in, not something built reluctantly.
+- **Print-production features are PERMANENT tooling.** Bleed, crop marks,
+  PDF/X boxes and ICC intents, signature imposition are publishing tools —
+  the product — implemented as PDF post-processing outside the rendering
+  path. The "temporary shim" category covers ONLY spec-defined features
+  Chrome has not implemented yet.
+- **Chrome wins once it ships.** When Chrome implements a Paged Media
+  feature, we drop our shim and match Chrome's behavior even where it is
+  imperfect — print output IS Chrome's output, and preview↔PDF divergence
+  is the worst failure this project can produce. File upstream Chromium
+  bugs; do not maintain corrective shims.
+- **Author-facing vocabulary is fine when it emits standard CSS.** Markdown
+  markers (`@page`/`@section`/`@chapter`), utility classes, and `--gp-*`
+  custom properties are the product's authoring surface — permanent —
+  provided they compile/expand to standard HTML+CSS so documents stay
+  portable and shims stay removable. What is forbidden is non-standard
+  RUNTIME behavior in the HTML/CSS processing path, not non-standard
+  authoring shorthand.
+- **The preview is not a PDF viewer.** Showing the built PDF instead of a
+  live viewer would make preview↔print fidelity tautological and hand us
+  spread view and zoom for free — but it defeats the viewer's whole purpose,
+  which is HOT-RELOAD EDITING: an author changing a word must see it
+  immediately, not wait on a PDF build. A PDF-preview mode may be worth
+  adding later as an additional way to inspect the final artifact; it must
+  never replace the live viewer.
+
 
 ## Architectural rules
 
@@ -82,7 +175,8 @@ pipeline.
 Default, author-facing layout primitives belong in the most general reusable
 layer that can own them:
 
-1. Put generic markdown authoring behavior in core Gutterpress / `markdown-it-paged`
+1. Put generic markdown authoring behavior in core Gutterpress (`markers.js`
+   for structural markers, `gutterpress-css.ts` for author utilities)
 2. Put project-specific component chrome and macro semantics in that project's
    plugin and component CSS layer
 3. Put book-specific positioning and context-only break tuning in that book's
@@ -122,9 +216,12 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server that broadcasts a "full-reload" message on
-file change — Node-compatible, runs under both Bun (dev / compiled binary)
-and Node.js (Electron), with no bundler involved.
+server + a `ws` WebSocket server. A single Markdown edit may use the focused
+`content-update` notification and wider changes use `full-reload`, but the
+preview shell handles both by swapping the complete regenerated book. This
+keeps pagination independent of per-source isolation wrappers. The server is
+Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
+(Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
@@ -167,8 +264,8 @@ Reasons:
   2. Plugin authors cannot reliably import from `gutterpress` because
      the compiled binary has no `node_modules` for plugin code to resolve
      against. If a plugin needs an internal helper, it must inline-copy it
-     (e.g. a plugin's marker parser should be an inlined copy of
-     `markdown-it-paged`'s `parseMarkerLine`, not an import).
+     (e.g. a plugin's marker parser should be an inlined copy of Gutterpress
+     `markers.js`'s `parseMarkerLine`, not an import).
   3. `packages/cli/src/index.ts` re-exports type-only definitions
      (`GutterpressPlugin`, `GutterpressPluginMetadata`, `GutterpressPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
@@ -205,18 +302,54 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 Authoring guide lives in [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
-removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
-`@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
-blocks. Do NOT reintroduce `markdown-it-container` to core.
+removed 2026-05-17. Core owns the structural marker family (`@chapter`,
+`@spread`, `@page`, `@section`, breaks, and continuations); project plugins may
+add branded component markers such as `@sidebar` or `@callout`. These marker
+families are the canonical author surface for wrapped blocks. Do NOT
+reintroduce `markdown-it-container` to core.
 
-### 6. `markdown-it-paged` owns its full contract
+### 6. Gutterpress owns its markers — `markers.js`
 
-The inlined `packages/cli/src/lib/markdown/markdown-it-paged.js` owns: markers
-→ tokens → HTML emission → the supporting CSS (`PAGED_CSS` named export).
-`index.ts` imports the CSS and injects it; it does NOT override the plugin's
-renderer rules or maintain its own layout state. Per-render state lives on
-`env.__colSplitDepth`, not a module-level closure, so a thrown render can't
-leak depth state into the next chapter.
+`packages/cli/src/lib/markdown/markers.js` is **Gutterpress code**. It began
+as an inlined copy of the standalone `markdown-it-paged` package and was
+absorbed at 0.10.0: the copy had grown to 812 lines against upstream's 433,
+was never consumed from npm, and carried four Gutterpress-only feature
+clusters (`data-source-range` editor threading per ADR 0009,
+`data-chapter-label`/`.chapter-opener`, `env.__colSplitDepth`, and the
+emitted-class contract the viewer depends on). The third-party label had
+stopped describing the file, and it was actively costing us — it argued
+against cleaning comments that describe a removed engine, and it blurred the
+ownership boundary for the `gp-*` vocabulary.
+
+The upstream package remains its own project. **Do not re-converge with it**:
+`data-source-range` is desktop-editor plumbing with no business in a
+general-purpose markdown-it plugin.
+
+**One prefix: `gp-`.** Everything Gutterpress emits or styles is `gp-`
+prefixed. The split between the two modules is by ROLE, not owner:
+
+- `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
+  `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
+  `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
+  Per-render state lives on `env.__colSplitDepth`, not a module-level
+  closure, so a thrown render can't leak depth state into the next chapter.
+- `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
+  vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
+  `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth
+  ladder. Column utilities are core layout vocabulary; themes must not create
+  competing generic names such as `.two-column` / `.three-column`.
+- `gp-pin-scope.js` — the `.gp-pin` diagnostic, registered by `renderer.ts`
+  right after the marker plugin (it walks that plugin's `layout_*` tokens and
+  reads classes markdown-it-attrs attached, so the order is load-bearing).
+
+`assemble.ts` injects `MARKER_CSS` then `GUTTERPRESS_CSS`, before user plugin
+CSS and the author's stylesheets, so author rules win at equal specificity.
+
+Marker attributes accept both the compact spelling (`@section .gp-columns-2`)
+and markdown-it-attrs braces (`@section {.gp-columns-2}`). They are equivalent
+authoring forms and both are part of the public marker contract. A bare
+`@section` is valid without an enclosing `@page`; do not restore implicit page
+wrapping or a warning for that shape.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 
@@ -416,10 +549,10 @@ What remains relevant to **this** repo:
   [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md),
   with a worked implementation in [`examples/with-design-guide/`](./examples/with-design-guide/).
 - The frozen chapter-opener's **plugin** half still lives in this repo at
-  `packages/cli/src/lib/markdown/markdown-it-paged.js` (`@chapter` parsing,
+  `packages/cli/src/lib/markdown/markers.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
-  moved to dc-op-manual. The full frozen contract and the durable paged.js CSS
-  anti-patterns are preserved in AKM
+  moved to dc-op-manual. The full frozen contract and the historical Paged.js
+  CSS anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
 

@@ -195,7 +195,7 @@ log("projects panel driven; waiting for project to open…");
 
 // Wait for the Contents outline to populate — same signal the editor-dropdown-sync
 // test uses (120s). This fires once markdown-it has parsed the files and the
-// outline is built, long before full paged.js layout completes.
+// outline is built, long before full viewer layout completes.
 let projectOpen = false;
 for (let i = 0; i < 120; i++) {
   const open = await evalJs(`!!(document.querySelector('.toc-item') || document.querySelector('.file-item'))`);

@@ -11,8 +11,8 @@
  * The overlay is informational chrome (translucent scrim + spinner + Cancel),
  * not an input barrier: the contract pinned here is that the scrim passes
  * pointer/wheel input through to the iframe (`pointer-events: none`) while
- * the interactive card (`.spinner-wrap`, which holds the Cancel button)
- * restores `pointer-events: auto` so cancelling still works.
+ * only the Cancel button restores `pointer-events: auto` so the spinner and
+ * label never create a dead wheel zone.
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -47,8 +47,13 @@ describe("LoadingOverlay never swallows preview scroll (scroll-dead-preview)", (
     expect(body).toMatch(/pointer-events:\s*none/);
   });
 
-  test("the spinner card (Cancel button) stays interactive", () => {
+  test("the spinner card also passes wheel input through", () => {
     const body = stripCssComments(ruleBody(overlaySource, ".spinner-wrap"));
+    expect(body).toMatch(/pointer-events:\s*none/);
+  });
+
+  test("only the actual Cancel button restores interactivity", () => {
+    const body = stripCssComments(ruleBody(overlaySource, ".cancel-btn"));
     expect(body).toMatch(/pointer-events:\s*auto/);
   });
 });

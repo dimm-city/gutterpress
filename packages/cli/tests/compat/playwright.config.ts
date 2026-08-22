@@ -11,6 +11,13 @@
  * baseline to compare the other engines against in a single test), so this
  * config defines no browser projects — it only provides the runner and the
  * preview web servers.
+ *
+ * This suite proves the native engine's IN-BROWSER VIEWER (the client-side
+ * pagination bundle every preview/`--format html` build ships — see
+ * `src/engine/viewer/`) renders correctly in all three browser engines, even
+ * though the PDF build itself always renders in Chromium. Paged.js has been
+ * removed (native-only-migration-plan.md Phase 6); every web server below
+ * uses the manifest default (native), no `--engine` flag needed.
  */
 import { defineConfig } from "playwright/test";
 
@@ -27,7 +34,8 @@ export default defineConfig({
   webServer: [
     {
       // Simple example: the shipped user guide.
-      command: "bun src/cli.ts preview ../../examples/gutterpress-user-guide --no-open --port 4111",
+      command:
+        "bun src/cli.ts preview ../../examples/gutterpress-user-guide --no-open --port 4111",
       cwd: "../..",
       url: "http://127.0.0.1:4111/book.html",
       reuseExistingServer: !process.env.CI,
@@ -35,7 +43,8 @@ export default defineConfig({
     },
     {
       // Design-guide example (named pages, string() headers, two-column).
-      command: "bun src/cli.ts preview ../../examples/with-design-guide/design-guide --no-open --port 4112",
+      command:
+        "bun src/cli.ts preview ../../examples/with-design-guide/design-guide --no-open --port 4112",
       cwd: "../..",
       url: "http://127.0.0.1:4112/book.html",
       reuseExistingServer: !process.env.CI,
@@ -44,7 +53,8 @@ export default defineConfig({
     {
       // Synthetic fixture covering position: running() and custom properties
       // in @page margin boxes (no shipped example uses position: running()).
-      command: "bun src/cli.ts preview tests/compat/fixtures/feature-probe --no-open --port 4113",
+      command:
+        "bun src/cli.ts preview tests/compat/fixtures/feature-probe --no-open --port 4113",
       cwd: "../..",
       url: "http://127.0.0.1:4113/book.html",
       reuseExistingServer: !process.env.CI,

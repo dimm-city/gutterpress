@@ -13,6 +13,17 @@ async function tempDir(): Promise<string> {
   return await mkdtemp(path.join(tmpdir(), "gutterpress-src-"));
 }
 
+/**
+ * Make `<dir>/.git` look like a real repository. `gitEntryKind` requires
+ * HEAD before it will call a `.git` DIRECTORY a repo — the name alone is not
+ * evidence, and treating it as evidence let one stray `/tmp/.git` reclassify
+ * every folder beneath it. Tests that mean "a repo lives here" must say so.
+ */
+async function makeGitDir(dir: string): Promise<void> {
+  await mkdir(path.join(dir, ".git"), { recursive: true });
+  await writeFile(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main\n");
+}
+
 test("plain folder (no .git) → local-folder", async () => {
   const dir = await tempDir();
   try {
@@ -226,7 +237,7 @@ test("a repo-root project keeps repoRoot === path and subPath ''", async () => {
 test("a folder's OWN .git wins over an enclosing repo (still local-git-folder)", async () => {
   const dir = await tempDir();
   try {
-    await mkdir(path.join(dir, ".git"), { recursive: true });
+    await makeGitDir(dir);
     const inner = path.join(dir, "sub");
     const innerGit = path.join(inner, ".git");
     await mkdir(innerGit, { recursive: true });
@@ -250,8 +261,8 @@ test("findEnclosingRepoDir returns nearest ancestor repo, undefined when none", 
     const outer = path.join(dir, "outer");
     const mid = path.join(outer, "mid");
     const leaf = path.join(mid, "leaf");
-    await mkdir(path.join(outer, ".git"), { recursive: true });
-    await mkdir(path.join(mid, ".git"), { recursive: true });
+    await makeGitDir(outer);
+    await makeGitDir(mid);
     await mkdir(leaf, { recursive: true });
 
     // Nearest wins.
@@ -365,7 +376,7 @@ test("home directory itself is never treated as an enclosing repo", async () => 
   const home = await tempDir();
   const homedirSpy = spyOn(os, "homedir").mockReturnValue(home);
   try {
-    await mkdir(path.join(home, ".git"), { recursive: true });
+    await makeGitDir(home);
     const child = path.join(home, "some-book");
     await mkdir(child, { recursive: true });
 
@@ -392,6 +403,44 @@ test("detached HEAD (raw SHA) yields no branch name but stays a repo", async () 
     if (source.type === "local-git-folder") {
       expect(source.branch).toBeUndefined();
     }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Regression: a directory named `.git` that is not a repository must not
+ * reclassify everything beneath it.
+ *
+ * Observed for real on 2026-08-12 — a `/tmp/.git` holding one unrelated file
+ * (no HEAD, no objects, no refs; `git` itself reported "not a git
+ * repository") made every `mkdtemp` consumer under `/tmp` look like it lived
+ * inside a versioned project. `initVersionHistory` then refused to work
+ * anywhere in the OS temp dir, which failed ~8 unrelated tests with a
+ * message about the user's project layout. The blast radius is what makes
+ * this worth a test: `findEnclosingRepoDir` probes EVERY ancestor, so one
+ * junk directory high in the tree is enough.
+ */
+test("a .git directory without HEAD is not a repo", async () => {
+  const dir = await tempDir();
+  try {
+    const stray = path.join(dir, "stray");
+    const leaf = path.join(stray, "project");
+    await mkdir(path.join(stray, ".git"), { recursive: true });
+    await writeFile(path.join(stray, ".git", "unrelated-marker"), "");
+    await mkdir(leaf, { recursive: true });
+
+    // Not an enclosing repo: the ancestor walk must see straight through it.
+    expect(await findEnclosingRepoDir(leaf)).toBeUndefined();
+    // The folder ITSELF is still treated as a (damaged) git folder — that
+    // asymmetry is deliberate: leniency helps the folder the author opened
+    // (it routes to recovery) and only hurts on ancestors nobody named.
+    expect((await detectProjectSource(stray)).type).toBe("local-git-folder");
+
+    // Add HEAD and it becomes a repo, proving HEAD is what is being tested
+    // and not some incidental property of the fixture.
+    await writeFile(path.join(stray, ".git", "HEAD"), "ref: refs/heads/main\n");
+    expect(await findEnclosingRepoDir(leaf)).toBe(stray);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

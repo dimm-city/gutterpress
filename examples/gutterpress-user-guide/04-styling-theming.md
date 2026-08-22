@@ -28,34 +28,40 @@ Bundled themes define the full token set (see below) so you only need to overrid
 
 ## CSS Custom Properties
 
-The entire design system is driven by CSS custom properties defined on `:root`. Override any token in your own stylesheet:
+Every built-in theme is driven by CSS custom properties. Override any of them
+in your own stylesheet and the theme follows — no need to restyle elements.
+
+These are the tokens **every** built-in theme defines, so overriding them works
+whichever theme you started from:
 
 ```css
 :root {
   /* Palette */
-  --color-ink:         #1a1a2e;
-  --color-ink-muted:   #4a4a66;
-  --color-accent:      #1b4f8a;
-  --color-accent-alt:  #c0532a;
-  --color-paper:       #ffffff;
-  --color-tint:        #f0f4fa;
-  --color-rule:        #d0d4e8;
+  --color-ink:        #1a1a1a;   /* body text                */
+  --color-ink-muted:  #555555;   /* captions, secondary text */
+  --color-accent:     #2b4c7e;   /* headings, links          */
+  --color-paper:      #ffffff;   /* page background          */
+  --color-rule:       #d9d9d9;   /* borders, rules           */
 
   /* Typography */
   --font-body:    "Georgia", serif;
-  --font-display: "Helvetica Neue", sans-serif;
+  --font-display: "Georgia", serif;
   --font-mono:    "Menlo", monospace;
 
-  /* Type Scale */
-  --fs-h1:    24pt;
-  --fs-h2:    16pt;
-  --fs-h3:    13pt;
-  --fs-h4:    11pt;
-  --fs-body:  11pt;
-  --fs-small:  9pt;
-  --fs-micro:  8pt;
+  /* Size */
+  --fs-body: 11pt;      /* body copy — everything else scales from here */
+  --fs-h1:   2.1rem;
+  --fs-h2:   1.5rem;
+  --fs-h3:   1.2rem;
+  --leading: 1.55;
 }
 ```
+
+The values above are `clean-book`'s; each theme ships its own. A theme may add
+tokens of its own beyond this set — `technical-doc`, for example, adds
+`--color-tint` for its code and note fills. Open the `theme.css` that was
+copied into your project to see everything a given theme exposes; the `:root`
+block at the top is the whole vocabulary.
 
 ### Creating a custom theme
 
@@ -64,9 +70,9 @@ The fastest approach is a single CSS file with three sections:
 ```css
 /* 1. Override brand tokens */
 :root {
-  --color-accent:     #7b2f8a;   /* your primary color */
-  --color-accent-alt: #2f8a6b;   /* your secondary     */
-  --font-body: "Garamond", serif;
+  --color-accent: #7b2f8a;   /* headings, links */
+  --font-body:    "Garamond", serif;
+  --fs-body:      11.5pt;
 }
 
 /* 2. Override page geometry */
@@ -74,7 +80,7 @@ The fastest approach is a single CSS file with three sections:
 
 /* 3. Add component rules */
 .my-special-block {
-  background: var(--color-tint);
+  background: #f3f5f9;
   border-left: 3pt solid var(--color-accent);
   padding: 0.5em 0.8em;
 }
@@ -120,7 +126,6 @@ Named pages let you apply different margins, backgrounds, or decorations to spec
 /* CSS: define the named page */
 @page gallery {
   margin: 0.5in;
-  background: var(--color-tint);
   @top-center { content: none; }
 }
 ```
@@ -149,7 +154,7 @@ This guide's own cover page (`00-cover.md`) uses the same mechanism with a hand-
 
 ### Running headers and footers
 
-Paged.js uses CSS margin boxes for headers and footers:
+Gutterpress uses CSS margin boxes for headers and footers:
 
 ```css
 h1 { string-set: chapter-title content(); }
@@ -181,7 +186,7 @@ h1 { string-set: chapter-title content(); }
 
 ### Widow and orphan control
 
-`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Paged.js follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
+`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Chromium follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
 
 ```css
 body {
@@ -196,7 +201,7 @@ body {
 /* Keep a block from splitting across pages */
 .no-break {
   break-inside: avoid;
-  page-break-inside: avoid;  /* Paged.js legacy */
+  page-break-inside: avoid;  /* legacy alias, older browsers */
 }
 
 /* Force a new page before an element */
@@ -229,12 +234,12 @@ Each layout marker emits a predictable CSS class that you can style. This mirror
 | `@chapter` | `<div class="chapter">` (+ `data-chapter-label` when given a bare label) | `.chapter` |
 | `@spread` | `<div class="spread">` | `.spread` |
 | `@page` | `<div class="page">` | `.page` |
-| `@page-break` | `<div class="md-page-break">` (no page wrapper) | `.md-page-break` |
+| `@page-break` | `<div class="gp-page-break">` (no page wrapper) | `.gp-page-break` |
 | `@section` | `<div class="section">` | `.section` |
-| `@continue` | `<div class="section gutterpress-continued">` | `.section.gutterpress-continued` |
-| `@column-break` | `<div class="md-column-break">` (or a `.col` boundary inside `.col-split`) | `.md-column-break` |
+| `@continue` | `<div class="section gp-continued">` | `.section.gp-continued` |
+| `@column-break` | `<div class="gp-column-break">` (or a `.col` boundary inside `.col-split`) | `.gp-column-break` |
 
-Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.md-page-break`, never `.md-break`.
+Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.gp-page-break`, never `.md-break`.
 
 @end-section
 
@@ -275,8 +280,8 @@ A `<div class="chapter" id="ch-name">` wrapper comes from `@chapter #ch-name` �
 ```
 
 ```css
-.chapter#ch-bestiary table { font-size: var(--fs-micro); }
-.chapter#ch-bestiary h2    { color: var(--color-accent-alt); }
+.chapter#ch-bestiary table { font-size: 8pt; }
+.chapter#ch-bestiary h2    { color: #2f8a6b; }
 ```
 
 ## Debugging Styles

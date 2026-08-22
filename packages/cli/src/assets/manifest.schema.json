@@ -29,6 +29,27 @@
       "enum": ["dtrpg", "book", "custom"],
       "examples": ["dtrpg", "book", "custom"]
     },
+    "engine": {
+      "type": "string",
+      "description": "Pagination engine. Paged.js has been removed — the Gutterpress engine (native Chromium pagination) is the only engine, and \"native\" is the only meaningful value. \"paged\" is accepted for backward-compatible manifest parsing only: it produces a one-line warning and the build proceeds natively regardless. `--engine` on the CLI is likewise an accepted-but-ignored no-op.",
+      "enum": ["paged", "native"],
+      "default": "native",
+      "examples": ["native"]
+    },
+    "engineStyles": {
+      "type": "object",
+      "description": "Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the only list that still applies; `.paged` is accepted-but-ignored (a warning fires if it has entries) now that Paged.js has been removed.",
+      "properties": {
+        "paged": {
+          "type": "array",
+          "description": "REMOVED — Paged.js has been deleted. Accepted for backward-compatible manifest parsing only; entries here are ignored with a warning.",
+          "items": { "type": "string" }
+        },
+        "native": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false,
+      "examples": [{ "native": ["css/native-furniture.css"] }]
+    },
     "targets": {
       "type": "array",
       "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",

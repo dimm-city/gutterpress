@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  inlineShapeUrls,
   inlineStyles,
   planImageCopies,
   collectStyleDependencies,
@@ -187,6 +188,27 @@ describe("planImageCopies", () => {
     expect(errors).toHaveLength(0);
   });
 
+  test("skips every non-filesystem scheme and query-only reference", async () => {
+    const { copies, errors, destinations } = await planImageCopies(dir, [
+      "ftp://example.com/art.png",
+      "blob:https://example.com/id",
+      "mailto:art@example.com",
+      "?image=1",
+      "#poster",
+      "//cdn.example.com/art.png",
+    ]);
+    expect(copies).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(destinations.size).toBe(0);
+  });
+
+  test("does not let a file URL bypass the relative-image policy", async () => {
+    const { copies, errors } = await planImageCopies(dir, ["file:///etc/passwd"]);
+    expect(copies).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("must be relative to the project");
+  });
+
   test("rejects a reference that escapes the project, with actionable advice", async () => {
     const { errors } = await planImageCopies(dir, ["../outside/a.png"]);
     expect(errors).toHaveLength(1);
@@ -201,6 +223,57 @@ describe("planImageCopies", () => {
   test("percent-encoded names resolve to the real file on disk", async () => {
     const { copies } = await planImageCopies(dir, ["images/my%20photo.png"]);
     expect(copies[0]!.to).toBe("images/my photo.png");
+  });
+});
+
+// inlineShapeUrls — staging makes .gp-shape print-safe. shape-outside reads
+// pixels, so unlike <img> rendering it needs CORS-clean data; under the
+// print path's file:// origin a file-path shape silently degrades to the
+// margin box while the http preview shows it. Inlining the mirrored URL as
+// a data: URI at staging removes the origin from the equation.
+describe("inlineShapeUrls", () => {
+  const attr = (url: string) => `--gp-shape:url(&quot;${url}&quot;)`;
+
+  test("inlines a staged file reference as a typed data: URI", async () => {
+    await put("assets/beast.png", Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const html = `<img class="gp-shape" style="${attr("assets/beast.png")}" src="assets/beast.png">`;
+    const out = await inlineShapeUrls(html, dir);
+    const b64 = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+    expect(out).toContain(attr(`data:image/png;base64,${b64}`));
+    expect(out).not.toContain(attr("assets/beast.png"));
+  });
+
+  test("repeated references inline once and all occurrences are rewritten", async () => {
+    await put("a.svg", "<svg/>");
+    const one = `<img style="${attr("a.svg")}">`;
+    const out = await inlineShapeUrls(one + one, dir);
+    expect(out.match(/data:image\/svg\+xml;base64,/g)).toHaveLength(2);
+  });
+
+  test("percent-encoded srcs resolve like the copy plan decodes them", async () => {
+    await put("my photo.png", "x");
+    const out = await inlineShapeUrls(`<img style="${attr("my%20photo.png")}">`, dir);
+    expect(out).toContain("data:image/png;base64,");
+  });
+
+  test("remote, data:, absolute, escaping, and missing references are left untouched", async () => {
+    await put("real.png", "x");
+    const cases = [
+      "https://example.com/a.png",
+      "data:image/png;base64,AAAA",
+      "/etc/hostname",
+      "../outside.png",
+      "missing.png",
+    ];
+    for (const url of cases) {
+      const html = `<img style="${attr(url)}">`;
+      expect(await inlineShapeUrls(html, dir)).toBe(html);
+    }
+  });
+
+  test("html without shape properties passes through byte-identical", async () => {
+    const html = `<img src="a.png" class="gp-right">`;
+    expect(await inlineShapeUrls(html, dir)).toBe(html);
   });
 });
 

@@ -2,8 +2,7 @@
  * PreviewEventController — the single owner of the PreviewClient event router
  * that used to live inline as the `onClientReady` closure in `+page.svelte`.
  *
- * It reduces over the four preview-frame events (`renderingComplete`, `ready`,
- * `pageChanged`, `sourceLineChanged`) and drives the post-render *settle
+ * It reduces over preview-frame lifecycle/navigation/source events and drives the post-render *settle
  * sequence*: view-mode auto-selection, the fit-width-vs-numeric-zoom reveal
  * race, page restore, outline rebuild, and re-lint.
  *
@@ -23,7 +22,7 @@
  * builders (browser-safe string templates).
  */
 
-import { buildDesktopStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
 
 /** Minimal host-command client surface the controller drives. */
@@ -47,22 +46,13 @@ interface PreviewEventZoomView {
 }
 
 /**
- * Editor↔preview sync seams for the `sourceLineChanged` branch (preview→editor
- * follow). Grouped so the editor coupling stays behind one injected surface.
+ * Editor/outline seams: render replacement invalidates pending editor→preview
+ * commands, while preview scrolling updates outline chrome only.
  */
 interface PreviewEventEditorSync {
-  /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
-  suppressPreviewSyncUntil: () => number;
-  editorPaneOpen: () => boolean;
-  editorChapter: () => string | null;
-  currentDir: () => string | null;
-  /** Whether the open editor buffer has unsaved edits. */
-  bufferDirty: () => boolean;
+  /** Invalidate replies issued against a preview frame/render being replaced. */
+  invalidatePending: () => void;
   updateActiveOutline: (line: number) => void;
-  /** Reveal a line in the currently-open chapter (no-op if no editor). */
-  revealEditorLine: (line: number) => void;
-  /** Open a different chapter's file and reveal the line once it loads. */
-  followChapterInEditor: (chapter: string, line: number) => void;
 }
 
 export interface PreviewEventDeps {
@@ -81,6 +71,8 @@ export interface PreviewEventDeps {
   setRenderProgressPage: (v: number) => void;
   getRenderProgressPage: () => number;
   setRenderCompleteOverlay: (v: boolean) => void;
+  /** Tiny non-blocking status shown only for save-triggered replacement frames. */
+  setPreviewUpdating: (v: boolean) => void;
   /** Clear the outline + reset the active index (on a new render starting). */
   resetOutline: () => void;
   /** Read-and-clear the pending per-project restore (page + view mode). */
@@ -96,7 +88,6 @@ export interface PreviewEventDeps {
   toastSuccess: (message: string) => void;
   // ── Environment / clock ──────────────────────────────────────────────────
   viewportWidth: () => number;
-  now: () => number;
   scheduleMicrotask: (fn: () => void) => void;
 }
 
@@ -135,6 +126,13 @@ export class PreviewEventController {
 
   handleEvent(e: PreviewEvent): void {
     switch (e.name) {
+      case "renderingStarted":
+        this.deps.editorSync.invalidatePending();
+        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(true);
+        break;
+      case "renderingCancelled":
+        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(false);
+        break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
         break;
@@ -153,6 +151,7 @@ export class PreviewEventController {
   private onRenderingComplete(detail: PreviewEvent["detail"]): void {
     const d = this.deps;
     const hotReload = detail.hotReload === true;
+    if (hotReload) d.setPreviewUpdating(false);
     const n = detail.totalPages ?? 0;
     d.pageNav.totalPages = n;
     d.setRenderProgressPage(n);
@@ -167,8 +166,13 @@ export class PreviewEventController {
     // and unnecessary settings writes.
     if (!hotReload) {
       const client = d.client();
-      client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
-      client?.injectStyles("debug", DEBUG_STYLES);
+      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
+      // native is the only engine. The rest of the old iframe-styles.ts sheet
+      // targeted `.pagedjs_*` classes the native viewer's DOM never has (it
+      // uses `.gp-*`, styled by decorate.ts + viewer.css); the preview
+      // background is the one rule the native viewer needs injected here (it
+      // is the author's preview-background setting, not engine chrome).
+      client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));
       const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
       const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
       const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);
@@ -205,28 +209,13 @@ export class PreviewEventController {
   }
 
   private onSourceLineChanged(detail: PreviewEvent["detail"]): void {
-    const d = this.deps;
-    const es = d.editorSync;
-    // Preview→editor sync: the reader scrolled. Follow in the editor and update
-    // the active outline entry — but not while the editor itself is driving the
-    // preview (echo guard).
+    // Preview scrolling updates navigation chrome only. It must never move the
+    // editor's viewport/caret: that feedback loop was the source of delayed
+    // editor jumps after a hot reload. "Go to source" is the single explicit
+    // preview→editor navigation action.
     const line = detail.sourceLine;
-    const chap = detail.chapter;
-    if (typeof line === "number") {
-      es.updateActiveOutline(line);
-      if (d.now() >= es.suppressPreviewSyncUntil() && es.editorPaneOpen()) {
-        if (chap === es.editorChapter()) {
-          es.revealEditorLine(line);
-        } else if (chap && es.currentDir() && !es.bufferDirty()) {
-          // Scrolled into a DIFFERENT chapter: follow it by opening that
-          // chapter's file, then reveal the line once it has loaded. Skipped
-          // when there are unsaved edits so it never yanks the file away mid-
-          // edit. This is what makes the editor track the whole book, not just
-          // the one open chapter (the "sporadic" complaint).
-          es.followChapterInEditor(chap, line);
-        }
-      }
-    }
+    if (typeof line !== "number") return;
+    this.deps.editorSync.updateActiveOutline(line);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {
@@ -241,6 +230,7 @@ export class PreviewEventController {
 
   private onReady(): void {
     const d = this.deps;
+    d.editorSync.invalidatePending();
     d.setRendering(true);
     // New render starting — overlay covers the layout shuffle; fades out on
     // renderingComplete.

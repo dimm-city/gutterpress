@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { size: 400px 600px; margin: 40px; }
+      body { margin: 0; }
+      .box { height: 60px; }
+      .overridden-before { break-before: page; }
+      .overridden-before { break-before: auto; }
+      .overridden-after { break-after: page; }
+      .overridden-after { break-after: auto; }
+      .invalid-always { break-before: always; }
+      .valid-before { break-before: page; }
+      .valid-after { break-after: page; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="intro" class="box">intro</div>
+      <div id="overridden-before" class="box overridden-before">overridden before</div>
+      <div id="overridden-after" class="box overridden-after">overridden after</div>
+      <div id="invalid-always" class="box invalid-always">invalid always</div>
+      <div id="valid-before" class="box valid-before">valid before</div>
+      <div id="valid-after" class="box valid-after">valid after</div>
+      <div id="tail" class="box">tail</div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

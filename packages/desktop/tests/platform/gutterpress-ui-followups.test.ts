@@ -37,7 +37,7 @@ test("files tab no longer has configure project button and embedded panels own t
   expect(media).toContain("icon-mini");
 });
 
-test("bottom status uses save icons, slower autosave default, and compact mobile rules", () => {
+test("bottom status uses save icons, responsive autosave default, and compact mobile rules", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   const page = read("src/routes/+page.svelte");
   const contract = read("src/lib/platform/contract.ts");
@@ -46,7 +46,7 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   // instead of hand-duplicating the literal.
   const sharedTypes = read("src/lib/platform/shared-types.ts");
   const settingsStore = read("electron/settings-store.ts");
-  expect(sharedTypes).toContain("autoSaveDelay: 2500");
+  expect(sharedTypes).toContain("autoSaveDelay: 500");
   expect(page).toContain("saveDelayMs: settings.current.editor.autoSaveDelay");
   expect(page).toContain("buffer?.setSaveDelayMs(delay)");
   expect(page).toContain("autoSaveDelaySink(s.editor.autoSaveDelay)");

@@ -333,6 +333,7 @@ export class EditorBuffer {
   async reconcileExternalChange(): Promise<void> {
     const filePath = this.filePath;
     if (!filePath) return;
+    const gen = this.loadGen;
     // Self-echo suppression (#38 cursor-jump fix): the folder watcher fires on
     // our OWN debounced disk write. The mtime guard below catches the echo once
     // doSave has recorded the post-write mtime — but the watch event can arrive
@@ -349,6 +350,7 @@ export class EditorBuffer {
     } catch {
       return;
     }
+    if (this.filePath !== filePath || this.loadGen !== gen) return;
     if (!stat.exists) {
       if (this.isDirty) {
         this.externalChange = { diskContent: "", diskMtimeMs: 0, exists: false };
@@ -371,6 +373,7 @@ export class EditorBuffer {
     } catch {
       return;
     }
+    if (this.filePath !== filePath || this.loadGen !== gen) return;
     if (diskContent === this.content) {
       // Author's edit already matches disk — just refresh the baseline.
       this.diskContent = diskContent;

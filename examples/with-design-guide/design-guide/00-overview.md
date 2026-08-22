@@ -77,7 +77,8 @@ design-guide/
 
 ## Download
 
-[Download PDF](guide.pdf){.download}
+See [Include a downloadable PDF](#include-a-downloadable-pdf) for the optional
+PDF build and deployment steps.
 
 ---
 

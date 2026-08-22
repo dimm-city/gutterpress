@@ -106,6 +106,7 @@ test("a failed PDF auto-open is nonfatal and reports the saved path", async () =
     htmlPath: "/tmp/out/book.html",
     pdfPath: "/tmp/out/book.pdf",
     fingerprintPath: "/tmp/out/build-fingerprint.json",
+    diagnostics: [],
   });
   openPathSpy = spyOn(openPathModule, "openPath").mockRejectedValue(
     new Error("spawn xdg-open ENOENT")
@@ -118,4 +119,40 @@ test("a failed PDF auto-open is nonfatal and reports the saved path", async () =
   expect(warnings.join("\n")).toContain("Could not open the PDF automatically");
   expect(warnings.join("\n")).toContain("spawn xdg-open ENOENT");
   expect(warnings.join("\n")).toContain("Open it manually: /tmp/out/book.pdf");
+});
+
+// `preview --format pdf` builds through the SAME runBuild pipeline as
+// `build`, so every build option it accepts has to reach it — `--allow-shrink`
+// used to be rejected as an unknown flag (exit 2), which left the engine's
+// "pass allowShrink to build anyway" advice unreachable from this command.
+test("preview --format pdf maps --allow-shrink onto runBuild", async () => {
+  consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+  let captured: { allowShrink?: boolean } | undefined;
+  buildSpy = spyOn(buildRunnerModule, "runBuild").mockImplementation(
+    (async (opts: { allowShrink?: boolean }) => {
+      captured = opts;
+      return { outDir: "/tmp/out", htmlPath: null, pdfPath: null, fingerprintPath: null, diagnostics: [] };
+    }) as unknown as typeof buildRunnerModule.runBuild
+  );
+
+  await runCommand(previewCommand, {
+    rawArgs: [".", "--format", "pdf", "--allow-shrink", "--no-open"],
+  });
+
+  expect(captured?.allowShrink).toBe(true);
+});
+
+test("preview --format pdf leaves allowShrink off by default", async () => {
+  consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+  let captured: { allowShrink?: boolean } | undefined;
+  buildSpy = spyOn(buildRunnerModule, "runBuild").mockImplementation(
+    (async (opts: { allowShrink?: boolean }) => {
+      captured = opts;
+      return { outDir: "/tmp/out", htmlPath: null, pdfPath: null, fingerprintPath: null, diagnostics: [] };
+    }) as unknown as typeof buildRunnerModule.runBuild
+  );
+
+  await runCommand(previewCommand, { rawArgs: [".", "--format", "pdf", "--no-open"] });
+
+  expect(captured?.allowShrink).toBe(false);
 });

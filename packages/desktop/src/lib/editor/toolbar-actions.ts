@@ -15,6 +15,16 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
+import {
+  IMAGE_POSITION_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+  normalizeClassInput,
+  serializeImageAttrs,
+  setPositionClass,
+  setShapeClass,
+  setSizeClass,
+  setWidth,
+} from "./image-classes";
 
 // ── Helper: single-range accessor ────────────────────────────────────────────
 
@@ -260,7 +270,7 @@ export function applyHr(view: EditorView): void {
 
 // ── Page break ───────────────────────────────────────────────────────────────
 // The canonical Gutterpress author token is `@page-break` on its own line.
-// Source: packages/cli/src/lib/markdown/markdown-it-paged.js line 13.
+// Source: packages/cli/src/lib/markdown/markers.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
@@ -293,9 +303,41 @@ export function applyTable(view: EditorView, cols: number): void {
 }
 
 // ── Image ─────────────────────────────────────────────────────────────────────
-// Supported positioning classes come from the Gutterpress user guide (ch03):
-//   {.float-left}, {.float-right}, {.center}, {.full-width}, {.full-bleed}
-// Width is via markdown-it-attrs: {width="300px"}.
+// The supported class vocabulary (positions, sizes, and their permanent
+// legacy aliases) lives in ONE place: `$lib/editor/image-classes` — the
+// option tables there drive the insert dialog, the context menu, and the
+// attrs round-trip helpers alike.
+
+/**
+ * Build the `{…}` markdown-it-attrs suffix for a NEW image from the insert
+ * dialog's width/position/size/shape picks (empty string when none are
+ * set). Position/size inputs are canonicalized through the option tables,
+ * so a caller still holding a removed legacy name ("full-bleed") writes the
+ * live gp-* class, never a dead one. Extracted out of `applyImage` below
+ * (inline-editing plan §4.4) so the context menu's image actions can share
+ * the exact same suffix rule — though for EXISTING tokens they go through
+ * image-classes' tokenize → set-facet → serialize instead, which preserves
+ * attrs this builder doesn't know about.
+ */
+export function buildImageAttrsString(
+  width?: string,
+  position?: string,
+  size?: string,
+  shape?: boolean,
+): string {
+  let tokens: string[] = [];
+  tokens = setWidth(tokens, width || null);
+  tokens = setPositionClass(
+    tokens,
+    position ? (normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? null) : null,
+  );
+  tokens = setSizeClass(
+    tokens,
+    size ? (normalizeClassInput(IMAGE_SIZE_OPTIONS, size) ?? null) : null,
+  );
+  tokens = setShapeClass(tokens, shape === true);
+  return serializeImageAttrs(tokens);
+}
 
 export function applyImage(
   view: EditorView,
@@ -303,12 +345,10 @@ export function applyImage(
   alt: string,
   width?: string,
   position?: string,
+  size?: string,
+  shape?: boolean,
 ): void {
-  const attrs: string[] = [];
-  if (width) attrs.push(`width="${width}"`);
-  if (position) attrs.push(`.${position}`);
-
-  const attrStr = attrs.length > 0 ? `{${attrs.join(" ")}}` : "";
+  const attrStr = buildImageAttrsString(width, position, size, shape);
   const snippet = `\n\n![${alt}](${src})${attrStr}\n\n`;
   const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({
@@ -320,7 +360,7 @@ export function applyImage(
 // ── Insert layout block (UX M26) ─────────────────────────────────────────────
 // The toolbar previously exposed none of Gutterpress's own layout primitives
 // beyond @page-break (UX finding M26). These helpers insert a correct core
-// `@marker` skeleton (markdown-it-paged.js's whitelist — chapter/spread/
+// `@marker` skeleton (the core marker whitelist — chapter/spread/
 // page/section/continue/page-break/column-break/end-section; see the
 // plugin's own header comment) as its own block after the CURRENT line,
 // blank-line padded — the same convention applyHr/applyPageBreak above
@@ -341,8 +381,8 @@ export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break
  *  silently degrades to no `data-chapter-label` / no `.chapter-opener` —
  *  exactly the opposite of what this control advertises. Quoting collapses
  *  the label to a single token regardless of internal spaces, so it actually
- *  produces the label + chapter-opener (verified against the real
- *  markdown-it-paged plugin). See marker-completions.ts's
+ *  produces the label + chapter-opener (verified against the core marker
+ *  renderer). See marker-completions.ts's
  *  `applyChapterCompletion` for the identical fix applied to the completion
  *  source's `@chapter` template. */
 export function applyChapterBlock(view: EditorView): void {
@@ -373,11 +413,9 @@ export function applySectionBlock(view: EditorView): void {
 }
 
 /** A working two-column section. `.col-split` (not bare `.two-column`) is
- *  required — Paged.js strips `break-after: column` during CSS
- *  preprocessing, so plain CSS column balancing never breaks where
- *  `@column-break` sits; `.col-split` opts into markdown-it-paged's explicit
- *  `<div class="col">` renderer path instead (see the plugin's own
- *  "col-split handling" comment), which is what actually breaks reliably. */
+ *  required because `@column-break` is structural within that authoring
+ *  primitive; plain CSS multicol does not create the explicit left/right
+ *  wrappers the fixed split needs. */
 export function applyTwoColumnBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
   const prefix = "\n\n@section .col-split\n";

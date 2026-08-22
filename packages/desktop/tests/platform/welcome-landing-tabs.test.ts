@@ -50,3 +50,43 @@ describe("start-screen copy", () => {
     expect(landing).toContain("Welcome to Gutterpress");
   });
 });
+
+describe("the Logs tab (diagnostic sharing)", () => {
+  test("Logs is the LAST tab, after Help", () => {
+    const tabs = landing.slice(
+      landing.indexOf("const LANDING_TABS"),
+      landing.indexOf("];", landing.indexOf("const LANDING_TABS")),
+    );
+    const order = [...tabs.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
+    expect(order).toEqual(["projects", "settings", "help", "logs"]);
+  });
+
+  test("the logs panel mounts LogsPanel (list + read via api.log.*)", () => {
+    expect(landing).toContain('activeTab === "logs"');
+    expect(landing).toContain("<LogsPanel />");
+    const logsPanel = read("src/lib/components/LogsPanel.svelte");
+    expect(logsPanel).toContain("api.log.list()");
+    expect(logsPanel).toContain("api.log.read(");
+    expect(logsPanel).toContain("navigator.clipboard.writeText");
+  });
+});
+
+describe("the left panel's Projects tab can reopen the welcome screen", () => {
+  test("ProjectsListBody offers the action ONLY when the host passes it", () => {
+    const body = read("src/lib/components/ProjectsListBody.svelte");
+    expect(body).toContain("onShowWelcome");
+    expect(body).toContain("Welcome screen");
+  });
+
+  test("+page wires it to the landing (forced open on the Projects tab)", () => {
+    const page = read("src/routes/+page.svelte");
+    expect(page).toMatch(/onShowWelcome=\{\(\) => \{[\s\S]{0,200}landingForcedOpen = true;/);
+    // The start screen's own embedded ProjectsListBody must NOT get the
+    // action (it would be a no-op button under the screen it opens).
+    const landingBodyProps = landing.slice(
+      landing.indexOf("<ProjectsListBody"),
+      landing.indexOf("/>", landing.indexOf("<ProjectsListBody")),
+    );
+    expect(landingBodyProps).not.toContain("onShowWelcome");
+  });
+});

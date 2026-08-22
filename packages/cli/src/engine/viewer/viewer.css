@@ -1,0 +1,222 @@
+/* Gutterpress viewer chrome. The author's content CSS is untouched; everything here
+   is scoped to Gutterpress's own wrappers/layers. */
+
+/* The stage backdrop is viewer chrome and must stay chrome: this rule (0-1-0)
+   deliberately outranks an author's `body { background: … }` (0-0-1). An
+   author's canvas background is not lost — `decorate()` reads it before this
+   class is applied and replays it on every sheet, which is where print puts
+   it (see `captureCanvasBackground`). */
+.gp-stage {
+  --gp-sheet-bg: #fff;
+  --gp-stage-bg: #4a4a52;
+  --gp-guide: #e5484d;
+  --gp-safe: #30a46c;
+  background: var(--gp-stage-bg);
+  margin: 0;
+  padding: 32px;
+  overflow: auto;
+  /* Standalone pages use `--gutterpress-fit-zoom`; embedded previews use the
+     host-owned `--gutterpress-zoom`. fitZoom() guarantees only one is active. */
+  zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
+}
+
+/* One flow strip per named-page run. Chromium fragments its content into
+   columns; each column IS a page's content area. `width` is deliberately ONE
+   column wide — it sizes the strip's own box to the first page's content
+   area, matching where the strip sits inside that sheet (see the transform
+   below). `overflow` must stay `visible`: with a fixed height and no
+   `column-count`, Chromium creates as many columns as the content needs,
+   extending past this box in the inline direction (`scrollWidth` — read by
+   `measure()` — reflects the true extent). `overflow: hidden` here would
+   clip every column past the first from painting while leaving
+   getClientRects()/scrollWidth (and so pageOf()) unaffected, so pages 2+ of
+   a run would measure correctly but render blank — the `.gp-run` wrapper
+   below is already sized to the run's full width and owns the actual
+   clipping/visibility, so the strip does not need to. */
+.gp-strip {
+  position: relative;
+  width: var(--gp-content-w);
+  height: var(--gp-content-h);
+  column-width: var(--gp-content-w);
+  column-gap: calc(
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
+  );
+  column-fill: auto;
+  overflow: visible;
+  margin: 0;
+  /* strip sits inside the first sheet's content box */
+  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
+}
+
+/* Sheets/margin boxes are painted behind/around the strip by the decoration
+   layer; the strip itself must stay transparent so they show through. */
+.gp-strip > * {
+  break-inside: auto;
+}
+
+/* View mode (`applySpreadMode` in fragment.ts): wraps this run's multicol
+   columns into `--gp-wrap-cols` ROWS instead of one long row — 2 for
+   two-up/spread, 1 for single (a plain vertical stack of pages), using
+   CSS Multicol L2's `column-wrap: wrap` + `column-height` (shipped unflagged
+   Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
+   matches on a browser that has it; the base `.gp-strip` rules above are
+   the single-row fallback everywhere else). `row-gap` mirrors `column-gap`
+   above: content box height + top/bottom margins + the visual sheet gap, so
+   consecutive wrapped rows are spaced exactly one page-pitch apart, matching
+   how `column-gap` already encodes left/right margins for columns within a
+   row. Width reserves the full column count so a lone page (a strip with
+   only one fragment) still gets its correct left/right slot in two-up, with
+   nothing inserted to fill the other. */
+.gp-strip[data-wrap="on"] {
+  column-wrap: wrap;
+  column-height: var(--gp-content-h);
+  column-count: var(--gp-wrap-cols, 2);
+  row-gap: calc(
+    var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
+  );
+  width: calc(
+    var(--gp-content-w) * var(--gp-wrap-cols, 2) +
+      (
+        var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
+      ) * (var(--gp-wrap-cols, 2) - 1)
+  );
+}
+
+/* Cross-run correctness (no padding, no inserted PAGE): a run whose first
+   physical page is a RECTO would otherwise fall into multicol's first
+   (LEFT) grid slot and get grouped with the verso that follows it — wrong
+   side AND wrong pairing (a recto pairs with the verso that PRECEDES it).
+   `fragment.ts`'s `applySpreadMode` inserts this as the strip's first
+   child to consume exactly ONE column-flow slot with zero content, pushing
+   the run's real content one slot later so it lands correctly — see its
+   doc comment for why a same-box CSS-only mirror (e.g. `direction: rtl`)
+   cannot fix this (it changes placement, not grouping). */
+.gp-wrap-spacer {
+  break-after: column;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.gp-run {
+  position: relative;
+  margin: 0 0 var(--gp-sheet-gap);
+  /* Hit-transparent, like `.gp-layer` below: in wrap mode a recto-starting
+     run is pulled up over the previous run's last row (decorate.ts's
+     cross-run negative margin-top — the spread-composition overlap), and
+     its leading `.gp-wrap-spacer` slot is visually empty. The covered page
+     paints through, but the run's full-width box used to win
+     elementFromPoint there, so clicks, right-clicks, link hits, and text
+     selection were all dead on every covered page (measured: 60/60 dead
+     probe points in two-column view). Runs are viewer chrome — only author
+     content may capture hits. */
+  pointer-events: none;
+}
+
+/* …and the author's content re-enables hit testing. Equal specificity with
+   `.gp-run { pointer-events: none }` above, so ORDER is load-bearing:
+   `auto` must come after `none`. */
+.gp-strip > * {
+  pointer-events: auto;
+}
+
+.gp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.gp-sheet {
+  position: absolute;
+  top: 0;
+  width: var(--gp-page-w);
+  height: var(--gp-page-h);
+  background: var(--gp-sheet-bg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+}
+
+.gp-marginbox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  font: inherit;
+  color: inherit;
+}
+
+.gp-marginbox[data-align="start"] { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] { justify-content: center; }
+.gp-marginbox[data-align="end"] { justify-content: flex-end; }
+
+/* The outer .gp-marginbox is the fixed geometric slot; this inner generated
+   box receives the author's @page margin-box declarations. It defaults to the
+   slot's full dimensions (the `auto` margin-box case), while explicit author
+   width/height such as `fit-content` override these declarations and the
+   outer flex alignment keeps the resulting sticker on the correct edge. */
+.gp-marginbox-content {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  white-space: inherit;
+}
+
+.gp-marginbox[data-align="start"] > .gp-marginbox-content { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] > .gp-marginbox-content { justify-content: center; }
+.gp-marginbox[data-align="end"] > .gp-marginbox-content { justify-content: flex-end; }
+
+/* designer mode ------------------------------------------------------- */
+.gp-guide-trim,
+.gp-guide-safe,
+.gp-crop-mark {
+  position: absolute;
+  pointer-events: none;
+  display: none;
+}
+
+.gp-stage[data-designer="on"] .gp-guide-trim,
+.gp-stage[data-designer="on"] .gp-guide-safe,
+.gp-stage[data-designer="on"] .gp-crop-mark {
+  display: block;
+}
+
+.gp-guide-trim { outline: 1px dashed var(--gp-guide); }
+.gp-guide-safe { outline: 1px dashed var(--gp-safe); }
+.gp-crop-mark { background: var(--gp-guide); }
+
+.gp-warning {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  background: var(--gp-guide);
+  color: #fff;
+  font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* An accidental Ctrl+P on the published page must not print the dark stage
+   plus decorations — the PDF, shipped alongside book.html, is the print
+   artifact. This is a minimal reset, not a print layout. */
+@media print {
+  .gp-stage {
+    background: none;
+    padding: 0;
+    overflow: visible;
+    zoom: 1;
+  }
+  .gp-layer,
+  .gp-warning,
+  .gp-guide-trim,
+  .gp-guide-safe,
+  .gp-crop-mark {
+    display: none !important;
+  }
+  .gp-sheet {
+    box-shadow: none;
+  }
+}

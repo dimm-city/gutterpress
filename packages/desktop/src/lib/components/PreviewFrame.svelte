@@ -12,6 +12,17 @@
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
+  /**
+   * The mounted `<iframe>` element, or undefined before mount / after unmount.
+   * Exported so callers stop reaching for `document.querySelector("iframe")`
+   * (the pattern `+page.svelte`'s `measureContainerWidth`/context-menu
+   * positioning used) — this component owns the one iframe on the page, so it
+   * should be the one source of its element.
+   */
+  export function getIframe(): HTMLIFrameElement | undefined {
+    return frame;
+  }
+
   onMount(() => {
     if (!frame) return;
     const c = new PreviewClient();
@@ -42,8 +53,8 @@
   bridge via main.ts's — now closed — will-navigate hole). `sandbox` denies
   top-navigation and popups outright, as defense in depth alongside the host's
   will-navigate/setWindowOpenHandler policy.
-  allow-scripts is required: the pagedjs-bridge.js running inside the frame
-  drives paged.js layout and the postMessage command bridge (preview-client.ts).
+  allow-scripts is required: the preview-bridge.js running inside the frame
+  drives native viewer layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,
   images, the adapter-node routes it's served from) — normally allow-scripts +
@@ -65,8 +76,9 @@
    * renders the author's own document CSS and must always sit on a fixed,
    * neutral print-condition background regardless of the app's light/dark
    * theme. This literal is the one deliberate exception to the no-hardcoded-
-   * colour rule; see iframe-styles.ts buildDesktopStyles for the matching
-   * in-iframe canvas background. Do NOT replace it with an app theme token.
+   * colour rule; see iframe-styles.ts's buildCanvasBackgroundStyles for the
+   * matching in-iframe canvas background. Do NOT replace it with an app
+   * theme token.
    */
   iframe {
     flex: 1;
@@ -74,7 +86,7 @@
     height: 100%;
     border: 0;
     background: #5a5a5a;
-    /* NEVER hide this iframe (opacity/visibility/display) while paged.js is
+    /* NEVER hide this iframe (opacity/visibility/display) while the viewer is
        laying out. It is CROSS-ORIGIN (http://127.0.0.1 inside app://), and
        Chromium throttles invisible cross-origin iframes to ~1fps — which
        turned a ~10s layout into ~5 minutes (~1 page/sec) on a 287-page book

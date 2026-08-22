@@ -1,42 +1,47 @@
 /**
- * Error-to-kind classifier for the sync-recovery subsystem — the SINGLE
- * source of truth for git error classification.
+ * Error/health classification for sync + repair — the SINGLE source of truth.
  *
- * Maps a thrown error (from isomorphic-git or sync.ts) plus an optional
- * RepoHealth preflight to a SyncErrorKind. The building blocks
- * (isPushRejected, isMergeConflictError, classifyTransportFailure) are
- * exported and consumed by sync.ts — there is exactly ONE implementation of
- * each decoder, not parallel copies "kept in sync by spec".
+ * 2026-08-14 simplification (owner directive): the 17-kind SyncErrorKind
+ * taxonomy and its 16 per-kind handlers are gone. Every structural problem a
+ * repo can have now has ONE answer — `repairRepo()` (repair.ts) — so
+ * classification collapses to three health verdicts:
  *
- * classifyFromHealth() is the health-only classifier used by preflight
- * callers (no thrown error yet — e.g. the desktop at project-open): it returns
- * null for a healthy repo so the caller can skip recovery entirely.
+ *   - null           — healthy, nothing to do
+ *   - "stale_lock"   — a leftover lock old enough to sweep
+ *   - "needs_repair" — anything structural (missing/corrupt `.git`, broken
+ *                      ref store, detached HEAD, interrupted merge/rebase/
+ *                      cherry-pick left by an external tool)
  *
+ * The transport decoders (auth/offline/insecure) and the merge/push guards
+ * used by sync.ts remain here unchanged — outcome mapping, not repair.
  * This module is pure — no I/O, no side effects.
  */
 
-import type { RepoHealth, SyncErrorKind } from "./types.ts";
+import type { RepoHealth } from "./types.ts";
 
 /**
- * Minimum age before a leftover git lock counts as STALE for a preflight
- * classification. recover-stale-lock.ts imports this same constant as its
- * act-or-retry threshold, so preflight and handler can never disagree: a lock
- * young enough to pass preflight is exactly a lock the handler would defer
- * with retry_later ("a live process may still hold it").
+ * Minimum age before a leftover git lock counts as STALE. locks.ts imports
+ * this same constant as its sweep threshold, so preflight and sweep can never
+ * disagree: a lock young enough to pass preflight is exactly a lock the sweep
+ * would defer ("a live process may still hold it").
  */
 export const STALE_LOCK_MIN_AGE_MS = 2 * 60 * 1000; // 2 minutes
+
+/** The collapsed repair taxonomy — see the module header. */
+export type RepairNeed = "stale_lock" | "needs_repair";
 
 // ── RepoNeedsRecoveryError ────────────────────────────────────────────────────
 
 /**
- * Thrown by syncProject's structural preflight when the repo must be repaired
- * before any sync work can safely run. The `code` string is the STABLE
- * contract hosts may match on across the dynamic-import boundary (where
- * `instanceof` is unreliable); `kind` names the repair to dispatch.
+ * Thrown by sync's structural preflight when the repo must be repaired before
+ * any sync work can safely run. The `code` string is the STABLE contract
+ * hosts may match on across the dynamic-import boundary (where `instanceof`
+ * is unreliable); `kind` says whether a lock sweep suffices or the full
+ * repair pipeline is needed.
  */
 export class RepoNeedsRecoveryError extends Error {
   readonly code = "RepoNeedsRecovery";
-  constructor(readonly kind: SyncErrorKind) {
+  constructor(readonly kind: RepairNeed) {
     super(`The project needs repair before it can sync (${kind}).`);
     this.name = "RepoNeedsRecoveryError";
   }
@@ -53,9 +58,8 @@ export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryErro
  * Thrown by transport.ts's onAuth when a stored credential EXISTS but the
  * remote URL fails isCredentialTransmissionSafe (non-loopback http). Loud and
  * typed on purpose: the old behavior (silently withholding the credential)
- * surfaced as a 401 → "auth" → "reconnect" loop, and recover-auth then deleted
- * the credential for the whole host. The `code` string is the STABLE contract
- * (matchable across dynamic-import boundaries where `instanceof` fails).
+ * surfaced as a 401 → "auth" → "reconnect" loop. The `code` string is the
+ * STABLE contract (matchable across dynamic-import boundaries).
  */
 export class InsecureTransportError extends Error {
   readonly code = "InsecureTransport";
@@ -76,7 +80,7 @@ export function isInsecureTransportError(e: unknown): e is InsecureTransportErro
   return (e as { code?: string })?.code === "InsecureTransport";
 }
 
-// ── Shared isomorphic-git error decoders (also used by sync.ts) ──────────────
+// ── Shared isomorphic-git error decoders (used by sync.ts) ───────────────────
 
 export function isPushRejected(e: unknown): boolean {
   const code = (e as { code?: string })?.code;
@@ -106,7 +110,7 @@ export function isPushRejected(e: unknown): boolean {
   return false;
 }
 
-/** Type guard exposing MergeConflictError's per-file payload (used by sync.ts). */
+/** Type guard exposing MergeConflictError's per-file payload (converge-merge). */
 export function isMergeConflictError(
   e: unknown,
 ): e is {
@@ -120,12 +124,25 @@ export function isMergeConflictError(
   return (e as { code?: string })?.code === "MergeConflictError";
 }
 
+/**
+ * Unrelated histories — the local project and the configured online project
+ * share no common starting point. Sync surfaces this as a plain setup error
+ * (a wrong online address must never be silently spliced into the book).
+ */
+export function isUnrelatedHistories(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  const msg = (e as Error)?.message ?? String(e);
+  return (
+    code === "MergeNotSupportedError" ||
+    /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
+  );
+}
+
 export function classifyTransportFailure(
   e: unknown,
 ): "auth_required" | "network_unavailable" | "insecure_transport" | null {
   // FIRST: the withheld-cleartext-credential error. It must never fall through
-  // to the auth arm — "reconnect" can't fix an http:// address, and the auth
-  // recovery path deletes the stored credential for the whole host.
+  // to the auth arm — "reconnect" can't fix an http:// address.
   if (isInsecureTransportError(e)) return "insecure_transport";
   const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
   if (err?.code === "HttpError") {
@@ -155,211 +172,60 @@ export function classifyTransportFailure(
   return null;
 }
 
-// ── isBinaryConflict heuristic ───────────────────────────────────────────────
-// A MergeConflictError is binary when ANY conflicted file looks binary. We
-// route to the binary-aware outcome if even ONE file is binary, because a
-// MIXED conflict (e.g. one .png + one .md) must take the binary-safe path —
-// the text merge driver corrupts a binary file's bytes via UTF-8 round-trip,
-// and the byte-correct safeguard in sync.ts's resolveConflicts only matters
-// once the binary-aware handling is engaged. This is best-effort; the recovery
-// handler will also verify. (resolveConflicts is additionally binary-safe for
-// EVERY decided file regardless of this classification — see its postBinaryFixes
-// pass — so a binary file in an otherwise-text conflict can never be corrupted.)
-
-const BINARY_EXTS = /\.(png|jpe?g|gif|webp|svg|pdf|docx?|xlsx?|pptx?|zip|tar|gz|7z|bin|ico|ttf|otf|woff2?|mp4|mp3|mov|avi|wav|flac)$/i;
-
-function isBinaryConflict(e: unknown): boolean {
-  if (!isMergeConflictError(e)) return false;
-  const data = (e as { data?: { filepaths?: string[] } })?.data;
-  const paths = data?.filepaths ?? [];
-  if (paths.length === 0) return false;
-  return paths.some((p) => BINARY_EXTS.test(p));
-}
-
-// ── Unrelated histories heuristic ────────────────────────────────────────────
-
-function isUnrelatedHistories(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  const msg = (e as Error)?.message ?? String(e);
-  return (
-    code === "MergeNotSupportedError" ||
-    /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
-  );
-}
-
-// ── Missing objects / ref-store corruption heuristic ─────────────────────────
-//
-// Covers two closely-related local-repo corruptions that BOTH need the same
-// "fetch from the remote and rebuild, verifying afterwards" recovery:
-//   1. Missing/corrupt OBJECTS (a packfile or loose object can't be read).
-//   2. Missing/corrupt REF STORE (a missing/corrupt `.git/HEAD` or
-//      `.git/packed-refs`, or any resolveRef failure).
-//
-// WHY ref-store corruption maps to `missing_or_corrupt_objects` (BUG 4):
-// there is no dedicated SyncErrorKind for a broken ref store, and the closest
-// EXISTING kind is `missing_or_corrupt_objects` — its handler re-fetches from
-// the remote and verifies, which is exactly the safe repair for a clobbered
-// HEAD/packed-refs too (the remote-tracking refs and objects come back, and
-// HEAD can be re-pointed at the recovered branch). Crucially this avoids the
-// WRONG outcome of `missing_git_dir` (whose handler would try to CLONE and
-// talk about "setting up a remote" when the repo and its remote already exist
-// — only the ref store is damaged). NOTE on NotFoundError ambiguity: a
-// TRANSPORT 404 also surfaces as NotFoundError, but transport.ts's fetchRemoteTip
-// rewrites those to an HttpError(401) BEFORE they reach this classifier, so a
-// raw NotFoundError here is a LOCAL ref-resolution failure — classify it
-// structurally, never as auth.
-
-function isRefStoreCorruption(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  const msg = (e as Error)?.message ?? String(e);
-  return (
-    // A bare NotFoundError reaching us is a local resolveRef failure (the
-    // transport-404 case is rewritten to HttpError upstream).
-    (code === "NotFoundError" && /could not find/i.test(msg)) ||
-    // Message-level signatures for HEAD / packed-refs / resolveRef problems.
-    /could not find head|resolveref|packed-refs|packed refs|head.*(missing|corrupt|not found)|(missing|corrupt|invalid).*head/i.test(
-      msg,
-    )
-  );
-}
-
-function isMissingObjects(e: unknown): boolean {
+/**
+ * True when a thrown error smells like LOCAL repo corruption (unreadable
+ * objects/refs/index) rather than a transport or logic failure — the signal
+ * for a host's mid-sync catch to run `repairRepo()`. NOTE on NotFoundError
+ * ambiguity: a transport 404 also surfaces as NotFoundError, but
+ * transport.ts's fetchRemoteTip rewrites those to an HttpError(401) BEFORE
+ * they can reach this heuristic, so a raw NotFoundError here is a LOCAL
+ * ref-resolution failure.
+ */
+export function isLikelyRepoCorruption(e: unknown): boolean {
+  if (classifyTransportFailure(e)) return false;
   const code = (e as { code?: string })?.code;
   const msg = (e as Error)?.message ?? String(e);
   return (
     code === "ReadObjectFail" ||
     code === "ObjectTypeError" ||
-    code === "MissingParameterError" ||
-    /object not found|missing object|pack.*corrupt|bad object/i.test(msg) ||
-    isRefStoreCorruption(e)
+    (code === "NotFoundError" && /could not find/i.test(msg)) ||
+    /object not found|missing object|pack.*corrupt|bad object|corrupt.*index|index.*corrupt|invalid index|could not find head|packed-refs/i.test(
+      msg,
+    )
   );
 }
 
-// ── Corrupt index heuristic ───────────────────────────────────────────────────
-
-function isCorruptIndex(e: unknown): boolean {
-  const msg = (e as Error)?.message ?? String(e);
-  return /corrupt.*index|index.*corrupt|invalid index/i.test(msg);
-}
-
-// ── Wrong remote / branch heuristic ──────────────────────────────────────────
-
-function isWrongRemoteOrBranch(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  const msg = (e as Error)?.message ?? String(e);
-  return (
-    code === "NoRefspecError" ||
-    code === "ExpandRefError" ||
-    /branch.*not found|no such ref|remote.*not configured|unknown branch/i.test(msg)
-  );
-}
-
-// ── Health-only classifier (preflight) ────────────────────────────────────────
+// ── Health-only classifier ───────────────────────────────────────────────────
 
 /**
- * Classify a structural repo condition from a RepoHealth snapshot alone.
- * Used by preflight callers (no thrown error — e.g. project-open), and by
- * classifyGitError's structural step so there is ONE ordering, not two.
+ * Classify a repo's structural condition from a RepoHealth snapshot.
+ * Returns null for a healthy repo, "stale_lock" when the only problem is a
+ * sweepable lock, and "needs_repair" for everything structural — the repair
+ * pipeline (repair.ts) handles every structural case in one ordered pass, so
+ * finer distinctions buy nothing.
  *
- * Returns null for a healthy repo (nothing to recover).
- *
- * ORDERING: interrupted-operation checks MUST precede the detached-head check
- * (an in-progress rebase usually detaches HEAD — the abort repair must win over
- * the rescue-branch repair), and specific interrupted-op repairs precede the
- * generic stale-lock cleanup.
- *
- * `minLockAgeMs` gates the stale-lock classification: at preflight (the
- * default, STALE_LOCK_MIN_AGE_MS) a younger lock is treated as healthy because
- * a live process may still hold it — the same rule recover-stale-lock.ts
- * applies before acting. Error-path callers pass 0: a lock that just made a
- * sync THROW is worth routing regardless of age (the handler still re-checks
- * and returns retry_later while it is fresh).
+ * `minLockAgeMs` gates the stale-lock verdict: at preflight (the default) a
+ * younger lock is treated as healthy because a live process may still hold
+ * it. Error-path callers pass 0: a lock that just made a sync THROW is worth
+ * routing regardless of age (the sweep still defers while it is fresh).
  */
 export function classifyFromHealth(
   health: RepoHealth,
   opts: { minLockAgeMs?: number } = {},
-): SyncErrorKind | null {
+): RepairNeed | null {
   const minLockAgeMs = opts.minLockAgeMs ?? STALE_LOCK_MIN_AGE_MS;
-  if (!health.hasGitDir) return "missing_git_dir";
-  if (health.hasInterruptedRebase) return "interrupted_rebase";
-  if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
+  if (!health.hasGitDir) return "needs_repair";
+  if (health.hasInterruptedRebase) return "needs_repair";
+  if (health.hasInterruptedCherryPick) return "needs_repair";
   // An abandoned native-git merge (MERGE_HEAD + conflict markers in tracked
-  // files) must be caught BEFORE any sync work: left unclassified it falls
-  // through to "unknown" and — worse — the next sync would snapshot the
-  // literal conflict markers into history and push them.
-  if (health.hasInterruptedMerge) return "interrupted_merge";
-  // headUnreadable (HEAD/ref store missing or corrupt) must be checked BEFORE
-  // isDetachedHead: currentBranch() throwing sets headUnreadable, not
-  // isDetachedHead (see inspectRepo), but route both here defensively so a
-  // stale/hand-built health snapshot with both flags set still gets the
-  // correct (more severe) repair.
-  if (health.headUnreadable) return "missing_or_corrupt_objects";
-  if (health.isDetachedHead) return "detached_head";
+  // files) must be caught BEFORE any sync work: left unclassified, the next
+  // sync would snapshot the literal conflict markers into history and push
+  // them to every collaborator.
+  if (health.hasInterruptedMerge) return "needs_repair";
+  if (health.headUnreadable) return "needs_repair";
+  if (health.isDetachedHead) return "needs_repair";
   if (health.hasStaleLock && (health.lockAgeMs ?? 0) >= minLockAgeMs) {
     return "stale_lock";
   }
   return null;
-}
-
-// ── Main classifier ───────────────────────────────────────────────────────────
-
-/**
- * Map a thrown error plus optional repo-health facts to a SyncErrorKind.
- *
- * Called by the recovery dispatcher BEFORE invoking the per-kind handler.
- *
- * ORDERING (BUG 1 — transient transport beats structural health):
- *   1. missing_git_dir — when there is genuinely no repo, a transport error is
- *      meaningless (nothing to talk to a remote ABOUT), so the missing-repo
- *      guidance must win even over an auth/network error.
- *   2. Clearly transient/transport errors (auth, network) — these are decoded
- *      from the THROWN ERROR and win over the remaining structural health
- *      flags (detached HEAD, stale lock). Rationale: you cannot repair repo
- *      STRUCTURE while you are offline or signed out, and the scary
- *      backup+rescue-branch+confirm repair is the wrong first response to a
- *      blip — the friendly "reconnect" / "try later" is correct. Once the user
- *      is back online, the next sync re-runs preflight (no thrown error) and
- *      the structural kind surfaces then (step 3).
- *   3. Structural health flags (detached HEAD, stale lock) — applied when the
- *      failure is NOT a transient transport error (e.g. a preflight with no
- *      error, or a non-transport error).
- *   4. Remaining error-code/message heuristics (conflicts, corrupt index,
- *      unrelated histories, missing objects/ref-store, wrong remote/branch).
- */
-export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKind {
-  // (0) A preflight rejection already CARRIES its classification — use it
-  //     verbatim rather than re-deriving it from health.
-  if (isRepoNeedsRecoveryError(err)) return err.kind;
-
-  // (1) No repo at all — highest priority; a transport error is meaningless
-  //     when there is no .git to sync.
-  if (health && !health.hasGitDir) return "missing_git_dir";
-
-  // (2) Clearly transient transport errors beat the remaining structural
-  //     health flags — you can't fix structure while offline/signed out.
-  const transport = classifyTransportFailure(err);
-  if (transport) return transport;
-
-  // (3) Structural health (only after a transport error has been ruled out).
-  //     Same single ordering as the preflight path — see classifyFromHealth.
-  //     minLockAgeMs 0: a lock that just made a sync throw is worth routing
-  //     regardless of age (the handler re-checks and defers while fresh).
-  if (health) {
-    const structural = classifyFromHealth(health, { minLockAgeMs: 0 });
-    if (structural) return structural;
-  }
-
-  // (4) Remaining isomorphic-git error-code / message heuristics.
-  if (isPushRejected(err)) return "non_fast_forward";
-
-  if (isMergeConflictError(err)) {
-    return isBinaryConflict(err) ? "binary_conflict" : "merge_conflict";
-  }
-
-  if (isCorruptIndex(err)) return "corrupt_index";
-  if (isUnrelatedHistories(err)) return "unrelated_histories";
-  if (isMissingObjects(err)) return "missing_or_corrupt_objects";
-  if (isWrongRemoteOrBranch(err)) return "wrong_remote_or_branch";
-
-  return "unknown";
 }

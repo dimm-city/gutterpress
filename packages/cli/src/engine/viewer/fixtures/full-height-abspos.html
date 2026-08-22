@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: 600px 800px;
+        margin: 40px;
+      }
+      @page art {
+        size: 450pt 600pt;
+        margin: 30pt 30pt 0;
+      }
+      * { box-sizing: content-box; }
+      body { margin: 0; }
+      .shell { margin: 0; padding: 0; }
+      .art-page {
+        page: art;
+        position: relative;
+        min-height: 760px;
+        break-before: page;
+        break-inside: avoid;
+      }
+      .prose {
+        margin: 16px 0;
+        height: 80px;
+        background: #ddd;
+      }
+      .bottom-art {
+        position: absolute;
+        right: 100px;
+        bottom: 0;
+        width: 200px;
+        height: 300px;
+        background: #c24;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="shell">
+        <div class="art-page" style="display: block">
+          <div class="prose">Leading prose keeps its 16px inset.</div>
+          <div class="bottom-art" aria-label="bottom art"></div>
+        </div>
+      </div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

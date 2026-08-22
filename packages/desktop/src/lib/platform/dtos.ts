@@ -14,7 +14,6 @@
  * one that imports FROM this file, not the reverse).
  */
 import type { ProjectSource, ProjectCapabilities } from "gutterpress";
-import type { ConflictKind } from "./shared-types";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -298,14 +297,16 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
-/**
- * Yours/theirs text for the conflict preview disclosure in ConflictChoicesDialog.
- */
-export interface ConflictPreview {
-  mine: string;
-  theirs: string;
-  kind: ConflictKind;
-  isBinary: boolean;
+/** One diagnostic log file the host can list (userData/logs, newest first). */
+export interface LogFileEntry {
+  /** File name (e.g. "my-book.log"). */
+  name: string;
+  /** Absolute path — feed to `api.log.read`. */
+  path: string;
+  /** File size in bytes. */
+  sizeBytes: number;
+  /** Last-modified time, ISO-8601. */
+  modifiedAt: string;
 }
 
 /** Payload types for the image pick/copy host service (#31). */

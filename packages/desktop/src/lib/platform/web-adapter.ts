@@ -36,7 +36,7 @@ import {
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
-import { assembleBookHtml, pagedjsPolyfillTagRegex } from "gutterpress/render";
+import { assembleBookHtml } from "gutterpress/render";
 import { IndexedDbWebStore } from "./web-store";
 import type { WebStore } from "./web-store";
 import { deepMergeSettings } from "../settings-merge";
@@ -70,9 +70,7 @@ import type {
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
-  ResolveSyncConflictsArgs,
   SyncStatus,
-  RecoveryConfirmRequest,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -87,11 +85,12 @@ import type {
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
-// #33 Phase 4: same-origin path of the vendored paged.js polyfill the desktop
-// ships in static/vendor/. The service worker precaches it; startPreview
-// rewrites the render core's src-less marker slot to this so preview works
-// offline.
-const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
+// Same-origin path of the native engine's viewer bundle the desktop ships in
+// static/engine/. The service worker precaches it; startPreview injects a
+// <script src> pointing at it so preview works offline. Paged.js has been
+// removed (native-only-migration-plan.md Phase 6) — native is the only
+// engine, so there is no manifest `engine:` field left to honor here.
+const VENDOR_VIEWER_URL = "/engine/gutterpress-viewer.js";
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
 // IndexedDB object-store names + record shapes the adapter persists. Handles are
@@ -686,24 +685,10 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  // ── Sync recovery seam — desktop-only; safe stubs on web ─────────────────
-  onRecoveryConfirm(_handler: (req: RecoveryConfirmRequest) => void): () => void {
-    // Recovery is desktop-only — return a no-op unsubscribe.
-    return () => {};
-  }
-
-  respondRecoveryConfirm(_requestId: string, _approved: boolean): Promise<void> {
-    // No-op on web — recovery only runs in the Electron host.
-    return Promise.resolve();
-  }
-
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
+  // Repair runs in the host as one automatic pipeline (2026-08-14
+  // simplification) — no renderer confirmation/guidance seam remains.
 
   // syncChanges — migrated to server route (Phase 2F).
-
-  resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
-    return rejectNotImplemented("resolveSyncConflicts");
-  }
 
   // ── In-browser live preview (#33 Phase 2) — no server, no Chromium ──────────
   // The last object URL minted by startPreview, revoked by stopPreview (and
@@ -715,31 +700,29 @@ export class WebAdapter implements Platform {
    * STRING — the shared core behind both `startPreview` (Blob URL for the
    * iframe) and `build({format:"html"})` (Blob URL for a download). Keeping ONE
    * assembly path means the exported HTML is byte-identical to what the user
-   * previews: same inlined project CSS, same same-origin paged.js rewrite.
+   * previews: same inlined project CSS, same same-origin viewer-bundle inject.
    *
-   * Pipeline (plan §2):
+   * Pipeline:
    *  1. resolve the root FileSystemDirectoryHandle from `input.key`;
    *  2. list the project's `.md`/`.css` (FSA), read them via `web-fs`;
-   *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
+   *  3. run the PURE `assembleBookHtml` (markdown-it + core plugins) with an
    *     FSA-backed `readText` — the SAME render core the CLI uses;
    *  4. INLINE the project CSS (a blob-URL doc can't resolve relative `css/*`
-   *     hrefs) and rewrite the paged.js marker slot to the same-origin copy.
+   *     hrefs) and inject a `<script src>` for the same-origin viewer bundle.
    *
-   * OFFLINE (#33 Phase 4): the pure render core emits a src-less
-   * `data-pagedjs-polyfill` marker slot (never a CDN URL — `pagedjs-marker.ts`,
-   * asserted by its test); step 4 rewrites that slot to the same-origin, vendored
-   * `/vendor/paged.polyfill.js` (shipped in the desktop `static/` dir + precached
-   * by the service worker). A `blob:` document inherits the creating page's
-   * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
-   * which is what makes the in-browser preview work fully offline once the
-   * shell is cached.
+   * OFFLINE: the injected script points at the same-origin, vendored
+   * `/engine/gutterpress-viewer.js` (shipped in the desktop `static/` dir +
+   * precached by the service worker). A `blob:` document inherits the
+   * creating page's origin, so an absolute-path URL resolves same-origin and
+   * is SW-cacheable — which is what makes the in-browser preview work fully
+   * offline once the shell is cached.
    *
    * KNOWN PHASE-2 GAP (tracked for later phases — intentionally not silent):
    * chapters are listed in alphabetical order (`listProjectFiles`), matching
    * the CLI's no-manifest fallback. A project `manifest.yaml` with a custom
    * `source.files` order or `plugins` is NOT yet parsed here, so such projects
    * can preview in a different order than the CLI build. A later phase will
-   * parse the manifest (the `yaml` dep is browser-safe).
+   * parse the manifest.
    *
    * Throws (rejects, via the `async` callers) when the folder has no `.md`.
    */
@@ -782,18 +765,17 @@ export class WebAdapter implements Platform {
       readText: (relPath) => readFileFromRoot(root, relPath),
       projectCss,
       title: input.displayName,
+      annotateSourceChapters: true,
     });
 
-    // #33 Phase 4 (offline): the render core emits a stable, src-less polyfill
-    // MARKER slot (no network dependency); rewrite it to the same-origin vendored
-    // copy so the preview/export works offline (the SW precaches
-    // /vendor/paged.polyfill.js). A blob: document inherits this page's origin, so
-    // the absolute path resolves same-origin. Matching the marker (not a pinned
-    // CDN URL) keeps this rewrite robust across paged.js version bumps.
-    html = html.replace(
-      pagedjsPolyfillTagRegex(),
-      `<script src="${VENDOR_PAGED_POLYFILL_URL}"></script>`,
-    );
+    // Inject a <script src> for the same-origin, vendored viewer bundle (the
+    // SW precaches /engine/gutterpress-viewer.js) so preview/export works
+    // offline. A blob: document inherits this page's origin, so the absolute
+    // path resolves same-origin.
+    const tag = `  <script src="${VENDOR_VIEWER_URL}"></script>\n`;
+    html = /<\/head>/i.test(html)
+      ? html.replace(/<\/head>/i, tag + "</head>")
+      : html + tag;
 
     return html;
   }
@@ -817,6 +799,8 @@ export class WebAdapter implements Platform {
       port: 0, // no server on web
       input: args.input.key,
       title: args.input.displayName ?? null,
+      // Paged.js has been removed — native is the only engine.
+      engine: "native",
     };
   }
 
@@ -837,7 +821,7 @@ export class WebAdapter implements Platform {
    *
    * - `format:"html"` — render the full standalone `book.html` IN-BROWSER
    *   (the SAME `renderBookHtml` path as the live preview, so the export matches
-   *   what the author sees: inlined project CSS + same-origin paged.js) and hand
+   *   what the author sees: inlined project CSS + same-origin viewer bundle) and hand
    *   it back as a `blob:` object URL on `BuildResult.downloadUrl`. The SPA turns
    *   that into a browser download (an `<a download>` click). There is no
    *   filesystem write on web; `outDir`/`htmlPath` are nominal display values

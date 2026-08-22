@@ -4,7 +4,9 @@ This chapter covers the print production checks that validate your PDF output.
 
 ## Page Dimensions
 
-The `pdf.print.page-size` check verifies that every page in your PDF matches the configured dimensions. For DTRPG products, the standard size is 621 x 810 points (8.625" x 11.25").
+The `pdf.print.page-size` check verifies that every page in your PDF matches the
+configured dimensions. For DTRPG products, the standard size is 621 x 810
+points (8.625" x 11.25").
 
 Configure tolerance in your manifest:
 
@@ -24,10 +26,15 @@ Print vendors typically require CMYK color spaces. The validation system checks:
 
 ## Font Embedding
 
-All fonts must be fully embedded in the PDF. The `pdf.print.embedded-fonts` check verifies this in-process (via the bundled PDF.js engine — no external tool). Missing or partially embedded fonts will cause errors.
+All fonts must be fully embedded in the PDF. The
+`pdf.print.embedded-fonts` check verifies this in-process via the bundled PDF.js
+engine, with no external tool. Missing or partially embedded fonts cause
+errors.
 
 ## Ink Coverage
 
-Total Area Coverage (TAC) measures the combined ink density on a page. Most print vendors require TAC below 300-340%. The `pdf.print.ink-coverage` check uses Ghostscript to measure this.
+Total Area Coverage (TAC) measures the combined ink density on a page. Most
+print vendors require TAC below 300-340%. The `pdf.print.ink-coverage` check
+uses Ghostscript to measure this.
 
 > **Note:** High ink coverage can cause paper curling, slow drying, and ink smearing. Keep decorative elements in check.

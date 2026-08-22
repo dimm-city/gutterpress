@@ -22,7 +22,6 @@ import type {
   RemoteBranch,
   RepoBook,
   CloneProgressEvent,
-  ConflictFileInfo,
   ExportProgressEvent,
   MarkdownFileLaunchEvent,
   PreviewStartResult,
@@ -111,9 +110,7 @@ declare global {
       // need.
       // Sync recovery seam (Foundation — §8 / ADR 0004)
       /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
-      onRecoveryConfirm(cb: (data: unknown) => void): () => void;
       /** Send the author's approval/rejection to main to unblock a pending repair. */
-      respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
       // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
       // syncChanges — migrated to server route (Phase 2F)
       // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
@@ -139,6 +136,7 @@ declare global {
         htmlPath?: string;
         pdfPath?: string;
         fingerprintPath?: string;
+        diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
       }>;
       // doctor migrated to server route (Phase 2C)
       // Event subscriptions

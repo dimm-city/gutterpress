@@ -3,7 +3,7 @@ name: Preview cross-browser smoke
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "release/**"]
     paths:
       - "packages/cli/src/**"
       - "packages/cli/tests/compat/**"
@@ -16,7 +16,7 @@ env:
 
 jobs:
   preview-smoke:
-    name: Paged.js preview smoke (chromium + firefox + webkit)
+    name: Native preview smoke (chromium + firefox + webkit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

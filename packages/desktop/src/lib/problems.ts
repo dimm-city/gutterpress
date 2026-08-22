@@ -30,6 +30,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.htmlhint": "HTML check",
   "source.accessibility.alt-text": "Image description",
   "source.accessibility.heading-order": "Heading order",
+  "source.markdown.layout-markers": "Layout marker",
   "desktop.preview": "Preview",
   // Asset-category checks (#105 publish preflight). Kept in the SAME table as
   // the source checks so `friendlySource` stays the ONE plain-language label
@@ -41,10 +42,40 @@ const SOURCE_LABELS: Record<string, string> = {
   "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
   "asset.font.license": "Font licence",
+  // Print-quality findings from the render itself (native engine). These are
+  // things only pagination can know — nothing in the source files is wrong,
+  // so they cannot come from a source lint. Kept in the same table so
+  // `friendlySource` stays the ONE label authority.
+  "engine.width.overflow": "Too wide for the page",
+  "engine.width.intrinsic": "Image has no width set",
+  "engine.xref.broken": "Broken link",
+  "engine.abspos.leak": "Placed off its page",
+  "engine.layer.trapped": "Layer trapped on a page",
+  "engine.multicol.dead-column": "Empty column",
+  "engine.content.overheight": "Taller than the page",
+  "engine.image.low-dpi": "Image resolution",
+  "engine.flush.margin-box": "Running head on a flushed edge",
 };
 
 export function friendlySource(checkId: string): string {
   return SOURCE_LABELS[checkId] ?? checkId;
+}
+
+/**
+ * Print-quality findings come back from an EXPORT, not from the source lint
+ * that fills the panel — so a lint refresh (any file save) would wipe them.
+ * They are held separately and merged for display, and they carry no file or
+ * line: pagination findings name a rendered element, not a source location,
+ * and inventing a line number would send the author to the wrong place.
+ */
+export function buildProblems(
+  diagnostics: Array<{ code: string; severity: "warning" | "info"; message: string }>,
+): ProblemEntry[] {
+  return diagnostics.map((d) => ({
+    severity: d.severity,
+    message: d.message,
+    source: d.code,
+  }));
 }
 
 /**

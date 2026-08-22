@@ -11,7 +11,7 @@
   // (!isDesktop()) — NEVER under Electron, where the SPA loads via app:// and
   // ships inside the app (updated as a whole via electron-updater); a SW there
   // would serve stale cached assets across app updates. The SW precaches the
-  // app shell + vendored paged.js for offline use. SvelteKit auto-registration
+  // app shell + embedded preview assets for offline use. SvelteKit auto-registration
   // is disabled in svelte.config.js so this guarded registration is the only one.
   onMount(() => {
     if (isDesktop()) return;

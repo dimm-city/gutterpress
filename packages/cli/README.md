@@ -69,7 +69,7 @@ uses its bundled browser for standard PDF export.
 # Build a PDF from a project directory
   gutterpress build ./my-book
 
-# Live preview server (Paged.js + websocket-driven full-reload on file change)
+# Live native-engine preview (automatic updates over WebSocket)
   gutterpress preview ./my-book
 
 # Custom output path
@@ -163,7 +163,13 @@ gutterpress new <name> --preset <id> [options]
 
 ### `gutterpress preview`
 
-Live HTML preview server by default (serves `book.html`, triggers full-reload via WebSocket on file change — pure JS rendering, no external tools). Pass `--format pdf` or `--format pdfx` for a one-shot build-and-open instead of the live server. `--manifest` applies only to those one-shot PDF/PDF-X modes; live HTML preview discovers the project manifest from its input directory.
+Live HTML preview server by default. A single Markdown edit is rendered and
+spliced as one chapter over WebSocket; CSS, manifest, multi-file, deletion, and
+other structural changes reload the full document. This path is pure JS and
+needs no external tools. Pass `--format pdf` or `--format pdfx` for a one-shot
+build-and-open instead. `--manifest` applies only to those one-shot PDF/PDF-X
+modes; live HTML preview discovers the project manifest from its input
+directory.
 
 ```sh
 gutterpress preview [input-dir] [options]
@@ -184,6 +190,8 @@ gutterpress preview [input-dir] [options]
   --skip-lint             Skip CSS linting                              (pdf|pdfx only)
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
+  --allow-shrink          Build anyway when content is wider than the page content box (pdf|pdfx only)
+  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; applies to the live preview AND --format pdf|pdfx]
 ```
 
 ### `gutterpress build`
@@ -203,6 +211,8 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
+  --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
+  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
 ```
 
 ### `gutterpress publish`
@@ -236,7 +246,9 @@ gutterpress publish --provider itch ./my-book
 
 ### `gutterpress lint`
 
-Run Gutterpress's print-safety CSS checks (postcss-based: remote URLs, rasterizing effects, Paged.js crash-prone selectors) against the project's CSS files.
+Run Gutterpress's PostCSS-based print-safety checks, including remote URLs,
+rasterizing effects, and source-level page-containment risks, against the
+project's CSS files.
 
 ```sh
 gutterpress lint [files] [options]
@@ -246,7 +258,11 @@ gutterpress lint [files] [options]
 
 `files` is a positional: either a project directory containing `manifest.yaml` (its configured stylesheets are linted), or a glob pattern for CSS files to lint directly. There is no `--files` flag — pass the directory/glob as the positional.
 
-Common print-unsafe patterns the plugin flags: remote `url(...)` references in CSS, paged.js-crashing `:is()`-with-sibling selectors, properties with no print equivalent.
+Common findings include remote `url(...)` references, effects that rasterize
+print text, and declarations on core page wrappers that could clip or trap
+out-of-flow art. The source-level containment check is an early signal; the
+build-time `engine.layer.trapped` diagnostic inspects the authoritative live
+ancestor chain.
 
 ### `gutterpress validate`
 
