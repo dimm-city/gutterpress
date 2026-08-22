@@ -35,6 +35,8 @@ interface RenderResult {
   pageCount: number;
   eventTotalPages: number | null;
   zeroSizedContentPages: number;
+  /** Per-strip forensics for a deviation failure — see the measure block. */
+  strips: Array<{ text: string; pages: number; stripH: number; contentH: string }>;
   consoleErrors: string[];
   pageErrors: string[];
 }
@@ -87,10 +89,30 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
         const hasText = (p.textContent || "").trim().length > 0;
         return hasText && (b.width < 10 || b.height < 10);
       }).length;
+      // Per-strip breakdown, so a page-count deviation names WHICH content
+      // gained pages instead of leaving the divergence to be reproduced by
+      // hand in a browser this machine may not have. Column count per strip
+      // is derived from the strip's horizontal extent against its column
+      // pitch — the same arithmetic the viewer lays out with.
+      const strips = Array.from(document.querySelectorAll<HTMLElement>(".gp-strip")).map(
+        (strip) => {
+          const cs = getComputedStyle(strip);
+          const rect = strip.getBoundingClientRect();
+          const colW = parseFloat(cs.getPropertyValue("--gp-content-w")) || rect.width;
+          const gap = parseFloat(cs.columnGap) || 0;
+          return {
+            text: (strip.textContent || "").replace(/\s+/g, " ").trim().slice(0, 48),
+            pages: Math.max(1, Math.round((strip.scrollWidth + gap) / (colW + gap))),
+            stripH: Math.round(rect.height),
+            contentH: cs.getPropertyValue("--gp-content-h").trim(),
+          };
+        },
+      );
       return {
         pageCount: pages.length,
         eventTotalPages: (window as any).__gutterpressRender?.totalPages ?? null,
         zeroSizedContentPages,
+        strips,
       };
     });
 
@@ -120,9 +142,21 @@ for (const target of TARGETS) {
       expect(r.pageErrors, `${label} uncaught page errors`).toEqual([]);
 
       const deviation = Math.abs(r.pageCount - baseline) / baseline;
+      // On a deviation, name WHICH strips differ from chromium's layout —
+      // an engine-specific page count is unreproducible on machines without
+      // that browser, so the failure must carry its own forensics.
+      const stripDiff = results.chromium!.strips
+        .map((c, i) => ({ c, e: r.strips[i] }))
+        .filter(({ c, e }) => !e || e.pages !== c.pages)
+        .map(
+          ({ c, e }) =>
+            `"${c.text}" chromium ${c.pages}pp/${c.stripH}px vs ${name} ` +
+            (e ? `${e.pages}pp/${e.stripH}px (content-h ${e.contentH})` : "missing"),
+        );
       expect(
         deviation,
-        `${label} page count ${r.pageCount} deviates ${(deviation * 100).toFixed(1)}% from chromium baseline ${baseline}`
+        `${label} page count ${r.pageCount} deviates ${(deviation * 100).toFixed(1)}% from chromium baseline ${baseline}` +
+          (stripDiff.length ? `\n  strip diffs:\n  - ${stripDiff.join("\n  - ")}` : "")
       ).toBeLessThanOrEqual(PAGE_COUNT_TOLERANCE);
     }
   });
