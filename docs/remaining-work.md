@@ -37,6 +37,11 @@ Last updated 2026-08-19.
 
 ### Rich editor as the PRIMARY authoring surface (2026-08-21)
 
+> **DEFERRED TO 0.11** (product decision, 2026-08-22). 0.10 ships without
+> rich editing. The work is parked as a draft PR against `release/0.11.0`;
+> start at [`docs/rich-editor-lessons-learned.md`](./rich-editor-lessons-learned.md)
+> before picking any of the items below back up.
+
 The product requirement is that rich mode is the surface a non-technical
 author uses, and is EASIER than the markdown editor — an author should never
 have to learn markdown to use Gutterpress. Three defects blocking that were
