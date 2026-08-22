@@ -3,60 +3,7 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Changed
-
-- **Marker warnings now name the escape.** A marker is any line whose first
-  character is `@` followed by a marker word — including a line your paragraph
-  merely *wrapped* onto, which is how a sentence about `@page` splits your page
-  in two. There is no new syntax for this (markdown's own `\@page` already
-  renders as text, as does `` `@page` ``); what was missing was anywhere that
-  said so. The "not something a marker understands" and "several plain words"
-  warnings now end with the escape for that marker's own kind, and the user
-  guide has a short section on writing about markers without triggering them.
-
-### Added
-
-- **`.gp-flush` — pinned art can sit on the paper's edge**, set from the
-  image's own properties (a checkbox in the desktop app's image dialog, or the
-  class in markdown: `{.gp-pin .gp-bottom .gp-flush}`). Any edge or corner
-  works; a centred pin touches no edge, so the class is inert there.
-
-  A page's margins are not printable area, so nothing can *reach* the paper
-  from inside the page — measured in Chromium 148, a pinned box pulled into
-  the margin with negative insets fragments onto the NEXT sheet, one moved
-  there with a transform is clipped away entirely, and a margin box in a
-  near-zero margin does not render under any compensation. The engines
-  therefore implement flush as per-page geometry: the compiler aliases that
-  page's own context under a generated name (verbatim rule copies — the
-  author's named page keeps its margins, background, and furniture) with the
-  flushed margins freed, and the viewer applies the same policy in JS. The
-  flushed edge's folio and running head are re-drawn inside the page at their
-  original coordinates with engine-resolved values, so nothing the author
-  declared stops printing. Preview and print are held together by shared
-  policy (`engine/shared/flush.ts`) and measured by twin tests on both
-  renderers.
-
-### Fixed
-
-- **`.gp-pin` reaches the page edges again.** A pinned image (`{.gp-pin
-  .gp-bottom}`, a corner colophon, a full-page watermark) was landing against
-  the end of the page's *prose* instead of the page itself — a bottom-pinned
-  image on a short page sat directly under the last paragraph. The pin
-  resolves against its `@page`/`@spread` container, and nothing had sized that
-  container to the page since Paged.js was removed: the polyfill used to
-  stretch each page root to the page area for free, and the native engine
-  replaced it with nothing, so the container shrink-wrapped its text. Both
-  renderers now publish the page's content height for the page context an
-  element is in (per named page, from the author's own `@page` rules — the
-  compiler on `:root` plus every `page:` selector, the viewer on each strip),
-  and core CSS sizes page roots to it. Preview and print agree on this by
-  construction: the parity gate's divergences on the CSS-authoring fixture
-  dropped from 14 to 2, with viewer and print page counts now identical on
-  every fixture.
-
-## [0.10.0] - 2026-08-12
+## [0.10.0] - unreleased
 
 ### Added
 
@@ -69,6 +16,21 @@ This project follows [Semantic Versioning](https://semver.org/).
   never asked for and a reset rule to take it back. `column-fill` is
   deliberately left unset: only you know whether a given run should fragment
   across pages.
+- **Grid runs are core vocabulary too: `.gp-grid-2` and `.gp-grid-3`.** Where
+  `.gp-columns-*` *flows* one run of text down and then across, `.gp-grid-*`
+  *slots* each block into the next cell, across then down — so card layouts,
+  stat blocks, and image-plus-caption pairs land in fixed positions instead of
+  wherever the prose happens to reach. Attach it the same two ways
+  (`@section .gp-grid-2` or `@section {.gp-grid-2}`) and set the gutter with
+  `--gp-grid-gap` (default `1.5em`). A grid taller than the page is fine: rows
+  fragment across sheets and the preview shows exactly what prints — measured
+  in Chromium 151 across 2- and 3-column grids, unequal item heights, mid-row
+  cuts, and multi-sheet overflow. Two things worth knowing rather than fixing:
+  on a page root that fills the sheet, the default `align-content` spreads the
+  rows apart to fill it, so add `align-content: start` when you want them
+  packed at the top; and a `@page-break` or `@column-break` written *directly*
+  inside a grid becomes a cell of its own, so keep it outside (the new
+  `break_inside_grid` warning below tells you when you haven't).
 - **Marker arguments accept the `{...}` spelling.** `@section {.gp-columns-2}`
   and `@section .gp-columns-2` are now equivalent on core markers. Plugin
   markers already accepted the braces form, so authors reasonably typed it
@@ -85,6 +47,26 @@ This project follows [Semantic Versioning](https://semver.org/).
     classes.
   - `unknown_marker` — an `@word` line nothing consumed, within one edit of a
     marker that exists (typo detection is edit distance ≤ 1).
+- **Two more marker warnings, for layout mistakes that used to fail silently.**
+  Both are **advisory, never fatal.** Like every other marker warning they are
+  reported at *warning* severity — in the build log, in the desktop Problems
+  panel (click to jump to the line), and in `gutterpress validate` /
+  `preflight`, which exit non-zero only on *errors*. Nothing that built,
+  exported, or validated cleanly before will start failing because of them.
+  They are new, though, so expect them to speak up about books that have been
+  building quietly:
+  - `break_inside_grid` — a `@page-break` or `@column-break` directly inside a
+    `.gp-grid-*` container. The break becomes a grid cell there: it consumes a
+    slot, shifts everything after it, and in the preview puts content on the
+    wrong page. Only the innermost enclosing marker counts, so a break inside a
+    plain `@section` that merely sits on a grid `@page` is ordinary block flow
+    and stays silent.
+  - `empty_section` — a `@section` carrying classes or attributes, closed by
+    the next `@section` or `@end-section` with no content at all between them.
+    Whatever that decoration was meant to style applies to nothing, which is
+    exactly the silent failure that once shipped a broken page. Scanned across
+    the example corpus with no false positives; all six example books still
+    build warning-free.
 - **A missing image no longer kills the build.** A referenced file that isn't
   there now renders as a generated magenta/black checkerboard and the build
   warns by name; the rest of the book builds. It used to abort everything with
@@ -101,6 +83,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   called. The faster CSS-source lint (`printsafe/page-containment`) stays for
   the editor's live lint gutter, now with a message that states its own limited
   scope.
+
+- **`gutterpress build --allow-shrink`** — build anyway when something is wider
+  than the page's content area, instead of stopping. That check hard-errors
+  because Chromium's answer to over-wide content is to scale the *whole book*
+  down to fit the one offending box — rarely what you want, and easy to miss in
+  a finished PDF. The flag makes it an eyes-open choice for a single build and
+  still reports every offender as a warning. It is per-build on purpose and is
+  not a manifest setting: the engine's error has always told authors to build
+  anyway if they meant it, and until now there was no way to do so.
 
 - **`gp-*` image positioning vocabulary** in core `GUTTERPRESS_CSS` — composable
   classes authors attach with markdown attrs (`![Art](x.png){.gp-right .gp-small}`):
@@ -134,14 +125,40 @@ This project follows [Semantic Versioning](https://semver.org/).
     don't manage (the old rewrite dropped unrecognized classes/ids). The
     class list lives in one shared table (`$lib/editor/image-classes`).
 
+- **`.gp-flush` — pinned art can sit on the paper's edge**, set from the
+  image's own properties (a checkbox in the desktop app's image dialog, or the
+  class in markdown: `{.gp-pin .gp-bottom .gp-flush}`). Any edge or corner
+  works; a centred pin touches no edge, so the class is inert there.
+
+  A page's margins are not printable area, so nothing can *reach* the paper
+  from inside the page — measured in Chromium 148, a pinned box pulled into
+  the margin with negative insets fragments onto the NEXT sheet, one moved
+  there with a transform is clipped away entirely, and a margin box in a
+  near-zero margin does not render under any compensation. The engines
+  therefore implement flush as per-page geometry: the compiler aliases that
+  page's own context under a generated name (verbatim rule copies — the
+  author's named page keeps its margins, background, and furniture) with the
+  flushed margins freed, and the viewer applies the same policy in JS. The
+  flushed edge's folio and running head are re-drawn inside the page at their
+  original coordinates with engine-resolved values, so nothing the author
+  declared stops printing. Preview and print are held together by shared
+  policy (`engine/shared/flush.ts`) and measured by twin tests on both
+  renderers.
+
 - **Inline editing in the preview** (ADR 0009): the paginated preview is now an
   editing surface, not just a viewer.
   - **Right-click context menu** over the preview, with actions matched to what
     was clicked — image (alt text, width, position, replace), link (edit, copy
     target), selected text (bold, italic, strikethrough, inline code, make
-    link), block (insert page break, go to source) and `@marker`. Reachable by
-    keyboard via `Shift+F10` / the menu key. Right-clicks on page furniture
-    (running headers, page numbers) keep native behavior. Toggled by the new
+    link), block (insert page break, go to source) and `@marker`. Right-click
+    anywhere on the paper — including the empty margin band outside the text —
+    and the menu opens on the `@page`/`@spread` that owns that sheet, so a
+    page's own marker is reachable without hunting for a block to aim at; when
+    you right-click inside a `@section`, the enclosing page marker is offered
+    alongside it as **Edit page marker…**. Sheets with no author `@page`
+    wrapper, and the furniture text itself (running headers, page numbers),
+    keep the browser's native menu so that text stays selectable and copyable.
+    Reachable by keyboard via `Shift+F10` / the menu key. Toggled by the new
     `preview.contextMenu` setting.
   - **Click-to-edit block overlay** — "Edit this block" opens the block's
     markdown source in place over the preview.
@@ -154,7 +171,7 @@ This project follows [Semantic Versioning](https://semver.org/).
     can't be located unambiguously, actions degrade to "open in editor" rather
     than guessing.
   - Rendered blocks now carry `data-source-range` (markdown-it `token.map`
-    verbatim), and the preview bridge is at protocol v5.
+    verbatim), and the preview bridge is at protocol v7.
 
 - **Publish targets** (ADR 0008): where a book is *published* is now separate
   from how it is *designed*. `targets:` in the manifest (or
@@ -171,6 +188,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   missing.
 
 ### Changed
+
+- **Marker warnings now name the escape.** A marker is any line whose first
+  character is `@` followed by a marker word — including a line your paragraph
+  merely *wrapped* onto, which is how a sentence about `@page` splits your page
+  in two. There is no new syntax for this (markdown's own `\@page` already
+  renders as text, as does `` `@page` ``); what was missing was anywhere that
+  said so. The "not something a marker understands" and "several plain words"
+  warnings now end with the escape for that marker's own kind, and the user
+  guide has a short section on writing about markers without triggering them.
+
+- The desktop start screen shows the logo on its own; the "Gutterpress"
+  wordmark beside it is gone. The first-run welcome heading is unchanged.
 
 - **The editor holds the whole book, not one chapter at a time.** Every
   markdown file the book builds from is open at once, in `source.files` order,
@@ -297,6 +326,62 @@ This project follows [Semantic Versioning](https://semver.org/).
     that rename is now final (no alias file).
 
 ### Fixed
+
+- **`.gp-pin` reaches the page edges again.** A pinned image (`{.gp-pin
+  .gp-bottom}`, a corner colophon, a full-page watermark) was landing against
+  the end of the page's *prose* instead of the page itself — a bottom-pinned
+  image on a short page sat directly under the last paragraph. The pin
+  resolves against its `@page`/`@spread` container, and nothing had sized that
+  container to the page since Paged.js was removed: the polyfill used to
+  stretch each page root to the page area for free, and the native engine
+  replaced it with nothing, so the container shrink-wrapped its text. Both
+  renderers now publish the page's content height for the page context an
+  element is in (per named page, from the author's own `@page` rules — the
+  compiler on `:root` plus every `page:` selector, the viewer on each strip),
+  and core CSS sizes page roots to it. Preview and print agree on this by
+  construction: the parity gate's divergences on the CSS-authoring fixture
+  dropped from 14 to 2, and the forced-break fix below closed the last two —
+  the gate now passes every committed fixture with nothing excused, viewer and
+  print page counts identical throughout.
+
+- **Right-click reaches an image layered behind the page.** A `.gp-behind`
+  image — a full-page plate, a watermark, a background texture — always lost
+  the right-click to the text sitting on top of it, so its context menu (alt
+  text, size, position, replace) was unreachable at every point on the page.
+  The preview now looks through the whole stack under the pointer and picks the
+  image behind it, without ever stealing a click aimed at a visible image, a
+  link, or margin-box furniture. Keyboard-invoked menus are unaffected.
+
+- **Two-column and spread view no longer go dead on covered pages.** Where one
+  run of pages is pulled up over the tail of the previous run, the upper run's
+  invisible box blanketed the page underneath: right-click, click-to-source,
+  link clicks, and even plain text selection did nothing there — 60 of 60 probe
+  points dead in two-column view, all of them healthy in single-page view. The
+  viewer's own run and strip boxes are now transparent to the pointer, and your
+  content takes the clicks again.
+
+- **A chapter that starts a new page now starts it in the preview too.** When a
+  forced break sat on the first thing inside a wrapper — the ordinary shape of a
+  chapter opener — the PDF moved the whole wrapper to the new page while the
+  preview left its first fragment at the foot of the previous one. The opener
+  painted on the wrong preview page, and every cross-reference to that chapter
+  showed a page number one too low. The viewer now carries a first-child forced
+  break up to the box that actually begins the page, which is what Chromium
+  prints. The preview↔print parity gate passes every committed fixture with
+  nothing excused.
+
+- **The `engine.layer.trapped` diagnostic stopped crying wolf about clipping.**
+  It treated *any* ancestor with `overflow` other than `visible` as defeating a
+  `.gp-behind` element, so a sound pinned plate under a page that merely sets
+  `overflow-x: clip` was reported as broken — on a real book whose printed page
+  was measured pixel-identical to an unclipped one. Clipping cuts; it never
+  reorders layers. The audit now warns only when the element's box actually
+  crosses a clipping edge, and says how far over it goes. The stacking-context
+  half of the check is unchanged.
+
+- The version shown on the start screen, on the Help tab, and in copied problem
+  reports was Electron's version rather than Gutterpress's when running an
+  unpackaged development build. Installed builds always reported correctly.
 
 - **Breaking: sync never asks — it always converges.** Field experience showed
   the interactive conflict machinery was the wrong shape for a small writing
