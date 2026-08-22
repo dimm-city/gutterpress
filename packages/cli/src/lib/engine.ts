@@ -45,6 +45,15 @@ export interface NativePdfOptions {
   title?: string;
   author?: string;
   signature?: number;
+  /**
+   * Downgrade the engine's over-wide-content hard error to a warning +
+   * diagnostic. The engine's message tells the author to "pass allowShrink to
+   * build anyway"; without this the advice is unreachable from every product
+   * path (only a test and the parity gate could set it). The book still prints
+   * at Chromium's mystery shrink scale, which is why this is opt-in per build
+   * and never a config default.
+   */
+  allowShrink?: boolean;
 }
 
 /**

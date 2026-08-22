@@ -73,6 +73,13 @@ export interface BuildRunnerOptions {
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
   /**
+   * Proceed past the engine's over-wide-content check (pdf/pdfx only), which
+   * otherwise hard-errors because Chromium silently scales the WHOLE book down
+   * to fit the offending box. Each offender is still reported as a warning +
+   * diagnostic — this buys an eyes-open build, not a clean one.
+   */
+  allowShrink?: boolean;
+  /**
    * Keep the pooled headless browser alive after the build returns. A one-shot
    * CLI build leaves this false so the process can exit; a long-lived
    * preview/watch server sets it true so the browser stays warm across rebuilds
@@ -772,6 +779,7 @@ class PdfOutput implements OutputStrategy {
           title: config.title,
           author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
           signature: config.print.signature,
+          allowShrink: opts.allowShrink,
         },
         opts.engineBrowser
       );
