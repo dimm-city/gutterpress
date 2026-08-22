@@ -38,6 +38,9 @@
   }
 
   const isFloat = () => value.position === "gp-left" || value.position === "gp-right";
+  // Flush drops the page's margin on the edges the pin uses, so it needs a pin
+  // that HAS an edge — a centred pin touches none and the class would be inert.
+  const isEdgePin = () => value.position === IMAGE_PIN_CLASS && value.pinAlignment !== "center";
 </script>
 
 <div class="dlg-backdrop" role="presentation" onclick={() => finish(null)}></div>
@@ -99,6 +102,10 @@
     <label class="check">
       <input name="shape" type="checkbox" bind:checked={value.shape} disabled={!isFloat()} />
       <span>Wrap text to image shape (floats only)</span>
+    </label>
+    <label class="check">
+      <input name="flush" type="checkbox" bind:checked={value.flush} disabled={!isEdgePin()} />
+      <span>Sit flush with the page edge (pinned to an edge only)</span>
     </label>
     <label>
       <span>Layer</span>

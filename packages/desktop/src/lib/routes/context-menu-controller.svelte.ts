@@ -47,12 +47,14 @@ import {
   getSizeClass,
   getSpacingClass,
   getWidth,
+  hasFlushClass,
   hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
   setPinAlignment,
   setLayerClass,
   setPositionClass,
+  setFlushClass,
   setShapeClass,
   setSizeClass,
   setSpacingClass,
@@ -446,6 +448,7 @@ export class ContextMenuController {
             size: getSizeClass(tokens) ?? "",
             spacing: getSpacingClass(tokens) ?? "",
             shape: hasShapeClass(tokens),
+            flush: hasFlushClass(tokens),
             layer: getLayerClass(tokens) ?? "",
           };
           const next = await this.deps.promptImageProperties(initial);
@@ -480,6 +483,7 @@ export class ContextMenuController {
           if (next.size !== initial.size) updated = setSizeClass(updated, next.size || null);
           if (next.spacing !== initial.spacing) updated = setSpacingClass(updated, next.spacing || null);
           if (next.shape !== initial.shape) updated = setShapeClass(updated, next.shape);
+          if (next.flush !== initial.flush) updated = setFlushClass(updated, next.flush);
           if (next.layer !== initial.layer) updated = setLayerClass(updated, next.layer || null);
           const sourceChanges: { src?: string; alt?: string; attrsRaw?: string } = {};
           if (updated !== tokens) sourceChanges.attrsRaw = serializeImageAttrs(updated);
