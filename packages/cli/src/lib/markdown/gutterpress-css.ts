@@ -265,8 +265,14 @@ img.gp-shape {
        opacity, filter, transform on it traps the negative layer inside).
        Core keeps .page/.spread at 'position: relative; z-index: auto'
        precisely so they are not stacking contexts.
-     - a clipping ancestor (overflow other than visible), the same mechanism
-       that clips a .gp-bleed plate back to the wrapper's width.
+     - a clipping ancestor (overflow other than visible) — but only where
+       the art actually overhangs that ancestor's clip box on a clipped
+       axis: the overhang is cut off, the same mechanism that clips a
+       .gp-bleed plate back to the wrapper's width. Clipping never reorders
+       layers — within-bounds art under a clipping .page prints whole and
+       still behind (measured; see the build audit's comment in
+       engine/compiler/build.ts), and a static wrapper's overflow never
+       binds an abspos .gp-pin at all.
    The build-time engine.layer.trapped audit reports both against the live
    ancestor chain. printsafe/page-containment is only an early source hint for
    declarations written directly on .page/.spread. */

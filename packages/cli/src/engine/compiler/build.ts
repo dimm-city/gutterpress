@@ -970,9 +970,24 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // declarations written directly on `.page`/`.spread`, but it cannot know a
     // downstream book's wrapper names. The live DOM can: walk from every
     // visible `.gp-behind` to its closest page/spread boundary and report any
-    // intervening stacking context or clipping box. This build-time result is
-    // authoritative; findings are capped like the sibling audits so malformed
-    // generated markup cannot flood the Problems panel.
+    // intervening stacking context, plus any clipping ancestor that actually
+    // CUTS the art. Clipping never reorders layers — MEASURED (Chromium 151,
+    // this pipeline's PDF rasterized at 96dpi, solid-color pin + text block):
+    // a within-bounds pin under `.page { overflow-x: clip }` (a real book's
+    // declaration) printed pixel-identical to the uncontained page — image
+    // whole, still under the text — while the old any-clipping-ancestor test
+    // warned on it. What DOES cut art, all measured to the pixel: an
+    // ancestor in the element's containing-block chain cuts exactly the part
+    // of the border box past its padding-box edge on an axis whose overflow
+    // is not `visible` (a mid-page clip edge at x=54 cut a 20px overhang at
+    // 54 exactly), a `visible` axis never cuts (the same overhang under
+    // overflow-x: visible + overflow-y: clip survived whole, all four
+    // edges), and a STATIC wrapper's overflow — hidden or clip — never
+    // binds an abspos pin at all (a pin entirely outside such a wrapper's
+    // box printed complete and still behind the text). The check below
+    // mirrors exactly that. This build-time result is authoritative;
+    // findings are capped like the sibling audits so malformed generated
+    // markup cannot flood the Problems panel.
     {
       const { leaks, multicol, layerTraps } = JSON.parse(
         await page.evaluate<string>(`(() => {
@@ -1011,6 +1026,26 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             if (/\\b(transform|opacity|filter|perspective|clip-path|mask)\\b/.test(cs.willChange))
               reasons.push("will-change: " + cs.willChange);
             return reasons;
+          };
+
+          // Does this box establish the containing block for an absolutely
+          // positioned descendant? Overflow clipping binds an abspos
+          // .gp-pin only from its containing block outward — MEASURED: a
+          // pin whose box lay entirely outside a STATIC overflow:hidden
+          // (and overflow:clip) wrapper printed complete and still behind
+          // the page text; the wrapper's clip never touched it.
+          const establishesAbsContainingBlock = (cs) => {
+            if (cs.position !== "static") return true;
+            for (const prop of [
+              "transform", "translate", "rotate", "scale", "perspective",
+              "filter", "backdropFilter",
+            ]) {
+              const value = cs[prop];
+              if (value && value !== "none") return true;
+            }
+            if (/\\b(layout|paint|strict|content)\\b/.test(cs.contain)) return true;
+            if (cs.containerType && cs.containerType !== "normal") return true;
+            return /\\b(transform|translate|rotate|scale|perspective|filter)\\b/.test(cs.willChange);
           };
 
           for (const el of document.querySelectorAll("*")) {
@@ -1053,20 +1088,58 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             ) {
               const boundary = el.closest(".page, .spread");
               if (boundary) {
+                const elRect = el.getBoundingClientRect();
+                // Clip binding: an in-flow .gp-behind is bound by every
+                // ancestor's overflow, but an abspos one only from its
+                // containing block outward — static wrappers in between
+                // never clip it (measured; see the pass comment above).
+                let clipBinds = cs.position !== "absolute" && cs.position !== "fixed";
                 for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
                   const ancestorStyle = getComputedStyle(ancestor);
+                  if (!clipBinds && establishesAbsContainingBlock(ancestorStyle)) clipBinds = true;
                   const reasons = stackingReasons(ancestor, ancestorStyle);
-                  const clips = ancestorStyle.overflowX !== "visible" ||
-                    ancestorStyle.overflowY !== "visible";
-                  if ((reasons.length || clips) && !seenLayerTraps.has(ancestor)) {
+                  // Clipping never reorders layers — it can only CUT the
+                  // art (measured, pass comment above): warn only where the
+                  // border box crosses a binding ancestor's clip edge on an
+                  // axis whose overflow is not \`visible\`. The clip edge is
+                  // the padding box, grown by overflow-clip-margin where
+                  // that axis's value is \`clip\` (px values only; keyword
+                  // forms parse NaN -> 0, i.e. the ungrown padding box).
+                  // 1px epsilon: the measured cut lands exactly at the
+                  // edge, and sub-pixel layout rounding is not an overhang.
+                  const cuts = [];
+                  if (clipBinds && (ancestorStyle.overflowX !== "visible" || ancestorStyle.overflowY !== "visible")) {
+                    const r = ancestor.getBoundingClientRect();
+                    const clipMargin = parseFloat(ancestorStyle.overflowClipMargin) || 0;
+                    if (ancestorStyle.overflowX !== "visible") {
+                      const grow = ancestorStyle.overflowX === "clip" ? clipMargin : 0;
+                      const left = r.left + parseFloat(ancestorStyle.borderLeftWidth) - grow;
+                      const right = r.right - parseFloat(ancestorStyle.borderRightWidth) + grow;
+                      if (elRect.left < left - 1)
+                        cuts.push(Math.round(left - elRect.left) + "px past its left clip edge");
+                      if (elRect.right > right + 1)
+                        cuts.push(Math.round(elRect.right - right) + "px past its right clip edge");
+                    }
+                    if (ancestorStyle.overflowY !== "visible") {
+                      const grow = ancestorStyle.overflowY === "clip" ? clipMargin : 0;
+                      const top = r.top + parseFloat(ancestorStyle.borderTopWidth) - grow;
+                      const bottom = r.bottom - parseFloat(ancestorStyle.borderBottomWidth) + grow;
+                      if (elRect.top < top - 1)
+                        cuts.push(Math.round(top - elRect.top) + "px past its top clip edge");
+                      if (elRect.bottom > bottom + 1)
+                        cuts.push(Math.round(elRect.bottom - bottom) + "px past its bottom clip edge");
+                    }
+                  }
+                  if ((reasons.length || cuts.length) && !seenLayerTraps.has(ancestor)) {
                     seenLayerTraps.add(ancestor);
                     const effects = [];
                     if (reasons.length)
                       effects.push("creates a stacking context (" + reasons.join(", ") + ")");
-                    if (clips)
+                    if (cuts.length)
                       effects.push(
-                        "clips descendants (overflow-x: " + ancestorStyle.overflowX +
-                        ", overflow-y: " + ancestorStyle.overflowY + ")"
+                        "clips it (overflow-x: " + ancestorStyle.overflowX +
+                        ", overflow-y: " + ancestorStyle.overflowY +
+                        ") — the art extends " + cuts.join(" and ") + " and is cut off there"
                       );
                     layerTraps.push({
                       behind: desc(el),
