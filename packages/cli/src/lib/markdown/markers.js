@@ -564,6 +564,14 @@ export default function plugin(md, pluginOptions = {}) {
      * @property {{name: string|null, attrs: Object}} [meta]
      *   section: name/attrs snapshot that @continue clones for the
      *   continuation section.
+     * @property {string} [classes]
+     *   spread/page/section: the AUTHOR's class list for this wrapper (not
+     *   the auto-inherited chapter counter class) — read by the
+     *   break-inside-grid diagnostic to decide whether an emitted break div
+     *   would become a grid item.
+     * @property {boolean} [sawContent]
+     *   section: at least one non-marker token was emitted inside this
+     *   section (drives the empty_section warning).
      */
 
     /**
@@ -669,7 +677,15 @@ export default function plugin(md, pluginOptions = {}) {
       t.meta = { line: meta.__line };
       addClasses(t, 'spread', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'spread', meta.name, meta.attrs || {});
-      stack.open({ kind: 'spread', noPagesYet: true, sawAnyPage: false }, t);
+      stack.open(
+        {
+          kind: 'spread',
+          classes: (meta.attrs && meta.attrs.class) || '',
+          noPagesYet: true,
+          sawAnyPage: false,
+        },
+        t
+      );
     }
 
     function openPage(meta) {
@@ -695,7 +711,7 @@ export default function plugin(md, pluginOptions = {}) {
       // with its content).
       const label = chapter ? chapter.label : '';
       if (label) t.attrSet('data-chapter-label', label);
-      stack.open({ kind: 'page' }, t);
+      stack.open({ kind: 'page', classes: explicit }, t);
 
       // Inject a structural chapter-opener element as the page's first
       // child when the chapter has a label AND this is the first @page in
@@ -747,6 +763,8 @@ export default function plugin(md, pluginOptions = {}) {
       stack.open(
         {
           kind: 'section',
+          classes: (meta.attrs && meta.attrs.class) || '',
+          sawContent: false,
           meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) } },
           openToken: t,
         },
@@ -754,10 +772,96 @@ export default function plugin(md, pluginOptions = {}) {
       );
     }
 
+    /**
+     * The innermost open frame an emitted break div becomes a DIRECT child
+     * of: section, else page, else spread. Only the direct parent decides
+     * whether the div is a grid item, so a break inside a plain @section
+     * that sits inside a grid @page is fine — the div is an ordinary
+     * block-flow child there. (@chapter is deliberately not checked: the
+     * ratified gp-grid-* diagnostic covers the frames authors put grid
+     * classes on, and a grid chapter wrapper is not one of them.)
+     */
+    function breakHost() {
+      return stack.get('section') || stack.get('page') || stack.get('spread');
+    }
+
+    /** First gp-grid-* class on a frame's author class list, or null. */
+    function gridClassOf(frame) {
+      if (!frame || !frame.classes) return null;
+      return frame.classes.split(/\s+/).find((c) => c.startsWith('gp-grid-')) || null;
+    }
+
+    /**
+     * break_inside_grid: a @page-break / @column-break whose emitted div
+     * would land DIRECTLY inside a gp-grid-* container. The break marker
+     * renders as a real <div>, and a grid container makes every direct
+     * child a grid ITEM — so the div takes a cell of its own and shifts
+     * every item after it. MEASURED (Chromium 151, grid evidence pack):
+     * this corrupts auto-placement in print itself, AND the live preview's
+     * break synthesis inserts a spacer div — another item — putting content
+     * on the WRONG page: the one page-level print/preview parity break the
+     * gp-grid measurements found. Everything else about grids (row
+     * fragmentation, break-inside:avoid, gap geometry) held exact parity.
+     */
+    function warnBreakInsideGrid(kind, line, meta) {
+      const host = breakHost();
+      const gridClass = gridClassOf(host);
+      if (!gridClass) return;
+      warn(
+        state.env,
+        line,
+        'break_inside_grid',
+        `@${kind} inside a grid container: the enclosing @${host.kind} carries .${gridClass}, so this break's <div> becomes a grid ITEM — it takes a cell of its own, corrupts the grid's placement, and print and the live preview then disagree about which page the content after it lands on. Move the break outside the grid @${host.kind}, or remove it — grid rows already flow and fragment across pages on their own.`,
+        meta
+      );
+    }
+
+    /**
+     * empty_section: a DECORATED @section (carrying classes or attributes)
+     * closed by a sibling @section or an @end-section with ZERO content
+     * tokens between the two markers. The decoration styles an empty
+     * element, so the layout the author asked for silently never prints —
+     * this exact shape shipped a broken page (a decorated @section
+     * immediately followed by a bare @section). An UNdecorated empty
+     * section stays silent: it renders as an inert empty div and is a
+     * common transient state while drafting. Scoped to the sibling /
+     * @end-section closers only — corpus-scanned across both real books
+     * with zero false positives; the wider close paths (EOF drain,
+     * @page/@chapter cascade closes) were not scanned, so they do not warn.
+     */
+    function warnIfEmptyDecoratedSection(closingKind, closingLine) {
+      const sec = stack.get('section');
+      if (!sec || sec.sawContent) return;
+      const attrs = (sec.meta && sec.meta.attrs) || {};
+      const decorations = [];
+      for (const c of (attrs.class || '').split(/\s+/).filter(Boolean)) decorations.push(`.${c}`);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'class') continue;
+        decorations.push(k === 'id' ? `#${v}` : `${k}=${v}`);
+      }
+      if (!decorations.length) return;
+      const openLine =
+        sec.openToken && sec.openToken.meta && Number.isFinite(sec.openToken.meta.line)
+          ? sec.openToken.meta.line
+          : closingLine;
+      warn(
+        state.env,
+        openLine,
+        'empty_section',
+        `This @section (${decorations.join(' ')}) was closed by the @${closingKind} on line ${closingLine} with no content between the two markers, so its styling applies to an empty element and nothing prints the layout it asked for. Delete one of the two markers, or move the content that belongs inside the section between them.`,
+        null
+      );
+    }
+
     for (let i = 0; i < state.tokens.length; i++) {
       const tok = state.tokens[i];
 
       if (tok.type !== 'layout_marker') {
+        // Any non-marker token emitted while a section is open is content
+        // for empty_section purposes (a break div, emitted from the marker
+        // branches below, deliberately is not).
+        const openSectionFrame = stack.get('section');
+        if (openSectionFrame) openSectionFrame.sawContent = true;
         out.push(tok);
         continue;
       }
@@ -788,6 +892,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'section') {
+        warnIfEmptyDecoratedSection('section', line);
         stack.close('section');
 
         // A @section with no open @page is VALID AUTHORING and warns about
@@ -852,6 +957,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'page-break') {
+        warnBreakInsideGrid('page-break', line, meta);
         const t = new state.Token('layout_page_break', 'div', 0);
         // Thread the 1-based marker line for source-range.ts. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
@@ -864,6 +970,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'column-break') {
+        warnBreakInsideGrid('column-break', line, meta);
         // Record the column-break onto the currently open section's OPEN
         // token (see openSection) rather than rescanning the token stream
         // at render time. At most one section frame is ever open at a time
@@ -892,6 +999,7 @@ export default function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'end-section') {
+        warnIfEmptyDecoratedSection('end-section', line);
         stack.close('section');
         continue;
       }

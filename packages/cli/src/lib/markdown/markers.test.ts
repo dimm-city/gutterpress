@@ -685,6 +685,135 @@ describe("mis-ordered markers, implicit wrapping, and warnings", () => {
   });
 });
 
+// A break marker's div becomes a grid ITEM when its DIRECT parent is a
+// gp-grid-* container: it takes a cell of its own, corrupts auto-placement
+// in print, and the viewer's break-synthesis spacer (another item) puts
+// content on the WRONG page — the one page-level print/preview parity break
+// the gp-grid evidence pack measured (Chromium 151). The warning fires on
+// the innermost open frame only: a break inside a plain @section on a grid
+// @page is an ordinary block-flow child and stays silent.
+describe("break_inside_grid warning", () => {
+  test("@page-break directly inside a grid @section warns and still emits the break div", () => {
+    const { html, env } = renderPaged("@section .gp-grid-2\nA\n\n@page-break\n\nB\n");
+    expect(env.layoutWarnings).toHaveLength(1);
+    expect(env.layoutWarnings![0]).toMatchObject({
+      line: 4,
+      type: "break_inside_grid",
+      marker: { kind: "page-break", name: null, attrs: {}, __line: 4 },
+    });
+    expect(env.layoutWarnings![0]!.message).toContain(".gp-grid-2");
+    expect(env.layoutWarnings![0]!.message).toContain("@section");
+    // Warn-and-report only — the break still lands where it always did.
+    expect(html).toContain('<div class="gp-page-break" aria-hidden="true"></div>');
+  });
+
+  test("@column-break directly inside a grid @page (no section) warns, naming @page as the host", () => {
+    const { env } = renderPaged("@page .gp-grid-3\nA\n\n@column-break\n\nB\n");
+    expect(env.layoutWarnings).toHaveLength(1);
+    expect(env.layoutWarnings![0]).toMatchObject({ line: 4, type: "break_inside_grid" });
+    expect(env.layoutWarnings![0]!.message).toContain(".gp-grid-3");
+    expect(env.layoutWarnings![0]!.message).toContain("@page");
+  });
+
+  test("@page-break directly inside a grid @spread warns", () => {
+    const { env } = renderPaged("@spread .gp-grid-2\n@page-break\n");
+    // spread_eof_close still fires too — the spread never saw a @page.
+    expect(env.layoutWarnings?.map((w) => w.type)).toEqual([
+      "break_inside_grid",
+      "spread_eof_close",
+    ]);
+  });
+
+  test("near-miss: a break inside a PLAIN @section on a grid @page is silent (block-flow child)", () => {
+    const { env } = renderPaged("@page .gp-grid-2\n@section\nA\n\n@page-break\n\nB\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("near-miss: gp-columns-* is multicol, not grid — breaks inside it stay silent", () => {
+    const { env } = renderPaged("@section .gp-columns-2\nA\n\n@column-break\n\nB\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+});
+
+// The exact silent failure that shipped a broken page: a DECORATED @section
+// (classes or attributes) closed by a sibling @section or @end-section with
+// nothing between the two markers — the decoration styles an empty element,
+// so the layout the author asked for never prints. Corpus-scanned across
+// both real books: zero false positives for this shape. The warning anchors
+// at the OPENING marker (where the decoration is) and names the closer's
+// line; wider close paths (EOF drain, @page/@chapter cascade closes) were
+// not corpus-cleared and stay silent.
+describe("empty_section warning", () => {
+  test("a decorated @section immediately closed by a sibling @section warns, anchored at the opener", () => {
+    const { html, env } = renderPaged("@section .gp-grid-2\n@section\nHi\n");
+    expect(env.layoutWarnings).toEqual([
+      {
+        line: 1,
+        type: "empty_section",
+        message:
+          "This @section (.gp-grid-2) was closed by the @section on line 2 with no content between the two markers, so its styling applies to an empty element and nothing prints the layout it asked for. Delete one of the two markers, or move the content that belongs inside the section between them.",
+        marker: null,
+      },
+    ]);
+    // Behavior unchanged: the empty decorated div still renders.
+    expect(html).toBe(
+      '<div class="section gp-grid-2"></div><div class="section"><p>Hi</p>\n</div>'
+    );
+  });
+
+  test("a decorated @section immediately closed by @end-section warns, naming the closer's line", () => {
+    const { env } = renderPaged("@section .sidebar\n@end-section\nHi\n");
+    expect(env.layoutWarnings).toHaveLength(1);
+    expect(env.layoutWarnings![0]).toMatchObject({ line: 1, type: "empty_section" });
+    expect(env.layoutWarnings![0]!.message).toContain("@end-section on line 2");
+  });
+
+  test("attribute decoration counts too (#id / key=value, not just classes)", () => {
+    const { env } = renderPaged("@section #intro\n@end-section\nHi\n");
+    expect(env.layoutWarnings).toHaveLength(1);
+    expect(env.layoutWarnings![0]).toMatchObject({ line: 1, type: "empty_section" });
+    expect(env.layoutWarnings![0]!.message).toContain("#intro");
+  });
+
+  test("near-miss: an UNdecorated empty section is silent (a common drafting state)", () => {
+    const { env } = renderPaged("@section\n@section .x\nHi\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("near-miss: a decorated section WITH content is silent", () => {
+    const { env } = renderPaged("@section .sidebar\nHi\n@end-section\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("near-miss: a NAME alone is not decoration", () => {
+    // data-section="Notes" carries identity, not styling — an empty named
+    // section renders the same with or without content following later.
+    const { env } = renderPaged("@section Notes\n@end-section\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("a decorated empty section closed by the EOF drain is silent (not corpus-cleared)", () => {
+    const { env } = renderPaged("@section .sidebar\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("a decorated empty section closed by a new @page's cascade is silent (not corpus-cleared)", () => {
+    const { env } = renderPaged("@page\n@section .sidebar\n@page\nHi\n");
+    expect(env.layoutWarnings).toBeUndefined();
+  });
+
+  test("an empty @continue continuation closed by @end-section warns (it carries the cloned classes)", () => {
+    // The continuation clones the section's decoration (plus gp-continued),
+    // so an empty continuation is an equally invisible styled box — e.g. a
+    // "(continued)" label with nothing under it.
+    const { env } = renderPaged("@section .note\nHi\n@continue\n@end-section\n");
+    expect(env.layoutWarnings).toHaveLength(1);
+    expect(env.layoutWarnings![0]).toMatchObject({ line: 3, type: "empty_section" });
+    expect(env.layoutWarnings![0]!.message).toContain(".note .gp-continued");
+    expect(env.layoutWarnings![0]!.message).toContain("@end-section on line 4");
+  });
+});
+
 describe("chapter label propagation to child @page elements", () => {
   test("every @page in a chapter gets data-chapter-label, but only the first gets .chapter-opener", () => {
     const { html } = renderPaged(
