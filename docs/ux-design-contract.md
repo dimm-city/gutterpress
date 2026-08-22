@@ -237,6 +237,15 @@ Shipped behavior:
   (edit, copy target), selected text (bold, italic, strikethrough, inline
   code, make link), block (edit this block, insert page break
   before/after, go to source), and `@marker` (edit marker, go to source).
+  The block and `@marker` menus carry one further item, **"Edit page
+  marker…"**, placed last before "Go to source": it edits the marker line
+  of the `.page`/`.spread`/`.chapter` enclosing the point, and is offered
+  only when that line is not already the primary target — the same chapter
+  plus an identical source range suppresses it, because the primary items
+  edit that line already. Without it the enclosing `@page` marker is
+  unreachable from inside a `@section`, whose innermost annotated block
+  always wins the primary slot. A preview that does not report the
+  enclosing marker (older than bridge protocol v7) offers no such item.
   Gated by the `preview.contextMenu` setting, default on.
 - **Block overlay.** "Edit this block" opens that block's **markdown
   source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
@@ -249,9 +258,41 @@ Rules (normative):
   reachable via keyboard menu key / `Shift+F10`". The listener necessarily
   lives inside the preview iframe — keystrokes focused in a cross-origin
   iframe never reach the SPA, so an app-side listener cannot satisfy this.
-- **Page furniture keeps native behavior.** Right-clicks on margin boxes,
-  running headers, and page numbers do not open the menu and do not
-  suppress the native one; that text is real, selectable content.
+- **Page furniture keeps native behavior; the empty margin band does not.**
+  A right-click whose top-most hit element is inside a margin box (running
+  header, page number — any `.gp-marginbox`) resolves to no target: the
+  menu does not open and the native one is not suppressed, so that text
+  stays copyable. That check runs before both probes below, so furniture
+  wins over anything layered beneath it. A right-click that lands inside a
+  sheet's box but resolves to no annotated block — the empty margin band
+  around the content box — MUST instead resolve to the annotated
+  `.page`/`.spread` that owns that sheet (the wrapper with the greatest
+  rect overlap with it), and open that marker's menu: the `@page` marker is
+  reachable from anywhere on its paper, not only from the content box. A
+  sheet whose page has no author `@page`/`@spread` wrapper keeps native
+  behavior. Note that the viewer draws its own margin boxes
+  into the hit-transparent sheet layer (next rule), so they are not
+  normally in the hit stack at all and a right-click over one falls through
+  to the margin-band rule; the furniture check governs the case where
+  furniture is hit-testable.
+- **Only author content captures pointer hits.** The viewer's own chrome —
+  runs, strips, sheet layers, and the sheets and margin boxes they hold —
+  is pointer-transparent, and author content re-enables hits. Chrome must
+  never win a hit for pixels it does not paint: a run pulled up over the
+  previous row in a wrapped/spread composition blankets the page beneath
+  it, and while that box captured hits, right-click, click-to-source, link
+  clicks, and text selection were all dead on every covered page.
+- **Content layered behind the page stays reachable.** Target resolution
+  probes the whole hit stack, not only the top-most element, and prefers
+  the top-most image under the point whose **computed** z-index is negative
+  — the `.gp-behind` depth ladder, or any book CSS that layers an image
+  behind, since the test is the computed value and never the class.
+  Otherwise such an image has no reachable right-click point anywhere. Only
+  negative-z images qualify — stealing a covering block's
+  right-clicks for a normally layered image would invert the bug — and a
+  directly hit image, link text, or margin box is never probed beneath. The
+  keyboard path targets top-most-only: its anchor is a synthetic
+  block-center point, not a place the author aimed at.
 - **Never guess an edit.** When a chapter has unsaved changes, or the
   rendered selection cannot be mapped back to source unambiguously, the
   affected item is **disabled with a stated reason** and the author is
