@@ -155,9 +155,12 @@ This project follows [Semantic Versioning](https://semver.org/).
     and the menu opens on the `@page`/`@spread` that owns that sheet, so a
     page's own marker is reachable without hunting for a block to aim at; when
     you right-click inside a `@section`, the enclosing page marker is offered
-    alongside it as **Edit page marker…**. Sheets with no author `@page`
-    wrapper, and the furniture text itself (running headers, page numbers),
-    keep the browser's native menu so that text stays selectable and copyable.
+    alongside it as **Edit page marker…**. Only sheets with no author
+    `@page`/`@spread` wrapper keep the browser's native menu. Note that
+    margin-box furniture (running headers, page numbers) is painted into a
+    hit-transparent layer, so a right-click over it resolves to the sheet
+    beneath rather than to the furniture, and furniture text is not
+    mouse-selectable in the viewer.
     Reachable by keyboard via `Shift+F10` / the menu key. Toggled by the new
     `preview.contextMenu` setting.
   - **Click-to-edit block overlay** — "Edit this block" opens the block's
@@ -301,6 +304,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   user guide's TTRPG chapter. Stat blocks, dice notation, and read-aloud boxes
   never needed a plugin or a dedicated template — tables, layout markers, and
   CSS classes cover them, as the rest of the guide shows.
+- **Breaking: the classes the layout markers emit are renamed to `gp-*`.**
+  If your CSS styles them, rename the selectors — a stale selector silently
+  stops matching, it does not error:
+  - `.md-page-break` → `.gp-page-break` (`@page-break`)
+  - `.md-column-break` → `.gp-column-break` (`@column-break`)
+  - `.pmd-continued` → `.gp-continued` (`@continue`). **`.pmd-continued` is
+    the name shipped in v0.8.3**, so this is the one most upgrading books
+    actually have; `md-continued` and `gutterpress-continued` only existed
+    between releases.
+
+  Markers, DOM shape, `data-*` attributes and behaviour are unchanged. See
+  `docs/migrations/2026-08-gp-marker-classes.md`.
 - **Breaking: the native engine's `folio`-prefixed public surface is renamed
   to `gp`/`Gutterpress`, and the deprecated `window.Folio`/`window.folio`
   aliases are gone.** Native is now the only engine — Paged.js itself has

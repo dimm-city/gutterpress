@@ -7,7 +7,7 @@ the rest of the product's vocabulary.
 |---|---|---|
 | `md-page-break` | `gp-page-break` | `@page-break` |
 | `md-column-break` | `gp-column-break` | `@column-break` |
-| `md-continued` (and, before it, `gutterpress-continued`) | `gp-continued` | `@continue` |
+| `pmd-continued` (v0.8.3 and earlier), later `md-continued` | `gp-continued` | `@continue` |
 
 ## How to migrate
 
@@ -17,13 +17,16 @@ Only books that **style** these classes need to act — rename the selectors:
 .md-page-break   { … }   →   .gp-page-break   { … }
 .md-column-break { … }   →   .gp-column-break { … }
 .md-continued    { … }   →   .gp-continued    { … }
+.pmd-continued   { … }   →   .gp-continued    { … }
 ```
 
 Markers, DOM shape, `data-*` attributes and behaviour are all unchanged.
 
-If your CSS still targets an even older name — `.pmd-continued` is one that
-appears in books predating the `gutterpress-continued` era — it has been dead
-for some time: nothing emits it. Delete those rules rather than renaming them.
+**If you are upgrading from v0.8.3 or earlier, `.pmd-continued` is the class
+you have.** It was live in v0.8.3 — the most recent release these classes ever
+shipped in — so rename it to `.gp-continued` rather than deleting it. The
+intermediate names (`gutterpress-continued`, `md-continued`) only ever existed
+between releases; you will only have those if you tracked an unreleased build.
 
 ## Why
 
