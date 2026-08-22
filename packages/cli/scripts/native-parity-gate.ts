@@ -100,6 +100,14 @@ const DEFAULT_FIXTURES = [
   // (In-page pin GEOMETRY is asserted by paged-css-image-pin.test.ts — the
   // gate only sees page indices.)
   join(REPO, "docs", "fixtures", "gp-image-positioning", "book"),
+  // The .gp-grid-* fixture (committed): slotted grid pages whose rows
+  // fragment across sheets — the measured behavior the vocabulary shipped
+  // on (Chromium 151 evidence pack) — with headings buried deep in each
+  // grid track so check (d) pins which sheet every one lands on in both
+  // renderers. (Print-side geometry across the cut is asserted by
+  // build.grid-fragmentation.test.ts — the gate holds the viewer to the
+  // same page maps.)
+  join(REPO, "docs", "fixtures", "gp-grid", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

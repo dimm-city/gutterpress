@@ -1497,6 +1497,30 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(right).toContain("var(--gp-gap, 1em)");
   });
 
+  test("grid runs declare 2/3 equal tracks with the author-settable --gp-grid-gap", () => {
+    // Plain class selectors, no :where() — like .gp-columns-*, injection
+    // order (core before author CSS) is what lets author rules at equal
+    // specificity win. Measured (Chromium 151): grid rows fragment across
+    // sheets with exact print/viewer parity, so no fit-one-page guard
+    // belongs here.
+    const grid2 = GUTTERPRESS_CSS.match(/\.gp-grid-2\s*\{[^}]*\}/);
+    const grid3 = GUTTERPRESS_CSS.match(/\.gp-grid-3\s*\{[^}]*\}/);
+    expect(grid2).not.toBeNull();
+    expect(grid3).not.toBeNull();
+    expect(grid2![0]).toMatch(/display:\s*grid/);
+    expect(grid2![0]).toContain("grid-template-columns: repeat(2, 1fr)");
+    expect(grid3![0]).toMatch(/display:\s*grid/);
+    expect(grid3![0]).toContain("grid-template-columns: repeat(3, 1fr)");
+    for (const rule of [grid2, grid3]) {
+      expect(rule![0]).toContain("gap: var(--gp-grid-gap, 1.5em)");
+      // align-content is deliberately NOT set: default stretch on a
+      // min-height page root spreads rows identically in both engines (an
+      // authoring choice, not a parity hazard); authors opt into packed
+      // rows with align-content: start.
+      expect(rule![0]).not.toContain("align-content");
+    }
+  });
+
   test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
     const pin = GUTTERPRESS_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
     expect(pin).toMatch(/position:\s*absolute/);

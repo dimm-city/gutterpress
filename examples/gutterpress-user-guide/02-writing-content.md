@@ -329,6 +329,43 @@ utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
 `@section`; an enclosing `@page` is not required. Themes may add decoration to
 an explicitly themed class, but should not redefine generic column vocabulary.
 
+### Grids: .gp-grid-2 and .gp-grid-3
+
+Columns flow; grids place. A `.gp-columns-2` section pours one run of text
+down the first column and continues it in the second. A `.gp-grid-2` (or
+`.gp-grid-3`) section instead places each block — paragraph, image, card —
+into the next open slot, across then down. Reach for a grid when the pieces
+are separate things that belong in a fixed arrangement (stat blocks,
+image-and-caption pairs, card layouts); reach for columns when it is one
+text that should read continuously.
+
+```markdown
+@section {.gp-grid-2}
+
+The first block takes the top-left slot.
+
+The second block sits beside it.
+
+The third starts the next row.
+
+@end-section
+```
+
+The gutter between slots is `--gp-grid-gap` (default `1.5em`) — set it in
+your stylesheet the same way as `--gp-column-gap`. A grid taller than the
+page is safe: rows continue onto the next page identically in the preview
+and the printed PDF.
+
+Two grid-specific notes:
+
+- On a full-height page (a grid class directly on `@page`), rows spread
+  apart to fill the page by default. If you want them packed at the top,
+  add `align-content: start` to the grid class in your stylesheet.
+- Do not put `@page-break` or `@column-break` directly inside a grid
+  section: the break becomes a grid slot of its own and scrambles the
+  layout (Gutterpress warns when this happens). Close the grid first with
+  `@end-section`, then break.
+
 ## Writing Guidelines
 
 ### Paragraphs

@@ -203,6 +203,26 @@ export const GUTTERPRESS_CSS = `
 .gp-columns-2 { columns: 2; column-gap: var(--gp-column-gap, 1.5em); }
 .gp-columns-3 { columns: 3; column-gap: var(--gp-column-gap, 1.5em); }
 
+/* grid runs — the SLOTTED counterpart to the column runs above. Grid places
+   each child into the next cell, across then down (deterministic slots: card
+   layouts, stat blocks, image-plus-caption pairs); columns FLOW one text run
+   down then across. Same neutral-primitive rationale as .gp-columns-*, and
+   permanent vocabulary for the same reason: standard CSS Grid verbatim, no
+   spec gap to remove later. MEASURED (Chromium 151, gp-grid evidence pack):
+   grid rows fragment across sheets with EXACT print/viewer parity — 2- and
+   3-col, unequal item heights, mid-row cuts, multi-sheet overflow,
+   break-inside:avoid, gap geometry — so a grid taller than the page is safe,
+   no fit-one-page constraint. Two things to know, not fix:
+     - on a min-height page root (MARKER_CSS), default align-content
+       stretches rows apart to fill the page — identically in both engines.
+       Authors wanting packed rows set align-content: start.
+     - a @page-break / @column-break marker DIRECTLY inside a grid container
+       becomes a grid item and corrupts placement (the one measured parity
+       break); markers.js diagnoses it (break_inside_grid).
+   --gp-grid-gap is author-settable. */
+.gp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gp-grid-gap, 1.5em); }
+.gp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gp-grid-gap, 1.5em); }
+
 /* shape wrap — text follows the image's alpha silhouette instead of its
    rectangular box. shape-outside only applies to floats, so this is inert
    without .gp-left/.gp-right (and under .gp-pin, which un-floats). The
