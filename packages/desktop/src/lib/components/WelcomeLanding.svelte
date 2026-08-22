@@ -284,7 +284,6 @@
       <header class="brand-row">
         <div class="brand-left">
           <BrandMark size={64} />
-          <span class="brand-name">Gutterpress</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
@@ -545,7 +544,6 @@
   }
   .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .brand-name { font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-muted); }
 
   .update-chip {

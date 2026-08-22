@@ -155,6 +155,7 @@ import {
   resolveDevServerUrl,
   type OriginPolicyConfig,
 } from "./navigation-policy";
+import { version as APP_VERSION } from "../package.json";
 
 // Module directory, ESM-safe. We do NOT rely on electron-vite's injected
 // `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
@@ -182,6 +183,18 @@ function slog(msg: string): void {
   console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
 }
 slog("main.js evaluated");
+
+// `electron out/main/main.js` (electron:dev / electron:hmr) hands Electron a
+// FILE, so default_app never finds a package.json and app.getVersion()
+// falls back to the Electron version (42.x). Packaged runs read the real
+// version from app.asar/package.json, so correct dev only — never override
+// the packaged value, which electron-updater compares releases against.
+// app.setVersion() is real at runtime (default_app itself calls it when it
+// loads a folder's package.json) but absent from the public electron.d.ts,
+// hence the narrow cast.
+if (!app.isPackaged) {
+  (app as unknown as { setVersion(version: string): void }).setVersion(APP_VERSION);
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
