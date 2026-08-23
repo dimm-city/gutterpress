@@ -385,8 +385,10 @@ the plan wins.**
 - `WelcomeLanding`: three tabs — **Projects** (continue card with live
   pre-render status + recents / favorites / discovered projects),
   **Settings** (the entire settings surface, sub-tabs and all — there is no
-  separate settings window), and **Help**. It opens on Settings → Accounts
-  when no name/email is saved yet, so saved versions carry a real author.
+  separate settings window), and **Help**. It always opens on **Projects** —
+  picking or continuing a book is the screen's job. A missing name/email is
+  raised by the workspace's standing identity banner, never by sending the
+  start screen to Settings → Accounts.
   `NewProjectWizard`: template first (**3 built-in templates** — Book, Zine,
   Technical document — plus custom templates, save-as-template,
   import-from-folder), and the chosen template seeds the book's design
