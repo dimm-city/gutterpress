@@ -123,20 +123,6 @@ export function injectBreakMapping(_model: GcpmModel, doc: Document = document):
   return "";
 }
 
-/**
- * Whether this browser implements forced `column` breaks at all
- * (`break-before`/`break-after: column`). Firefox does not — a long-standing
- * Gecko gap (bug 549114) — which `injectBreakMapping()`'s CSS-only mapping
- * depends on. Feature-probed, not UA-sniffed.
- */
-export function forcedColumnBreaksSupported(): boolean {
-  return (
-    typeof CSS !== "undefined" &&
-    typeof CSS.supports === "function" &&
-    CSS.supports("break-before", "column") &&
-    CSS.supports("break-after", "column")
-  );
-}
 
 /**
  * Sub-pixel tolerance for fragmentainer geometry, in CSS px.
@@ -150,15 +136,12 @@ export function forcedColumnBreaksSupported(): boolean {
  *     overflow the column (an exact fit may leave the following box in
  *     place). That overshoot is `ceil(x) - x`, i.e. strictly < 1px, and it
  *     re-appears at the top of the next column, so the box the break moved
- *     starts up to 1px BELOW the column top instead of exactly on it;
- *   - a box pushed to the next column can be left with a hairline leading
- *     fragment at the tail of the previous one. Gecko emits one (measured:
- *     0.3px); Blink does not.
+ *     starts up to 1px BELOW the column top instead of exactly on it.
  *
- * Neither is visible on screen, and neither may be read as "this box still
- * has room in the current column" — that misreading is what turned a 0.3px
- * hairline into two blank pages of Firefox over-pagination (the issue #46
- * cross-browser smoke test measured firefox 6pp against chromium 4pp).
+ * It is not visible on screen, and it must not be read as "this box still has
+ * room in the current column": at 0.5px tolerance that misreading reserved a
+ * whole blank column for a break that was already satisfied — a defect in
+ * Chromium too, not only the engine that first surfaced it.
  */
 const FRAGMENT_EPSILON_PX = 1;
 
@@ -167,17 +150,16 @@ const FRAGMENT_EPSILON_PX = 1;
  * or ends (`atEnd` true).
  *
  * A multicol box spanning a column boundary reports one rect per fragment,
- * and a fragment thinner than `FRAGMENT_EPSILON_PX` is fragmentation
- * residue holding no content — the box visibly starts (or ends) in the
- * neighbouring column, so the residue must not be mistaken for its content
- * edge. Falls back to the raw rects when every fragment is that thin, which
- * is the only case where a hairline IS the content.
+ * so the first (or last) rect is the edge. This used to skip sub-pixel
+ * "hairline" fragments first: Gecko strands a ~0.3px sliver at the tail of
+ * the previous column when a box moves, and reading it as the content edge
+ * cost two blank pages. Blink emits no such fragment, and Gutterpress is
+ * Chromium-only (CLAUDE.md), so the filter was removed — verified against the
+ * full parity gate, 11 books, 0 divergences.
  */
 export function contentEdgeRect(site: Element, atEnd: boolean): DOMRect | undefined {
   const rects = Array.from(site.getClientRects());
-  const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
-  const pool = solid.length ? solid : rects;
-  return atEnd ? pool.at(-1) : pool[0];
+  return atEnd ? rects.at(-1) : rects[0];
 }
 
 /**

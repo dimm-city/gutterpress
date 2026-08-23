@@ -34,7 +34,6 @@
     injectViewerCss: () => injectViewerCss,
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
-    forcedColumnBreaksSupported: () => forcedColumnBreaksSupported,
     contentEdgeRect: () => contentEdgeRect,
     compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
@@ -1049,15 +1048,10 @@
     doc.getElementById("gp-break-mapping")?.remove();
     return "";
   }
-  function forcedColumnBreaksSupported() {
-    return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("break-before", "column") && CSS.supports("break-after", "column");
-  }
   var FRAGMENT_EPSILON_PX = 1;
   function contentEdgeRect(site, atEnd) {
     const rects = Array.from(site.getClientRects());
-    const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
-    const pool = solid.length ? solid : rects;
-    return atEnd ? pool.at(-1) : pool[0];
+    return atEnd ? rects.at(-1) : rects[0];
   }
   function columnReserve(offset, columnHeight) {
     const remaining = columnHeight - offset;
