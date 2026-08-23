@@ -3,6 +3,25 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The over-wide-content error no longer fires on content a clipping
+  ancestor already contains** (#162). Chromium's print shrink-to-fit only
+  reacts to overflow that ESCAPES, so a wide box sealed inside an
+  `overflow: hidden|clip|auto|scroll` ancestor never scaled the book — but
+  the build hard-errored on it anyway, and the advice it gave ("give it an
+  explicit width") would have changed a layout that was already correct. A
+  208-page real book failed this way on two elements while printing
+  coordinate-identically with them in place. The check now measures whether
+  the overflow reaches past the page content box after its clipping
+  ancestors, and content that genuinely escapes still errors exactly as
+  before — including the three shapes that only look contained: an abspos
+  box under a STATIC clipping wrapper, `overflow-y: clip` beside an untouched
+  `overflow-x: visible`, and an `overflow-clip-margin` wide enough to let the
+  box back out.
+
 ## [0.10.0] - 2026-08-23
 
 ### Added

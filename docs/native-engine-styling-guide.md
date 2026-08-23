@@ -76,9 +76,13 @@ smaller, more pages, different pagination) appears far from the cause.
   print scale-down.** One overflowing element on page 213 shrinks all 300
   pages. Left-side protrusion counts too (**[handled]** — the build's width
   check now flags both edges, names the element, and states the one-line fix;
-  it is a hard error unless you pass `allowShrink`). Ancestor
-  `overflow: hidden` does NOT contain absolutely positioned descendants for
-  this purpose.
+  it is a hard error unless you pass `allowShrink`). Overflow that a clipping
+  ancestor CONTAINS (`overflow-x: hidden|clip|auto|scroll`) never escapes to
+  the document and never scales the book — measured, and the width check
+  skips it. Two exceptions that still shrink: `overflow: hidden` on a STATIC
+  ancestor does not contain an absolutely positioned descendant (only the
+  descendant's containing block onward can), and `overflow-y: clip` leaves
+  `overflow-x: visible` alone, so horizontal overflow still escapes.
 - **Auto-width replaced elements (images) trigger it via their INTRINSIC
   width.** An `<img>` with `width: auto` feeds its natural pixel width into
   Chromium's preferred-width computation. `max-width: 100%` does **not** bound

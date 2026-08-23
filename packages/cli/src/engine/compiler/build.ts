@@ -71,6 +71,30 @@ const DESC_JS = `(el) => {
   }`;
 
 /**
+ * Shared "does this box establish the containing block for an absolutely
+ * positioned descendant?" helper for the in-page audits that need to know
+ * whether an ancestor's overflow BINDS an abspos box — the width check and
+ * the layer-containment audit both do, and the rule is one measured fact,
+ * not two. MEASURED: a pin whose box lay entirely outside a STATIC
+ * overflow:hidden (and overflow:clip) wrapper printed complete — the
+ * wrapper's clip never touched it — and an over-wide abspos box under the
+ * same static wrapper still shrank the whole book.
+ */
+const ABS_CONTAINING_BLOCK_JS = `(cs) => {
+    if (cs.position !== "static") return true;
+    for (const prop of [
+      "transform", "translate", "rotate", "scale", "perspective",
+      "filter", "backdropFilter",
+    ]) {
+      const value = cs[prop];
+      if (value && value !== "none") return true;
+    }
+    if (/\\b(layout|paint|strict|content)\\b/.test(cs.contain)) return true;
+    if (cs.containerType && cs.containerType !== "normal") return true;
+    return /\\b(transform|translate|rotate|scale|perspective|filter)\\b/.test(cs.willChange);
+  }`;
+
+/**
  * Page contexts needed by geometry audits, without an exponential powerset.
  *
  * The four standard traits have a fixed cross-product ceiling:
@@ -1041,25 +1065,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             return reasons;
           };
 
-          // Does this box establish the containing block for an absolutely
-          // positioned descendant? Overflow clipping binds an abspos
-          // .gp-pin only from its containing block outward — MEASURED: a
-          // pin whose box lay entirely outside a STATIC overflow:hidden
-          // (and overflow:clip) wrapper printed complete and still behind
-          // the page text; the wrapper's clip never touched it.
-          const establishesAbsContainingBlock = (cs) => {
-            if (cs.position !== "static") return true;
-            for (const prop of [
-              "transform", "translate", "rotate", "scale", "perspective",
-              "filter", "backdropFilter",
-            ]) {
-              const value = cs[prop];
-              if (value && value !== "none") return true;
-            }
-            if (/\\b(layout|paint|strict|content)\\b/.test(cs.contain)) return true;
-            if (cs.containerType && cs.containerType !== "normal") return true;
-            return /\\b(transform|translate|rotate|scale|perspective|filter)\\b/.test(cs.willChange);
-          };
+          // Overflow clipping binds an abspos .gp-pin only from its
+          // containing block outward (see ABS_CONTAINING_BLOCK_JS).
+          const establishesAbsContainingBlock = ${ABS_CONTAINING_BLOCK_JS};
 
           for (const el of document.querySelectorAll("*")) {
             const cs = getComputedStyle(el);
@@ -1372,6 +1380,55 @@ async function findWidthOffenders(
       await page.evaluate<string>(`(() => {
         const LIMIT = ${limitPx} + 1;
         const desc = ${DESC_JS};
+        const establishesAbsContainingBlock = ${ABS_CONTAINING_BLOCK_JS};
+        const rootStyle = getComputedStyle(document.documentElement);
+        // Shrink-to-fit only reacts to overflow that ESCAPES: a clipping or
+        // scrolling ancestor contains its subtree's overflow, so the
+        // document's own width never grows and the book prints at 1.0x.
+        // MEASURED (Chrome 151, a marker word read off \`pdftotext -bbox\`
+        // against an unshrunk control): a 900px box inside a 300px
+        // \`overflow: hidden\` shell printed unshrunk, as did the same box
+        // under clip/auto/scroll — and a real 208-page book whose two
+        // "offenders" both sat under \`overflow-x: clip\` printed
+        // coordinate-identical with them restored. Returns the element's
+        // box clamped to every clip edge that binds it; three measured
+        // qualifiers decide which ones do:
+        //   AXIS — only overflow-x counts, from the COMPUTED value (which
+        //     already folds in hidden/scroll/auto's \`visible\`->\`auto\`
+        //     coupling, so a y-only \`hidden\` clips x too). \`clip\` does NOT
+        //     couple: \`overflow-x: visible; overflow-y: clip\` shrank.
+        //   CLIP EDGE — the padding box, grown by \`overflow-clip-margin\`
+        //     on a \`clip\` axis (a 700px margin let the box back out and it
+        //     shrank). px values only; keyword forms parse NaN -> 0.
+        //   BINDING — an abspos box is clipped only from its containing
+        //     block outward, and the ROOT propagates its overflow to the
+        //     viewport rather than clipping its own content:
+        //     \`html{overflow:hidden}\` alone and \`body{overflow:hidden}\`
+        //     alone both still shrank, the two together did not.
+        const escapingBox = (el, r) => {
+          let left = r.left;
+          let right = Math.max(r.right, r.left + r.width);
+          const pos = getComputedStyle(el).position;
+          // A fixed box is laid out against the viewport; treat it as
+          // unclippable rather than guess at its containing block.
+          if (pos === "fixed") return { left, right };
+          let binds = pos !== "absolute";
+          for (let a = el.parentElement; a; a = a.parentElement) {
+            const cs = getComputedStyle(a);
+            if (!binds && establishesAbsContainingBlock(cs)) binds = true;
+            const propagatesToViewport =
+              a === document.documentElement ||
+              (a === document.body && rootStyle.overflowX === "visible");
+            if (!binds || propagatesToViewport || cs.overflowX === "visible") continue;
+            const ar = a.getBoundingClientRect();
+            const grow = cs.overflowX === "clip"
+              ? parseFloat(cs.overflowClipMargin) || 0
+              : 0;
+            left = Math.max(left, ar.left + parseFloat(cs.borderLeftWidth) - grow);
+            right = Math.min(right, ar.right - parseFloat(cs.borderRightWidth) + grow);
+          }
+          return { left, right };
+        };
         const out = [];
         for (const el of document.querySelectorAll("*")) {
           const r = el.getBoundingClientRect();
@@ -1381,6 +1438,9 @@ async function findWidthOffenders(
           // width) — both trigger the same whole-document shrink-to-fit,
           // measured: a left bleed alone cost 16%.
           if (right <= LIMIT && r.width <= LIMIT && r.left >= -1) continue;
+          // ...but only where it actually escapes its clipping ancestors.
+          const esc = escapingBox(el, r);
+          if (esc.right <= LIMIT && esc.left >= -1) continue;
           let deepest = true;
           for (const c of el.children) {
             if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
