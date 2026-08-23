@@ -1,29 +1,25 @@
 /**
- * Cross-browser preview smoke test (issue #46).
+ * Preview smoke test (issue #46).
  *
  * For each target project (served by the webServer entries in
- * playwright.config.ts), renders the preview in chromium, firefox, and
- * webkit and asserts:
+ * playwright.config.ts), renders the preview in Chromium and asserts:
  *
  *   - the native engine's viewer bundle dispatches `gp:layout` within a
  *     generous timeout
  *   - page count > 0 and matches the event's `pages` count
  *   - no layout collapse (sheets have non-zero size; no uncaught page errors)
- *   - page count is within tolerance of the chromium baseline (engines
- *     legitimately reflow slightly differently because of font-fallback
- *     metrics — the 2026-06 audit measured webkit at -10% on the user guide)
  *
- * The PREVIEW is the only cross-browser surface; PDF export always renders
- * in Chromium and is not covered here.
+ * CHROMIUM ONLY. Gutterpress supports Chrome and other Chromium-based
+ * browsers, and nothing else (CLAUDE.md, ratified 2026-08-23) — the print
+ * path IS Chromium and the viewer's whole job is to agree with what Chromium
+ * prints. The firefox/webkit legs, and the cross-engine page-count tolerance
+ * that only existed to compare them against a chromium baseline, were removed
+ * with that ruling.
  */
 import { test, expect } from "playwright/test";
-import { chromium, firefox, webkit, type BrowserType, type Frame } from "playwright";
+import { chromium, type Frame } from "playwright";
 
 const RENDER_TIMEOUT_MS = 180_000;
-/** Allowed relative page-count deviation from the chromium baseline. */
-const PAGE_COUNT_TOLERANCE = 0.2;
-
-const ENGINES: Record<string, BrowserType> = { chromium, firefox, webkit };
 
 const TARGETS = [
   { name: "gutterpress-user-guide", url: "http://127.0.0.1:4111/" },
@@ -39,8 +35,8 @@ interface RenderResult {
   pageErrors: string[];
 }
 
-async function renderPreview(engine: BrowserType, url: string): Promise<RenderResult> {
-  const browser = await engine.launch({ headless: true });
+async function renderPreview(url: string): Promise<RenderResult> {
+  const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
     const consoleErrors: string[] = [];
@@ -101,29 +97,15 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
 }
 
 for (const target of TARGETS) {
-  test(`${target.name}: preview renders in chromium, firefox, and webkit`, async () => {
-    test.setTimeout(RENDER_TIMEOUT_MS * 3 + 120_000);
+  test(`${target.name}: preview renders in chromium`, async () => {
+    test.setTimeout(RENDER_TIMEOUT_MS + 120_000);
 
-    const results: Record<string, RenderResult> = {};
-    for (const [name, engine] of Object.entries(ENGINES)) {
-      results[name] = await renderPreview(engine, target.url);
-    }
+    const r = await renderPreview(target.url);
+    const label = `[${target.name}]`;
 
-    const baseline = results.chromium!.pageCount;
-    expect(baseline, "chromium baseline must render at least one page").toBeGreaterThan(0);
-
-    for (const [name, r] of Object.entries(results)) {
-      const label = `[${target.name} / ${name}]`;
-      expect(r.pageCount, `${label} page count`).toBeGreaterThan(0);
-      expect(r.eventTotalPages, `${label} renderingComplete totalPages`).toBe(r.pageCount);
-      expect(r.zeroSizedContentPages, `${label} zero-sized content pages (layout collapse)`).toBe(0);
-      expect(r.pageErrors, `${label} uncaught page errors`).toEqual([]);
-
-      const deviation = Math.abs(r.pageCount - baseline) / baseline;
-      expect(
-        deviation,
-        `${label} page count ${r.pageCount} deviates ${(deviation * 100).toFixed(1)}% from chromium baseline ${baseline}`
-      ).toBeLessThanOrEqual(PAGE_COUNT_TOLERANCE);
-    }
+    expect(r.pageCount, `${label} page count`).toBeGreaterThan(0);
+    expect(r.eventTotalPages, `${label} renderingComplete totalPages`).toBe(r.pageCount);
+    expect(r.zeroSizedContentPages, `${label} zero-sized content pages (layout collapse)`).toBe(0);
+    expect(r.pageErrors, `${label} uncaught page errors`).toEqual([]);
   });
 }

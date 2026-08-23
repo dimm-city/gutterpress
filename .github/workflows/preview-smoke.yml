@@ -1,5 +1,15 @@
 
-name: Preview cross-browser smoke
+name: Preview smoke
+
+# Guards that `gutterpress preview` still boots and that the native viewer
+# actually paginates the shipped example projects in Chromium: `gp:layout`
+# fires, page count > 0 and agrees with the event, no collapsed sheets, no
+# uncaught page errors.
+#
+# Chromium is the only engine tested — Gutterpress supports Chrome and other
+# Chromium-based browsers and nothing else (CLAUDE.md, ratified 2026-08-23).
+# The firefox/webkit legs, and the cross-engine page-count comparison that was
+# their whole point, were removed with that ruling.
 
 on:
   pull_request:
@@ -16,7 +26,7 @@ env:
 
 jobs:
   preview-smoke:
-    name: Native preview smoke (chromium + firefox + webkit)
+    name: Native preview smoke (chromium)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -36,11 +46,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/cli/package.json') }}
 
-      - name: Install Playwright browsers
+      - name: Install Playwright Chromium
         working-directory: packages/cli
-        run: node_modules/.bin/playwright install --with-deps chromium firefox webkit
+        run: node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Run cross-browser preview smoke test
+      - name: Run preview smoke test
         working-directory: packages/cli
         run: node_modules/.bin/playwright test -c tests/compat/playwright.config.ts
         env:

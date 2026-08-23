@@ -1,23 +1,23 @@
 /**
- * Playwright config for the cross-browser preview smoke test (issue #46).
+ * Playwright config for the preview smoke test (issue #46).
  *
  * Run from packages/cli:
  *   node_modules/.bin/playwright test -c tests/compat/playwright.config.ts
  *
- * Browsers must be installed first:
- *   node_modules/.bin/playwright install --with-deps chromium firefox webkit
+ * Chromium must be installed first:
+ *   node_modules/.bin/playwright install --with-deps chromium
  *
- * The spec launches chromium/firefox/webkit itself (it needs a chromium
- * baseline to compare the other engines against in a single test), so this
- * config defines no browser projects — it only provides the runner and the
- * preview web servers.
+ * The spec launches chromium itself, so this config defines no browser
+ * projects — it only provides the runner and the preview web servers.
  *
  * This suite proves the native engine's IN-BROWSER VIEWER (the client-side
  * pagination bundle every preview/`--format html` build ships — see
- * `src/engine/viewer/`) renders correctly in all three browser engines, even
- * though the PDF build itself always renders in Chromium. Paged.js has been
- * removed (native-only-migration-plan.md Phase 6); every web server below
- * uses the manifest default (native), no `--engine` flag needed.
+ * `src/engine/viewer/`) renders the shipped example projects without
+ * collapsing or erroring. Chromium is the only supported engine (CLAUDE.md,
+ * ratified 2026-08-23); the firefox/webkit legs this suite used to carry were
+ * removed with that ruling. Paged.js has been removed
+ * (native-only-migration-plan.md Phase 6); every web server below uses the
+ * manifest default (native), no `--engine` flag needed.
  */
 import { defineConfig } from "playwright/test";
 
