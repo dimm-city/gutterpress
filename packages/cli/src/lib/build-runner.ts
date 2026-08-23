@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
-import { inlineShapeUrls, planImageCopies, type AssetCopy } from "./asset-inline";
+import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import { prewarmBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
 import {
@@ -17,11 +17,6 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
-import {
-  placeholderOutputPath,
-  placeholderPng,
-  rewriteMissingImageReferences,
-} from "./missing-asset-placeholder";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -36,7 +31,7 @@ import {
   verifyNativeChromiumMilestone,
   type Gates,
 } from "./build-preflight";
-import { shipViewerHtml, createStageRoot } from "./build-staging";
+import { shipViewerHtml, createStageRoot, stageBookAssets } from "./build-staging";
 
 export { RENDER_TIMEOUT_MS };
 
@@ -438,105 +433,33 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   });
   log.success(`Wrote ${htmlFile}`);
 
-  const { copies: imageCopies, errors, destinations } = await planImageCopies(
+  const { missing } = await stageBookAssets({
     renderDir,
+    outDir: workDir,
+    htmlFile,
     imageRefs,
-  );
-  if (errors.length > 0) {
-    throw new BuildError(
-      `Cannot resolve ${errors.length} image reference(s):\n` +
-        errors.map((e) => `  - ${e}`).join("\n"),
-      1
-    );
-  }
-
-  const copies = [...cssAssets, ...imageCopies];
-  let missingPlaceholders = new Map<string, string>();
-  if (copies.length > 0) {
-    log.info(`Copying ${copies.length} referenced asset(s)`);
-    missingPlaceholders = await copyReferencedAssets(copies, workDir);
-  }
-
-  // .gp-shape images: inline the mirrored --gp-shape URLs as data: URIs so
-  // shape-outside works when the staged book is loaded via file:// (opaque
-  // origins block its pixel reads; the http preview needs no such help) —
-  // see inlineShapeUrls' doc comment. After the copy step so the staged
-  // files are what get inlined.
-  let staged = await fsp.readFile(htmlFile, "utf8");
-  if (missingPlaceholders.size > 0) {
-    // CSS assets already use their output-relative destination in the inlined
-    // <style>; prose images may preserve an authored spelling such as
-    // `./images/a.jpg` or a percent-escaped path. Cover both from the one copy
-    // plan, then rewrite src/srcset/CSS URLs before Chromium sees the document.
-    const rewrites = new Map(missingPlaceholders);
-    for (const [ref, dest] of destinations) {
-      const placeholder = missingPlaceholders.get(dest);
-      if (placeholder) rewrites.set(ref, placeholder);
-    }
-    staged = rewriteMissingImageReferences(staged, rewrites);
-    await fsp.writeFile(htmlFile, staged, "utf8");
-  }
-  if (staged.includes("--gp-shape:")) {
-    await fsp.writeFile(htmlFile, await inlineShapeUrls(staged, workDir), "utf8");
-  }
-
-  return htmlFile;
-}
-
-/**
- * Copy the planned assets into `outDir`, preserving each one's output-relative
- * path. Parallel because these are independent file copies and a book's image
- * set is routinely in the hundreds — the old serial `copyDir` walked every
- * asset directory one `copyFile` at a time.
- */
-async function copyReferencedAssets(
-  copies: AssetCopy[],
-  outDir: string
-): Promise<Map<string, string>> {
-  const dirs = new Set(
-    copies.map((c) => path.dirname(path.resolve(outDir, c.to)))
-  );
-  await Promise.all([...dirs].map((d) => fsp.mkdir(d, { recursive: true })));
-
-  // A missing image substitutes a loud placeholder instead of aborting the
-  // book — see missing-asset-placeholder.ts for why. Any OTHER copy failure
-  // (permissions, a directory where a file should be, a full disk) still
-  // throws: those are environment faults the author cannot fix by editing
-  // their markdown, and silently papering over them would hide real damage.
-  const missing = new Map<string, string>();
-  await Promise.all(
-    copies.map(async (c) => {
-      const dest = path.resolve(outDir, c.to);
-      try {
-        await fsp.copyFile(c.from, dest);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-          const placeholder = placeholderOutputPath(c.to);
-          const placeholderDest = path.resolve(outDir, placeholder);
-          await fsp.mkdir(path.dirname(placeholderDest), { recursive: true });
-          await fsp.writeFile(placeholderDest, placeholderPng());
-          missing.set(c.to, placeholder);
-          return;
-        }
+    cssAssets,
+    onPlan: ({ unresolved, copyCount }) => {
+      if (unresolved.length > 0) {
         throw new BuildError(
-          `Could not copy asset ${c.from} → ${c.to}: ` +
-            (err instanceof Error ? err.message : String(err)),
+          `Cannot resolve ${unresolved.length} image reference(s):\n` +
+            unresolved.map((e) => `  - ${e}`).join("\n"),
           1
         );
       }
-    })
-  );
-
-  if (missing.size > 0) {
+      if (copyCount > 0) log.info(`Copying ${copyCount} referenced asset(s)`);
+    },
+  });
+  if (missing.length > 0) {
     log.warn(
-      `${missing.size} referenced image(s) do not exist — a magenta placeholder ` +
+      `${missing.length} referenced image(s) do not exist — a magenta placeholder ` +
         `was substituted so the build could finish. Each one is a visible hole ` +
         `in the PDF:`
     );
-    for (const m of [...missing.keys()].sort()) log.warn(`  missing: ${m}`);
+    for (const m of missing) log.warn(`  missing: ${m}`);
   }
 
-  return missing;
+  return htmlFile;
 }
 
 /**
