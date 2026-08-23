@@ -3,7 +3,7 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.10.0] - unreleased
+## [0.10.0] - 2026-08-23
 
 ### Added
 
