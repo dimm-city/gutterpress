@@ -265,9 +265,10 @@ export async function listProjectFilesFromRoot(
 // ── FSA feature detection ────────────────────────────────────────────────────
 
 /**
- * True when the File System Access directory picker is available (Chrome/Edge).
- * Safari has no `showDirectoryPicker`, so the WebAdapter degrades capabilities
- * (Phase 6 OPFS/import-export fallback is out of scope for Phase 1).
+ * True when the File System Access directory picker is available (desktop
+ * Chrome/Edge). Still a probe rather than an assumed-true constant: Chrome on
+ * Android ships no `showDirectoryPicker`, and neither does an insecure or
+ * cross-origin-iframe context. The WebAdapter degrades capabilities there.
  */
 export function hasFsa(): boolean {
   return (

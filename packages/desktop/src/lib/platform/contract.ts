@@ -362,7 +362,7 @@ export interface NativeThemeState {
 /**
  * Coarse host capability flags (#49) so the UI can degrade gracefully without
  * branching on `platform === "web"`. Electron returns all-true; the Web adapter
- * returns the conservative set (see WebAdapter.capabilities for the Safari/OPFS
+ * returns the conservative set (see WebAdapter.capabilities for the per-flag
  * rationale).
  */
 export interface PlatformCapabilities {
@@ -385,7 +385,7 @@ export interface HostServices {
 
   /**
    * Coarse host capability flags (#49). Lets the UI degrade gracefully
-   * (Safari/OPFS) without branching on the platform name. Electron: all-true.
+   * without branching on the platform name. Electron: all-true.
    */
   capabilities(): PlatformCapabilities;
 

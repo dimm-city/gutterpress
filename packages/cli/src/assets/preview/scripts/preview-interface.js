@@ -744,8 +744,10 @@
         // `setSpread()` does the real relayout: `column-wrap: wrap` wraps each
         // chapter's columns into a 2-column grid so content, not just sheet
         // chrome, actually moves into pairs — see fragment.ts's
-        // `applySpreadMode`. No-ops to single-row on a browser without the
-        // capability (Firefox/Safari as of this writing).
+        // `applySpreadMode`, which no-ops to single-row where CSS
+        // `column-wrap`/`column-height` are unavailable (Chromium < 145).
+        // The guard below is a LIB-version check, not a browser one: a
+        // hot-updated shell may be paired with an older bundled viewer.
         if (window.Gutterpress && typeof window.Gutterpress.setSpread === 'function') {
           window.Gutterpress.setSpread(currentViewMode !== 'single');
         }

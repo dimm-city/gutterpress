@@ -37,11 +37,9 @@
 
   function onRowDragStart(e: DragEvent, i: number) {
     dragIndex = i;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      // Firefox requires data for a drag to start.
-      e.dataTransfer.setData("text/plain", String(i));
-    }
+    // The reorder is driven entirely by `dragIndex`; nothing reads the drag
+    // data store, so we set no payload (Chromium starts the drag regardless).
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
   function onRowDragOver(e: DragEvent, i: number) {
     if (dragIndex === null) return;

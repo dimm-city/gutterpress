@@ -204,12 +204,11 @@ export class WebAdapter implements Platform {
   // - nativeSavePath:false — the browser can't write to a chosen FS path; build
   //   output is delivered via BuildResult.downloadUrl (a browser download).
   // - showInFolder:false — no OS file manager to reveal in.
-  // - persistentFolderAccess — TRUE on Chrome/Edge (File System Access API +
-  //   IndexedDB-persistable handles), FALSE on Safari/no-FSA.
-  //
-  // TODO (Phase 6): the Safari/no-FSA branch keeps all three false and will gain
-  // an OPFS + <input webkitdirectory> import/export fallback. Phase 1 targets
-  // Chrome/Edge only.
+  // - persistentFolderAccess — TRUE wherever the File System Access API is
+  //   present (desktop Chrome/Edge; its handles are IndexedDB-persistable).
+  //   FALSE where it is not — notably Chrome on Android, and any insecure or
+  //   cross-origin-iframe context, which is why this stays a feature probe
+  //   (`hasFsa()`) rather than an assumed-true constant.
   capabilities(): PlatformCapabilities {
     return {
       nativeSavePath: false,
@@ -240,15 +239,15 @@ export class WebAdapter implements Platform {
   /**
    * Open the OS directory picker (Chrome/Edge), register the chosen root handle,
    * and return a host-neutral FolderRef. Resolves null when the user cancels
-   * (the picker rejects with an AbortError). Rejects when no FSA picker exists
-   * (e.g. Safari — Phase 6 will add the import/export fallback).
+   * (the picker rejects with an AbortError). Rejects where the FSA picker is
+   * absent — Chrome on Android, or an insecure/cross-origin-iframe context.
    */
   async openFolder(): Promise<FolderRef | null> {
     const picker = globalThis.window?.showDirectoryPicker;
     if (typeof picker !== "function") {
       throw new Error(
-        "openFolder: the File System Access API is not supported in this browser " +
-          "(Safari import/export fallback is not implemented yet).",
+        "openFolder: this browser has no File System Access directory picker. " +
+          "Open the project in desktop Chrome or Edge over HTTPS.",
       );
     }
     let handle: FileSystemDirectoryHandle;

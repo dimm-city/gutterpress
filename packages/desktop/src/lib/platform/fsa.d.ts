@@ -10,7 +10,8 @@ interface Window {
   /**
    * Show the OS directory picker (Chrome/Edge). Resolves with the chosen root
    * handle, or rejects with a DOMException whose `name` is "AbortError" when the
-   * user cancels. Absent in Safari (the WebAdapter degrades capabilities).
+   * user cancels. Optional because it is absent on Chrome for Android and in
+   * insecure/cross-origin-iframe contexts (the WebAdapter degrades there).
    */
   showDirectoryPicker?: (options?: {
     id?: string;
