@@ -705,6 +705,54 @@ function restoreIneffectiveTrailingMargins(strips: StripInfo[]): void {
 }
 
 /**
+ * The page box a run's columns are sized from.
+ *
+ * `@page :left` / `@page :right` swapping the binding and outer margin is the
+ * ordinary bound-book idiom, and Chromium honours it when it prints: every
+ * page's content box is `width - (binding + outer)` wide. Sizing the columns
+ * from the pseudo-LESS `@page` rule instead gives the viewer a column
+ * `width - 2 * outer` wide — wider on every page of the book. Its lines then
+ * hold more text than print's, its paragraphs run shorter, and its page count
+ * drifts below the PDF's a little more with every page. Measured on the
+ * dc-op-manual field guide (0.625in outer / 0.75in binding): 280 preview pages
+ * against 288 printed ones, the drift arriving in ones and twos from page 8 to
+ * the end rather than at any single site. `docs/fixtures/mirrored-margins` is
+ * the same failure in five pages.
+ *
+ * The two sides mirror, so they agree on the content box's SIZE and differ only
+ * in which edge is wide — one multicol carries that exactly. `:right` is the
+ * side taken, because page 1 is a recto and so is every odd page after it.
+ *
+ * When the two sides genuinely disagree on the size (an asymmetric design that
+ * print alternates between), no single column width can match both. The
+ * pseudo-less box is kept — today's behaviour — and the author is told, rather
+ * than the viewer silently picking a side and calling it parity.
+ */
+export function runPageBox(
+  model: GcpmModel,
+  name: string | undefined,
+  warnings: string[] = [],
+): PageGeometry {
+  const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
+  const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
+  const box = (g: PageGeometry) => ({
+    w: g.width - g.margin.left - g.margin.right,
+    h: g.height - g.margin.top - g.margin.bottom,
+  });
+  const r = box(right);
+  const l = box(left);
+  if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01) return right;
+  warnings.push(
+    `@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` +
+      `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` +
+      `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` +
+      `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` +
+      `swap which edge is wide and keep the total the same.`,
+  );
+  return resolvePage(model, { name }).geometry;
+}
+
+/**
  * Group the flow root's children into runs of identical page context and wrap
  * each run in a strip. Runs only ever split where print would already have
  * forced a break (a named-page change), so strip boundaries add no breaks of
@@ -719,14 +767,11 @@ export function buildStrips(
   const root = opts.root ?? doc.querySelector("main") ?? doc.body;
   const gap = opts.sheetGap ?? 24;
 
-  // `warnings` is kept in the signature (opts callers still pass it) but no
-  // fidelity warning remains to raise here — explodeChildren resolves the
-  // opener idiom structurally instead of diverging and warning about it.
   const runs = explodeChildren(root, model);
 
   const strips: StripInfo[] = [];
   for (const run of runs) {
-    const { geometry } = resolvePage(model, { name: run.page });
+    const geometry = runPageBox(model, run.page, warnings);
     const strip = doc.createElement("div");
     strip.className = "gp-strip";
     if (run.page) strip.dataset.page = run.page;
@@ -1087,6 +1132,35 @@ export function strideOf(strip: HTMLElement): number {
 }
 
 /**
+ * The CSS `zoom` in effect on `el` — the factor between the coordinate space
+ * `getBoundingClientRect()` reports in and the one every other number in this
+ * file is written in.
+ *
+ * The viewer zooms its whole stage (`viewer.css`'s `.gp-stage`:
+ * `zoom: calc(var(--gutterpress-zoom,1) * var(--gutterpress-fit-zoom,1))`).
+ * Client rects are SCALED by that zoom; `clientHeight`, `scrollWidth`,
+ * `scrollLeft` and custom properties (`--gp-content-w`/`--gp-content-h`, what
+ * `stripMetrics()` reads) are NOT. So any comparison of a rect against a
+ * stride has to divide the rect side by this first, or the two sides are in
+ * different spaces and the answer is wrong by the zoom factor. Measured at
+ * the field guide's fit-width zoom 0.7936: a 1104px row stride against a real
+ * rect-space sheet pitch of 876.1px, and 277 of 316 headings resolved to the
+ * wrong page.
+ *
+ * Convert HERE, at the comparison — never by making `stripMetrics()` read
+ * scaled geometry instead. The unscaled values are the stable ones (they are
+ * what the sheets, spacers and column boxes are sized in), and the rest of
+ * the fragmenter depends on them.
+ *
+ * `currentCSSZoom` is Chromium 128+. `?? 1` is a feature fallback, not a
+ * browser branch: an engine without it does not implement layout-affecting
+ * CSS `zoom` either, so its rects are already in unscaled space.
+ */
+function cssZoomOf(el: Element): number {
+  return (el as Element & { currentCSSZoom?: number }).currentCSSZoom ?? 1;
+}
+
+/**
  * Both pitches from ONE getComputedStyle read. `indexInStrip` runs once per
  * xref/string-set/probe element on every mount and refresh, and each
  * getComputedStyle call can force a style recalc — reading the horizontal
@@ -1156,12 +1230,17 @@ export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number 
 function indexInStrip(left: number, top: number, strip: StripInfo): number {
   const { stride, rowStride } = stripMetrics(strip.el);
   const stripBox = strip.el.getBoundingClientRect();
-  const stripLeft = stripBox.left - strip.el.scrollLeft;
-  const stripTop = stripBox.top;
+  // `left`/`top` and `stripBox` are client-rect coordinates — scaled by the
+  // stage's CSS zoom; `stride`/`rowStride` are not (see `cssZoomOf`). Take
+  // the offsets into the strip in rect space, then convert them once, so both
+  // sides of the divisions below are in the strip's own unscaled CSS pixels.
+  const zoom = cssZoomOf(strip.el);
+  const x = (left - stripBox.left) / zoom + strip.el.scrollLeft;
+  const y = (top - stripBox.top) / zoom;
   const { perRow, shift } = wrapGeometry(strip);
-  const colVisual = Math.floor((left - stripLeft + 1) / stride);
+  const colVisual = Math.floor((x + 1) / stride);
   const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
-  const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
+  const row = Math.max(0, Math.floor((y + 1) / rowStride));
   const idx = row * perRow + colClamped - shift;
   return Math.max(0, Math.min(strip.pages - 1, idx));
 }

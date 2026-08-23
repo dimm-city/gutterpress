@@ -48,11 +48,23 @@
   transform: translate(var(--gp-margin-left), var(--gp-margin-top));
 }
 
-/* Sheets/margin boxes are painted behind/around the strip by the decoration
-   layer; the strip itself must stay transparent so they show through. */
-.gp-strip > * {
-  break-inside: auto;
-}
+/* NOTE: there is deliberately no `.gp-strip > * { break-inside: auto }` here.
+   The original spike shipped one, under a comment about sheet transparency that
+   described no rule of its own, and it was never justified anywhere. Because
+   viewer chrome is injected after the author's stylesheet, it beat every
+   single-class author rule at equal specificity: a top-level block the author
+   declared atomic (`.card`, `.section`, a stat block) split on screen while the
+   PDF moved it whole and left a short page. Measured on
+   `docs/fixtures/atomic-blocks`: print 6pp, viewer 5pp with the rule, 6pp and
+   6pp without it; a longer probe of the same shape ran 25pp against 21pp.
+   Chromium honours `break-inside: avoid` in multicol as it does in paged media,
+   including relaxing it for a block too tall to fit an empty fragmentainer, so
+   nothing here needs to override the author.
+
+   Scope: `>` means this only ever reached the flow root's OWN children, so a
+   book whose atomic blocks sit inside `@page`/`@section` wrappers was never
+   affected — which is why removing it does not move the dc-op-manual field
+   guide's remaining 4-page divergence. That one is still open. */
 
 /* View mode (`applySpreadMode` in fragment.ts): wraps this run's multicol
    columns into `--gp-wrap-cols` ROWS instead of one long row — 2 for

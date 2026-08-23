@@ -751,26 +751,13 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // Launch-time identity nudge: an empty git identity means every saved
-  // version would be attributed to a placeholder, so the start screen lands on
-  // Settings → Accounts to ask for the two fields once. Runs after the
-  // persisted settings actually load — the in-memory defaults are empty
-  // strings, so checking earlier would always fire.
-  //
-  // Deliberately NOT gated on `landingVisible`: the settings read and the
-  // startup prefs read race, and when settings win the landing is not "ready"
-  // yet, so gating silently dropped the nudge (caught in a browser run of the
-  // built app). Selecting a tab on a hidden layer is free — it is simply what
-  // the layer shows whenever it next appears.
-  onMount(() => {
-    void _loadSettings().then(() => {
-      const identity = settings.current.gitIdentity;
-      if (!identity.authorName.trim() || !identity.authorEmail.trim()) {
-        landingSettingsTab = "connections";
-        landingRef?.showTab("settings");
-      }
-    });
-  });
+  // There is deliberately NO launch-time tab hijack here. A missing git
+  // identity used to send the start screen to Settings → Accounts on mount,
+  // which meant EVERY first run opened on account settings instead of the
+  // author's books — the screen's whole job is to pick or continue a book.
+  // The missing-identity nudge is the workspace banner (`needsGitIdentity`
+  // above), which is where the owner put it on 2026-07-30; the landing opens
+  // on Projects and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the

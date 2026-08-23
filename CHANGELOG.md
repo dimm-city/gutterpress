@@ -192,6 +192,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The preview↔print parity gate stages a book the way a build does.** It
+  hand-rolled its own asset copy, so a single stale image reference killed the
+  run with a raw `ENOENT` — the one tool that enforces preview↔print agreement
+  could not be pointed at a real book — and it skipped the build's `.gp-shape`
+  inlining, so it measured a document no build produces. Staging is now shared
+  with the renderer: the gate substitutes the same magenta placeholder the
+  build does, reports every placeholder and unresolved reference, and measures
+  anyway.
+
 - **Marker warnings now name the escape.** A marker is any line whose first
   character is `@` followed by a marker word — including a line your paragraph
   merely *wrapped* onto, which is how a sentence about `@page` splits your page
@@ -341,6 +350,48 @@ This project follows [Semantic Versioning](https://semver.org/).
     that rename is now final (no alias file).
 
 ### Fixed
+
+- **Mirrored binding margins now paginate the same on screen as in print.**
+  The bound-book idiom — an outer and a binding margin swapped by `@page :left`
+  / `@page :right` — was honoured by Chromium when printing but ignored by the
+  viewer, which sized its columns from the unqualified page context. Measured
+  on a 288-page book with a 0.625in outer and 0.75in binding margin: print
+  wrapped text at 7.25in, the preview at 7.375in. An eighth of an inch of extra
+  measure per line shortens every paragraph, so the error accumulated — the
+  preview drifted one page behind by page 8 and eight pages behind by the end.
+  The viewer now resolves both pseudo-page sides and uses the recto box when
+  they agree on size, warning instead of guessing when they genuinely differ.
+  The compiler half of this bug was fixed earlier in this cycle; the viewer
+  half was not, which is why books still diverged.
+
+- **The viewer no longer overrides an author's `break-inside`.** A leftover
+  `.gp-strip > * { break-inside: auto }` rule shipped in the viewer's own
+  stylesheet, injected after the author's CSS, so it outranked every
+  single-class author rule at equal specificity. A block declared atomic split
+  across pages on screen while the PDF moved it whole. Removed; a fixture now
+  pins the behaviour.
+
+- **`pageOf()` is correct at any zoom.** The viewer measures element positions
+  with `getBoundingClientRect()`, which CSS `zoom` scales, and compared them
+  against page strides derived from `--gp-content-w`/`--gp-content-h`, which it
+  does not — so every lookup was wrong by the zoom factor. Measured at zoom
+  0.75: 282 of 316 headings in a real book resolved to the wrong page; at zoom
+  1, none did. Because a hot reload re-measures while zoom is applied, any
+  author not at exactly 100% saw a corrupted Contents page column after their
+  first edit. This fix covers the outline lookup; the same coordinate mixing
+  still affects three pagination sites (issue #164).
+
+- **A Contents row with no measurable page now says so.** The page lookup's
+  "not found" answer collapsed to `0`, which rendered as an empty cell —
+  indistinguishable from a row that simply had no page column. Unresolvable
+  rows now show `—`, so a number always means a measured page.
+
+- **The welcome screen opens on Projects again.** A launch-time nudge switched
+  the screen to Settings → Accounts whenever the git identity was blank — which
+  is precisely the first-run condition, so every new author landed on account
+  settings instead of their books. The nudge had been superseded by the
+  workspace identity banner and should have been removed with it; the banner
+  still carries the prompt.
 
 - **`.gp-pin` reaches the page edges again.** A pinned image (`{.gp-pin
   .gp-bottom}`, a corner colophon, a full-page watermark) was landing against

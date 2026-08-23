@@ -63,7 +63,7 @@
  *   bun scripts/native-parity-gate.ts <project-dir> [<project-dir> ...]
  */
 import { existsSync, mkdirSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchChromium, type Browser } from "../src/engine/shared/cdp.ts";
@@ -73,7 +73,8 @@ import { inspectPdf } from "../src/engine/shared/pdf-inspect.ts";
 import { loadManifestWithPath, resolveConfig } from "../src/lib/manifest.ts";
 import { renderChaptersToFile } from "../src/lib/markdown/index.ts";
 import { loadPluginsWithCss } from "../src/lib/markdown/plugins.ts";
-import { planImageCopies, type AssetCopy } from "../src/lib/asset-inline.ts";
+import { type AssetCopy } from "../src/lib/asset-inline.ts";
+import { stageBookAssets } from "../src/lib/build-staging.ts";
 import { getAssetPath } from "../src/lib/embedded-assets.ts";
 
 const REPO = resolve(import.meta.dir, "..", "..", "..");
@@ -108,6 +109,21 @@ const DEFAULT_FIXTURES = [
   // build.grid-fragmentation.test.ts — the gate holds the viewer to the
   // same page maps.)
   join(REPO, "docs", "fixtures", "gp-grid", "book"),
+  // The mirrored-margins fixture (committed): `@page :left` / `@page :right`
+  // swapping the binding and outer margin — what every bound book does.
+  // Chromium honours the pseudo-page margins when it prints; the viewer sized
+  // its columns from the pseudo-LESS `@page` rule, so its lines held more text
+  // than print's and its page count drifted below the PDF's a little more with
+  // every page (dc-op-manual field guide: 280 preview pages vs 288 printed —
+  // see `runPageBox` in viewer/fragment.ts). Five pages reproduce it.
+  join(REPO, "docs", "fixtures", "mirrored-margins", "book"),
+  // The atomic-blocks fixture (committed): `break-inside: avoid` on a card
+  // that is a direct child of the flow root. Print moves such a card whole and
+  // leaves a short page; the viewer's own chrome carried a
+  // `.gp-strip > * { break-inside: auto }` that outranked the author at equal
+  // specificity and split it (6pp print vs 5pp viewer — see the NOTE in
+  // viewer/viewer.css).
+  join(REPO, "docs", "fixtures", "atomic-blocks", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
@@ -166,11 +182,20 @@ function instrumentHeadingIds(html: string): { html: string; ids: string[] } {
 // ---------------------------------------------------------------------------
 // stage a project dir into a self-contained book.html — the exact call
 // build-runner.ts's renderBook() makes (resolveConfig -> loadPluginsWithCss
-// -> renderChaptersToFile -> planImageCopies -> copy), forced to
+// -> renderChaptersToFile -> stageBookAssets), forced to
 // `engine: "native"` regardless of the project's own manifest so every
 // fixture is staged as a real native-engine book would be. Also instruments
 // every heading (`instrumentHeadingIds`) so check (d) has stable ids to
 // compare, in every fixture regardless of tier.
+//
+// The asset step is the SHARED `stageBookAssets`, not a private copy: a
+// hand-rolled `copyFile` loop here died with a raw ENOENT on the first stale
+// image path, which meant the one tool that enforces preview↔print parity
+// could not be pointed at a real book (the dc-op-manual field guide was in
+// exactly that state), and it silently skipped the build's `.gp-shape`
+// inlining, so the gate measured a document no build ever produces. Missing
+// files now get the same magenta placeholder the build ships — same document,
+// same layout — and are reported below rather than ignored.
 // ---------------------------------------------------------------------------
 async function stage(
   projectDir: string,
@@ -195,17 +220,21 @@ async function stage(
     onCssAssets: (copies) => cssAssets.push(...copies),
   });
 
-  const { copies: imageCopies, errors } = await planImageCopies(renderDir, imageRefs);
-  if (errors.length)
-    console.error(`    ${errors.length} unresolved image reference(s) (ignored, not this gate's concern):`);
-  const copies = [...cssAssets, ...imageCopies];
-  await Promise.all(
-    copies.map(async (c) => {
-      const dest = join(outDir, c.to);
-      await mkdir(dirname(dest), { recursive: true });
-      await copyFile(c.from, dest);
-    }),
-  );
+  const { missing } = await stageBookAssets({
+    renderDir,
+    outDir,
+    htmlFile: htmlPath,
+    imageRefs,
+    cssAssets,
+    onPlan: ({ unresolved }) => {
+      // A build REFUSES to ship these; the gate measures the book anyway —
+      // where an image points is not a fragmentation question. Reported, not
+      // ignored, so a fixture cannot quietly lose art the gate then blesses.
+      for (const e of unresolved) console.log(`   UNRESOLVED image ref — ${e.split("\n")[0]}`);
+    },
+  });
+  for (const m of missing)
+    console.log(`   MISSING image ${m} — magenta placeholder staged, as the build does`);
 
   const rawHtml = await readFile(htmlPath, "utf-8");
   const { html: instrumentedHtml, ids: headingIds } = instrumentHeadingIds(rawHtml);

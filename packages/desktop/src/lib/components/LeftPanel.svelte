@@ -30,7 +30,12 @@
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import { isDesktop } from "$lib/platform";
-  import { buildTocTree, ancestorKeysForActive, type TocNode } from "$lib/routes/toc-tree";
+  import {
+    buildTocTree,
+    ancestorKeysForActive,
+    tocPageLabel,
+    type TocNode,
+  } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
 
@@ -360,7 +365,7 @@
             title={node.entry.text}
           >
             <span class="toc-text">{node.entry.text}</span>
-            <span class="toc-page">{node.entry.page || ""}</span>
+            <span class="toc-page">{tocPageLabel(node.entry.page)}</span>
           </button>
         </div>
         {#if hasChildren && isOpen}
