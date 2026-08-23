@@ -24,6 +24,7 @@
     strideOf: () => strideOf,
     stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
     spreadModeSupported: () => spreadModeSupported,
+    runPageBox: () => runPageBox,
     rowStrideOf: () => rowStrideOf,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
@@ -96,11 +97,23 @@
   transform: translate(var(--gp-margin-left), var(--gp-margin-top));
 }
 
-/* Sheets/margin boxes are painted behind/around the strip by the decoration
-   layer; the strip itself must stay transparent so they show through. */
-.gp-strip > * {
-  break-inside: auto;
-}
+/* NOTE: there is deliberately no \`.gp-strip > * { break-inside: auto }\` here.
+   The original spike shipped one, under a comment about sheet transparency that
+   described no rule of its own, and it was never justified anywhere. Because
+   viewer chrome is injected after the author's stylesheet, it beat every
+   single-class author rule at equal specificity: a top-level block the author
+   declared atomic (\`.card\`, \`.section\`, a stat block) split on screen while the
+   PDF moved it whole and left a short page. Measured on
+   \`docs/fixtures/atomic-blocks\`: print 6pp, viewer 5pp with the rule, 6pp and
+   6pp without it; a longer probe of the same shape ran 25pp against 21pp.
+   Chromium honours \`break-inside: avoid\` in multicol as it does in paged media,
+   including relaxing it for a block too tall to fit an empty fragmentainer, so
+   nothing here needs to override the author.
+
+   Scope: \`>\` means this only ever reached the flow root's OWN children, so a
+   book whose atomic blocks sit inside \`@page\`/\`@section\` wrappers was never
+   affected — which is why removing it does not move the dc-op-manual field
+   guide's remaining 4-page divergence. That one is still open. */
 
 /* View mode (\`applySpreadMode\` in fragment.ts): wraps this run's multicol
    columns into \`--gp-wrap-cols\` ROWS instead of one long row — 2 for
@@ -1346,6 +1359,20 @@
       }
     }
   }
+  function runPageBox(model, name, warnings = []) {
+    const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
+    const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
+    const box = (g) => ({
+      w: g.width - g.margin.left - g.margin.right,
+      h: g.height - g.margin.top - g.margin.bottom
+    });
+    const r = box(right);
+    const l = box(left);
+    if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01)
+      return right;
+    warnings.push(`@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` + `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` + `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` + `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` + `swap which edge is wide and keep the total the same.`);
+    return resolvePage(model, { name }).geometry;
+  }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
@@ -1353,7 +1380,7 @@
     const runs = explodeChildren(root, model);
     const strips = [];
     for (const run of runs) {
-      const { geometry } = resolvePage(model, { name: run.page });
+      const geometry = runPageBox(model, run.page, warnings);
       const strip = doc.createElement("div");
       strip.className = "gp-strip";
       if (run.page)

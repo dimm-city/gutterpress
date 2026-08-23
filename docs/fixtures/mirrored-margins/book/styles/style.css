@@ -1,0 +1,58 @@
+/* style.css — the ordinary bound-book margin idiom, and nothing else.
+   `@page :left` / `@page :right` swap the binding and outer margins so the
+   gutter is always on the spine side. Both sides keep the SAME content-box
+   width (0.5in + 1in of margin either way); only which edge is wide changes.
+
+   That is the whole fixture. Chromium honours the pseudo-page margins when it
+   prints, so every line wraps at 4.5in. The viewer used to size its columns
+   from the pseudo-LESS `@page` rule (0.5in both sides ⇒ a 5in column), so its
+   lines held more text, its paragraphs ran shorter, and its page count drifted
+   below the PDF's — a little more on every page, all the way through a book.
+   Measured on the dc-op-manual field guide: 280 preview pages against 288
+   printed ones. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in 0.5in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+/* Verso: wide margin on the right (the spine). */
+@page :left {
+  margin-left: 0.5in;
+  margin-right: 1in;
+}
+
+/* Recto: wide margin on the left (the spine). */
+@page :right {
+  margin-left: 1in;
+  margin-right: 0.5in;
+}
+
+h1 {
+  font-size: 22pt;
+  margin: 0 0 0.6em;
+}
+
+h2 {
+  font-size: 14pt;
+  margin: 1.2em 0 0.4em;
+}
+
+p {
+  margin: 0 0 0.6em;
+  text-align: justify;
+}

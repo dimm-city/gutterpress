@@ -1,0 +1,47 @@
+/* style.css — one author declaration carries this fixture: `break-inside:
+   avoid` on a card that is a direct child of the flow root.
+
+   "This block must not be split across pages" is ordinary book design — rules
+   cards, recipe boxes, stat blocks, sidebars — and Chromium honours it when it
+   prints: a card that does not fit the remaining space moves whole to the next
+   page and leaves a short page behind. The viewer used to ship
+   `.gp-strip > * { break-inside: auto }` in its own chrome, injected after the
+   author's stylesheet, so it beat every single-class author rule at equal
+   specificity and split on screen exactly the cards the PDF kept whole. The
+   short pages print puts in were the ones the preview did not have: this book
+   measured print 6pp against viewer 5pp with that rule in place, and 6pp
+   against 6pp without it.
+
+   The cards below are sized to land across page boundaries rather than
+   conveniently inside them, which is the only situation where the declaration
+   is observable at all. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 { font-size: 22pt; margin: 0 0 0.6em; }
+h2 { font-size: 14pt; margin: 1.2em 0 0.4em; }
+p { margin: 0 0 0.6em; }
+
+.card {
+  break-inside: avoid;
+  border: 1px solid #333333;
+  padding: 8px;
+  margin-bottom: 14px;
+}

@@ -705,6 +705,54 @@ function restoreIneffectiveTrailingMargins(strips: StripInfo[]): void {
 }
 
 /**
+ * The page box a run's columns are sized from.
+ *
+ * `@page :left` / `@page :right` swapping the binding and outer margin is the
+ * ordinary bound-book idiom, and Chromium honours it when it prints: every
+ * page's content box is `width - (binding + outer)` wide. Sizing the columns
+ * from the pseudo-LESS `@page` rule instead gives the viewer a column
+ * `width - 2 * outer` wide — wider on every page of the book. Its lines then
+ * hold more text than print's, its paragraphs run shorter, and its page count
+ * drifts below the PDF's a little more with every page. Measured on the
+ * dc-op-manual field guide (0.625in outer / 0.75in binding): 280 preview pages
+ * against 288 printed ones, the drift arriving in ones and twos from page 8 to
+ * the end rather than at any single site. `docs/fixtures/mirrored-margins` is
+ * the same failure in five pages.
+ *
+ * The two sides mirror, so they agree on the content box's SIZE and differ only
+ * in which edge is wide — one multicol carries that exactly. `:right` is the
+ * side taken, because page 1 is a recto and so is every odd page after it.
+ *
+ * When the two sides genuinely disagree on the size (an asymmetric design that
+ * print alternates between), no single column width can match both. The
+ * pseudo-less box is kept — today's behaviour — and the author is told, rather
+ * than the viewer silently picking a side and calling it parity.
+ */
+export function runPageBox(
+  model: GcpmModel,
+  name: string | undefined,
+  warnings: string[] = [],
+): PageGeometry {
+  const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
+  const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
+  const box = (g: PageGeometry) => ({
+    w: g.width - g.margin.left - g.margin.right,
+    h: g.height - g.margin.top - g.margin.bottom,
+  });
+  const r = box(right);
+  const l = box(left);
+  if (Math.abs(r.w - l.w) < 0.01 && Math.abs(r.h - l.h) < 0.01) return right;
+  warnings.push(
+    `@page :left and @page :right give ${name ? `the "${name}" page` : "this book"} ` +
+      `different content areas (${l.w.toFixed(1)}×${l.h.toFixed(1)}pt vs ` +
+      `${r.w.toFixed(1)}×${r.h.toFixed(1)}pt). Print alternates between them; the preview can ` +
+      `only show one, so page breaks here may not match the PDF. Mirror the margins instead: ` +
+      `swap which edge is wide and keep the total the same.`,
+  );
+  return resolvePage(model, { name }).geometry;
+}
+
+/**
  * Group the flow root's children into runs of identical page context and wrap
  * each run in a strip. Runs only ever split where print would already have
  * forced a break (a named-page change), so strip boundaries add no breaks of
@@ -719,14 +767,11 @@ export function buildStrips(
   const root = opts.root ?? doc.querySelector("main") ?? doc.body;
   const gap = opts.sheetGap ?? 24;
 
-  // `warnings` is kept in the signature (opts callers still pass it) but no
-  // fidelity warning remains to raise here — explodeChildren resolves the
-  // opener idiom structurally instead of diverging and warning about it.
   const runs = explodeChildren(root, model);
 
   const strips: StripInfo[] = [];
   for (const run of runs) {
-    const { geometry } = resolvePage(model, { name: run.page });
+    const geometry = runPageBox(model, run.page, warnings);
     const strip = doc.createElement("div");
     strip.className = "gp-strip";
     if (run.page) strip.dataset.page = run.page;

@@ -1,0 +1,17 @@
+title: "Atomic Blocks"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - 01-cards.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  tolerance: 0.5

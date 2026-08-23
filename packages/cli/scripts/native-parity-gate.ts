@@ -109,6 +109,21 @@ const DEFAULT_FIXTURES = [
   // build.grid-fragmentation.test.ts — the gate holds the viewer to the
   // same page maps.)
   join(REPO, "docs", "fixtures", "gp-grid", "book"),
+  // The mirrored-margins fixture (committed): `@page :left` / `@page :right`
+  // swapping the binding and outer margin — what every bound book does.
+  // Chromium honours the pseudo-page margins when it prints; the viewer sized
+  // its columns from the pseudo-LESS `@page` rule, so its lines held more text
+  // than print's and its page count drifted below the PDF's a little more with
+  // every page (dc-op-manual field guide: 280 preview pages vs 288 printed —
+  // see `runPageBox` in viewer/fragment.ts). Five pages reproduce it.
+  join(REPO, "docs", "fixtures", "mirrored-margins", "book"),
+  // The atomic-blocks fixture (committed): `break-inside: avoid` on a card
+  // that is a direct child of the flow root. Print moves such a card whole and
+  // leaves a short page; the viewer's own chrome carried a
+  // `.gp-strip > * { break-inside: auto }` that outranked the author at equal
+  // specificity and split it (6pp print vs 5pp viewer — see the NOTE in
+  // viewer/viewer.css).
+  join(REPO, "docs", "fixtures", "atomic-blocks", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
