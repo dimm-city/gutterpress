@@ -295,7 +295,8 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     if (!rect) continue;
     const stripTop = strip.getBoundingClientRect().top;
     const edge = prop === "break-after" ? rect.bottom : rect.top;
-    const reserve = columnReserve(edge - stripTop, strip.clientHeight);
+    // Rects are zoom-scaled, clientHeight is not — see cssZoomOf.
+    const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
     if (reserve === null) continue;
     const spacer = document.createElement("div");
     spacer.className = "gp-column-break-spacer";
@@ -656,16 +657,21 @@ export function compensateTrailingMarginsBeforeAvoids(
     const prevRect = prevRects.at(-1)!;
     const stripRect = stripEl.getBoundingClientRect();
     const { stride } = stripMetrics(stripEl);
-    const colOf = (r: DOMRect) => Math.floor((r.left - stripRect.left + 1) / stride);
+    // Rects are zoom-scaled, stride is not — see cssZoomOf.
+    const zoom = cssZoomOf(stripEl);
+    const colOf = (r: DOMRect) => Math.floor(((r.left - stripRect.left) / zoom + 1) / stride);
     const currentCol = colOf(rect);
     if (currentCol !== colOf(prevRect) + 1) continue;
-    if (Math.abs(rect.top - stripRect.top) > 0.5) continue;
+    if (Math.abs(rect.top - stripRect.top) / zoom > 0.5) continue;
 
+    // marginEnd comes from getComputedStyle and is already unscaled; every
+    // rect-derived length here must be divided to match it (see cssZoomOf).
     const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
     if (marginEnd <= 0.5) continue;
-    const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top);
-    if (rect.height > remaining + 0.5) continue;
-    if (rect.height + marginEnd <= remaining + 0.5) continue;
+    const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top) / zoom;
+    const height = rect.height / zoom;
+    if (height > remaining + 0.5) continue;
+    if (height + marginEnd <= remaining + 0.5) continue;
 
     prev.dataset.gpTrailingMargin = "compensated";
     prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
@@ -868,7 +874,9 @@ export function compensateRepeatedHeaders(
       // book per table (measured: ~5ms × table count).
       const stride = strideOf(strip.el);
       const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-      const colOf = (r: DOMRect) => Math.floor((r.left - stripLeft + 1) / stride);
+      // Rects are zoom-scaled, stride/clientHeight are not — see cssZoomOf.
+      const zoom = cssZoomOf(strip.el);
+      const colOf = (r: DOMRect) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
       const stripTop = strip.el.getBoundingClientRect().top;
       const colBottom = strip.el.clientHeight;
       const plans: Array<{
@@ -885,7 +893,8 @@ export function compensateRepeatedHeaders(
       for (const table of tables) {
         const head = table.tHead;
         const headRect = head?.getClientRects()[0];
-        const footHeight = table.tFoot?.getBoundingClientRect().height ?? 0;
+        // Rect-derived heights are zoom-scaled; colBottom (clientHeight) is not.
+        const footHeight = (table.tFoot?.getBoundingClientRect().height ?? 0) / zoom;
         const rows = Array.from(
           table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
         ).filter(
@@ -914,10 +923,10 @@ export function compensateRepeatedHeaders(
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i]!;
             if (cols[i] === lastCol || claims.has(row)) continue;
-            const bottom = rects[i]!.bottom - stripTop;
+            const bottom = (rects[i]!.bottom - stripTop) / zoom;
             if (bottom > colBottom - footHeight + 0.5) {
               newClaim = row;
-              claims.set(row, colBottom - (rects[i]!.top - stripTop));
+              claims.set(row, colBottom - (rects[i]!.top - stripTop) / zoom);
               break;
             }
           }
@@ -928,7 +937,7 @@ export function compensateRepeatedHeaders(
           // Print never strands a repeated header: a header fragment must be
           // followed by at least one row, else the whole table moves on.
           push: headRect ? colOf(headRect) < cols[0]! : false,
-          headHeight: headRect?.height ?? 0,
+          headHeight: (headRect?.height ?? 0) / zoom,
           footHeight,
           breakRows: headRect
             ? rows.filter((_, i) => i > 0 && cols[i]! > cols[i - 1]!)

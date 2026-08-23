@@ -177,3 +177,72 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS,
 );
+
+/**
+ * The sibling half of the same bug, and the one that actually changes what a
+ * reader sees: three sites in the fragmenter drove PAGINATION off the same
+ * mixed comparison, not just the outline lookup.
+ *
+ * `compensateTrailingMarginsBeforeAvoids` measured a block's height and the
+ * space left in its column from client rects (zoom-scaled) against
+ * `clientHeight` and a computed `margin-block-end` (both unscaled), so at a
+ * zoom != 1 it mis-decided whether a trailing margin needed compensating and
+ * manufactured extra columns. Measured on this fixture: 6 pages at zoom 1,
+ * 8 at 0.7936. `synthesizeColumnBreaks` and the table-repeat pass carried the
+ * same defect.
+ *
+ * Total page count is the right assertion here precisely because it is what
+ * the author reads and what the PDF is compared against: pagination must not
+ * depend on how far the reader has zoomed in.
+ */
+testIf(
+  "pagination does not change with zoom",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".zoom-pagination-"));
+    try {
+      await fsp.copyFile(
+        path.join(FIXTURES_DIR, "avoid-trailing-margin.html"),
+        path.join(dir, "avoid-trailing-margin.html"),
+      );
+      await fsp.copyFile(
+        await getAssetPath("engine/gutterpress-viewer.js"),
+        path.join(dir, "gutterpress-viewer.js"),
+      );
+      const { url, close } = await serveDir(dir, "avoid-trailing-margin.html");
+      try {
+        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width: 1280, height: 900 });
+          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.waitForFunction("window.Gutterpress?.totalPages > 0");
+          const atZoom1 = await page.evaluate(
+            () => (window as unknown as { Gutterpress: { totalPages: number } }).Gutterpress.totalPages,
+          );
+
+          // Re-fragment under zoom — the state every hot reload lands in.
+          await page.evaluate((z: string) => {
+            const gp = window as unknown as { Gutterpress: { refresh?: () => void } };
+            document.documentElement.style.setProperty("--gutterpress-zoom", z);
+            gp.Gutterpress.refresh?.();
+          }, FIT_ZOOM);
+          await page.waitForTimeout?.(700);
+          await new Promise((r) => setTimeout(r, 700));
+          const atFitZoom = await page.evaluate(
+            () => (window as unknown as { Gutterpress: { totalPages: number } }).Gutterpress.totalPages,
+          );
+
+          expect(atZoom1).toBeGreaterThan(0);
+          expect(atFitZoom).toBe(atZoom1);
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);

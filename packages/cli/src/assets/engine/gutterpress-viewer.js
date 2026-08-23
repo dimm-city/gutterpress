@@ -1116,7 +1116,7 @@
         continue;
       const stripTop = strip.getBoundingClientRect().top;
       const edge = prop === "break-after" ? rect.bottom : rect.top;
-      const reserve = columnReserve(edge - stripTop, strip.clientHeight);
+      const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
       if (reserve === null)
         continue;
       const spacer = document.createElement("div");
@@ -1314,19 +1314,21 @@
       const prevRect = prevRects.at(-1);
       const stripRect = stripEl.getBoundingClientRect();
       const { stride } = stripMetrics(stripEl);
-      const colOf = (r) => Math.floor((r.left - stripRect.left + 1) / stride);
+      const zoom = cssZoomOf(stripEl);
+      const colOf = (r) => Math.floor(((r.left - stripRect.left) / zoom + 1) / stride);
       const currentCol = colOf(rect);
       if (currentCol !== colOf(prevRect) + 1)
         continue;
-      if (Math.abs(rect.top - stripRect.top) > 0.5)
+      if (Math.abs(rect.top - stripRect.top) / zoom > 0.5)
         continue;
       const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
       if (marginEnd <= 0.5)
         continue;
-      const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top);
-      if (rect.height > remaining + 0.5)
+      const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top) / zoom;
+      const height = rect.height / zoom;
+      if (height > remaining + 0.5)
         continue;
-      if (rect.height + marginEnd <= remaining + 0.5)
+      if (height + marginEnd <= remaining + 0.5)
         continue;
       prev.dataset.gpTrailingMargin = "compensated";
       prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
@@ -1433,14 +1435,15 @@
         passes = Math.max(passes, pass + 1);
         const stride = strideOf(strip.el);
         const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-        const colOf = (r) => Math.floor((r.left - stripLeft + 1) / stride);
+        const zoom = cssZoomOf(strip.el);
+        const colOf = (r) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
         const stripTop = strip.el.getBoundingClientRect().top;
         const colBottom = strip.el.clientHeight;
         const plans = [];
         for (const table of tables) {
           const head = table.tHead;
           const headRect = head?.getClientRects()[0];
-          const footHeight = table.tFoot?.getBoundingClientRect().height ?? 0;
+          const footHeight = (table.tFoot?.getBoundingClientRect().height ?? 0) / zoom;
           const rows = Array.from(table.querySelectorAll("tbody > tr")).filter((r) => !r.classList.contains("gp-thead-shim") && !r.classList.contains("gp-tfoot-shim"));
           if (!rows.length)
             continue;
@@ -1455,10 +1458,10 @@
               const row = rows[i];
               if (cols[i] === lastCol || claims.has(row))
                 continue;
-              const bottom = rects[i].bottom - stripTop;
+              const bottom = (rects[i].bottom - stripTop) / zoom;
               if (bottom > colBottom - footHeight + 0.5) {
                 newClaim = row;
-                claims.set(row, colBottom - (rects[i].top - stripTop));
+                claims.set(row, colBottom - (rects[i].top - stripTop) / zoom);
                 break;
               }
             }
@@ -1466,7 +1469,7 @@
           plans.push({
             table,
             push: headRect ? colOf(headRect) < cols[0] : false,
-            headHeight: headRect?.height ?? 0,
+            headHeight: (headRect?.height ?? 0) / zoom,
             footHeight,
             breakRows: headRect ? rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1]) : [],
             footRows: [...claims.entries()],
