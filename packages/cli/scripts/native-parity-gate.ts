@@ -81,8 +81,6 @@ const REPO = resolve(import.meta.dir, "..", "..", "..");
 const WORK = process.env.GUTTERPRESS_PARITY_DIR ?? "/tmp/gutterpress-parity";
 
 const DEFAULT_FIXTURES = [
-  "/tmp/fbtest/book",
-  "/tmp/fg-proof-parent/field-guide",
   // examples/with-design-guide is 3 separate manifests, not one book — run
   // all 3 so the gate covers the whole example, not an arbitrary pick.
   join(REPO, "examples", "with-design-guide", "book-01"),
@@ -443,13 +441,16 @@ async function main() {
   // fresh clone or in CI they are simply absent — skipping them keeps the
   // in-repo fixtures meaningful instead of failing the gate for a reason that
   // has nothing to do with parity. An explicitly named dir is never skipped.
-  const fixtures = args.length
-    ? requested
-    : requested.filter((dir) => {
-        if (existsSync(dir)) return true;
-        console.log(`   SKIP ${dir} — not present on this machine`);
-        return false;
-      });
+  const missing = requested.filter((dir) => !existsSync(dir));
+  if (missing.length) {
+    // A skipped fixture used to print SKIP and still let the run report PASS,
+    // so coverage could vanish silently — two absolute /tmp paths sat in the
+    // default list unnoticed. Every registered fixture must exist.
+    for (const dir of missing) console.error(`   MISSING FIXTURE ${dir}`);
+    console.error(`\n${missing.length} fixture(s) missing — gate FAILS.`);
+    process.exit(1);
+  }
+  const fixtures = requested;
   if (!fixtures.length) {
     console.log("No fixtures available to measure — nothing was checked.");
     process.exit(1);

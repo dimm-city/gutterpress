@@ -50,6 +50,12 @@ jobs:
         working-directory: packages/open-design-plugin
         run: bun test
 
+      # Preview<->print parity is the invariant this project treats as most
+      # important, and until now the gate ran only when a human remembered.
+      - name: Preview/print parity gate
+        working-directory: packages/cli
+        run: bun scripts/native-parity-gate.ts
+
   build:
     name: Build
     runs-on: ubuntu-latest
