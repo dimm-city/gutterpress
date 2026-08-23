@@ -94,9 +94,9 @@ source file changes; the terminal always prints the actual URL on startup,
 so that's the source of truth if you've changed the port. The `build`
 command produces a PDF in a `dist/` directory next to your project.
 
-### Previewing in Different Browsers
+### Which Browser to Preview In
 
-The live preview runs in your browser. Safari and Firefox may place page breaks slightly differently from the exported PDF because each browser measures text differently — the PDF, which always renders in Chromium, is the authoritative layout. To minimise the difference, embed your fonts with `@font-face` instead of relying on system fonts.
+Gutterpress supports Chrome, Edge, and other Chromium-based browsers — and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
 
 ## Project Structure
 

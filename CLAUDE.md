@@ -507,9 +507,11 @@ through one choke point, so the notify cannot be forgotten by a new setter.
 **PWA scaffolding (`WebAdapter`, #33 — partially shipped).** Issue #33 closed
 as completed (PR #63): the FSA folder-open path, in-browser preview,
 IndexedDB persistence, and the service worker + manifest offline app shell
-shipped; Phase 6 (Safari/OPFS) was deferred. Normative status and remaining
-work live in `docs/pwa-webadapter-plan.md` ("partially shipped, plan revised
-2026-07-02") — defer to that plan, not this paragraph. `WebAdapter`
+shipped; Phase 6 (Safari/OPFS) is **struck**, not deferred — the Chromium-only
+ruling above means the web target is Chrome/Edge and other Chromium browsers,
+where the File System Access API is always present. Normative status and
+remaining work live in `docs/pwa-webadapter-plan.md` ("partially shipped, plan
+revised 2026-08-23") — defer to that plan, not this paragraph. `WebAdapter`
 (`src/lib/platform/web-adapter.ts`) is live on the browser target for the
 shipped capabilities; the rest (e.g. the `localStorage` settings fallback —
 today's live settings path is still `api.app.getSettings`/`setSettings`, a

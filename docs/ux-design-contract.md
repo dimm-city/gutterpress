@@ -344,20 +344,21 @@ buttons.
 
 ### 3. Mobile / PWA editor UX
 
-**Status: PARTIAL** — tracked in **#33 (closed, PR #63; Safari/OPFS Phase 6
-deferred)** and **#34 (closed)**. Normative implementation detail lives in
+**Status: PARTIAL** — tracked in **#33 (closed, PR #63; the Safari/OPFS
+Phase 6 was struck 2026-08-23 — Gutterpress is Chromium-only)** and
+**#34 (closed)**. Normative implementation detail lives in
 `docs/pwa-webadapter-plan.md`; **where this section and that plan disagree,
 the plan wins.**
 
 - Write-first: single column, Markdown / CSS / Preview tabs (shipped 820px
   behavior), bottom-reachable tab bar.
 - Keyboard toolbar (PROPOSED refinement — spec corrected):
-  - **Chromium/Android:** opt in with
+  - **Chromium (desktop and Android):** opt in with
     `navigator.virtualKeyboard.overlaysContent = true`, then pin with
-    `position: fixed; bottom: env(keyboard-inset-height, 0px)`.
-  - **iOS Safari:** the VirtualKeyboard API does **not** exist there — use
-    `visualViewport` resize/scroll events (or
-    `interactive-widget=resizes-content`) to compute the inset.
+    `position: fixed; bottom: env(keyboard-inset-height, 0px)`. This is the
+    whole spec — the VirtualKeyboard API exists in every supported browser, so
+    there is no engine without it to write a `visualViewport` fallback for
+    (the iOS Safari branch was struck 2026-08-23 with the Chromium-only ruling).
   - `position: sticky` cannot pin above a keyboard; do not spec it.
 - **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
   disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
@@ -795,7 +796,8 @@ drawer.
 
 ### PWA requirements
 
-**Status: SHIPPED (Phases 1–5) via #33/PR #63; Safari/OPFS Phase 6 deferred.
+**Status: SHIPPED (Phases 1–5) via #33/PR #63; the Safari/OPFS Phase 6 was
+struck 2026-08-23 (Chromium-only), so Phase 5 is the end of the plan.
 Normative: `docs/pwa-webadapter-plan.md` — reconcile against it, don't
 respecify.** Existing pieces: `service-worker.ts` (app-shell precache,
 registered only when `!isDesktop()` — the desktop build must never register
@@ -806,8 +808,10 @@ capability gating via the platform seam.
   app theme.
 - Offline cache scope and indicator copy: see §3 (one definition, used
   everywhere).
-- File access: File System Access API where available; IndexedDB-backed
-  fallback (both exist in `WebAdapter`); Safari/OPFS is the deferred Phase 6.
+- File access: File System Access API — present in every supported browser,
+  since the PWA targets Chrome/Edge and other Chromium browsers only — with the
+  handles persisted in IndexedDB (both in `WebAdapter`). There is no
+  FSA-absent fallback and none is planned.
 - **PDF export and publishing are desktop/CLI-only** (#33 constraint): the
   affordances are hidden or show "requires desktop" on web/mobile.
 
@@ -906,11 +910,13 @@ device class.
   sticky/keyboard toolbars must not cover the focused element.
 - Keyboard-only operability for every mouse-accessible feature.
 - Screen reader matrix (matches the real platforms — the app is Chromium on
-  every desktop OS, so Safari never tests the desktop app):
+  every desktop OS and the PWA is Chromium-only, so no non-Chromium engine is
+  ever a test target):
   - Windows: **NVDA + the app**;
   - macOS: **VoiceOver + the app**;
-  - PWA: NVDA + Firefox/Chrome (Windows), VoiceOver + Safari (iOS — note
-    Safari support is the deferred #33 Phase 6), TalkBack + Chrome (Android).
+  - PWA: NVDA + Chrome/Edge (Windows), VoiceOver + Chrome (macOS),
+    TalkBack + Chrome (Android). iOS is not a PWA target — its only engine is
+    WebKit.
 - Shipped precedent to match, not reinvent: **#22** (focus trap,
   WCAG SC 2.1.2) and **#21** (export-progress announcements, cancel,
   elapsed time).

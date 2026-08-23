@@ -1,9 +1,9 @@
 # PWA / WebAdapter Implementation Plan (Issue #33)
 
-> Status: **partially shipped, plan revised 2026-07-02.** The FSA folder-open
+> Status: **partially shipped, plan revised 2026-08-23.** The FSA folder-open
 > path, the service worker, and the manifest are implemented (Phases 1 and 4
-> below are marked accordingly). Two architecture changes since the original
-> spike are folded in throughout:
+> below are marked accordingly). Three changes since the original spike are
+> folded in throughout:
 >
 > 1. **Desktop auto-update is now electron-updater** (full-app updates from the
 >    GitHub Releases feed; see the desktop app documentation "Auto-update"). The
@@ -15,6 +15,13 @@
 >    capabilities are `+server.ts` routes backed by hooks the Electron main
 >    registers on `globalThis`. This *adds* a delivery target: the same build
 >    runs on any **node-backed website** (§3).
+> 3. **Chromium-only (ratified 2026-08-23, CLAUDE.md).** Gutterpress supports
+>    Chrome, Edge, and other Chromium-based browsers — not Firefox, not Safari,
+>    not WebKit. The web target is therefore **Chromium-only**: the Safari/OPFS
+>    import-export fallback that this plan carried as Phase 6 is **struck, not
+>    deferred**, and every Safari column, row, and open question with it. A
+>    fallback whose only beneficiary is a non-Chromium engine is code we would
+>    maintain forever for a target we do not ship.
 >
 > Governing rule: **CLAUDE.md §8** (platform abstraction; the renderer stays
 > PWA-clean; all host work goes through the platform seam). The whole point of
@@ -93,24 +100,23 @@ prove the FSA fs primitives behind the existing `Platform` seam.
 
 Columns:
 - **Electron (today)** — what the real host does.
-- **Web (FSA — Chrome/Edge)** — primary target; File System Access API present.
-- **Web (Safari fallback)** — no FSA `showDirectoryPicker`/`FileSystemDirectoryHandle`;
-  uses `<input type=file webkitdirectory>` to *import* and download to *export*,
-  OPFS for working state.
+- **Web (FSA — Chrome/Edge)** — the only web target; File System Access API
+  present. Non-Chromium engines are out of support (see the header note), so
+  there is no second web column and no FSA-absent fallback to plan for.
 
 Verdicts: ✅ Implementable now · 🟡 Degrade via `capabilities()`/no-op · ⛔ Out-of-scope-for-web (keep stub).
 
 ### 1a. `PlatformAdapter` primitives (the genuinely host-divergent fs/secret surface)
 
-| Method | Electron (today) | Web (FSA Chrome/Edge) | Web (Safari) | Browser API |
-|---|---|---|---|---|
-| `openFolder(): FolderRef\|null` | native dir dialog → abs path, wrap as FolderRef | ✅ `showDirectoryPicker()` → `FileSystemDirectoryHandle`; stash in handle-registry, `key`=registry id | 🟡 `<input webkitdirectory>` import → copy tree into OPFS; `key`=OPFS path | `window.showDirectoryPicker()` / `<input webkitdirectory>` |
-| `readFile(path): string` | `fs:readFile` IPC | ✅ resolve handle from `key`+relpath, `getFileHandle().getFile().text()` | 🟡 OPFS `getFileHandle().getFile().text()` | FSA `FileSystemFileHandle` / OPFS |
-| `writeFile(path, content): FileWriteResult` | `fs:writeFile` IPC (returns mtime) | ✅ `createWritable()`+`write()`+`close()`, re-stat for mtime | 🟡 OPFS writable; "Export" downloads zip on demand | `FileSystemWritableFileStream` |
-| `listDir(path): {name,path,isDir}[]` | `fs:listDir` IPC | ✅ async-iterate `dirHandle.entries()` | 🟡 iterate OPFS dir | `dirHandle.entries()` |
-| `statFile(path): FileStat` | scaffolded (throws) | ✅ `getFile()` → `{ size, mtimeMs: file.lastModified }` | 🟡 OPFS `getFile()` | `File.lastModified`/`File.size` |
-| `watchFolder(path, cb): ()=>void` | scaffolded (throws) | 🟡 **no FS-watch API** — return no-op unsubscribe; external-edit detection unavailable on web (acceptable: web is single-writer) | 🟡 no-op | — |
-| `getSecret/setSecret` | scaffolded (throws) | ⛔ no OS keychain; only needed by Git remote (out-of-scope) — keep throwing | ⛔ throw | — |
+| Method | Electron (today) | Web (FSA Chrome/Edge) | Browser API |
+|---|---|---|---|
+| `openFolder(): FolderRef\|null` | native dir dialog → abs path, wrap as FolderRef | ✅ `showDirectoryPicker()` → `FileSystemDirectoryHandle`; stash in handle-registry, `key`=registry id | `window.showDirectoryPicker()` |
+| `readFile(path): string` | `fs:readFile` IPC | ✅ resolve handle from `key`+relpath, `getFileHandle().getFile().text()` | FSA `FileSystemFileHandle` |
+| `writeFile(path, content): FileWriteResult` | `fs:writeFile` IPC (returns mtime) | ✅ `createWritable()`+`write()`+`close()`, re-stat for mtime | `FileSystemWritableFileStream` |
+| `listDir(path): {name,path,isDir}[]` | `fs:listDir` IPC | ✅ async-iterate `dirHandle.entries()` | `dirHandle.entries()` |
+| `statFile(path): FileStat` | scaffolded (throws) | ✅ `getFile()` → `{ size, mtimeMs: file.lastModified }` | `File.lastModified`/`File.size` |
+| `watchFolder(path, cb): ()=>void` | scaffolded (throws) | 🟡 **no FS-watch API** — return no-op unsubscribe; external-edit detection unavailable on web (acceptable: web is single-writer) | — |
+| `getSecret/setSecret` | scaffolded (throws) | ⛔ no OS keychain; only needed by Git remote (out-of-scope) — keep throwing | — |
 
 > **Path model on web.** FSA handles have **no path strings** and are **not
 > `===`-comparable**. The WebAdapter keeps an in-memory **handle registry**
@@ -126,7 +132,7 @@ Verdicts: ✅ Implementable now · 🟡 Degrade via `capabilities()`/no-op · �
 | Method | Electron | Web verdict | How on web |
 |---|---|---|---|
 | `apiVersion` | bridge value | ✅ | return `0` (or a `web`-specific const) |
-| `capabilities()` | all-true | ✅ | FSA present → `{nativeSavePath:false, showInFolder:false, persistentFolderAccess:true}`; Safari → all-false |
+| `capabilities()` | all-true | ✅ | `{nativeSavePath:false, showInFolder:false, persistentFolderAccess:true}` (FSA is present on every supported browser) |
 | `getSettings/setSettings` | userData json | ✅ already done | `localStorage` (already implemented in stub) |
 | `getNativeTheme/onNativeThemeUpdated` | nativeTheme | ✅ already done | `matchMedia('(prefers-color-scheme: dark)')` (already implemented) |
 | `getDesktopPrefs/setDesktopPrefs` | userData json | ✅ | IndexedDB `prefs` store (or localStorage) |
@@ -347,12 +353,12 @@ Design:
 - **In-memory registry**: a `Map<key, handle>` so within a session the adapter
   resolves `key`→handle without an IndexedDB round-trip.
 
-### Safari (no FSA)
-No persistent handles. `persistentFolderAccess:false` → the UI shows
-import/export instead of "Reopen". Working copy lives in **OPFS**
-(`navigator.storage.getDirectory()`), which *is* persistent and handle-based but
-private to the origin (not the user's real folder). Export = download a zip.
-`FolderRef.key` = the OPFS sub-path.
+### Browsers without FSA
+Not supported, and not planned. Gutterpress is Chromium-only (ratified
+2026-08-23), and every supported browser ships the File System Access API, so
+there is one persistence path — persisted handles — with no FSA-absent branch
+to build or test. (OPFS still appears above for **recovery snapshots**, where it
+is the right store on Chromium too; that is not a fallback for a missing FSA.)
 
 ---
 
@@ -371,9 +377,8 @@ private to the origin (not the user's real folder). Export = download a zip.
   "icons": [ /* 192, 512, maskable */ ]
 }
 ```
-Linked from `app.html`. Install criteria (Chrome): served over HTTPS (or
+Linked from `app.html`. Install criteria (Chrome/Edge): served over HTTPS (or
 localhost), valid manifest, a registered SW with a `fetch` handler, icons.
-Safari installs via "Add to Home Screen" (manifest honored; no `beforeinstallprompt`).
 
 ### Service worker — **app-shell precache + runtime cache** (✅ shipped)
 SvelteKit exposes `$service-worker` (`build`, `files`, `version`) under
@@ -466,7 +471,7 @@ it back. No preview, no SW, no persistence.
   stability, `queryPermission`/`requestPermission` flow (mocked).
 
 ### Phase 4 — PWA manifest + service worker + offline + install — 🟡 mostly shipped
-**Goal:** "installable from Chrome/Safari," "SW caches app shell for offline."
+**Goal:** "installable from Chrome/Edge," "SW caches app shell for offline."
 - ✅ Manifest, icons, `src/service-worker.ts` (precache shell + paged.js),
   registration gated on `!isDesktop()` — all in the tree today.
 - ⬜ **Prerendered static shell** (§3b gap): add `prerender = true` to
@@ -485,21 +490,23 @@ it back. No preview, no SW, no persistence.
 - **TDD:** unit test build-as-HTML download; Playwright assert PDF control hidden
   when adapter is web.
 
-### Phase 6 (out of milestone, noted) — Safari import/export fallback
-OPFS working copy, `<input webkitdirectory>` import, zip export, all-false
-`capabilities()`. Ship after Chrome/Edge path is solid.
+### Phase 6 — Safari import/export fallback — ❌ **STRUCK 2026-08-23**
+Was: OPFS working copy, `<input webkitdirectory>` import, zip export, all-false
+`capabilities()`. **Not deferred — cancelled.** Under the Chromium-only ruling
+(CLAUDE.md, ratified 2026-08-23) Gutterpress supports Chrome, Edge, and other
+Chromium-based browsers only, so this phase's sole beneficiary is an engine we
+do not ship for. Phase 5 is the end of the plan; the web target is complete
+without it.
 
 ---
 
 ## 8. Open questions / risks
 
-1. **Safari FSA gap (highest).** Safari has no `showDirectoryPicker`/persistent
-   handles. The Phase-6 OPFS+import/export fallback is meaningfully different UX
-   (no live edit-in-place of the user's real folder). **Product decision:** is a
-   read/import → edit-in-OPFS → export-zip flow acceptable for Safari/iOS in
-   this milestone, or is Chrome/Edge-only acceptable for v1 with Safari
-   documented as "view/import only"? Issue #33 lists Safari as a fallback, not
-   parity — recommend documenting the limitation and shipping Chrome/Edge first.
+1. **Safari FSA gap — CLOSED 2026-08-23.** The question was whether to ship an
+   OPFS import/export fallback for Safari/iOS or go Chrome/Edge-only. Answered
+   by the Chromium-only ruling (CLAUDE.md): **Chrome/Edge-only.** Safari is not
+   a support target, Phase 6 is struck, and the FSA gap is no longer a risk this
+   plan carries.
 2. **FSA permission re-grant friction.** Every session requires a user gesture to
    re-authorize a persisted handle. Recents become "click to reopen," not
    silent. Acceptable, but a UX decision for the recents panel copy.

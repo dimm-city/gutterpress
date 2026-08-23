@@ -132,7 +132,9 @@ under `assets/` for a CSS-referenced image that lives outside the project).
 available at build time — the browser paginates at load instead of shipping
 pre-paginated pages.
 
-Open `_site/book.html` directly in a browser to view the paginated guide.
+Open `_site/book.html` directly in Chrome, Edge, or another Chromium-based
+browser to view the paginated guide — the viewer is Chromium-only, like the
+rest of Gutterpress.
 The toolbar UI lives in the Gutterpress Electron desktop app (`packages/desktop`)
 and is not part of the static HTML build output.
 
