@@ -22,6 +22,32 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Code blocks and other scrollable boxes now break across pages on screen
+  the way they do in print** (#160). The preview paginates with Chromium's
+  multi-column fragmenter and the PDF with its paged one, and a scroll
+  container (`overflow: auto`, `scroll`, or `hidden`) is monolithic to the
+  first and fragmentable to the second — measured, a 192px code block on a
+  page with 108px free split across two pages in the PDF and jumped whole to
+  the next page on screen. Two shipped example books drifted this way,
+  including the user guide, whose own stylesheet asks for code blocks to
+  "flow across pages" — which print honoured and the preview did not. Both
+  books are now measured by the parity gate so they cannot drift again.
+
+- **A forced page break keeps the following block's top margin** (#160). The
+  preview forced its breaks with a spacer that filled the rest of the page,
+  which Chromium treats as an ordinary overflow break — and it truncates
+  adjoining margins at those. Every chapter opener with a top margin sat
+  flush against the preview's page top while the PDF indented it (measured
+  48px per opener), and the accumulated difference was enough to shift a page
+  boundary.
+
+- **A `break-before: recto` inserts its blank page again** (#161). The blank
+  was requested with a break value that landed at the same point as the
+  author's own `recto`, where the two combine, the author's value wins, and
+  the fragmenter discards the pair — so no blank appeared and every chapter
+  after it fell on the wrong side of the spread. The preview was a page short
+  of the PDF across the whole book.
+
 - **The over-wide-content error no longer fires on content a clipping
   ancestor already contains** (#162). Chromium's print shrink-to-fit only
   reacts to overflow that ESCAPES, so a wide box sealed inside an
