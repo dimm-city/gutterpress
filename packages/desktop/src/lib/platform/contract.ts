@@ -352,6 +352,14 @@ export interface BuildArgs {
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
+  /**
+   * Proceed past the engine's over-wide-content check, which is otherwise a
+   * hard error (#163). The host accepted this all along; without it here the
+   * engine's own "pass allowShrink to build anyway" advice was unreachable
+   * from the only export path a desktop author has. Opt-in per export — the
+   * whole document prints scaled down, so it is never a stored default.
+   */
+  allowShrink?: boolean;
 }
 
 /** OS appearance state (#48). Resolved against "system" theme mode. */

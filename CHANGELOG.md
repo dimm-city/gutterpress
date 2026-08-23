@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A failed export now offers its own way forward: "Build anyway"** (#163).
+  When the desktop export stops on over-wide content, the message used to end
+  with the engine's advice to "pass allowShrink" — a flag that exists on
+  `gutterpress build`, and nowhere a desktop author could reach. The failure
+  itself now carries the escape hatch: it names the offending elements and
+  offers a "Build anyway" button that re-runs the export with the shrink
+  allowed. The offer states what it costs — the whole book scales down (a real
+  book measured 0.693×, 12pt type printing at 8.3pt) with the page size and
+  page count unchanged, so the shrink is invisible in the finished PDF. It is
+  deliberately not a standing checkbox in the export dialog: a permanent
+  opt-out invites shipping a silently scaled-down book, while an offer only
+  exists when a real over-wide element does.
+
 ### Fixed
 
 - **The over-wide-content error no longer fires on content a clipping

@@ -34,6 +34,7 @@
  * of each re-implementing the guard.
  */
 
+import { overWideExportMessage } from "../errors";
 import { basenameOf } from "../platform/paths";
 
 /** The export pill's FSM state. */
@@ -97,7 +98,7 @@ export interface ExportHostDeps {
   buildPdf: (
     input: { key: string; displayName: string },
     outPath: string,
-    opts?: { validate?: boolean },
+    opts?: { validate?: boolean; allowShrink?: boolean },
   ) => Promise<{ exportId?: string; pdfPath?: string }>;
   buildHtml: (input: { key: string; displayName: string }) => Promise<{ downloadUrl?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
@@ -109,7 +110,16 @@ export interface ExportHostDeps {
     durationMs?: number,
     action?: { label: string; onClick: () => void },
   ) => void;
-  toastError: (message: string) => void;
+  /**
+   * `durationMs` 0 keeps the toast up until dismissed, and `action` puts a
+   * button on it — both used only by the over-wide "Build anyway" offer
+   * (#163), which the author has to read and decide on.
+   */
+  toastError: (
+    message: string,
+    durationMs?: number,
+    action?: { label: string; onClick: () => void | Promise<void> },
+  ) => void;
   friendlyPdfError: (e: unknown) => string;
   /** Injected so the post-save 2s pill-linger delay is fake-clock-able in tests. */
   wait: (ms: number) => Promise<void>;
@@ -302,7 +312,7 @@ export class ExportController {
    * the build, and show the resulting toast. Moved verbatim from
    * `+page.svelte`'s `savePdf()`.
    */
-  async savePdf(opts?: { validate?: boolean }): Promise<void> {
+  async savePdf(opts?: { validate?: boolean; allowShrink?: boolean }): Promise<void> {
     const h = this.requireHost();
     // M27: one guard covering every entry point (toolbar button, both
     // keyboard shortcuts) — previously only the toolbar button's `disabled`
@@ -345,7 +355,7 @@ export class ExportController {
         // #49: the app-facing contract takes a FolderRef (key + displayName).
         { key: inputDir, displayName: h.displayName() ?? basenameOf(inputDir) },
         outPath,
-        { validate: opts?.validate ?? false },
+        { validate: opts?.validate ?? false, allowShrink: opts?.allowShrink ?? false },
       );
       this.markSuccess(data.exportId);
       const savedPdfPath = data.pdfPath ?? outPath;
@@ -361,7 +371,26 @@ export class ExportController {
         this.reset();
         return;
       }
-      h.toastError(h.friendlyPdfError(e));
+      // #163: the engine's over-wide-content check is a hard error whose
+      // message tells the author to "pass allowShrink" — an instruction with
+      // no desktop equivalent. Offer it HERE instead, on the failure that
+      // provoked it, naming the offenders and what accepting it costs. This
+      // is deliberately not a standing checkbox in the export dialog: a
+      // permanent opt-out invites shipping a silently scaled-down book,
+      // while an offer only exists when a real over-wide element does.
+      const overWide = opts?.allowShrink ? null : overWideExportMessage(e);
+      if (overWide) {
+        h.toastError(overWide, 0, {
+          label: "Build anyway",
+          // The host consumes the Save-dialog capability for `out` on every
+          // build (electron/export/controller.ts, finding #4), so the retry
+          // goes back through the dialog rather than replaying a path this
+          // failed export already spent.
+          onClick: () => this.savePdf({ validate: opts?.validate, allowShrink: true }),
+        });
+      } else {
+        h.toastError(h.friendlyPdfError(e));
+      }
     } finally {
       offProgress?.();
       this.reset();

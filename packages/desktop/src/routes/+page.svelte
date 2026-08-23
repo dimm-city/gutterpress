@@ -164,6 +164,9 @@
         input,
         format: "pdf",
         out: outPath,
+        // #163: opt-in per export, offered by the failure itself (see
+        // ExportController.savePdf) — never a stored setting.
+        allowShrink: opts?.allowShrink,
         // Validation is skipped by default (the quick Ctrl+Shift+E export and
         // the dialog's default) — it's a fast RGB export, not the full
         // preflight. The export dialog's "Run print-safety validation" toggle
@@ -196,7 +199,10 @@
     },
     showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
-    toastError: (message) => toast?.error(message),
+    // `show` rather than `error`: the over-wide "Build anyway" offer (#163)
+    // needs a duration and an action button, which `error()` does not take.
+    toastError: (message, durationMs, action) =>
+      toast?.show(message, "error", durationMs, action),
     friendlyPdfError: (e) => friendlyPdfError(e),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });

@@ -234,7 +234,13 @@ interface HostHarness {
     isBusy: Spy<[]> & { value: boolean };
     sourceMode: Spy<[]> & { value: "folder" | "url" };
     chooseSavePath: Spy<[string]> & { value: string | null };
-    buildPdf: Spy<[{ key: string; displayName: string }, string]> & {
+    buildPdf: Spy<
+      [
+        { key: string; displayName: string },
+        string,
+        ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
+      ]
+    > & {
       impl: () => Promise<{ exportId?: string; pdfPath?: string }>;
     };
     buildHtml: Spy<[{ key: string; displayName: string }]> & {
@@ -244,7 +250,13 @@ interface HostHarness {
     downloadFile: Spy<[string, string]>;
     showInFolder: Spy<[string]>;
     toastSuccess: Spy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>;
-    toastError: Spy<[string]>;
+    toastError: Spy<
+      [
+        string,
+        (number | undefined)?,
+        ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
+      ]
+    >;
     wait: Spy<[number]>;
   };
 }
@@ -258,9 +270,16 @@ function makeHostController(): HostHarness {
   const isBusy = Object.assign(hspy<[]>(), { value: false });
   const sourceMode = Object.assign(hspy<[]>(), { value: "folder" as "folder" | "url" });
   const chooseSavePath = Object.assign(hspy<[string]>(), { value: "/out/book.pdf" as string | null });
-  const buildPdf = Object.assign(hspy<[{ key: string; displayName: string }, string]>(), {
-    impl: async () => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }),
-  });
+  const buildPdf = Object.assign(
+    hspy<
+      [
+        { key: string; displayName: string },
+        string,
+        ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
+      ]
+    >(),
+    { impl: async () => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
+  );
   const buildHtml = Object.assign(hspy<[{ key: string; displayName: string }]>(), {
     impl: async () => ({ downloadUrl: "blob:abc" }),
   });
@@ -268,7 +287,13 @@ function makeHostController(): HostHarness {
   const downloadFile = hspy<[string, string]>();
   const showInFolder = hspy<[string]>();
   const toastSuccess = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
-  const toastError = hspy<[string]>();
+  const toastError = hspy<
+    [
+      string,
+      (number | undefined)?,
+      ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
+    ]
+  >();
   const wait = hspy<[number]>();
 
   const host: ExportHostDeps = {
@@ -303,8 +328,8 @@ function makeHostController(): HostHarness {
       return Promise.resolve(chooseSavePath.value);
     },
     onBuildProgress: () => undefined,
-    buildPdf: (input, outPath) => {
-      buildPdf(input, outPath);
+    buildPdf: (input, outPath, opts) => {
+      buildPdf(input, outPath, opts);
       return buildPdf.impl();
     },
     buildHtml: (input) => {
@@ -321,7 +346,7 @@ function makeHostController(): HostHarness {
       return Promise.resolve();
     },
     toastSuccess: (m, d, a) => toastSuccess(m, d, a),
-    toastError: (m) => toastError(m),
+    toastError: (m, d, a) => toastError(m, d, a),
     friendlyPdfError: (e) => `friendly: ${e instanceof Error ? e.message : String(e)}`,
     wait: (ms) => {
       wait(ms);
@@ -456,6 +481,76 @@ test("savePdf() a non-EXPORT_CANCELED failure toasts the friendly error and rese
   expect(deps.toastError.calls).toEqual([["friendly: disk full"]]);
   expect(ctrl.state).toBe("idle");
   expect(ctrl.exporting).toBe(false);
+});
+
+// ── #163: the over-wide escape hatch, offered where the author meets it ──────
+// The engine's over-wide-content check is a hard error whose message says
+// "pass allowShrink to build anyway" — advice a desktop author cannot act on
+// (no flag, no dialog field). Rather than a permanently-visible checkbox that
+// invites shipping a silently-scaled book, the offer appears only on the
+// failure, names the offenders, and states what accepting it costs.
+
+const overWideError = () =>
+  Object.assign(
+    new Error(
+      "Error invoking remote method 'api:build': Error: --engine native failed: " +
+        "content wider than the page content box: Chromium print shrink-to-fit " +
+        "scales the WHOLE document — every page, every measurement — to about " +
+        "0.69x its declared size (12pt type prints at 8.3pt). The page size and " +
+        "page count do not change, so the shrink is invisible in the PDF:\n" +
+        "  div.dc-sidebar.inset — 842px > 828px content box (give it an explicit width)\n" +
+        "Fix the offending widths, or pass allowShrink to build anyway.",
+    ),
+    { code: "BUILD_ERROR" },
+  );
+
+test("savePdf() passes allowShrink through to the host build", async () => {
+  const { ctrl, deps } = makeHostController();
+  await ctrl.savePdf({ validate: true, allowShrink: true });
+  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: true, allowShrink: true });
+});
+
+test("savePdf() leaves allowShrink off by default", async () => {
+  const { ctrl, deps } = makeHostController();
+  await ctrl.savePdf();
+  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: false, allowShrink: false });
+});
+
+test("savePdf() an over-wide failure offers 'Build anyway', naming the offenders and the cost", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = () => Promise.reject(overWideError());
+  await ctrl.savePdf();
+  const [message, duration, action] = deps.toastError.calls[0]!;
+  expect(message).toContain("div.dc-sidebar.inset");
+  expect(message).toContain("whole book");
+  expect(message).toContain("0.69");
+  expect(message).not.toContain("allowShrink");
+  // Sticky: an offer the author has to read and decide on must not time out.
+  expect(duration).toBe(0);
+  expect(action?.label).toMatch(/build anyway/i);
+});
+
+test("savePdf() 'Build anyway' re-runs the same export with allowShrink", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = () => Promise.reject(overWideError());
+  await ctrl.savePdf({ validate: true });
+  const action = deps.toastError.calls[0]![2]!;
+  deps.buildPdf.impl = async () => ({ exportId: "exp-2", pdfPath: "/out/book.pdf" });
+  await action.onClick();
+  expect(deps.buildPdf.calls.length).toBe(2);
+  expect(deps.buildPdf.calls[1]![2]).toEqual({ validate: true, allowShrink: true });
+  expect(deps.toastSuccess.calls.length).toBe(1);
+});
+
+test("savePdf() a shrunk build that fails again does not offer the hatch a second time", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = () => Promise.reject(overWideError());
+  await ctrl.savePdf();
+  const action = deps.toastError.calls[0]![2]!;
+  await action.onClick();
+  // Second failure: a plain error toast, no action to click again.
+  expect(deps.toastError.calls.length).toBe(2);
+  expect(deps.toastError.calls[1]![2]).toBeUndefined();
 });
 
 test("savePdf() EXPORT_CANCELED resets quietly without an error toast", async () => {

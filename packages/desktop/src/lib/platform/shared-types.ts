@@ -685,6 +685,8 @@ export interface RawBuildArgs {
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
+  /** See `BuildArgs.allowShrink` (#163) — the host's `ExportBuildArgs` half. */
+  allowShrink?: boolean;
 }
 
 export interface BuildResult {
