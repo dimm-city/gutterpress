@@ -144,6 +144,24 @@ resolve the categorization questions future work will hit):
   the product — implemented as PDF post-processing outside the rendering
   path. The "temporary shim" category covers ONLY spec-defined features
   Chrome has not implemented yet.
+- **Chromium-only. Ratified 2026-08-23.** Gutterpress supports Chrome and
+  other Chromium-based browsers, and nothing else. Not Firefox, not Safari,
+  not WebKit. The print path is Chromium by definition (`webContents.printToPDF`
+  / headless Chrome), the desktop app IS Chromium (Electron), and the viewer's
+  whole job is to agree with what Chromium prints — so supporting a second
+  engine means maintaining agreement with a renderer that never produces our
+  output. **Code that exists ONLY to accommodate a non-Chromium engine is
+  REMOVED, not fixed** — that includes engine-specific geometry workarounds,
+  feature fallbacks whose only beneficiary is Gecko or WebKit, and
+  cross-browser test matrices. When a bug report is engine-specific, the fix
+  is deletion of the accommodation, not a shim. This follows the same logic as
+  the rulings below: a shim we would have to keep forever, for a target we do
+  not ship, is the most expensive kind of code this project can carry.
+
+  Care is needed distinguishing "only for another engine" from "surfaced by
+  another engine": a fallback that also corrects Chromium behaviour stays, on
+  its Chromium merits, with its comment rewritten to say so.
+
 - **Chrome wins once it ships.** When Chrome implements a Paged Media
   feature, we drop our shim and match Chrome's behavior even where it is
   imperfect — print output IS Chrome's output, and preview↔PDF divergence
