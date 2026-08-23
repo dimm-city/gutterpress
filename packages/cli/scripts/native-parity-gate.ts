@@ -122,6 +122,15 @@ const DEFAULT_FIXTURES = [
   // specificity and split it (6pp print vs 5pp viewer — see the NOTE in
   // viewer/viewer.css).
   join(REPO, "docs", "fixtures", "atomic-blocks", "book"),
+  // The recto-chapters fixture (committed): `h1 { break-before: recto }`, the
+  // ordinary chapter-opener idiom. Chromium treats `recto` as a plain page
+  // break, so both renderers insert the blank verso themselves. The viewer's
+  // spacer carried `break-after: column`, which lands at the same break point
+  // as the chapter's own `break-before: recto` — the values combine, the
+  // author's `recto` wins, and multicol discards it. One break instead of
+  // two, so no blank page appeared: 14 preview pages against 16 printed, every
+  // chapter after the first landing on the wrong side (issue #161).
+  join(REPO, "docs", "fixtures", "recto-chapters", "book"),
   // The two shipped example books (issue #160). They are the only fixtures
   // here that are real, author-written books rather than minimal repros, and
   // they are what caught BOTH overflow-monolithic divergences: `pre code {

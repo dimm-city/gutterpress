@@ -1591,11 +1591,15 @@
     for (const [i, site] of sites.entries()) {
       if (!plan[i])
         continue;
-      const spacer = document.createElement("div");
-      spacer.className = "gp-recto-spacer";
-      spacer.setAttribute("aria-hidden", "true");
-      spacer.style.cssText = "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
-      site.el.before(spacer);
+      const leading = site.el.previousElementSibling;
+      const need = leading?.classList.contains("gp-column-break-spacer") ? 1 : 2;
+      for (let n = 0;n < need; n++) {
+        const spacer = document.createElement("div");
+        spacer.className = "gp-recto-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        spacer.style.cssText = "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
+        site.el.before(spacer);
+      }
       inserted++;
     }
     return inserted;
