@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildTocTree, ancestorKeysForActive } from "../../src/lib/routes/toc-tree";
+import { buildTocTree, ancestorKeysForActive, tocPageLabel } from "../../src/lib/routes/toc-tree";
 import type { OutlineEntry } from "../../src/lib/preview-client";
 
 /** Minimal OutlineEntry factory — only `level` and `index` drive the tree. */
@@ -88,5 +88,27 @@ describe("ancestorKeysForActive — reveal the branch containing the cursor", ()
   test("an out-of-range index is safe", () => {
     expect(ancestorKeysForActive(outline, -1)).toEqual([]);
     expect(ancestorKeysForActive(outline, 99)).toEqual([]);
+  });
+});
+
+describe("tocPageLabel — an unmeasured page is never a silent blank", () => {
+  test("a measured page renders as its number", () => {
+    expect(tocPageLabel(1)).toBe("1");
+    expect(tocPageLabel(197)).toBe("197");
+  });
+
+  test("0 — the preview bridge's 'pageOf() found no fragmentainer' answer — renders an em dash", () => {
+    // Regression: `{entry.page || ""}` printed nothing here, so a heading whose
+    // page could not be measured was indistinguishable from a row with no page
+    // column at all (observed on a real book: one chapter heading blank while
+    // every sibling carried a number).
+    expect(tocPageLabel(0)).toBe("—");
+  });
+
+  test("a missing or nonsense page is honest too, never a blank", () => {
+    expect(tocPageLabel(undefined)).toBe("—");
+    expect(tocPageLabel(null)).toBe("—");
+    expect(tocPageLabel(Number.NaN)).toBe("—");
+    expect(tocPageLabel(-1)).toBe("—");
   });
 });

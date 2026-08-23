@@ -38,6 +38,21 @@ export function buildTocTree(outline: OutlineEntry[]): TocNode[] {
 }
 
 /**
+ * The page column's text for one TOC row.
+ *
+ * `getOutline()` reports a page of `0` for a heading whose page could not be
+ * measured: the preview bridge's `pageIndexOf()` collapses the viewer's
+ * "no fragmentainer contains this element" answer (`pageOf() === -1`) to `0`.
+ * Rendering that with `{entry.page || ""}` made an unmeasured page look
+ * identical to a row that simply has no page column — a real book showed one
+ * chapter heading with a silently blank page while every other row carried a
+ * number. An em dash says "not known" instead of saying nothing.
+ */
+export function tocPageLabel(page: number | null | undefined): string {
+  return typeof page === "number" && Number.isFinite(page) && page > 0 ? String(page) : "—";
+}
+
+/**
  * Keys of the strict ancestors of the entry at array index `activeIndex`,
  * nearest-first — used to auto-expand the branch containing the cursor so
  * "opening the panel reveals the active item." Walks back over
