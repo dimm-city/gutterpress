@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: 400px 300px;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        font: 16px/24px monospace;
+      }
+      div,
+      pre {
+        margin: 0;
+        padding: 0;
+      }
+      /* The ordinary markdown-CSS idiom for a code block. `overflow-x: auto`
+         computes `overflow-y` to `auto` too, which makes the box a SCROLL
+         CONTAINER. */
+      pre code {
+        display: block;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <!-- 8 lines = 192px of a 300px page: 108px left, room for 4 more lines. -->
+      <div class="pad">P1<br />P2<br />P3<br />P4<br />P5<br />P6<br />P7<br />P8</div>
+      <pre id="code"><code>B1
+B2
+B3
+B4
+B5
+B6
+B7
+B8</code></pre>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

@@ -29,6 +29,7 @@
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     measure: () => measure,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
     loadStyleSources: () => loadStyleSources,
     injectViewerCss: () => injectViewerCss,
     injectBreakMapping: () => injectBreakMapping,
@@ -1280,6 +1281,42 @@
       delete el.dataset.gpLeadingPageRootDisplayPriority;
     }
   }
+  var SCROLLABLE = /^(auto|scroll|hidden)$/;
+  function makeOverflowFragmentable(strips) {
+    let mapped = 0;
+    for (const strip of strips) {
+      for (const el of Array.from(strip.el.querySelectorAll("*"))) {
+        const cs = getComputedStyle(el);
+        const x = SCROLLABLE.test(cs.overflowX);
+        const y = SCROLLABLE.test(cs.overflowY);
+        if (!x && !y)
+          continue;
+        el.dataset.gpOverflow = "clipped";
+        el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+        el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+        if (x)
+          el.style.setProperty("overflow-x", "clip");
+        if (y)
+          el.style.setProperty("overflow-y", "clip");
+        mapped++;
+      }
+    }
+    return mapped;
+  }
+  function restoreScrollContainers(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll('[data-gp-overflow="clipped"]'))) {
+      for (const axis of ["x", "y"]) {
+        const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
+        if (value)
+          el.style.setProperty(`overflow-${axis}`, value);
+        else
+          el.style.removeProperty(`overflow-${axis}`);
+      }
+      delete el.dataset.gpOverflow;
+      delete el.dataset.gpOverflowX;
+      delete el.dataset.gpOverflowY;
+    }
+  }
   function compensateTrailingMarginsBeforeAvoids(model, strips) {
     const candidates = new Set;
     for (const decl of model.breaks) {
@@ -1713,6 +1750,7 @@
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
     await layoutReady;
+    makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
     compensateTrailingMarginsBeforeAvoids(model, strips);
     synthesizeColumnBreaks(model);
@@ -1735,12 +1773,14 @@
       relayout: () => {
         restoreFullHeightPageRoots();
         restoreTrailingMargins();
+        restoreScrollContainers();
         unwrapStrips(strips);
         for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
+        makeOverflowFragmentable(strips);
         stabilizeFullHeightPageRoots(model, strips);
         compensateTrailingMarginsBeforeAvoids(model, strips);
         synthesizeColumnBreaks(model);

@@ -606,6 +606,69 @@ function restoreFullHeightPageRoots(doc: Document = document): void {
   }
 }
 
+/** Overflow values that make a box a SCROLL CONTAINER — and so monolithic. */
+const SCROLLABLE = /^(auto|scroll|hidden)$/;
+
+/**
+ * Match page fragmentation's treatment of a scroll container.
+ *
+ * A box whose computed overflow is `auto`, `scroll` or `hidden` is a scroll
+ * container, and Chromium's MULTICOL fragmenter treats one as MONOLITHIC: it
+ * will not slice it, so it moves the whole box to the next column and leaves
+ * the rest of the page empty. Chromium's PRINT fragmenter does the opposite —
+ * paper has no scrollbars, so it lays the box out at its full scrollable size
+ * and fragments it like any other block (measured, same document both ways: a
+ * 192px code block on a 300px page with 108px left prints its first four lines
+ * on that page, while multicol pushes all eight to the next).
+ *
+ * Both idioms are everyday book CSS. `pre code { overflow-x: auto }` is what
+ * markdown themes write for code blocks (`overflow-x: auto` computes
+ * `overflow-y` to `auto` as well) and is what put
+ * `examples/with-validation`'s "Filtering" heading on preview page 2 against
+ * the PDF's page 1. `pre { overflow: hidden }` is what
+ * `examples/gutterpress-user-guide` writes, under a comment saying it is there
+ * to "allow code blocks to flow across pages" — which is precisely what print
+ * does with it and what the preview would not.
+ *
+ * `clip` is the mapping because it is NOT a scroll container — so the box
+ * fragments again — while still clipping at exactly the same edges, which
+ * `visible` would not. The author's overflow is re-presented, not discarded: a
+ * box a fixed height constrains still clips to it in both fragmenters.
+ */
+export function makeOverflowFragmentable(strips: StripInfo[]): number {
+  let mapped = 0;
+  for (const strip of strips) {
+    for (const el of Array.from(strip.el.querySelectorAll<HTMLElement>("*"))) {
+      const cs = getComputedStyle(el);
+      const x = SCROLLABLE.test(cs.overflowX);
+      const y = SCROLLABLE.test(cs.overflowY);
+      if (!x && !y) continue;
+      // Authored inline state is saved for refresh restoration, exactly as
+      // `compensateTrailingMarginsBeforeAvoids` saves margins.
+      el.dataset.gpOverflow = "clipped";
+      el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+      el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+      if (x) el.style.setProperty("overflow-x", "clip");
+      if (y) el.style.setProperty("overflow-y", "clip");
+      mapped++;
+    }
+  }
+  return mapped;
+}
+
+function restoreScrollContainers(doc: Document = document): void {
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
+    for (const axis of ["x", "y"] as const) {
+      const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
+      if (value) el.style.setProperty(`overflow-${axis}`, value);
+      else el.style.removeProperty(`overflow-${axis}`);
+    }
+    delete el.dataset.gpOverflow;
+    delete el.dataset.gpOverflowX;
+    delete el.dataset.gpOverflowY;
+  }
+}
+
 /**
  * Match page-fragmentation's trailing-margin discard for an atomic block.
  *
@@ -1456,6 +1519,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
   await layoutReady;
+  makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
   compensateTrailingMarginsBeforeAvoids(model, strips);
   synthesizeColumnBreaks(model);
@@ -1489,12 +1553,14 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     relayout: () => {
       restoreFullHeightPageRoots();
       restoreTrailingMargins();
+      restoreScrollContainers();
       unwrapStrips(strips);
       for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
         spacer.remove();
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
       strips.push(...rebuilt);
+      makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
       compensateTrailingMarginsBeforeAvoids(model, strips);
       synthesizeColumnBreaks(model);
