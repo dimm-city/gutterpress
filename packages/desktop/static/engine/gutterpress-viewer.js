@@ -1590,6 +1590,9 @@
   function strideOf(strip) {
     return stripMetrics(strip).stride;
   }
+  function cssZoomOf(el) {
+    return el.currentCSSZoom ?? 1;
+  }
   function stripMetrics(strip) {
     const cs = getComputedStyle(strip);
     const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
@@ -1612,12 +1615,13 @@
   function indexInStrip(left, top, strip) {
     const { stride, rowStride } = stripMetrics(strip.el);
     const stripBox = strip.el.getBoundingClientRect();
-    const stripLeft = stripBox.left - strip.el.scrollLeft;
-    const stripTop = stripBox.top;
+    const zoom = cssZoomOf(strip.el);
+    const x = (left - stripBox.left) / zoom + strip.el.scrollLeft;
+    const y = (top - stripBox.top) / zoom;
     const { perRow, shift } = wrapGeometry(strip);
-    const colVisual = Math.floor((left - stripLeft + 1) / stride);
+    const colVisual = Math.floor((x + 1) / stride);
     const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
-    const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
+    const row = Math.max(0, Math.floor((y + 1) / rowStride));
     const idx = row * perRow + colClamped - shift;
     return Math.max(0, Math.min(strip.pages - 1, idx));
   }
