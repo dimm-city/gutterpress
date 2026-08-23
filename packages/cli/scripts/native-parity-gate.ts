@@ -122,6 +122,13 @@ const DEFAULT_FIXTURES = [
   // specificity and split it (6pp print vs 5pp viewer — see the NOTE in
   // viewer/viewer.css).
   join(REPO, "docs", "fixtures", "atomic-blocks", "book"),
+  // The two shipped example books (issue #160). They are the only fixtures
+  // here that are real, author-written books rather than minimal repros, and
+  // they are what caught BOTH overflow-monolithic divergences: `pre code {
+  // overflow-x: auto }` in with-validation and `pre { overflow: hidden }` in
+  // the user guide. Registered so an everyday book cannot drift again.
+  join(REPO, "examples", "with-validation"),
+  join(REPO, "examples", "gutterpress-user-guide"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

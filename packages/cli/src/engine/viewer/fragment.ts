@@ -296,12 +296,27 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     const stripTop = strip.getBoundingClientRect().top;
     const edge = prop === "break-after" ? rect.bottom : rect.top;
     // Rects are zoom-scaled, clientHeight is not — see cssZoomOf.
-    const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
-    if (reserve === null) continue;
+    // The number is not used to SIZE the spacer (see below); only its
+    // null/non-null verdict matters — "is this forced break still unsatisfied".
+    if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null) continue;
     const spacer = document.createElement("div");
     spacer.className = "gp-column-break-spacer";
     spacer.setAttribute("aria-hidden", "true");
-    spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+    // A zero-height NATIVE forced break. Sizing the spacer to fill the rest of
+    // the column breaks in the same place, but as an ORDINARY overflow break —
+    // and CSS Fragmentation truncates adjoining margins at an unforced break
+    // while keeping them at a forced one. Chromium implements both, so a
+    // filled column cost every chapter opener its `margin-top` on screen while
+    // the PDF kept it (measured on `examples/with-validation`: 48px per
+    // opener, enough to pull a seventh page's worth of content forward).
+    //
+    // The spacer carries the SAME break property the author declared, so its
+    // `column` lands at the break point on the FAR side of the author's own
+    // box. At the point they would share, the two values combine and the
+    // author's `page` wins — and multicol has no pages, so the combined break
+    // is discarded and nothing moves at all (measured: a `break-after: column`
+    // spacer in front of an `h1 { break-before: page }` is completely inert).
+    spacer.style.cssText = `${prop}: column; height:0; margin:0; padding:0; border:0;`;
     if (prop === "break-after") el.after(spacer);
     else site.before(spacer);
   }

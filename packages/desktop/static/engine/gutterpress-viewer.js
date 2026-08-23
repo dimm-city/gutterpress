@@ -1117,13 +1117,12 @@
         continue;
       const stripTop = strip.getBoundingClientRect().top;
       const edge = prop === "break-after" ? rect.bottom : rect.top;
-      const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
-      if (reserve === null)
+      if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null)
         continue;
       const spacer = document.createElement("div");
       spacer.className = "gp-column-break-spacer";
       spacer.setAttribute("aria-hidden", "true");
-      spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+      spacer.style.cssText = `${prop}: column; height:0; margin:0; padding:0; border:0;`;
       if (prop === "break-after")
         el.after(spacer);
       else
