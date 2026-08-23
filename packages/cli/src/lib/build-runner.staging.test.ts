@@ -75,10 +75,17 @@ testIf("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes
     name.startsWith(".gutterpress-stage")
   );
   expect(leftover).toEqual([]);
-}, 30_000);
-// 30s: this drives the FULL native runBuild pipeline (staging, chapter
+}, 60_000);
+// 60s: this drives the FULL native runBuild pipeline (staging, chapter
 // render, a real Chromium PDF render, fingerprinting) — real disk/process/
-// browser work, not a fixed-cost unit test.
+// browser work, not a fixed-cost unit test. It ran at 30s until a release
+// build timed out at exactly 30028ms on a GitHub runner: the same work takes
+// ~1.5s locally, so the budget was sized on a warm local machine and left no
+// room for a cold Chromium launch on a shared one. Worse, the timeout killed
+// the pooled browser ("killed 1 dangling process") and the NEXT test failed
+// in getBrowser() as collateral, which made one slow test look like two
+// broken ones. 60s matches the sibling test below and every other
+// Chromium-driving test in the repo.
 
 testIf("runBuild prevalidation permits a missing image and paginates its placeholder", async () => {
   const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-placeholder-prevalidate-in-"));
