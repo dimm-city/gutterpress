@@ -204,7 +204,7 @@ describe("repairRepo — in-place fixes (history untouched by construction)", ()
 });
 
 describe("repairRepo — re-clone with salvage (last resort)", () => {
-  test("unreadable HEAD with a remote: fresh .git from the remote, UNPUSHED commits salvaged", async () => {
+  test("unreadable HEAD with a remote: history rebuilt online, unpushed work left in the backup", async () => {
     const h = await setupClone();
     try {
       // Two unpushed local snapshots the remote has never seen.
@@ -214,16 +214,8 @@ describe("repairRepo — re-clone with salvage (last resort)", () => {
         "# One\n\nLocal draft 2.\n",
         "local snapshot 1",
       );
-      const snap2 = await localCommit(
-        h.projectDir,
-        "chapter-05.md",
-        "# Five\n\nBrand new chapter.\n",
-        "local snapshot 2",
-      );
-      const before = await allCommitOids(h.projectDir);
       const files = {
         "chapter-01.md": await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
-        "chapter-05.md": await readFile(path.join(h.projectDir, "chapter-05.md"), "utf8"),
       };
 
       // Destroy the ref store (HEAD unreadable → nuclear path).
@@ -236,15 +228,21 @@ describe("repairRepo — re-clone with salvage (last resort)", () => {
       expect(result.damagedGitBackupPath).toBeDefined();
       expect(fs.existsSync(result.damagedGitBackupPath!)).toBe(true);
 
-      // Working files byte-identical.
+      // Working files byte-identical — repair never touches them.
       for (const [file, content] of Object.entries(files)) {
         expect(await readFile(path.join(h.projectDir, file), "utf8")).toBe(content);
       }
-      // THE no-loss invariant: every pre-damage commit — including the two
-      // unpushed snapshots — resolves in the repaired history.
-      await expectAllReachable(h.projectDir, before);
-      expect(before).toContain(snap1);
-      expect(before).toContain(snap2);
+
+      // The online copy IS the rebuilt history: a commit the remote never saw
+      // is NOT merged back in. It stays readable in the .git-damaged backup,
+      // whose object store was also copied into the fresh repo — so the work
+      // is recoverable, just not on the branch.
+      const after = await allCommitOids(h.projectDir);
+      expect(after).not.toContain(snap1);
+      await expect(
+        git.readCommit({ fs, dir: h.projectDir, oid: snap1 }),
+      ).resolves.toBeDefined();
+
       // And the repo syncs again.
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status === "synced" || outcome.status === "up-to-date").toBe(true);

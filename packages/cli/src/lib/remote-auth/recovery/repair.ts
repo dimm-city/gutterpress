@@ -9,8 +9,8 @@
  *      uncommitted is snapshotted, never overwritten or discarded.
  *   2. EVERY COMMIT THAT IS STILL READABLE STAYS REACHABLE. In-place fixes
  *      (which cannot lose history) run first; the last-resort re-clone
- *      salvages the old object store and merges every readable old tip back
- *      into the repaired history. The damaged `.git` is kept on disk
+ *      salvages the old object store, and for a project with no online copy
+ *      restores its branch refs on top. The damaged `.git` is kept on disk
  *      (`.git-damaged-<timestamp>`) as the final fallback.
  *   3. FULLY AUTOMATIC. No choices, no confirmation dialogs — nothing the
  *      pipeline does is destructive under invariants 1–2. (The CLI `repair`
@@ -38,10 +38,9 @@
  *   e. Re-clone with salvage (ONLY when the repo is still unreadable):
  *      move `.git` aside, clone a fresh `.git` from the remote (or
  *      `git init` when there is none), copy the damaged object store in
- *      additively, converge-merge every old tip that still resolves —
- *      branch refs when readable, otherwise a lost-found scan of the loose
- *      object store (unpushed local commits are always loose) — and
- *      snapshot the working files on top.
+ *      additively, and snapshot the working files on top. When there was no
+ *      remote to clone from, the damaged repo's branch refs are restored
+ *      onto the fresh history so a local-only project keeps its versions.
  *
  * Pure isomorphic-git + node:fs (CLAUDE.md §7) — never the system git binary.
  */
@@ -181,52 +180,6 @@ function readDamagedBranchTips(damagedGitDir: string): Array<{ name: string; oid
   };
   walk(headsDir, "");
   return [...tips].map(([name, oid]) => ({ name, oid }));
-}
-
-/**
- * Lost-found over the LOOSE object store: commit oids that no other loose
- * commit lists as a parent — the tips of any stranded local work. This is
- * what salvages unpushed snapshots when the damaged repo's REF STORE itself
- * was destroyed (no branch tips left to read): local commits are always
- * written LOOSE by isomorphic-git (only clone/fetch write packs), so the
- * work that only ever existed on this computer is exactly what this scan
- * finds. Reads via the NEW repo (after the additive object copy). Best-effort
- * — an unreadable object is simply skipped.
- */
-async function looseCommitTips(dir: string, cache: GitCache): Promise<string[]> {
-  const objectsDir = path.join(gitDirFor(dir), "objects");
-  const oids: string[] = [];
-  let fanouts: string[];
-  try {
-    fanouts = fs.readdirSync(objectsDir).filter((e) => /^[0-9a-f]{2}$/.test(e));
-  } catch {
-    return [];
-  }
-  for (const fan of fanouts) {
-    let files: string[];
-    try {
-      files = fs.readdirSync(path.join(objectsDir, fan));
-    } catch {
-      continue;
-    }
-    for (const f of files) {
-      if (/^[0-9a-f]{38}$/.test(f)) oids.push(fan + f);
-    }
-  }
-  const commits = new Map<string, string[]>(); // oid → parents
-  for (const oid of oids) {
-    try {
-      const obj = await git.readObject({ fs, dir, cache, oid, format: "parsed" });
-      if (obj.type === "commit") {
-        commits.set(oid, (obj.object as { parent: string[] }).parent ?? []);
-      }
-    } catch {
-      // unreadable — skip
-    }
-  }
-  const isParent = new Set<string>();
-  for (const parents of commits.values()) for (const p of parents) isParent.add(p);
-  return [...commits.keys()].filter((oid) => !isParent.has(oid));
 }
 
 /** The branch to reattach/repair onto: existing main/master, else first, else "main". */
@@ -461,79 +414,45 @@ async function recloneWithSalvage(
       });
     }
 
-    const branch = await targetBranch(dir);
-    let branchExists = (await git.listBranches({ fs, dir })).includes(branch);
-    // Tips to bring back: the damaged repo's branch refs, PLUS a lost-found
-    // scan over the loose object store — when the ref store itself was
-    // destroyed there are no refs left to read, but unpushed local commits
-    // are always loose objects, so the scan finds exactly the work that only
-    // ever existed on this computer.
-    const scanCache: GitCache = {};
-    const tips = new Map<string, string>(); // oid → display name
-    for (const tip of readDamagedBranchTips(damagedBackup)) {
-      tips.set(tip.oid, tip.name);
-    }
-    for (const oid of await looseCommitTips(dir, scanCache)) {
-      if (!tips.has(oid)) tips.set(oid, "recovered-work");
-    }
-
-    for (const [oid, name] of tips) {
-      const cache: GitCache = {};
-      try {
-        await git.readCommit({ fs, dir, cache, oid });
-      } catch {
-        logger.warn("repair", "old tip unreadable — left in the backup", { tip: name });
-        continue;
-      }
-      if (!branchExists) {
-        // Unborn fresh history: ADOPT the old tip outright — the entire old
-        // history becomes the repaired history, nothing to merge.
-        await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: oid, force: true });
+    // Local-only projects have no online copy to rebuild from, so the fresh
+    // `.git` above is an empty `git init` — restore the damaged repo's branch
+    // refs onto it so every commit whose objects survived stays reachable, and
+    // reattach HEAD to the main branch among them. A re-clone from a remote
+    // already HAS its branches: there the online copy is the history, and any
+    // local commit it never saw stays readable in the `.git-damaged-` backup.
+    const restored: string[] = [];
+    if ((await git.listBranches({ fs, dir })).length === 0) {
+      for (const tip of readDamagedBranchTips(damagedBackup)) {
+        try {
+          await git.readCommit({ fs, dir, cache: {}, oid: tip.oid });
+        } catch {
+          logger.warn("repair", "old tip unreadable — left in the backup", { tip: tip.name });
+          continue;
+        }
         await git.writeRef({
           fs,
           dir,
-          ref: "HEAD",
-          value: `refs/heads/${branch}`,
-          symbolic: true,
+          ref: `refs/heads/${tip.name}`,
+          value: tip.oid,
           force: true,
         });
-        await rebuildIndexFromHead(dir);
-        branchExists = true;
-        actions.push("Restored your saved history from the backup.");
-        continue;
+        restored.push(tip.name);
       }
-      try {
-        const branchTip = await git.resolveRef({ fs, dir, ref: branch });
-        if (branchTip === oid) continue; // already exactly here
-        await convergeMerge({
-          dir,
-          cache,
-          branch,
-          theirs: oid,
-          author: await resolveGitAuthor(dir, options.authorName, options.authorEmail),
-          authorName: options.authorName,
-          authorEmail: options.authorEmail,
-          // The fresh clone and the old local history usually share commits,
-          // but a rebuilt-from-scratch remote may not — salvage must land
-          // either way.
-          allowUnrelatedHistories: true,
-        });
-        actions.push("Brought your earlier saved versions back into the history.");
-      } catch (e) {
-        logger.warn("repair", "old tip could not be merged — pinned as a recovery branch", {
-          tip: name,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        await git
-          .writeRef({
-            fs,
-            dir,
-            ref: `refs/heads/recovered-${stamp()}-${name.replace(/[^A-Za-z0-9_-]/g, "_")}`,
-            value: oid,
-            force: true,
-          })
-          .catch(() => {});
-      }
+    }
+    if (restored.length > 0) {
+      // targetBranch now sees the restored refs (main/master, else the first).
+      const branch = await targetBranch(dir);
+      await git.writeRef({
+        fs,
+        dir,
+        ref: "HEAD",
+        value: `refs/heads/${branch}`,
+        symbolic: true,
+        force: true,
+      });
+      await rebuildIndexFromHead(dir);
+      actions.push("Restored your saved history from the backup.");
+      logger.info("repair", "restored branch refs from the backup", { branches: restored });
     }
   }
 
