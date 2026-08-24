@@ -31,6 +31,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.accessibility.alt-text": "Image description",
   "source.accessibility.heading-order": "Heading order",
   "source.markdown.layout-markers": "Layout marker",
+  "source.sync.merge-markers": "Two versions",
   "desktop.preview": "Preview",
   // Asset-category checks (#105 publish preflight). Kept in the SAME table as
   // the source checks so `friendlySource` stays the ONE plain-language label
