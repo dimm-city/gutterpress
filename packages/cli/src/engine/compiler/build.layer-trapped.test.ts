@@ -27,6 +27,10 @@ import { build } from "./build.ts";
  *     its clip entirely), so it stays silent too;
  *   - a safe wrapper is not diagnosed;
  *   - output is capped at 20 findings even for pathological generated markup.
+ *
+ * A second, smaller build covers the two BINDING rules this audit only started
+ * applying when the clip geometry became shared with the pre-print width check
+ * (`CLIP_EDGES_JS`): `position: fixed`, and root overflow propagation.
  */
 
 const RENDER_TEST_TIMEOUT_MS = 90_000;
@@ -121,6 +125,69 @@ testIf(
       expect(findings.some((d) => d.message.includes("skip-shell") || d.message.includes("escaped-art"))).toBe(false);
       expect(findings.some((d) => d.message.includes("safe-shell"))).toBe(false);
       expect(findings.some((d) => d.message.includes("safe-art"))).toBe(false);
+    } finally {
+      await browser.close();
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+// Both cases here are BINDING rules — which ancestors clip at all — and both
+// were already settled by the pre-print width check's measured evidence. The
+// audit reached them only once the two copies of the clip geometry became one
+// (`CLIP_EDGES_JS`); before that it reported a cut in each.
+//
+//   FIXED — a fixed box's containing block is the viewport, so a merely
+//     positioned ancestor does not clip it. `.page` is `position: relative` in
+//     MARKER_CSS, so a clipping `.page` used to be reported as cutting every
+//     fixed `.gp-behind` inside it.
+//   ROOT PROPAGATION — `html` propagates its overflow to the viewport instead
+//     of clipping its own content, so it never cuts; `body` clips only when
+//     the root's own overflow is not `visible` (with both hidden, as here, the
+//     clip is really body's). The audit is normally spared this by stopping at
+//     the `.page`/`.spread` boundary — but a `.gp-behind` that IS that
+//     boundary walks straight past it to the root.
+const bindingFixture = `<!doctype html><meta charset="utf-8"><style>
+${MARKER_CSS}
+${GUTTERPRESS_CSS}
+@page { size: 384px 480px; margin: 24px; }
+html, body { overflow: hidden; }
+.page { min-height: 200px; overflow: hidden; }
+.page.gp-behind { overflow: visible; }
+.fixed-art { position: fixed; left: -40px; top: -30px; }
+</style>
+<div class="page">
+  <img class="gp-behind fixed-art" src="${SRC}" alt="background plate">
+  <p>Visible page text keeps the wrapper in layout.</p>
+</div>
+<div class="page gp-behind self-boundary-art" style="margin-left:-40px">
+  <p>More page text.</p>
+</div>`;
+
+testIf(
+  "clip binding: a fixed box is unclippable, and the root propagates instead of cutting",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-layer-binding-"));
+    const browser = await launchChromium();
+    try {
+      const file = path.join(dir, "book.html");
+      await fsp.writeFile(file, bindingFixture, "utf8");
+      const result = await build({
+        input: pathToFileURL(file).href,
+        browser,
+        dpiFloor: 0,
+        allowShrink: true,
+      });
+      const findings = result.diagnostics.filter((d) => d.code === "engine.layer.trapped");
+      // The clipping `.page` is `position: relative`, not the fixed box's
+      // containing block — it cannot cut it, so nothing is reported.
+      expect(findings.some((d) => d.message.includes("fixed-art"))).toBe(false);
+      // `html` never cuts; `body` does, and is named.
+      const self = findings.filter((d) => d.message.includes("self-boundary-art"));
+      expect(self).toHaveLength(1);
+      expect(self[0]!.message).toContain("ancestor body clips it");
+      expect(self[0]!.message).toContain("40px past its left clip edge");
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

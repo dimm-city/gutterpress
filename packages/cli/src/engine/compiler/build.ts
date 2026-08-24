@@ -74,8 +74,9 @@ const DESC_JS = `(el) => {
  * Shared "does this box establish the containing block for an absolutely
  * positioned descendant?" helper for the in-page audits that need to know
  * whether an ancestor's overflow BINDS an abspos box — the width check and
- * the layer-containment audit both do, and the rule is one measured fact,
- * not two. MEASURED: a pin whose box lay entirely outside a STATIC
+ * the layer-containment audit both do (today through CLIP_EDGES_JS below,
+ * which is the single consumer), and the rule is one measured fact, not two.
+ * MEASURED: a pin whose box lay entirely outside a STATIC
  * overflow:hidden (and overflow:clip) wrapper printed complete — the
  * wrapper's clip never touched it — and an over-wide abspos box under the
  * same static wrapper still shrank the whole book.
@@ -93,6 +94,91 @@ const ABS_CONTAINING_BLOCK_JS = `(cs) => {
     if (cs.containerType && cs.containerType !== "normal") return true;
     return /\\b(transform|translate|rotate|scale|perspective|filter)\\b/.test(cs.willChange);
   }`;
+
+/**
+ * Shared overflow-clip geometry for the in-page audits: WHERE an element's
+ * ancestors actually cut it. Two passes need exactly this — the pre-print
+ * width check clamps a box against these edges to decide whether its overflow
+ * ESCAPES (and so shrinks the book), and the layer-containment audit measures
+ * a `.gp-behind` box's overhang past them to decide whether the art is cut —
+ * so the rule lives here once instead of once per caller. It had already
+ * drifted as two copies: only the width check knew about root overflow
+ * propagation.
+ *
+ * `clipEdges(el)` returns:
+ *   `edges` — the tightest clip binding `el`, all four sides accumulated over
+ *     the whole ancestor chain, ±Infinity where nothing binds. Clamp a rect
+ *     against it.
+ *   `chain` — every ancestor walked, in order, each with the computed style
+ *     already read and the clip that ANCESTOR ALONE imposes. A caller that
+ *     must name the offender reads this and stops where it likes; it sees the
+ *     same per-ancestor edges the accumulation is built from.
+ *
+ * Every qualifier below is MEASURED (Chromium 151 — print-rastered pins for
+ * the cut geometry, `pdftotext -bbox` marker words for the shrink):
+ *   AXIS — each axis is judged on its own COMPUTED overflow value (which
+ *     already folds in hidden/scroll/auto's `visible`->`auto` coupling, so a
+ *     y-only `hidden` clips x too). `clip` does NOT couple:
+ *     `overflow-x: visible; overflow-y: clip` left x genuinely open and the
+ *     book shrank. A `visible` axis never cuts — an overhang under
+ *     `overflow-x: visible; overflow-y: clip` survived whole on all four edges.
+ *   CLIP EDGE — the padding box (ancestor rect inset by its border width),
+ *     grown by `overflow-clip-margin` on a `clip` axis (a 700px margin let an
+ *     over-wide box back out and it shrank again). px values only; keyword
+ *     forms parse NaN -> 0, i.e. the ungrown padding box. A mid-page clip edge
+ *     at x=54 cut a 20px overhang at 54 exactly.
+ *   BINDING — an abspos box is clipped only from its containing block outward,
+ *     so a STATIC wrapper's overflow never binds one (a pin lying entirely
+ *     outside such a wrapper printed complete; an over-wide abspos box under
+ *     one still shrank the book). A FIXED box is laid out against the viewport;
+ *     it is treated as unclippable rather than guessing at its containing
+ *     block. And the ROOT propagates its overflow to the viewport rather than
+ *     clipping its own content: `html{overflow:hidden}` alone and
+ *     `body{overflow:hidden}` alone both still shrank, the two together did not.
+ */
+const CLIP_EDGES_JS = `((establishesAbsContainingBlock) => {
+    const open = () => ({ left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity });
+    const rootStyle = getComputedStyle(document.documentElement);
+    const propagates = (a, rootOverflow) =>
+      a === document.documentElement ||
+      (a === document.body && rootOverflow === "visible");
+    return (el) => {
+      const edges = open();
+      const chain = [];
+      const elStyle = getComputedStyle(el);
+      const fixed = elStyle.position === "fixed";
+      let binds = !fixed && elStyle.position !== "absolute";
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (!fixed && !binds && establishesAbsContainingBlock(cs)) binds = true;
+        const own = open();
+        const clipsX =
+          binds && cs.overflowX !== "visible" && !propagates(a, rootStyle.overflowX);
+        const clipsY =
+          binds && cs.overflowY !== "visible" && !propagates(a, rootStyle.overflowY);
+        if (clipsX || clipsY) {
+          const r = a.getBoundingClientRect();
+          const clipMargin = parseFloat(cs.overflowClipMargin) || 0;
+          if (clipsX) {
+            const grow = cs.overflowX === "clip" ? clipMargin : 0;
+            own.left = r.left + parseFloat(cs.borderLeftWidth) - grow;
+            own.right = r.right - parseFloat(cs.borderRightWidth) + grow;
+            edges.left = Math.max(edges.left, own.left);
+            edges.right = Math.min(edges.right, own.right);
+          }
+          if (clipsY) {
+            const grow = cs.overflowY === "clip" ? clipMargin : 0;
+            own.top = r.top + parseFloat(cs.borderTopWidth) - grow;
+            own.bottom = r.bottom - parseFloat(cs.borderBottomWidth) + grow;
+            edges.top = Math.max(edges.top, own.top);
+            edges.bottom = Math.min(edges.bottom, own.bottom);
+          }
+        }
+        chain.push({ ancestor: a, style: cs, edges: own });
+      }
+      return { edges, chain };
+    };
+  })(${ABS_CONTAINING_BLOCK_JS})`;
 
 /**
  * Page contexts needed by geometry audits, without an exponential powerset.
@@ -1065,9 +1151,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             return reasons;
           };
 
-          // Overflow clipping binds an abspos .gp-pin only from its
-          // containing block outward (see ABS_CONTAINING_BLOCK_JS).
-          const establishesAbsContainingBlock = ${ABS_CONTAINING_BLOCK_JS};
+          // Which ancestors clip a .gp-behind, and where their edges fall —
+          // the same measured rule the pre-print width check clamps against
+          // (see CLIP_EDGES_JS). This pass walks its \`chain\` so it can name
+          // the ancestor doing the cutting.
+          const clipEdges = ${CLIP_EDGES_JS};
 
           for (const el of document.querySelectorAll("*")) {
             const cs = getComputedStyle(el);
@@ -1110,47 +1198,25 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               const boundary = el.closest(".page, .spread");
               if (boundary) {
                 const elRect = el.getBoundingClientRect();
-                // Clip binding: an in-flow .gp-behind is bound by every
-                // ancestor's overflow, but an abspos one only from its
-                // containing block outward — static wrappers in between
-                // never clip it (measured; see the pass comment above).
-                let clipBinds = cs.position !== "absolute" && cs.position !== "fixed";
-                for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
-                  const ancestorStyle = getComputedStyle(ancestor);
-                  if (!clipBinds && establishesAbsContainingBlock(ancestorStyle)) clipBinds = true;
+                for (const link of clipEdges(el).chain) {
+                  const ancestor = link.ancestor;
+                  const ancestorStyle = link.style;
                   const reasons = stackingReasons(ancestor, ancestorStyle);
                   // Clipping never reorders layers — it can only CUT the
                   // art (measured, pass comment above): warn only where the
-                  // border box crosses a binding ancestor's clip edge on an
-                  // axis whose overflow is not \`visible\`. The clip edge is
-                  // the padding box, grown by overflow-clip-margin where
-                  // that axis's value is \`clip\` (px values only; keyword
-                  // forms parse NaN -> 0, i.e. the ungrown padding box).
-                  // 1px epsilon: the measured cut lands exactly at the
-                  // edge, and sub-pixel layout rounding is not an overhang.
+                  // border box crosses THIS ancestor's own clip edges, which
+                  // are ±Infinity on any axis it does not bind. 1px epsilon:
+                  // the measured cut lands exactly at the edge, and sub-pixel
+                  // layout rounding is not an overhang.
                   const cuts = [];
-                  if (clipBinds && (ancestorStyle.overflowX !== "visible" || ancestorStyle.overflowY !== "visible")) {
-                    const r = ancestor.getBoundingClientRect();
-                    const clipMargin = parseFloat(ancestorStyle.overflowClipMargin) || 0;
-                    if (ancestorStyle.overflowX !== "visible") {
-                      const grow = ancestorStyle.overflowX === "clip" ? clipMargin : 0;
-                      const left = r.left + parseFloat(ancestorStyle.borderLeftWidth) - grow;
-                      const right = r.right - parseFloat(ancestorStyle.borderRightWidth) + grow;
-                      if (elRect.left < left - 1)
-                        cuts.push(Math.round(left - elRect.left) + "px past its left clip edge");
-                      if (elRect.right > right + 1)
-                        cuts.push(Math.round(elRect.right - right) + "px past its right clip edge");
-                    }
-                    if (ancestorStyle.overflowY !== "visible") {
-                      const grow = ancestorStyle.overflowY === "clip" ? clipMargin : 0;
-                      const top = r.top + parseFloat(ancestorStyle.borderTopWidth) - grow;
-                      const bottom = r.bottom - parseFloat(ancestorStyle.borderBottomWidth) + grow;
-                      if (elRect.top < top - 1)
-                        cuts.push(Math.round(top - elRect.top) + "px past its top clip edge");
-                      if (elRect.bottom > bottom + 1)
-                        cuts.push(Math.round(elRect.bottom - bottom) + "px past its bottom clip edge");
-                    }
-                  }
+                  if (elRect.left < link.edges.left - 1)
+                    cuts.push(Math.round(link.edges.left - elRect.left) + "px past its left clip edge");
+                  if (elRect.right > link.edges.right + 1)
+                    cuts.push(Math.round(elRect.right - link.edges.right) + "px past its right clip edge");
+                  if (elRect.top < link.edges.top - 1)
+                    cuts.push(Math.round(link.edges.top - elRect.top) + "px past its top clip edge");
+                  if (elRect.bottom > link.edges.bottom + 1)
+                    cuts.push(Math.round(elRect.bottom - link.edges.bottom) + "px past its bottom clip edge");
                   if ((reasons.length || cuts.length) && !seenLayerTraps.has(ancestor)) {
                     seenLayerTraps.add(ancestor);
                     const effects = [];
@@ -1380,8 +1446,6 @@ async function findWidthOffenders(
       await page.evaluate<string>(`(() => {
         const LIMIT = ${limitPx} + 1;
         const desc = ${DESC_JS};
-        const establishesAbsContainingBlock = ${ABS_CONTAINING_BLOCK_JS};
-        const rootStyle = getComputedStyle(document.documentElement);
         // Shrink-to-fit only reacts to overflow that ESCAPES: a clipping or
         // scrolling ancestor contains its subtree's overflow, so the
         // document's own width never grows and the book prints at 1.0x.
@@ -1390,45 +1454,12 @@ async function findWidthOffenders(
         // \`overflow: hidden\` shell printed unshrunk, as did the same box
         // under clip/auto/scroll — and a real 208-page book whose two
         // "offenders" both sat under \`overflow-x: clip\` printed
-        // coordinate-identical with them restored. Returns the element's
-        // box clamped to every clip edge that binds it; three measured
-        // qualifiers decide which ones do:
-        //   AXIS — only overflow-x counts, from the COMPUTED value (which
-        //     already folds in hidden/scroll/auto's \`visible\`->\`auto\`
-        //     coupling, so a y-only \`hidden\` clips x too). \`clip\` does NOT
-        //     couple: \`overflow-x: visible; overflow-y: clip\` shrank.
-        //   CLIP EDGE — the padding box, grown by \`overflow-clip-margin\`
-        //     on a \`clip\` axis (a 700px margin let the box back out and it
-        //     shrank). px values only; keyword forms parse NaN -> 0.
-        //   BINDING — an abspos box is clipped only from its containing
-        //     block outward, and the ROOT propagates its overflow to the
-        //     viewport rather than clipping its own content:
-        //     \`html{overflow:hidden}\` alone and \`body{overflow:hidden}\`
-        //     alone both still shrank, the two together did not.
-        const escapingBox = (el, r) => {
-          let left = r.left;
-          let right = Math.max(r.right, r.left + r.width);
-          const pos = getComputedStyle(el).position;
-          // A fixed box is laid out against the viewport; treat it as
-          // unclippable rather than guess at its containing block.
-          if (pos === "fixed") return { left, right };
-          let binds = pos !== "absolute";
-          for (let a = el.parentElement; a; a = a.parentElement) {
-            const cs = getComputedStyle(a);
-            if (!binds && establishesAbsContainingBlock(cs)) binds = true;
-            const propagatesToViewport =
-              a === document.documentElement ||
-              (a === document.body && rootStyle.overflowX === "visible");
-            if (!binds || propagatesToViewport || cs.overflowX === "visible") continue;
-            const ar = a.getBoundingClientRect();
-            const grow = cs.overflowX === "clip"
-              ? parseFloat(cs.overflowClipMargin) || 0
-              : 0;
-            left = Math.max(left, ar.left + parseFloat(cs.borderLeftWidth) - grow);
-            right = Math.min(right, ar.right - parseFloat(cs.borderRightWidth) + grow);
-          }
-          return { left, right };
-        };
+        // coordinate-identical with them restored. WHICH ancestors clip, and
+        // where their edges fall, is CLIP_EDGES_JS's measured rule — shared
+        // with the layer-containment audit, which measures overhang past the
+        // same edges. Only the x edges matter here: shrink-to-fit is a width
+        // response.
+        const clipEdges = ${CLIP_EDGES_JS};
         const out = [];
         for (const el of document.querySelectorAll("*")) {
           const r = el.getBoundingClientRect();
@@ -1439,8 +1470,8 @@ async function findWidthOffenders(
           // measured: a left bleed alone cost 16%.
           if (right <= LIMIT && r.width <= LIMIT && r.left >= -1) continue;
           // ...but only where it actually escapes its clipping ancestors.
-          const esc = escapingBox(el, r);
-          if (esc.right <= LIMIT && esc.left >= -1) continue;
+          const clip = clipEdges(el).edges;
+          if (Math.min(right, clip.right) <= LIMIT && Math.max(r.left, clip.left) >= -1) continue;
           let deepest = true;
           for (const c of el.children) {
             if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
