@@ -3,6 +3,37 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **The window is now either for writing or for reading, and it says which.**
+  The old toolbar asked you to manage two things at once: whether the editor
+  was open, and separately whether the book showed one page or two. The
+  combinations mostly did not make sense, and the app kept quietly changing
+  the page count on you when you resized the window. Those two controls are
+  now one: **Edit** puts the editor beside a single page, **Read** gives the
+  whole window to the book, two pages side by side like a real one. The eye
+  button still hides the book when you want the editor to itself — and it
+  keeps the toolbar, so there is always a visible way back. The app opens on
+  Read, and remembers which of the two you left it in. The trade is deliberate
+  and worth naming: you can no longer edit with two pages showing. That
+  arrangement never had room for either half.
+
+### Fixed
+
+- **"Updating preview…" no longer gets stuck on screen.** Save a file and the
+  little status pill would sometimes stay up forever, even though the new
+  pages were already there. Two quieter things were stuck with it: the chapter
+  list you jump around with, and the Problems panel — both kept describing the
+  book as it was before the edit. All three had the same cause. The preview
+  swaps in a freshly laid-out copy of your book and announces "done" when that
+  copy finishes; on a short book it finished so fast that the announcement went
+  out before anyone was listening, and it was simply lost. Whether you saw the
+  bug came down to how quickly your book laid out. The preview now says "done"
+  itself, at the moment it puts the new pages on screen, so there is nothing
+  left to miss.
+
 ## [0.10.1] - 2026-08-24
 
 ### Added

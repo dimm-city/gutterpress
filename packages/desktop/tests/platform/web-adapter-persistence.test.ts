@@ -185,14 +185,14 @@ test("getDesktopProjectState/setDesktopProjectState round-trip keyed by FolderRe
   expect(await a.getDesktopProjectState("web:a")).toBeNull();
 
   await a.setDesktopProjectState("web:a", { currentPage: 7 });
-  await a.setDesktopProjectState("web:a", { viewMode: "single" });
+  await a.setDesktopProjectState("web:a", { splitPaneRatio: 0.5 });
   // A different key is isolated.
   await a.setDesktopProjectState("web:b", { currentPage: 99 });
 
   const reloaded = new WebAdapter(store);
   expect(await reloaded.getDesktopProjectState("web:a")).toEqual({
     currentPage: 7,
-    viewMode: "single",
+    splitPaneRatio: 0.5,
   });
   expect(await reloaded.getDesktopProjectState("web:b")).toEqual({ currentPage: 99 });
   expect(await reloaded.getDesktopProjectState("web:c")).toBeNull();

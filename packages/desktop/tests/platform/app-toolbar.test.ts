@@ -101,14 +101,15 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
     expect(src).toMatch(/\.toolbar-start\s*\{[^}]*min-width:\s*0/);
   });
 
-  test("URL mode pre-pays for the page nav: tighter caps, compact view-mode, no hints, no dead pane toggles", () => {
+  test("URL mode pre-pays for the page nav: tighter caps, no Edit/Read switch, no hints, no dead pane toggles", () => {
     const src = toolbar();
     // The URL start cluster (title + URL + open-in-browser) is ~2× the folder
     // cluster; without these the middle track starves and the page nav clips
     // on ordinary desktop windows.
     expect(src).toContain('class:url-mode={sourceMode === "url"}');
     expect(src).toMatch(/\.toolbar\.url-mode \.path\s*\{\s*max-width/);
-    expect(src).toMatch(/\.toolbar\.url-mode \.view-mode-group\s*\{\s*display:\s*none/);
+    // A URL source has no editor, so BOTH forms of the Edit/Read switch go.
+    expect(src).toMatch(/\.toolbar\.url-mode \.mode-group,\s*\n\s*\.toolbar\.url-mode details\.mode-menu\s*\{\s*display:\s*none/);
     expect(src).toMatch(/\.toolbar\.url-mode \.save-hint\s*\{\s*display:\s*none/);
     // The preview/editor pane toggles never apply to URL sources — they are
     // not rendered rather than rendered permanently disabled.
@@ -248,8 +249,8 @@ describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere"
     expect(settings).toContain("<ConnectionsSettings {projectDir} />");
     const exportDialog = read("src/lib/components/ExportDialog.svelte");
     expect(exportDialog).toContain("template");
-    // +page routes the editor-toolbar action to the focus-mode toggle.
-    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?toggleFocusMode\(\)/);
+    // +page routes the editor-toolbar action to the hide-the-viewer toggle.
+    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?togglePreview\(\)/);
   });
 });
 

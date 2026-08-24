@@ -33,20 +33,16 @@
           lastViewportChangeAt = Date.now();
           if (pendingSwap) armPendingSwap();
         }
-        if (active === hotReloadFrame && data && data.type === 'gutterpress:event' && data.name === 'ready') return;
-        if (active === hotReloadFrame && data && data.type === 'gutterpress:event' && data.name === 'renderingComplete') {
-          var detail = {}, sourceDetail = data.detail || {};
-          for (var key in sourceDetail) {
-            if (Object.prototype.hasOwnProperty.call(sourceDetail, key)) detail[key] = sourceDetail[key];
-          }
-          detail.hotReload = true;
-          var startedAt = hotReloadFrame.__gutterpressReloadStartedAt;
-          detail.hotReloadMs = typeof startedAt === 'number' ? Math.max(0, Date.now() - startedAt) : 0;
-          detail.revision = hotReloadFrame.__gutterpressRevision;
-          detail.updateMode = 'full-reload';
-          data = { type: data.type, name: data.name, detail: detail };
-          hotReloadFrame = null;
-        }
+        // A swapped-in frame's own lifecycle events are the shell's business,
+        // not the host's: finish() reports the swap (see reportSwapComplete).
+        // Relaying them too would either double-report or — when the frame
+        // paginates before its `load` event, which is the common case — report
+        // nothing at all, because the message arrives while the frame is still
+        // `building` and matches no branch here.
+        if (
+          active === hotReloadFrame && data && data.type === 'gutterpress:event' &&
+          (data.name === 'ready' || data.name === 'renderingComplete')
+        ) return;
         if (window.parent !== window) window.parent.postMessage(data, '*');
       } else if (retiring && e.source === retiring.contentWindow && window.parent !== window) {
         var retiringData = e.data;
@@ -135,6 +131,26 @@
     building = null;
   }
 
+  // Tell the host the swap is done. This is a synchronous fact the shell knows
+  // — the replacement is paginated (onReady resolved), promoted, and refreshed
+  // — rather than a relayed message whose arrival depends on whether the
+  // frame's pagination beat its own `load` event.
+  function reportSwapComplete(frame, pageState) {
+    if (window.parent === window) return;
+    var startedAt = frame.__gutterpressReloadStartedAt;
+    window.parent.postMessage({
+      type: 'gutterpress:event',
+      name: 'renderingComplete',
+      detail: {
+        totalPages: pageState ? pageState.totalPages : 0,
+        hotReload: true,
+        hotReloadMs: typeof startedAt === 'number' ? Math.max(0, Date.now() - startedAt) : 0,
+        revision: frame.__gutterpressRevision,
+        updateMode: 'full-reload'
+      }
+    }, '*');
+  }
+
   function swap(instance, revision) {
     discardBuilding();
     var frame = document.createElement('iframe');
@@ -175,7 +191,8 @@
       hotReloadFrame = frame;
       building = null;
       var api = fwin(frame) && fwin(frame).previewAPI;
-      if (api && typeof api.refresh === 'function') api.refresh();
+      var pageState = api && typeof api.refresh === 'function' ? api.refresh() : null;
+      reportSwapComplete(frame, pageState);
       frame.style.visibility = 'visible';
       frame.removeAttribute('aria-hidden');
       appliedInstance = instance;

@@ -94,7 +94,6 @@ interface ProjectLifecyclePageNav {
 
 /** Composed `ZoomViewController` surface touched by per-project restore. */
 interface ProjectLifecycleZoomView {
-  userSetViewMode: boolean;
   restoreSplitRatio(ratio: number): void;
 }
 
@@ -131,16 +130,14 @@ export interface ProjectLifecycleDeps {
   pageNav: ProjectLifecyclePageNav;
   /** The composed ZoomViewController instance (shared reference). */
   zoomView: ProjectLifecycleZoomView;
-  /** Seed the settings store's per-project view-mode override on restore. */
-  setViewModeSetting: (mode: "single" | "two-column") => void;
   /** Seed the settings store's split-ratio override on restore (#103) — keeps
    * the durable default and the just-restored per-project ratio consistent so
    * the async settings-load can't clobber it. */
   setSplitRatioSetting: (value: number) => void;
-  /** Seed the pending page/view-mode restore consumed by PreviewEventController. */
-  setPendingRestore: (viewMode: "single" | "two-column" | null, page: number | null) => void;
+  /** Seed the pending page restore consumed by PreviewEventController. */
+  setPendingRestore: (page: number | null) => void;
   /**
-   * Read the per-project page/view-mode/split state for a directory.
+   * Read the per-project page/split state for a directory.
    *
    * Owned by this controller rather than passed in by the caller (2026-07-29
    * audit): the state is WRITTEN under the RESOLVED book dir, but every caller
@@ -385,17 +382,9 @@ export class ProjectLifecycleController {
       // Settle the restore-state read here, where it is applied.
       const restored = await restoreState;
       if (superseded()) return false;
-      const restoredViewMode = restored?.viewMode;
       d.setPendingRestore(
-        restoredViewMode ?? null,
         restored?.currentPage && restored.currentPage > 1 ? restored.currentPage : null,
       );
-      if (restoredViewMode) {
-        // Per-project DesktopPrefs override → seed the settings store so the
-        // derived viewMode reflects this project's last-used mode.
-        d.setViewModeSetting(restoredViewMode);
-      }
-      d.zoomView.userSetViewMode = !!restoredViewMode;
       if (typeof restored?.splitPaneRatio === "number") {
         d.zoomView.restoreSplitRatio(restored.splitPaneRatio);
         // Mirror the durable settings value to the per-project ratio so the

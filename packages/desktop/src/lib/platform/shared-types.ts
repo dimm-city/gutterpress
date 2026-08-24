@@ -100,6 +100,25 @@ export interface ProjectCapabilities {
   authManagedByApp: boolean;
 }
 
+// ── Workspace layout ──────────────────────────────────────────────────────
+
+/**
+ * The ONE switch for what the wide workspace shows. Everything else about the
+ * layout is derived from it:
+ *
+ *   viewMode       = mode === "viewer" && !isNarrow ? "two-column" : "single"
+ *   previewVisible = mode !== "focus"
+ *   editorVisible  = mode !== "viewer"
+ *
+ * `focus` is editor-only WITH the toolbar and standard chrome kept — it hides
+ * the viewer, nothing else. It is transient: `AppSettings.preview.mode` cannot
+ * hold it (see that field), so it always persists as `editor`.
+ *
+ * Orthogonal to `preview.paneMode`, which is the ≤820px single-column tab
+ * selector.
+ */
+export type WorkspaceMode = "editor" | "viewer" | "focus";
+
 // ── User settings (#45) ───────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -118,7 +137,13 @@ export interface AppSettings {
   };
   preview: {
     defaultZoom: string;
-    viewMode: "single" | "two-column";
+    /**
+     * Which panes the wide workspace shows — the ONE workspace-layout switch
+     * (see `WorkspaceMode`). `focus` is transient by construction: it is not
+     * in this type, so entering it persists as `editor` and a restart can
+     * never wake into a viewer-less window.
+     */
+    mode: Exclude<WorkspaceMode, "focus">;
     /**
      * On small/narrow viewports the editor and preview can't sit side by side,
      * so the workspace collapses to a single pane and this picks which one is
@@ -128,8 +153,7 @@ export interface AppSettings {
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
      * wide side-by-side layout (#103). The always-read default; the per-project
-     * `ProjectState.splitPaneRatio` snapshot overrides it at project-open, same
-     * as `viewMode` relates to `ProjectState.viewMode` below.
+     * `ProjectState.splitPaneRatio` snapshot overrides it at project-open.
      */
     splitRatio: number;
     /**
@@ -198,10 +222,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   preview: {
     defaultZoom: "fit-width",
-    // Durable default view mode (settings-store.ts's readSettings() default).
-    // See ProjectState.viewMode below for the per-project override that
-    // takes precedence over this at project-open time.
-    viewMode: "two-column",
+    // Cold start opens on the book, not the editor.
+    mode: "viewer",
     paneMode: "view",
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
@@ -238,22 +260,15 @@ export type DeepPartialSettings = DeepPartial<AppSettings>;
 // ── Per-project editor/preview state (#43) ────────────────────────────────
 
 /**
- * `currentPage`, `viewMode`, and `splitPaneRatio` are the live fields (#30
- * removed `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` — declared
- * for a forthcoming in-app editor/chapter-list that never consumed them, so
- * they carried through JSON as permanently-unread dead schema).
- *
- * `viewMode` here is a per-project SNAPSHOT, not the live value the UI reads:
- * `AppSettings.preview.viewMode` (shared-types.ts above) is the durable
- * default the UI reads/writes at all times; this snapshot is applied ONLY
- * when a project is opened, overriding the durable value with that project's
- * last-used mode so reopening a folder restores its own layout (see
- * `ZoomViewController.applyViewMode`'s doc comment in the SPA, and
- * `+page.svelte`'s restore-on-open flow). AppSettings wins everywhere else.
+ * `currentPage` and `splitPaneRatio` are the live fields (#30 removed
+ * `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` — declared for a
+ * forthcoming in-app editor/chapter-list that never consumed them, so they
+ * carried through JSON as permanently-unread dead schema). A per-project
+ * `viewMode` snapshot lived here too until view mode stopped being a stored
+ * value at all: it is now derived from `AppSettings.preview.mode`.
  */
 export interface ProjectState {
   currentPage?: number;
-  viewMode?: "single" | "two-column";
   splitPaneRatio?: number;
 }
 

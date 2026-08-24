@@ -3,23 +3,27 @@
  * fit-width / split-pane-drag state that used to live inline in `+page.svelte`.
  *
  * Centralises the preview layout surface: the numeric-vs-fit-width zoom intents
- * (`applyZoom` / `stepZoom` / `applyFitWidthZoom`), the single/two-column
- * view-mode transitions (`applyViewMode` / `toggleViewMode` + the
- * `userSetViewMode` lock), and the editor↔preview split-pane drag
- * (`splitPaneRatio` / `draggingSplit` + the begin/move/end drag intents and the
- * per-project `restoreSplitRatio`).
+ * (`applyZoom` / `stepZoom` / `applyFitWidthZoom`), pushing the single/
+ * two-column page layout into the viewer (`applyViewMode`), and the
+ * editor↔preview split-pane drag (`splitPaneRatio` / `draggingSplit` + the
+ * begin/move/end drag intents and the per-project `restoreSplitRatio`).
+ *
+ * View mode is NOT state here. It is derived from the workspace mode (see
+ * `WorkspaceMode` in platform/shared-types.ts), so `applyViewMode` only
+ * relays that derived value to the viewer — there is nothing to persist, and
+ * no "the user picked one" lock to hold.
  *
  * Single-owner discipline mirrors `PageNavController`
  * (`routes/page-nav-controller.svelte.ts`): the component reads the public rune
  * getters and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the live preview client, the `zoom` / `viewMode` / `isNarrow`
- * accessors, the persist sinks (`persistZoom` / `persistViewMode` = the durable
- * settings-store writers, `saveDesktopPrefs` = the guarded per-project writer),
- * and the two DOM measurements (`measureContainerWidth` = the preview iframe's
- * width, `measureWorkspaceRect` = the split container's rect). ZERO direct DOM /
- * `node:*` / lib value imports.
+ * (§8 / ADR 0004): the live preview client, the `zoom` / `isNarrow`
+ * accessors, the persist sinks (`persistZoom` / `persistSplitRatio` = the
+ * durable settings-store writers, `saveDesktopPrefs` = the guarded per-project
+ * writer), and the two DOM measurements (`measureContainerWidth` = the preview
+ * iframe's width, `measureWorkspaceRect` = the split container's rect). ZERO
+ * direct DOM / `node:*` / lib value imports.
  */
 
 import {
@@ -41,18 +45,14 @@ export interface ZoomViewDeps {
   client: () => ZoomViewClient | undefined;
   /** Current durable zoom value ("fit-width" or a numeric string). */
   zoom: () => string;
-  /** Current preview view mode. */
-  viewMode: () => "single" | "two-column";
   /** True below the responsive breakpoint (split drag is disabled). */
   isNarrow: () => boolean;
   /** Durable settings-store writer for the zoom value. */
   persistZoom: (value: string) => void;
-  /** Durable settings-store writer for the view mode. */
-  persistViewMode: (mode: "single" | "two-column") => void;
   /** Durable settings-store writer for the split ratio (#103). */
   persistSplitRatio: (value: number) => void;
-  /** Guarded per-project writer (view mode / split ratio). */
-  saveDesktopPrefs: (patch: { viewMode?: "single" | "two-column"; splitPaneRatio?: number }) => void;
+  /** Guarded per-project writer (split ratio). */
+  saveDesktopPrefs: (patch: { splitPaneRatio?: number }) => void;
   /** Measured width of the preview container (iframe.clientWidth ?? innerWidth). */
   measureContainerWidth: () => number;
   /** Measured split-container rect, or null when the workspace isn't mounted. */
@@ -65,8 +65,6 @@ export class ZoomViewController {
   splitPaneRatio = $state(0.42);
   /** True while the split-pane divider is being dragged. */
   draggingSplit = $state(false);
-  /** Set once the user explicitly picks a view mode (locks responsive auto). */
-  userSetViewMode = $state(false);
 
   private deps: ZoomViewDeps;
 
@@ -122,12 +120,8 @@ export class ZoomViewController {
 
   // ── View mode ─────────────────────────────────────────────────────────────
 
-  applyViewMode(mode: "single" | "two-column", fromUser: boolean): void {
-    // Settings store owns the durable default; DesktopPrefs keeps a per-project
-    // override so reopening a folder restores its last view mode.
-    this.deps.persistViewMode(mode);
-    if (fromUser) this.userSetViewMode = true;
-    this.deps.saveDesktopPrefs({ viewMode: mode });
+  /** Relay the derived view mode into the viewer, then re-fit if fitting. */
+  applyViewMode(mode: "single" | "two-column"): void {
     const client = this.deps.client();
     if (!client) return;
     void client.call("setViewMode", [mode])
@@ -135,10 +129,6 @@ export class ZoomViewController {
         if (this.deps.zoom() === "fit-width") return this.applyFitWidthZoom();
       })
       .catch(() => {});
-  }
-
-  toggleViewMode(): void {
-    this.applyViewMode(this.deps.viewMode() === "single" ? "two-column" : "single", true);
   }
 
   // ── Split-pane drag ─────────────────────────────────────────────────────────
@@ -197,8 +187,8 @@ export class ZoomViewController {
   /**
    * Persist the current ratio to BOTH the durable settings store (survives
    * restart) and the per-project bucket (restores the project's own layout on
-   * reopen) — mirrors how `applyViewMode` writes both sinks. Re-fits a
-   * fit-width preview so the page keeps filling the resized pane.
+   * reopen). Re-fits a fit-width preview so the page keeps filling the
+   * resized pane.
    */
   private persistSplit(): void {
     this.deps.persistSplitRatio(this.splitPaneRatio);
