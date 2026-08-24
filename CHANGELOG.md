@@ -38,6 +38,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   multi-line markdown (lists, tables, fences) round-trips byte-for-byte and that
   a rich-text paste lands as plain text.
 
+  Three things only the end-to-end test could catch shaped the final behaviour:
+  "clicked away" is a pointer press rather than a `blur` (the frame takes focus
+  a moment after the box opens, and the blur that follows is not the author
+  leaving); keyboard focus is walked down the frame chain before the open
+  command, not after it; and the caret is preserved across re-pagination, which
+  re-parents the box and would otherwise drop it on the first refresh after you
+  start typing.
+
   Under the hood: bridge protocol v8 adds `beginBlockEdit`/`endBlockEdit` and
   drops `getRectsFor`/`setEditMask`, which existed only to place and de-clutter
   behind the panel. The write path is unchanged — every mutation still flows

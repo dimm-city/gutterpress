@@ -32,6 +32,14 @@
     try {
       if (window.parent !== window && e.source === window.parent) {
         if (active && active.contentWindow) active.contentWindow.postMessage(e.data, '*');
+        // Opening the in-flow editor needs KEYBOARD focus in the book, and a
+        // postMessage carries no user activation the book could focus itself
+        // with. The host focuses this shell frame; this hands it the rest of
+        // the way down to the active book iframe, whose own window-focus
+        // listener then seats the caret.
+        if (e.data && e.data.type === 'gutterpress:cmd' && e.data.cmd === 'beginBlockEdit' && active) {
+          try { active.focus(); } catch (_f) {}
+        }
       } else if (active && e.source === active.contentWindow) {
         var data = e.data;
         if (data && data.type === 'gutterpress:event' && data.name === 'viewportChanged') {

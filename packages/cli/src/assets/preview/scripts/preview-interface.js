@@ -699,8 +699,71 @@
     }, EDIT_REFRESH_MS);
   }
 
+  // Character offset of the caret within the edit box, or null when the caret
+  // is not in it. Text-space, not node-space, so it survives the box being
+  // re-parented and its text nodes being renormalized.
+  function caretOffset() {
+    if (!edit) return null;
+    var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (!sel || sel.rangeCount === 0) return null;
+    var r = sel.getRangeAt(0);
+    if (!edit.el.contains(r.startContainer)) return null;
+    var pre = document.createRange();
+    pre.selectNodeContents(edit.el);
+    pre.setEnd(r.startContainer, r.startOffset);
+    return pre.toString().length;
+  }
+
+  // Depth-first text nodes, by `nodeType === 3` rather than TreeWalker +
+  // NodeFilter: the preview scripts run in hosts that do not expose every DOM
+  // global (the iframe test harness evaluates this file with an explicit,
+  // small global list), and a caret helper is not worth a host requirement.
+  function textNodesIn(root) {
+    var out = [];
+    var stack = [root];
+    while (stack.length) {
+      var node = stack.pop();
+      if (node.nodeType === 3) { out.push(node); continue; }
+      for (var i = node.childNodes.length - 1; i >= 0; i--) stack.push(node.childNodes[i]);
+    }
+    return out;
+  }
+
+  function restoreCaret(offset) {
+    if (!edit || offset === null || offset === undefined) return;
+    var nodes = textNodesIn(edit.el);
+    var seen = 0;
+    for (var n = 0; n < nodes.length; n++) {
+      var node = nodes[n];
+      var len = node.nodeValue ? node.nodeValue.length : 0;
+      if (seen + len >= offset) {
+        var range = document.createRange();
+        range.setStart(node, Math.max(0, Math.min(len, offset - seen)));
+        range.collapse(true);
+        var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+        if (!sel) return;
+        try { sel.removeAllRanges(); sel.addRange(range); } catch (_e) { /* best effort */ }
+        return;
+      }
+      seen += len;
+    }
+    // Offset past the end (the text shrank): land at the end.
+    var end = document.createRange();
+    end.selectNodeContents(edit.el);
+    end.collapse(false);
+    var sel2 = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (!sel2) return;
+    try { sel2.removeAllRanges(); sel2.addRange(end); } catch (_e) { /* best effort */ }
+  }
+
   function repaginate() {
     if (!window.Gutterpress || typeof window.Gutterpress.refresh !== 'function') return;
+    // `relayout()` unwraps every strip and rebuilds it, which RE-PARENTS the
+    // edit box — and re-parenting a focused element drops both its focus and
+    // the selection. Unhandled, that means the caret dies on the first
+    // debounced refresh after the author starts typing and every keystroke
+    // after it goes nowhere. Capture in text space, restore after.
+    var offset = caretOffset();
     try {
       window.Gutterpress.refresh();
     } catch (_e) {
@@ -709,6 +772,10 @@
     }
     // The strips are rebuilt, so cached sheet nodes are stale.
     pages = [];
+    if (edit && offset !== null) {
+      try { edit.el.focus({ preventScroll: true }); } catch (_e2) { /* best effort */ }
+      restoreCaret(offset);
+    }
   }
 
   // Place the caret from the click point, on the SOURCE text now in the box.
@@ -760,7 +827,8 @@
     el.classList.remove('gutterpress-editing');
     el.innerHTML = edit.html;
     el.removeEventListener('input', onEditInput);
-    el.removeEventListener('blur', onEditBlur);
+    document.removeEventListener('mousedown', onDocumentPointerDown, true);
+    window.removeEventListener('focus', onWindowFocus);
     edit = null;
     repaginate();
 
@@ -778,18 +846,74 @@
     scheduleEditRefresh();
   }
 
-  function onEditBlur() {
-    // Losing focus commits (the same rule the panel used): an author who
-    // clicks away has finished with this block, and silently discarding their
-    // typing is the worst outcome available. Deferred a tick so a click that
-    // moves focus INSIDE the same box (or a synchronous re-focus) does not
-    // register as leaving.
+  // "Clicked away" commits — driven by a POINTER PRESS in the book, never by
+  // `blur`.
+  //
+  // Blur was the obvious signal and it is the wrong one here. The open request
+  // arrives by postMessage from a click in the host SPA (the context menu's
+  // "Edit this block"), so this frame does not hold browsing-context focus when
+  // `startEdit` runs. Focusing the box then races the frame-focus transition:
+  // Chromium settles `activeElement` back to BODY and the element receives a
+  // blur it never earned. Measured end-to-end in the packaged app — the editor
+  // opened and closed 7ms later, committing content the author never saw, so
+  // both entry points looked like they did nothing at all. Guarding on
+  // `document.hasFocus()` does not separate the two cases either: a real click
+  // on another paragraph ALSO lands on BODY with the document focused.
+  //
+  // A pointer press outside the box is unambiguous and needs no focus
+  // bookkeeping. Focus leaving the frame entirely (the author reaches for the
+  // editor pane or another window) is deliberately NOT a commit — the host
+  // drives those ends explicitly through `endBlockEdit`, and the box stays
+  // visibly open meanwhile, which is honest about the state.
+  function onDocumentPointerDown(e) {
+    if (!edit) return;
+    if (e.target && edit.el.contains(e.target)) return;
+    finishEdit(true, true);
+  }
+
+  // Put the caret in the box, and KEEP putting it there until it sticks.
+  //
+  // Opening from the context menu is a postMessage with no user activation, so
+  // this frame cannot focus itself; the host focuses the preview and
+  // preview-shell.js hands that down to this frame (see both). That transition
+  // lands AFTER `startEdit` runs, and Chromium resets `activeElement` to BODY
+  // as it completes — so the `el.focus()` inside `startEdit` is silently undone
+  // and the author's keystrokes go to the app behind the preview. Measured
+  // end-to-end in the packaged app: the box opened with the whole frame chain
+  // focused, `document.activeElement` sat on `BODY.gp-stage`, and typing landed
+  // outside the book. The same `el.focus()` issued a moment later worked, which
+  // is what makes this a race rather than a permission problem.
+  //
+  // So: seat it now, then re-seat across the transition until `activeElement`
+  // IS the box. Bounded and idempotent — it stops on the first success, when
+  // the edit closes, or after the last attempt, and never fights the author
+  // (any element inside the box already counts as seated).
+  var SEAT_DELAYS_MS = [0, 16, 50, 150];
+
+  function seated() {
+    return !!edit && (document.activeElement === edit.el || edit.el.contains(document.activeElement));
+  }
+
+  function seatCaret() {
+    if (!edit || seated()) return;
+    try { edit.el.focus({ preventScroll: true }); } catch (_e) { /* best effort */ }
+    placeCaret(edit.el, edit.caret);
+  }
+
+  function seatCaretRepeatedly() {
     var target = edit;
-    setTimeout(function () {
-      if (!edit || edit !== target) return;
-      if (document.activeElement === edit.el || edit.el.contains(document.activeElement)) return;
-      finishEdit(true, true);
-    }, 0);
+    SEAT_DELAYS_MS.forEach(function (ms) {
+      setTimeout(function () {
+        if (edit !== target) return;
+        seatCaret();
+      }, ms);
+    });
+  }
+
+  // Whenever this frame gains focus while an edit is open, the caret belongs in
+  // the box — covers orderings where focus arrives later still.
+  function onWindowFocus() {
+    seatCaret();
   }
 
   function startEdit(spec) {
@@ -802,6 +926,7 @@
       el: el,
       chapter: spec.chapter,
       range: spec.range,
+      caret: spec.caret,
       html: el.innerHTML,
       hadWhiteSpace: !!style.whiteSpace,
       whiteSpace: style.whiteSpace
@@ -814,7 +939,12 @@
     el.setAttribute('contenteditable', 'plaintext-only');
     el.textContent = typeof spec.text === 'string' ? spec.text : '';
     el.addEventListener('input', onEditInput);
-    el.addEventListener('blur', onEditBlur);
+    document.addEventListener('mousedown', onDocumentPointerDown, true);
+    window.addEventListener('focus', onWindowFocus);
+    // Pull browsing-context focus into THIS frame first. Without it the caret
+    // is nowhere the author can type: the open request came from a click in
+    // the host document, so focus is still there.
+    try { window.focus(); } catch (_e) { /* focus stays with the host */ }
     // Focus and caret seating are best-effort. A throw here must not escape:
     // the edit state is already installed, so an exception would leave the
     // block stuck in editing mode with the host believing nothing opened.
@@ -826,7 +956,9 @@
     placeCaret(el, spec.caret);
     // The swap from rendered HTML to source text changes the block's extent
     // immediately, so pagination is already stale before a single keystroke.
+    // This re-parents the box, so seat the caret AFTER it, never before.
     repaginate();
+    seatCaretRepeatedly();
     window.dispatchEvent(new CustomEvent('blockEditStateChanged', { detail: { open: true } }));
     return { ok: true };
   }

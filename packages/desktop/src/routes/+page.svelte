@@ -1896,6 +1896,7 @@
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
     readFile: (path) => getPlatform().readFile(path),
     commitEngine,
+    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
     toastError: (message) => toast?.error(message),
     toastInfo: (message) => toast?.info?.(message),
   });

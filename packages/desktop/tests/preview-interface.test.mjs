@@ -950,6 +950,66 @@ async function main() {
     assert.equal(finished.length, 0);
   }
 
+  // "Clicked away" is a POINTER PRESS outside the box — never `blur`.
+  //
+  // Blur is the regression this guards: opening from the context menu is a
+  // postMessage with no user activation, so the frame takes focus a moment
+  // later and Chromium settles activeElement back to BODY, firing a blur the
+  // box never earned. In the packaged app that committed and closed the editor
+  // 7ms after it opened, so both entry points looked like they did nothing.
+  {
+    const { document, window, api } = loadInterfaceWithDom(editHtml, { native: true, pageOf: () => 0 });
+    const finished = [];
+    window.addEventListener("blockEditFinished", (e) => finished.push(e.detail));
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "seed" });
+    const target = document.getElementById("target");
+
+    // A blur on its own must NOT end the edit.
+    target.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    assert.equal(finished.length, 0, "blur alone does not commit");
+    assert.equal(target.getAttribute("contenteditable"), "plaintext-only", "the edit is still open");
+
+    // A press INSIDE the box is the author working, not leaving.
+    target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(finished.length, 0, "a press inside the box does not commit");
+
+    // A press anywhere else in the book commits.
+    document.getElementById("p1").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(finished.length, 1, "a press outside the box commits");
+    assert.equal(finished[0].commit, true);
+  }
+
+  // The caret survives re-pagination. `relayout()` re-parents the edit box, and
+  // re-parenting a focused element drops focus AND the selection — so without
+  // this the caret died on the first debounced refresh after the author started
+  // typing and every keystroke after it went nowhere.
+  {
+    const { document, api } = loadInterfaceWithDom(editHtml, {
+      native: true,
+      pageOf: () => 0,
+      // A refresh that actually moves the element, like the real relayout.
+      refresh: () => {
+        const el = document.getElementById("target");
+        const parent = el.parentElement;
+        parent.removeChild(el);
+        parent.appendChild(el);
+      },
+    });
+    api.beginBlockEdit({ chapter: "a.md", range: [2, 4], text: "abcdefghij" });
+    const target = document.getElementById("target");
+    // Seat the caret mid-text, then force the re-parenting refresh.
+    const range = document.createRange();
+    range.setStart(target.firstChild, 4);
+    range.collapse(true);
+    const sel = document.defaultView.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    api.endBlockEdit({ commit: false });
+    // The text is what matters here: a lost caret in the real app meant lost
+    // keystrokes, and the round-trip must still be exact either way.
+    assert.equal(target.innerHTML, "rendered <em>text</em> here", "restored after a moving refresh");
+  }
+
   // Double-click REQUESTS an edit (it never starts one): only the host can read
   // the authoritative buffer, so the book document must not source its own text.
   {

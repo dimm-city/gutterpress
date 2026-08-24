@@ -62,6 +62,17 @@ export interface InlineEditDeps {
   readFile: (path: string) => Promise<string>;
   /** The commit engine — owns the write path AND the edit-generation counter. */
   commitEngine: CommitEngine;
+  /**
+   * Give the preview iframe keyboard focus.
+   *
+   * Required, not cosmetic: the menu entry point opens the editor from a click
+   * in THIS document, so focus is here and the author's keystrokes would go to
+   * the app behind the preview rather than into the block. The book frame
+   * cannot take focus for itself (its open request is a postMessage, which
+   * carries no user activation), so the host starts the handoff and
+   * preview-shell.js walks it down to the active book frame.
+   */
+  focusPreview: () => void;
   toastError: (message: string) => void;
   /** "This section changed — reopen to edit". */
   toastInfo: (message: string) => void;
@@ -243,6 +254,14 @@ export class InlineEditController {
     }
     const slice = source.slice(from, to);
     const { editable, trailingBlank } = splitTrailingBlankRun(slice);
+
+    // Focus the preview BEFORE sending the command, not after: the shell hands
+    // focus down to the active book frame as it relays `beginBlockEdit`, so a
+    // host-side focus arriving afterwards would pull it back UP to the shell
+    // and leave the keyboard one frame short of the caret. Measured: with the
+    // call after the round-trip, the box opened and typing still went to the
+    // app behind the preview.
+    this.deps.focusPreview();
 
     let started: { ok: boolean; reason?: string };
     try {

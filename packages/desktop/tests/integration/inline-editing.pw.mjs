@@ -272,15 +272,21 @@ try {
     if ((await box.getAttribute("contenteditable")) !== "plaintext-only") {
       throw new Error("the block did not become a plaintext-only editing surface");
     }
-    await page.keyboard.type(" test");
+    // A sentinel, NOT the word "test": the fixture paragraph already reads
+    // "...for right click testing", so `includes("test")` matched the original
+    // text and made both checks below pass vacuously (caught by this test
+    // reporting "Escape did not discard the edit" on an edit it had discarded
+    // correctly).
+    const SENTINEL = "ZZ-INFLOW-SENTINEL";
+    await page.keyboard.type(` ${SENTINEL}`);
     const text = await box.textContent();
-    if (!text?.includes("test")) throw new Error("typing did not reach the in-flow block editor");
+    if (!text?.includes(SENTINEL)) throw new Error("typing did not reach the in-flow block editor");
 
     // Escape cancels: the box reverts to rendered HTML, and the typing is gone.
     await page.keyboard.press("Escape");
     await book.locator(".gutterpress-editing").waitFor({ state: "detached", timeout: 10_000 });
     const reverted = await targetPara.first().textContent();
-    if (reverted?.includes("test")) throw new Error("Escape did not discard the edit");
+    if (reverted?.includes(SENTINEL)) throw new Error("Escape did not discard the edit");
     await assertEditorClosed("inline block editing");
   });
 
@@ -293,15 +299,43 @@ try {
     await page.mouse.dblclick(x, y);
     const editing = book.locator(".gutterpress-editing");
     await editing.waitFor({ state: "visible", timeout: 10_000 });
-    await page.keyboard.type(" DBLCLICK");
-    // Commit through the same engine every other menu action uses. The commit
-    // triggers a real save, so the frame swaps — `boxOf` already tolerates
-    // that, and the editing box goes away with it either way.
+    const SENTINEL = "ZZ-DBLCLICK-SENTINEL";
+    await page.keyboard.type(` ${SENTINEL}`);
     await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
-    await book
-      .locator(".gutterpress-editing")
-      .waitFor({ state: "detached", timeout: 15_000 })
-      .catch(() => {});
+
+    // The double-click path has to reach DISK through the same commit engine
+    // every menu action uses — asserting the box closed would not prove that.
+    let content = originalChapterContent;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      content = readFileSync(chapterPath, "utf8");
+      if (content.includes(SENTINEL)) break;
+      await sleep(100);
+    }
+    if (!content.includes(SENTINEL)) {
+      throw new Error("a double-click edit did not reach disk within 20s of Cmd/Ctrl+Enter");
+    }
+    // Only the edited block changed: same line count, one line differing.
+    const before = originalChapterContent.split("\n");
+    const after = content.split("\n");
+    if (before.length !== after.length) {
+      throw new Error(`double-click commit changed the line count (${before.length} -> ${after.length})`);
+    }
+    const changed = before.map((l, i) => (l === after[i] ? null : i)).filter((i) => i !== null);
+    if (changed.length !== 1) {
+      throw new Error(`double-click commit touched ${changed.length} lines, expected exactly 1`);
+    }
+
+    // Restore the pristine fixture: step 6 diffs disk byte-for-byte against it.
+    writeFileSync(chapterPath, originalChapterContent);
+    const settleBy = Date.now() + 20_000;
+    while (Date.now() < settleBy) {
+      if (readFileSync(chapterPath, "utf8") === originalChapterContent) {
+        const stillThere = await book.locator("body").textContent().catch(() => "");
+        if (!stillThere?.includes(SENTINEL)) break;
+      }
+      await sleep(200);
+    }
     await assertEditorClosed("double-click inline editing");
   });
 

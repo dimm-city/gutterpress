@@ -96,6 +96,7 @@ interface Harness {
   readFileMap: Record<string, string>;
   toastErrorCalls: string[];
   toastInfoCalls: string[];
+  focusPreviewCalls: number;
 }
 
 function make(): Harness {
@@ -110,6 +111,7 @@ function make(): Harness {
     readFileMap: {},
     toastErrorCalls: [],
     toastInfoCalls: [],
+    focusPreviewCalls: 0,
   };
   const deps: InlineEditDeps = {
     client: () => client,
@@ -120,6 +122,7 @@ function make(): Harness {
       throw new Error(`not found: ${path}`);
     },
     commitEngine: commitEngine as unknown as CommitEngine,
+    focusPreview: () => { h.focusPreviewCalls += 1; },
     toastError: (m) => h.toastErrorCalls.push(m),
     toastInfo: (m) => h.toastInfoCalls.push(m),
   };
@@ -149,6 +152,53 @@ describe("show", () => {
     h.readFileMap["/proj/ch1.md"] = "STALE\n";
     await h.ctrl.show({ chapter: "ch1.md", range: [1, 2] });
     expect(h.client.beginCalls[0]!.text).toBe("line two\n");
+  });
+
+  test("hands keyboard focus to the preview once the editor is open", async () => {
+    // Without this the menu entry point opens a box the author cannot type
+    // into: the click was in the host document, so the keystrokes stay there.
+    // Measured end-to-end before the fix — typing after a menu-opened edit
+    // landed in the app behind the preview.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "para\n";
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+    expect(h.focusPreviewCalls).toBe(1);
+  });
+
+  test("focuses BEFORE issuing the command, so the shell's handoff is not undone", async () => {
+    // Ordering is load-bearing: preview-shell.js hands focus down to the active
+    // book frame as it relays beginBlockEdit, so a host-side focus arriving
+    // AFTER pulls it back up to the shell and the keyboard lands one frame
+    // short of the caret. Measured end-to-end before this was fixed — the box
+    // opened and typing still went to the app behind the preview.
+    const order: string[] = [];
+    const client = new FakeClient();
+    const commitEngine = new FakeCommitEngine();
+    const ctrl = new InlineEditController({
+      client: () => client,
+      currentDir: () => "/proj",
+      openContent: () => "para\n",
+      readFile: async () => "para\n",
+      commitEngine: commitEngine as unknown as CommitEngine,
+      focusPreview: () => order.push("focus"),
+      toastError: () => {},
+      toastInfo: () => {},
+    });
+    const begin = client.beginBlockEdit.bind(client);
+    client.beginBlockEdit = async (spec) => {
+      order.push("begin");
+      return begin(spec);
+    };
+    await ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+    expect(order).toEqual(["focus", "begin"]);
+  });
+
+  test("does not open when the editor failed to start", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "para\n";
+    h.client.beginResult = { ok: false, reason: "unresolved" };
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+    expect(h.ctrl.open).toBe(false);
   });
 
   test("passes the caret point through so the caret lands where the author aimed", async () => {

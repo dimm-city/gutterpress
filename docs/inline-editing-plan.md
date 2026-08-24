@@ -106,6 +106,28 @@ Escape / Cmd+Enter keydown handler — both **must** live iframe-side, for the s
 physical reason the `Shift+F10` listener does (ADR 0009 §5: keyboard events in a
 cross-origin iframe never reach the SPA).
 
+**Three things the end-to-end test found that no fake could.** All three are
+consequences of the caret living in a cross-origin frame the host opens by
+message, and each is now covered by a test:
+
+1. **"Clicked away" is a pointer press, not a `blur`.** Opening from the context
+   menu is a postMessage with no user activation, so the frame takes focus a
+   moment later and Chromium settles `activeElement` back to `BODY` — firing a
+   blur the box never earned. Measured: the editor opened and committed 7ms
+   later, so both entry points looked like they did nothing. `document.hasFocus()`
+   does not separate the cases either (a real click on another paragraph also
+   lands on BODY with the document focused). A `mousedown` outside the box is
+   unambiguous and needs no focus bookkeeping.
+2. **Focus has to be walked down the frame chain, before the command.** The host
+   focuses the preview iframe (`focusPreview`), `preview-shell.js` hands that to
+   the active book frame as it relays `beginBlockEdit`, and the book seats the
+   caret. Order matters: focusing the preview *after* the round-trip pulls focus
+   back up to the shell and leaves the keyboard one frame short of the caret.
+3. **`relayout()` re-parents the edit box, which drops focus and the selection.**
+   So the caret is captured in TEXT space before every refresh and restored
+   after — otherwise it died on the first debounced refresh after the author
+   started typing, and every keystroke after that went nowhere.
+
 Deleted: `nativeRectsFor()`, `getRectsFor()`, `setEditMask()`, and the
 `.gutterpress-edit-mask` / `gutterpress-edit-scroll-lock` stylesheet.
 
