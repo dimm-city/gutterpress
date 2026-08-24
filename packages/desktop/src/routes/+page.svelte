@@ -942,9 +942,8 @@
   /** `focus` is the editor without the viewer, so the editor shows in both. */
   let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  /** `.preview-pane`'s own element — the block overlay clamps its geometry to
-   *  this rect, not the whole workspace the context menu clamps to:
-   *  `.preview-pane` can itself scroll. */
+  /** `.preview-pane`'s own element. Kept as its own ref because the pane can
+   *  scroll independently of the workspace around it. */
   let previewPaneEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;

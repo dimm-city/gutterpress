@@ -31,8 +31,13 @@ export interface PreviewEvent {
     hotReloadMs?: number;
     /** renderingComplete: acknowledged preview content revision. */
     revision?: number;
-    /** renderingComplete: whether the shell spliced one chapter or replaced the book frame. */
-    updateMode?: "chapter-splice" | "full-reload";
+    /** renderingComplete: how the shell applied the update. Always
+     * `"full-reload"` — the incremental chapter splice went with Paged.js, and
+     * preview-shell.js has one mint site that hardcodes this. Kept as a field
+     * rather than dropped so the host can tell a shell that predates the
+     * change. (The file-watcher's own `chapter-splice` decision kind is a
+     * different, still-live type.) */
+    updateMode?: "full-reload";
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
     tag?: string;

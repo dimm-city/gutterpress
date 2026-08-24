@@ -4,12 +4,18 @@
 // pass. Usage: node click-and-export.pw.mjs <fixtureDir> <engineLabel>
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, writeFileSync, statSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
-const desktopDir = "/home/founder3/code/dimm-city/print-md/packages/desktop";
+// Resolve from THIS FILE, never a hardcoded absolute path: the literal that
+// used to sit here pointed at one developer's machine
+// (`/home/founder3/code/dimm-city/print-md/...`), so this script could not run
+// anywhere else — including CI and every other checkout. Same convention as
+// inline-editing.pw.mjs.
+const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require_ = createRequire(join(desktopDir, "package.json"));
 const electronBin = require_("electron");
 const mainJs = join(desktopDir, "out", "main", "main.js");

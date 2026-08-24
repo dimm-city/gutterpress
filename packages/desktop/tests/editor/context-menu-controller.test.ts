@@ -408,7 +408,7 @@ describe("block kind", () => {
     ]);
   });
 
-  test("Edit this block opens the block overlay and closes the menu (PR 5)", async () => {
+  test("Edit this block starts the in-flow editor and closes the menu", async () => {
     const h = make();
     h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5] }) });
     await flush();

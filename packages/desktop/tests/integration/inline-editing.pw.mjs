@@ -40,6 +40,7 @@
  */
 import { _electron as electron } from "playwright-core";
 import { waitForAppWindow } from "./app-window.mjs";
+import { setWorkspaceMode } from "./workspace-mode.mjs";
 import { cpSync, existsSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -452,7 +453,7 @@ try {
   // ── 7. Only Go to source opens the editor ────────────────────────────────
   const DEEP_TARGET_TEXT = "This deep paragraph is the click to source target";
   await step("7. normal preview clicks stay passive; Go to source opens and places the caret", async () => {
-    // Step 6's edit triggers an async settled-write -> chapter-splice
+    // Step 6's edit triggers an async settled-write -> full-reload swap
     // refresh; let it fully settle first (the loading overlay clears, the
     // book iframe re-attaches) so this step's coordinates are computed
     // against final, stable layout rather than a mid-reflow snapshot.
@@ -796,11 +797,9 @@ try {
     });
     await page.waitForTimeout(250);
 
-    const singleButton = page.getByRole("button", { name: "Single page" });
-    if (!(await singleButton.count())) {
-      await page.locator('summary[aria-label="Page view mode"]').click();
-    }
-    await page.getByRole("button", { name: "Single page" }).click();
+    // One page = Edit mode. The window is 1100px here, comfortably above
+    // NARROW_BREAKPOINT, so nothing is clamping the choice.
+    await setWorkspaceMode(page, "Edit");
     await page.locator('summary[aria-label="Zoom level"]').click();
     await page.getByRole("button", { name: "Fit to width" }).click();
 
@@ -843,14 +842,35 @@ try {
     if (Math.abs(after.left - after.right) > gutterTolerance || after.leftSpread > 1) {
       throw new Error(`single fit is not centered/aligned after resize: ${JSON.stringify(after)}`);
     }
-    if (before.width - after.width < 100) {
-      throw new Error(`fit width did not react to the narrower viewer: ${JSON.stringify({ before, after })}`);
+    // Assert the INVARIANT, not a magic pixel budget: fit-to-width keeps the
+    // page filling the same fraction of the viewer, whatever the viewer's
+    // width. The old `before.width - after.width < 100` was calibrated to a
+    // model where single-page and "editor open" were independent switches, so
+    // the pane saw the whole window delta. Single page now means the editor is
+    // beside it, so the pane absorbs about half — the fit reacted by 87px to a
+    // 97px viewport change and the absolute threshold called that a failure.
+    // The ratio catches a fit that ignores the viewport, and cannot drift with
+    // the layout.
+    if (!(after.viewport < before.viewport)) {
+      throw new Error(`the viewer did not get narrower: ${JSON.stringify({ before, after })}`);
+    }
+    const fillBefore = before.width / before.viewport;
+    const fillAfter = after.width / after.viewport;
+    if (Math.abs(fillBefore - fillAfter) > 0.02) {
+      throw new Error(
+        `fit width did not track the narrower viewer: fill ${fillBefore.toFixed(3)} -> ` +
+        `${fillAfter.toFixed(3)} ${JSON.stringify({ before, after })}`,
+      );
     }
   });
 
   await step("12. two-column fit-to-width uses the visible spread and refits after resize", async () => {
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.getByRole("button", { name: "Two pages side by side" }).click();
+    // Two pages = Read mode. Step 11 left the window at 900px — above
+    // NARROW_BREAKPOINT (820), so `isNarrow` does not clamp this back to a
+    // single page. That margin is thin on purpose: it is the same window the
+    // resize assertions below narrow to 1050, and widening it here would stop
+    // this step exercising the spread at a realistic size.
+    await setWorkspaceMode(page, "Read");
 
     const measureSpreadFit = async () => book.locator("body").evaluate(() => {
       const viewport = document.documentElement.clientWidth;

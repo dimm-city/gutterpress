@@ -173,7 +173,7 @@ export interface ProjectLifecycleDeps {
   /**
    * The single page-local reset hook for state this controller does not own:
    * the Problems panel (`problems`/`problemsError`/`problemsOpen`), the
-   * editor pane (`editorOpen`/`previewHidden`), the
+   * workspace `mode` switch, the
    * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
    * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
@@ -534,7 +534,7 @@ export class ProjectLifecycleController {
     this.urlPreviewError = null;
     this.saveWarning = null;
     // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
-    // what now also clears the crash-recovery scan state/previewHidden/
+    // what now also clears the crash-recovery scan state/workspace mode/
     // pageNav's counters here, closing the exact divergence the review
     // flagged (openUrl used to miss them; pageEditing itself was later
     // retired entirely with the toolbar refactor — see PageNavController).
