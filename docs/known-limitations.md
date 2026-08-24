@@ -129,8 +129,9 @@ If you find print output that contradicts the CSS Paged Media spec:
    known-good control (the working variant of the same property).
 2. Open an issue here with the fixture, the Chromium version, and the measured
    pixel evidence — label it `upstream`.
-3. A maintainer with a crbug.com account files it against Chromium. The issue
-   here stays open as the citable reference and the removal trigger.
+3. A maintainer with a Google account files it against Chromium — steps in
+   [`filing-upstream-chromium-bugs.md`](./filing-upstream-chromium-bugs.md).
+   The issue here stays open as the citable reference and the removal trigger.
 
 Do not fix it in a shim. See
 [`CLAUDE.md`](../CLAUDE.md) — "What Gutterpress is — and what the engine is not".
