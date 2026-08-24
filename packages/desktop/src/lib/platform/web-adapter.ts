@@ -795,8 +795,6 @@ export class WebAdapter implements Platform {
       port: 0, // no server on web
       input: args.input.key,
       title: args.input.displayName ?? null,
-      // Paged.js has been removed — native is the only engine.
-      engine: "native",
     };
   }
 

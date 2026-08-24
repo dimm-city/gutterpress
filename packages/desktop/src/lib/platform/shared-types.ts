@@ -661,13 +661,6 @@ export interface PreviewStartSuccess {
   port: number;
   input: string;
   title: string | null;
-  /**
-   * The engine actually rendering this preview. Paged.js has been removed
-   * (native-only-migration-plan.md Phase 6) — always "native" now; the field
-   * is kept for wire-compatibility with `"paged"` responses from an
-   * un-upgraded host.
-   */
-  engine: "paged" | "native";
 }
 
 export interface PreviewStartFailure {

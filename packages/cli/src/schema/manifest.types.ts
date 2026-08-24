@@ -196,10 +196,13 @@ export interface ResolvedConfig {
   title: string;
   authors: string[];
   /**
-   * Resolved pagination engine — always "native"; Paged.js has been removed.
-   * See {@link GutterpressManifest.engine}.
+   * Resolved pagination engine. Always `"native"` — `manifest.ts` assigns the
+   * literal, warning and ignoring an author's `engine: paged`. Typed as the
+   * single value it can hold so no consumer can branch on an engine that
+   * cannot run. The INPUT union ({@link GutterpressManifest.engine}) keeps
+   * both spellings, because old manifests must go on parsing.
    */
-  engine: "paged" | "native";
+  engine: "native";
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];
