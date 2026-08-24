@@ -5,7 +5,8 @@
  * (`repairRepo` — see lib/remote-auth/recovery/repair.ts): health probe →
  * stale-lock sweep → in-place fixes → last-resort re-clone with salvage.
  * Working files are never touched; every readable commit stays reachable; the
- * damaged `.git` is kept on disk as `.git-damaged-<timestamp>`.
+ * damaged `.git` is kept on disk in the OS temp dir (`gutterpress-damaged-*`),
+ * outside the project so a later snapshot can never commit it.
  *
  * Modes:
  *   gutterpress repair            diagnose + one y/N prompt before repairing

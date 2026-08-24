@@ -11,7 +11,10 @@
  *      (which cannot lose history) run first; the last-resort re-clone
  *      salvages the old object store, and for a project with no online copy
  *      restores its branch refs on top. The damaged `.git` is kept on disk
- *      (`.git-damaged-<timestamp>`) as the final fallback.
+ *      in the OS temp dir (`gutterpress-damaged-*`) as the final fallback —
+ *      NEVER inside the project, where the very next working-tree snapshot
+ *      would commit (and push) the entire damaged object store into the
+ *      author's book.
  *   3. FULLY AUTOMATIC. No choices, no confirmation dialogs — nothing the
  *      pipeline does is destructive under invariants 1–2. (The CLI `repair`
  *      command adds its own terminal y/N in front; the desktop runs it
@@ -112,6 +115,21 @@ const MSG_FAILED =
 
 function stamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+/**
+ * Move a directory, falling back to copy+delete when the rename crosses
+ * filesystems (EXDEV — e.g. a project on the main disk and a tmpfs `/tmp`).
+ * rename stays the fast path so a same-device move remains atomic.
+ */
+async function moveDir(from: string, to: string): Promise<void> {
+  try {
+    await rename(from, to);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw e;
+    await cp(from, to, { recursive: true });
+    await rm(from, { recursive: true, force: true });
+  }
 }
 
 /** True when `.git/index` can be parsed. */
@@ -382,15 +400,21 @@ async function recloneWithSalvage(
     freshGitDir = path.join(initDir, ".git");
   }
 
-  // Swap: damaged `.git` → `.git-damaged-<stamp>` (the on-disk backup),
-  // fresh `.git` in.
+  // Swap: damaged `.git` → an OS-temp backup folder, fresh `.git` in. The
+  // backup deliberately lives OUTSIDE the project: an in-project backup
+  // (pre-0.10.1: `.git-damaged-<stamp>` next to `.git`) was swept up by the
+  // post-repair working-tree snapshot below, committing — and pushing — the
+  // entire damaged object store into the author's book.
   let damagedBackup: string | undefined;
   if (fs.existsSync(gitDir)) {
-    damagedBackup = path.join(dir, `.git-damaged-${stamp()}`);
-    await rename(gitDir, damagedBackup);
-    actions.push("Kept the old history folder on disk as a backup.");
+    damagedBackup = path.join(
+      await mkdtemp(path.join(os.tmpdir(), `gutterpress-damaged-${stamp()}-`)),
+      "old-git",
+    );
+    await moveDir(gitDir, damagedBackup);
+    actions.push("Kept the old history in a backup folder outside your project.");
   }
-  await rename(freshGitDir, gitDir);
+  await moveDir(freshGitDir, gitDir);
   if (tempDir) await rm(tempDir, { recursive: true, force: true });
   actions.push(
     remoteUrl
@@ -419,7 +443,7 @@ async function recloneWithSalvage(
     // refs onto it so every commit whose objects survived stays reachable, and
     // reattach HEAD to the main branch among them. A re-clone from a remote
     // already HAS its branches: there the online copy is the history, and any
-    // local commit it never saw stays readable in the `.git-damaged-` backup.
+    // local commit it never saw stays readable in the damaged-git backup.
     const restored: string[] = [];
     if ((await git.listBranches({ fs, dir })).length === 0) {
       for (const tip of readDamagedBranchTips(damagedBackup)) {

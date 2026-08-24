@@ -20,6 +20,7 @@ import git from "isomorphic-git";
 
 import { cloneRepository } from "../clone.ts";
 import { syncProject } from "../sync.ts";
+import { hasPendingChanges } from "../../source-provider.ts";
 import { repairRepo } from "./repair.ts";
 import {
   createFixtureRepo,
@@ -175,6 +176,36 @@ describe("repairRepo — in-place fixes (history untouched by construction)", ()
     }
   });
 
+  test("a pre-existing in-project .git-damaged-* (0.10.0 repair) is never committed by later snapshots", async () => {
+    const h = await setupLocalRepo();
+    try {
+      // What a 0.10.0-era repair left behind: the old object store parked
+      // INSIDE the project, next to `.git`.
+      const legacy = path.join(h.dir, ".git-damaged-2026-08-01T00-00-00");
+      fs.mkdirSync(path.join(legacy, "objects", "ab"), { recursive: true });
+      await writeFile(path.join(legacy, "objects", "ab", "cdef"), "old packfile bytes");
+      await writeFile(path.join(legacy, "config"), "[core]\n");
+      // Plus a real edit so the repair's snapshot has something to commit.
+      await writeFile(path.join(h.dir, "chapter-01.md"), "# One\n\nEdited.\n");
+      // Corrupt the index → the in-place repair path runs and snapshots.
+      await writeFile(path.join(h.dir, ".git", "index"), "garbage-not-an-index");
+
+      const result = await repairRepo({ projectDir: h.dir });
+      expect(result.status).toBe("repaired");
+      // The edit was committed…
+      const tracked = await git.listFiles({ fs, dir: h.dir });
+      expect(tracked).toContain("chapter-01.md");
+      // …but nothing under the legacy backup was, and nothing stays pending
+      // (a snapshot loop that kept seeing it would re-commit it forever).
+      expect(tracked.some((f) => f.startsWith(".git-damaged"))).toBe(false);
+      expect(await hasPendingChanges(h.dir)).toBe(false);
+      // The folder itself is untouched on disk — skipped, not deleted.
+      expect(fs.existsSync(path.join(legacy, "objects", "ab", "cdef"))).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("fresh lock → retry_later, nothing changed", async () => {
     const h = await setupLocalRepo();
     try {
@@ -227,6 +258,17 @@ describe("repairRepo — re-clone with salvage (last resort)", () => {
       expect(result.status).toBe("repaired");
       expect(result.damagedGitBackupPath).toBeDefined();
       expect(fs.existsSync(result.damagedGitBackupPath!)).toBe(true);
+      // The backup lives OUTSIDE the project (OS temp dir), absolute path —
+      // an in-project backup was committed and PUSHED by the post-repair
+      // snapshot, landing the damaged object store in the author's book.
+      expect(path.isAbsolute(result.damagedGitBackupPath!)).toBe(true);
+      expect(
+        result.damagedGitBackupPath!.startsWith(h.projectDir + path.sep),
+      ).toBe(false);
+      // And the post-repair snapshot committed ZERO backup entries.
+      const tracked = await git.listFiles({ fs, dir: h.projectDir });
+      expect(tracked.some((f) => f.includes(".git-damaged"))).toBe(false);
+      expect(tracked.some((f) => f.includes("gutterpress-damaged"))).toBe(false);
 
       // Working files byte-identical — repair never touches them.
       for (const [file, content] of Object.entries(files)) {
@@ -234,7 +276,7 @@ describe("repairRepo — re-clone with salvage (last resort)", () => {
       }
 
       // The online copy IS the rebuilt history: a commit the remote never saw
-      // is NOT merged back in. It stays readable in the .git-damaged backup,
+      // is NOT merged back in. It stays readable in the damaged-git backup,
       // whose object store was also copied into the fresh repo — so the work
       // is recoverable, just not on the branch.
       const after = await allCommitOids(h.projectDir);
@@ -317,9 +359,7 @@ describe("repairRepo — re-clone with salvage (last resort)", () => {
       expect(result.status).toBe("retry_later");
       // The damaged .git was NOT moved aside (no half-repaired state).
       expect(fs.existsSync(path.join(h.projectDir, ".git", "objects"))).toBe(true);
-      expect(
-        fs.readdirSync(h.projectDir).some((n) => n.startsWith(".git-damaged-")),
-      ).toBe(false);
+      expect(result.damagedGitBackupPath).toBeUndefined();
     } finally {
       await h.cleanup();
     }

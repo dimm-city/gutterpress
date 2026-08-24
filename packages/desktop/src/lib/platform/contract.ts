@@ -295,8 +295,9 @@ export interface SyncStatus {
   message?: string;
   /**
    * Absolute path to the on-disk backup of the old history folder, when the
-   * repair's last-resort re-clone ran (`.git-damaged-<timestamp>`). Present on
-   * `"recovered"` so the UI can offer "Show backup".
+   * repair's last-resort re-clone ran (an OS-temp `gutterpress-damaged-*`
+   * folder — never inside the project). Present on `"recovered"` so the UI
+   * can offer "Show backup".
    */
   backupZipPath?: string;
   /**

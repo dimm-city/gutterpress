@@ -287,8 +287,17 @@ export async function listWorkdirChanges(
     map: async (filepath, [workdir, stage]) => {
       if (filepath === ".") return;
       // Untracked paths respect .gitignore (returning null prunes the
-      // subtree, so ignored directories are never descended into).
-      if (!stage && workdir && (await git.isIgnored({ fs, dir, filepath }))) {
+      // subtree, so ignored directories are never descended into). The
+      // `.git-damaged` prefix rides the same skip: pre-0.10.1 repairs parked
+      // the damaged `.git` backup INSIDE the project as `.git-damaged-<stamp>`,
+      // and a book still carrying one must never have that object store
+      // committed by a snapshot (0.10.1 writes the backup to the OS temp dir).
+      if (
+        !stage &&
+        workdir &&
+        (filepath.startsWith(".git-damaged") ||
+          (await git.isIgnored({ fs, dir, filepath })))
+      ) {
         return null;
       }
       const [wType, sType] = await Promise.all([
