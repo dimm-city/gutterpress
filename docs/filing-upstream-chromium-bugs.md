@@ -27,8 +27,9 @@ first thing triage will look for.
 
 1. Go to <https://issues.chromium.org/issues/new>, choose the **Chromium**
    tracker.
-2. Component: **`Blink>Printing`** — all three are print-path only. Triage may
-   reassign to `Blink>Paint`; that is fine, do not pre-guess.
+2. Component: **`Blink > Layout > Printing`** — verified, not guessed: it is
+   the component every existing `@page`/print bug below sits in. (An earlier
+   draft of this file said `Blink>Printing`, which does not exist.)
 3. Type **Bug**. Title: the row above.
 4. Body: paste the GitHub issue's *Repro*, *Expected*, and *Environment*
    sections verbatim. They are already in the shape Chromium asks for. Add one
@@ -38,6 +39,28 @@ first thing triage will look for.
 6. State the versions from the issue (#149 and #152 reproduce on Chromium 148
    and 151; #150 on 148, repro re-verified on 151). Do not widen the range
    beyond what was measured.
+
+## Related issues that already exist (checked 2026-08-24)
+
+None of these duplicates our three, but link them from the new reports —
+triage weights a bug that connects to live work.
+
+| Chromium | What it is | Why it matters to us |
+|---|---|---|
+| [438364050](https://issues.chromium.org/issues/438364050) | "Second section with a background image fails to render only in print preview & resultant saved pdf". P2, **Available**, on the *Rendering Core 2026 Fixit* hotlist, 13 comments. Bisected to **108.0.5343.2**, attributed to *"Set the LayoutNGPrinting feature to stable"*. Renders on screen, not in print; fine in Safari. | The closest existing bug to **#152**. Theirs is a section background, ours is `@page { background }` with a crisp size threshold — plausibly one root cause. **File #152 as related, and put the bounded evidence in it** (450×582 paints, 638×825 and up dropped): a reproducible size boundary is stronger than "an image sometimes vanishes", and that issue currently has no boundary. |
+| [382190915](https://issues.chromium.org/issues/382190915) | `background-attachment: fixed` does not cover page margins in print. P2, New. | Adjacent, not ours — same spec section ([css-page-3 §painting](https://drafts.csswg.org/css-page-3/#painting)) that #149 and #152 rest on. |
+| [406926291](https://issues.chromium.org/issues/406926291) | "Support for @page :blank selector". P3, New, filed by a Chromium engineer; states forced left/right page breaks are unsupported. | Not one of the three. It is the upstream record for **recto/verso** — the removal trigger for our `break-before: recto` handling. |
+| [40199963](https://issues.chromium.org/issues/40199963) | "Chrome PDF converts text to image when using drop-shadow CSS". P3, Assigned. | Upstream confirmation of exactly what `printsafe/no-risky-print-effects` warns about for `filter`, and the root cause behind dc-op-manual#28's ~30x build cost. |
+
+**Not filed by anyone — file these fresh:**
+
+- **#150** (`box-shadow`/`transform` dropped in margin boxes). Searching the
+  component for "margin box" returns 7 results, all feature requests, mostly
+  already Fixed — `page-margin-box @rules` shipped in
+  [40341678](https://issues.chromium.org/issues/40341678). Nothing reports
+  that properties are dropped inside those boxes.
+- **#149** (gradient-only `@page { background }` paints nothing). No match in
+  the component.
 
 ## After filing
 
