@@ -105,6 +105,17 @@ describe("Previous versions timeline — machine history entries read as writer 
   });
 });
 
+describe("Files panel — app internals are never shown to the writer", () => {
+  test("the tree drops dot-entries (.git/, .git-damaged-*/, .DS_Store) before rendering", () => {
+    const tree = read("src/lib/components/FileTree.svelte");
+    // Same rule api/media/list-images already applies: an entry whose name
+    // starts with "." is app/OS plumbing, not part of the writer's book —
+    // without this, `.git` is the first folder in every project, fully
+    // navigable and deletable from the row actions.
+    expect(tree).toContain('!e.name.startsWith(".")');
+  });
+});
+
 describe("Status bar — one calm state opening a 3-row protection summary", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   test("default label is 'All work saved'", () => {

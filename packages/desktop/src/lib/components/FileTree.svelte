@@ -124,10 +124,12 @@
     });
   }
 
-  /** Keep folders + editable files; drop everything else. */
+  /** Keep folders + editable files; drop everything else. Dot-entries
+   *  (`.git`, `.git-damaged-…`, `.DS_Store`) are app/OS plumbing, never
+   *  part of the writer's book — same rule as api/media/list-images. */
   function visibleEntries(raw: Array<{ name: string; path: string; isDir: boolean }>): Entry[] {
     return sortEntries(
-      raw.filter((e) => e.isDir || EDITABLE_EXT.test(e.name)),
+      raw.filter((e) => !e.name.startsWith(".") && (e.isDir || EDITABLE_EXT.test(e.name))),
     );
   }
 
