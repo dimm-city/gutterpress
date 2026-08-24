@@ -23,12 +23,8 @@ import {
   type HostCredential,
   type TokenStore,
 } from "./token-store.ts";
-// The single source of truth for git error decoding lives in the recovery
-// classifier — sync.ts consumes it rather than keeping parallel copies.
 import {
   classifyFromHealth,
-  classifyTransportFailure,
-  InsecureTransportError,
   RepoNeedsRecoveryError,
 } from "./recovery/classify.ts";
 import { inspectRepo } from "./recovery/inspect.ts";
@@ -76,6 +72,32 @@ export function isCredentialTransmissionSafe(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Thrown by {@link onAuthFor} when a stored credential EXISTS but the remote
+ * URL fails {@link isCredentialTransmissionSafe} (non-loopback http). Loud and
+ * typed on purpose: the old behavior (silently withholding the credential)
+ * surfaced as a 401 → "auth" → "reconnect" loop. The `code` string is the
+ * STABLE contract (matchable across dynamic-import boundaries).
+ */
+export class InsecureTransportError extends Error {
+  readonly code = "InsecureTransport";
+  constructor() {
+    // No literal scheme tokens ("http://") in this copy: the desktop redacts
+    // anything matching /https?:\/\/\S+/, which would garble the message.
+    super(
+      "This online address isn't secure, so the saved connection wasn't sent — " +
+        "connections are never sent over an insecure address. Switch the address " +
+        "to a secure one (starting with https) to sync with a saved connection.",
+    );
+    this.name = "InsecureTransportError";
+  }
+}
+
+/** Type guard for {@link InsecureTransportError} (matches on the stable code). */
+export function isInsecureTransportError(e: unknown): e is InsecureTransportError {
+  return (e as { code?: string })?.code === "InsecureTransport";
 }
 
 export function onAuthFor(credential: HostCredential | undefined) {
@@ -151,11 +173,52 @@ export async function resolveTransport(
 }
 
 /**
- * The failure arms of {@link SyncOutcome}. Decoding delegates to the shared recovery classifier
- * (classifyTransportFailure): auth_required → "auth", network_unavailable →
- * "offline", insecure_transport → "error" with its dedicated message (NEVER
- * "auth" — reconnecting can't fix an http:// address, and the auth recovery
- * path deletes the stored credential), anything else → the generic "error" arm.
+ * Decode a thrown transport error into the outcome it maps to, or null when it
+ * is not a transport failure at all. The single source of truth for transport
+ * error decoding — sync.ts and clone.ts consume it rather than keeping
+ * parallel copies.
+ */
+export function classifyTransportFailure(
+  e: unknown,
+): "auth_required" | "network_unavailable" | "insecure_transport" | null {
+  // FIRST: the withheld-cleartext-credential error. It must never fall through
+  // to the auth arm — "reconnect" can't fix an http:// address.
+  if (isInsecureTransportError(e)) return "insecure_transport";
+  const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
+  if (err?.code === "HttpError") {
+    const status = err.data?.statusCode;
+    if (status === 401 || status === 403 || status === 404) return "auth_required";
+  }
+  // For a server-side push rejection (GitPushError), the useful detail is in
+  // `data.prettyDetails` (the per-ref report-status text), so fold it into the
+  // text we scan — a "permission denied"/"forbidden"/hook-declined rejection is
+  // an AUTH/permission problem the user fixes by reconnecting, NOT a
+  // non-fast-forward (which is handled separately by isPushRejected).
+  const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
+  if (
+    /\b401\b|\b403\b|\b404\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
+      msg,
+    )
+  ) {
+    return "auth_required";
+  }
+  if (
+    /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
+      msg,
+    )
+  ) {
+    return "network_unavailable";
+  }
+  return null;
+}
+
+/**
+ * The failure arms of {@link SyncOutcome}. Decoding delegates to
+ * {@link classifyTransportFailure}: auth_required → "auth",
+ * network_unavailable → "offline", insecure_transport → "error" with its
+ * dedicated message (NEVER "auth" — reconnecting can't fix an http:// address,
+ * and the auth recovery path deletes the stored credential), anything else →
+ * the generic "error" arm.
  */
 export function failureOutcome(
   e: unknown,

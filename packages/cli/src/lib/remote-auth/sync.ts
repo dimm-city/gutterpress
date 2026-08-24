@@ -43,7 +43,6 @@ import { defaultGitHttp } from "./git-http.ts";
 
 import { resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { resolveLogger } from "./operation-log.ts";
-import { isPushRejected, isUnrelatedHistories } from "./recovery/classify.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
@@ -82,6 +81,52 @@ export type {
   SyncOutcome,
   SyncProjectOptions,
 } from "./sync-types.ts";
+
+/**
+ * A push the remote refused because our branch is behind — the pull-first
+ * situation the retry loop exists for.
+ */
+export function isPushRejected(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  // PushRejectedError carries a typed `data.reason`. ONLY a genuine
+  // non-fast-forward ("not-fast-forward") is fixable by pulling first; other
+  // reasons (e.g. "tag-exists") are not and must fall through to the friendly
+  // auth/error classifier. Treat a reason-less PushRejectedError as the
+  // historical non-fast-forward (back-compat — that is what it meant before
+  // isomorphic-git started attaching a reason).
+  if (code === "PushRejectedError") {
+    const reason = (e as { data?: { reason?: string } })?.data?.reason;
+    return reason === undefined || reason === "not-fast-forward";
+  }
+  // Server-side rejection arrives as GitPushError; only the report-status line
+  // that actually says non-fast-forward is a pull-first situation. A
+  // permission/hook decline ("permission denied", "pre-receive hook declined",
+  // …) must NOT be treated as a non-fast-forward.
+  if (code === "GitPushError") {
+    const msg =
+      ((e as { data?: { prettyDetails?: string } })?.data?.prettyDetails ?? "") +
+      " " +
+      ((e as Error)?.message ?? "");
+    return /non-fast-forward|would not be a fast-forward|not a simple fast-forward/i.test(
+      msg,
+    );
+  }
+  return false;
+}
+
+/**
+ * Unrelated histories — the local project and the configured online project
+ * share no common starting point. Sync surfaces this as a plain setup error
+ * (a wrong online address must never be silently spliced into the book).
+ */
+export function isUnrelatedHistories(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  const msg = (e as Error)?.message ?? String(e);
+  return (
+    code === "MergeNotSupportedError" ||
+    /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
+  );
+}
 
 /**
  * Default sync retry budget (BUG 6): 3 bounded passes with a short backoff.

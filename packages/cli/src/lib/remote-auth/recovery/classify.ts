@@ -13,10 +13,12 @@
  *                      cherry-pick left by an external tool)
  *
  * The transport decoders (auth/offline/insecure) and the merge/push guards
- * used by sync.ts remain here unchanged — outcome mapping, not repair.
+ * now live with the modules that own them — transport.ts, sync.ts and
+ * converge-merge.ts — because they map OUTCOMES, not repair.
  * This module is pure — no I/O, no side effects.
  */
 
+import { classifyTransportFailure } from "../transport.ts";
 import type { RepoHealth } from "./types.ts";
 
 /**
@@ -50,136 +52,6 @@ export class RepoNeedsRecoveryError extends Error {
 /** Type guard for {@link RepoNeedsRecoveryError} (matches on the stable code). */
 export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryError {
   return (e as { code?: string })?.code === "RepoNeedsRecovery";
-}
-
-// ── InsecureTransportError ───────────────────────────────────────────────────
-
-/**
- * Thrown by transport.ts's onAuth when a stored credential EXISTS but the
- * remote URL fails isCredentialTransmissionSafe (non-loopback http). Loud and
- * typed on purpose: the old behavior (silently withholding the credential)
- * surfaced as a 401 → "auth" → "reconnect" loop. The `code` string is the
- * STABLE contract (matchable across dynamic-import boundaries).
- */
-export class InsecureTransportError extends Error {
-  readonly code = "InsecureTransport";
-  constructor() {
-    // No literal scheme tokens ("http://") in this copy: the desktop redacts
-    // anything matching /https?:\/\/\S+/, which would garble the message.
-    super(
-      "This online address isn't secure, so the saved connection wasn't sent — " +
-        "connections are never sent over an insecure address. Switch the address " +
-        "to a secure one (starting with https) to sync with a saved connection.",
-    );
-    this.name = "InsecureTransportError";
-  }
-}
-
-/** Type guard for {@link InsecureTransportError} (matches on the stable code). */
-export function isInsecureTransportError(e: unknown): e is InsecureTransportError {
-  return (e as { code?: string })?.code === "InsecureTransport";
-}
-
-// ── Shared isomorphic-git error decoders (used by sync.ts) ───────────────────
-
-export function isPushRejected(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  // PushRejectedError carries a typed `data.reason`. ONLY a genuine
-  // non-fast-forward ("not-fast-forward") is fixable by pulling first; other
-  // reasons (e.g. "tag-exists") are not and must fall through to the friendly
-  // auth/error classifier. Treat a reason-less PushRejectedError as the
-  // historical non-fast-forward (back-compat — that is what it meant before
-  // isomorphic-git started attaching a reason).
-  if (code === "PushRejectedError") {
-    const reason = (e as { data?: { reason?: string } })?.data?.reason;
-    return reason === undefined || reason === "not-fast-forward";
-  }
-  // Server-side rejection arrives as GitPushError; only the report-status line
-  // that actually says non-fast-forward is a pull-first situation. A
-  // permission/hook decline ("permission denied", "pre-receive hook declined",
-  // …) must NOT be treated as a non-fast-forward.
-  if (code === "GitPushError") {
-    const msg =
-      ((e as { data?: { prettyDetails?: string } })?.data?.prettyDetails ?? "") +
-      " " +
-      ((e as Error)?.message ?? "");
-    return /non-fast-forward|would not be a fast-forward|not a simple fast-forward/i.test(
-      msg,
-    );
-  }
-  return false;
-}
-
-/** Type guard exposing MergeConflictError's per-file payload (converge-merge). */
-export function isMergeConflictError(
-  e: unknown,
-): e is {
-  data: {
-    filepaths: string[];
-    bothModified: string[];
-    deleteByUs: string[];
-    deleteByTheirs: string[];
-  };
-} {
-  return (e as { code?: string })?.code === "MergeConflictError";
-}
-
-/**
- * A non-forced `git.checkout` refused to overwrite working-tree files whose
- * content moved after we committed them (converge-merge). isomorphic-git
- * detects this in its analysis pass and throws BEFORE touching the tree, so
- * the refusal is atomic: nothing on disk has been written.
- */
-export function isCheckoutConflict(e: unknown): boolean {
-  return (e as { code?: string })?.code === "CheckoutConflictError";
-}
-
-/**
- * Unrelated histories — the local project and the configured online project
- * share no common starting point. Sync surfaces this as a plain setup error
- * (a wrong online address must never be silently spliced into the book).
- */
-export function isUnrelatedHistories(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  const msg = (e as Error)?.message ?? String(e);
-  return (
-    code === "MergeNotSupportedError" ||
-    /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
-  );
-}
-
-export function classifyTransportFailure(
-  e: unknown,
-): "auth_required" | "network_unavailable" | "insecure_transport" | null {
-  // FIRST: the withheld-cleartext-credential error. It must never fall through
-  // to the auth arm — "reconnect" can't fix an http:// address.
-  if (isInsecureTransportError(e)) return "insecure_transport";
-  const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
-  if (err?.code === "HttpError") {
-    const status = err.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) return "auth_required";
-  }
-  // For a server-side push rejection (GitPushError), the useful detail is in
-  // `data.prettyDetails` (the per-ref report-status text), so fold it into the
-  // text we scan — a "permission denied"/"forbidden"/hook-declined rejection is
-  // an AUTH/permission problem the user fixes by reconnecting, NOT a
-  // non-fast-forward (which is handled separately by isPushRejected).
-  const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
-  if (
-    /\b401\b|\b403\b|\b404\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
-      msg,
-    )
-  ) {
-    return "auth_required";
-  }
-  if (
-    /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
-      msg,
-    )
-  ) {
-    return "network_unavailable";
-  }
-  return null;
 }
 
 /**

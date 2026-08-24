@@ -23,8 +23,7 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { OFFLINE_MESSAGE } from "./github-auth.ts";
-import { isInsecureTransportError } from "./recovery/classify.ts";
-import { onAuthFor } from "./transport.ts";
+import { isInsecureTransportError, onAuthFor } from "./transport.ts";
 
 /** Coarse clone progress for host UIs. */
 export interface CloneProgressEvent {

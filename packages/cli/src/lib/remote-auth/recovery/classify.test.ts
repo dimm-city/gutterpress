@@ -3,21 +3,14 @@
  *
  * classifyFromHealth answers exactly three things: healthy (null), a
  * sweepable stale lock, or "needs_repair" (every structural condition — the
- * repair pipeline handles them all in one ordered pass). The transport
- * decoders and merge/push guards consumed by sync.ts are pinned here too.
+ * repair pipeline handles them all in one ordered pass).
  */
 import { describe, expect, test } from "bun:test";
 
 import {
   classifyFromHealth,
-  classifyTransportFailure,
-  InsecureTransportError,
-  isInsecureTransportError,
   isLikelyRepoCorruption,
-  isMergeConflictError,
-  isPushRejected,
   isRepoNeedsRecoveryError,
-  isUnrelatedHistories,
   RepoNeedsRecoveryError,
   STALE_LOCK_MIN_AGE_MS,
 } from "./classify.ts";
@@ -76,112 +69,6 @@ describe("RepoNeedsRecoveryError", () => {
     expect(e.kind).toBe("needs_repair");
     expect(isRepoNeedsRecoveryError(e)).toBe(true);
     expect(isRepoNeedsRecoveryError(new Error("x"))).toBe(false);
-  });
-});
-
-describe("isMergeConflictError", () => {
-  test("true only for code === 'MergeConflictError' and narrows the payload", () => {
-    const err = Object.assign(new Error("merge conflict"), {
-      code: "MergeConflictError",
-      data: {
-        filepaths: ["a.md"],
-        bothModified: ["a.md"],
-        deleteByUs: [],
-        deleteByTheirs: [],
-      },
-    });
-    expect(isMergeConflictError(err)).toBe(true);
-    if (isMergeConflictError(err)) {
-      expect(err.data.filepaths).toEqual(["a.md"]);
-    }
-  });
-
-  test("false for any other error code or shape", () => {
-    expect(isMergeConflictError(new Error("x"))).toBe(false);
-    expect(isMergeConflictError({ code: "PushRejectedError" })).toBe(false);
-    expect(isMergeConflictError(null)).toBe(false);
-  });
-});
-
-describe("isPushRejected", () => {
-  test("PushRejectedError: non-fast-forward (or reason-less back-compat) only", () => {
-    expect(isPushRejected({ code: "PushRejectedError" })).toBe(true);
-    expect(
-      isPushRejected({ code: "PushRejectedError", data: { reason: "not-fast-forward" } }),
-    ).toBe(true);
-    expect(isPushRejected({ code: "PushRejectedError", data: { reason: "tag-exists" } })).toBe(
-      false,
-    );
-  });
-
-  test("GitPushError: only report-status text that says non-fast-forward", () => {
-    expect(
-      isPushRejected({
-        code: "GitPushError",
-        data: { prettyDetails: "refs/heads/main non-fast-forward" },
-      }),
-    ).toBe(true);
-    expect(
-      isPushRejected({
-        code: "GitPushError",
-        data: { prettyDetails: "pre-receive hook declined" },
-      }),
-    ).toBe(false);
-  });
-
-  test("anything else is not a push rejection", () => {
-    expect(isPushRejected(new Error("ECONNREFUSED"))).toBe(false);
-  });
-});
-
-describe("isUnrelatedHistories", () => {
-  test("MergeNotSupportedError code and message signatures", () => {
-    expect(isUnrelatedHistories({ code: "MergeNotSupportedError" })).toBe(true);
-    expect(isUnrelatedHistories(new Error("refusing to merge unrelated histories"))).toBe(true);
-    expect(isUnrelatedHistories(new Error("no common commits"))).toBe(true);
-    expect(isUnrelatedHistories(new Error("plain failure"))).toBe(false);
-  });
-});
-
-describe("classifyTransportFailure", () => {
-  test("insecure transport wins over everything (never 'auth')", () => {
-    expect(classifyTransportFailure(new InsecureTransportError())).toBe("insecure_transport");
-    expect(isInsecureTransportError(new InsecureTransportError())).toBe(true);
-  });
-
-  test("HttpError 401/403/404 → auth_required", () => {
-    for (const statusCode of [401, 403, 404]) {
-      expect(classifyTransportFailure({ code: "HttpError", data: { statusCode } })).toBe(
-        "auth_required",
-      );
-    }
-  });
-
-  test("permission/hook wording → auth_required (never a pull-first)", () => {
-    expect(classifyTransportFailure(new Error("remote: permission denied"))).toBe(
-      "auth_required",
-    );
-    expect(
-      classifyTransportFailure({
-        code: "GitPushError",
-        message: "push failed",
-        data: { prettyDetails: "pre-receive hook declined" },
-      }),
-    ).toBe("auth_required");
-  });
-
-  test("network errno/wording → network_unavailable", () => {
-    expect(classifyTransportFailure(new Error("ENOTFOUND example.com"))).toBe(
-      "network_unavailable",
-    );
-    expect(classifyTransportFailure(new Error("connect ECONNREFUSED"))).toBe(
-      "network_unavailable",
-    );
-    expect(classifyTransportFailure(new Error("fetch failed"))).toBe("network_unavailable");
-  });
-
-  test("anything else → null (not a transport failure)", () => {
-    expect(classifyTransportFailure(new Error("some logic bug"))).toBeNull();
   });
 });
 

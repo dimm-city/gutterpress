@@ -67,10 +67,33 @@ import {
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
-import { isCheckoutConflict, isMergeConflictError } from "./recovery/classify.ts";
 import type { GitCache, KeptBothFile } from "./sync-types.ts";
 
 export type { KeptBothFile };
+
+/** Type guard exposing MergeConflictError's per-file payload. */
+export function isMergeConflictError(
+  e: unknown,
+): e is {
+  data: {
+    filepaths: string[];
+    bothModified: string[];
+    deleteByUs: string[];
+    deleteByTheirs: string[];
+  };
+} {
+  return (e as { code?: string })?.code === "MergeConflictError";
+}
+
+/**
+ * A non-forced `git.checkout` refused to overwrite working-tree files whose
+ * content moved after we committed them. isomorphic-git detects this in its
+ * analysis pass and throws BEFORE touching the tree, so the refusal is
+ * atomic: nothing on disk has been written.
+ */
+export function isCheckoutConflict(e: unknown): boolean {
+  return (e as { code?: string })?.code === "CheckoutConflictError";
+}
 
 export interface ConvergeResult {
   /** The branch tip after the merge (the merge commit, or the ff/no-op tip). */

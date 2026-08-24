@@ -24,7 +24,12 @@ import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
-import { syncProject, SYNC_SNAPSHOT_MESSAGE } from "./sync.ts";
+import {
+  isPushRejected,
+  isUnrelatedHistories,
+  syncProject,
+  SYNC_SNAPSHOT_MESSAGE,
+} from "./sync.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
@@ -1620,4 +1625,46 @@ describe("push-cadence e2e — two clones, pull-only ticks, push-due ticks", () 
       await rm(parentB, { recursive: true, force: true }).catch(() => {});
     }
   }, 60_000);
+});
+
+// ── Push/merge-history guards (moved here with the functions they pin) ──────
+
+describe("isPushRejected", () => {
+  test("PushRejectedError: non-fast-forward (or reason-less back-compat) only", () => {
+    expect(isPushRejected({ code: "PushRejectedError" })).toBe(true);
+    expect(
+      isPushRejected({ code: "PushRejectedError", data: { reason: "not-fast-forward" } }),
+    ).toBe(true);
+    expect(isPushRejected({ code: "PushRejectedError", data: { reason: "tag-exists" } })).toBe(
+      false,
+    );
+  });
+
+  test("GitPushError: only report-status text that says non-fast-forward", () => {
+    expect(
+      isPushRejected({
+        code: "GitPushError",
+        data: { prettyDetails: "refs/heads/main non-fast-forward" },
+      }),
+    ).toBe(true);
+    expect(
+      isPushRejected({
+        code: "GitPushError",
+        data: { prettyDetails: "pre-receive hook declined" },
+      }),
+    ).toBe(false);
+  });
+
+  test("anything else is not a push rejection", () => {
+    expect(isPushRejected(new Error("ECONNREFUSED"))).toBe(false);
+  });
+});
+
+describe("isUnrelatedHistories", () => {
+  test("MergeNotSupportedError code and message signatures", () => {
+    expect(isUnrelatedHistories({ code: "MergeNotSupportedError" })).toBe(true);
+    expect(isUnrelatedHistories(new Error("refusing to merge unrelated histories"))).toBe(true);
+    expect(isUnrelatedHistories(new Error("no common commits"))).toBe(true);
+    expect(isUnrelatedHistories(new Error("plain failure"))).toBe(false);
+  });
 });

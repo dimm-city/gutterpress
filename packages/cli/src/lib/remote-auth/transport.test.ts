@@ -26,10 +26,13 @@ import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
 import {
+  classifyTransportFailure,
   failureOutcome,
   fetchRemoteTip,
   guardTrackingRef,
+  InsecureTransportError,
   isCredentialTransmissionSafe,
+  isInsecureTransportError,
   onAuthFor,
 } from "./transport.ts";
 import {
@@ -332,5 +335,49 @@ describe("guardTrackingRef — a damaged ref store never blocks the guarded fetc
       expect(err).toBe(boom);
       expect(await git.resolveRef({ fs, dir, ref: REF }).catch(() => null)).toBeNull();
     });
+  });
+});
+
+// ── Transport failure decoding (moved here with classifyTransportFailure) ────
+
+describe("classifyTransportFailure", () => {
+  test("insecure transport wins over everything (never 'auth')", () => {
+    expect(classifyTransportFailure(new InsecureTransportError())).toBe("insecure_transport");
+    expect(isInsecureTransportError(new InsecureTransportError())).toBe(true);
+  });
+
+  test("HttpError 401/403/404 → auth_required", () => {
+    for (const statusCode of [401, 403, 404]) {
+      expect(classifyTransportFailure({ code: "HttpError", data: { statusCode } })).toBe(
+        "auth_required",
+      );
+    }
+  });
+
+  test("permission/hook wording → auth_required (never a pull-first)", () => {
+    expect(classifyTransportFailure(new Error("remote: permission denied"))).toBe(
+      "auth_required",
+    );
+    expect(
+      classifyTransportFailure({
+        code: "GitPushError",
+        message: "push failed",
+        data: { prettyDetails: "pre-receive hook declined" },
+      }),
+    ).toBe("auth_required");
+  });
+
+  test("network errno/wording → network_unavailable", () => {
+    expect(classifyTransportFailure(new Error("ENOTFOUND example.com"))).toBe(
+      "network_unavailable",
+    );
+    expect(classifyTransportFailure(new Error("connect ECONNREFUSED"))).toBe(
+      "network_unavailable",
+    );
+    expect(classifyTransportFailure(new Error("fetch failed"))).toBe("network_unavailable");
+  });
+
+  test("anything else → null (not a transport failure)", () => {
+    expect(classifyTransportFailure(new Error("some logic bug"))).toBeNull();
   });
 });
