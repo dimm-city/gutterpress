@@ -167,9 +167,27 @@ test("offline -> info toast", async () => {
   expect(h.toast.info.calls).toEqual([["You appear to be offline. Try again when connected."]]);
 });
 
-test("error -> fixed friendly toast, never the raw message", async () => {
+test("error -> the outcome's authored guidance is shown, not a false 'we'll try again later'", async () => {
+  // The lib's error-arm messages are ALL authored writer copy (the MSG_*
+  // constants or an authored generic — transport.ts failureOutcome), and
+  // some are actionable in a way a generic retry promise is not.
   const h = make();
-  h.sync.next = { status: "error", message: "TypeError: fetch failed at GitRemoteHTTP" };
+  h.sync.next = {
+    status: "error",
+    message:
+      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+  };
+  await h.ctrl.handleForceSync();
+  expect(h.toast.error.calls).toEqual([
+    [
+      "The online address points at a different project's files, so the two can't be combined. Check the project's online address.",
+    ],
+  ]);
+});
+
+test("error with no message -> the fixed reassuring fallback", async () => {
+  const h = make();
+  h.sync.next = { status: "error", message: "" };
   await h.ctrl.handleForceSync();
   expect(h.toast.error.calls).toEqual([
     ["Couldn't update the online copy. Your work is saved on this computer — we'll try again later."],

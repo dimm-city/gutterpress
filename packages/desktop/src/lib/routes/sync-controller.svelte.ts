@@ -124,13 +124,16 @@ export class SyncController {
         this.deps.toast()?.info?.("You appear to be offline. Try again when connected.");
       } else {
         if (outcome.filesChanged) this.deps.onFilesChanged();
-        // Generic error state. Deliberately a friendly fixed string, NOT
-        // outcome.message: that field carries raw git/network error text that is
-        // unhelpful (and often alarming) to the non-technical authors this app
-        // targets. Details remain available via the advanced Sync surface. The
-        // copy reassures that local work is safe (UX follow-up: a sync failure
-        // must state what remains safe).
-        this.deps.toast()?.error("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
+        // Error state. The lib's error-arm messages are ALL authored writer
+        // copy (the MSG_* constants or an authored generic — transport.ts
+        // failureOutcome; never raw git text), and some carry the actual fix
+        // ("Check the project's online address"), so show them. The fixed
+        // fallback covers an empty message and keeps stating what remains
+        // safe (UX follow-up: a sync failure must state what remains safe).
+        this.deps.toast()?.error(
+          outcome.message ||
+            "Couldn't update the online copy. Your work is saved on this computer — we'll try again later.",
+        );
       }
     } catch {
       this.deps.toast()?.error("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
