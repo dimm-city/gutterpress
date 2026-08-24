@@ -12,7 +12,10 @@ export interface PreviewEvent {
     | "viewportChanged"
     | "sourceLineChanged"
     | "elementActivated"
-    | "contextMenuRequested";
+    | "contextMenuRequested"
+    | "blockEditRequested"
+    | "blockEditFinished"
+    | "blockEditStateChanged";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -49,12 +52,18 @@ export interface PreviewEvent {
     link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
-    /** contextMenuRequested: viewport point the menu was requested at. */
+    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
     x?: number;
-    /** contextMenuRequested: viewport point the menu was requested at. */
+    /** contextMenuRequested / blockEditRequested: viewport point the request was made at. */
     y?: number;
-    /** contextMenuRequested: how the menu was invoked. */
-    via?: "mouse" | "keyboard";
+    /** contextMenuRequested: how the menu was invoked. blockEditRequested: always "dblclick". */
+    via?: "mouse" | "keyboard" | "dblclick";
+    /** blockEditFinished: the block's edited markdown source, verbatim. */
+    text?: string | null;
+    /** blockEditFinished: true when the author committed (Cmd/Ctrl+Enter, blur) rather than cancelled. */
+    commit?: boolean;
+    /** blockEditStateChanged: whether an in-flow editor is now open. */
+    open?: boolean;
   };
 }
 
@@ -105,30 +114,25 @@ export interface ContextTarget {
 }
 
 /**
- * A single fragment's geometry from `getRectsFor()` (protocol v5, inline-
- * editing plan §5.3, ADR 0009) — plain and JSON-cloneable, `page` is the
- * fragment's own 1-based page number (a split block's fragments can land on
- * different pages).
+ * `beginBlockEdit()`'s result (protocol v8). `ok: false` with
+ * `reason: "unresolved"` means the range no longer matches a live block — it
+ * was deleted or moved since the target was captured — so the caller should
+ * drop the request rather than wait.
  */
-export interface PreviewRect {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-  page: number;
+export interface BlockEditStarted {
+  ok: boolean;
+  reason?: string;
 }
 
 /**
- * `getRectsFor()`'s result: every fragment rect for one logical block.
- * `rects` is empty when nothing resolves — a range that no longer matches
- * anything in `chapter` (the block was deleted/moved).
+ * `endBlockEdit()`'s result (protocol v8). `ended: false` means nothing was
+ * open (the call is idempotent). `text` is the block's edited markdown source,
+ * verbatim — it is NOT a rendered projection, so no serializer is involved.
  */
-export interface RectsForResult {
-  rects: PreviewRect[];
+export interface BlockEditEnded {
+  ended: boolean;
+  text: string | null;
 }
-
-/** Target form for `getRectsFor()` (§5.3). */
-export type RectsForTarget = { chapter: string; range: SourceRange };
 
 /** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
@@ -318,28 +322,36 @@ export class PreviewClient {
   }
 
   /**
-   * All fragment rects for one logical block, keyed by `{chapter, range}`
-   * (protocol v6, block overlay — inline-editing plan §5.3). A source range is
-   * duplicated verbatim onto every split fragment (Paged.js clones a block
-   * across pages but copies every data attribute to each clone), so it
-   * identifies the whole fragment set on its own — no separate ref needed,
-   * and it survives a fresh render (a splice mints fresh DOM but the same
-   * range) without a post-splice fallback.
+   * Open the in-flow editor on one block (protocol v8, inline-editing plan
+   * §3.1). `text` is that block's markdown SOURCE, read host-side from the
+   * authoritative buffer — the book document never sources its own text.
+   * `caret` seats the caret near a click point, in iframe viewport
+   * coordinates.
+   *
+   * Replaced `getRectsFor()`/`setEditMask()`, which existed only to place and
+   * de-clutter behind a floating edit panel. The editing surface is now the
+   * block's own element, so there is no geometry to fetch and nothing to mask.
    */
-  getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
-    return this.call<RectsForResult>("getRectsFor", [target]);
+  beginBlockEdit(spec: {
+    chapter: string;
+    range: SourceRange;
+    text: string;
+    caret?: { x: number; y: number };
+  }): Promise<BlockEditStarted> {
+    return this.call<BlockEditStarted>("beginBlockEdit", [spec]);
   }
 
   /**
-   * Toggle a masking class on every fragment matching `{chapter, range}`,
-   * plus the book document's own scroll lock (protocol v6, block overlay —
-   * inline-editing plan §5.1/§5.3). Purely cosmetic and reversible; `masked:
-   * false` clears the scroll lock even when the range no longer resolves to
-   * any live fragment (defense-in-depth teardown after a splice already
-   * replaced the DOM).
+   * Close the in-flow editor and read back its text (protocol v8). Idempotent.
+   *
+   * Use this only for an end the HOST initiated (a dialog opening over the
+   * workspace). Ends the author initiates inside the book — Escape,
+   * Cmd/Ctrl+Enter, blur — arrive as the `blockEditFinished` event carrying the
+   * same text, because a keystroke in a cross-origin document is invisible
+   * here.
    */
-  setEditMask(spec: { chapter: string; range: SourceRange; masked: boolean }): Promise<{ count: number }> {
-    return this.call<{ count: number }>("setEditMask", [spec]);
+  endBlockEdit(spec: { commit: boolean }): Promise<BlockEditEnded> {
+    return this.call<BlockEditEnded>("endBlockEdit", [spec]);
   }
 
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */

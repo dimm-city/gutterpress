@@ -258,22 +258,52 @@ try {
     }
   });
 
-  await step("3b. the real block-menu action opens an operable inline editor", async () => {
+  await step("3b. the real block-menu action edits the block IN THE PAGE", async () => {
+    // Protocol v8: there is no SPA-side panel to look for. The editing surface
+    // is the block's own element inside the book iframe, so the assertions are
+    // about that element — it becomes contenteditable, holds the block's
+    // markdown SOURCE (not its rendered text), and takes typing.
     await page.locator(".context-menu-item", { hasText: "Edit this block" }).click();
-    const overlay = page.locator(".block-edit-overlay");
-    await overlay.waitFor({ state: "visible", timeout: 10_000 });
-    const input = overlay.locator(".cm-content");
-    await input.click();
-    await page.keyboard.press("End");
+    const box = book.locator(".gutterpress-editing");
+    await box.waitFor({ state: "visible", timeout: 10_000 });
+    if ((await box.count()) !== 1) {
+      throw new Error(`expected exactly one editing block, got ${await box.count()}`);
+    }
+    if ((await box.getAttribute("contenteditable")) !== "plaintext-only") {
+      throw new Error("the block did not become a plaintext-only editing surface");
+    }
     await page.keyboard.type(" test");
-    const text = await input.textContent();
-    if (!text?.includes("test")) throw new Error("typing did not reach the inline block editor");
+    const text = await box.textContent();
+    if (!text?.includes("test")) throw new Error("typing did not reach the in-flow block editor");
+
+    // Escape cancels: the box reverts to rendered HTML, and the typing is gone.
     await page.keyboard.press("Escape");
-    await overlay.waitFor({ state: "hidden", timeout: 10_000 });
+    await book.locator(".gutterpress-editing").waitFor({ state: "detached", timeout: 10_000 });
+    const reverted = await targetPara.first().textContent();
+    if (reverted?.includes("test")) throw new Error("Escape did not discard the edit");
     await assertEditorClosed("inline block editing");
   });
 
   await dismissMenuViaOutsideClick();
+
+  // ── 3c. Double-click is the SECOND entry point (protocol v8) ───────────────
+  await step("3c. double-click opens the in-flow editor and Cmd/Ctrl+Enter commits", async () => {
+    const box = await boxOf(targetPara);
+    const { x, y } = centerOf(box);
+    await page.mouse.dblclick(x, y);
+    const editing = book.locator(".gutterpress-editing");
+    await editing.waitFor({ state: "visible", timeout: 10_000 });
+    await page.keyboard.type(" DBLCLICK");
+    // Commit through the same engine every other menu action uses. The commit
+    // triggers a real save, so the frame swaps — `boxOf` already tolerates
+    // that, and the editing box goes away with it either way.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+    await book
+      .locator(".gutterpress-editing")
+      .waitFor({ state: "detached", timeout: 15_000 })
+      .catch(() => {});
+    await assertEditorClosed("double-click inline editing");
+  });
 
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
   //      cross-origin book iframe) ────────────────────────────────────────────

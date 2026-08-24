@@ -1,12 +1,14 @@
 # Inline editing plan
 
-> **Status 2026-08-24: rewritten.** The original 1128-line plan (six PRs against
-> the Paged.js preview) has **shipped in full** — click-to-source,
-> `data-source-range`, the bridge protocol, the commit engine, the right-click
-> menu, selection formatting, and the click-to-edit block overlay are all in the
-> product. This document is no longer that plan. It specifies the one change
-> left: **replacing the floating block-edit overlay with true in-flow editing**,
-> now that the native viewer has made it possible.
+> **Status 2026-08-24: SHIPPED.** The original 1128-line plan (six PRs against
+> the Paged.js preview) shipped in full — click-to-source, `data-source-range`,
+> the bridge protocol, the commit engine, the right-click menu, selection
+> formatting, and the click-to-edit block overlay. Then the native viewer made
+> the overlay unnecessary, and **in-flow editing replaced it** (bridge protocol
+> v8). This document records that design as built.
+>
+> Entry points: the context menu's "Edit this block" **and** double-click on any
+> annotated block. Both land on the same host handler.
 >
 > Background and the decisions that survive: [ADR 0009](./adr/0009-inline-editing-source-ranges.md)
 > (revised 2026-08-24).
@@ -34,11 +36,11 @@ Both died with Paged.js. The native viewer "never chunks the DOM"
 `relayout()` rebuilds the strips from scratch and re-measures. The overlay is now
 solving a problem the product no longer has.
 
-> Note: `preview-shell.js` still carries a comment claiming `relayout()` "only
-> re-`measure()`s the EXISTING strips". That was true of an earlier revision and
-> is false against the current `fragment.ts`, which calls `buildStrips()`. The
-> comment is corrected as part of this work — it is the single most misleading
-> sentence in the preview code for anyone evaluating in-place updates.
+> Note: `preview-shell.js` used to carry a comment claiming `relayout()` "only
+> re-`measure()`s the EXISTING strips" — true of an earlier revision, false
+> against the current `fragment.ts`, which calls `buildStrips()`. It was the
+> single most misleading sentence in the preview code for anyone evaluating
+> in-place updates, and it is corrected in place.
 
 ## 2. Evidence (spike-verified 2026-08-24, Chromium 1194)
 
@@ -125,18 +127,34 @@ dismissal subscription — the caret lives in the page, so the page owns all of 
 `ContextMenuController`'s "Edit this block" item, its gating, and its
 `{chapter, range, anchor}` handoff are unchanged.
 
-### 3.4 Cost
+### 3.4 Cost (measured, not estimated)
 
-| | Removed | Added |
+| | Added | Removed |
 |---|---|---|
-| `BlockEditOverlay.svelte` | 222 | — |
-| `block-overlay-controller.svelte.ts` | 442 | ~70 (new controller) |
-| `block-overlay-controller.test.ts` | 483 | ~150 |
-| `preview-interface.js` rects/mask/CSS | ~90 | ~110 |
-| `preview-client.ts` methods + rect types | ~35 | ~15 |
-| `+page.svelte` wiring | ~10 sites | ~4 sites |
-| `preview-shell.js` edit hold | — | ~10 |
-| **Net** | **≈1280** | **≈360** |
+| `BlockEditOverlay.svelte` | — | 222 |
+| `block-overlay-controller.svelte.ts` | — | 442 |
+| `inline-edit-controller.svelte.ts` | 339 | — |
+| `preview-interface.js` | 274 | 90 |
+| `preview-client.ts` | 52 | 41 |
+| `preview-shell.js` (swap hold) | 24 | — |
+| `preview-bridge.js` (event forwarding) | 15 | — |
+| `+page.svelte` wiring | 19 | 30 |
+| `context-menu-controller.svelte.ts` | 7 | 6 |
+| **Production total** | **730** | **831** |
+| Tests (unit + iframe + shell + e2e) | 740 | 619 |
+
+**Production code is ~100 lines smaller — not the ~900 first projected.** That
+estimate assumed a ~70-line controller; the real one is 339, because the parts
+that are genuinely SPA-side work (reading the authoritative source, capturing
+the gate inputs, the `pendingRender` guard, host-initiated end) did not shrink
+just because the panel went away — only the panel did.
+
+The win is in the KIND of complexity, not the line count. What is gone:
+geometry synchronisation between two documents, a second CodeMirror with its own
+focus trap and IME guard, a dismissal matrix over `renderingComplete` / page /
+viewport events, and a mask+scroll-lock that had to be reverted on every exit
+path. What replaced it is a text box the browser positions. Judge this change on
+that, not on the diff size.
 
 ## 4. What the author gets
 
@@ -164,38 +182,68 @@ dismissal subscription — the caret lives in the page, so the page owns all of 
 4. **No serializer, ever.** The editable surface holds markdown source. The moment
    it holds a rendered projection, ADR 0009 premise 3 applies and this design is
    void.
-5. **Renderer stays PWA-clean** (CLAUDE.md §8). The new controller is
+5. **Renderer stays PWA-clean** (CLAUDE.md §8). The controller is
    fetch/bridge-based with no `node:*` and no lib value imports.
+6. **No edit may open between a commit and the re-render**
+   (`InlineEditController.pendingRender`). Found while building this, and not
+   obvious: after a commit lands, every `data-source-range` still on screen was
+   computed from PRE-commit content, so a range arriving from a double-click
+   indexes the wrong lines of the new buffer. The slice captured at that range
+   would then be compared against ITSELF at commit time and match trivially —
+   ADR 0009 §3's failure mode reached by a different route. The generation
+   counter does NOT catch it, because the capture happens after the commit that
+   bumped the generation. Chaining edits is reachable in one gesture
+   (double-clicking from one block to the next commits the first via blur), so
+   this is a live path. The guard clears on the next `renderingComplete`, and on
+   a refused commit (nothing was written, so nothing is stale).
 
-## 6. Open questions
+## 6. Shipped, and still open
 
-- **Entry gesture.** v1 keeps the context-menu item, so the change is a pure
-  implementation swap with no UX churn. Once the caret is genuinely in the page,
-  double-click (or single click on an already-armed block) becomes the natural
-  gesture — worth a follow-up, not worth blocking on. Making the whole strip
-  editable at once is explicitly *not* the answer: Enter would mint blocks with
-  no source range.
-- **Refresh debounce.** 120ms is a starting guess. `relayout()` costs "the same
-  order as mount (tens of ms on a real book)" per `fragment.ts`; measure on the
-  34pp field guide and tune. If it proves too slow to run per-input, fall back to
-  refreshing on a typing pause only.
+**Shipped:** both entry points — the context-menu item and double-click.
+Double-click emits `blockEditRequested` from the book document; the host answers
+with `beginBlockEdit`, because only the host can read the authoritative buffer.
+Making the whole strip editable at once is explicitly *not* on the table: Enter
+would mint blocks with no source range.
+
+Still open:
+
+- **Refresh debounce.** `EDIT_REFRESH_MS = 120` in `preview-interface.js` is a
+  starting value, to be tuned by local measurement. `relayout()` costs "the same
+  order as mount (tens of ms on a real book)" per `fragment.ts`, so it cannot run
+  per keystroke on a long book. If 120ms proves too aggressive, refresh on a
+  typing pause instead — the constant is the only thing that has to change.
 - **Scroll anchoring.** A block growing above the viewport shifts what is on
   screen. The shell already has `capture()`/`restore()` for scroll across swaps;
-  check whether it needs an in-edit equivalent, or whether pinning the edited
-  block's own rect is enough.
-- **Visual treatment** of the editing block (outline? tint?) is a design-review
-  item, same as the mask treatment it replaces.
+  an in-edit equivalent may be needed, or pinning the edited block's own rect
+  may be enough.
+- **Visual treatment** of the editing block is a design-review item, same as the
+  mask treatment it replaces. Today: a `Highlight`-coloured outline plus a soft
+  ring. Both are deliberately layout-neutral — a border or padding here would
+  change the block's extent and repaginate the book on merely entering edit
+  mode.
 
-## 7. Test plan
+## 7. Tests
 
-- **Unit (SPA):** the new controller against a fake bridge + fake commit engine —
-  open, commit, cancel, stale-generation refusal, dirty-buffer refusal. The
-  existing commit-engine tests are untouched and must stay green.
-- **Iframe (`tests/preview-interface.test.mjs`):** `beginBlockEdit` resolves and
-  makes exactly one element editable; `endBlockEdit` returns the typed text and
-  restores the original HTML byte-for-byte on cancel; multi-line source
-  round-trips; an unresolvable range fails cleanly.
-- **Integration:** edit a block that spans a page break; confirm the page count
-  updates while typing and that the committed render matches the mid-edit
-  pagination.
-- **Parity:** `scripts/native-parity-gate.ts` stays green with an empty allowlist.
+- **Unit** — `tests/editor/inline-edit-controller.test.ts` (25 tests): both entry
+  points, commit/cancel, the captured gate inputs, a refused commit, the
+  trailing-blank boundary rule, host-initiated end, the `pendingRender` guard
+  (including that a refused commit does not brick the next edit), and the
+  fail-safe when a render lands mid-edit. The commit-engine tests are untouched
+  and stay green.
+- **Iframe** — `tests/preview-interface.test.mjs`: exactly one element becomes
+  editable; `refresh()` is called on open AND close; multi-line source
+  round-trips byte-for-byte; rendered HTML is restored on both paths with no
+  inline-style residue; a pre-existing `white-space` is restored rather than
+  clobbered; unresolved ranges refuse cleanly; `endBlockEdit` is idempotent; a
+  second `beginBlockEdit` finishes its predecessor rather than dropping it;
+  Escape cancels and Cmd/Ctrl+Enter commits while plain Enter inserts a newline;
+  double-click requests (never starts) an edit, and does not re-request while
+  one is live; the rects/mask commands are gone. Plus bridge forwarding for all
+  three new events.
+- **Shell** — `tests/preview-shell-regression.test.mjs`: an open edit holds a
+  `content-update` swap, and closing it applies the revision that arrived
+  meanwhile.
+- **End-to-end** — `tests/integration/inline-editing.pw.mjs`: the menu action and
+  double-click both edit in the page, under real Electron.
+- **Parity** — `scripts/native-parity-gate.ts` must stay green with an empty
+  allowlist.

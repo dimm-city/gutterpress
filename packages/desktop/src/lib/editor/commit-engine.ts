@@ -1,6 +1,6 @@
 /**
- * commit-engine.ts — the single write path for context-menu / block-overlay
- * mutations (inline-editing plan §4.7, PR 3).
+ * commit-engine.ts — the single write path for context-menu and in-flow
+ * block-edit mutations (docs/inline-editing-plan.md §3).
  *
  * `commitRangePatch({chapter, range, expected, replacement, expectedGeneration})`
  * is the ONLY function in the app that turns a menu action into a file

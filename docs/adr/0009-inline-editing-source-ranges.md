@@ -189,14 +189,33 @@ document can at worst produce a menu with wrong labels.
 | v5 | `getRectsFor({ref} \| {chapter, range})`; `setEditMask({ref, masked})` |
 | v6 | the `{ref}` target form dropped from both (the native viewer never mints a ref) |
 | v7 | `getContextTargetAt()` gains `pageMarker` + the margin-band fallback |
+| v8 | `beginBlockEdit()` / `endBlockEdit()` and the `blockEditRequested` / `blockEditFinished` / `blockEditStateChanged` events. **Removes** `getRectsFor()` and `setEditMask()` |
 
-`getRectsFor()` and `setEditMask()` exist only to position and de-clutter behind
-a floating panel. With the panel gone they have no other caller and are removed;
-the in-flow surface needs neither geometry nor a mask. The **read-only plus
-cosmetic** rule above survives their removal in spirit but not in letter: the
-bridge now carries one mutating-in-the-DOM pair (`beginBlockEdit` /
-`endBlockEdit`), which still writes nothing to disk — every write stays SPA-side
-behind the gate in decision 3.
+`getRectsFor()` and `setEditMask()` existed only to position and de-clutter
+behind a floating panel. With the panel gone they had no other caller and are
+removed; the in-flow surface needs neither geometry nor a mask.
+
+The **read-only plus cosmetic** rule above survives v8 in spirit but not in
+letter: the bridge now mutates the book DOM (it swaps a block's rendered HTML for
+its markdown source and back). It still writes nothing to disk — every write
+stays SPA-side behind the gate in decision 3 — and the mutation is fully
+reversible, with the rendered HTML restored on both the commit and cancel paths.
+
+Two constraints on the v8 surface, each a consequence of the caret living in a
+cross-origin document:
+
+- **The host supplies the text; the book document never sources its own.**
+  `beginBlockEdit` takes the source slice as an argument. Deriving it from the
+  DOM would mean editing a projection of possibly-stale content — and the DOM is
+  rendered from SAVED content, which is exactly what decision 3 guards against.
+- **An end the author initiates arrives as an event, not a reply.** Escape,
+  Cmd/Ctrl+Enter and blur happen inside the iframe where the SPA cannot observe
+  them, so `blockEditFinished` carries the text out. `endBlockEdit` is for ends
+  the HOST initiates (a dialog opening over the workspace) and returns the text
+  in its reply. `blockEditStateChanged` fires on every open and close regardless
+  of which side initiated it, because `preview-shell.js` holds hot-reload swaps
+  on it — a swap mid-edit would destroy the caret and the uncommitted text with
+  it, and a missed close would freeze the preview.
 
 Two constraints shaped the surface:
 

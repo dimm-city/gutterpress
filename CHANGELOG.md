@@ -20,6 +20,32 @@ This project follows [Semantic Versioning](https://semver.org/).
   and worth naming: you can no longer edit with two pages showing. That
   arrangement never had room for either half.
 
+- **Editing a block in the preview now happens IN the page.** Right-click →
+  "Edit this block", or just double-click any block, and that block itself
+  becomes an editing surface holding its markdown source. The caret sits in the
+  book's own typography, at the size and position the text really occupies, and
+  the pages reflow around your typing — including across a page break, which is
+  edited as one block rather than one fragment at a time. `Cmd`/`Ctrl+Enter` or
+  clicking away commits; `Escape` discards. Nothing is dimmed and the page no
+  longer locks its scroll while you work.
+
+  This replaces the floating edit panel. That panel existed because the old
+  Paged.js preview split a block spanning a page into several cloned elements —
+  a caret could not cross the seam — and never re-paginated after a DOM change.
+  Neither is true of the native viewer: it never chunks the DOM, and
+  `Gutterpress.refresh()` rebuilds and re-measures, so the page count stays
+  right as a block grows. Verified rather than assumed, including that
+  multi-line markdown (lists, tables, fences) round-trips byte-for-byte and that
+  a rich-text paste lands as plain text.
+
+  Under the hood: bridge protocol v8 adds `beginBlockEdit`/`endBlockEdit` and
+  drops `getRectsFor`/`setEditMask`, which existed only to place and de-clutter
+  behind the panel. The write path is unchanged — every mutation still flows
+  through the same commit engine and its clean-buffer gate — and hot-reload
+  swaps are held while an edit is open so a save elsewhere cannot destroy your
+  uncommitted typing. See `docs/inline-editing-plan.md` and
+  [ADR 0009](docs/adr/0009-inline-editing-source-ranges.md) (revised).
+
 ### Fixed
 
 - **"Updating preview…" no longer gets stuck on screen.** Save a file and the
@@ -33,6 +59,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   bug came down to how quickly your book laid out. The preview now says "done"
   itself, at the moment it puts the new pages on screen, so there is nothing
   left to miss.
+
+- **A comment in `preview-shell.js` claiming the viewer cannot re-paginate a
+  DOM edit.** It said `relayout()` "only re-`measure()`s the EXISTING strips";
+  the current `fragment.ts` rebuilds them from scratch via `buildStrips()`. The
+  claim had been the standing argument against ever updating the preview in
+  place. The reason to prefer a full swap for content updates is performance
+  (509ms vs 998ms, measured), which still holds and is now what the comment
+  says.
+
 
 ## [0.10.1] - 2026-08-24
 
