@@ -44,8 +44,8 @@
  * check out WITHOUT `force` (so a write that arrives later is left alone or
  * loudly refused, never silently replaced). Both are marked in the body.
  *
- * Used by `syncProject` (every sync) and by `repairRepo`'s salvage step
- * (merging a rescued old branch tip back into the repaired history).
+ * Used by `syncProject` — every sync. (It also served `repairRepo`'s salvage
+ * step until the repair subsystem was deleted.)
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "../git-fs.ts";
@@ -252,7 +252,6 @@ export async function convergeMerge(params: {
   author: { name: string; email: string };
   authorName?: string;
   authorEmail?: string;
-  allowUnrelatedHistories?: boolean;
 }): Promise<ConvergeResult> {
   const { dir, cache, branch, theirs, author } = params;
 
@@ -287,7 +286,9 @@ export async function convergeMerge(params: {
       theirs,
       author,
       message: CONVERGE_MERGE_MESSAGE,
-      allowUnrelatedHistories: params.allowUnrelatedHistories ?? false,
+      // Always false: syncProject merges two views of ONE history. The
+      // option existed only for repairRepo's salvage step, which is gone.
+      allowUnrelatedHistories: false,
       mergeDriver: ({ contents, path: filepath }) => {
         const [base, ours, theirsContent] = contents as [string, string, string];
         if (
@@ -379,7 +380,7 @@ export async function convergeMerge(params: {
         cache,
         ourTip,
         theirs,
-        params.allowUnrelatedHistories ?? false,
+        false,
       );
       if (added === null || added.length === 0) throw e; // unmergeable — surface it
       await equalize({ binary: added, deleteByUs: [], deleteByTheirs: [] });
