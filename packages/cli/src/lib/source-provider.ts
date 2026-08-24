@@ -74,6 +74,18 @@ export interface SnapshotOptions {
   repoRoot?: string;
   /** Optional log file for debugging snapshot operations. */
   logFile?: string;
+  /**
+   * The CALLER's object cache, when the snapshot is one step of a longer
+   * locked operation (sync). Committing rewrites `.git/index`, and
+   * isomorphic-git's index cache invalidates on a stat comparison that can
+   * miss a same-second rewrite of the same size — so a caller that keeps
+   * using its own cache afterwards would keep reading the PRE-snapshot index.
+   * That is not cosmetic: `git.checkout` derives STAGE from it, and a stale
+   * STAGE makes an unmodified file look locally modified. Pass the cache and
+   * the snapshot's own `git.add`/`git.commit` refresh it in place. Omit it
+   * for standalone snapshots — they get a private cache, released on return.
+   */
+  cache?: GitCache;
 }
 
 /**
@@ -638,8 +650,10 @@ export async function snapshotWorkingTreeUnlocked(
     ? createFileLogger(options.logFile, "snapshot")
     : noopLogger;
   // One object cache for this snapshot operation only (diff + stage +
-  // commit share it), released when the operation returns.
-  const cache: GitCache = {};
+  // commit share it), released when the operation returns — unless the
+  // caller supplied its own, in which case we use that so its index view
+  // stays coherent past our commit (see SnapshotOptions.cache).
+  const cache: GitCache = options.cache ?? {};
   // Crash-window marker: staging (git.add/remove) and git.commit are two
   // separate writes. A crash between them leaves the index matching the
   // workdir with NO commit — and because the changes walk compares

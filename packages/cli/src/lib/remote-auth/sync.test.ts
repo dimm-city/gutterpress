@@ -505,6 +505,205 @@ describe("syncProject", () => {
   });
 });
 
+// ── The autosave-versus-sync race (0.10.0 data-loss report) ──────────────────
+//
+// Field report on 0.10.0: "this latest update erases my most recent edit and
+// states 'RELOADED FROM DISC' every minute or so". A solo author, auto-sync on
+// its 2-minute safety timer, and a repo full of "Snapshot before syncing"
+// commits. The author is TYPING while sync runs, and the desktop editor's
+// autosave fires 500 ms after the last keystroke — so an edit routinely lands
+// on disk after the pre-sync snapshot committed the tree and before the merge
+// ends in a checkout. Whatever the checkout writes over that edit is gone: it
+// was never in a commit, so no "Previous versions" entry holds it.
+//
+// Every test below asserts the same rule from a different angle: an edit that
+// reaches disk mid-sync must still be there afterwards, and must be reachable
+// in history. Converging it into conflict markers is fine; vanishing is not.
+describe("an edit that lands on disk mid-sync is never discarded", () => {
+  /**
+   * An httpClient that runs `duringFetch` at the upload-pack ref
+   * advertisement — the moment the sync is out on the network, AFTER the
+   * snapshot committed the tree and BEFORE the merge/checkout. That is the
+   * window a real autosave lands in, and the whole round-trip is how long it
+   * stays open.
+   */
+  function writeDuringFetch(duringFetch: () => Promise<void>): typeof httpNode {
+    let fired = false;
+    return {
+      async request(config: Parameters<typeof httpNode.request>[0]) {
+        if (config.url.includes("service=git-upload-pack") && !fired) {
+          fired = true;
+          await duringFetch();
+        }
+        return httpNode.request(config);
+      },
+    } as typeof httpNode;
+  }
+
+  /** True when any commit reachable from HEAD holds exactly `content` at `filepath`. */
+  async function reachableInHistory(
+    dir: string,
+    filepath: string,
+    content: string,
+  ): Promise<boolean> {
+    for (const c of await git.log({ fs, dir, depth: 50 })) {
+      try {
+        const { blob } = await git.readBlob({ fs, dir, oid: c.oid, filepath });
+        if (Buffer.from(blob).toString("utf8") === content) return true;
+      } catch {
+        // not present in that commit
+      }
+    }
+    return false;
+  }
+
+  const LATE_EDIT = "# One\n\nThe sentence the author typed while syncing.\n";
+
+  test("the reported bug: a solo author's edit survives on disk AND in history", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      // The last autosave before the sync timer fired.
+      await writeFile(file, "# One\n\nSaved before the sync started.\n");
+
+      // Nobody else touched the online copy — the merge below is a pure
+      // no-op, which is exactly the case the 0.10.0 regression made
+      // destructive (pre-0.10.0 returned early and never checked out).
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(await reachableInHistory(h.projectDir, "chapter-01.md", LATE_EDIT)).toBe(true);
+      expect(await isClean(h.projectDir)).toBe(true);
+      // …and it reached the online copy, since the push follows the pull.
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(LATE_EDIT);
+
+      // Honest reporting: nothing came DOWN, so the author must not be told
+      // their work was "combined with changes from the online copy" (and the
+      // host must not be told to reload a preview that didn't change).
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
+      expect(outcome.mergedRemoteChanges).toBe(false);
+      expect(outcome.filesChanged).toBeUndefined();
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("pullChanges alone: the late edit is committed, not overwritten", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      await writeFile(file, "# One\n\nSaved before the sync started.\n");
+
+      const outcome = await pullChanges({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(await reachableInHistory(h.projectDir, "chapter-01.md", LATE_EDIT)).toBe(true);
+      // The pull's own snapshot is the one that captured it.
+      expect(outcome.snapshotId).toBeDefined();
+      const snap = await git.readCommit({
+        fs,
+        dir: h.projectDir,
+        oid: outcome.snapshotId!,
+      });
+      expect(snap.commit.message.trim()).toBe("Saved the edit you made while syncing");
+      expect(outcome.status).toBe("up-to-date");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("late edit vs an overlapping online edit: BOTH versions land, in markers", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
+        "online edit",
+      );
+
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(outcome.status).toBe("synced");
+      const content = await readFile(file, "utf8");
+      // Converged, not chosen between — the documented policy.
+      expect(content).toContain("The sentence the author typed while syncing.");
+      expect(content).toContain("Online rewrite.");
+      expect(content).toContain("<<<<<<< your version");
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a write between the merge and the checkout is refused, never overwritten", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      // Both sides edit the same file, so the merge genuinely has to write it
+      // — the only shape in which the checkout can collide with a late write.
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
+        "online edit",
+      );
+      await writeFile(file, "# One\n\nLocal rewrite.\n");
+
+      // The narrowest window there is: a write that lands after the merge
+      // commit exists and before the working tree is synced to it. No network
+      // hook reaches in there, so patch the merge call itself.
+      const realMerge = git.merge;
+      let merged = 0;
+      (git as unknown as { merge: typeof git.merge }).merge = async (args) => {
+        const result = await realMerge(args);
+        merged++;
+        await writeFile(file, LATE_EDIT);
+        return result;
+      };
+      let outcome;
+      try {
+        outcome = await pullChanges({ projectDir: h.projectDir });
+      } finally {
+        (git as unknown as { merge: typeof git.merge }).merge = realMerge;
+      }
+      expect(merged).toBeGreaterThan(0);
+
+      // Refused, not forced: the author's newest bytes are untouched on disk.
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(outcome.status).toBe("error");
+      expect(outcome.message).toContain("Your work is saved on this computer");
+
+      // The branch was rolled back off the merge it could not check out, so
+      // HEAD, the index and the working tree still agree — no half-applied
+      // merge for the next sync to trip over.
+      const tip = await git.resolveRef({ fs, dir: h.projectDir, ref: "main" });
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: tip });
+      expect(commit.parent).toHaveLength(1);
+
+      // And the retry converges properly — the late edit is combined with the
+      // online one instead of being dropped by either side.
+      const retry = await syncProject({ projectDir: h.projectDir });
+      expect(retry.status).toBe("synced");
+      const content = await readFile(file, "utf8");
+      expect(content).toContain("The sentence the author typed while syncing.");
+      expect(content).toContain("Online rewrite.");
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
 describe("test server receive-pack validation", () => {
   test("a stale oldOid is rejected as non-fast-forward and the ref does not move", async () => {
     const serverDir = await tempDir("gutterpress-sync-nff-server-");

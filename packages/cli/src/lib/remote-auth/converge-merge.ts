@@ -33,6 +33,15 @@
  * driver-unreachable cases (deletes, binaries, both-adds) with an ordinary
  * commit and re-run the merge, which is then clean by construction.
  *
+ * THE WORKING TREE MOVES WHILE WE RUN. An author is typing into the same files
+ * a background sync is merging, and the desktop editor's autosave lands 500 ms
+ * after the last keystroke — so a write can arrive at any point between the
+ * caller's snapshot-first commit and the checkout that ends this function.
+ * Two rules keep that from costing a paragraph: commit anything already on
+ * disk right before merging (so it merges rather than being overwritten), and
+ * check out WITHOUT `force` (so a write that arrives later is left alone or
+ * loudly refused, never silently replaced). Both are marked in the body.
+ *
  * Used by `pullChanges` (every sync) and by `repairRepo`'s salvage step
  * (merging a rescued old branch tip back into the repaired history).
  */
@@ -50,7 +59,7 @@ import {
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
-import { isMergeConflictError } from "./recovery/classify.ts";
+import { isCheckoutConflict, isMergeConflictError } from "./recovery/classify.ts";
 import type { GitCache, ImageClash } from "./sync-types.ts";
 
 export type { ImageClash };
@@ -212,6 +221,18 @@ export async function convergeMerge(params: {
 }): Promise<ConvergeResult> {
   const { dir, cache, branch, theirs, author } = params;
 
+  const snapshot = (message: string) =>
+    snapshotWorkingTreeUnlocked({
+      projectDir: dir,
+      repoRoot: dir,
+      message,
+      authorName: params.authorName,
+      authorEmail: params.authorEmail,
+      // Share the merge's cache so the checkout below reads the index these
+      // equalization commits wrote — see SnapshotOptions.cache.
+      cache,
+    });
+
   const ourTip = await git.resolveRef({ fs, dir, ref: branch });
   const [ourCommit, theirCommit] = await Promise.all([
     git.readCommit({ fs, dir, cache, oid: ourTip }),
@@ -225,8 +246,12 @@ export async function convergeMerge(params: {
   const driverBinary = new Set<string>();
   const imageClashes: ImageClash[] = [];
 
-  const attempt = () =>
-    git.merge({
+  // The branch tip each merge attempt started from — the point the rollback
+  // below returns to when the working tree moves under us mid-merge.
+  let tipBeforeMerge = ourTip;
+  const attempt = async () => {
+    tipBeforeMerge = await git.resolveRef({ fs, dir, ref: branch });
+    return git.merge({
       fs,
       dir,
       cache,
@@ -257,15 +282,7 @@ export async function convergeMerge(params: {
         };
       },
     });
-
-  const snapshot = (message: string) =>
-    snapshotWorkingTreeUnlocked({
-      projectDir: dir,
-      repoRoot: dir,
-      message,
-      authorName: params.authorName,
-      authorEmail: params.authorEmail,
-    });
+  };
 
   /**
    * Equalize the driver-unreachable clashes with an ordinary commit on OUR
@@ -348,7 +365,40 @@ export async function convergeMerge(params: {
   }
 
   // merge() moves the ref only — sync the working tree to the result.
-  await git.checkout({ fs, dir, cache, ref: branch, force: true });
+  //
+  // NOT `force: true`. A forced checkout rewrites every tracked file from the
+  // merge result, including one an editor wrote to disk after we committed the
+  // tree — and those bytes are in no commit, so forcing DESTROYS them (0.10.0
+  // regression: the pre-0.10.0 pull returned early on an already-merged no-op
+  // and never reached this line, so a solo author's every-2-minute auto-sync
+  // never touched the tree; converging made the checkout unconditional).
+  // Plain checkout instead: it leaves alone any file the merge did not change
+  // (so a late edit simply survives, and the next snapshot commits it) and
+  // REFUSES — before writing anything — on a file the merge changed that also
+  // moved on disk. That refusal is handled below; it is never a silent
+  // overwrite.
+  try {
+    await git.checkout({ fs, dir, cache, ref: branch, force: false });
+  } catch (e) {
+    if (!isCheckoutConflict(e)) throw e;
+    // Something wrote to a merge-affected file in the few milliseconds between
+    // the merge and this checkout. Put the branch back where the merge started
+    // (the merge commit becomes unreferenced) so HEAD, the index and the
+    // working tree stay consistent and the late edit stays on disk,
+    // uncommitted. The caller reports a plain "try again"; the next sync
+    // snapshots that edit first and converges it properly. Never force here —
+    // "try again in two minutes" is always better than a lost paragraph.
+    // `writeRef` does NOT expand a short name (it would create `.git/main`),
+    // so expand it the way `git.merge` did when it moved the ref.
+    await git.writeRef({
+      fs,
+      dir,
+      ref: await git.expandRef({ fs, dir, ref: branch }),
+      value: tipBeforeMerge,
+      force: true,
+    });
+    throw e;
+  }
 
   // Restore the surviving content for the equalized-the-other-way files
   // (newer local binaries, edits that beat a deletion) as a visible,

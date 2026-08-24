@@ -40,6 +40,7 @@ import { isPushRejected, isUnrelatedHistories } from "./recovery/classify.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
+  SYNC_LATE_EDIT_MESSAGE,
   MSG_PULL_FIRST,
   MSG_PULL_UP_TO_DATE,
   MSG_PULLED,
@@ -231,8 +232,8 @@ export async function pullChanges(
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
 
-      // Snapshot FIRST (D5) — the merge below ends in a forced checkout, so
-      // committing the whole working tree first guarantees nothing is lost.
+      // Snapshot FIRST (D5) — commit the whole working tree before any network
+      // or merge step can touch it.
       snapshotId = await snapshotBeforeAction({
         projectDir: options.projectDir,
         dir,
@@ -243,6 +244,29 @@ export async function pullChanges(
       });
 
       const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+
+      // …AND AGAIN, because the fetch above is a network round-trip and the
+      // author never stopped typing: the desktop editor's autosave fires
+      // 500 ms after the last keystroke, so an edit routinely reaches disk
+      // between the snapshot and the merge. It is in NO commit, and the merge
+      // ends in a checkout — leave it uncommitted and it is what the author
+      // just wrote AND the version that disappears. Committing it here makes
+      // it ordinary local work: the merge below combines it (markers if an
+      // online edit overlaps) instead of overwriting it, and the pull's
+      // "did anything change?" reporting below is computed from a tip that
+      // already includes it, so a solo author's racing sync still reports
+      // plainly up-to-date. Reported as THE snapshot for this pull — it holds
+      // strictly more of the author's work than the first one.
+      snapshotId =
+        (await snapshotBeforeAction({
+          projectDir: options.projectDir,
+          dir,
+          message: SYNC_LATE_EDIT_MESSAGE,
+          authorName: options.authorName,
+          authorEmail: options.authorEmail,
+          cache,
+        })) ?? snapshotId;
+
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 

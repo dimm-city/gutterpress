@@ -22,6 +22,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Automatic syncing no longer rolls back the sentence you just typed.**
+  A 0.10.0 report — "this latest update erases my most recent edit and states
+  'RELOADED FROM DISC' every minute or so" — was real data loss, not a display
+  glitch. Sync commits your work before it goes to the network, but the
+  network round-trip that follows takes longer than the editor's half-second
+  autosave delay, so an edit made *during* a sync reached disk after that
+  commit and before the step that syncs your files to the merge result. That
+  step overwrote it, and because the edit had never been committed, no
+  "Previous versions" entry held it — it was simply gone. It could happen on
+  every two-minute automatic sync, to an author working entirely alone:
+  0.10.0's always-converging sync made that final step run on every cycle,
+  where earlier versions skipped it when there was nothing to merge. Sync now
+  commits a mid-sync edit before merging, so it is combined like any other
+  change (in conflict markers if it overlaps an online edit), and the step
+  that updates your files refuses to overwrite anything it did not just
+  commit rather than replacing it. An edit made while syncing can no longer
+  disappear.
+
 - **Code blocks and other scrollable boxes now break across pages on screen
   the way they do in print** (#160). The preview paginates with Chromium's
   multi-column fragmenter and the PDF with its paged one, and a scroll

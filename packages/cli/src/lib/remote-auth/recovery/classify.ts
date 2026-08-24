@@ -125,6 +125,16 @@ export function isMergeConflictError(
 }
 
 /**
+ * A non-forced `git.checkout` refused to overwrite working-tree files whose
+ * content moved after we committed them (converge-merge). isomorphic-git
+ * detects this in its analysis pass and throws BEFORE touching the tree, so
+ * the refusal is atomic: nothing on disk has been written.
+ */
+export function isCheckoutConflict(e: unknown): boolean {
+  return (e as { code?: string })?.code === "CheckoutConflictError";
+}
+
+/**
  * Unrelated histories — the local project and the configured online project
  * share no common starting point. Sync surfaces this as a plain setup error
  * (a wrong online address must never be silently spliced into the book).

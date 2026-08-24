@@ -216,6 +216,9 @@ export async function snapshotBeforeAction(args: {
     message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
     authorName: args.authorName,
     authorEmail: args.authorEmail,
+    // Share the operation's cache so the rest of the sync (merge, checkout)
+    // reads the index this commit just wrote — see SnapshotOptions.cache.
+    cache,
   });
   return snap.id;
 }

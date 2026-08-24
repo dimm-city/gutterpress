@@ -40,3 +40,9 @@ export const MSG_PULL_FIRST =
   "The online copy has changes you don't have yet. Get the latest changes first, then send yours.";
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
+/**
+ * Message recorded when an edit reached disk while the fetch was in flight —
+ * after the pre-sync snapshot, before the merge (see the re-snapshot in
+ * `pullChanges`). Distinct wording so the race is legible in history.
+ */
+export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while syncing";
