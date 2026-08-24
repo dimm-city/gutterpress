@@ -244,7 +244,6 @@ export {
 } from "../lib/remote-auth/github-auth.ts";
 
 export type {
-  RemoteAuthProvider,
   HostCallbacks,
   DeviceCodeInfo,
   GitHubAuthProviderOptions,
@@ -289,7 +288,6 @@ export type {
 } from "../lib/remote-auth/test-access.ts";
 
 export {
-  GenericTokenAuthProvider,
   connectGenericHost,
   knownForgeTokenUrl,
   normalizeForgeHost,
@@ -297,7 +295,6 @@ export {
 
 export type {
   GenericTokenConnectInput,
-  GenericHostCallbacks,
   GenericAuthOptions,
 } from "../lib/remote-auth/generic-auth.ts";
 
@@ -328,12 +325,8 @@ export type {
   PullOutcome,
   PushOutcome,
   SyncProjectOptions,
-  ImageClash,
+  KeptBothFile,
 } from "../lib/remote-auth/sync.ts";
-
-// Image-clash picker support (converge ruling 2026-08-14): read one version's
-// bytes by blob oid; apply the writer's pick with a snapshot.
-export { keepImageVersion, readImageVersion } from "../lib/remote-auth/image-clash.ts";
 
 export type {
   SnapshotEntry,

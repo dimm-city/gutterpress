@@ -16,7 +16,7 @@
  *
  *   - the single-flight + runAgain + debounce/interval timers (unchanged);
  *   - outcome → ambient status mapping (conflict arm no longer exists; the
- *     converge report — combinedFiles/imageClashes — rides on the payload);
+ *     converge report — combinedFiles/keptBothFiles — rides on the payload);
  *   - ONE repair path: a structurally damaged repo (typed preflight error or
  *     a corruption-looking throw) runs `lib.repairRepo()` behind the
  *     recovering/recovered pill states. Fully automatic, files untouched,
@@ -28,7 +28,7 @@
 import { operationLogSlug } from "../recovery-paths";
 import { gitIdentityFrom, type GitIdentityArgs, type GitIdentitySettings } from "../git-identity";
 import type {
-  ImageClash,
+  KeptBothFile,
   RepairResult,
   SyncOutcome,
   TokenStore,
@@ -114,8 +114,8 @@ export interface SyncStatusPayload {
   filesChanged?: boolean;
   /** Files whose text now holds BOTH versions inside git conflict markers. */
   combinedFiles?: string[];
-  /** Clashing images (newer kept) — drives the non-blocking picker. */
-  imageClashes?: ImageClash[];
+  /** Files kept as a pair: ours at `path`, the online one at `onlinePath`. */
+  keptBothFiles?: KeptBothFile[];
 }
 
 /** External touch-points injected into the orchestrator (all faked in tests). */
@@ -494,8 +494,8 @@ export class AutoSyncOrchestrator {
           ...(outcome.combinedFiles && outcome.combinedFiles.length > 0
             ? { combinedFiles: outcome.combinedFiles }
             : {}),
-          ...(outcome.imageClashes && outcome.imageClashes.length > 0
-            ? { imageClashes: outcome.imageClashes }
+          ...(outcome.keptBothFiles && outcome.keptBothFiles.length > 0
+            ? { keptBothFiles: outcome.keptBothFiles }
             : {}),
         });
         break;

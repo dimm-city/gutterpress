@@ -17,7 +17,6 @@ import { POST as listImagesRoute } from "../../src/routes/api/media/list-images/
 import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+server";
 import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
 import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
-import { POST as keepImageVersionRoute } from "../../src/routes/api/sync/keep-image-version/+server";
 
 // ARCH review #37: `/api/fs/{read-file,write-file,list-dir,stat-file,
 // copy-file}` used to accept ANY absolute path (only guard: isAbsolute).
@@ -392,57 +391,6 @@ test("log/read: an absolute path outside the read-allow-list is rejected (403)",
   expect(status).toBe(403);
   expect(message).toBe("log:read: path is outside the open project");
 });
-
-// ── sync/keep-image-version: `projectDir` is confined to the open project,
-//    and the derived WRITE target (`projectDir` + the caller-supplied
-//    relative `path`) is confined CANONICALLY — a project-local symlink
-//    aliasing an outside directory must not receive the written bytes
-//    (same policy the plain fs routes enforce). ──────────────────────────
-
-test("sync/keep-image-version: a projectDir outside the open project is rejected (403)", async () => {
-  const { status } = await caught(
-    keepImageVersionRoute({
-      request: request({ projectDir: outsideDir, path: "cover.png", oid: "c".repeat(40) }),
-    } as Parameters<typeof keepImageVersionRoute>[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test("sync/keep-image-version: a sibling-prefix projectDir is rejected (403)", async () => {
-  const { status } = await caught(
-    keepImageVersionRoute({
-      request: request({ projectDir: siblingDir, path: "cover.png", oid: "c".repeat(40) }),
-    } as Parameters<typeof keepImageVersionRoute>[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test("sync/keep-image-version: fails closed (403) when no project is open (empty projectRoots)", async () => {
-  registerHostServices({
-    ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
-    fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
-  } as HostServices);
-  const { status } = await caught(
-    keepImageVersionRoute({
-      request: request({ projectDir, path: "cover.png", oid: "c".repeat(40) }),
-    } as Parameters<typeof keepImageVersionRoute>[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test.skipIf(!canSymlink)(
-  "sync/keep-image-version: a `path` escaping through a project-local symlink is rejected (403)",
-  async () => {
-    await createAlias(); // projectDir/alias -> outsideDir
-    const { status, message } = await caught(
-      keepImageVersionRoute({
-        request: request({ projectDir, path: "alias/secret.txt", oid: "c".repeat(40) }),
-      } as Parameters<typeof keepImageVersionRoute>[0]),
-    );
-    expect(status).toBe(403);
-    expect(message).toBe("sync:keepImageVersion: path is outside the open project");
-  },
-);
 
 // ── symlink escape (P1 review on isWithinRoot): path.resolve() normalizes
 //    lexical segments but leaves symlinks intact. A project-local symlink

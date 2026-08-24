@@ -59,7 +59,7 @@ import type {
   RemoteAccessResult,
   ProjectRemoteDiagnosis as SharedProjectRemoteDiagnosis,
   SyncOutcome,
-  ImageClash,
+  KeptBothFile,
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
@@ -105,7 +105,7 @@ export type {
   CloneRepositoryArgs,
   RemoteAccessResult,
   SyncOutcome,
-  ImageClash,
+  KeptBothFile,
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
@@ -312,15 +312,16 @@ export interface SyncStatus {
    */
   combinedFiles?: string[];
   /**
-   * Images that changed on both sides (the newer side was kept). Drives the
-   * non-blocking side-by-side picker. Present after a combining sync.
+   * Files that changed on both sides and can't hold conflict markers: ours
+   * stayed at `path`, the online version was saved beside it at
+   * `onlinePath`. Present after a combining sync.
    */
-  imageClashes?: ImageClash[];
+  keptBothFiles?: KeptBothFile[];
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
 //
-// SyncOutcome, ImageClash, ConnectGenericHostArgs, HostConnectionInfo
+// SyncOutcome, KeptBothFile, ConnectGenericHostArgs, HostConnectionInfo
 // imported from shared-types above (re-exported at the top of this file).
 
 // ── User settings (#45) ──────────────────────────────────────────────────────

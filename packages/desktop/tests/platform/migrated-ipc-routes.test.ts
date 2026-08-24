@@ -23,7 +23,6 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as setAutoSyncRoute } from "../../src/routes/api/sync/set-auto-sync/+server";
 import { POST as cloneRepositoryRoute } from "../../src/routes/api/remote/clone-repository/+server";
-import { POST as keepImageVersionRoute } from "../../src/routes/api/sync/keep-image-version/+server";
 import { GET as updaterGetStatusRoute } from "../../src/routes/api/updater/get-status/+server";
 import { POST as updaterCheckRoute } from "../../src/routes/api/updater/check/+server";
 import { POST as updaterDownloadRoute } from "../../src/routes/api/updater/download/+server";
@@ -189,35 +188,6 @@ describe("POST /api/remote/clone-repository", () => {
     expect(message).toBe(
       "The online repository operation could not be completed. See the app log for details.",
     );
-  });
-});
-
-// ── sync/keep-image-version ─────────────────────────────────────────────────
-
-describe("POST /api/sync/keep-image-version", () => {
-  const vcsBase = { loadLib: async () => ({}), operationLogPath: () => "/tmp/op.log" };
-  const validBody = {
-    projectDir: "/abs/project",
-    path: "images/cover.png",
-    oid: "a".repeat(40),
-  };
-
-  test("400 when the file path is missing", async () => {
-    registerHostServices({ ...baseServices(), vcs: vcsBase as never });
-    const { status, message } = await caught(
-      keepImageVersionRoute({ request: request({ ...validBody, path: "" }) } as never),
-    );
-    expect(status).toBe(400);
-    expect(message).toBe("sync:keepImageVersion requires a file path");
-  });
-
-  test("400 when the oid is not 40-char hex", async () => {
-    registerHostServices({ ...baseServices(), vcs: vcsBase as never });
-    const { status, message } = await caught(
-      keepImageVersionRoute({ request: request({ ...validBody, oid: "not-a-sha" }) } as never),
-    );
-    expect(status).toBe(400);
-    expect(message).toBe("sync:keepImageVersion requires a valid version id");
   });
 });
 

@@ -443,24 +443,20 @@ export interface ProjectRemoteDiagnosis {
 // value-imports the lib (§8 / ADR 0004). Sync ALWAYS converges: there is no
 // "conflict" arm, no per-file choices, and no resolve call. Overlapping text
 // edits land in the file inside standard git conflict markers
-// (`combinedFiles`); clashing binaries keep the newer side (`imageClashes`
-// for images); the other version is always reachable in history.
+// (`combinedFiles`); a clashing binary keeps BOTH versions as two files
+// (`keptBothFiles`); every version is reachable in history.
 
 /**
- * One image file that changed on both sides. Sync already converged (the
- * NEWER side's bytes are committed — the safe default); this record drives
- * the non-blocking side-by-side picker. Both blob oids are pinned by the
- * merge commit's parents, so the picker can never go stale.
+ * One file that changed on both sides and cannot carry conflict markers (a
+ * binary, or an SVG). Both versions are on disk: ours stayed at `path`, the
+ * online one was written beside it. The UI names the pair so the writer can
+ * fix it by hand.
  */
-export interface ImageClash {
-  /** Repo-relative path of the image. */
+export interface KeptBothFile {
+  /** Repo-relative path holding OUR version (unchanged). */
   path: string;
-  /** Blob oid of the local version. */
-  localOid: string;
-  /** Blob oid of the online version. */
-  remoteOid: string;
-  /** Which side the automatic newer-wins policy kept on disk. */
-  kept: "local" | "online";
+  /** Repo-relative path holding the ONLINE version (`name.online.ext`). */
+  onlinePath: string;
 }
 
 /** Outcome of a sync attempt. */
@@ -473,8 +469,8 @@ export type SyncOutcome =
       filesChanged?: boolean;
       /** Files whose text now holds BOTH versions inside git conflict markers. */
       combinedFiles?: string[];
-      /** Clashing images (newer kept) for the non-blocking picker. */
-      imageClashes?: ImageClash[];
+      /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
+      keptBothFiles?: KeptBothFile[];
     }
   | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }

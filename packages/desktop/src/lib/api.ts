@@ -552,13 +552,6 @@ export const api = {
 
   sync: {
     /**
-     * Keep a specific version of a clashing image (the non-blocking picker's
-     * one action): the host writes the chosen blob's exact bytes back to the
-     * file and snapshots; normal auto-sync publishes it.
-     */
-    keepImageVersion: (projectDir: string, path: string, oid: string) =>
-      post<{ ok: boolean }>('/api/sync/keep-image-version', { projectDir, path, oid }),
-    /**
      * Enable or disable the auto-sync master switch (ARCH review #8 — was
      * IPC despite being a pure settings write).
      */

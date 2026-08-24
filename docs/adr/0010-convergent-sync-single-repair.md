@@ -37,13 +37,16 @@ lands:
   globs).
 - **Deleted on one side, edited on the other** → the EDIT survives (a
   deletion is trivially re-doable; a lost edit is not).
-- **Binary changed on both sides** (NUL sniff, or an image extension — SVG
-  counts as an image, markers would corrupt its XML) → the NEWER tip's bytes
-  win, byte-exact. Clashing **images** are additionally reported
-  (`imageClashes`, with both blob oids pinned by the merge parents) so the
-  desktop can offer a non-blocking side-by-side picker afterwards — the ONE
-  chooser that survives, because visual content genuinely can't be judged as
-  text. Ignoring the picker keeps the newer version; nothing blocks.
+- **Binary changed on both sides** (NUL sniff, plus `.svg` — text, but
+  markers would corrupt its XML) → BOTH versions are kept, byte-exact, as
+  two files: ours stays at `path`, theirs lands beside it at
+  `name.online.ext`. The pair is reported (`keptBothFiles`) so the host can
+  name it in a toast. **Amended 2026-08-21** (owner: "we are fine with
+  keeping both changes on a merge and calling them out for manual fixing"):
+  this replaces the newer-tip-wins policy and the non-blocking image picker
+  it fed. The "never a second file" rule above still holds for TEXT, where
+  markers keep both versions inside the one file; a binary cannot carry
+  markers, so two files is the only way to keep both.
 - **Unrelated histories** (a wrong online address) → a plain setup error.
   Never silently spliced.
 

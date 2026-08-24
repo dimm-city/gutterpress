@@ -11,8 +11,9 @@
  *  - The pre-sync snapshot ALWAYS exists before any merge/network step
  *    (author work can never be lost).
  *  - Sync ALWAYS converges: a both-edited passage keeps BOTH versions in the
- *    one file (standard git markers); binaries keep the newer side; an edit
- *    always survives a deletion. The other version stays in history.
+ *    one file (standard git markers); a both-edited binary keeps both as two
+ *    files (mine, plus theirs as a `.online` sibling); an edit always
+ *    survives a deletion. Every version stays in history.
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -1018,14 +1019,14 @@ describe("push rejection precision (BUG 2)", () => {
 
 // ── BUG 3: a MIXED text+binary conflict must keep binary bytes byte-identical ──
 
-describe("binary convergence (newer wins, byte-exact)", () => {
+describe("binary convergence (keep BOTH, byte-exact)", () => {
   /**
    * Build a TRUE mixed clash: a base commit (text + binary) is the common
    * ancestor of BOTH sides, then the server and the local clone each diverge
    * by editing BOTH files differently.
    *
-   * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock so the
-   * newer-wins policy can be exercised in both directions deterministically.
+   * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock — the
+   * keep-both policy must ignore it in BOTH directions.
    */
   async function setupBinaryClash(
     myPng: Uint8Array,
@@ -1088,10 +1089,10 @@ describe("binary convergence (newer wins, byte-exact)", () => {
     return { h, onlinePng };
   }
 
-  test("LOCAL tip newer → my binary bytes win byte-exactly; image clash reported", async () => {
+  test("both versions survive: mine at the path, theirs as the .online sibling", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
     myPng[44] = 0x03; // a THIRD distinct variant — the author's bytes
-    const { h } = await setupBinaryClash(myPng); // local commit is last → newer
+    const { h, onlinePng } = await setupBinaryClash(myPng);
     try {
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("synced");
@@ -1101,37 +1102,44 @@ describe("binary convergence (newer wins, byte-exact)", () => {
       expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
       const text = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
       expect(text).toContain("<<<<<<< your version");
-      // …and the binary kept MY (newer) bytes, byte-identical — never routed
-      // through the string merge driver.
-      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
-      expect(onDisk).toEqual(myPng);
+
+      // …and the binary kept MY bytes where they were, byte-identical — never
+      // routed through the string merge driver.
+      const mine = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
+      expect(mine).toEqual(myPng);
       const raw = await readFile(path.join(h.projectDir, "cover.png"));
       expect(raw.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false);
-      // The clash is reported for the desktop's non-blocking picker.
-      expect(outcome.imageClashes).toHaveLength(1);
-      expect(outcome.imageClashes![0]!.path).toBe("cover.png");
-      expect(outcome.imageClashes![0]!.kept).toBe("local");
-      expect(outcome.imageClashes![0]!.localOid).toMatch(/^[0-9a-f]{40}$/);
-      expect(outcome.imageClashes![0]!.remoteOid).toMatch(/^[0-9a-f]{40}$/);
-      // Pushed: the server has the same bytes.
+
+      // …with THEIR bytes alongside it, also byte-identical.
+      const theirs = new Uint8Array(
+        await readFile(path.join(h.projectDir, "cover.online.png")),
+      );
+      expect(theirs).toEqual(new Uint8Array(onlinePng));
+
+      // The pair is reported so the host can name it.
+      expect(outcome.keptBothFiles).toEqual([
+        { path: "cover.png", onlinePath: "cover.online.png" },
+      ]);
+
+      // Pushed: the server has BOTH files with the same bytes.
       expect(await isClean(h.projectDir)).toBe(true);
       const serverOid = await serverHead(h.serverDir);
-      const { blob } = await git.readBlob({
-        fs,
-        dir: h.serverDir,
-        oid: serverOid,
-        filepath: "cover.png",
-      });
-      expect(new Uint8Array(blob)).toEqual(myPng);
+      const readServer = async (filepath: string) =>
+        new Uint8Array(
+          (await git.readBlob({ fs, dir: h.serverDir, oid: serverOid, filepath })).blob,
+        );
+      expect(await readServer("cover.png")).toEqual(myPng);
+      expect(await readServer("cover.online.png")).toEqual(new Uint8Array(onlinePng));
     } finally {
       await h.cleanup();
     }
   });
 
-  test("ONLINE tip newer → online bytes win; my version stays reachable in history", async () => {
+  test("an OLDER local commit still keeps my bytes at the path (no newer-wins)", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
     myPng[44] = 0x07;
-    // Local commit stamped 10 minutes in the past → the online tip is newer.
+    // Local commit stamped 10 minutes in the past — under the old newer-wins
+    // policy the online bytes would have replaced mine at cover.png.
     const past = Math.floor(Date.now() / 1000) - 600;
     const { h, onlinePng } = await setupBinaryClash(myPng, past);
     try {
@@ -1139,31 +1147,15 @@ describe("binary convergence (newer wins, byte-exact)", () => {
       expect(outcome.status).toBe("synced");
       if (outcome.status !== "synced") throw new Error("unreachable");
 
-      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
-      expect(onDisk).toEqual(new Uint8Array(onlinePng));
-      expect(outcome.imageClashes).toHaveLength(1);
-      expect(outcome.imageClashes![0]!.kept).toBe("online");
-      // MY bytes remain reachable in history (the equalization commit's
-      // parent — walk the log and find them).
-      const log = await git.log({ fs, dir: h.projectDir, depth: 30 });
-      let found = false;
-      for (const entry of log) {
-        try {
-          const { blob } = await git.readBlob({
-            fs,
-            dir: h.projectDir,
-            oid: entry.oid,
-            filepath: "cover.png",
-          });
-          if (Buffer.compare(new Uint8Array(blob), myPng) === 0) {
-            found = true;
-            break;
-          }
-        } catch {
-          // file absent at this commit — keep walking
-        }
-      }
-      expect(found).toBe(true);
+      const mine = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
+      expect(mine).toEqual(myPng);
+      const theirs = new Uint8Array(
+        await readFile(path.join(h.projectDir, "cover.online.png")),
+      );
+      expect(theirs).toEqual(new Uint8Array(onlinePng));
+      expect(outcome.keptBothFiles).toEqual([
+        { path: "cover.png", onlinePath: "cover.online.png" },
+      ]);
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();

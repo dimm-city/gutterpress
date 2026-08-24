@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
-import { combinedFilesMessage, SyncController } from "../../src/lib/routes/sync-controller.svelte";
+import {
+  combinedFilesMessage,
+  keptBothMessage,
+  SyncController,
+} from "../../src/lib/routes/sync-controller.svelte";
 import type { SyncOutcome } from "../../src/lib/api";
-import type { ImageClash, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
+import type { KeptBothFile, ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -86,11 +90,9 @@ function make(): Harness {
   return h;
 }
 
-const CLASH: ImageClash = {
+const CLASH: KeptBothFile = {
   path: "images/cover.png",
-  localOid: "a".repeat(40),
-  remoteOid: "b".repeat(40),
-  kept: "local",
+  onlinePath: "images/cover.online.png",
 };
 
 // ── Initial state ────────────────────────────────────────────────────────────
@@ -99,7 +101,6 @@ test("initial public rune state", () => {
   const h = make();
   expect(h.ctrl.syncDiag).toBe(null);
   expect(h.ctrl.forceSyncing).toBe(false);
-  expect(h.ctrl.imageClashes).toEqual([]);
 });
 
 // ── handleForceSync ──────────────────────────────────────────────────────────
@@ -112,20 +113,21 @@ test("synced -> onSyncCompleted with merged/filesChanged flags", async () => {
   expect(h.ctrl.forceSyncing).toBe(false);
 });
 
-test("synced with a converge report -> review toast + image picker state", async () => {
+test("synced with a converge report -> one toast per kind of kept-both file", async () => {
   const h = make();
   h.sync.next = {
     status: "synced",
     message: "",
     mergedRemoteChanges: true,
     combinedFiles: ["chapters/chapter-02.md"],
-    imageClashes: [CLASH],
+    keptBothFiles: [CLASH],
   };
   await h.ctrl.handleForceSync();
-  expect(h.toast.info.calls).toHaveLength(1);
+  expect(h.toast.info.calls).toHaveLength(2);
   expect(h.toast.info.calls[0]![0]).toContain("chapter-02.md");
   expect(h.toast.info.calls[0]![0]).toContain("both versions are kept");
-  expect(h.ctrl.imageClashes).toEqual([CLASH]);
+  expect(h.toast.info.calls[1]![0]).toContain("cover.png");
+  expect(h.toast.info.calls[1]![0]).toContain("cover.online.png");
 });
 
 test("up-to-date without changes -> info toast only", async () => {
@@ -198,7 +200,7 @@ test("project switched mid-sync -> no state applied", async () => {
     status: "synced",
     message: "",
     mergedRemoteChanges: true,
-    imageClashes: [CLASH],
+    keptBothFiles: [CLASH],
   };
   h.sync.fn = async (dir) => {
     h.dir = "/other"; // switch DURING the sync
@@ -207,7 +209,7 @@ test("project switched mid-sync -> no state applied", async () => {
   h.dir = "/proj";
   await h.ctrl.handleForceSync();
   expect(h.onSyncCompleted.calls).toEqual([]);
-  expect(h.ctrl.imageClashes).toEqual([]);
+  expect(h.toast.info.calls).toEqual([]);
 });
 
 test("re-entry guarded by forceSyncing", async () => {
@@ -217,22 +219,25 @@ test("re-entry guarded by forceSyncing", async () => {
   expect(h.sync.calls).toEqual([]);
 });
 
-// ── Converge report / image picker state ────────────────────────────────────
+// ── Converge report ─────────────────────────────────────────────────────────
 
 test("applyConvergeReport with nothing to report is a no-op", () => {
   const h = make();
   h.ctrl.applyConvergeReport(undefined, undefined);
   h.ctrl.applyConvergeReport([], []);
   expect(h.toast.info.calls).toEqual([]);
-  expect(h.ctrl.imageClashes).toEqual([]);
 });
 
-test("clearImageClashes resets the picker state", () => {
-  const h = make();
-  h.ctrl.applyConvergeReport(undefined, [CLASH]);
-  expect(h.ctrl.imageClashes).toEqual([CLASH]);
-  h.ctrl.clearImageClashes();
-  expect(h.ctrl.imageClashes).toEqual([]);
+test("keptBothMessage names the pair and never says 'conflict'", () => {
+  const one = keptBothMessage([CLASH]);
+  expect(one).toContain("cover.png");
+  expect(one).toContain("cover.online.png");
+  expect(one).toContain("changed in two places");
+  expect(one).not.toContain("conflict");
+  const many = keptBothMessage(
+    ["a", "b", "c", "d", "e"].map((n) => ({ path: `${n}.png`, onlinePath: `${n}.online.png` })),
+  );
+  expect(many).toContain("and 2 more");
 });
 
 test("combinedFilesMessage names up to three files then counts the rest", () => {

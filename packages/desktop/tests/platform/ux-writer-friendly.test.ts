@@ -143,11 +143,11 @@ describe("Failure & conflict copy reassures that local work is safe", () => {
     const ctrl = read("src/lib/routes/sync-controller.svelte.ts");
     expect(ctrl).toContain("Your work is saved on this computer");
   });
-  test("image clash copy is calm and jargon-free ('changed in two places', never 'conflict')", () => {
-    const dlg = read("src/lib/components/ImageClashPicker.svelte");
-    expect(dlg).toContain("The same picture changed in two places");
-    expect(dlg).toContain("nothing is lost");
-    expect(dlg).not.toContain("merge conflict");
+  test("kept-both copy is calm and jargon-free ('changed in two places', never 'conflict')", () => {
+    const ctrl = read("src/lib/routes/sync-controller.svelte.ts");
+    expect(ctrl).toContain("changed in two places");
+    expect(ctrl).toContain("nothing is lost");
+    expect(ctrl).not.toContain("merge conflict");
   });
   test("the sync pill uses 'Previous versions available', not 'Version history on'", () => {
     const pill = read("src/lib/components/SyncStatusPill.svelte");

@@ -2,20 +2,18 @@
  * SyncController (Phase 5b) — the single owner of the sync-outcome routing
  * that used to live inline in `+page.svelte`.
  *
- * 2026-08-14 simplification: sync ALWAYS converges (no conflict outcome, no
- * choices dialog, no latch), so this controller shrank to the manual
- * force-sync flow (`handleForceSync`), the per-project remote diagnosis
- * refresh (`refreshSyncDiag`), and the non-blocking image-clash picker state
- * (`imageClashes` — the ONE chooser that survives, because visual content
- * genuinely can't be judged as text).
+ * Sync ALWAYS converges (no conflict outcome, no choices dialog, no chooser),
+ * so this controller is the manual force-sync flow (`handleForceSync`), the
+ * per-project remote diagnosis refresh (`refreshSyncDiag`), and the toasts
+ * that name whatever the merge had to keep two copies of.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004). `SyncOutcome` / `ProjectRemoteDiagnosis` / `ImageClash`
+ * (§8 / ADR 0004). `SyncOutcome` / `ProjectRemoteDiagnosis` / `KeptBothFile`
  * are type-only imports — ZERO `node:*` / lib value imports.
  */
 
 import type { SyncOutcome } from "../api";
-import type { ImageClash, ProjectRemoteDiagnosis } from "../platform/contract";
+import type { KeptBothFile, ProjectRemoteDiagnosis } from "../platform/contract";
 
 /** Minimal toast surface the controller drives. */
 interface SyncToast {
@@ -39,12 +37,28 @@ export interface SyncControllerDeps {
   onFilesChanged: () => void;
 }
 
+const baseName = (p: string): string => p.split("/").pop() ?? p;
+
 /** Author-language toast for a sync that combined overlapping text edits. */
 export function combinedFilesMessage(files: string[]): string {
-  const names = files.map((f) => f.split("/").pop() ?? f);
+  const names = files.map(baseName);
   const shown = names.slice(0, 3).join(", ");
   const more = names.length > 3 ? ` and ${names.length - 3} more` : "";
   return `Your changes and a teammate's overlapped in ${shown}${more} — both versions are kept there, marked for you to review.`;
+}
+
+/**
+ * Author-language toast for files the merge could not combine in place (a
+ * picture, or anything else that can't hold review marks). Both versions are
+ * on disk — this names the pair so the writer can pick one by hand.
+ */
+export function keptBothMessage(files: KeptBothFile[]): string {
+  const shown = files
+    .slice(0, 3)
+    .map((f) => `${baseName(f.path)} (also saved as ${baseName(f.onlinePath)})`)
+    .join(", ");
+  const more = files.length > 3 ? ` and ${files.length - 3} more` : "";
+  return `${shown}${more} changed in two places — nothing is lost: your version stayed put and the online version is saved beside it.`;
 }
 
 export class SyncController {
@@ -53,14 +67,6 @@ export class SyncController {
   syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   /** True while a manual force-sync is in flight (guards re-entry). */
   forceSyncing = $state(false);
-  /**
-   * Images that changed on both sides in the last combining sync (the newer
-   * side is already committed — the safe default). Non-empty opens the
-   * side-by-side picker; the writer may swap in the other version or just
-   * dismiss. Never blocks anything.
-   */
-  imageClashes = $state<ImageClash[]>([]);
-
   private deps: SyncControllerDeps;
 
   constructor(deps: SyncControllerDeps) {
@@ -80,21 +86,16 @@ export class SyncController {
   /**
    * Surface the converge-report from a completed sync (called both from
    * handleForceSync below and from the ambient sync-status subscription in
-   * the component): a toast for marker-combined text files, and the image
-   * picker for clashing images.
+   * the component): one toast for marker-combined text files, one for files
+   * kept as a side-by-side pair.
    */
-  applyConvergeReport(combinedFiles?: string[], imageClashes?: ImageClash[]): void {
+  applyConvergeReport(combinedFiles?: string[], keptBothFiles?: KeptBothFile[]): void {
     if (combinedFiles && combinedFiles.length > 0) {
       this.deps.toast()?.info?.(combinedFilesMessage(combinedFiles));
     }
-    if (imageClashes && imageClashes.length > 0) {
-      this.imageClashes = imageClashes;
+    if (keptBothFiles && keptBothFiles.length > 0) {
+      this.deps.toast()?.info?.(keptBothMessage(keptBothFiles));
     }
-  }
-
-  /** Image picker resolved (kept a version or dismissed) — clear it. */
-  clearImageClashes(): void {
-    this.imageClashes = [];
   }
 
   /**
@@ -111,7 +112,7 @@ export class SyncController {
       if (this.deps.currentDir() !== dir) return; // Project switched mid-sync.
       if (outcome.status === "synced") {
         this.deps.onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
-        this.applyConvergeReport(outcome.combinedFiles, outcome.imageClashes);
+        this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "up-to-date") {
         if (outcome.filesChanged) this.deps.onSyncCompleted(false, true);
         else this.deps.toast()?.info?.("Already up to date — no changes to sync.");

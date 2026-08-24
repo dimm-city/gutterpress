@@ -12,16 +12,18 @@
  *     writer blends them. This is exactly what `git merge` produces; we just
  *     don't stop the world over it.
  *   - Binary file changed on both sides (NUL-byte sniff — git's own test —
- *     or an image extension; SVG counts as an image, markers would corrupt
- *     its XML) → the NEWER side wins (tip commit timestamps), byte-exact.
- *     The older version stays reachable in history (it is a parent of the
- *     merge commit). Clashing IMAGES are additionally reported so the
- *     desktop can offer its non-blocking side-by-side picker afterwards.
+ *     plus `.svg`, which is text but whose XML markers would corrupt) → BOTH
+ *     versions are kept, byte-exact, as two files: ours stays at `path`, the
+ *     online one lands beside it at `path.online.<ext>`. Reported as
+ *     {@link ConvergeResult.keptBothFiles} so the host can name the pair.
+ *     Owner ruling: "we are fine with keeping both changes on a merge and
+ *     calling them out for manual fixing."
  *   - Deleted on one side, edited on the other → the EDIT survives (a
  *     deletion is trivially re-doable; a lost edit is not).
  *   - Added on both sides with different content (isomorphic-git throws
  *     MergeNotSupportedError for this — no merge base to diff against) →
- *     same policy as binary: newer side wins, other version in history.
+ *     same policy as binary: both versions kept, theirs as the `.online`
+ *     sibling.
  *
  * WHY the two-phase shape (attempt → equalize → re-attempt) instead of
  * isomorphic-git's `abortOnConflict: false`: that mode writes the ENTIRE
@@ -60,9 +62,9 @@ import {
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
 import { isCheckoutConflict, isMergeConflictError } from "./recovery/classify.ts";
-import type { GitCache, ImageClash } from "./sync-types.ts";
+import type { GitCache, KeptBothFile } from "./sync-types.ts";
 
-export type { ImageClash };
+export type { KeptBothFile };
 
 export interface ConvergeResult {
   /** The branch tip after the merge (the merge commit, or the ff/no-op tip). */
@@ -72,21 +74,37 @@ export interface ConvergeResult {
    * the writer should blend these. Empty when everything merged cleanly.
    */
   combinedFiles: string[];
-  /** Clashing images (newer version kept) for the non-blocking picker. */
-  imageClashes: ImageClash[];
+  /** Files kept as a pair: ours at `path`, theirs at `onlinePath`. */
+  keptBothFiles: KeptBothFile[];
 }
 
 /** Snapshot message for the equalization commit (driver-unreachable cases). */
 export const CONVERGE_PREPARE_MESSAGE =
   "Getting your changes ready to combine with the online version";
-/** Snapshot message for the post-merge restore commit (newer-wins/edits). */
+/** Snapshot message for the post-merge restore commit (kept-both/edits). */
 export const CONVERGE_RESTORE_MESSAGE =
-  "Kept the newest version of files that can't be combined";
+  "Kept both versions of the files that can't be combined";
 /** The merge commit message (same wording the old sync used). */
 export const CONVERGE_MERGE_MESSAGE =
   "Combined your changes with the online version";
 
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
+/**
+ * Extensions the NUL-byte sniff below cannot catch but that conflict markers
+ * would still destroy: SVG is plain text, so no NUL appears, yet `<<<<<<<`
+ * lines make the XML unparseable. Every raster format carries NULs in its
+ * header and is caught by the sniff, so this list stays at the one exception.
+ */
+const MARKER_UNSAFE_EXT = /\.svg$/i;
+
+/**
+ * Where the online version of a file that cannot carry conflict markers is
+ * kept: the same name with `.online` before the extension
+ * (`art/cover.png` -> `art/cover.online.png`). Repo-relative, always posix.
+ */
+export function onlineSiblingPath(filepath: string): string {
+  const ext = path.posix.extname(filepath);
+  return ext ? `${filepath.slice(0, -ext.length)}.online${ext}` : `${filepath}.online`;
+}
 
 /** Marker labels — author language, never git jargon. */
 const OUR_LABEL = "your version";
@@ -234,17 +252,10 @@ export async function convergeMerge(params: {
     });
 
   const ourTip = await git.resolveRef({ fs, dir, ref: branch });
-  const [ourCommit, theirCommit] = await Promise.all([
-    git.readCommit({ fs, dir, cache, oid: ourTip }),
-    git.readCommit({ fs, dir, cache, oid: theirs }),
-  ]);
-  // Newer-wins policy input: which TIP was committed more recently.
-  const localNewer =
-    ourCommit.commit.committer.timestamp >= theirCommit.commit.committer.timestamp;
 
   const combined = new Set<string>();
   const driverBinary = new Set<string>();
-  const imageClashes: ImageClash[] = [];
+  const keptBothFiles: KeptBothFile[] = [];
 
   // The branch tip each merge attempt started from — the point the rollback
   // below returns to when the working tree moves under us mid-merge.
@@ -263,7 +274,7 @@ export async function convergeMerge(params: {
       mergeDriver: ({ contents, path: filepath }) => {
         const [base, ours, theirsContent] = contents as [string, string, string];
         if (
-          IMAGE_EXT.test(filepath) ||
+          MARKER_UNSAFE_EXT.test(filepath) ||
           stringLooksBinary(ours) ||
           stringLooksBinary(theirsContent) ||
           stringLooksBinary(base)
@@ -301,20 +312,16 @@ export async function convergeMerge(params: {
         readBlobOrNull(dir, cache, theirs, p),
       ]);
       if (!ourBlob || !theirBlob) continue; // settled by a delete list instead
-      // Equalize to THEIR bytes (makes both sides identical → clean merge);
-      // if the LOCAL side is newer it is restored after the merge, so the
-      // final content is always the newer side and BOTH blobs are parents'
-      // history. Never route binary bytes through the string driver.
+      // Equalize to THEIR bytes (makes both sides identical → clean merge),
+      // then after the merge put OUR bytes back at `p` and drop THEIR bytes
+      // beside it as the `.online` sibling: a file that can't carry conflict
+      // markers keeps both versions as two files instead. Never route binary
+      // bytes through the string driver.
       await writeTreeFile(dir, p, theirBlob.blob);
-      if (localNewer) postRestore.push({ path: p, bytes: ourBlob.blob });
-      if (IMAGE_EXT.test(p)) {
-        imageClashes.push({
-          path: p,
-          localOid: ourBlob.oid,
-          remoteOid: theirBlob.oid,
-          kept: localNewer ? "local" : "online",
-        });
-      }
+      const onlinePath = onlineSiblingPath(p);
+      postRestore.push({ path: p, bytes: ourBlob.blob });
+      postRestore.push({ path: onlinePath, bytes: theirBlob.blob });
+      keptBothFiles.push({ path: p, onlinePath });
     }
     for (const p of paths.deleteByUs) {
       // We deleted it; the online copy edited it → the EDIT survives.
@@ -400,9 +407,9 @@ export async function convergeMerge(params: {
     throw e;
   }
 
-  // Restore the surviving content for the equalized-the-other-way files
-  // (newer local binaries, edits that beat a deletion) as a visible,
-  // honestly-labeled snapshot on top of the merge.
+  // Write the surviving content for the equalized-the-other-way files (our
+  // binaries plus their `.online` siblings, edits that beat a deletion) as a
+  // visible, honestly-labeled snapshot on top of the merge.
   if (postRestore.length > 0) {
     for (const r of postRestore) await writeTreeFile(dir, r.path, r.bytes);
     if (await hasPendingChanges(dir)) await snapshot(CONVERGE_RESTORE_MESSAGE);
@@ -411,6 +418,6 @@ export async function convergeMerge(params: {
   return {
     oid: await git.resolveRef({ fs, dir, ref: branch }),
     combinedFiles: [...combined].sort(),
-    imageClashes,
+    keptBothFiles,
   };
 }

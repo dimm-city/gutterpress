@@ -13,7 +13,6 @@
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
-  import ImageClashPicker from "$lib/components/ImageClashPicker.svelte";
   import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
@@ -468,8 +467,8 @@
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
   // Sync-outcome routing + diagnosis state (Phase 5b). Owns the syncDiag /
-  // forceSyncing runes and the non-blocking image-clash picker state (sync
-  // always converges — 2026-08-14). Host coupling injected so the routing is
+  // forceSyncing runes (sync always converges — 2026-08-14). Host coupling
+  // injected so the routing is
   // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
   // stay component methods (they touch toast + activityViewRef.refreshHistory
   // + buffer).
@@ -919,9 +918,9 @@
   // ── Repair overlay + converge-report subscription ───────────────────────────
   // Subscribe to the host's sync:status channel for recovering/recovered/error
   // states (the RecoveryOverlay) and for the converge report — combined-with-
-  // markers files get a review toast, clashing images open the non-blocking
-  // picker. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all
-  // host work through getPlatform().
+  // markers files and side-by-side pairs each get a review toast. Per §8 /
+  // ADR 0004: runs in the SPA, no lib value imports, all host work through
+  // getPlatform().
   onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
@@ -930,7 +929,7 @@
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
-      syncController.applyConvergeReport(status.combinedFiles, status.imageClashes);
+      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
       recovery.applyStatus(status);
     });
     return () => off?.();
@@ -3169,16 +3168,6 @@
     onClose={() => (exportOpen = false)}
   />
 {/if}
-<!-- ImageClashPicker: the ONE chooser left after the 2026-08-14 convergence
-     simplification. Sync already converged (newer image kept); this shows
-     both versions side by side, non-blocking, safe to dismiss. -->
-<ImageClashPicker
-  open={syncController.imageClashes.length > 0}
-  projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
-  clashes={syncController.imageClashes}
-  onDone={() => syncController.clearImageClashes()}
-/>
-
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}

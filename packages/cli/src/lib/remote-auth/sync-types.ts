@@ -21,27 +21,22 @@ export type GitCache = Record<string, unknown>;
 // ── Result types ──────────────────────────────────────────────────────────────
 
 /**
- * One image file that changed on both sides. Sync already converged (the
- * NEWER side's bytes are on disk and committed — the safe default); this
- * record lets a host offer a non-blocking side-by-side picker afterwards.
- * Both blob oids are pinned by the merge commit's two parents, so the picker
- * can never go stale.
+ * One file that changed on both sides and cannot carry conflict markers (a
+ * binary, or an SVG whose XML markers would break). Both versions are on
+ * disk and committed: ours stayed at `path`, the online one was written
+ * beside it. The host names the pair so the writer can fix it by hand.
  */
-export interface ImageClash {
-  /** Repo-relative path of the image. */
+export interface KeptBothFile {
+  /** Repo-relative path holding OUR version (unchanged). */
   path: string;
-  /** Blob oid of the local version. */
-  localOid: string;
-  /** Blob oid of the online version. */
-  remoteOid: string;
-  /** Which side the automatic newer-wins policy kept on disk. */
-  kept: "local" | "online";
+  /** Repo-relative path holding the ONLINE version (`name.online.ext`). */
+  onlinePath: string;
 }
 
 /** Outcome of a sync attempt. Sync always converges — there is no "conflict"
  *  arm: overlapping text edits land in the file inside standard git conflict
- *  markers (`combinedFiles`), clashing binaries keep the newer side
- *  (`imageClashes` for images), and the other version is always reachable in
+ *  markers (`combinedFiles`), clashing binaries keep BOTH versions as two
+ *  files (`keptBothFiles`), and every version is always reachable in
  *  history. Owner ruling 2026-08-14. */
 export type SyncOutcome =
   | {
@@ -55,8 +50,8 @@ export type SyncOutcome =
       filesChanged?: boolean;
       /** Files whose text now holds BOTH versions inside git conflict markers. */
       combinedFiles?: string[];
-      /** Clashing images (newer kept) for the host's non-blocking picker. */
-      imageClashes?: ImageClash[];
+      /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
+      keptBothFiles?: KeptBothFile[];
     }
   | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
@@ -99,8 +94,8 @@ export type PullOutcome =
       filesChanged: boolean;
       /** Files whose text now holds BOTH versions inside git conflict markers. */
       combinedFiles?: string[];
-      /** Clashing images (newer kept) for the host's non-blocking picker. */
-      imageClashes?: ImageClash[];
+      /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
+      keptBothFiles?: KeptBothFile[];
     }
   | { status: "up-to-date"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }

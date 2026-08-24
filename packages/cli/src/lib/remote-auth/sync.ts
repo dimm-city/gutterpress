@@ -18,10 +18,11 @@
  *
  * There is NO conflict outcome and NO interactive resolution. The merge
  * always lands (converge-merge.ts): overlapping text edits are kept together
- * in the file inside standard git conflict markers; clashing binaries keep
- * the newer side (images additionally reported for the host's non-blocking
- * picker); an edit always survives a deletion. The other version of anything
- * is reachable in history — "Previous versions" IS the safety net.
+ * in the file inside standard git conflict markers; a clashing binary keeps
+ * BOTH versions as two files (ours, plus theirs as a `.online` sibling,
+ * reported so the host can name the pair); an edit always survives a
+ * deletion. Every version is reachable in history — "Previous versions" IS
+ * the safety net.
  *
  * Failure model (ADR 0006 D5/D7): offline → friendly retry-later (the snapshot
  * already saved the work locally); 401/403 → `{ status: "auth" }` for the
@@ -66,7 +67,7 @@ import {
 } from "./transport.ts";
 import type {
   GitCache,
-  ImageClash,
+  KeptBothFile,
   PullOutcome,
   PushOutcome,
   SyncOutcome,
@@ -78,7 +79,7 @@ import type {
 export { onAuthFor };
 export { SYNC_SNAPSHOT_MESSAGE } from "./sync-messages.ts";
 export type {
-  ImageClash,
+  KeptBothFile,
   PullOutcome,
   PushOutcome,
   SyncOutcome,
@@ -135,10 +136,10 @@ export async function syncProject(
   // Accumulated across passes: a pass that converged text/images keeps its
   // report even if a later pass merges more.
   const combinedFiles = new Set<string>();
-  const imageClashes: ImageClash[] = [];
+  const keptBothFiles: KeptBothFile[] = [];
   const convergeExtras = () => ({
     ...(combinedFiles.size > 0 ? { combinedFiles: [...combinedFiles].sort() } : {}),
-    ...(imageClashes.length > 0 ? { imageClashes } : {}),
+    ...(keptBothFiles.length > 0 ? { keptBothFiles } : {}),
   });
   for (let attempt = 0; attempt < attempts; attempt++) {
     logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
@@ -153,7 +154,7 @@ export async function syncProject(
     filesChanged = filesChanged || (pull.status === "pulled" && pull.filesChanged);
     if (pull.status === "pulled") {
       for (const f of pull.combinedFiles ?? []) combinedFiles.add(f);
-      imageClashes.push(...(pull.imageClashes ?? []));
+      keptBothFiles.push(...(pull.keptBothFiles ?? []));
     }
 
     const push = await pushChanges(options);
@@ -278,7 +279,7 @@ export async function pullChanges(
 
       // The converge-merge ALWAYS lands: fast-forward when local is behind,
       // no-op when already ahead, and a fixed-policy combine when both sides
-      // moved (markers for text, newer-wins for binary, edit-beats-delete).
+      // moved (markers for text, keep-both for binary, edit-beats-delete).
       let converge;
       try {
         converge = await convergeMerge({
@@ -325,8 +326,8 @@ export async function pullChanges(
         ...(converge.combinedFiles.length > 0
           ? { combinedFiles: converge.combinedFiles }
           : {}),
-        ...(converge.imageClashes.length > 0
-          ? { imageClashes: converge.imageClashes }
+        ...(converge.keptBothFiles.length > 0
+          ? { keptBothFiles: converge.keptBothFiles }
           : {}),
         ...base,
       };

@@ -2,7 +2,7 @@
  * Project-scoping guard coverage for the route families that ARC review #37
  * never reached (2026-07-29 file-operations audit, Theme 1).
  *
- * `fs/*`, `media/*`, `log/read`, `sync/keep-image-version` and
+ * `fs/*`, `media/*`, `log/read` and
  * `plugin/add-npm` confined their renderer-supplied path to the host-owned
  * `projectRoots()` allow-list; every OTHER route taking a `projectDir`
  * validated it with `requireAbsolute` alone — a bare `isAbsolute` check. Any
@@ -44,7 +44,6 @@ import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-sna
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
-import { POST as syncKeepImageVersion } from "../../src/routes/api/sync/keep-image-version/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
 import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
@@ -94,11 +93,6 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
-  {
-    name: "sync/keep-image-version",
-    handler: syncKeepImageVersion as RouteHandler,
-    body: (d) => ({ projectDir: d, path: "images/cover.png", oid: HEX40_A }),
-  },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "publish/run", handler: publishRun as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch" }) },
   { name: "publish/set-config", handler: publishSetConfig as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", values: {} }) },
