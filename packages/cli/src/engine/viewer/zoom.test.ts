@@ -226,7 +226,6 @@ testIf(
             document.documentElement.style.setProperty("--gutterpress-zoom", z);
             gp.Gutterpress.refresh?.();
           }, FIT_ZOOM);
-          await page.waitForTimeout?.(700);
           await new Promise((r) => setTimeout(r, 700));
           const atFitZoom = await page.evaluate(
             () => (window as unknown as { Gutterpress: { totalPages: number } }).Gutterpress.totalPages,

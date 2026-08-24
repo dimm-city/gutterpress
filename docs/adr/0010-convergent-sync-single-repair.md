@@ -1,8 +1,18 @@
 # ADR 0010 — Convergent sync and single-path repair
 
-**Status:** Accepted (product owner directive, 2026-08-14)
+**Status:** Partially superseded (product owner directive, 2026-08-21)
 **Supersedes:** the interactive conflict-resolution half of ADR 0006 D5.
 The snapshot-first invariant of D5 is unchanged and remains binding.
+
+> **Decision 2 (repair) was withdrawn on 2026-08-21 and the repair subsystem
+> deleted.** Damage to `.git` never threatens the book: working files come
+> through byte-intact, and a project with a wrecked history still opens,
+> edits, and builds. The pipeline was ~1,600 source lines whose only
+> irreplaceable case was a local-only project losing its version history —
+> the owner's ruling was that this does not earn the weight. A repo whose
+> history cannot be read now reports that plainly and points at the online
+> copy; `gutterpress repair` is gone. **Decision 1 (convergent sync) stands
+> and remains binding.**
 
 ## Context
 
@@ -24,7 +34,7 @@ writers, using what git already does instead of re-implementing it.
 
 ### 1. Sync always converges — there is no conflict outcome
 
-`pullChanges` merges with a fixed policy (`converge-merge.ts`) and always
+`syncProject` merges with a fixed policy (`converge-merge.ts`) and always
 lands:
 
 - **Text edited on both sides** → BOTH versions stay in the one file, inside
@@ -37,13 +47,16 @@ lands:
   globs).
 - **Deleted on one side, edited on the other** → the EDIT survives (a
   deletion is trivially re-doable; a lost edit is not).
-- **Binary changed on both sides** (NUL sniff, or an image extension — SVG
-  counts as an image, markers would corrupt its XML) → the NEWER tip's bytes
-  win, byte-exact. Clashing **images** are additionally reported
-  (`imageClashes`, with both blob oids pinned by the merge parents) so the
-  desktop can offer a non-blocking side-by-side picker afterwards — the ONE
-  chooser that survives, because visual content genuinely can't be judged as
-  text. Ignoring the picker keeps the newer version; nothing blocks.
+- **Binary changed on both sides** (NUL sniff, plus `.svg` — text, but
+  markers would corrupt its XML) → BOTH versions are kept, byte-exact, as
+  two files: ours stays at `path`, theirs lands beside it at
+  `name.online.ext`. The pair is reported (`keptBothFiles`) so the host can
+  name it in a toast. **Amended 2026-08-21** (owner: "we are fine with
+  keeping both changes on a merge and calling them out for manual fixing"):
+  this replaces the newer-tip-wins policy and the non-blocking image picker
+  it fed. The "never a second file" rule above still holds for TEXT, where
+  markers keep both versions inside the one file; a binary cannot carry
+  markers, so two files is the only way to keep both.
 - **Unrelated histories** (a wrong online address) → a plain setup error.
   Never silently spliced.
 
@@ -58,7 +71,7 @@ Deleted: `resolveConflicts`, the resolution plan, the conflict dialog, the
 conflict pill state, the orchestrator conflict latch, the pre-export
 "resolve first" block, and every route/IPC surface serving them.
 
-### 2. Repair is one automatic pipeline
+### 2. Repair is one automatic pipeline — WITHDRAWN 2026-08-21 (see the status note)
 
 `repairRepo()` replaces the classifier→16-handler→policy→backup-zip→
 confirm-gate subsystem. Invariants, in priority order:

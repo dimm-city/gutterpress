@@ -115,7 +115,6 @@ import type {
   ProjectRemoteDiagnosis,
   ProjectStyle,
   RecommendedPlugin,
-  RepoHealth,
   RemoteAccessResult,
   RemoteBranch,
   RemoteRepository,
@@ -404,13 +403,13 @@ function flushAutoSnapshot(): Promise<void> | undefined {
 
 // ── Automatic sync orchestrator (transparent-sync plan §4.1/§4.2/§5.3) ────────
 //
-// Modelled on the auto-snapshot scheduler above: scheduleAutoSync arms/resets a
-// debounce timer; runAutoSync calls syncProject ONLY (never statusMatrix/walks).
-// The sync debounce is STRICTLY LONGER than the snapshot debounce so a burst of
-// edits is always committed locally before the push attempt (§4.2 ordering
-// invariant). syncProject itself also snapshots-first, making a race safe.
+// The orchestrator calls syncProject ONLY (never statusMatrix/walks), and
+// syncProject snapshots-first, which is what makes a race with the editor's
+// autosave safe. There is deliberately NO file-change debounce — see the
+// orchestrator's own note: the periodic tick already covers every case the
+// debounce could, at every non-absurd cadence.
 //
-// Triggers handled here: file-change debounce and periodic safety interval.
+// Triggers handled here: the periodic safety interval.
 // Project-open and network-restored triggers are wired at their respective sites.
 //
 // Single-flight + runAgain (§4.1): if a sync is already in flight when another
@@ -445,57 +444,6 @@ function emitSyncStatus(payload: SyncStatusPayload): void {
   safeSend("sync:status", payload);
 }
 
-// ── App-open heartbeat (repair-vs-desktop detection, M2) ──────────────────────
-// `Gutterpress repair` run from a terminal can race this app on the same repo —
-// the per-repo FIFO lock only serializes operations WITHIN a process. Rather
-// than a cross-process lock manager, this app leaves a small liveness marker
-// under the repo's own `.git` dir while a project is open (lib/app-heartbeat.ts,
-// shared by both hosts). `folderWatch.getWatchedDir()` (the folder watcher's
-// key) may be a BOOK subfolder inside a larger repo (repo-root sessions), so
-// the heartbeat always targets the resolved repo root, re-derived from the
-// watcher's own tracked dir on both write and cleanup — no separate mirror.
-
-/**
- * Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there.
- * Stamps the marker with a TTL derived from this app's OWN current auto-sync
- * cadence (`heartbeatTtlMs`) — `repair` only ever sees the repo, never this
- * app's settings, so the writer (here) is the only place that can translate
- * "refreshed every `autoSyncMinutes`" into "stays fresh for at least this
- * long". Without this, a fixed reader-side window (2 min) would read a live
- * app as closed for most of any longer configured cadence (up to 24 h).
- */
-async function refreshAppHeartbeat(dir: string): Promise<void> {
-  try {
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
-    const settings = await readSettings();
-    const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
-    await lib.writeAppHeartbeat(source.repoRoot, Date.now(), process.pid, lib.heartbeatTtlMs(periodicMs));
-  } catch (e) {
-    console.warn("[app-heartbeat] refresh failed (non-fatal):", e);
-  }
-}
-
-/**
- * Best-effort: remove the heartbeat for the currently (or just-stopped)
- * watched repo, if any. Called from the folder watcher's onStop callback,
- * which fires BEFORE the watcher clears its own tracked dir — so
- * `folderWatch.getWatchedDir()` still returns the project that was open,
- * the same dir refreshAppHeartbeat resolved its repo root from.
- */
-function clearAppHeartbeat(): void {
-  const dir = folderWatch.getWatchedDir();
-  if (!dir) return;
-  void loadLib()
-    .then(async (lib) => {
-      const source = await lib.detectProjectSource(dir);
-      if (source.type !== "local-git-folder") return;
-      await lib.removeAppHeartbeat(source.repoRoot);
-    })
-    .catch((e) => console.warn("[app-heartbeat] cleanup failed (non-fatal):", e));
-}
-
 const autoSync = new AutoSyncOrchestrator({
   loadLib,
   tokenStore: electronTokenStore,
@@ -504,10 +452,17 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
-  // timer added for it (every autoSync.run() call refreshes the heartbeat).
-  refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
 });
+
+/**
+ * The in-flight final exit push for the project that just closed, or null.
+ * Started at the folder watcher's onStop flush point (project switch/close and
+ * window close both land there); `window-all-closed` awaits it before quitting
+ * so the send is not killed mid-flight. It is BOUNDED inside `runExitPush`, so
+ * awaiting it can never hang quit; nulled on settle so a later quit never
+ * waits on a stale, already-settled promise.
+ */
+let pendingExitSync: Promise<void> | null = null;
 
 const folderWatch = new FolderWatcher({
   watch: (dir, options, cb) => watch(dir, options, cb),
@@ -518,19 +473,34 @@ const folderWatch = new FolderWatcher({
     // Edit signal: external editors and in-app saves both land here. `dir` is
     // already the normalized (resolved) form, matching folderWatch.getWatchedDir().
     scheduleAutoSnapshot(dir);
-    // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
+    // Make sure the periodic safety sync is running for this project.
     autoSync.schedule(dir);
   },
   onStop: () => {
     // Project switch/close flush point (RC1-3): edits were pending a snapshot —
     // take it now (fire-and-forget) instead of dropping the timer.
     void flushAutoSnapshot();
+    // Final exit push (owner decision 2026-08-23): between push windows the
+    // 2-minute ticks hold local work back, so send it now. `runExitPush` is
+    // bounded internally, skips when a tick is in flight, and syncProject
+    // itself makes no network push when there is nothing to send. Started
+    // BEFORE cancelAll() below, while the single-flight state it consults is
+    // still intact. (getWatchedDir() is still the closing project here —
+    // FolderWatcher.stop() nulls it only after onStop returns.) It does not
+    // race the snapshot flush above: both serialize on the lib's per-repo
+    // FIFO lock, and the sync pass snapshots-first on its own anyway.
+    const closingDir = folderWatch.getWatchedDir();
+    if (closingDir) {
+      const exitSync: Promise<void> = autoSync
+        .runExitPush(closingDir)
+        .catch(() => {})
+        .finally(() => {
+          if (pendingExitSync === exitSync) pendingExitSync = null;
+        });
+      pendingExitSync = exitSync;
+    }
     // Cancel all sync timers when the watched folder changes (project switch/close).
     autoSync.cancelAll();
-    // Same flush point covers app quit (mainWindow "closed" calls stopFolderWatch).
-    // Runs BEFORE the watcher clears its own tracked dir (see FolderWatcher.stop),
-    // so clearAppHeartbeat can still read folderWatch.getWatchedDir() here.
-    clearAppHeartbeat();
   },
 });
 
@@ -1301,15 +1271,6 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       dir: projectDir,
       ...(credential ? { credential } : {}),
       ...(args.branch ? { branch: args.branch } : {}),
-      ...(args.owner && args.repo
-        ? {
-            provenance: {
-              provider: "github" as const,
-              owner: args.owner,
-              repo: args.repo,
-            },
-          }
-        : {}),
       onProgress: (event: CloneProgressEvent) => {
         safeSend("remote:cloneProgress", event);
       },
@@ -1548,7 +1509,7 @@ registerHostServices({
 // (api:doctor handler removed — migrated to server route)
 
 // The preview-open pipeline (start server, detect source, recents upsert,
-// auto-sync arm/heartbeat/preflight, local-status emit) lives in
+// auto-sync arm/preflight, local-status emit) lives in
 // electron/preview/controller.ts as an injected-deps class (unit-tested in
 // tests/platform/preview-open-controller.test.ts) — including the api:preview
 // invocation-serialization behavior (see its open() doc comment: unserialized,
@@ -1572,11 +1533,7 @@ const previewOpen = new PreviewOpenController({
   emitSyncStatus,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   armSyncInterval: (dir) => autoSync.armInterval(dir),
-  // The whole recovery flow (single-flight lock, recovery routing,
-  // conflict-latch, and the BUG-3 runAgain decision) is owned by the
-  // orchestrator — see AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
-  runSyncPreflight: (dir, source) => autoSync.runPreflight(dir, source),
-  refreshAppHeartbeat,
+  scheduleInitialSync: (dir) => autoSync.scheduleInitialSync(dir),
   mkdir: (dir, options) => mkdir(dir, options),
   appendFile: (filePath, data) => appendFile(filePath, data),
   setTimeout: (cb, ms) => setTimeout(cb, ms),
@@ -1875,5 +1832,12 @@ app.on("window-all-closed", async () => {
     setActiveExportSession(null);
   }
   await previewOpen.stop();
+  // Wait for the final exit push (started at the watcher's onStop when the
+  // window closed) so quitting does not kill the send mid-flight. It is
+  // bounded inside runExitPush, so this can delay quit by a few seconds at
+  // most; a pass that could not finish is picked up by the next launch's
+  // first tick, which always pushes. On macOS the app outlives the window,
+  // so the push simply completes in the background instead.
+  if (pendingExitSync) await pendingExitSync;
   if (process.platform !== "darwin") app.quit();
 });

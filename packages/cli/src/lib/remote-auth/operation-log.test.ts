@@ -6,7 +6,6 @@ import path from "node:path";
 import {
   createFileLogger,
   resolveLogger,
-  shortOid,
 } from "./operation-log.ts";
 
 async function tempDir(): Promise<string> {
@@ -133,16 +132,6 @@ describe("operation-log", () => {
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
-    });
-  });
-
-  describe("shortOid", () => {
-    test("shortens a 40-char SHA to 7 chars", () => {
-      expect(shortOid("0123456789abcdef0123456789abcdef01234567")).toBe("0123456");
-    });
-
-    test("passes through short strings unchanged", () => {
-      expect(shortOid("abc")).toBe("abc");
     });
   });
 });

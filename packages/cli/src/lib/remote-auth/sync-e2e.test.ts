@@ -6,13 +6,13 @@
  *   - the repo cloned BY THE APP (lib `cloneRepository` — the clone.ts path)
  *   - the project is a SUBFOLDER of the repo (`books/field-guide`)
  *   - a second lib clone plays the "other computer" that lands new commits
- *     on the server (via provider snapshots + `pushChanges` — never system git)
+ *     on the server (via provider snapshots + `syncProject` — never system git)
  *
  * Then the full user flow, all through lib APIs, asserting each step:
  *   provider snapshot (local-only commit) → remote gains 2 commits →
- *   previewSync shows incoming → pullChanges applies them (file content on
- *   disk + new tip) → listHistoryPage for the subfolder → local edit +
- *   snapshot → pushChanges lands on the server (server tip verified).
+ *   syncProject combines them in (file content on disk + new tip) →
+ *   listHistoryPage for the subfolder → local edit + snapshot → syncProject
+ *   lands on the server (server tip verified).
  *
  * This file runs on EVERY platform (it is part of the lib's normal
  * `bun test` suite) and is dispatched on windows-latest by
@@ -29,7 +29,7 @@ import git from "isomorphic-git";
 import { detectProjectSource } from "../project-source.ts";
 import { providerFor } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
-import { pullChanges, pushChanges } from "./sync.ts";
+import { syncProject } from "./sync.ts";
 import {
   startGitServer,
   tempDir,
@@ -101,7 +101,7 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
 
   const serverTip = () => git.resolveRef({ fs, gitdir: bareDir, ref: "main" });
 
-  test("full user flow: clone → snapshot → remote moves → preview → pull → history → push", async () => {
+  test("full user flow: clone → snapshot → remote moves → sync → history → sync", async () => {
     // ── Step 1: the app clones the repo (the user's machine, "computer A") ──
     const parentA = await tempDir("gutterpress-e2e-a-");
     cleanupDirs.push(parentA);
@@ -169,18 +169,18 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
       authorName: "Author B",
     });
     logStep("snapshot(B) #2", remoteSnap2);
-    const pushB = await pushChanges({ projectDir: projectB });
-    logStep("pushChanges(B)", pushB);
-    expect(pushB.status).toBe("pushed");
+    const pushB = await syncProject({ projectDir: projectB });
+    logStep("syncProject(B)", pushB);
+    expect(pushB.status).toBe("synced");
     expect(await serverTip()).toBe(remoteSnap2.id);
 
-    // ── Step 5: pullChanges applies the online commits (combine with local) ──
+    // ── Step 5: syncProject combines the online commits with the local one ──
     const tipBeforePull = await git.resolveRef({ fs, dir: repoA, ref: "main" });
-    const pull = await pullChanges({ projectDir: projectA });
-    logStep("pullChanges(A)", pull);
-    expect(pull.status).toBe("pulled");
-    if (pull.status !== "pulled") throw new Error("unreachable");
-    expect(pull.merged).toBe(true); // both sides moved → combine commit
+    const pull = await syncProject({ projectDir: projectA });
+    logStep("syncProject(A)", pull);
+    expect(pull.status).toBe("synced");
+    if (pull.status !== "synced") throw new Error("unreachable");
+    expect(pull.mergedRemoteChanges).toBe(true); // both sides moved
     expect(pull.filesChanged).toBe(true);
     // The online files are ON DISK in the user's project folder.
     expect(
@@ -201,9 +201,9 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
     expect(mergeCommit.commit.parent).toContain(localSnap.id);
     expect(mergeCommit.commit.parent).toContain(remoteSnap2.id);
 
-    // A second pull is a no-op: "you already have the latest" must be TRUE.
-    const pullAgain = await pullChanges({ projectDir: projectA });
-    logStep("pullChanges(A) again", pullAgain);
+    // A second sync is a no-op: "everything is in sync" must be TRUE.
+    const pullAgain = await syncProject({ projectDir: projectA });
+    logStep("syncProject(A) again", pullAgain);
     expect(pullAgain.status).toBe("up-to-date");
 
     // ── Step 7: listHistoryPage for the SUBFOLDER behaves sanely ──
@@ -239,9 +239,9 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
       authorName: "Author A",
     });
     logStep("snapshot(A) final", finalSnap);
-    const pushA = await pushChanges({ projectDir: projectA });
-    logStep("pushChanges(A)", pushA);
-    expect(pushA.status).toBe("pushed");
+    const pushA = await syncProject({ projectDir: projectA });
+    logStep("syncProject(A)", pushA);
+    expect(pushA.status).toBe("synced");
     // The SERVER's tip is exactly A's final snapshot — verified on the bare repo.
     expect(await serverTip()).toBe(finalSnap.id);
     // And the server-side commit object resolves to the pushed content.

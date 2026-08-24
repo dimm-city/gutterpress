@@ -40,7 +40,7 @@ interface Harness {
   getActivePreview: () => PreviewHandle | null;
   getActiveWorkspaceRoot: () => string | null;
   getActiveRepositoryRoot: () => string | null;
-  runPreflightCalls: Array<[string, unknown]>;
+  initialSyncCalls: string[];
   startCalls: number;
 }
 
@@ -61,7 +61,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const timers: Array<{ cb: () => void; ms: number; unrefed: boolean }> = [];
   const mkdirCalls: string[] = [];
   const appendFileCalls: string[] = [];
-  const runPreflightCalls: Array<[string, unknown]> = [];
+  const initialSyncCalls: string[] = [];
   let startCalls = 0;
   let activePreview: PreviewHandle | null = opts.activePreview ?? null;
   let activeWorkspaceRoot: string | null = opts.activeWorkspaceRoot ?? null;
@@ -141,12 +141,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     armSyncInterval: async (dir) => {
       calls.push(`armSyncInterval:${dir}`);
     },
-    runSyncPreflight: async (dir, source) => {
-      calls.push(`runSyncPreflight:${dir}`);
-      runPreflightCalls.push([dir, source]);
-    },
-    refreshAppHeartbeat: async (dir) => {
-      calls.push(`refreshAppHeartbeat:${dir}`);
+    scheduleInitialSync: (dir) => {
+      calls.push(`scheduleInitialSync:${dir}`);
+      initialSyncCalls.push(dir);
     },
     mkdir: async (dir) => {
       mkdirCalls.push(dir);
@@ -176,7 +173,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     getActivePreview: () => activePreview,
     getActiveWorkspaceRoot: () => activeWorkspaceRoot,
     getActiveRepositoryRoot: () => activeRepositoryRoot,
-    runPreflightCalls,
+    initialSyncCalls,
     get startCalls() {
       return startCalls;
     },
@@ -360,21 +357,11 @@ test("recents upsert: local-git-folder AT the repo root (no subPath) omits lastA
   expect(result.recentFolders?.[0]).not.toHaveProperty("lastActiveBook");
 });
 
-test("armSyncInterval and runSyncPreflight always fire for the opened dir", async () => {
+test("armSyncInterval and scheduleInitialSync always fire for the opened dir", async () => {
   const h = makeHarness({ sourceType: "local-folder" });
   await h.controller.open({ input: "/book" });
   expect(h.calls).toContain("armSyncInterval:/book");
-  expect(h.runPreflightCalls).toEqual([["/book", { type: "local-folder", path: "/book" }]]);
-});
-
-test("refreshAppHeartbeat fires only for local-git-folder sources", async () => {
-  const gitH = makeHarness({ sourceType: "local-git-folder", repoRoot: "/book" });
-  await gitH.controller.open({ input: "/book" });
-  expect(gitH.calls).toContain("refreshAppHeartbeat:/book");
-
-  const plainH = makeHarness({ sourceType: "local-folder" });
-  await plainH.controller.open({ input: "/book" });
-  expect(plainH.calls).not.toContain("refreshAppHeartbeat:/book");
+  expect(h.initialSyncCalls).toEqual(["/book"]);
 });
 
 test("local-status: skipped entirely for local-folder sources (no diagnose, no emit)", async () => {
@@ -509,8 +496,7 @@ test("overlapping open() calls are serialized in arrival order", async () => {
     emitSyncStatus: () => {},
     getWatchedDir: () => null,
     armSyncInterval: async () => {},
-    runSyncPreflight: async () => {},
-    refreshAppHeartbeat: async () => {},
+    scheduleInitialSync: () => {},
     mkdir: async () => {},
     appendFile: async () => {},
     setTimeout: (cb) => {

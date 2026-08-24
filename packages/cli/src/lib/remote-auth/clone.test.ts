@@ -9,13 +9,11 @@
  */
 import { test, expect } from "bun:test";
 import * as fs from "node:fs";
-import { rm, writeFile, readFile, stat } from "node:fs/promises";
+import { rm, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
   cloneRepository,
-  readProjectProvenance,
-  provenancePath,
   sanitizeCloneFolderName,
 } from "./clone";
 import { FileTokenStore, type HostCredential } from "./token-store";
@@ -53,7 +51,6 @@ test("full clone over smart HTTP classifies as local-git-folder and history work
       url: server.url,
       dir: dest,
       credential: CRED,
-      provenance: { provider: "github", owner: "octocat", repo: "book", installationId: "42" },
       onProgress: (e) => progress.push(e.phase),
     });
     expect(result.projectDir).toBe(dest);
@@ -80,10 +77,6 @@ test("full clone over smart HTTP classifies as local-git-folder and history work
     await writeFile(path.join(dest, "chapter-02.md"), "# Two\n");
     const snap = await provider.snapshot({ projectDir: dest, message: "Added ch2" });
     expect(snap.id).toMatch(/^[0-9a-f]{40}$/);
-
-    // Provenance sidecar landed inside .git/ (untracked by definition).
-    expect((await readProjectProvenance(dest))?.owner).toBe("octocat");
-    expect((await stat(provenancePath(dest))).isFile()).toBe(true);
 
     // Progress events fired.
     expect(progress.length).toBeGreaterThan(0);

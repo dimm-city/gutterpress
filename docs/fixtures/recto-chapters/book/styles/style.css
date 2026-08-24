@@ -1,0 +1,51 @@
+/* style.css — chapters that open on a right-hand page, and nothing else.
+
+   `break-before: recto` is what every bound book with chapter openers writes.
+   Chromium treats it as a PLAIN page break, so the compiler inserts the blank
+   verso itself; the viewer has to insert the same blank or its page numbers
+   drift from the PDF's by one for every chapter in the book.
+
+   The viewer synthesized that blank with a spacer carrying
+   `break-before: column; break-after: column`. The `break-after` sits at the
+   break point the chapter's own `break-before: recto` also occupies — the two
+   values combine, the author's `recto` wins, and multicol (which has no pages)
+   discards the result. So the spacer produced ONE break instead of two, no
+   blank page appeared, and the preview ran short: 14 pages against 16
+   printed, every chapter after the first landing on the wrong side.
+
+   The chapter lengths are deliberately mixed. A chapter that ends mid-page
+   leaves the next opener mid-column, so `synthesizeColumnBreaks` puts a
+   spacer there; a chapter that overruns its page leaves the next opener at a
+   column top already, with no spacer. Chromium ignores a forced break that
+   would leave a fragmentainer empty, so only the second shape needs the pair
+   of spacers — and only a fixture carrying both shapes catches it. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 8.5in 11in;
+  margin: 1in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 {
+  font-size: 20pt;
+  margin: 0 0 0.6em;
+  break-before: recto;
+}
+
+p {
+  margin: 0 0 0.6em;
+  text-align: justify;
+}

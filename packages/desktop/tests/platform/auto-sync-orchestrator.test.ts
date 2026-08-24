@@ -32,12 +32,8 @@ interface Harness {
   emitted: SyncStatusPayload[];
   /** Every projectDir passed to lib.syncProject, in call order. */
   syncCalls: string[];
-  /** Every dir passed to deps.refreshHeartbeat, in call order. */
-  heartbeatCalls: string[];
   /** Full args of every lib.syncProject call, in order. */
   syncArgs: unknown[];
-  /** Full args of every lib.repairRepo call, in order. */
-  repairCalls: unknown[];
   /** Advance the fake clock. */
   setClock: (ms: number) => void;
 }
@@ -48,18 +44,10 @@ interface FakeLibOptions {
   /** The book's path relative to `repoRoot` ("" when the book IS the repo root). */
   subPath?: string;
   autoSyncDelayMs?: number | null;
-  autoSnapshotDelayMs?: number | null;
   sourceType?: string;
   canSync?: boolean;
   /** Called per syncProject invocation; returns the SyncOutcome (or a promise). */
   syncProject?: (projectDir: string) => unknown;
-  /** True when a thrown sync error should look like local repo corruption. */
-  looksLikeCorruption?: boolean;
-  /** RepairResult returned by lib.repairRepo (the repair/runPreflight path). */
-  repair?: () => unknown;
-  /** RepairNeed|null returned by classifyFromHealth (drives runPreflight's
-   *  structural-condition branch). Default null (healthy repo). */
-  classifyFromHealth?: () => string | null;
   /** When set, diagnoseProjectRemote rejects with this — to exercise the
    *  probe-failure path in run() (code-review: must release the lock). */
   diagnoseThrows?: Error;
@@ -67,27 +55,15 @@ interface FakeLibOptions {
   gitIdentity?: { authorName?: string; authorEmail?: string };
 }
 
-/** A minimal local-git-folder ProjectSource for runPreflight tests. */
-const LOCAL_GIT_SOURCE = {
-  type: "local-git-folder" as const,
-  path: DIR,
-  repoRoot: DIR,
-  subPath: "",
-  hasRemote: true,
-};
-
 function makeHarness(opts: FakeLibOptions = {}): Harness {
   const emitted: SyncStatusPayload[] = [];
   const syncCalls: string[] = [];
   const syncArgs: unknown[] = [];
-  const repairCalls: unknown[] = [];
   let clock = 1_700_000_000_000;
 
   const lib = {
     autoSyncDelayMs: () =>
       opts.autoSyncDelayMs === undefined ? 120_000 : opts.autoSyncDelayMs,
-    autoSnapshotDelayMs: () =>
-      opts.autoSnapshotDelayMs === undefined ? 600_000 : opts.autoSnapshotDelayMs,
     detectProjectSource: async () => ({
       type: opts.sourceType ?? "local-git-folder",
       // The real lib always reports the enclosing repo root for a
@@ -110,22 +86,10 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
         : { status: "synced" };
       return r;
     },
-    inspectRepo: async () => ({}),
-    isRepoNeedsRecoveryError: (e: unknown) =>
-      (e as { code?: string })?.code === "RepoNeedsRecovery",
-    isLikelyRepoCorruption: () => opts.looksLikeCorruption ?? false,
-    repairRepo: async (args: unknown) => {
-      repairCalls.push(args);
-      return opts.repair
-        ? opts.repair()
-        : { status: "repaired", message: "ok", actions: [] };
-    },
-    classifyFromHealth: () => (opts.classifyFromHealth ? opts.classifyFromHealth() : null),
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
-    buildPreflightDiagnostics: () => ({}),
+    AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
   } as unknown as LibModule;
 
-  const heartbeatCalls: string[] = [];
 
   const deps: AutoSyncOrchestratorDeps = {
     loadLib: async () => lib,
@@ -138,17 +102,14 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     now: () => clock,
     getWatchedDir: () => DIR,
     operationLogPath: (slug) => `/logs/${slug}.log`,
-    refreshHeartbeat: (dir) => heartbeatCalls.push(dir),
   };
 
   return {
     orch: new AutoSyncOrchestrator(deps),
     emitted,
     syncCalls,
-    heartbeatCalls,
     syncArgs,
-    repairCalls,
-    setClock: (ms) => {
+      setClock: (ms) => {
       clock = ms;
     },
   };
@@ -239,68 +200,6 @@ test("run() omits blank identity fields instead of sending empty strings", async
   expect(h.syncArgs[0]).not.toHaveProperty("authorEmail");
 });
 
-test("run()'s repair path passes the configured identity + log file to repairRepo", async () => {
-  const h = makeHarness({
-    syncProject: () => {
-      const e = new Error("The project needs repair before it can sync (needs_repair).");
-      (e as Error & { code?: string }).code = "RepoNeedsRecovery";
-      throw e;
-    },
-    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
-  });
-  await h.orch.run(DIR);
-  await tick();
-  expect(h.repairCalls).toHaveLength(1);
-  expect(h.repairCalls[0]).toMatchObject({
-    projectDir: DIR,
-    authorName: "Ada Lovelace",
-    authorEmail: "ada@example.com",
-    logFile: "/logs/book.log",
-  });
-  // The repair ran behind the recovering → recovered statuses.
-  expect(h.emitted.some((e) => e.state === "recovering")).toBe(true);
-  expect(h.emitted.some((e) => e.state === "recovered")).toBe(true);
-});
-
-test("a corruption-looking throw routes to repairRepo; an ordinary throw does NOT", async () => {
-  const corrupt = makeHarness({
-    syncProject: () => {
-      throw new Error("object not found abc123");
-    },
-    looksLikeCorruption: true,
-  });
-  await corrupt.orch.run(DIR);
-  await tick();
-  expect(corrupt.repairCalls).toHaveLength(1);
-
-  const plain = makeHarness({
-    syncProject: () => {
-      throw new Error("some logic bug");
-    },
-  });
-  await plain.orch.run(DIR);
-  await tick();
-  expect(plain.repairCalls).toHaveLength(0);
-  expect(plain.emitted.some((e) => e.state === "error")).toBe(true);
-});
-
-test("a failed repair emits its author-language message; retry_later re-arms later", async () => {
-  const failed = makeHarness({
-    syncProject: () => {
-      const e = new Error("needs repair");
-      (e as Error & { code?: string }).code = "RepoNeedsRecovery";
-      throw e;
-    },
-    repair: () => ({ status: "failed", message: "Files safe; repair could not finish.", actions: [] }),
-  });
-  await failed.orch.run(DIR);
-  await tick();
-  const errEmit = failed.emitted.find((e) => e.state === "error");
-  expect(errEmit?.message).toBe("Files safe; repair could not finish.");
-  // The single-flight slot is free again (a later trigger can run).
-  expect(failed.orch.getState(DIR)?.inFlight).toBe(false);
-});
-
 test("armInterval arms exactly one interval and cancelTimer cancels it", async () => {
   const h = makeHarness();
 
@@ -321,40 +220,6 @@ test("armInterval is a no-op when auto-sync is disabled by policy", async () => 
   await h.orch.armInterval(DIR);
   // No state row is even created for a disabled interval past the policy gate.
   expect(h.orch.getState(DIR)?.intervalHandle ?? null).toBeNull();
-});
-
-test("run() refreshes the app-open heartbeat for its dir (M2)", async () => {
-  const h = makeHarness();
-  await h.orch.run(DIR);
-  expect(h.heartbeatCalls).toEqual([DIR]);
-});
-
-test("run() refreshes the heartbeat even on an early-return guard path", async () => {
-  // sourceType other than local-git-folder short-circuits run() before any
-  // network call — heartbeat refresh must still have fired first.
-  const h = makeHarness({ sourceType: "local-folder" });
-  await h.orch.run(DIR);
-  expect(h.heartbeatCalls).toEqual([DIR]);
-  expect(h.syncCalls).toEqual([]);
-});
-
-test("the periodic safety-sync interval refreshes the heartbeat on tick, with no dedicated timer", async () => {
-  // A real (short) interval — proves the heartbeat refresh piggybacks on the
-  // actual periodic tick armInterval schedules, not a separate timer.
-  const h = makeHarness({ autoSyncDelayMs: 5 });
-  await h.orch.armInterval(DIR);
-  await waitFor(() => h.heartbeatCalls.length > 0);
-  h.orch.cancelTimer(DIR);
-  expect(h.heartbeatCalls.length).toBeGreaterThan(0);
-  expect(h.heartbeatCalls.every((d) => d === DIR)).toBe(true);
-});
-
-test("armDebounce arms a debounce timer", async () => {
-  const h = makeHarness();
-  await h.orch.armDebounce(DIR);
-  expect(h.orch.getState(DIR)?.debounceTimer).toBeTruthy();
-  h.orch.cancelTimer(DIR);
-  expect(h.orch.getState(DIR)?.debounceTimer).toBeNull();
 });
 
 test("cancelAll clears every tracked dir and its timers", async () => {
@@ -392,6 +257,20 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
   expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_123_000).toISOString());
 });
 
+test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
+  // The pill draws both identically ("Everything is in sync"), so there is
+  // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
+  // what the manual-sync toast reads.
+  const h = makeHarness({
+    syncProject: () => ({ status: "up-to-date", filesChanged: true }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+
+  expect(h.emitted.map((e) => e.state)).toEqual(["syncing", "synced"]);
+  expect(h.emitted[1]?.filesChanged).toBe(true);
+});
+
 // ── Error-outcome message plumbing (code-review) ─────────────────────────────
 // A SyncOutcome "error" always carries an author-language `message` (e.g. the
 // insecure-transport guidance from sync-messages.ts). Ambient auto-sync must
@@ -414,8 +293,8 @@ test("an 'error' outcome carries the outcome's plain-language message on the emi
 });
 
 // ── External single-flight lock surface: acquire/release (finding #7) ────────
-// These exist so a caller OUTSIDE run() (runPreflight) can hold the exact same
-// lock across a multi-step async flow without reaching into the state bag.
+// These exist so a caller OUTSIDE run() can hold the exact same lock across a
+// multi-step async flow without reaching into the state bag.
 
 test("acquire succeeds when free and fails while held; release frees it again", () => {
   const h = makeHarness();
@@ -431,68 +310,13 @@ test("release is a no-op for an untracked dir (never creates state)", () => {
   expect(h.orch.hasState("/never-tracked")).toBe(false);
 });
 
-test("runPreflight: non-git source releases the lock without any git I/O", async () => {
+test("scheduleInitialSync never holds the single-flight lock", () => {
+  // The repair preflight this replaced HELD the lock across its whole async
+  // flow. Arming the initial sync must not: the deferred run() acquires it
+  // for itself when it fires.
   const h = makeHarness();
-  await h.orch.runPreflight(DIR, { type: "local-folder", path: DIR });
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: healthy repo (classifyFromHealth → null) releases the lock without repairing", async () => {
-  const h = makeHarness({ classifyFromHealth: () => null });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(0);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: skips entirely when the lock is already held", async () => {
-  const h = makeHarness({ classifyFromHealth: () => "needs_repair" });
-  expect(h.orch.acquire(DIR)).toBe(true); // hold the lock externally first
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(0);
-  expect(h.orch.acquire(DIR)).toBe(false); // still held — runPreflight never touched it
-});
-
-test("runPreflight: structural damage repairs behind recovering/recovered and releases the lock", async () => {
-  const h = makeHarness({ classifyFromHealth: () => "needs_repair" });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(1);
-  expect(h.emitted.some((e) => e.state === "recovering")).toBe(true);
-  expect(h.emitted.some((e) => e.state === "recovered")).toBe(true);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: retry_later emits the repair message and re-arms run() after the delay", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => "needs_repair",
-    repair: () => ({ status: "retry_later", message: "m", actions: [], retryAfterMs: 5 }),
-    syncProject: () => ({ status: "synced" }),
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  const errEmit = h.emitted.find((e) => e.state === "error");
-  expect(errEmit?.message).toBe("m");
-  // The retry timer re-arms run() after retryAfterMs (guarded by getWatchedDir).
-  await waitFor(() => h.syncCalls.length > 0);
-  expect(h.syncCalls).toEqual([DIR]);
-});
-
-test("runPreflight: a failed repair emits error and leaves the lock free", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => "needs_repair",
-    repair: () => ({ status: "failed", message: "Files safe.", actions: [] }),
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.emitted.some((e) => e.state === "error")).toBe(true);
+  h.orch.scheduleInitialSync(DIR);
   expect(h.orch.acquire(DIR)).toBe(true);
-});
-
-test("runPreflight: a thrown step is non-fatal and always releases the lock", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => {
-      throw new Error("boom");
-    },
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock released in the catch branch
 });
 
 // ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
@@ -516,4 +340,151 @@ test("run() keeps the project's own slug when the book IS the repo root", async 
   await h.orch.run(DIR);
   await tick();
   expect((h.syncArgs[0] as { logFile?: string }).logFile).toBe("/logs/book.log");
+});
+
+// ── Push cadence (owner decision 2026-08-23) ─────────────────────────────────
+//
+// Every tick pulls; only a tick whose 15-minute push window has elapsed also
+// pushes. The FIRST tick of a session pushes — that is what delivers work a
+// previous session's exit pass could not send — and a COMPLETED push-enabled
+// pass ("synced" or "up-to-date") resets the window. Failures leave it armed
+// so the next 2-minute tick retries the push.
+
+const pushFlagOf = (h: Harness, i: number): boolean | undefined =>
+  (h.syncArgs[i] as { push?: boolean } | undefined)?.push;
+
+test("ticks pull-only between push windows; an elapsed window re-enables the push", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness();
+  h.setClock(T0);
+  await h.orch.run(DIR); // first tick of the session: push
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // 2 minutes later: pull-merge-only
+  h.setClock(T0 + 15 * 60_000);
+  await h.orch.run(DIR); // window elapsed: push again
+  h.setClock(T0 + 17 * 60_000);
+  await h.orch.run(DIR); // 2 minutes after that push: pull-only again
+  expect([0, 1, 2, 3].map((i) => pushFlagOf(h, i))).toEqual([true, false, true, false]);
+});
+
+test("an up-to-date push-due pass also resets the push window (nothing to send = in sync)", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness({ syncProject: () => ({ status: "up-to-date" }) });
+  h.setClock(T0);
+  await h.orch.run(DIR);
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR);
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1)]).toEqual([true, false]);
+});
+
+test("a failed push-due pass leaves the push window armed — the next tick retries the push", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness({
+    syncProject: () => ({ status: "offline", message: "You're offline right now." }),
+  });
+  h.setClock(T0);
+  await h.orch.run(DIR); // push-due, fails
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // still push-due — not silenced for 15 minutes
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1)]).toEqual([true, true]);
+});
+
+test("a pull-only pass that combined files forwards the converge report on its emit", async () => {
+  const h = makeHarness({
+    syncProject: () => ({
+      status: "up-to-date",
+      filesChanged: true,
+      combinedFiles: ["chapter-01.md"],
+      keptBothFiles: [{ path: "cover.png", onlinePath: "cover.online.png" }],
+    }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+  const done = h.emitted.find((e) => e.state === "synced");
+  expect(done?.combinedFiles).toEqual(["chapter-01.md"]);
+  expect(done?.keptBothFiles).toEqual([{ path: "cover.png", onlinePath: "cover.online.png" }]);
+});
+
+// ── The exit pass (project close / app quit) ─────────────────────────────────
+//
+// One final push-enabled syncProject at the existing onStop flush point,
+// BOUNDED — an app that hangs on quit because the network dropped is worse
+// than an unpushed change (the next launch's first tick pushes it instead).
+
+test("runExitPush runs one final push-enabled sync and resets the push window", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness();
+  h.setClock(T0);
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(1);
+  expect(pushFlagOf(h, 0)).toBe(true);
+  // The window was reset: reopening within it starts with a pull-only tick.
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR);
+  expect(pushFlagOf(h, 1)).toBe(false);
+});
+
+test("runExitPush skips while a tick is in flight (single-flight, never overlap)", async () => {
+  let releaseFirst!: () => void;
+  let firstCalledResolve!: () => void;
+  const firstCalled = new Promise<void>((r) => (firstCalledResolve = r));
+  const h = makeHarness({
+    syncProject: () =>
+      new Promise((res) => {
+        firstCalledResolve();
+        releaseFirst = () => res({ status: "synced" });
+      }),
+  });
+  const p1 = h.orch.run(DIR);
+  await firstCalled;
+  await h.orch.runExitPush(DIR); // must skip — never a second concurrent sync
+  expect(h.syncCalls.length).toBe(1);
+  releaseFirst();
+  await p1;
+});
+
+test("runExitPush is BOUNDED: a hung network cannot hang quit, and the slot is released", async () => {
+  let calls = 0;
+  const h = makeHarness({
+    syncProject: () => {
+      calls++;
+      // Only the exit pass hangs; a later tick behaves normally.
+      return calls === 1 ? new Promise(() => {}) : { status: "synced" };
+    },
+  });
+  const started = performance.now();
+  await h.orch.runExitPush(DIR, 50);
+  expect(performance.now() - started).toBeLessThan(1_500);
+  // The single-flight slot is free again despite the hung sync…
+  expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(false);
+  // …and the timed-out send left the push window ARMED: the next session's
+  // first tick pushes the work this pass could not.
+  await h.orch.run(DIR);
+  expect(pushFlagOf(h, 1)).toBe(true);
+});
+
+test("runExitPush does nothing when the project cannot sync", async () => {
+  const h = makeHarness({ canSync: false });
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(0);
+});
+
+test("a failed exit push re-arms the push for the next session's first tick", async () => {
+  const T0 = 1_700_000_000_000;
+  let calls = 0;
+  const h = makeHarness({
+    syncProject: () => {
+      calls++;
+      return calls === 2
+        ? { status: "offline", message: "You're offline right now." }
+        : { status: "synced" };
+    },
+  });
+  h.setClock(T0);
+  await h.orch.run(DIR); // successful push — window reset
+  h.setClock(T0 + 60_000);
+  await h.orch.runExitPush(DIR); // exit push fails (offline)
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // "reopen": first tick pushes again, not in 13 minutes
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1), pushFlagOf(h, 2)]).toEqual([true, true, true]);
 });

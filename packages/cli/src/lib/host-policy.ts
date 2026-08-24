@@ -49,6 +49,18 @@ export const AUTO_SYNC_MIN_MINUTES = 1;
 export const AUTO_SYNC_MAX_MINUTES = 24 * 60;
 export const AUTO_SYNC_DEFAULT_MINUTES = 2;
 
+/**
+ * Minutes between PUSH-enabled auto-sync passes (owner decision 2026-08-23).
+ * Every ~2-minute tick still PULLS — a collaborator's work keeps arriving
+ * promptly — but only a tick whose push window has elapsed also pushes, and
+ * the desktop pushes once more on project close/app exit. This is what keeps
+ * an actively-typing author from minting a snapshot-and-push every 2 minutes
+ * (the "commit wall"): between push windows, ticks with an unmoved remote
+ * commit nothing at all. Deliberately a constant, NOT a settings knob — the
+ * sync cadence is hidden policy, same as the tick interval's default.
+ */
+export const AUTO_SYNC_PUSH_INTERVAL_MINUTES = 15;
+
 /** Clamping/default bounds for a cadence policy (see {@link clampedDelayMs}). */
 interface DelayBounds {
   /** Floor in minutes — a smaller configured value is raised to this. */
@@ -123,8 +135,9 @@ export function autoSnapshotDelayMs(
  * the default and is then clamped into [AUTO_SYNC_MIN_MINUTES,
  * AUTO_SYNC_MAX_MINUTES].
  *
- * Note: the host orchestrator ALSO debounces on file-change triggers; this
- * cadence governs only the periodic safety timer (§4.2 "Periodic safety").
+ * Note: this is the host orchestrator's ONLY sync trigger — the file-change
+ * debounce that used to sit beside it was removed (it could never fire before
+ * this interval already had).
  */
 export function autoSyncDelayMs(
   policy: Partial<AutoSyncPolicy> | undefined,

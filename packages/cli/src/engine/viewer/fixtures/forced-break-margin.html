@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: 400px 300px;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        font: 16px/24px serif;
+      }
+      div {
+        margin: 0;
+        padding: 0;
+      }
+      /* A chapter opener: the ordinary "start on a new page, then breathe"
+         idiom. Print keeps the 48px because the break before it is FORCED. */
+      #opener {
+        margin: 48px 0 0;
+        font-size: 16px;
+        line-height: 24px;
+        break-before: page;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <!-- 4 lines = 96px of a 300px page: the break below is not an overflow
+           break, it is the author's forced one. -->
+      <div class="pad">P1<br />P2<br />P3<br />P4</div>
+      <h1 id="opener">Chapter Two</h1>
+      <div class="body">Q1<br />Q2</div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>

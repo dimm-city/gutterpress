@@ -16,8 +16,7 @@
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
-import { isInsecureTransportError } from "./recovery/classify.ts";
-import { onAuthFor } from "./transport.ts";
+import { isInsecureTransportError, onAuthFor } from "./transport.ts";
 import { extractUrlCredential, type HostCredential } from "./token-store.ts";
 
 /** Why a remote-access probe failed, in machine-readable form. */

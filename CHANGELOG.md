@@ -3,6 +3,137 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.10.1] - 2026-08-24
+
+### Added
+
+- **A failed export now offers its own way forward: "Build anyway"** (#163).
+  When the desktop export stops on over-wide content, the message used to end
+  with the engine's advice to "pass allowShrink" — a flag that exists on
+  `gutterpress build`, and nowhere a desktop author could reach. The failure
+  itself now carries the escape hatch: it names the offending elements and
+  offers a "Build anyway" button that re-runs the export with the shrink
+  allowed. The offer states what it costs — the whole book scales down (a real
+  book measured 0.693×, 12pt type printing at 8.3pt) with the page size and
+  page count unchanged, so the shrink is invisible in the finished PDF. It is
+  deliberately not a standing checkbox in the export dialog: a permanent
+  opt-out invites shipping a silently scaled-down book, while an offer only
+  exists when a real over-wide element does.
+
+### Changed
+
+- **Your work now uploads in quieter batches** — about every 15 minutes, and
+  once more when you close the project or the app — instead of every couple
+  of minutes. Changes from your other computer (or a co-writer) still arrive
+  promptly: the app keeps checking online every two minutes and merges what
+  it finds; only the sending calmed down. This also thins the "Previous
+  versions" list: while you type, the in-between checks no longer record a
+  version every two minutes — versions are saved when an upload happens, when
+  online changes need combining with yours, and by the usual
+  after-you-pause-writing automatic backup. Uploading always brings the
+  online copy down and combines it first, so it never overwrites work from
+  elsewhere — and if the closing upload can't finish within a few seconds
+  (say the Wi-Fi dropped), the app still closes; that work is safe on your
+  computer and goes online the next time the project opens.
+
+### Fixed
+
+- **Force-quitting the app can no longer damage a project's version history.**
+  The record of your versions is kept in a set of small bookkeeping files, and
+  the app used to update one by emptying it and writing it again — a moment in
+  which a force-quit, a shutdown, or a bad sleep could leave the file empty and
+  the history unreadable. Those updates are now written to the side and swapped
+  into place in one step, so an interruption leaves either the previous version
+  of the file or the new one — never a half-written one. This was the only way
+  the app itself could damage a project's history.
+
+### Removed
+
+- **The repository-repair feature is gone — including the `gutterpress repair`
+  command and the "Tidying up sync…" overlay.** It existed to rebuild a
+  project's version history when the hidden folder that stores it got damaged.
+  What we confirmed while reviewing it: that damage never threatens your book.
+  Your chapters, images, and styles live in ordinary files that come through
+  untouched, and a project whose history is unreadable still opens, still
+  edits, and still builds a PDF — only the record of past versions is
+  affected. So the repair machinery was a large, delicate mechanism standing
+  guard over something that was never actually at risk, and it has been
+  removed rather than maintained. If a project's history ever does become
+  unreadable, the app now tells you plainly: your files are safe, the history
+  can't be read, and — when the project has an online copy — the fix is to
+  download a fresh copy from online. Syncing, version history, and "Previous
+  versions" are unchanged for every healthy project.
+
+- **`gutterpress repair --force` is gone**, along with the app-open check it
+  overrode. The desktop used to leave a liveness marker in the project while
+  it had it open, and `repair` refused to run when that marker looked fresh
+  unless you passed `--force`. The marker carried no actual locking — it
+  could only guess, and it failed open — so it stopped a real repair more
+  readily than it prevented a real clash. `repair` now simply runs. The
+  writes it makes were already serialized per project. Scripts passing
+  `--force` should drop the flag.
+
+### Fixed
+
+- **Automatic syncing no longer rolls back the sentence you just typed.**
+  A 0.10.0 report — "this latest update erases my most recent edit and states
+  'RELOADED FROM DISC' every minute or so" — was real data loss, not a display
+  glitch. Sync commits your work before it goes to the network, but the
+  network round-trip that follows takes longer than the editor's half-second
+  autosave delay, so an edit made *during* a sync reached disk after that
+  commit and before the step that syncs your files to the merge result. That
+  step overwrote it, and because the edit had never been committed, no
+  "Previous versions" entry held it — it was simply gone. It could happen on
+  every two-minute automatic sync, to an author working entirely alone:
+  0.10.0's always-converging sync made that final step run on every cycle,
+  where earlier versions skipped it when there was nothing to merge. Sync now
+  commits a mid-sync edit before merging, so it is combined like any other
+  change (in conflict markers if it overlaps an online edit), and the step
+  that updates your files refuses to overwrite anything it did not just
+  commit rather than replacing it. An edit made while syncing can no longer
+  disappear.
+
+- **Code blocks and other scrollable boxes now break across pages on screen
+  the way they do in print** (#160). The preview paginates with Chromium's
+  multi-column fragmenter and the PDF with its paged one, and a scroll
+  container (`overflow: auto`, `scroll`, or `hidden`) is monolithic to the
+  first and fragmentable to the second — measured, a 192px code block on a
+  page with 108px free split across two pages in the PDF and jumped whole to
+  the next page on screen. Two shipped example books drifted this way,
+  including the user guide, whose own stylesheet asks for code blocks to
+  "flow across pages" — which print honoured and the preview did not. Both
+  books are now measured by the parity gate so they cannot drift again.
+
+- **A forced page break keeps the following block's top margin** (#160). The
+  preview forced its breaks with a spacer that filled the rest of the page,
+  which Chromium treats as an ordinary overflow break — and it truncates
+  adjoining margins at those. Every chapter opener with a top margin sat
+  flush against the preview's page top while the PDF indented it (measured
+  48px per opener), and the accumulated difference was enough to shift a page
+  boundary.
+
+- **A `break-before: recto` inserts its blank page again** (#161). The blank
+  was requested with a break value that landed at the same point as the
+  author's own `recto`, where the two combine, the author's value wins, and
+  the fragmenter discards the pair — so no blank appeared and every chapter
+  after it fell on the wrong side of the spread. The preview was a page short
+  of the PDF across the whole book.
+
+- **The over-wide-content error no longer fires on content a clipping
+  ancestor already contains** (#162). Chromium's print shrink-to-fit only
+  reacts to overflow that ESCAPES, so a wide box sealed inside an
+  `overflow: hidden|clip|auto|scroll` ancestor never scaled the book — but
+  the build hard-errored on it anyway, and the advice it gave ("give it an
+  explicit width") would have changed a layout that was already correct. A
+  208-page real book failed this way on two elements while printing
+  coordinate-identically with them in place. The check now measures whether
+  the overflow reaches past the page content box after its clipping
+  ancestors, and content that genuinely escapes still errors exactly as
+  before — including the three shapes that only look contained: an abspos
+  box under a STATIC clipping wrapper, `overflow-y: clip` beside an untouched
+  `overflow-x: visible`, and an `overflow-clip-margin` wide enough to let the
+  box back out.
+
 ## [0.10.0] - 2026-08-23
 
 ### Added

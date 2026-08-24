@@ -255,7 +255,6 @@ describe("C7: every command rejects unknown flags", () => {
     ["validate", ["validate"]],
     ["audit", ["audit"]],
     ["preflight", ["preflight", "--pdf", "missing.pdf"]],
-    ["repair", ["repair"]],
     ["doctor", ["doctor"]],
     ["plugin parent", ["plugin"]],
     ["plugin add", ["plugin", "add", "markdown-it-footnote"]],

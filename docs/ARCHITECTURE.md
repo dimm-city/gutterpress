@@ -81,7 +81,6 @@ packages/cli/src/
 │   ├── lint.ts             # CSS linting
 │   ├── audit.ts            # Asset-only validation
 │   ├── preflight.ts        # Structured CI preflight payload
-│   ├── repair.ts           # Diagnose/repair a project's local version history
 │   ├── doctor.ts           # Check system tools used by Gutterpress
 │   └── plugin.ts           # Manage project markdown-it plugins
 ├── checks/                 # Validation check system

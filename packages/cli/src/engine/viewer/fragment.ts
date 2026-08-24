@@ -123,20 +123,6 @@ export function injectBreakMapping(_model: GcpmModel, doc: Document = document):
   return "";
 }
 
-/**
- * Whether this browser implements forced `column` breaks at all
- * (`break-before`/`break-after: column`). Firefox does not — a long-standing
- * Gecko gap (bug 549114) — which `injectBreakMapping()`'s CSS-only mapping
- * depends on. Feature-probed, not UA-sniffed.
- */
-export function forcedColumnBreaksSupported(): boolean {
-  return (
-    typeof CSS !== "undefined" &&
-    typeof CSS.supports === "function" &&
-    CSS.supports("break-before", "column") &&
-    CSS.supports("break-after", "column")
-  );
-}
 
 /**
  * Sub-pixel tolerance for fragmentainer geometry, in CSS px.
@@ -150,15 +136,12 @@ export function forcedColumnBreaksSupported(): boolean {
  *     overflow the column (an exact fit may leave the following box in
  *     place). That overshoot is `ceil(x) - x`, i.e. strictly < 1px, and it
  *     re-appears at the top of the next column, so the box the break moved
- *     starts up to 1px BELOW the column top instead of exactly on it;
- *   - a box pushed to the next column can be left with a hairline leading
- *     fragment at the tail of the previous one. Gecko emits one (measured:
- *     0.3px); Blink does not.
+ *     starts up to 1px BELOW the column top instead of exactly on it.
  *
- * Neither is visible on screen, and neither may be read as "this box still
- * has room in the current column" — that misreading is what turned a 0.3px
- * hairline into two blank pages of Firefox over-pagination (the issue #46
- * cross-browser smoke test measured firefox 6pp against chromium 4pp).
+ * It is not visible on screen, and it must not be read as "this box still has
+ * room in the current column": at 0.5px tolerance that misreading reserved a
+ * whole blank column for a break that was already satisfied — a defect in
+ * Chromium too, not only the engine that first surfaced it.
  */
 const FRAGMENT_EPSILON_PX = 1;
 
@@ -167,17 +150,16 @@ const FRAGMENT_EPSILON_PX = 1;
  * or ends (`atEnd` true).
  *
  * A multicol box spanning a column boundary reports one rect per fragment,
- * and a fragment thinner than `FRAGMENT_EPSILON_PX` is fragmentation
- * residue holding no content — the box visibly starts (or ends) in the
- * neighbouring column, so the residue must not be mistaken for its content
- * edge. Falls back to the raw rects when every fragment is that thin, which
- * is the only case where a hairline IS the content.
+ * so the first (or last) rect is the edge. This used to skip sub-pixel
+ * "hairline" fragments first: Gecko strands a ~0.3px sliver at the tail of
+ * the previous column when a box moves, and reading it as the content edge
+ * cost two blank pages. Blink emits no such fragment, and Gutterpress is
+ * Chromium-only (CLAUDE.md), so the filter was removed — verified against the
+ * full parity gate, 11 books, 0 divergences.
  */
 export function contentEdgeRect(site: Element, atEnd: boolean): DOMRect | undefined {
   const rects = Array.from(site.getClientRects());
-  const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
-  const pool = solid.length ? solid : rects;
-  return atEnd ? pool.at(-1) : pool[0];
+  return atEnd ? rects.at(-1) : rects[0];
 }
 
 /**
@@ -296,12 +278,27 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     const stripTop = strip.getBoundingClientRect().top;
     const edge = prop === "break-after" ? rect.bottom : rect.top;
     // Rects are zoom-scaled, clientHeight is not — see cssZoomOf.
-    const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
-    if (reserve === null) continue;
+    // The number is not used to SIZE the spacer (see below); only its
+    // null/non-null verdict matters — "is this forced break still unsatisfied".
+    if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null) continue;
     const spacer = document.createElement("div");
     spacer.className = "gp-column-break-spacer";
     spacer.setAttribute("aria-hidden", "true");
-    spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+    // A zero-height NATIVE forced break. Sizing the spacer to fill the rest of
+    // the column breaks in the same place, but as an ORDINARY overflow break —
+    // and CSS Fragmentation truncates adjoining margins at an unforced break
+    // while keeping them at a forced one. Chromium implements both, so a
+    // filled column cost every chapter opener its `margin-top` on screen while
+    // the PDF kept it (measured on `examples/with-validation`: 48px per
+    // opener, enough to pull a seventh page's worth of content forward).
+    //
+    // The spacer carries the SAME break property the author declared, so its
+    // `column` lands at the break point on the FAR side of the author's own
+    // box. At the point they would share, the two values combine and the
+    // author's `page` wins — and multicol has no pages, so the combined break
+    // is discarded and nothing moves at all (measured: a `break-after: column`
+    // spacer in front of an `h1 { break-before: page }` is completely inert).
+    spacer.style.cssText = `${prop}: column; height:0; margin:0; padding:0; border:0;`;
     if (prop === "break-after") el.after(spacer);
     else site.before(spacer);
   }
@@ -603,6 +600,82 @@ function restoreFullHeightPageRoots(doc: Document = document): void {
     delete el.dataset.gpLeadingPageRoot;
     delete el.dataset.gpLeadingPageRootDisplay;
     delete el.dataset.gpLeadingPageRootDisplayPriority;
+  }
+}
+
+/** Overflow values that make a box a SCROLL CONTAINER — and so monolithic. */
+const SCROLLABLE = /^(auto|scroll|hidden)$/;
+
+/**
+ * Match page fragmentation's treatment of a scroll container.
+ *
+ * A box whose computed overflow is `auto`, `scroll` or `hidden` is a scroll
+ * container, and Chromium's MULTICOL fragmenter treats one as MONOLITHIC: it
+ * will not slice it, so it moves the whole box to the next column and leaves
+ * the rest of the page empty. Chromium's PRINT fragmenter does the opposite —
+ * paper has no scrollbars, so it lays the box out at its full scrollable size
+ * and fragments it like any other block (measured, same document both ways: a
+ * 192px code block on a 300px page with 108px left prints its first four lines
+ * on that page, while multicol pushes all eight to the next).
+ *
+ * Both idioms are everyday book CSS. `pre code { overflow-x: auto }` is what
+ * markdown themes write for code blocks (`overflow-x: auto` computes
+ * `overflow-y` to `auto` as well) and is what put
+ * `examples/with-validation`'s "Filtering" heading on preview page 2 against
+ * the PDF's page 1. `pre { overflow: hidden }` is what
+ * `examples/gutterpress-user-guide` writes, under a comment saying it is there
+ * to "allow code blocks to flow across pages" — which is precisely what print
+ * does with it and what the preview would not.
+ *
+ * `clip` is the mapping because it is NOT a scroll container — so the box
+ * fragments again — while still clipping at exactly the same edges, which
+ * `visible` would not. The author's overflow is re-presented, not discarded: a
+ * box a fixed height constrains still clips to it in both fragmenters.
+ */
+export function makeOverflowFragmentable(strips: StripInfo[]): void {
+  // READ phase, then WRITE phase — the convention `buildStrips` and the
+  // table-repeat pass both document: a `setProperty` dirties style, so the
+  // next iteration's `getComputedStyle` would force a synchronous recalc.
+  // Interleaved, that is one forced recalc per mapped element, and
+  // `pre code { overflow-x: auto }` maps two per code block.
+  const todo: Array<{ el: HTMLElement; x: boolean; y: boolean }> = [];
+  for (const strip of strips) {
+    for (const el of Array.from(strip.el.querySelectorAll<HTMLElement>("*"))) {
+      const cs = getComputedStyle(el);
+      const x = SCROLLABLE.test(cs.overflowX);
+      const y = SCROLLABLE.test(cs.overflowY);
+      if (x || y) todo.push({ el, x, y });
+    }
+  }
+  for (const { el, x, y } of todo) {
+    // Authored inline state is saved for refresh restoration, exactly as
+    // `compensateTrailingMarginsBeforeAvoids` saves margins — priority
+    // included, or an author's `overflow-x: auto !important` comes back
+    // without its priority after a refresh.
+    el.dataset.gpOverflow = "clipped";
+    el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+    el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+    el.dataset.gpOverflowXPriority = el.style.getPropertyPriority("overflow-x");
+    el.dataset.gpOverflowYPriority = el.style.getPropertyPriority("overflow-y");
+    if (x) el.style.setProperty("overflow-x", "clip");
+    if (y) el.style.setProperty("overflow-y", "clip");
+  }
+}
+
+function restoreScrollContainers(doc: Document = document): void {
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
+    for (const axis of ["x", "y"] as const) {
+      const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
+      const priority =
+        axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
+      if (value) el.style.setProperty(`overflow-${axis}`, value, priority || "");
+      else el.style.removeProperty(`overflow-${axis}`);
+    }
+    delete el.dataset.gpOverflow;
+    delete el.dataset.gpOverflowX;
+    delete el.dataset.gpOverflowY;
+    delete el.dataset.gpOverflowXPriority;
+    delete el.dataset.gpOverflowYPriority;
   }
 }
 
@@ -1072,12 +1145,29 @@ export function compensateRectoBreaks(
   let inserted = 0;
   for (const [i, site] of sites.entries()) {
     if (!plan[i]) continue;
-    const spacer = document.createElement("div");
-    spacer.className = "gp-recto-spacer";
-    spacer.setAttribute("aria-hidden", "true");
-    spacer.style.cssText =
-      "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
-    site.el.before(spacer);
+    // A blank page is TWO forced column breaks: one to open the blank column,
+    // one to close it. Both have to be `break-before` on a spacer — a
+    // `break-after` would sit at the break point the site's OWN
+    // `break-before: recto` also occupies, where the two values combine, the
+    // author's `recto` wins, and multicol (which has no pages) discards the
+    // lot. That is why the old `break-before + break-after` spacer produced
+    // one break instead of two and no blank page at all.
+    //
+    // Chromium ignores a forced break that would leave a fragmentainer empty,
+    // so a spacer that is the FIRST box in its column breaks nothing. That is
+    // exactly what makes the pair work — and what makes the first of the pair
+    // unnecessary when `synthesizeColumnBreaks` already left a spacer there to
+    // occupy the column.
+    const leading = site.el.previousElementSibling;
+    const need = leading?.classList.contains("gp-column-break-spacer") ? 1 : 2;
+    for (let n = 0; n < need; n++) {
+      const spacer = document.createElement("div");
+      spacer.className = "gp-recto-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.cssText =
+        "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
+      site.el.before(spacer);
+    }
     inserted++;
   }
   return inserted;
@@ -1456,6 +1546,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
   await layoutReady;
+  makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
   compensateTrailingMarginsBeforeAvoids(model, strips);
   synthesizeColumnBreaks(model);
@@ -1489,12 +1580,14 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     relayout: () => {
       restoreFullHeightPageRoots();
       restoreTrailingMargins();
+      restoreScrollContainers();
       unwrapStrips(strips);
       for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
         spacer.remove();
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
       strips.push(...rebuilt);
+      makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
       compensateTrailingMarginsBeforeAvoids(model, strips);
       synthesizeColumnBreaks(model);

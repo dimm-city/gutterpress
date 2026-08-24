@@ -11,8 +11,9 @@
  *  - The pre-sync snapshot ALWAYS exists before any merge/network step
  *    (author work can never be lost).
  *  - Sync ALWAYS converges: a both-edited passage keeps BOTH versions in the
- *    one file (standard git markers); binaries keep the newer side; an edit
- *    always survives a deletion. The other version stays in history.
+ *    one file (standard git markers); a both-edited binary keeps both as two
+ *    files (mine, plus theirs as a `.online` sibling); an edit always
+ *    survives a deletion. Every version stays in history.
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -24,12 +25,13 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
 import {
-  pullChanges,
-  pushChanges,
+  isPushRejected,
+  isUnrelatedHistories,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
+import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
   createFixtureRepo,
@@ -505,6 +507,203 @@ describe("syncProject", () => {
   });
 });
 
+// ── The autosave-versus-sync race (0.10.0 data-loss report) ──────────────────
+//
+// Field report on 0.10.0: "this latest update erases my most recent edit and
+// states 'RELOADED FROM DISC' every minute or so". A solo author, auto-sync on
+// its 2-minute safety timer, and a repo full of "Snapshot before syncing"
+// commits. The author is TYPING while sync runs, and the desktop editor's
+// autosave fires 500 ms after the last keystroke — so an edit routinely lands
+// on disk after the pre-sync snapshot committed the tree and before the merge
+// ends in a checkout. Whatever the checkout writes over that edit is gone: it
+// was never in a commit, so no "Previous versions" entry holds it.
+//
+// Every test below asserts the same rule from a different angle: an edit that
+// reaches disk mid-sync must still be there afterwards, and must be reachable
+// in history. Converging it into conflict markers is fine; vanishing is not.
+describe("an edit that lands on disk mid-sync is never discarded", () => {
+  /**
+   * An httpClient that runs `duringFetch` at the upload-pack ref
+   * advertisement — the moment the sync is out on the network, AFTER the
+   * snapshot committed the tree and BEFORE the merge/checkout. That is the
+   * window a real autosave lands in, and the whole round-trip is how long it
+   * stays open.
+   */
+  function writeDuringFetch(duringFetch: () => Promise<void>): typeof httpNode {
+    let fired = false;
+    return {
+      async request(config: Parameters<typeof httpNode.request>[0]) {
+        if (config.url.includes("service=git-upload-pack") && !fired) {
+          fired = true;
+          await duringFetch();
+        }
+        return httpNode.request(config);
+      },
+    } as typeof httpNode;
+  }
+
+  /** True when any commit reachable from HEAD holds exactly `content` at `filepath`. */
+  async function reachableInHistory(
+    dir: string,
+    filepath: string,
+    content: string,
+  ): Promise<boolean> {
+    for (const c of await git.log({ fs, dir, depth: 50 })) {
+      try {
+        const { blob } = await git.readBlob({ fs, dir, oid: c.oid, filepath });
+        if (Buffer.from(blob).toString("utf8") === content) return true;
+      } catch {
+        // not present in that commit
+      }
+    }
+    return false;
+  }
+
+  const LATE_EDIT = "# One\n\nThe sentence the author typed while syncing.\n";
+
+  test("the reported bug: a solo author's edit survives on disk AND in history", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      // The last autosave before the sync timer fired.
+      await writeFile(file, "# One\n\nSaved before the sync started.\n");
+
+      // Nobody else touched the online copy — the merge below is a pure
+      // no-op, which is exactly the case the 0.10.0 regression made
+      // destructive (pre-0.10.0 returned early and never checked out).
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(await reachableInHistory(h.projectDir, "chapter-01.md", LATE_EDIT)).toBe(true);
+      expect(await isClean(h.projectDir)).toBe(true);
+      // …and it reached the online copy, since the push follows the pull.
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(LATE_EDIT);
+
+      // Honest reporting: nothing came DOWN, so the author must not be told
+      // their work was "combined with changes from the online copy" (and the
+      // host must not be told to reload a preview that didn't change).
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
+      expect(outcome.mergedRemoteChanges).toBe(false);
+      expect(outcome.filesChanged).toBeUndefined();
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("the post-fetch snapshot is the one reported, under its own message", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      await writeFile(file, "# One\n\nSaved before the sync started.\n");
+
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(await reachableInHistory(h.projectDir, "chapter-01.md", LATE_EDIT)).toBe(true);
+      // The SECOND (post-fetch) snapshot is the one reported — it holds
+      // strictly more of the author's work than the pre-fetch one.
+      const snapshotId = "snapshotId" in outcome ? outcome.snapshotId : undefined;
+      expect(snapshotId).toBeDefined();
+      const snap = await git.readCommit({ fs, dir: h.projectDir, oid: snapshotId! });
+      expect(snap.commit.message.trim()).toBe("Saved the edit you made while syncing");
+      expect(outcome.status).toBe("synced");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("late edit vs an overlapping online edit: BOTH versions land, in markers", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
+        "online edit",
+      );
+
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
+      });
+
+      expect(outcome.status).toBe("synced");
+      const content = await readFile(file, "utf8");
+      // Converged, not chosen between — the documented policy.
+      expect(content).toContain("The sentence the author typed while syncing.");
+      expect(content).toContain("Online rewrite.");
+      expect(content).toContain("<<<<<<< your version");
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a write between the merge and the checkout is refused, never overwritten", async () => {
+    const h = await setupClone();
+    try {
+      const file = path.join(h.projectDir, "chapter-01.md");
+      // Both sides edit the same file, so the merge genuinely has to write it
+      // — the only shape in which the checkout can collide with a late write.
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nOnline rewrite.\n" },
+        "online edit",
+      );
+      await writeFile(file, "# One\n\nLocal rewrite.\n");
+
+      // The narrowest window there is: a write that lands after the merge
+      // commit exists and before the working tree is synced to it. No network
+      // hook reaches in there, so patch the merge call itself.
+      const realMerge = git.merge;
+      let merged = 0;
+      (git as unknown as { merge: typeof git.merge }).merge = async (args) => {
+        const result = await realMerge(args);
+        merged++;
+        await writeFile(file, LATE_EDIT);
+        return result;
+      };
+      let outcome;
+      try {
+        outcome = await syncProject({ projectDir: h.projectDir });
+      } finally {
+        (git as unknown as { merge: typeof git.merge }).merge = realMerge;
+      }
+      expect(merged).toBeGreaterThan(0);
+
+      // Refused, not forced: the author's newest bytes are untouched on disk.
+      expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
+      expect(outcome.status).toBe("error");
+      expect(outcome.message).toContain("Your work is saved on this computer");
+
+      // The branch was rolled back off the merge it could not check out, so
+      // HEAD, the index and the working tree still agree — no half-applied
+      // merge for the next sync to trip over.
+      const tip = await git.resolveRef({ fs, dir: h.projectDir, ref: "main" });
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: tip });
+      expect(commit.parent).toHaveLength(1);
+
+      // And the retry converges properly — the late edit is combined with the
+      // online one instead of being dropped by either side.
+      const retry = await syncProject({ projectDir: h.projectDir });
+      expect(retry.status).toBe("synced");
+      const content = await readFile(file, "utf8");
+      expect(content).toContain("The sentence the author typed while syncing.");
+      expect(content).toContain("Online rewrite.");
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
 describe("test server receive-pack validation", () => {
   test("a stale oldOid is rejected as non-fast-forward and the ref does not move", async () => {
     const serverDir = await tempDir("gutterpress-sync-nff-server-");
@@ -636,7 +835,7 @@ describe("sync convergence policy", () => {
         const outcome = await syncProject({ projectDir: h.projectDir });
         expect(outcome.status).toBe("error");
         if (outcome.status !== "error") throw new Error("unreachable");
-        expect(outcome.message).toContain("different project");
+        expect(outcome.message).toContain("no history in common");
         // NOTHING was merged or committed — the local history is untouched.
         expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(before);
       } finally {
@@ -748,67 +947,60 @@ describe("syncProject opened on a subfolder", () => {
   });
 });
 
-// ── BUG 2: isPushRejected must only treat a genuine non-fast-forward as ────────
-//          pull-first; permission/hook rejections surface to the auth classifier.
+// ── BUG 2: isPushRejected must only treat a genuine non-fast-forward as a ─────
+//          race to retry; permission/hook rejections surface to the auth
+//          classifier instead.
 
 describe("push rejection precision (BUG 2)", () => {
-  test("a genuine non-fast-forward still maps to pull-first (remote ahead)", async () => {
+  /** Local work to push, so the sync always reaches the push step. */
+  async function withLocalWork(h: Harness): Promise<void> {
+    await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
+  }
+
+  test("a genuine non-fast-forward is RETRIED as a race, never reported as auth", async () => {
     const h = await setupClone();
     try {
-      // The online copy moved ahead; a local commit makes this a real
-      // non-fast-forward. pushChanges must report pull-first (never auth).
-      await serverCommit(h.serverDir, { "online.md": "online\n" }, "online");
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local edit\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local",
-        author: { name: "L", email: "l@test.local" },
+      await withLocalWork(h);
+      // The server answers with a non-fast-forward report-status. That is a
+      // RACE: the loop retries it, so a one-attempt budget exhausts into the
+      // race message — never "reconnect", which would send the writer off to
+      // fix a credential that is working fine.
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("non-fast-forward"),
+        retry: { attempts: 1 },
       });
-
-      const outcome = await pushChanges({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("pull-first");
+      expect(outcome.status).toBe("error");
+      expect(outcome.message).toContain("changing very quickly");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("a server-side non-fast-forward rejection maps to pull-first", async () => {
+  test("a PERMISSION-style push rejection surfaces as auth, not as a race", async () => {
     const h = await setupClone();
     try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      // The server rejects with a non-fast-forward report-status.
-      const httpClient = pushRejectingHttpClient("non-fast-forward");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).toBe("pull-first");
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("a PERMISSION-style push rejection does NOT map to pull-first", async () => {
-    const h = await setupClone();
-    try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      // The server declines for permission/policy reasons — pulling can't fix
-      // this, so it must surface as auth (NOT pull-first, NOT a race message).
-      const httpClient = pushRejectingHttpClient("permission denied");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).not.toBe("pull-first");
+      await withLocalWork(h);
+      // The server declines for permission/policy reasons — retrying can't
+      // fix this, so it must surface as auth (NOT a race message).
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("permission denied"),
+      });
       expect(outcome.status).toBe("auth");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("a pre-receive hook decline does NOT map to pull-first", async () => {
+  test("a pre-receive hook decline surfaces as auth, not as a race", async () => {
     const h = await setupClone();
     try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      const httpClient = pushRejectingHttpClient("pre-receive hook declined");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).not.toBe("pull-first");
+      await withLocalWork(h);
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("pre-receive hook declined"),
+      });
       // A hook decline is an auth/permission-class problem, not a race.
       expect(outcome.status).toBe("auth");
     } finally {
@@ -819,14 +1011,14 @@ describe("push rejection precision (BUG 2)", () => {
 
 // ── BUG 3: a MIXED text+binary conflict must keep binary bytes byte-identical ──
 
-describe("binary convergence (newer wins, byte-exact)", () => {
+describe("binary convergence (keep BOTH, byte-exact)", () => {
   /**
    * Build a TRUE mixed clash: a base commit (text + binary) is the common
    * ancestor of BOTH sides, then the server and the local clone each diverge
    * by editing BOTH files differently.
    *
-   * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock so the
-   * newer-wins policy can be exercised in both directions deterministically.
+   * `localTimestamp` (epoch seconds) controls the LOCAL commit's clock — the
+   * keep-both policy must ignore it in BOTH directions.
    */
   async function setupBinaryClash(
     myPng: Uint8Array,
@@ -889,10 +1081,10 @@ describe("binary convergence (newer wins, byte-exact)", () => {
     return { h, onlinePng };
   }
 
-  test("LOCAL tip newer → my binary bytes win byte-exactly; image clash reported", async () => {
+  test("both versions survive: mine at the path, theirs as the .online sibling", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
     myPng[44] = 0x03; // a THIRD distinct variant — the author's bytes
-    const { h } = await setupBinaryClash(myPng); // local commit is last → newer
+    const { h, onlinePng } = await setupBinaryClash(myPng);
     try {
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("synced");
@@ -902,37 +1094,44 @@ describe("binary convergence (newer wins, byte-exact)", () => {
       expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
       const text = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
       expect(text).toContain("<<<<<<< your version");
-      // …and the binary kept MY (newer) bytes, byte-identical — never routed
-      // through the string merge driver.
-      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
-      expect(onDisk).toEqual(myPng);
+
+      // …and the binary kept MY bytes where they were, byte-identical — never
+      // routed through the string merge driver.
+      const mine = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
+      expect(mine).toEqual(myPng);
       const raw = await readFile(path.join(h.projectDir, "cover.png"));
       expect(raw.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false);
-      // The clash is reported for the desktop's non-blocking picker.
-      expect(outcome.imageClashes).toHaveLength(1);
-      expect(outcome.imageClashes![0]!.path).toBe("cover.png");
-      expect(outcome.imageClashes![0]!.kept).toBe("local");
-      expect(outcome.imageClashes![0]!.localOid).toMatch(/^[0-9a-f]{40}$/);
-      expect(outcome.imageClashes![0]!.remoteOid).toMatch(/^[0-9a-f]{40}$/);
-      // Pushed: the server has the same bytes.
+
+      // …with THEIR bytes alongside it, also byte-identical.
+      const theirs = new Uint8Array(
+        await readFile(path.join(h.projectDir, "cover.online.png")),
+      );
+      expect(theirs).toEqual(new Uint8Array(onlinePng));
+
+      // The pair is reported so the host can name it.
+      expect(outcome.keptBothFiles).toEqual([
+        { path: "cover.png", onlinePath: "cover.online.png" },
+      ]);
+
+      // Pushed: the server has BOTH files with the same bytes.
       expect(await isClean(h.projectDir)).toBe(true);
       const serverOid = await serverHead(h.serverDir);
-      const { blob } = await git.readBlob({
-        fs,
-        dir: h.serverDir,
-        oid: serverOid,
-        filepath: "cover.png",
-      });
-      expect(new Uint8Array(blob)).toEqual(myPng);
+      const readServer = async (filepath: string) =>
+        new Uint8Array(
+          (await git.readBlob({ fs, dir: h.serverDir, oid: serverOid, filepath })).blob,
+        );
+      expect(await readServer("cover.png")).toEqual(myPng);
+      expect(await readServer("cover.online.png")).toEqual(new Uint8Array(onlinePng));
     } finally {
       await h.cleanup();
     }
   });
 
-  test("ONLINE tip newer → online bytes win; my version stays reachable in history", async () => {
+  test("an OLDER local commit still keeps my bytes at the path (no newer-wins)", async () => {
     const myPng = new Uint8Array(PNG_BYTES);
     myPng[44] = 0x07;
-    // Local commit stamped 10 minutes in the past → the online tip is newer.
+    // Local commit stamped 10 minutes in the past — under the old newer-wins
+    // policy the online bytes would have replaced mine at cover.png.
     const past = Math.floor(Date.now() / 1000) - 600;
     const { h, onlinePng } = await setupBinaryClash(myPng, past);
     try {
@@ -940,31 +1139,15 @@ describe("binary convergence (newer wins, byte-exact)", () => {
       expect(outcome.status).toBe("synced");
       if (outcome.status !== "synced") throw new Error("unreachable");
 
-      const onDisk = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
-      expect(onDisk).toEqual(new Uint8Array(onlinePng));
-      expect(outcome.imageClashes).toHaveLength(1);
-      expect(outcome.imageClashes![0]!.kept).toBe("online");
-      // MY bytes remain reachable in history (the equalization commit's
-      // parent — walk the log and find them).
-      const log = await git.log({ fs, dir: h.projectDir, depth: 30 });
-      let found = false;
-      for (const entry of log) {
-        try {
-          const { blob } = await git.readBlob({
-            fs,
-            dir: h.projectDir,
-            oid: entry.oid,
-            filepath: "cover.png",
-          });
-          if (Buffer.compare(new Uint8Array(blob), myPng) === 0) {
-            found = true;
-            break;
-          }
-        } catch {
-          // file absent at this commit — keep walking
-        }
-      }
-      expect(found).toBe(true);
+      const mine = new Uint8Array(await readFile(path.join(h.projectDir, "cover.png")));
+      expect(mine).toEqual(myPng);
+      const theirs = new Uint8Array(
+        await readFile(path.join(h.projectDir, "cover.online.png")),
+      );
+      expect(theirs).toEqual(new Uint8Array(onlinePng));
+      expect(outcome.keptBothFiles).toEqual([
+        { path: "cover.png", onlinePath: "cover.online.png" },
+      ]);
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();
@@ -1073,111 +1256,52 @@ describe("syncProject retry budget (BUG 6)", () => {
   });
 });
 
-// ── Structural preflight — never touch the tree of a damaged repo ─────────────
+// ── A damaged history reports itself honestly ────────────────────────────────
 //
-// The C1 scenario from the 2026-07-02 recovery audit: an abandoned native-git
-// merge leaves MERGE_HEAD plus literal conflict markers in tracked files.
-// Before the preflight existed, syncProject's snapshot step would COMMIT those
-// markers and push them to the shared remote. It must instead refuse to touch
-// the tree and throw the typed error the hosts' recovery routing consumes.
+// With repair gone, this IS the answer for an unreadable `.git`. The bar is
+// that the writer is never told to "try again" at something that can never
+// work, and never told their work is lost when it isn't.
 
-describe("syncProject — structural preflight", () => {
-  test("mid-merge repo (MERGE_HEAD): throws RepoNeedsRecovery, snapshots nothing, pushes nothing", async () => {
-    const h = await setupClone();
-    try {
-      const localBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
-      const serverBefore = await serverHead(h.serverDir);
-
-      // Fabricate the abandoned-native-merge state: MERGE_HEAD + conflict
-      // markers in a tracked file.
-      await writeFile(
-        path.join(h.projectDir, ".git", "MERGE_HEAD"),
-        `${localBefore}\n`,
-      );
-      await writeFile(
-        path.join(h.projectDir, "chapter-01.md"),
-        "# One\n\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n",
-      );
-
-      let thrown: unknown;
+describe("syncProject — a history that cannot be read", () => {
+  for (const [label, damage] of [
+    ["`.git/index` truncated", (d: string) => fs.writeFileSync(path.join(d, ".git", "index"), "")],
+    ["`.git/HEAD` emptied", (d: string) => fs.writeFileSync(path.join(d, ".git", "HEAD"), "")],
+    ["`.git` removed entirely", (d: string) => fs.rmSync(path.join(d, ".git"), { recursive: true, force: true })],
+  ] as const) {
+    test(`${label}: says the history can't be read, never "try again"`, async () => {
+      const h = await setupClone();
       try {
-        await syncProject({ projectDir: h.projectDir });
-      } catch (e) {
-        thrown = e;
+        await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nUnsaved work.\n");
+        damage(h.projectDir);
+
+        const outcome = await syncProject({ projectDir: h.projectDir });
+
+        expect(outcome.status).toBe("error");
+        if (outcome.status !== "error") throw new Error("unreachable");
+        expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
+        // The three things the message promises are all true.
+        expect(outcome.message).toContain("version history can't be read");
+        expect(outcome.message).toContain("Your writing is safe");
+        expect(outcome.message).toContain("download a fresh copy");
+        expect(outcome.message).not.toContain("try again");
+        // And the book really IS intact — that is what makes it honest.
+        expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(
+          "Unsaved work.",
+        );
+      } finally {
+        await h.cleanup();
       }
-      expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-      expect((thrown as { kind?: string })?.kind).toBe("needs_repair");
+    });
+  }
+});
 
-      // Nothing was committed locally (the conflict markers were NOT
-      // snapshotted into history) and nothing reached the remote.
-      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
-      expect(await serverHead(h.serverDir)).toBe(serverBefore);
-    } finally {
-      await h.cleanup();
-    }
-  });
+// ── Staged-but-uncommitted recovery ──────────────────────────────────────────
+//
+// A snapshot killed between `git.add` and `git.commit` leaves the staging
+// marker behind. The next sync must finish that snapshot rather than strand
+// the author's staged work.
 
-  test("pullChanges and pushChanges called DIRECTLY hit the same in-lock preflight", async () => {
-    // The History tab's Pull/Push buttons bypass syncProject, so the guard
-    // lives INSIDE each operation's repo lock — syncProject inherits it from
-    // its first pull rather than running a redundant entry preflight.
-    const h = await setupClone();
-    try {
-      const localBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
-      await writeFile(path.join(h.projectDir, ".git", "MERGE_HEAD"), `${localBefore}\n`);
-
-      for (const op of [pullChanges, pushChanges]) {
-        let thrown: unknown;
-        try {
-          await op({ projectDir: h.projectDir });
-        } catch (e) {
-          thrown = e;
-        }
-        expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-        expect((thrown as { kind?: string })?.kind).toBe("needs_repair");
-      }
-      // Neither operation snapshotted the damaged tree.
-      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("a stale lock (older than the threshold) blocks sync with the stale_lock kind", async () => {
-    const h = await setupClone();
-    try {
-      const lockPath = path.join(h.projectDir, ".git", "index.lock");
-      await writeFile(lockPath, "");
-      // Age the lock past the 2-minute preflight threshold.
-      const old = new Date(Date.now() - 10 * 60 * 1000);
-      fs.utimesSync(lockPath, old, old);
-
-      let thrown: unknown;
-      try {
-        await syncProject({ projectDir: h.projectDir });
-      } catch (e) {
-        thrown = e;
-      }
-      expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-      expect((thrown as { kind?: string })?.kind).toBe("stale_lock");
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("a FRESH lock does not block sync (a live process may hold it)", async () => {
-    const h = await setupClone();
-    try {
-      // A just-created lock is below the preflight age gate; sync proceeds
-      // normally (nothing to push → up-to-date).
-      await writeFile(path.join(h.projectDir, ".git", "index.lock"), "");
-      const outcome = await syncProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("up-to-date");
-    } finally {
-      await h.cleanup();
-    }
-  });
-
+describe("syncProject — staged-but-uncommitted snapshot", () => {
   test("staged-but-uncommitted snapshot marker is recovered and pushed by sync", async () => {
     const h = await setupClone();
     try {
@@ -1196,5 +1320,319 @@ describe("syncProject — structural preflight", () => {
     } finally {
       await h.cleanup();
     }
+  });
+});
+
+// ── Pull-merge-only passes (push: false) — the 15-minute push cadence ────────
+//
+// Owner decision 2026-08-23: the auto-sync tick keeps PULLING every ~2 minutes
+// so a collaborator's work still arrives promptly, but pushing happens on a
+// ~15-minute cadence (and on app exit). The lib half of that decision is ONE
+// flag on the one operation: `push: false` runs the same locked pass minus the
+// network push — and minus any snapshot no merge needs, so a quiet tick mints
+// no commit while the author types (the F4 "commit wall").
+
+/** An httpClient that counts receive-pack traffic (advert GET + POST) — the
+ *  network footprint of the PUSH phase. upload-pack (the pull half) passes
+ *  through uncounted. */
+function receivePackCountingClient(counter: { receivePack: number }): typeof httpNode {
+  return {
+    async request(config: Parameters<typeof httpNode.request>[0]) {
+      if (config.url.includes("git-receive-pack")) counter.receivePack++;
+      return httpNode.request(config);
+    },
+  } as typeof httpNode;
+}
+
+describe("pull-merge-only pass (push: false)", () => {
+  test("remote moved + local edit → the merge lands locally and NOTHING is pushed", async () => {
+    const h = await setupClone();
+    try {
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-02.md": "# Two\n\nWritten online.\n" },
+        "online: add chapter two",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nLocal draft in progress.\n",
+      );
+
+      const counter = { receivePack: 0 };
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        push: false,
+        httpClient: receivePackCountingClient(counter),
+      });
+
+      // The pass reports complete; the push is deferred, not failed.
+      expect(outcome.status).toBe("up-to-date");
+      expect(outcome.filesChanged).toBe(true);
+      // The online file is on disk locally…
+      expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe(
+        "# Two\n\nWritten online.\n",
+      );
+      // …the local edit survived (the merge-guard snapshot still fired)…
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nLocal draft in progress.\n",
+      );
+      // …the local tip is a two-parent merge holding both sides…
+      const tip = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: tip });
+      expect(commit.parent).toHaveLength(2);
+      expect(commit.parent).toContain(remoteCommit);
+      // …and the SERVER never saw a push: zero receive-pack traffic, tip unmoved.
+      expect(counter.receivePack).toBe(0);
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a dirty tree on a quiet pass stays UNCOMMITTED — no per-tick snapshot wall", async () => {
+    const h = await setupClone();
+    try {
+      const tipBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nStill typing this sentence…\n",
+      );
+
+      const counter = { receivePack: 0 };
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        push: false,
+        httpClient: receivePackCountingClient(counter),
+      });
+
+      expect(outcome.status).toBe("up-to-date");
+      // No snapshot was minted: the remote did not move, so no merge could
+      // touch the tree — the edit stays an ordinary unsaved change for the
+      // auto-snapshot debounce (or the next push-enabled pass) to commit.
+      expect("snapshotId" in outcome ? outcome.snapshotId : undefined).toBeUndefined();
+      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(tipBefore);
+      expect(await isClean(h.projectDir)).toBe(false);
+      // The edit itself is untouched on disk.
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nStill typing this sentence…\n",
+      );
+      // And nothing was pushed.
+      expect(counter.receivePack).toBe(0);
+      expect(await serverHead(h.serverDir)).toBe(tipBefore);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("overlapping edits still converge on a pull-only pass, reported via combinedFiles", async () => {
+    const h = await setupClone();
+    try {
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nThe online rewrite.\n" },
+        "online rewrite",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nThe local rewrite.\n",
+      );
+
+      const outcome = await syncProject({ projectDir: h.projectDir, push: false });
+
+      expect(outcome.status).toBe("up-to-date");
+      if (outcome.status !== "up-to-date") throw new Error("unreachable");
+      // The converge report rides on the pull-only outcome so the host can
+      // still show the "both versions are in the file" surface.
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
+      const merged = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
+      expect(merged).toContain("<<<<<<<");
+      expect(merged).toContain("The online rewrite.");
+      expect(merged).toContain("The local rewrite.");
+      // The combined result exists ONLY locally until a push-enabled pass.
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("work held back by pull-only passes is pushed intact by the next push-enabled pass", async () => {
+    const h = await setupClone();
+    try {
+      // A pull-only pass with the remote moved: merge lands locally only.
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-02.md": "# Two\n\nWritten online.\n" },
+        "online: add chapter two",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nHeld-back local work.\n",
+      );
+      const pullOnly = await syncProject({ projectDir: h.projectDir, push: false });
+      expect(pullOnly.status).toBe("up-to-date");
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+
+      // The next push-enabled pass sends the exact merge — nothing lost.
+      const pushPass = await syncProject({ projectDir: h.projectDir });
+      expect(pushPass.status).toBe("synced");
+      const localTip = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      expect(await serverHead(h.serverDir)).toBe(localTip);
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(
+        "# One\n\nHeld-back local work.\n",
+      );
+      expect(await serverFile(h.serverDir, "chapter-02.md")).toBe(
+        "# Two\n\nWritten online.\n",
+      );
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+// ── Owner cadence, end to end: two REAL clones against the smart-HTTP server ─
+//
+// The four decisions in one flow: (1) a pull-only tick with the remote moved
+// merges locally and pushes nothing; (2) a push-due tick with local changes
+// pulls FIRST and its push carries the merge — nothing lost on either side;
+// (3) a push-due tick with nothing to push makes zero receive-pack traffic
+// (the pre-existing `tip === remoteTip` short-circuit); the exit pass (4) is
+// host policy, pinned in the desktop orchestrator tests.
+describe("push-cadence e2e — two clones, pull-only ticks, push-due ticks", () => {
+  test("pull-only merges arrive; push-due sends the merge; quiet push-due pushes nothing", async () => {
+    const serverDir = await tempDir("gutterpress-cadence-server-");
+    await createFixtureRepo(serverDir);
+    const server = await startGitServer(serverDir);
+    const parentA = await tempDir("gutterpress-cadence-a-");
+    const parentB = await tempDir("gutterpress-cadence-b-");
+    const dirA = path.join(parentA, "book");
+    const dirB = path.join(parentB, "book");
+    try {
+      await cloneRepository({ url: server.url, dir: dirA });
+      await cloneRepository({ url: server.url, dir: dirB });
+
+      // ── B (the other computer) sends new work online ──
+      await writeFile(path.join(dirB, "chapter-05.md"), "# Five\n\nFrom computer B.\n");
+      const pushB = await syncProject({ projectDir: dirB });
+      expect(pushB.status).toBe("synced");
+      const serverTipAfterB = await serverHead(serverDir);
+
+      // ── (1) A's 2-minute tick: pull-only — B's work arrives, no push ──
+      const counterA1 = { receivePack: 0 };
+      const pullTick = await syncProject({
+        projectDir: dirA,
+        push: false,
+        httpClient: receivePackCountingClient(counterA1),
+      });
+      expect(pullTick.status).toBe("up-to-date");
+      expect(pullTick.filesChanged).toBe(true);
+      expect(await readFile(path.join(dirA, "chapter-05.md"), "utf8")).toBe(
+        "# Five\n\nFrom computer B.\n",
+      );
+      expect(counterA1.receivePack).toBe(0);
+      expect(await serverHead(serverDir)).toBe(serverTipAfterB);
+
+      // ── A types; the in-between quiet ticks commit and push NOTHING ──
+      await writeFile(path.join(dirA, "chapter-06.md"), "# Six\n\nFrom computer A.\n");
+      const tipA = await git.resolveRef({ fs, dir: dirA, ref: "HEAD" });
+      const counterA2 = { receivePack: 0 };
+      const quietTick = await syncProject({
+        projectDir: dirA,
+        push: false,
+        httpClient: receivePackCountingClient(counterA2),
+      });
+      expect(quietTick.status).toBe("up-to-date");
+      expect(counterA2.receivePack).toBe(0);
+      expect(await git.resolveRef({ fs, dir: dirA, ref: "HEAD" })).toBe(tipA);
+      expect(await serverHead(serverDir)).toBe(serverTipAfterB);
+
+      // ── (2) B moves the remote again; A's PUSH-DUE tick pulls first and
+      //        its push carries the merge — nothing lost on either side ──
+      await writeFile(path.join(dirB, "chapter-07.md"), "# Seven\n\nMore from B.\n");
+      const pushB2 = await syncProject({ projectDir: dirB });
+      expect(pushB2.status).toBe("synced");
+
+      const pushDue = await syncProject({ projectDir: dirA });
+      expect(pushDue.status).toBe("synced");
+      if (pushDue.status !== "synced") throw new Error("unreachable");
+      expect(pushDue.mergedRemoteChanges).toBe(true);
+      const mergedTipA = await git.resolveRef({ fs, dir: dirA, ref: "HEAD" });
+      expect(await serverHead(serverDir)).toBe(mergedTipA);
+      expect(await serverFile(serverDir, "chapter-06.md")).toBe("# Six\n\nFrom computer A.\n");
+      expect(await serverFile(serverDir, "chapter-07.md")).toBe("# Seven\n\nMore from B.\n");
+      expect(await readFile(path.join(dirA, "chapter-07.md"), "utf8")).toBe(
+        "# Seven\n\nMore from B.\n",
+      );
+
+      // ── (3) push-due with nothing to push: zero receive-pack traffic ──
+      const counterA3 = { receivePack: 0 };
+      const idle = await syncProject({
+        projectDir: dirA,
+        httpClient: receivePackCountingClient(counterA3),
+      });
+      expect(idle.status).toBe("up-to-date");
+      expect(counterA3.receivePack).toBe(0);
+      expect(await serverHead(serverDir)).toBe(mergedTipA);
+
+      // ── B's next pull-only tick receives A's work: full circle ──
+      const counterB = { receivePack: 0 };
+      const pullB = await syncProject({
+        projectDir: dirB,
+        push: false,
+        httpClient: receivePackCountingClient(counterB),
+      });
+      expect(pullB.status).toBe("up-to-date");
+      expect(counterB.receivePack).toBe(0);
+      expect(await readFile(path.join(dirB, "chapter-06.md"), "utf8")).toBe(
+        "# Six\n\nFrom computer A.\n",
+      );
+      expect(await git.resolveRef({ fs, dir: dirB, ref: "HEAD" })).toBe(mergedTipA);
+    } finally {
+      await server.close().catch(() => {});
+      await rm(serverDir, { recursive: true, force: true }).catch(() => {});
+      await rm(parentA, { recursive: true, force: true }).catch(() => {});
+      await rm(parentB, { recursive: true, force: true }).catch(() => {});
+    }
+  }, 60_000);
+});
+
+// ── Push/merge-history guards (moved here with the functions they pin) ──────
+
+describe("isPushRejected", () => {
+  test("PushRejectedError: non-fast-forward (or reason-less back-compat) only", () => {
+    expect(isPushRejected({ code: "PushRejectedError" })).toBe(true);
+    expect(
+      isPushRejected({ code: "PushRejectedError", data: { reason: "not-fast-forward" } }),
+    ).toBe(true);
+    expect(isPushRejected({ code: "PushRejectedError", data: { reason: "tag-exists" } })).toBe(
+      false,
+    );
+  });
+
+  test("GitPushError: only report-status text that says non-fast-forward", () => {
+    expect(
+      isPushRejected({
+        code: "GitPushError",
+        data: { prettyDetails: "refs/heads/main non-fast-forward" },
+      }),
+    ).toBe(true);
+    expect(
+      isPushRejected({
+        code: "GitPushError",
+        data: { prettyDetails: "pre-receive hook declined" },
+      }),
+    ).toBe(false);
+  });
+
+  test("anything else is not a push rejection", () => {
+    expect(isPushRejected(new Error("ECONNREFUSED"))).toBe(false);
+  });
+});
+
+describe("isUnrelatedHistories", () => {
+  test("MergeNotSupportedError code and message signatures", () => {
+    expect(isUnrelatedHistories({ code: "MergeNotSupportedError" })).toBe(true);
+    expect(isUnrelatedHistories(new Error("refusing to merge unrelated histories"))).toBe(true);
+    expect(isUnrelatedHistories(new Error("no common commits"))).toBe(true);
+    expect(isUnrelatedHistories(new Error("plain failure"))).toBe(false);
   });
 });

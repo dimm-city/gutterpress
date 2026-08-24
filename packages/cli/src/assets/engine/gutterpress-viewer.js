@@ -29,11 +29,11 @@
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     measure: () => measure,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
     loadStyleSources: () => loadStyleSources,
     injectViewerCss: () => injectViewerCss,
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
-    forcedColumnBreaksSupported: () => forcedColumnBreaksSupported,
     contentEdgeRect: () => contentEdgeRect,
     compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
@@ -1048,15 +1048,10 @@
     doc.getElementById("gp-break-mapping")?.remove();
     return "";
   }
-  function forcedColumnBreaksSupported() {
-    return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("break-before", "column") && CSS.supports("break-after", "column");
-  }
   var FRAGMENT_EPSILON_PX = 1;
   function contentEdgeRect(site, atEnd) {
     const rects = Array.from(site.getClientRects());
-    const solid = rects.filter((r) => r.height >= FRAGMENT_EPSILON_PX);
-    const pool = solid.length ? solid : rects;
-    return atEnd ? pool.at(-1) : pool[0];
+    return atEnd ? rects.at(-1) : rects[0];
   }
   function columnReserve(offset, columnHeight) {
     const remaining = columnHeight - offset;
@@ -1116,13 +1111,12 @@
         continue;
       const stripTop = strip.getBoundingClientRect().top;
       const edge = prop === "break-after" ? rect.bottom : rect.top;
-      const reserve = columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight);
-      if (reserve === null)
+      if (columnReserve((edge - stripTop) / cssZoomOf(strip), strip.clientHeight) === null)
         continue;
       const spacer = document.createElement("div");
       spacer.className = "gp-column-break-spacer";
       spacer.setAttribute("aria-hidden", "true");
-      spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+      spacer.style.cssText = `${prop}: column; height:0; margin:0; padding:0; border:0;`;
       if (prop === "break-after")
         el.after(spacer);
       else
@@ -1278,6 +1272,47 @@
       delete el.dataset.gpLeadingPageRoot;
       delete el.dataset.gpLeadingPageRootDisplay;
       delete el.dataset.gpLeadingPageRootDisplayPriority;
+    }
+  }
+  var SCROLLABLE = /^(auto|scroll|hidden)$/;
+  function makeOverflowFragmentable(strips) {
+    const todo = [];
+    for (const strip of strips) {
+      for (const el of Array.from(strip.el.querySelectorAll("*"))) {
+        const cs = getComputedStyle(el);
+        const x = SCROLLABLE.test(cs.overflowX);
+        const y = SCROLLABLE.test(cs.overflowY);
+        if (x || y)
+          todo.push({ el, x, y });
+      }
+    }
+    for (const { el, x, y } of todo) {
+      el.dataset.gpOverflow = "clipped";
+      el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+      el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+      el.dataset.gpOverflowXPriority = el.style.getPropertyPriority("overflow-x");
+      el.dataset.gpOverflowYPriority = el.style.getPropertyPriority("overflow-y");
+      if (x)
+        el.style.setProperty("overflow-x", "clip");
+      if (y)
+        el.style.setProperty("overflow-y", "clip");
+    }
+  }
+  function restoreScrollContainers(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll('[data-gp-overflow="clipped"]'))) {
+      for (const axis of ["x", "y"]) {
+        const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
+        const priority = axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
+        if (value)
+          el.style.setProperty(`overflow-${axis}`, value, priority || "");
+        else
+          el.style.removeProperty(`overflow-${axis}`);
+      }
+      delete el.dataset.gpOverflow;
+      delete el.dataset.gpOverflowX;
+      delete el.dataset.gpOverflowY;
+      delete el.dataset.gpOverflowXPriority;
+      delete el.dataset.gpOverflowYPriority;
     }
   }
   function compensateTrailingMarginsBeforeAvoids(model, strips) {
@@ -1555,11 +1590,15 @@
     for (const [i, site] of sites.entries()) {
       if (!plan[i])
         continue;
-      const spacer = document.createElement("div");
-      spacer.className = "gp-recto-spacer";
-      spacer.setAttribute("aria-hidden", "true");
-      spacer.style.cssText = "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
-      site.el.before(spacer);
+      const leading = site.el.previousElementSibling;
+      const need = leading?.classList.contains("gp-column-break-spacer") ? 1 : 2;
+      for (let n = 0;n < need; n++) {
+        const spacer = document.createElement("div");
+        spacer.className = "gp-recto-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        spacer.style.cssText = "break-before: column; height: 0; margin: 0; padding: 0; border: 0;";
+        site.el.before(spacer);
+      }
       inserted++;
     }
     return inserted;
@@ -1713,6 +1752,7 @@
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
     await layoutReady;
+    makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
     compensateTrailingMarginsBeforeAvoids(model, strips);
     synthesizeColumnBreaks(model);
@@ -1735,12 +1775,14 @@
       relayout: () => {
         restoreFullHeightPageRoots();
         restoreTrailingMargins();
+        restoreScrollContainers();
         unwrapStrips(strips);
         for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
+        makeOverflowFragmentable(strips);
         stabilizeFullHeightPageRoots(model, strips);
         compensateTrailingMarginsBeforeAvoids(model, strips);
         synthesizeColumnBreaks(model);

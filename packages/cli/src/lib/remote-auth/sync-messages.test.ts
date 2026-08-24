@@ -1,21 +1,20 @@
+import { describe, expect, test } from "bun:test";
+import { SYNC_LATE_EDIT_MESSAGE, SYNC_SNAPSHOT_MESSAGE } from "./sync-messages.ts";
+
 /**
- * Guard for sync-messages.ts wording.
- *
- * The desktop's Advanced Setup dialog sanitizes every displayed message with
- * /https?:\/\/\S+/g → "(address hidden)" to keep remote URLs out of the UI.
- * A message that embeds a literal scheme token — e.g. "(http://)" — matches
- * that regex and renders as broken text ("… isn't secure ((address hidden) …").
- * So: author copy may say "https", never "http://" or "https://".
+ * The two sync HISTORY messages are recorded verbatim as commit messages, so
+ * a writer sees them raw on github.com and (classified) in the desktop's
+ * Previous versions timeline. Unlike the MSG_* status strings, they must read
+ * as author copy with zero version-control vocabulary.
  */
-import { test, expect } from "bun:test";
+describe("sync history messages are writer copy", () => {
+  test("no version-control jargon in what lands in the writer's history", () => {
+    for (const message of [SYNC_SNAPSHOT_MESSAGE, SYNC_LATE_EDIT_MESSAGE]) {
+      expect(message.toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b|merge|repo/);
+    }
+  });
 
-import * as messages from "./sync-messages";
-
-const URL_SHAPED = /https?:\/\/\S+/;
-
-test("no sync message contains a URL-shaped token (the desktop sanitizer would redact it)", () => {
-  const offenders = Object.entries(messages)
-    .filter(([, value]) => typeof value === "string" && URL_SHAPED.test(value))
-    .map(([name]) => name);
-  expect(offenders).toEqual([]);
+  test("the two messages stay distinct so the mid-sync-edit race stays legible", () => {
+    expect(SYNC_SNAPSHOT_MESSAGE).not.toBe(SYNC_LATE_EDIT_MESSAGE);
+  });
 });

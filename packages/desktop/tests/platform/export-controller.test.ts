@@ -56,7 +56,7 @@ interface Harness {
   syncArgs: unknown[];
   /** Args of every fake runBuild() call, in order — lets tests assert on the
    * resolved `outDir`/`pdfFileOverride` (the workspace/destination split). */
-  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }>;
+  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }>;
   /** Paths handed to `registerPickedPath`, in order (the reveal capability). */
   registeredPicks: string[];
 }
@@ -68,7 +68,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const removed: string[] = [];
   const latched = new Set<string>();
   const syncArgs: unknown[] = [];
-  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }> = [];
+  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }> = [];
   const registeredPicks: string[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
@@ -82,7 +82,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
-    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null }) => {
+    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean }) => {
       counters.build += 1;
       buildArgs.push(buildOpts);
       const r = opts.runBuild ? opts.runBuild() : { outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" };
@@ -180,6 +180,21 @@ test("the build workspace is a temp dir decoupled from the Save folder, and is c
   expect(path.dirname(pdfFileOverride!)).toBe("/Users/author/Desktop");
   // The workspace is temp scratch space — removed once the export settles.
   expect(existsSync(outDir!)).toBe(false);
+});
+
+// #163: the desktop is the only export path a non-technical author has, so
+// the engine's `allowShrink` escape hatch has to survive the whole way down —
+// renderer BuildArgs → RawBuildArgs → api:build → here → runBuild. Drop this
+// forwarding and the renderer's "Build anyway" button fails exactly the same
+// way the export it is retrying did.
+test("allowShrink reaches the lib build, and stays off unless asked for", async () => {
+  const h = makeHarness();
+  await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf", allowShrink: true });
+  expect(h.buildArgs[0]!.allowShrink).toBe(true);
+
+  const h2 = makeHarness();
+  await h2.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
+  expect(h2.buildArgs[0]!.allowShrink).toBeFalsy();
 });
 
 test("missing input is rejected before any work", async () => {

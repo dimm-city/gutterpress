@@ -132,6 +132,20 @@ test("resolveActiveMarkdownFiles: no configured files falls back to root .md fil
   expect(files).toEqual(["a.md", "b.md"]);
 });
 
+test("resolveActiveMarkdownFiles: a keep-both `.online` sibling is never rendered as a chapter", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "chapter-04.md"), "# Four\n", "utf8");
+  // What a converge merge writes when two writers each created chapter-04.md
+  // offline: ours stays, theirs lands beside it. It sorts immediately after
+  // the real chapter, so a bare `.endsWith(".md")` glob would render the
+  // online copy as a duplicate chapter and print it.
+  await writeFile(join(dir, "chapter-04.online.md"), "# Four (online)\n", "utf8");
+
+  const files = await resolveActiveMarkdownFiles(dir);
+
+  expect(files).toEqual(["chapter-04.md"]);
+});
+
 test("resolveActiveMarkdownFiles: configured files are returned verbatim, in the given order", async () => {
   const dir = await makeProject();
   await writeFile(join(dir, "a.md"), "# A\n", "utf8");

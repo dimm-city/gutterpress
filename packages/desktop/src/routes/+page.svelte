@@ -13,8 +13,6 @@
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
-  import ImageClashPicker from "$lib/components/ImageClashPicker.svelte";
-  import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
@@ -45,7 +43,6 @@
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
-  import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
@@ -164,6 +161,9 @@
         input,
         format: "pdf",
         out: outPath,
+        // #163: opt-in per export, offered by the failure itself (see
+        // ExportController.savePdf) — never a stored setting.
+        allowShrink: opts?.allowShrink,
         // Validation is skipped by default (the quick Ctrl+Shift+E export and
         // the dialog's default) — it's a fast RGB export, not the full
         // preflight. The export dialog's "Run print-safety validation" toggle
@@ -196,7 +196,10 @@
     },
     showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
-    toastError: (message) => toast?.error(message),
+    // `show` rather than `error`: the over-wide "Build anyway" offer (#163)
+    // needs a duration and an action button, which `error()` does not take.
+    toastError: (message, durationMs, action) =>
+      toast?.show(message, "error", durationMs, action),
     friendlyPdfError: (e) => friendlyPdfError(e),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
@@ -462,8 +465,8 @@
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
   // Sync-outcome routing + diagnosis state (Phase 5b). Owns the syncDiag /
-  // forceSyncing runes and the non-blocking image-clash picker state (sync
-  // always converges — 2026-08-14). Host coupling injected so the routing is
+  // forceSyncing runes (sync always converges — 2026-08-14). Host coupling
+  // injected so the routing is
   // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
   // stay component methods (they touch toast + activityViewRef.refreshHistory
   // + buffer).
@@ -833,13 +836,6 @@
     trackPersistence(api.app.setDesktopPrefs({ showLandingAtStartup: show }));
   }
 
-  // ── Repair overlay state ─────────────────────────────────────────────────
-  // The RecoveryOverlay scrim state machine lives in the RecoveryUiController
-  // (Phase 5b). Repair is one automatic pipeline (2026-08-14) — no confirm or
-  // guidance dialogs remain. The onMount subscription below keeps the
-  // DOM/host glue and delegates transitions to recovery.applyStatus.
-  const recovery = new RecoveryUiController();
-
   // ── Crash recovery (#44) ──────────────────────────────────────────────────
   // scanForRecovery/restoreRecovery/discardRecovery (Phase 5 slice 2, UX H5 /
   // ARCH #10 — moved from +page.svelte) live on CrashRecoveryController; the
@@ -910,12 +906,11 @@
     if (landingVisible) landingRef?.focusLayer();
   }
 
-  // ── Repair overlay + converge-report subscription ───────────────────────────
-  // Subscribe to the host's sync:status channel for recovering/recovered/error
-  // states (the RecoveryOverlay) and for the converge report — combined-with-
-  // markers files get a review toast, clashing images open the non-blocking
-  // picker. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all
-  // host work through getPlatform().
+  // ── Converge-report subscription ────────────────────────────────────────────
+  // Subscribe to the host's sync:status channel for the converge report —
+  // combined-with-markers files and side-by-side pairs each get a review
+  // toast. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host
+  // work through getPlatform().
   onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
@@ -924,21 +919,10 @@
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
-      syncController.applyConvergeReport(status.combinedFiles, status.imageClashes);
-      recovery.applyStatus(status);
+      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
     });
     return () => off?.();
   });
-
-  /** Show a backup zip in the system file manager. */
-  function showBackupInFolder(path: string) {
-    api.shell.showInFolder(path).catch(() => {});
-  }
-
-  /** Called when the RecoveryOverlay auto-dismiss or Done button fires. */
-  function onRecoveryOverlayDone() {
-    recovery.dismissOverlay();
-  }
 
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
@@ -2983,21 +2967,6 @@
         {#if isDesktop() && blockOverlay.open}
           <BlockEditOverlay controller={blockOverlay} bind:this={blockOverlayRef} />
         {/if}
-        <!-- Recovery overlay: pane-scoped, position:absolute, TRANSLUCENT scrim.
-             Non-dismissable during repair; auto-dismisses after ~1.8s on success.
-             Hard rule (memory: never hide cross-origin preview iframe): scrim is
-             translucent (var(--app-overlay) + backdrop-filter:blur), never opaque. -->
-        {#key recovery.recoveryOverlayState}
-        <RecoveryOverlay
-          visible={recovery.recoveryOverlayVisible}
-          phase={recovery.recoveryOverlayPhase}
-          recoveryState={recovery.recoveryOverlayState}
-          backupZipPath={recovery.recoveryBackupZipPath}
-          logFilePath={recovery.recoveryLogFilePath}
-          onShowBackup={recovery.recoveryBackupZipPath ? () => showBackupInFolder(recovery.recoveryBackupZipPath!) : undefined}
-          onDone={onRecoveryOverlayDone}
-        />
-        {/key}
       </section>
     </div>
   {/if}
@@ -3163,16 +3132,6 @@
     onClose={() => (exportOpen = false)}
   />
 {/if}
-<!-- ImageClashPicker: the ONE chooser left after the 2026-08-14 convergence
-     simplification. Sync already converged (newer image kept); this shows
-     both versions side by side, non-blocking, safe to dismiss. -->
-<ImageClashPicker
-  open={syncController.imageClashes.length > 0}
-  projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
-  clashes={syncController.imageClashes}
-  onDone={() => syncController.clearImageClashes()}
-/>
-
 {#if textPrompt}
   <TextPromptDialog
     title={textPrompt.title}

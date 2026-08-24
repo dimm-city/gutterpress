@@ -204,22 +204,6 @@ export type {
   HistoryPage,
 } from "../lib/source-provider.ts";
 
-// ── App-open heartbeat (repair-vs-desktop detection) ───────────────────────────
-// A live desktop process leaves a small liveness marker under the repo's own
-// `.git` dir while a project is open; `gutterpress repair` checks it before
-// mutating so a terminal repair can't race a running app on the same repo.
-// One implementation, shared by both hosts — see lib/app-heartbeat.ts.
-export {
-  appHeartbeatPath,
-  heartbeatTtlMs,
-  isAppHeartbeatFresh,
-  readAppHeartbeat,
-  removeAppHeartbeat,
-  writeAppHeartbeat,
-  APP_HEARTBEAT_FRESH_MS,
-} from "../lib/app-heartbeat.ts";
-export type { AppHeartbeat } from "../lib/app-heartbeat.ts";
-
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {
   autoSnapshotDelayMs,
@@ -231,6 +215,7 @@ export {
   AUTO_SYNC_MIN_MINUTES,
   AUTO_SYNC_MAX_MINUTES,
   AUTO_SYNC_DEFAULT_MINUTES,
+  AUTO_SYNC_PUSH_INTERVAL_MINUTES,
 } from "../lib/host-policy.ts";
 
 export type {
@@ -242,9 +227,7 @@ export type {
 export {
   FileTokenStore,
   defaultConfigDir,
-  redactCredential,
   extractUrlCredential,
-  migrateUrlCredential,
 } from "../lib/remote-auth/token-store.ts";
 
 export type {
@@ -260,7 +243,6 @@ export {
 } from "../lib/remote-auth/github-auth.ts";
 
 export type {
-  RemoteAuthProvider,
   HostCallbacks,
   DeviceCodeInfo,
   GitHubAuthProviderOptions,
@@ -280,8 +262,6 @@ export type {
 
 export {
   cloneRepository,
-  readProjectProvenance,
-  provenancePath,
   sanitizeCloneFolderName,
 } from "../lib/remote-auth/clone.ts";
 
@@ -289,7 +269,6 @@ export type {
   CloneRepositoryOptions,
   CloneRepositoryResult,
   CloneProgressEvent,
-  ProjectProvenance,
 } from "../lib/remote-auth/clone.ts";
 
 // ── Advanced Setup: diagnostics + generic token flow (#14 / ADR 0006 D3/D7) ──
@@ -305,15 +284,12 @@ export type {
 } from "../lib/remote-auth/test-access.ts";
 
 export {
-  GenericTokenAuthProvider,
   connectGenericHost,
   knownForgeTokenUrl,
-  normalizeForgeHost,
 } from "../lib/remote-auth/generic-auth.ts";
 
 export type {
   GenericTokenConnectInput,
-  GenericHostCallbacks,
   GenericAuthOptions,
 } from "../lib/remote-auth/generic-auth.ts";
 
@@ -334,22 +310,14 @@ export type {
 // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────────
 export {
   syncProject,
-  pullChanges,
-  pushChanges,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
 export type {
   SyncOutcome,
-  PullOutcome,
-  PushOutcome,
   SyncProjectOptions,
-  ImageClash,
+  KeptBothFile,
 } from "../lib/remote-auth/sync.ts";
-
-// Image-clash picker support (converge ruling 2026-08-14): read one version's
-// bytes by blob oid; apply the writer's pick with a snapshot.
-export { keepImageVersion, readImageVersion } from "../lib/remote-auth/image-clash.ts";
 
 export type {
   SnapshotEntry,
@@ -415,29 +383,7 @@ export type {
   CommandResult,
 } from "../lib/publish/types.ts";
 
-// ── Repo repair (node-side only; never imported by renderer) ─────────────────
-// One automatic pipeline (2026-08-14 simplification): health probe → lock
-// sweep → in-place fixes → re-clone with salvage. Working files are never
-// touched; every readable commit stays reachable.
-export { repairRepo } from "../lib/remote-auth/recovery/repair.ts";
-export type { RepairOptions, RepairResult } from "../lib/remote-auth/recovery/repair.ts";
-export {
-  classifyFromHealth,
-  isLikelyRepoCorruption,
-  RepoNeedsRecoveryError,
-  isRepoNeedsRecoveryError,
-  STALE_LOCK_MIN_AGE_MS,
-} from "../lib/remote-auth/recovery/classify.ts";
-export type { RepairNeed } from "../lib/remote-auth/recovery/classify.ts";
-export {
-  inspectRepo,
-  preflightStructuralReason,
-  buildPreflightDiagnostics,
-  verifyRepoReadable,
-  isUnbornRepo,
-} from "../lib/remote-auth/recovery/inspect.ts";
-export type { RepoHealth } from "../lib/remote-auth/recovery/types.ts";
 
 // Structured operation logger (node-side only; the SPA never value-imports it).
-export { resolveLogger, shortOid } from "../lib/remote-auth/operation-log.ts";
+export { resolveLogger } from "../lib/remote-auth/operation-log.ts";
 export type { OperationLogger, LogData } from "../lib/remote-auth/operation-log.ts";

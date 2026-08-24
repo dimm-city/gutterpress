@@ -38,8 +38,8 @@ describe("ExportDialog — formats and settings", () => {
     expect(src).toMatch(/onExportPdf\(\{ validate \}\)/);
     // The controller accepts and forwards the option to the host build.
     const ctrl = read("src/lib/export/export-controller.svelte.ts");
-    expect(ctrl).toMatch(/savePdf\(opts\?: \{ validate\?: boolean \}\)/);
-    expect(ctrl).toMatch(/\{ validate: opts\?\.validate \?\? false \}/);
+    expect(ctrl).toMatch(/savePdf\(opts\?: \{ validate\?: boolean;/);
+    expect(ctrl).toMatch(/validate: opts\?\.validate \?\? false/);
     expect(page()).toMatch(/skipPreValidate: !opts\?\.validate/);
   });
 

@@ -4,13 +4,13 @@
  * A managed remote project IS a local clone: after `cloneRepository`, the
  * folder classifies as a plain `local-git-folder` (hasRemote: true) and every
  * existing feature — preview, watcher, snapshots, restore — works unchanged.
- * What makes it "managed" is the host-keyed credential plus the provenance
- * sidecar written here.
+ * What makes it "managed" is the host-keyed credential.
  *
  * Pure isomorphic-git over smart HTTPS (CLAUDE.md §7) — no system git, no gh.
  */
-import * as fs from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+// Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
+import { gitFs as fs } from "../git-fs.ts";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -24,8 +24,7 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { OFFLINE_MESSAGE } from "./github-auth.ts";
-import { isInsecureTransportError } from "./recovery/classify.ts";
-import { onAuthFor } from "./transport.ts";
+import { isInsecureTransportError, onAuthFor } from "./transport.ts";
 
 /** Coarse clone progress for host UIs. */
 export interface CloneProgressEvent {
@@ -33,23 +32,6 @@ export interface CloneProgressEvent {
   phase: string;
   loaded: number;
   total?: number;
-}
-
-/**
- * Provider provenance recorded next to a cloned project (ADR 0006 D4):
- * metadata for the repo picker / re-auth UX, never consulted by the
- * editing/preview/build paths.
- */
-export interface ProjectProvenance {
-  provider: "github";
-  owner: string;
-  repo: string;
-  /**
-   * Legacy GitHub-App installation id. New clones never write it (the OAuth
-   * App model has no installations — ADR 0006 D1 amendment 2026-06-10); kept
-   * optional so provenance files written by 0.4.x betas still parse.
-   */
-  installationId?: string;
 }
 
 export interface CloneRepositoryOptions {
@@ -78,8 +60,6 @@ export interface CloneRepositoryOptions {
   onProgress?: (event: CloneProgressEvent) => void;
   /** When provided, credentials embedded in `url` are migrated into it (D7). */
   tokenStore?: TokenStore;
-  /** Provider provenance to record beside the clone (ADR 0006 D4). */
-  provenance?: ProjectProvenance;
   /**
    * Injectable git HTTP transport for tests (isomorphic-git's `http` client
    * shape). Defaults to isomorphic-git's node client.
@@ -92,33 +72,6 @@ export interface CloneRepositoryResult {
   projectDir: string;
   /** The checked-out branch. */
   branch?: string;
-}
-
-/**
- * Where provider provenance lives: INSIDE `.git/` (untracked by definition,
- * travels with the clone, invisible to the author's files). A tracked sidecar
- * in the worktree was rejected — it would dirty the repo and leak app metadata
- * into the user's published content. The desktop's `desktop-prefs.json` was also
- * rejected: provenance must be written by the LIB (shared by CLI + desktop) and
- * stay attached to the project folder itself.
- */
-const PROVENANCE_FILE = "gutterpress-remote.json";
-
-export function provenancePath(projectDir: string): string {
-  return path.join(projectDir, ".git", PROVENANCE_FILE);
-}
-
-/** Read recorded provider provenance for a project, if any. Never throws. */
-export async function readProjectProvenance(
-  projectDir: string,
-): Promise<ProjectProvenance | null> {
-  try {
-    const raw = await readFile(provenancePath(projectDir), "utf8");
-    const parsed = JSON.parse(raw) as ProjectProvenance;
-    return parsed && parsed.provider ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -199,7 +152,7 @@ function friendlyCloneError(e: unknown): Error {
 export async function cloneRepository(
   options: CloneRepositoryOptions,
 ): Promise<CloneRepositoryResult> {
-  const { dir, onProgress, tokenStore, provenance } = options;
+  const { dir, onProgress, tokenStore } = options;
   if (!path.isAbsolute(dir)) {
     throw new Error("cloneRepository requires an absolute destination path.");
   }
@@ -270,19 +223,6 @@ export async function cloneRepository(
         }
       }
       throw friendly;
-    }
-
-    if (provenance) {
-      // Best-effort metadata (ADR 0006 D4) — never fail the clone over it.
-      try {
-        await writeFile(
-          provenancePath(dir),
-          JSON.stringify(provenance, null, 2),
-          "utf8",
-        );
-      } catch {
-        /* non-fatal */
-      }
     }
 
     let branch: string | undefined;

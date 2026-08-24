@@ -31,7 +31,7 @@ export type {
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
-  ImageClash,
+  KeptBothFile,
   RawPreviewStartArgs,
   PreviewStartResult,
   RawBuildArgs,

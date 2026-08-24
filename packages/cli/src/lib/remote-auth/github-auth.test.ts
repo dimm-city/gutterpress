@@ -233,25 +233,3 @@ test("network failure maps to the offline message and never leaks internals", as
   );
 });
 
-test("validate returns true on 200, false on 401/403", async () => {
-  const make = (status: number) =>
-    new GitHubAuthProvider({
-      clientId: "test-client-id",
-      fetchImpl: (async () => new Response("{}", { status })) as unknown as typeof fetch,
-    });
-  const cred = {
-    host: "github.com",
-    kind: "github-oauth" as const,
-    token: "t",
-    createdAt: 0,
-  };
-  expect(await make(200).validate(cred)).toBe(true);
-  expect(await make(401).validate(cred)).toBe(false);
-  expect(await make(403).validate(cred)).toBe(false);
-});
-
-test("matches only github.com", () => {
-  const { provider } = scriptedProvider([]);
-  expect(provider.matches(new URL("https://github.com/o/r.git"))).toBe(true);
-  expect(provider.matches(new URL("https://gitea.example.com/o/r.git"))).toBe(false);
-});

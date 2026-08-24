@@ -12,7 +12,8 @@
  * installed (we do not bundle it). This keeps the `bun build --compile` CLI
  * binary and the packaged desktop fully self-contained.
  */
-import * as fs from "node:fs";
+// Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
+import { gitFs as fs } from "./git-fs.ts";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -74,6 +75,18 @@ export interface SnapshotOptions {
   repoRoot?: string;
   /** Optional log file for debugging snapshot operations. */
   logFile?: string;
+  /**
+   * The CALLER's object cache, when the snapshot is one step of a longer
+   * locked operation (sync). Committing rewrites `.git/index`, and
+   * isomorphic-git's index cache invalidates on a stat comparison that can
+   * miss a same-second rewrite of the same size — so a caller that keeps
+   * using its own cache afterwards would keep reading the PRE-snapshot index.
+   * That is not cosmetic: `git.checkout` derives STAGE from it, and a stale
+   * STAGE makes an unmodified file look locally modified. Pass the cache and
+   * the snapshot's own `git.add`/`git.commit` refresh it in place. Omit it
+   * for standalone snapshots — they get a private cache, released on return.
+   */
+  cache?: GitCache;
 }
 
 /**
@@ -275,8 +288,17 @@ export async function listWorkdirChanges(
     map: async (filepath, [workdir, stage]) => {
       if (filepath === ".") return;
       // Untracked paths respect .gitignore (returning null prunes the
-      // subtree, so ignored directories are never descended into).
-      if (!stage && workdir && (await git.isIgnored({ fs, dir, filepath }))) {
+      // subtree, so ignored directories are never descended into). The
+      // `.git-damaged` prefix rides the same skip: pre-0.10.1 repairs parked
+      // the damaged `.git` backup INSIDE the project as `.git-damaged-<stamp>`,
+      // and a book still carrying one must never have that object store
+      // committed by a snapshot (0.10.1 writes the backup to the OS temp dir).
+      if (
+        !stage &&
+        workdir &&
+        (filepath.startsWith(".git-damaged") ||
+          (await git.isIgnored({ fs, dir, filepath })))
+      ) {
         return null;
       }
       const [wType, sType] = await Promise.all([
@@ -638,8 +660,10 @@ export async function snapshotWorkingTreeUnlocked(
     ? createFileLogger(options.logFile, "snapshot")
     : noopLogger;
   // One object cache for this snapshot operation only (diff + stage +
-  // commit share it), released when the operation returns.
-  const cache: GitCache = {};
+  // commit share it), released when the operation returns — unless the
+  // caller supplied its own, in which case we use that so its index view
+  // stays coherent past our commit (see SnapshotOptions.cache).
+  const cache: GitCache = options.cache ?? {};
   // Crash-window marker: staging (git.add/remove) and git.commit are two
   // separate writes. A crash between them leaves the index matching the
   // workdir with NO commit — and because the changes walk compares

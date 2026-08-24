@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { classifyTransportFailure } from "./recovery/classify.ts";
+import { classifyTransportFailure } from "./transport.ts";
 import { isSmallBody, SMALL_BODY_MAX_BYTES, withIdleTimeout } from "./git-http.ts";
 
 // A fake isomorphic-git http client whose request() and/or body reads can be

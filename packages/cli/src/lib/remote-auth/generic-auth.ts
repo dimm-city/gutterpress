@@ -16,7 +16,6 @@
  */
 import type httpNode from "isomorphic-git/http/node";
 
-import type { HostCallbacks, RemoteAuthProvider } from "./github-auth.ts";
 import { GITHUB_HOST } from "./github-auth.ts";
 import { credentialHostKey, type HostCredential } from "./token-store.ts";
 import { testRemoteAccess, type RemoteAccessResult } from "./test-access.ts";
@@ -42,14 +41,6 @@ export interface GenericTokenConnectInput {
    */
   repoUrl?: string;
 }
-
-/**
- * The {@link RemoteAuthProvider} `connect` input for the generic provider:
- * the UI-collected fields plus the standard host callbacks (`onUserCode` is
- * part of the shared contract but unused — there is no device code in the
- * token flow; pass a no-op, or use {@link connectGenericHost} directly).
- */
-export interface GenericHostCallbacks extends HostCallbacks, GenericTokenConnectInput {}
 
 export interface GenericAuthOptions {
   /** Injectable git HTTP transport for tests. */
@@ -180,41 +171,4 @@ export async function connectGenericHost(
   }
 
   return candidate;
-}
-
-/**
- * {@link RemoteAuthProvider} wrapper for the generic token flow, so host apps
- * can route any non-GitHub origin through the shared provider contract.
- */
-export class GenericTokenAuthProvider implements RemoteAuthProvider {
-  private readonly options: GenericAuthOptions;
-
-  constructor(options: GenericAuthOptions = {}) {
-    this.options = options;
-  }
-
-  /** Handles any smart-HTTP(S) host that is not github.com (device flow). */
-  matches(origin: URL): boolean {
-    return (
-      /^https?:$/.test(origin.protocol) &&
-      origin.hostname.toLowerCase() !== GITHUB_HOST
-    );
-  }
-
-  connect(callbacks: GenericHostCallbacks): Promise<HostCredential> {
-    return connectGenericHost(callbacks, this.options);
-  }
-
-  /** Revalidate a stored credential: false only on a definitive rejection. */
-  async validate(credential: HostCredential): Promise<boolean> {
-    const result = await testRemoteAccess({
-      url: `https://${credential.host}/`,
-      credential,
-      ...(this.options.httpClient ? { httpClient: this.options.httpClient } : {}),
-      ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
-    });
-    // Network failure / non-repo root ≠ invalid credential — only an explicit
-    // auth rejection invalidates (same "can't tell → keep" policy as GitHub).
-    return result.ok || result.reason !== "auth";
-  }
 }
