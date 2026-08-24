@@ -135,7 +135,6 @@
       case "syncing":
         return "Saving changes…";
       case "synced":
-      case "up-to-date":
         return "Everything is in sync";
       case "offline":
         return "Offline — changes are saved on this computer";
@@ -199,7 +198,6 @@
   /** True for states that are visually "quiet" (no action needed). */
   let isQuiet = $derived(
     syncState === "synced" ||
-      syncState === "up-to-date" ||
       syncState === "idle" ||
       syncState === "recovered" ||
       syncState === "local",

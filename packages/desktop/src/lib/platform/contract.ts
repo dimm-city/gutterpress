@@ -230,8 +230,10 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 export type SyncState =
   | "idle"
   | "syncing"
+  // "synced" — the sync completed, whether or not it had anything to send.
+  // The lib's SyncOutcome still distinguishes "synced" from "up-to-date"
+  // (manual Sync toasts that difference); the ambient pill never did.
   | "synced"
-  | "up-to-date"
   | "offline"
   | "auth"
   | "error"
@@ -308,7 +310,7 @@ export interface SyncStatus {
   /**
    * Files whose text now holds BOTH versions inside standard git conflict
    * markers (the converge merge) — the toast tells the writer to review them.
-   * Present on "synced"/"up-to-date" after a combining sync.
+   * Present on "synced" after a combining sync.
    */
   combinedFiles?: string[];
   /**

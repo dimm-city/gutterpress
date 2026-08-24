@@ -183,7 +183,6 @@
       case "auth":
         return "Needs reconnecting";
       case "synced":
-      case "up-to-date":
       case "recovered":
         return "Up to date";
       case "connect":

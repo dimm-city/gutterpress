@@ -75,8 +75,10 @@ export interface SyncStatusPayload {
   state:
     | "idle"
     | "syncing"
+    // "synced" — the sync completed. It covers BOTH lib outcomes: work was
+    // sent, or there was nothing to send. The renderer draws them
+    // identically ("Everything is in sync"), so there is no second state.
     | "synced"
-    | "up-to-date"
     | "offline"
     | "auth"
     | "error"
@@ -464,7 +466,7 @@ export class AutoSyncOrchestrator {
 
       case "up-to-date":
         this.deps.emit({
-          state: "up-to-date",
+          state: "synced",
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.filesChanged ? { filesChanged: true } : {}),

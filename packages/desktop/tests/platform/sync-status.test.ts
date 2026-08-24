@@ -13,7 +13,6 @@ function status(state: SyncStatus["state"], filesChanged?: boolean): SyncStatus 
 
 test("completed sync statuses request editor reconciliation when files changed", () => {
   expect(shouldReconcileAfterSync(status("synced", true))).toBe(true);
-  expect(shouldReconcileAfterSync(status("up-to-date", true))).toBe(true);
   expect(shouldReconcileAfterSync(status("offline", true))).toBe(true);
   expect(shouldReconcileAfterSync(status("auth", true))).toBe(true);
   expect(shouldReconcileAfterSync(status("error", true))).toBe(true);
@@ -22,7 +21,6 @@ test("completed sync statuses request editor reconciliation when files changed",
 
 test("sync statuses without local file changes do not reconcile open buffers", () => {
   expect(shouldReconcileAfterSync(status("synced"))).toBe(false);
-  expect(shouldReconcileAfterSync(status("up-to-date", false))).toBe(false);
   expect(shouldReconcileAfterSync(status("syncing", true))).toBe(false);
   expect(shouldReconcileAfterSync(status("recovering", true))).toBe(false);
   expect(shouldReconcileAfterSync(status("conflict", true))).toBe(false);

@@ -8,7 +8,6 @@ import type { SyncStatus } from "$lib/platform/contract";
 export function shouldReconcileAfterSync(status: SyncStatus): boolean {
   return status.filesChanged === true && (
     status.state === "synced" ||
-    status.state === "up-to-date" ||
     status.state === "offline" ||
     status.state === "auth" ||
     status.state === "error" ||

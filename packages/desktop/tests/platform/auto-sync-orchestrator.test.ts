@@ -350,6 +350,20 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
   expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_123_000).toISOString());
 });
 
+test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
+  // The pill draws both identically ("Everything is in sync"), so there is
+  // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
+  // what the manual-sync toast reads.
+  const h = makeHarness({
+    syncProject: () => ({ status: "up-to-date", filesChanged: true }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+
+  expect(h.emitted.map((e) => e.state)).toEqual(["syncing", "synced"]);
+  expect(h.emitted[1]?.filesChanged).toBe(true);
+});
+
 // ── Error-outcome message plumbing (code-review) ─────────────────────────────
 // A SyncOutcome "error" always carries an author-language `message` (e.g. the
 // insecure-transport guidance from sync-messages.ts). Ambient auto-sync must
