@@ -455,6 +455,16 @@ const autoSync = new AutoSyncOrchestrator({
   operationLogPath,
 });
 
+/**
+ * The in-flight final exit push for the project that just closed, or null.
+ * Started at the folder watcher's onStop flush point (project switch/close and
+ * window close both land there); `window-all-closed` awaits it before quitting
+ * so the send is not killed mid-flight. It is BOUNDED inside `runExitPush`, so
+ * awaiting it can never hang quit; nulled on settle so a later quit never
+ * waits on a stale, already-settled promise.
+ */
+let pendingExitSync: Promise<void> | null = null;
+
 const folderWatch = new FolderWatcher({
   watch: (dir, options, cb) => watch(dir, options, cb),
   resolve: (p) => path.resolve(p),
@@ -471,6 +481,25 @@ const folderWatch = new FolderWatcher({
     // Project switch/close flush point (RC1-3): edits were pending a snapshot —
     // take it now (fire-and-forget) instead of dropping the timer.
     void flushAutoSnapshot();
+    // Final exit push (owner decision 2026-08-23): between push windows the
+    // 2-minute ticks hold local work back, so send it now. `runExitPush` is
+    // bounded internally, skips when a tick is in flight, and syncProject
+    // itself makes no network push when there is nothing to send. Started
+    // BEFORE cancelAll() below, while the single-flight state it consults is
+    // still intact. (getWatchedDir() is still the closing project here —
+    // FolderWatcher.stop() nulls it only after onStop returns.) It does not
+    // race the snapshot flush above: both serialize on the lib's per-repo
+    // FIFO lock, and the sync pass snapshots-first on its own anyway.
+    const closingDir = folderWatch.getWatchedDir();
+    if (closingDir) {
+      const exitSync: Promise<void> = autoSync
+        .runExitPush(closingDir)
+        .catch(() => {})
+        .finally(() => {
+          if (pendingExitSync === exitSync) pendingExitSync = null;
+        });
+      pendingExitSync = exitSync;
+    }
     // Cancel all sync timers when the watched folder changes (project switch/close).
     autoSync.cancelAll();
   },
@@ -1807,5 +1836,12 @@ app.on("window-all-closed", async () => {
     setActiveExportSession(null);
   }
   await previewOpen.stop();
+  // Wait for the final exit push (started at the watcher's onStop when the
+  // window closed) so quitting does not kill the send mid-flight. It is
+  // bounded inside runExitPush, so this can delay quit by a few seconds at
+  // most; a pass that could not finish is picked up by the next launch's
+  // first tick, which always pushes. On macOS the app outlives the window,
+  // so the push simply completes in the background instead.
+  if (pendingExitSync) await pendingExitSync;
   if (process.platform !== "darwin") app.quit();
 });

@@ -15,6 +15,12 @@
  * plumbing are gone. What remains:
  *
  *   - the single-flight + runAgain guards and the periodic safety interval;
+ *   - the PUSH CADENCE gate (owner decision 2026-08-23): every tick calls
+ *     `lib.syncProject`, but only a tick whose push window
+ *     (AUTO_SYNC_PUSH_INTERVAL_MINUTES) has elapsed passes `push: true` —
+ *     the rest run pull-merge-only passes, so remote work keeps arriving
+ *     every ~2 minutes while local work uploads in quiet ~15-minute batches
+ *     plus one final bounded pass on project close/app exit (runExitPush);
  *   - outcome → ambient status mapping (conflict arm no longer exists; the
  *     converge report — combinedFiles/keptBothFiles — rides on the payload);
  *   - ONE repair path: a structurally damaged repo (typed preflight error or
@@ -51,6 +57,16 @@ type ProjectSourceResult = Awaited<ReturnType<LibModule["detectProjectSource"]>>
  * instead of a second module-level copy.
  */
 export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
+
+/**
+ * Budget for the final exit push (project close / app quit). An app that
+ * hangs on quit because the network dropped is worse than an unpushed change:
+ * past this, quit proceeds — the underlying sync keeps running if the process
+ * stays alive (project switch), and a killed push is harmless server-side
+ * (receive-pack applies the ref update only on a complete pack). Whatever the
+ * pass could not send, the next launch's first tick pushes.
+ */
+export const EXIT_PUSH_BUDGET_MS = 8_000;
 
 /**
  * Per-project state for the auto-sync orchestrator. Keyed by projectDir.
@@ -144,8 +160,24 @@ export class AutoSyncOrchestrator {
   private readonly states = new Map<string, AutoSyncState>();
   /** Per-project last-sync timestamp, updated on every completed runAutoSync. */
   private readonly lastSyncAt = new Map<string, string | null>();
+  /**
+   * Per-project epoch-ms of the last COMPLETED push-enabled pass ("synced" or
+   * "up-to-date" — either way local and remote agreed when it finished). No
+   * entry = a push is due: the session's first tick pushes, which is what
+   * delivers work an earlier session's exit pass could not send. Failed or
+   * timed-out passes never set it, so the next 2-minute tick retries the push.
+   */
+  private readonly lastPushAt = new Map<string, number>();
 
   constructor(private readonly deps: AutoSyncOrchestratorDeps) {}
+
+  /** True when this tick should also push: no completed push-enabled pass yet,
+   *  or the push window has elapsed since the last one. */
+  private isPushDue(dir: string, lib: LibModule): boolean {
+    const last = this.lastPushAt.get(dir);
+    if (last === undefined) return true;
+    return this.deps.now() - last >= lib.AUTO_SYNC_PUSH_INTERVAL_MINUTES * 60_000;
+  }
 
   private nowIso(): string {
     return new Date(this.deps.now()).toISOString();
@@ -404,6 +436,10 @@ export class AutoSyncOrchestrator {
 
     const logFile = this.deps.operationLogPath(operationLogSlug(repoRoot));
 
+    // Push-cadence gate: every tick pulls (remote work keeps arriving
+    // promptly); only a tick whose push window has elapsed also pushes.
+    const pushDue = this.isPushDue(dir, lib);
+
     let outcome: SyncOutcome;
     try {
       outcome = await lib.syncProject({
@@ -411,6 +447,7 @@ export class AutoSyncOrchestrator {
         tokenStore: this.deps.tokenStore,
         logFile,
         ...identity,
+        push: pushDue,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -445,6 +482,12 @@ export class AutoSyncOrchestrator {
 
     const completedAt = this.nowIso();
     this.setLastSyncAt(dir, completedAt);
+    // A COMPLETED push-enabled pass resets the push window: "synced" pushed,
+    // "up-to-date" verified there was nothing to push. Failures leave the
+    // window armed so the next tick retries the push.
+    if (pushDue && (outcome.status === "synced" || outcome.status === "up-to-date")) {
+      this.lastPushAt.set(dir, this.deps.now());
+    }
 
     // Map outcome → ambient status emit. There is no conflict arm — sync
     // always converges; the converge report rides on the payload.
@@ -465,11 +508,20 @@ export class AutoSyncOrchestrator {
         break;
 
       case "up-to-date":
+        // A pull-merge-only pass reports through this arm and CAN have
+        // combined files (both sides moved; the push was held) — forward the
+        // converge report exactly like the "synced" arm does.
         this.deps.emit({
           state: "synced",
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
+          ...(outcome.combinedFiles && outcome.combinedFiles.length > 0
+            ? { combinedFiles: outcome.combinedFiles }
+            : {}),
+          ...(outcome.keptBothFiles && outcome.keptBothFiles.length > 0
+            ? { keptBothFiles: outcome.keptBothFiles }
+            : {}),
         });
         break;
 
@@ -507,6 +559,71 @@ export class AutoSyncOrchestrator {
     if (state.runAgain) {
       state.runAgain = false;
       void this.run(dir);
+    }
+  }
+
+  /**
+   * The exit pass (owner decision 2026-08-23): one final PUSH-ENABLED sync at
+   * the host's existing project-close/app-quit flush point, so work held back
+   * by pull-only ticks goes online before the app goes away. Not `run()`:
+   * that method is guarded on `dir` still being the watched project, and by
+   * exit time the watcher has moved on (or is about to).
+   *
+   * - Respects the single-flight SYNCHRONOUSLY (main.ts calls this right
+   *   before `cancelAll()` wipes the state bag): an in-flight tick and the
+   *   exit pass never overlap — skip rather than wait, the next launch's
+   *   first tick pushes whatever was pending.
+   * - BOUNDED by `budgetMs`: past it, quit proceeds. The abandoned sync keeps
+   *   running only if the process stays alive (project switch), where the
+   *   lib's per-repo FIFO lock serializes it against anything that follows.
+   * - No status emits: the pill has moved on with the project (or the window
+   *   is gone); the operation log still records the pass.
+   */
+  async runExitPush(dir: string, budgetMs: number = EXIT_PUSH_BUDGET_MS): Promise<void> {
+    if (!this.acquire(dir)) return;
+    try {
+      const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
+      if (lib.autoSyncDelayMs(settings.versionHistory) === null) return;
+      const source = await lib.detectProjectSource(dir);
+      if (source.type !== "local-git-folder") return;
+      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
+      if (!diag.canSync) return;
+
+      const logFile = this.deps.operationLogPath(
+        operationLogSlug(lib.repoRootForSource(source, dir)),
+      );
+      const sync = lib.syncProject({
+        projectDir: dir,
+        tokenStore: this.deps.tokenStore,
+        logFile,
+        ...gitIdentityFrom(settings),
+        push: true,
+      });
+      // A rejection after the budget has expired must not become an unhandled
+      // rejection; before it expires, the race below surfaces it to the catch.
+      sync.catch(() => {});
+      const outcome = await Promise.race([
+        sync,
+        new Promise<null>((resolve) => {
+          const t = setTimeout(() => resolve(null), budgetMs);
+          if (typeof t.unref === "function") t.unref();
+        }),
+      ]);
+      if (outcome && (outcome.status === "synced" || outcome.status === "up-to-date")) {
+        this.lastPushAt.set(dir, this.deps.now());
+      } else {
+        // Timed out or failed: whatever is unpushed stays safely local — and
+        // clearing the window makes the next open's FIRST tick push it,
+        // instead of waiting out the remainder of a 15-minute window.
+        this.lastPushAt.delete(dir);
+      }
+    } catch {
+      // syncProject reports expected failures via its outcome; a throw here is
+      // a structural preflight (repair belongs to the next open, never to
+      // quit) or a probe failure. Either way: quit must not hang on it.
+      this.lastPushAt.delete(dir);
+    } finally {
+      this.release(dir);
     }
   }
 

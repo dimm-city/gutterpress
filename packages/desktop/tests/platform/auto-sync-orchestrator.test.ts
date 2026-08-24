@@ -118,6 +118,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     classifyFromHealth: () => (opts.classifyFromHealth ? opts.classifyFromHealth() : null),
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
     buildPreflightDiagnostics: () => ({}),
+    AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
   } as unknown as LibModule;
 
 
@@ -488,4 +489,151 @@ test("run() keeps the project's own slug when the book IS the repo root", async 
   await h.orch.run(DIR);
   await tick();
   expect((h.syncArgs[0] as { logFile?: string }).logFile).toBe("/logs/book.log");
+});
+
+// ── Push cadence (owner decision 2026-08-23) ─────────────────────────────────
+//
+// Every tick pulls; only a tick whose 15-minute push window has elapsed also
+// pushes. The FIRST tick of a session pushes — that is what delivers work a
+// previous session's exit pass could not send — and a COMPLETED push-enabled
+// pass ("synced" or "up-to-date") resets the window. Failures leave it armed
+// so the next 2-minute tick retries the push.
+
+const pushFlagOf = (h: Harness, i: number): boolean | undefined =>
+  (h.syncArgs[i] as { push?: boolean } | undefined)?.push;
+
+test("ticks pull-only between push windows; an elapsed window re-enables the push", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness();
+  h.setClock(T0);
+  await h.orch.run(DIR); // first tick of the session: push
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // 2 minutes later: pull-merge-only
+  h.setClock(T0 + 15 * 60_000);
+  await h.orch.run(DIR); // window elapsed: push again
+  h.setClock(T0 + 17 * 60_000);
+  await h.orch.run(DIR); // 2 minutes after that push: pull-only again
+  expect([0, 1, 2, 3].map((i) => pushFlagOf(h, i))).toEqual([true, false, true, false]);
+});
+
+test("an up-to-date push-due pass also resets the push window (nothing to send = in sync)", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness({ syncProject: () => ({ status: "up-to-date" }) });
+  h.setClock(T0);
+  await h.orch.run(DIR);
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR);
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1)]).toEqual([true, false]);
+});
+
+test("a failed push-due pass leaves the push window armed — the next tick retries the push", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness({
+    syncProject: () => ({ status: "offline", message: "You're offline right now." }),
+  });
+  h.setClock(T0);
+  await h.orch.run(DIR); // push-due, fails
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // still push-due — not silenced for 15 minutes
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1)]).toEqual([true, true]);
+});
+
+test("a pull-only pass that combined files forwards the converge report on its emit", async () => {
+  const h = makeHarness({
+    syncProject: () => ({
+      status: "up-to-date",
+      filesChanged: true,
+      combinedFiles: ["chapter-01.md"],
+      keptBothFiles: [{ path: "cover.png", onlinePath: "cover.online.png" }],
+    }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+  const done = h.emitted.find((e) => e.state === "synced");
+  expect(done?.combinedFiles).toEqual(["chapter-01.md"]);
+  expect(done?.keptBothFiles).toEqual([{ path: "cover.png", onlinePath: "cover.online.png" }]);
+});
+
+// ── The exit pass (project close / app quit) ─────────────────────────────────
+//
+// One final push-enabled syncProject at the existing onStop flush point,
+// BOUNDED — an app that hangs on quit because the network dropped is worse
+// than an unpushed change (the next launch's first tick pushes it instead).
+
+test("runExitPush runs one final push-enabled sync and resets the push window", async () => {
+  const T0 = 1_700_000_000_000;
+  const h = makeHarness();
+  h.setClock(T0);
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(1);
+  expect(pushFlagOf(h, 0)).toBe(true);
+  // The window was reset: reopening within it starts with a pull-only tick.
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR);
+  expect(pushFlagOf(h, 1)).toBe(false);
+});
+
+test("runExitPush skips while a tick is in flight (single-flight, never overlap)", async () => {
+  let releaseFirst!: () => void;
+  let firstCalledResolve!: () => void;
+  const firstCalled = new Promise<void>((r) => (firstCalledResolve = r));
+  const h = makeHarness({
+    syncProject: () =>
+      new Promise((res) => {
+        firstCalledResolve();
+        releaseFirst = () => res({ status: "synced" });
+      }),
+  });
+  const p1 = h.orch.run(DIR);
+  await firstCalled;
+  await h.orch.runExitPush(DIR); // must skip — never a second concurrent sync
+  expect(h.syncCalls.length).toBe(1);
+  releaseFirst();
+  await p1;
+});
+
+test("runExitPush is BOUNDED: a hung network cannot hang quit, and the slot is released", async () => {
+  let calls = 0;
+  const h = makeHarness({
+    syncProject: () => {
+      calls++;
+      // Only the exit pass hangs; a later tick behaves normally.
+      return calls === 1 ? new Promise(() => {}) : { status: "synced" };
+    },
+  });
+  const started = performance.now();
+  await h.orch.runExitPush(DIR, 50);
+  expect(performance.now() - started).toBeLessThan(1_500);
+  // The single-flight slot is free again despite the hung sync…
+  expect(h.orch.getState(DIR)?.inFlight ?? false).toBe(false);
+  // …and the timed-out send left the push window ARMED: the next session's
+  // first tick pushes the work this pass could not.
+  await h.orch.run(DIR);
+  expect(pushFlagOf(h, 1)).toBe(true);
+});
+
+test("runExitPush does nothing when the project cannot sync", async () => {
+  const h = makeHarness({ canSync: false });
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(0);
+});
+
+test("a failed exit push re-arms the push for the next session's first tick", async () => {
+  const T0 = 1_700_000_000_000;
+  let calls = 0;
+  const h = makeHarness({
+    syncProject: () => {
+      calls++;
+      return calls === 2
+        ? { status: "offline", message: "You're offline right now." }
+        : { status: "synced" };
+    },
+  });
+  h.setClock(T0);
+  await h.orch.run(DIR); // successful push — window reset
+  h.setClock(T0 + 60_000);
+  await h.orch.runExitPush(DIR); // exit push fails (offline)
+  h.setClock(T0 + 2 * 60_000);
+  await h.orch.run(DIR); // "reopen": first tick pushes again, not in 13 minutes
+  expect([pushFlagOf(h, 0), pushFlagOf(h, 1), pushFlagOf(h, 2)]).toEqual([true, true, true]);
 });
