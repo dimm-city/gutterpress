@@ -475,20 +475,7 @@ export type SyncOutcome =
   | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | {
-      status: "error";
-      message: string;
-      /**
-       * Stable machine-readable signal so the UI can route without matching
-       * against `message` text — mirrors the lib's SyncOutcome:
-       * "needs-connection-setup" — the project isn't set up right (no online
-       * address / SSH address / no named version line); route to the
-       * connect/setup surface.
-       */
-      code?: "needs-connection-setup";
-      snapshotId?: string;
-      filesChanged?: boolean;
-    };
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 /** Inputs for the generic "Connect a Git server" token flow. */
 export interface ConnectGenericHostArgs {

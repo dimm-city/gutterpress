@@ -56,20 +56,7 @@ export type SyncOutcome =
   | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | {
-      status: "error";
-      message: string;
-      /**
-       * Stable machine-readable signal so a host UI can route without
-       * string-matching `message` (which stays free to reword):
-       * "needs-connection-setup" — the project isn't set up right (no
-       * remote / SSH remote / no named branch); route to the connect/setup
-       * surface.
-       */
-      code?: "needs-connection-setup";
-      snapshotId?: string;
-      filesChanged?: boolean;
-    };
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
