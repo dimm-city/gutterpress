@@ -25,67 +25,62 @@ correct but nothing painted" as a signal to check this page.
 ## 1. A gradient in `@page { background }` paints nothing
 
 **Tracking:** [#149](https://github.com/dimm-city/gutterpress/issues/149) ·
-Chromium 148 and 151
+verified on Chrome 151.0.7922.75, 2026-08-24
 
-A `@page` background paints the full sheet when its value is a solid colour or
-a `url()` image, but a **gradient-only** value paints nothing at all. This is an
-inconsistency inside Chromium's own paged-background painting, not something
-author CSS can correct.
+A gradient in `@page { background }` is discarded. A solid colour in the same
+place paints the whole sheet. This covers `linear-gradient`, `radial-gradient`
+and `repeating-linear-gradient` alike.
 
-```css
-/* ✗ paints NOTHING — no error, sheet stays white */
-@page { background: linear-gradient(180deg, #2d6cdf, #1e8a4c); }
+Differential rendering against a page with **no** `@page` background — a mean
+absolute pixel difference of `0.000` means the declaration changed nothing:
 
-/* ✓ paints the full sheet, margins included */
-@page { background: #2d6cdf; }
-@page { background: url("tile.png") repeat; background-size: 8px 8px; }
-```
+| `@page { background: … }` | diff | Result |
+|---|---|---|
+| `#2d6cdf` (solid) | 152.866 | paints the full sheet |
+| `linear-gradient(…)` | **0.000** | paints nothing |
+| `radial-gradient(…)` | **0.000** | paints nothing |
+| `repeating-linear-gradient(…)` | **0.000** | paints nothing |
 
-**Write instead:** a solid colour, or a `url()` image of the gradient. If the
-gradient must stay live CSS, put it on `html`/`body` rather than `@page` —
-gradients paint normally there.
+Gradients are not broken in print generally — only as the `@page` box's own
+background. The same gradient on `html` renders (82.880), and a gradient as a
+**margin box** background renders (6.15).
 
-**Also note:** a *relative* `url()` in `@page { background }` does not load when
-the document is opened over `file://`. That is a separate, unrelated failure
-with an identical white-page symptom. Use a `data:` URI or serve over HTTP when
-testing, or you will misdiagnose a working background as this bug.
+**Write instead:** a solid colour on `@page`, or put the gradient on `html`
+when it only needs to cover the content area rather than the sheet.
 
-**Removal trigger:** Chromium paints gradient `@page` backgrounds. Re-test with
-the runnable repro in #149.
+**Removal trigger:** a gradient in `@page { background }` produces a non-zero
+diff against the same page with the declaration removed.
 
 ---
 
-## 2. `box-shadow` and `transform` are dropped in `@page` margin boxes
+## 2. Margin boxes drop stacking-context and outside-the-box properties
 
 **Tracking:** [#150](https://github.com/dimm-city/gutterpress/issues/150) ·
-Chromium 148
+verified on Chrome 151.0.7922.75, 2026-08-24
 
-Inside a margin box (`@top-center`, `@bottom-right`, …) Chromium silently drops
-`box-shadow` and `transform`. This is **not** "margin boxes ignore styling" —
-`border`, `background`, `padding`, and even gradient backgrounds all paint
-correctly on the same element. Only those two properties vanish.
+A page margin box (`@top-center`, `@bottom-right`, …) silently discards every
+property that would establish a stacking context or paint outside its border
+box. Everything else on the same box is honoured — this is not "margin boxes
+ignore styling".
 
-```css
-@page {
-  @bottom-right {
-    content: "STICKER";
-    background: #ffd700;
-    border: 3px solid #c00;      /* ✓ paints */
-    box-shadow: 6px 6px 0 #c00;  /* ✗ dropped, silently */
-    transform: rotate(-8deg);    /* ✗ dropped, silently */
-  }
-}
-```
+| Dropped (diff `0.0000`) | Honoured |
+|---|---|
+| `box-shadow` | `text-shadow` (0.1164) |
+| `transform` — `rotate`, `scale`, `translate` | `border-radius` (0.3152) |
+| `opacity` | `background: linear/radial-gradient` (6.15 / 6.21) |
+| `outline` | `writing-mode` (0.3648), `padding`, `border`, `font-size`, `color`, `letter-spacing`, `text-transform`, `visibility` |
+| `filter`, `mix-blend-mode` | |
 
-The box renders flat and axis-aligned, exactly as if both declarations were
-absent.
+`text-shadow` beside `box-shadow` is the clearest pair: both are shadows, and
+the one that paints outside the box is the one discarded.
 
-**Write instead:** fake the offset shadow with a second `border` or an inset
-`background` layer, and bake any rotation into an image. If the decoration is
-genuinely important, place it in the document flow — an absolutely-positioned
-element inside a `.page` — where both properties work normally.
+**Write instead:** keep margin-box decoration inside the box — borders,
+border-radius, background gradients and `text-shadow` all work. A rotated or
+drop-shadowed "sticker" in a margin box cannot be done; put it in the page
+content flow instead.
 
-**Removal trigger:** Chromium honours `box-shadow`/`transform` in margin boxes.
+**Removal trigger:** adding `box-shadow` or `transform` to a margin box
+produces a non-zero diff against the same page without it.
 
 ---
 
