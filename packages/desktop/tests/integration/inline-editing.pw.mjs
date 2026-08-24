@@ -498,7 +498,8 @@ try {
     }
 
     // Close it again so the remaining menu actions prove they do not open it.
-    await page.locator('[aria-label="Toggle markdown editor"]').click();
+    // Closing IS choosing Read — the mode control has no separate editor toggle.
+    await page.locator('[aria-label="Read"]').click();
     await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
     await assertEditorClosed("closing after Go to source");
   });
@@ -684,7 +685,7 @@ try {
   await step("9. a real preview update preserves the two-column scroll position", async () => {
     await dismissMenuViaOutsideClick();
     if (await page.locator(".cm-editor").count()) {
-      await page.locator('[aria-label="Toggle markdown editor"]').click();
+      await page.locator('[aria-label="Read"]').click();
       await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
     }
 

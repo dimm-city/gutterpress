@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Regression test: clicking the "Toggle markdown editor" button MUST load the
+ * Regression test: choosing "Edit" on the workspace-mode control MUST load the
  * editor module (CodeMirror), not leave the pane stuck at "Loading editor…".
  *
  * The bug (beta.6 regression): `toggleEditor()` set `editorOpen = true` but
@@ -14,7 +14,7 @@
  *      fixture and sets the left panel to the Files tab (so no file has been
  *      clicked — module not pre-loaded).
  *   2. Waits for the first preview render to complete.
- *   3. Clicks the "Toggle markdown editor" toolbar button.
+ *   3. Clicks the toolbar's "Edit" mode segment.
  *   4. Asserts `.cm-editor` is present in the DOM within 10 s — i.e., the
  *      module loaded and CodeMirror mounted.
  *   5. Asserts "Loading editor…" text is NOT visible.
@@ -161,13 +161,13 @@ await send("Page.bringToFront");
 // ── 4. wait for SPA interactive ───────────────────────────────────────────────
 let spaReady = false;
 for (let i = 0; i < 60; i++) {
-  if (await evalJs(`!!document.querySelector('button[aria-label="Toggle markdown editor"]')`)) {
+  if (await evalJs(`!!document.querySelector('button[aria-label="Edit"]')`)) {
     spaReady = true;
     break;
   }
   await sleep(1000);
 }
-if (!spaReady) fail("SPA never became interactive (editor toggle button not found in 60s)");
+if (!spaReady) fail("SPA never became interactive (Edit mode segment not found in 60s)");
 log("SPA ready");
 
 // ── 5. wait for at least a file item (project opened) ────────────────────────
@@ -192,18 +192,18 @@ if (await evalJs(`!!document.querySelector('.app-root[inert]')`)) {
   fail("welcome layer did not release the workspace before editor interaction");
 }
 
-// Confirm the editor pane shows "Loading editor…" BEFORE the toggle click —
+// Confirm the editor pane shows "Loading editor…" BEFORE the Edit click —
 // this would have been visible forever in the beta.6 regression.
 const moduleLoadedPreClick = await evalJs(`!!document.querySelector('.cm-editor')`);
 if (moduleLoadedPreClick) {
   // Module somehow pre-loaded (possibly a race with auto-open heuristic). The
   // fix is still correct, but we can't isolate the regression with this run.
-  log("NOTE: editor module pre-loaded before toggle click — regression isolation unclear");
+  log("NOTE: editor module pre-loaded before the Edit click — regression isolation unclear");
 }
 
-// ── 6. click the Toggle markdown editor button ────────────────────────────────
-await evalJs(`document.querySelector('button[aria-label="Toggle markdown editor"]').click(); true`);
-log("Toggle markdown editor clicked");
+// ── 6. click the Edit mode segment ────────────────────────────────────────────
+await evalJs(`document.querySelector('button[aria-label="Edit"]').click(); true`);
+log("Edit mode segment clicked");
 
 // ── 7. wait for .cm-editor to appear (max 10s) ────────────────────────────────
 let editorLoaded = false;
@@ -398,13 +398,14 @@ let responsive;
 try {
   responsive = await withTimeout(evalJs(`(async () => {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const button = document.querySelector('button[aria-label="Toggle markdown editor"]');
-    if (!button) return { error: 'editor toggle missing' };
-    const before = button.getAttribute('aria-pressed');
-    button.click();
+    const read = document.querySelector('button[aria-label="Read"]');
+    const edit = document.querySelector('button[aria-label="Edit"]');
+    if (!read || !edit) return { error: 'mode control missing' };
+    const before = read.getAttribute('aria-pressed');
+    read.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const after = button.getAttribute('aria-pressed');
-    button.click();
+    const after = read.getAttribute('aria-pressed');
+    edit.click();
     const status = await fetch('/api/status');
     return { toggled: before !== after, status: status.status };
   })()`), 5000, "post-render UI responsiveness");

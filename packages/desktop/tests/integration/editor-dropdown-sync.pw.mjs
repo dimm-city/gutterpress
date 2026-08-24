@@ -114,12 +114,12 @@ try {
   await electronApp.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setSize(1200, 800);
   });
-  await page.locator('[aria-label="Toggle markdown editor"]').waitFor({ state: "visible", timeout: 10_000 });
+  await page.locator('[aria-label="Edit"]').waitFor({ state: "visible", timeout: 10_000 });
 
   // Open the editor pane (auto-selects the first chapter file). The active
   // file lives in the Files tab — its panel is display:none while Contents is
   // active, so assert on the ATTACHED state and read textContent.
-  await page.locator('[aria-label="Toggle markdown editor"]').click();
+  await page.locator('[aria-label="Edit"]').click();
   await page.locator(".cm-editor").waitFor({ timeout: 15_000 });
   await page
     .locator(".file-item.active")
