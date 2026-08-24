@@ -36,9 +36,10 @@ first thing triage will look for.
    line at the top linking back to our issue.
 5. Attach the rasterized before/after if you have it — #152's flat-vs-textured
    pair and #149's blank-vs-painted sheet are the whole argument in one image.
-6. State the versions from the issue (#149 and #152 reproduce on Chromium 148
-   and 151; #150 on 148, repro re-verified on 151). Do not widen the range
-   beyond what was measured.
+6. State the versions from the issue, and only those: **#149** records
+   Chromium 148 and 151, **#150** records 148 with the runnable repro
+   re-verified on 151. **#152 records no version at all** — measure it before
+   you claim one. Do not widen the range beyond what was measured.
 
 ## Related issues that already exist (checked 2026-08-24)
 
