@@ -8,7 +8,6 @@ import { rm } from "node:fs/promises";
 import httpNode from "isomorphic-git/http/node";
 
 import {
-  GenericTokenAuthProvider,
   connectGenericHost,
   knownForgeTokenUrl,
   normalizeForgeHost,
@@ -128,29 +127,6 @@ test("KNOWN LIMITATION: root probe accepts a wrong token when the host root is n
   }
 }, 20_000);
 
-test("validate() keeps the credential when the probe is inconclusive (unreachable host)", async () => {
-  // Pins the "can't tell → keep" policy: only a definitive auth rejection
-  // invalidates a stored credential. An unreachable host (laptop offline,
-  // VPN down) must NOT log the user out.
-  const repoDir = await tempDir("gutterpress-generic-validate-");
-  await createFixtureRepo(repoDir);
-  const server = await startGitServer(repoDir);
-  const u = new URL(server.url);
-  await server.close(); // port now refuses connections → unreachable
-  try {
-    const provider = new GenericTokenAuthProvider({ timeoutMs: 3_000 });
-    const ok = await provider.validate({
-      host: u.host,
-      kind: "token",
-      token: "tok_123",
-      createdAt: 0,
-    });
-    expect(ok).toBe(true);
-  } finally {
-    await rm(repoDir, { recursive: true, force: true });
-  }
-}, 20_000);
-
 test("connect rejects SSH-looking input and empty host/token with guidance", async () => {
   await expect(
     connectGenericHost({ host: "git.example.com", token: "t", repoUrl: "git@host:o/r.git" }),
@@ -161,14 +137,6 @@ test("connect rejects SSH-looking input and empty host/token with guidance", asy
   await expect(
     connectGenericHost({ host: "git.example.com", token: "  " }),
   ).rejects.toThrow(/access token/i);
-});
-
-test("GenericTokenAuthProvider matches any https host except github.com", () => {
-  const provider = new GenericTokenAuthProvider();
-  expect(provider.matches(new URL("https://gitea.example.com/o/r.git"))).toBe(true);
-  expect(provider.matches(new URL("https://gitlab.com/o/r.git"))).toBe(true);
-  expect(provider.matches(new URL("https://github.com/o/r.git"))).toBe(false);
-  expect(provider.matches(new URL("ssh://git@host/o/r.git"))).toBe(false);
 });
 
 test("normalizeForgeHost accepts hostnames, URLs, and ports", () => {

@@ -35,20 +35,6 @@ export interface HostCallbacks {
 }
 
 /**
- * Per-host auth-acquisition plugin contract (ADR 0006 D3 layer 3). github.com
- * gets the device flow below; every other host gets the generic token flow
- * (#14, not in this change).
- */
-export interface RemoteAuthProvider {
-  /** Does this provider handle the given remote host? */
-  matches(origin: URL): boolean;
-  /** Interactive flow producing a credential for the host. */
-  connect(callbacks: HostCallbacks): Promise<HostCredential>;
-  /** Cheap revalidation for stored credentials. */
-  validate(credential: HostCredential): Promise<boolean>;
-}
-
-/**
  * Default client id for the registered "gutterpress" OAuth App (registered
  * 2026-06-10 under the dimm-city org; switched from the original GitHub App
  * the same day — see ADR 0006 D1 amendment). Client IDs are public by design
@@ -158,8 +144,8 @@ interface TokenPollResponse {
   interval?: number;
 }
 
-/** GitHub device-flow {@link RemoteAuthProvider} (ADR 0006 D1). */
-export class GitHubAuthProvider implements RemoteAuthProvider {
+/** GitHub device-flow credential acquisition (ADR 0006 D1). */
+export class GitHubAuthProvider {
   private readonly clientId: string;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -168,10 +154,6 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
     this.clientId = resolveGitHubClientId(options.clientId);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.sleep = options.sleepImpl ?? defaultSleep;
-  }
-
-  matches(origin: URL): boolean {
-    return origin.hostname.toLowerCase() === GITHUB_HOST;
   }
 
   async connect(callbacks: HostCallbacks): Promise<HostCredential> {
@@ -251,25 +233,6 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
             "GitHub sign-in failed unexpectedly. Please try connecting again.",
           );
       }
-    }
-  }
-
-  /**
-   * Cheap credential revalidation against `GET /user`. Returns `false` on any
-   * non-200 (401 revoked/expired, 403 forbidden/rate-limit-blocked, …);
-   * network failures are treated as "can't tell" → `true`.
-   */
-  async validate(credential: HostCredential): Promise<boolean> {
-    try {
-      const res = await safeFetch(this.fetchImpl, `${API_BASE}/user`, {
-        method: "GET",
-        headers: githubApiHeaders(credential.token),
-      });
-      return res.status === 200;
-    } catch {
-      // Network failure ≠ invalid credential — treat as "can't tell" → valid,
-      // so an offline launch never wipes a working connection.
-      return true;
     }
   }
 
