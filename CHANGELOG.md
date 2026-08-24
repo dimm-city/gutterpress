@@ -36,6 +36,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   (say the Wi-Fi dropped), the app still closes; that work is safe on your
   computer and goes online the next time the project opens.
 
+### Fixed
+
+- **Force-quitting the app can no longer damage a project's version history.**
+  The record of your versions is kept in a set of small bookkeeping files, and
+  the app used to update one by emptying it and writing it again — a moment in
+  which a force-quit, a shutdown, or a bad sleep could leave the file empty and
+  the history unreadable. Those updates are now written to the side and swapped
+  into place in one step, so an interruption leaves either the previous version
+  of the file or the new one — never a half-written one. This was the only way
+  the app itself could damage a project's history.
+
 ### Removed
 
 - **The repository-repair feature is gone — including the `gutterpress repair`

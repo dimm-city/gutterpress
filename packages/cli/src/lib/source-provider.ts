@@ -12,7 +12,8 @@
  * installed (we do not bundle it). This keeps the `bun build --compile` CLI
  * binary and the packaged desktop fully self-contained.
  */
-import * as fs from "node:fs";
+// Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
+import * as fs from "./git-fs.ts";
 import path from "node:path";
 
 import git from "isomorphic-git";

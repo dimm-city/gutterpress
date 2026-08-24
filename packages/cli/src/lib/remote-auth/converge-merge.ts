@@ -47,7 +47,8 @@
  * Used by `syncProject` (every sync) and by `repairRepo`'s salvage step
  * (merging a rescued old branch tip back into the repaired history).
  */
-import * as fs from "node:fs";
+// Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
+import * as fs from "../git-fs.ts";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 

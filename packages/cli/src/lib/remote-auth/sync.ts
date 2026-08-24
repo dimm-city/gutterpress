@@ -36,7 +36,8 @@
  * Token values never appear in messages (transport errors are mapped, and the
  * remote URL used is pre-sanitized via `extractUrlCredential`).
  */
-import * as fs from "node:fs";
+// Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
+import * as fs from "../git-fs.ts";
 
 import git from "isomorphic-git";
 import { defaultGitHttp } from "./git-http.ts";
