@@ -387,6 +387,24 @@ describe("pendingRender", () => {
     expect(h.ctrl.open).toBe(true);
   });
 
+  test("a no-op commit does not brick the next edit", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "before\npara text\nafter\n";
+    await h.ctrl.show({ chapter: "ch1.md", range: [1, 2] });
+    // Opened, changed nothing, committed. The replacement is byte-identical to
+    // what is already on disk, so there is nothing to write — and therefore no
+    // re-render is coming to clear the guard. Arming it here refused every
+    // later edit for the rest of the session (reproduced against the packaged
+    // app: edit 1 opens, edits 2 and 3 never do).
+    h.client.emit({ name: "blockEditFinished", detail: { text: "para text\n", commit: true } });
+    await flush();
+    expect(h.commitEngine.calls).toEqual([]);
+
+    await h.ctrl.show({ chapter: "ch1.md", range: [2, 3] });
+    expect(h.ctrl.open).toBe(true);
+    expect(h.toastInfoCalls).toEqual([]);
+  });
+
   test("a REFUSED commit does not brick the next edit", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "one\ntwo\n";

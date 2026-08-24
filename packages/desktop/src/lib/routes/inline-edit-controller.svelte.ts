@@ -319,6 +319,14 @@ export class InlineEditController {
     if (!captured) return;
     const replacement = editedText + captured.trailingBlank;
     this.reset();
+    // Opened and closed without changing anything. There is nothing to write,
+    // so no re-render is coming — and `pendingRender` is cleared ONLY by
+    // `renderingComplete`. Arming it for a write that never happens refuses
+    // every later edit for the rest of the session, which is exactly what
+    // 0.10.1-beta.3 shipped: the first double-click edits, and every one after
+    // it is turned away with "Updating the preview". Returning here also skips
+    // a pointless disk write and a full re-render of the book.
+    if (replacement === captured.expected) return;
     this.pendingRender = true;
     const outcome = await this.deps.commitEngine.commitRangePatch({
       chapter: captured.chapter,
