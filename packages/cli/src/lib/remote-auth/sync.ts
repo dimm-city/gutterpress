@@ -15,7 +15,9 @@
  * reachable — splitting them only bought two extra `withRepoLock` +
  * `assertNoStructuralDamage` + transport-resolution + tree-walk rounds per
  * ~2-minute auto-sync, and a window in which the lock was RELEASED between
- * the two halves.
+ * the two halves. The push CADENCE is instead a flag on the one operation
+ * (`push: false` = pull-merge-only pass; owner decision 2026-08-23), so the
+ * desktop's frequent ticks keep pulling while pushes batch up quietly.
  *
  * Snapshot-first invariant (ADR 0006 D5): sync commits any unsaved work
  * BEFORE any network or merge step can touch it.
@@ -114,6 +116,8 @@ export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
   const http = options.httpClient ?? defaultGitHttp;
+  // Full pass by default; `push: false` is the pull-merge-only tick.
+  const push = options.push ?? true;
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
   const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
@@ -145,10 +149,11 @@ export async function syncProject(
       ...(filesChanged ? { filesChanged: true } : {}),
       ...(snapshotId ? { snapshotId } : {}),
     });
-    // Only the "synced" arm (and the exhausted-retries error) carries the
-    // converge report: an "up-to-date" sync cannot have combined anything —
-    // combining requires local commits the remote lacks, which is exactly the
-    // case that goes on to push.
+    // The converge report rides on every arm that can have combined something:
+    // the "synced" arm, the exhausted-retries error, and a pull-merge-only
+    // pass's deferred-push return (it can merge overlapping edits and then
+    // hold the push). The plain `tip === remoteTip` up-to-date return cannot —
+    // reaching it means the merge fast-forwarded or no-op'd, combining nothing.
     const convergeExtras = () => ({
       ...(combinedFiles.size > 0 ? { combinedFiles: [...combinedFiles].sort() } : {}),
       ...(keptBothFiles.length > 0 ? { keptBothFiles } : {}),
@@ -159,20 +164,28 @@ export async function syncProject(
       const transport = await resolveTransport(dir, options);
 
       // Snapshot FIRST (D5) — commit the whole working tree before any network
-      // or merge step can touch it.
-      snapshotId = await snapshotBeforeAction({
-        projectDir: options.projectDir,
-        dir,
-        message: options.message,
-        authorName: options.authorName,
-        authorEmail: options.authorEmail,
-        cache,
-      });
+      // or merge step can touch it. A pull-merge-only pass defers this to the
+      // post-fetch snapshot below: nothing in that pass touches the working
+      // tree unless the remote moved (the fetch only writes under .git), and
+      // the merge-guard snapshot always runs before any merge does. That is
+      // what lets a quiet pull-only tick mint NO commit while the author
+      // types, instead of a snapshot per tick (the F4 "commit wall").
+      if (push) {
+        snapshotId = await snapshotBeforeAction({
+          projectDir: options.projectDir,
+          dir,
+          message: options.message,
+          authorName: options.authorName,
+          authorEmail: options.authorEmail,
+          cache,
+        });
+      }
 
       for (let attempt = 0; attempt < attempts; attempt++) {
         logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
         const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
 
+        let localTip = await git.resolveRef({ fs, dir, ref: branch });
         // …AND SNAPSHOT AGAIN, because the fetch above is a network round-trip
         // and the author never stopped typing: the desktop editor's autosave
         // fires 500 ms after the last keystroke, so an edit routinely reaches
@@ -185,17 +198,22 @@ export async function syncProject(
         // that already includes it, so a solo author's racing sync still
         // reports plainly up-to-date. Reported as THE snapshot for this sync —
         // it holds strictly more of the author's work than the earlier one.
-        snapshotId =
-          (await snapshotBeforeAction({
+        // On a pull-merge-only pass this is the ONLY snapshot, taken exactly
+        // when it is needed: a merge (which ends in a checkout) is coming.
+        if (push || (remoteTip !== null && remoteTip !== localTip)) {
+          const lateSnapshot = await snapshotBeforeAction({
             projectDir: options.projectDir,
             dir,
             message: SYNC_LATE_EDIT_MESSAGE,
             authorName: options.authorName,
             authorEmail: options.authorEmail,
             cache,
-          })) ?? snapshotId;
-
-        const localTip = await git.resolveRef({ fs, dir, ref: branch });
+          });
+          if (lateSnapshot) {
+            snapshotId = lateSnapshot;
+            localTip = await git.resolveRef({ fs, dir, ref: branch });
+          }
+        }
         logger.info(
           "sync",
           `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"}`,
@@ -253,6 +271,21 @@ export async function syncProject(
           return {
             status: "up-to-date",
             message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+            ...base(),
+          };
+        }
+
+        // Pull-merge-only pass: local commits the remote lacks stay local —
+        // the next push-enabled pass sends them. Everything this pass was
+        // asked to do is done (remote work merged in, local work committed
+        // and safe), so it reports through the up-to-date arm; the converge
+        // report rides along because a pull-only merge CAN combine files.
+        if (!push) {
+          logger.info("sync", `pull-only pass complete — push deferred`, { pulled });
+          return {
+            status: "up-to-date",
+            message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+            ...convergeExtras(),
             ...base(),
           };
         }

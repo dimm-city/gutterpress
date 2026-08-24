@@ -53,7 +53,16 @@ export type SyncOutcome =
       /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
       keptBothFiles?: KeptBothFile[];
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | {
+      status: "up-to-date";
+      message: string;
+      snapshotId?: string;
+      filesChanged?: boolean;
+      /** A pull-merge-only pass (`push: false`) can combine overlapping edits
+       *  and then hold the push — the converge report still surfaces here. */
+      combinedFiles?: string[];
+      keptBothFiles?: KeptBothFile[];
+    }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
@@ -70,6 +79,17 @@ export interface SyncProjectOptions {
   message?: string;
   authorName?: string;
   authorEmail?: string;
+  /**
+   * When `false`, run a pull-merge-only pass: fetch + converge-merge exactly
+   * as always (remote work still arrives promptly), but hold the network push
+   * — and mint no snapshot unless the remote moved and the merge needs one
+   * (D5), so a quiet pass creates no commit at all. Local work stays safely
+   * committed/on disk for the next push-enabled pass to send. Default `true`:
+   * the full snapshot-first → fetch → merge → push pass. Owner decision
+   * 2026-08-23 (push cadence): the desktop's 2-minute tick pulls every time
+   * and enables the push only every ~15 minutes and on app exit.
+   */
+  push?: boolean;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**

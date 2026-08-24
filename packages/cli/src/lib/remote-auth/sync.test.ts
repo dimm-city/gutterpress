@@ -1349,3 +1349,275 @@ describe("syncProject — structural preflight", () => {
     }
   });
 });
+
+// ── Pull-merge-only passes (push: false) — the 15-minute push cadence ────────
+//
+// Owner decision 2026-08-23: the auto-sync tick keeps PULLING every ~2 minutes
+// so a collaborator's work still arrives promptly, but pushing happens on a
+// ~15-minute cadence (and on app exit). The lib half of that decision is ONE
+// flag on the one operation: `push: false` runs the same locked pass minus the
+// network push — and minus any snapshot no merge needs, so a quiet tick mints
+// no commit while the author types (the F4 "commit wall").
+
+/** An httpClient that counts receive-pack traffic (advert GET + POST) — the
+ *  network footprint of the PUSH phase. upload-pack (the pull half) passes
+ *  through uncounted. */
+function receivePackCountingClient(counter: { receivePack: number }): typeof httpNode {
+  return {
+    async request(config: Parameters<typeof httpNode.request>[0]) {
+      if (config.url.includes("git-receive-pack")) counter.receivePack++;
+      return httpNode.request(config);
+    },
+  } as typeof httpNode;
+}
+
+describe("pull-merge-only pass (push: false)", () => {
+  test("remote moved + local edit → the merge lands locally and NOTHING is pushed", async () => {
+    const h = await setupClone();
+    try {
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-02.md": "# Two\n\nWritten online.\n" },
+        "online: add chapter two",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nLocal draft in progress.\n",
+      );
+
+      const counter = { receivePack: 0 };
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        push: false,
+        httpClient: receivePackCountingClient(counter),
+      });
+
+      // The pass reports complete; the push is deferred, not failed.
+      expect(outcome.status).toBe("up-to-date");
+      expect(outcome.filesChanged).toBe(true);
+      // The online file is on disk locally…
+      expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe(
+        "# Two\n\nWritten online.\n",
+      );
+      // …the local edit survived (the merge-guard snapshot still fired)…
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nLocal draft in progress.\n",
+      );
+      // …the local tip is a two-parent merge holding both sides…
+      const tip = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: tip });
+      expect(commit.parent).toHaveLength(2);
+      expect(commit.parent).toContain(remoteCommit);
+      // …and the SERVER never saw a push: zero receive-pack traffic, tip unmoved.
+      expect(counter.receivePack).toBe(0);
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a dirty tree on a quiet pass stays UNCOMMITTED — no per-tick snapshot wall", async () => {
+    const h = await setupClone();
+    try {
+      const tipBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nStill typing this sentence…\n",
+      );
+
+      const counter = { receivePack: 0 };
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        push: false,
+        httpClient: receivePackCountingClient(counter),
+      });
+
+      expect(outcome.status).toBe("up-to-date");
+      // No snapshot was minted: the remote did not move, so no merge could
+      // touch the tree — the edit stays an ordinary unsaved change for the
+      // auto-snapshot debounce (or the next push-enabled pass) to commit.
+      expect("snapshotId" in outcome ? outcome.snapshotId : undefined).toBeUndefined();
+      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(tipBefore);
+      expect(await isClean(h.projectDir)).toBe(false);
+      // The edit itself is untouched on disk.
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nStill typing this sentence…\n",
+      );
+      // And nothing was pushed.
+      expect(counter.receivePack).toBe(0);
+      expect(await serverHead(h.serverDir)).toBe(tipBefore);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("overlapping edits still converge on a pull-only pass, reported via combinedFiles", async () => {
+    const h = await setupClone();
+    try {
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nThe online rewrite.\n" },
+        "online rewrite",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nThe local rewrite.\n",
+      );
+
+      const outcome = await syncProject({ projectDir: h.projectDir, push: false });
+
+      expect(outcome.status).toBe("up-to-date");
+      if (outcome.status !== "up-to-date") throw new Error("unreachable");
+      // The converge report rides on the pull-only outcome so the host can
+      // still show the "both versions are in the file" surface.
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
+      const merged = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
+      expect(merged).toContain("<<<<<<<");
+      expect(merged).toContain("The online rewrite.");
+      expect(merged).toContain("The local rewrite.");
+      // The combined result exists ONLY locally until a push-enabled pass.
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("work held back by pull-only passes is pushed intact by the next push-enabled pass", async () => {
+    const h = await setupClone();
+    try {
+      // A pull-only pass with the remote moved: merge lands locally only.
+      const remoteCommit = await serverCommit(
+        h.serverDir,
+        { "chapter-02.md": "# Two\n\nWritten online.\n" },
+        "online: add chapter two",
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nHeld-back local work.\n",
+      );
+      const pullOnly = await syncProject({ projectDir: h.projectDir, push: false });
+      expect(pullOnly.status).toBe("up-to-date");
+      expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+
+      // The next push-enabled pass sends the exact merge — nothing lost.
+      const pushPass = await syncProject({ projectDir: h.projectDir });
+      expect(pushPass.status).toBe("synced");
+      const localTip = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      expect(await serverHead(h.serverDir)).toBe(localTip);
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(
+        "# One\n\nHeld-back local work.\n",
+      );
+      expect(await serverFile(h.serverDir, "chapter-02.md")).toBe(
+        "# Two\n\nWritten online.\n",
+      );
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+// ── Owner cadence, end to end: two REAL clones against the smart-HTTP server ─
+//
+// The four decisions in one flow: (1) a pull-only tick with the remote moved
+// merges locally and pushes nothing; (2) a push-due tick with local changes
+// pulls FIRST and its push carries the merge — nothing lost on either side;
+// (3) a push-due tick with nothing to push makes zero receive-pack traffic
+// (the pre-existing `tip === remoteTip` short-circuit); the exit pass (4) is
+// host policy, pinned in the desktop orchestrator tests.
+describe("push-cadence e2e — two clones, pull-only ticks, push-due ticks", () => {
+  test("pull-only merges arrive; push-due sends the merge; quiet push-due pushes nothing", async () => {
+    const serverDir = await tempDir("gutterpress-cadence-server-");
+    await createFixtureRepo(serverDir);
+    const server = await startGitServer(serverDir);
+    const parentA = await tempDir("gutterpress-cadence-a-");
+    const parentB = await tempDir("gutterpress-cadence-b-");
+    const dirA = path.join(parentA, "book");
+    const dirB = path.join(parentB, "book");
+    try {
+      await cloneRepository({ url: server.url, dir: dirA });
+      await cloneRepository({ url: server.url, dir: dirB });
+
+      // ── B (the other computer) sends new work online ──
+      await writeFile(path.join(dirB, "chapter-05.md"), "# Five\n\nFrom computer B.\n");
+      const pushB = await syncProject({ projectDir: dirB });
+      expect(pushB.status).toBe("synced");
+      const serverTipAfterB = await serverHead(serverDir);
+
+      // ── (1) A's 2-minute tick: pull-only — B's work arrives, no push ──
+      const counterA1 = { receivePack: 0 };
+      const pullTick = await syncProject({
+        projectDir: dirA,
+        push: false,
+        httpClient: receivePackCountingClient(counterA1),
+      });
+      expect(pullTick.status).toBe("up-to-date");
+      expect(pullTick.filesChanged).toBe(true);
+      expect(await readFile(path.join(dirA, "chapter-05.md"), "utf8")).toBe(
+        "# Five\n\nFrom computer B.\n",
+      );
+      expect(counterA1.receivePack).toBe(0);
+      expect(await serverHead(serverDir)).toBe(serverTipAfterB);
+
+      // ── A types; the in-between quiet ticks commit and push NOTHING ──
+      await writeFile(path.join(dirA, "chapter-06.md"), "# Six\n\nFrom computer A.\n");
+      const tipA = await git.resolveRef({ fs, dir: dirA, ref: "HEAD" });
+      const counterA2 = { receivePack: 0 };
+      const quietTick = await syncProject({
+        projectDir: dirA,
+        push: false,
+        httpClient: receivePackCountingClient(counterA2),
+      });
+      expect(quietTick.status).toBe("up-to-date");
+      expect(counterA2.receivePack).toBe(0);
+      expect(await git.resolveRef({ fs, dir: dirA, ref: "HEAD" })).toBe(tipA);
+      expect(await serverHead(serverDir)).toBe(serverTipAfterB);
+
+      // ── (2) B moves the remote again; A's PUSH-DUE tick pulls first and
+      //        its push carries the merge — nothing lost on either side ──
+      await writeFile(path.join(dirB, "chapter-07.md"), "# Seven\n\nMore from B.\n");
+      const pushB2 = await syncProject({ projectDir: dirB });
+      expect(pushB2.status).toBe("synced");
+
+      const pushDue = await syncProject({ projectDir: dirA });
+      expect(pushDue.status).toBe("synced");
+      if (pushDue.status !== "synced") throw new Error("unreachable");
+      expect(pushDue.mergedRemoteChanges).toBe(true);
+      const mergedTipA = await git.resolveRef({ fs, dir: dirA, ref: "HEAD" });
+      expect(await serverHead(serverDir)).toBe(mergedTipA);
+      expect(await serverFile(serverDir, "chapter-06.md")).toBe("# Six\n\nFrom computer A.\n");
+      expect(await serverFile(serverDir, "chapter-07.md")).toBe("# Seven\n\nMore from B.\n");
+      expect(await readFile(path.join(dirA, "chapter-07.md"), "utf8")).toBe(
+        "# Seven\n\nMore from B.\n",
+      );
+
+      // ── (3) push-due with nothing to push: zero receive-pack traffic ──
+      const counterA3 = { receivePack: 0 };
+      const idle = await syncProject({
+        projectDir: dirA,
+        httpClient: receivePackCountingClient(counterA3),
+      });
+      expect(idle.status).toBe("up-to-date");
+      expect(counterA3.receivePack).toBe(0);
+      expect(await serverHead(serverDir)).toBe(mergedTipA);
+
+      // ── B's next pull-only tick receives A's work: full circle ──
+      const counterB = { receivePack: 0 };
+      const pullB = await syncProject({
+        projectDir: dirB,
+        push: false,
+        httpClient: receivePackCountingClient(counterB),
+      });
+      expect(pullB.status).toBe("up-to-date");
+      expect(counterB.receivePack).toBe(0);
+      expect(await readFile(path.join(dirB, "chapter-06.md"), "utf8")).toBe(
+        "# Six\n\nFrom computer A.\n",
+      );
+      expect(await git.resolveRef({ fs, dir: dirB, ref: "HEAD" })).toBe(mergedTipA);
+    } finally {
+      await server.close().catch(() => {});
+      await rm(serverDir, { recursive: true, force: true }).catch(() => {});
+      await rm(parentA, { recursive: true, force: true }).catch(() => {});
+      await rm(parentB, { recursive: true, force: true }).catch(() => {});
+    }
+  }, 60_000);
+});

@@ -215,6 +215,7 @@ export {
   AUTO_SYNC_MIN_MINUTES,
   AUTO_SYNC_MAX_MINUTES,
   AUTO_SYNC_DEFAULT_MINUTES,
+  AUTO_SYNC_PUSH_INTERVAL_MINUTES,
 } from "../lib/host-policy.ts";
 
 export type {
