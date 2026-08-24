@@ -30,11 +30,20 @@ export const MSG_SSH_REMOTE =
   "This project's online address uses SSH (git@…), which gutterpress can't sync to. Switch it to the web (HTTPS) address to sync from here.";
 export const MSG_NO_BRANCH =
   "This project's version history isn't on a named branch, so it can't be synced right now.";
-/** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
-export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
+// The two messages below are recorded VERBATIM as commit messages, so a
+// writer sees them raw on github.com and classified in the desktop's
+// Previous versions timeline (version-timeline.ts matches them as literal
+// strings — including every superseded spelling, which existing history
+// keeps forever). Rename only with a matching timeline entry, and never into
+// version-control vocabulary.
+/** Message recorded on the automatic pre-sync snapshot (D5 invariant).
+ *  Pre-0.10.1 history carries the old spelling "Snapshot before syncing". */
+export const SYNC_SNAPSHOT_MESSAGE = "Automatic backup of your work";
 /**
  * Message recorded when an edit reached disk while the fetch was in flight —
  * after the pre-sync snapshot, before the merge (see the re-snapshot in
- * `syncProject`). Distinct wording so the race is legible in history.
+ * `syncProject`). Distinct wording so the race is legible in history; the
+ * copy is already writer-voiced, so it deliberately stays unchanged (every
+ * rename permanently grows the timeline's superseded-spelling list).
  */
 export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while syncing";

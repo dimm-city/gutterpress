@@ -19,7 +19,13 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api, type SnapshotEntry } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
-  import { versionLabel, versionDescription, groupVersionsByDay } from "$lib/routes/version-timeline";
+  import {
+    versionLabel,
+    versionDescription,
+    groupVersionsByDay,
+    collapseAutomaticRuns,
+    autoRunSummary,
+  } from "$lib/routes/version-timeline";
 
   let {
     projectDir,
@@ -139,6 +145,53 @@
   });
 </script>
 
+<!-- One version row (used both at the top level of a day and inside a
+     collapsed automatic run). -->
+{#snippet versionRow(entry: SnapshotEntry)}
+  <li>
+    <div class="entry-row">
+      <div class="entry-info">
+        <span class="msg">{versionLabel(entry.message)}</span>
+        {#if versionDescription(entry.message)}
+          <span class="desc">{versionDescription(entry.message)}</span>
+        {/if}
+        <span class="meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
+      </div>
+      {#if restoreConfirmId === entry.id}
+        <div class="restore-confirm">
+          <span class="confirm-copy">We'll save your current work as a version first. Restore to this version?</span>
+          <button
+            class="ghost small"
+            onclick={cancelRestore}
+            disabled={restoringId === entry.id}
+          >
+            Cancel
+          </button>
+          <button
+            class="primary small app-btn-primary"
+            onclick={() => confirmRestore(entry.id)}
+            disabled={restoringId === entry.id}
+          >
+            {restoringId === entry.id ? "Restoring…" : "Yes, restore"}
+          </button>
+        </div>
+      {:else}
+        <button
+          class="ghost small"
+          onclick={() => armRestore(entry.id)}
+          disabled={restoringId !== null}
+          title="Restore the project to this version"
+        >
+          Restore this version
+        </button>
+      {/if}
+    </div>
+    {#if restoreError && (restoreConfirmId === entry.id || restoringId === entry.id)}
+      <p class="error restore-error" role="alert">{restoreError}</p>
+    {/if}
+  </li>
+{/snippet}
+
 <div class="activity-view">
   <header class="activity-header">
     <h2><Icon name="history" size={16} /> Previous versions</h2>
@@ -156,49 +209,24 @@
       {#each days as day (day.key)}
         <h3 class="day-heading">{day.label}</h3>
         <ul class="history-list">
-          {#each day.entries as entry (entry.id)}
-            <li>
-              <div class="entry-row">
-                <div class="entry-info">
-                  <span class="msg">{versionLabel(entry.message)}</span>
-                  {#if versionDescription(entry.message)}
-                    <span class="desc">{versionDescription(entry.message)}</span>
-                  {/if}
-                  <span class="meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
-                </div>
-                {#if restoreConfirmId === entry.id}
-                  <div class="restore-confirm">
-                    <span class="confirm-copy">We'll save your current work as a version first. Restore to this version?</span>
-                    <button
-                      class="ghost small"
-                      onclick={cancelRestore}
-                      disabled={restoringId === entry.id}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      class="primary small app-btn-primary"
-                      onclick={() => confirmRestore(entry.id)}
-                      disabled={restoringId === entry.id}
-                    >
-                      {restoringId === entry.id ? "Restoring…" : "Yes, restore"}
-                    </button>
-                  </div>
-                {:else}
-                  <button
-                    class="ghost small"
-                    onclick={() => armRestore(entry.id)}
-                    disabled={restoringId !== null}
-                    title="Restore the project to this version"
-                  >
-                    Restore this version
-                  </button>
-                {/if}
-              </div>
-              {#if restoreError && (restoreConfirmId === entry.id || restoringId === entry.id)}
-                <p class="error restore-error" role="alert">{restoreError}</p>
-              {/if}
-            </li>
+          {#each collapseAutomaticRuns(day.entries) as row (row.key)}
+            {#if row.kind === "auto-run"}
+              <!-- 2+ consecutive automatic backups fold into one native
+                   disclosure — no expansion state to manage; restore still
+                   operates on the individual entries inside. -->
+              <li>
+                <details class="auto-run">
+                  <summary>{autoRunSummary(row.entries)}</summary>
+                  <ul class="history-list auto-run-list">
+                    {#each row.entries as entry (entry.id)}
+                      {@render versionRow(entry)}
+                    {/each}
+                  </ul>
+                </details>
+              </li>
+            {:else}
+              {@render versionRow(row.entry)}
+            {/if}
           {/each}
         </ul>
       {/each}
@@ -235,6 +263,8 @@
   .desc { color: var(--app-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
   .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .history-list li { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
+  .auto-run summary { cursor: pointer; color: var(--app-text-secondary); font-size: 12px; font-weight: 600; }
+  .auto-run-list { margin-top: 6px; }
   .entry-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .entry-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .msg { color: var(--app-text); font-weight: 600; font-size: 12px; }
