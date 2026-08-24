@@ -14,7 +14,7 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");
 });
 
-test("preview toolbar button toggles preview visibility so the editor can fill the workspace", () => {
+test("the Focus segment hides the preview so the editor can fill the workspace", () => {
   const src = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
   // Hiding the preview IS the `focus` workspace mode — one enum, not a
@@ -22,8 +22,10 @@ test("preview toolbar button toggles preview visibility so the editor can fill t
   expect(src).toContain("let previewVisible = $derived(mode !== \"focus\")");
   expect(src).toContain("function togglePreview");
   expect(src).toContain("class:preview-hidden={!previewVisible}");
-  // The toggle control itself lives in the extracted AppToolbar now.
-  expect(toolbar).toContain("title={mode === \"focus\" ? \"Show preview\" : \"Hide preview\"}");
+  // The control is a segment of the one mode switch, not an eye button beside
+  // it: a three-state model gets a three-segment control.
+  expect(toolbar).toContain('onclick={() => onSetMode("focus")}');
+  expect(toolbar).toContain('aria-label="Focus"');
   expect(toolbar).not.toContain("Preview only");
 });
 
@@ -448,6 +450,26 @@ test("`focus` is transient: it never reaches the persisted settings", () => {
   expect(read("src/lib/platform/shared-types.ts")).toContain(
     'mode: Exclude<WorkspaceMode, "focus">',
   );
+});
+
+test("setMode persists BEFORE it assigns, so its own write-back cannot land on `focus`", () => {
+  const src = read("src/routes/+page.svelte");
+  const body = src.slice(
+    src.indexOf("function setMode(next: WorkspaceMode): void {"),
+    src.indexOf("function togglePreview()"),
+  );
+  const persistIdx = body.indexOf("settings.set({ preview:");
+  const assignIdx = body.indexOf("mode = next;");
+  expect(persistIdx).toBeGreaterThan(-1);
+  expect(assignIdx).toBeGreaterThan(-1);
+  // `focus` persists AS "editor", and the settings notify is synchronous, so
+  // entering focus from `viewer` fires modeSink with a value it has not seen
+  // ("editor" ≠ "viewer") — the sink then assigns mode = "editor" and the
+  // author lands in Edit with the viewer still on screen. Persisting first
+  // means that echo happens BEFORE the assignment, so the one writer of
+  // `mode` still wins. The guard's dedupe is a nicety, not the correctness
+  // argument.
+  expect(persistIdx).toBeLessThan(assignIdx);
 });
 
 test("only leaving `focus` is ambiguous, so only entering it stores a previous mode", () => {

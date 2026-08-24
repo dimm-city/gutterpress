@@ -11,14 +11,21 @@ This project follows [Semantic Versioning](https://semver.org/).
   The old toolbar asked you to manage two things at once: whether the editor
   was open, and separately whether the book showed one page or two. The
   combinations mostly did not make sense, and the app kept quietly changing
-  the page count on you when you resized the window. Those two controls are
-  now one: **Edit** puts the editor beside a single page, **Read** gives the
-  whole window to the book, two pages side by side like a real one. The eye
-  button still hides the book when you want the editor to itself — and it
-  keeps the toolbar, so there is always a visible way back. The app opens on
-  Read, and remembers which of the two you left it in. The trade is deliberate
-  and worth naming: you can no longer edit with two pages showing. That
-  arrangement never had room for either half.
+  the page count on you when you resized the window. There is now one control
+  with three settings, and nothing else beside it: **Edit** puts the editor
+  next to a single page, **Read** gives the whole window to the book — two
+  pages side by side, like a real one — and **Focus** clears the book away so
+  it is just you and your words. All three keep the toolbar, so there is
+  always a visible way back, and the button you pressed to get here is still
+  lit. The eye and pen buttons that used to sit beside this control are gone;
+  they only ever offered the same three arrangements a second time. The app
+  opens on Read and remembers whether you left it writing or reading — Focus
+  is a posture for the afternoon, not a room to wake up in. The trade is
+  deliberate and worth naming: you can no longer edit with two pages showing.
+  That arrangement never had room for either half.
+
+  `Ctrl+E` still swaps between writing and reading, and `Ctrl+Shift+F` still
+  drops you into Focus.
 
 - **Editing a block in the preview now happens IN the page.** Right-click →
   "Edit this block", or just double-click any block, and that block itself
@@ -55,6 +62,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   [ADR 0009](docs/adr/0009-inline-editing-source-ranges.md) (revised).
 
 ### Fixed
+
+- **Going straight from Read into Focus now actually gets you there.** It used
+  to drop you in Edit instead, with the book still sitting beside you — you
+  asked for the whole window and got half of it, and had to ask twice. (The
+  same thing happened to `Ctrl+Shift+F` pressed while reading.) Focus is not a
+  setting the app remembers between sessions, so it saves itself as "Edit";
+  that saved value was arriving back a beat too early and overwriting the
+  thing you had just asked for.
 
 - **"Updating preview…" no longer gets stuck on screen.** Save a file and the
   little status pill would sometimes stay up forever, even though the new

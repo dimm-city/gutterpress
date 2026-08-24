@@ -2384,12 +2384,19 @@
    * derived page layout into the viewer, and guarantees the editor module is
    * loading whenever the editor pane is about to be on screen (the pane
    * renders "Loading editor…" until it is).
+   *
+   * Persist BEFORE assigning. `settings.set` notifies synchronously, so the
+   * write-back reaches `modeSink` inside this call — and entering `focus`
+   * from `viewer` writes "editor", a value the sink has NOT seen, so its
+   * dedupe does not catch it and it assigns `mode = "editor"`. Doing that
+   * echo first and the assignment last keeps the one writer of `mode` the
+   * last word; Read → Focus used to land in Edit with the viewer still up.
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
     if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
-    mode = next;
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
+    mode = next;
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
@@ -2663,10 +2670,7 @@
     {zoom}
     previewControlsDisabled={!lifecycle.previewUrl}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
-    previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen}
-    onTogglePreview={togglePreview}
     editorToggleDisabled={!toolbarProjectOpen}
-    onToggleEditor={toggleEditor}
     publishVisible={isDesktop()}
     publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
     onPublish={() => (publishOpen = true)}
