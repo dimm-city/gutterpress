@@ -1,8 +1,8 @@
 /**
- * Author-language copy for sync / pull / push / conflict-resolution (never raw
- * git words). Extracted from sync.ts so the transport, conflict-resolution and
- * orchestrator modules share ONE source of these strings — their exact wording
- * is part of the observable contract (the host renders them verbatim).
+ * Author-language copy for sync (never raw git words). Extracted from sync.ts
+ * so the transport and orchestrator modules share ONE source of these
+ * strings — their exact wording is part of the observable contract (the host
+ * renders them verbatim).
  */
 
 export const MSG_UP_TO_DATE = "Everything is in sync.";
@@ -30,19 +30,11 @@ export const MSG_SSH_REMOTE =
   "This project's online address uses SSH (git@…), which gutterpress can't sync to. Switch it to the web (HTTPS) address to sync from here.";
 export const MSG_NO_BRANCH =
   "This project's version history isn't on a named branch, so it can't be synced right now.";
-export const MSG_PULLED =
-  "The latest online changes were downloaded to this computer.";
-export const MSG_PULLED_MERGED =
-  "The latest online changes were combined with your changes on this computer.";
-export const MSG_PULL_UP_TO_DATE = "You already have the latest online changes.";
-export const MSG_PUSH_UP_TO_DATE = "There's nothing new to send — everything is already online.";
-export const MSG_PULL_FIRST =
-  "The online copy has changes you don't have yet. Get the latest changes first, then send yours.";
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
 /**
  * Message recorded when an edit reached disk while the fetch was in flight —
  * after the pre-sync snapshot, before the merge (see the re-snapshot in
- * `pullChanges`). Distinct wording so the race is legible in history.
+ * `syncProject`). Distinct wording so the race is legible in history.
  */
 export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while syncing";

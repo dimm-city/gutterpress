@@ -44,7 +44,7 @@
  * check out WITHOUT `force` (so a write that arrives later is left alone or
  * loudly refused, never silently replaced). Both are marked in the body.
  *
- * Used by `pullChanges` (every sync) and by `repairRepo`'s salvage step
+ * Used by `syncProject` (every sync) and by `repairRepo`'s salvage step
  * (merging a rescued old branch tip back into the repaired history).
  */
 import * as fs from "node:fs";

@@ -1,6 +1,6 @@
 /**
- * Transport plumbing shared by snapshot-first sync / pull / push / resolve
- * (#15, ADR 0006 D5). Extracted from sync.ts: remote+credential resolution,
+ * Transport plumbing used by snapshot-first sync (#15, ADR 0006 D5).
+ * Extracted from sync.ts: remote+credential resolution,
  * `onAuth` wiring, the snapshot-if-needed step, branch/tip helpers, the
  * remote-tip fetch (with the singleBranch `have` fix), and the shared
  * failure/conflict/setup-error mappers. Pure isomorphic-git glue — CLAUDE.md §7.
@@ -151,9 +151,7 @@ export async function resolveTransport(
 }
 
 /**
- * The failure arms shared verbatim by {@link SyncOutcome}, {@link PullOutcome}
- * and {@link PushOutcome} — so one classifier serves all three operations.
- * Decoding delegates to the shared recovery classifier
+ * The failure arms of {@link SyncOutcome}. Decoding delegates to the shared recovery classifier
  * (classifyTransportFailure): auth_required → "auth", network_unavailable →
  * "offline", insecure_transport → "error" with its dedicated message (NEVER
  * "auth" — reconnecting can't fix an http:// address, and the auth recovery
@@ -192,7 +190,7 @@ export function setupErrorMessage(e: unknown): string | null {
 }
 
 /**
- * Snapshot-first step shared by syncProject / pullChanges / pushChanges
+ * Snapshot-first step used by syncProject
  * (ADR 0006 D5): commit any unsaved work in the WHOLE repo BEFORE any network
  * or merge step, so a forced post-merge checkout can never discard it. The
  * working-tree check runs lazily at action time on the caller's function-scoped
@@ -232,7 +230,7 @@ export async function snapshotBeforeAction(args: {
  * typed error routes the caller through the recover() path.
  * `checkLocalChanges: false` — only the structural flags matter here.
  *
- * Runs INSIDE the caller's repo lock. Shared by pullChanges and pushChanges.
+ * Runs INSIDE the caller's repo lock.
  */
 export async function assertNoStructuralDamage(
   projectDir: string,

@@ -24,7 +24,7 @@ writers, using what git already does instead of re-implementing it.
 
 ### 1. Sync always converges — there is no conflict outcome
 
-`pullChanges` merges with a fixed policy (`converge-merge.ts`) and always
+`syncProject` merges with a fixed policy (`converge-merge.ts`) and always
 lands:
 
 - **Text edited on both sides** → BOTH versions stay in the one file, inside

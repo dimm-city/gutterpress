@@ -71,52 +71,6 @@ export type SyncOutcome =
       filesChanged?: boolean;
     };
 
-/**
- * Outcome of a pull-only attempt ({@link pullChanges}): fetch + fast-forward/
- * converge-merge of the online changes, NEVER a push. The merge always lands
- * (see converge-merge.ts) — there is no "conflict" arm.
- */
-export type PullOutcome =
-  | {
-      status: "pulled";
-      message: string;
-      /** Snapshot taken of unsaved work before pulling, if any. */
-      snapshotId?: string;
-      /**
-       * True when the pull created a combine (merge) commit — local commits
-       * existed alongside the online ones. False for a plain fast-forward.
-       */
-      merged: boolean;
-      /**
-       * True when the working tree CONTENT changed (the tip's tree differs
-       * from before) — the host should refresh its preview.
-       */
-      filesChanged: boolean;
-      /** Files whose text now holds BOTH versions inside git conflict markers. */
-      combinedFiles?: string[];
-      /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
-      keptBothFiles?: KeptBothFile[];
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-/**
- * Outcome of a push-only attempt ({@link pushChanges}): snapshot-if-needed,
- * then push — NEVER a merge. When the online copy has commits this computer
- * doesn't have, the result is the typed `"pull-first"` status (the host shows
- * a plain-language "get the latest changes first" message) — pushChanges
- * never auto-merges.
- */
-export type PushOutcome =
-  | { status: "pushed"; message: string; snapshotId?: string }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "pull-first"; message: string; snapshotId?: string }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
 // ── Options ──────────────────────────────────────────────────────────────────
 
 export interface SyncProjectOptions {
@@ -132,9 +86,9 @@ export interface SyncProjectOptions {
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**
-   * Bounded retry policy for {@link syncProject}'s pull→push race loop. The
-   * loop is ALWAYS bounded (never infinite) and the snapshot-first guarantee
-   * holds on every path. Defaults to {@link DEFAULT_SYNC_RETRY}. `sleep` is
+   * Bounded retry policy for {@link syncProject}'s fetch→merge→push race
+   * loop. The loop is ALWAYS bounded (never infinite) and the snapshot-first
+   * guarantee holds on every path. Defaults to {@link DEFAULT_SYNC_RETRY}. `sleep` is
    * injectable so tests can drive backoff deterministically.
    */
   retry?: SyncRetryOptions;

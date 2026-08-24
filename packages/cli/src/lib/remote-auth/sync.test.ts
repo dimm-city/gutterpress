@@ -24,12 +24,7 @@ import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
-import {
-  pullChanges,
-  pushChanges,
-  syncProject,
-  SYNC_SNAPSHOT_MESSAGE,
-} from "./sync.ts";
+import { syncProject, SYNC_SNAPSHOT_MESSAGE } from "./sync.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
@@ -593,28 +588,26 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
     }
   });
 
-  test("pullChanges alone: the late edit is committed, not overwritten", async () => {
+  test("the post-fetch snapshot is the one reported, under its own message", async () => {
     const h = await setupClone();
     try {
       const file = path.join(h.projectDir, "chapter-01.md");
       await writeFile(file, "# One\n\nSaved before the sync started.\n");
 
-      const outcome = await pullChanges({
+      const outcome = await syncProject({
         projectDir: h.projectDir,
         httpClient: writeDuringFetch(() => writeFile(file, LATE_EDIT)),
       });
 
       expect(await readFile(file, "utf8")).toBe(LATE_EDIT);
       expect(await reachableInHistory(h.projectDir, "chapter-01.md", LATE_EDIT)).toBe(true);
-      // The pull's own snapshot is the one that captured it.
-      expect(outcome.snapshotId).toBeDefined();
-      const snap = await git.readCommit({
-        fs,
-        dir: h.projectDir,
-        oid: outcome.snapshotId!,
-      });
+      // The SECOND (post-fetch) snapshot is the one reported — it holds
+      // strictly more of the author's work than the pre-fetch one.
+      const snapshotId = "snapshotId" in outcome ? outcome.snapshotId : undefined;
+      expect(snapshotId).toBeDefined();
+      const snap = await git.readCommit({ fs, dir: h.projectDir, oid: snapshotId! });
       expect(snap.commit.message.trim()).toBe("Saved the edit you made while syncing");
-      expect(outcome.status).toBe("up-to-date");
+      expect(outcome.status).toBe("synced");
     } finally {
       await h.cleanup();
     }
@@ -673,7 +666,7 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
       };
       let outcome;
       try {
-        outcome = await pullChanges({ projectDir: h.projectDir });
+        outcome = await syncProject({ projectDir: h.projectDir });
       } finally {
         (git as unknown as { merge: typeof git.merge }).merge = realMerge;
       }
@@ -948,67 +941,60 @@ describe("syncProject opened on a subfolder", () => {
   });
 });
 
-// ── BUG 2: isPushRejected must only treat a genuine non-fast-forward as ────────
-//          pull-first; permission/hook rejections surface to the auth classifier.
+// ── BUG 2: isPushRejected must only treat a genuine non-fast-forward as a ─────
+//          race to retry; permission/hook rejections surface to the auth
+//          classifier instead.
 
 describe("push rejection precision (BUG 2)", () => {
-  test("a genuine non-fast-forward still maps to pull-first (remote ahead)", async () => {
+  /** Local work to push, so the sync always reaches the push step. */
+  async function withLocalWork(h: Harness): Promise<void> {
+    await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
+  }
+
+  test("a genuine non-fast-forward is RETRIED as a race, never reported as auth", async () => {
     const h = await setupClone();
     try {
-      // The online copy moved ahead; a local commit makes this a real
-      // non-fast-forward. pushChanges must report pull-first (never auth).
-      await serverCommit(h.serverDir, { "online.md": "online\n" }, "online");
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local edit\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local",
-        author: { name: "L", email: "l@test.local" },
+      await withLocalWork(h);
+      // The server answers with a non-fast-forward report-status. That is a
+      // RACE: the loop retries it, so a one-attempt budget exhausts into the
+      // race message — never "reconnect", which would send the writer off to
+      // fix a credential that is working fine.
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("non-fast-forward"),
+        retry: { attempts: 1 },
       });
-
-      const outcome = await pushChanges({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("pull-first");
+      expect(outcome.status).toBe("error");
+      expect(outcome.message).toContain("changing very quickly");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("a server-side non-fast-forward rejection maps to pull-first", async () => {
+  test("a PERMISSION-style push rejection surfaces as auth, not as a race", async () => {
     const h = await setupClone();
     try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      // The server rejects with a non-fast-forward report-status.
-      const httpClient = pushRejectingHttpClient("non-fast-forward");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).toBe("pull-first");
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("a PERMISSION-style push rejection does NOT map to pull-first", async () => {
-    const h = await setupClone();
-    try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      // The server declines for permission/policy reasons — pulling can't fix
-      // this, so it must surface as auth (NOT pull-first, NOT a race message).
-      const httpClient = pushRejectingHttpClient("permission denied");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).not.toBe("pull-first");
+      await withLocalWork(h);
+      // The server declines for permission/policy reasons — retrying can't
+      // fix this, so it must surface as auth (NOT a race message).
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("permission denied"),
+      });
       expect(outcome.status).toBe("auth");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("a pre-receive hook decline does NOT map to pull-first", async () => {
+  test("a pre-receive hook decline surfaces as auth, not as a race", async () => {
     const h = await setupClone();
     try {
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "local\n");
-      const httpClient = pushRejectingHttpClient("pre-receive hook declined");
-      const outcome = await pushChanges({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).not.toBe("pull-first");
+      await withLocalWork(h);
+      const outcome = await syncProject({
+        projectDir: h.projectDir,
+        httpClient: pushRejectingHttpClient("pre-receive hook declined"),
+      });
       // A hook decline is an auth/permission-class problem, not a race.
       expect(outcome.status).toBe("auth");
     } finally {
@@ -1303,32 +1289,6 @@ describe("syncProject — structural preflight", () => {
       // snapshotted into history) and nothing reached the remote.
       expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
       expect(await serverHead(h.serverDir)).toBe(serverBefore);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("pullChanges and pushChanges called DIRECTLY hit the same in-lock preflight", async () => {
-    // The History tab's Pull/Push buttons bypass syncProject, so the guard
-    // lives INSIDE each operation's repo lock — syncProject inherits it from
-    // its first pull rather than running a redundant entry preflight.
-    const h = await setupClone();
-    try {
-      const localBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
-      await writeFile(path.join(h.projectDir, ".git", "MERGE_HEAD"), `${localBefore}\n`);
-
-      for (const op of [pullChanges, pushChanges]) {
-        let thrown: unknown;
-        try {
-          await op({ projectDir: h.projectDir });
-        } catch (e) {
-          thrown = e;
-        }
-        expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
-        expect((thrown as { kind?: string })?.kind).toBe("needs_repair");
-      }
-      // Neither operation snapshotted the damaged tree.
-      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
     } finally {
       await h.cleanup();
     }

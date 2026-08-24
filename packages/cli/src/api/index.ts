@@ -226,9 +226,7 @@ export type {
 export {
   FileTokenStore,
   defaultConfigDir,
-  redactCredential,
   extractUrlCredential,
-  migrateUrlCredential,
 } from "../lib/remote-auth/token-store.ts";
 
 export type {
@@ -263,8 +261,6 @@ export type {
 
 export {
   cloneRepository,
-  readProjectProvenance,
-  provenancePath,
   sanitizeCloneFolderName,
 } from "../lib/remote-auth/clone.ts";
 
@@ -272,7 +268,6 @@ export type {
   CloneRepositoryOptions,
   CloneRepositoryResult,
   CloneProgressEvent,
-  ProjectProvenance,
 } from "../lib/remote-auth/clone.ts";
 
 // ── Advanced Setup: diagnostics + generic token flow (#14 / ADR 0006 D3/D7) ──
@@ -290,7 +285,6 @@ export type {
 export {
   connectGenericHost,
   knownForgeTokenUrl,
-  normalizeForgeHost,
 } from "../lib/remote-auth/generic-auth.ts";
 
 export type {
@@ -315,15 +309,11 @@ export type {
 // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────────
 export {
   syncProject,
-  pullChanges,
-  pushChanges,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
 export type {
   SyncOutcome,
-  PullOutcome,
-  PushOutcome,
   SyncProjectOptions,
   KeptBothFile,
 } from "../lib/remote-auth/sync.ts";
@@ -408,7 +398,6 @@ export {
 export type { RepairNeed } from "../lib/remote-auth/recovery/classify.ts";
 export {
   inspectRepo,
-  preflightStructuralReason,
   buildPreflightDiagnostics,
   verifyRepoReadable,
   isUnbornRepo,
@@ -416,5 +405,5 @@ export {
 export type { RepoHealth } from "../lib/remote-auth/recovery/types.ts";
 
 // Structured operation logger (node-side only; the SPA never value-imports it).
-export { resolveLogger, shortOid } from "../lib/remote-auth/operation-log.ts";
+export { resolveLogger } from "../lib/remote-auth/operation-log.ts";
 export type { OperationLogger, LogData } from "../lib/remote-auth/operation-log.ts";
