@@ -2012,7 +2012,18 @@
     "rotate",
     "translate",
     "scale",
-    "box-shadow"
+    "perspective",
+    "box-shadow",
+    "opacity",
+    "outline",
+    "outline-color",
+    "outline-style",
+    "outline-width",
+    "outline-offset",
+    "filter",
+    "backdrop-filter",
+    "mix-blend-mode",
+    "clip-path"
   ]);
   function isIgnoredMarginBoxProperty(property) {
     return MARGIN_BOX_IGNORED_PROPERTIES.has(property.toLowerCase());

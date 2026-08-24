@@ -243,7 +243,8 @@ export type BuildDiagnosticCode =
   | "engine.multicol.dead-column"
   | "engine.content.overheight"
   | "engine.image.low-dpi"
-  | "engine.flush.margin-box";
+  | "engine.flush.margin-box"
+  | "engine.page-background.unreferenced";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -255,6 +256,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.content.overheight",
   "engine.image.low-dpi",
   "engine.flush.margin-box",
+  "engine.page-background.unreferenced",
 ];
 
 export interface BuildDiagnostic {
@@ -1064,9 +1066,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
-    // Abspos containing-block leak + fragmenting-multicol + trapped-layer
-    // warnings — one shared `querySelectorAll("*")` walk with a single base
-    // `getComputedStyle` call per element (was separate document-wide walks).
+    // Abspos containing-block leak + fragmenting-multicol + trapped-layer +
+    // unreferenced-@page-image warnings — one evaluate, sharing a single
+    // `querySelectorAll("*")` walk with one base `getComputedStyle` call per
+    // element (was separate document-wide walks).
     // Only a `.gp-behind` hit performs the additional, targeted ancestor-style
     // reads needed to answer the containment question against the live DOM.
     //
@@ -1111,14 +1114,73 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // mirrors exactly that. This build-time result is authoritative;
     // findings are capped like the sibling audits so malformed generated
     // markup cannot flood the Problems panel.
+    //
+    // Unreferenced @page image: Chromium fetches a `url()` referenced only
+    // from inside an `@page` rule and then paints nothing — the sheet prints
+    // with its background colour alone (docs/known-limitations.md §3, #152).
+    // MEASURED on Chrome 151.0.7922.75, 96dpi raster, mean absolute pixel
+    // difference against the same page with no background image: the sole
+    // reference scores 0.0000; a `<link rel="preload" as="image">`, an
+    // `html { background }` or a 1x1 `<img>` for the same URL all restore it
+    // (89.3574 / 89.3574 / 89.6402). A margin box's own `background-image`
+    // fails the same way (0.0000 alone, 8.0345 with a preload), which is why
+    // the whole `@page` rule — not just the page box — is what "owns" a URL
+    // here. This CANNOT be a CSS-source lint (#151's ruling): `checkCss` sees
+    // neither of the two facts that decide it — the second reference is
+    // normally in the HTML, and `asset-inline.ts` inlines every image up to
+    // 512 KB as a `data:` URI, which is immune (89.3574 with no second
+    // reference at all). The built document knows both, exactly.
     {
-      const { leaks, multicol, layerTraps } = JSON.parse(
+      const { leaks, multicol, layerTraps, pageBackgrounds } = JSON.parse(
         await page.evaluate<string>(`(() => {
           const desc = ${DESC_JS};
           const leaks = [];
           const multicol = [];
           const layerTraps = [];
           const seenLayerTraps = new Set();
+
+          // Images referenced ONLY from inside an @page rule. Chromium fetches
+          // them and then paints nothing — see the pass comment above.
+          const pageBackgrounds = (() => {
+            const absolute = (u) => {
+              try { return new URL(u, document.baseURI).href } catch { return u }
+            };
+            const urlsIn = (text) => {
+              const out = [];
+              const re = /url\\(\\s*(['"]?)([^'")]*)\\1\\s*\\)/g;
+              let m;
+              while ((m = re.exec(text))) if (m[2]) out.push(m[2]);
+              return out;
+            };
+            const owned = new Map();
+            const referenced = new Set();
+            for (const el of document.querySelectorAll("[src],[href]"))
+              referenced.add(absolute(el.getAttribute("src") || el.getAttribute("href")));
+            for (const el of document.querySelectorAll("[style]"))
+              for (const u of urlsIn(el.getAttribute("style"))) referenced.add(absolute(u));
+            const walk = (rules, owner) => {
+              for (const rule of rules) {
+                let own = owner;
+                if (rule.constructor.name === "CSSPageRule")
+                  own = "@page" + (rule.selectorText ? " " + rule.selectorText : "");
+                else if (owner && rule.name) own = owner + " { @" + rule.name + " }";
+                for (const u of urlsIn(rule.style ? rule.style.cssText : "")) {
+                  if (!own) referenced.add(absolute(u));
+                  else if (!owned.has(absolute(u))) owned.set(absolute(u), { url: u, where: own });
+                }
+                if (rule.cssRules) walk(rule.cssRules, own);
+              }
+            };
+            for (const sheet of document.styleSheets) {
+              let rules;
+              try { rules = sheet.cssRules } catch { continue }
+              walk(rules, null);
+            }
+            return [...owned]
+              .filter(([abs, hit]) => !/^data:/i.test(hit.url) && !referenced.has(abs))
+              .map(([, hit]) => hit)
+              .slice(0, 20);
+          })();
 
           const stackingReasons = (el, cs) => {
             const reasons = [];
@@ -1240,12 +1302,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               }
             }
           }
-          return JSON.stringify({ leaks, multicol, layerTraps });
+          return JSON.stringify({ leaks, multicol, layerTraps, pageBackgrounds });
         })()`),
       ) as {
         leaks: string[];
         multicol: string[];
         layerTraps: Array<{ behind: string; ancestor: string; detail: string }>;
+        pageBackgrounds: Array<{ url: string; where: string }>;
       };
       for (const d of leaks)
         diagnose(
@@ -1259,6 +1322,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `${trap.behind} cannot paint behind the page as intended because ancestor ${trap.ancestor} ${trap.detail}. Remove or narrowly scope that containment style around the .gp-behind element.`,
         );
       if (layerTraps.length) log(`audit: ${layerTraps.length} trapped layer warning(s)`);
+      for (const hit of pageBackgrounds)
+        diagnose(
+          "engine.page-background.unreferenced",
+          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Reference it once more anywhere in the document and it paints: a single <link rel="preload" as="image" href="${hit.url}"> in the page head is enough.`,
+        );
+      if (pageBackgrounds.length)
+        log(`audit: ${pageBackgrounds.length} unreferenced @page background image(s)`);
       for (const d of multicol)
         diagnose(
           "engine.multicol.dead-column",

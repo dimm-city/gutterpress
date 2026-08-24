@@ -16,9 +16,12 @@ Each entry below therefore records the same four things: what breaks, **how it
 fails**, what to write instead, and the **removal trigger** — the condition
 under which the workaround should be deleted.
 
-What makes these three dangerous is that every one of them fails **silently**.
-There is no error, no warning, and a valid-looking PDF. Treat "the CSS is
-correct but nothing painted" as a signal to check this page.
+What makes these three dangerous is that every one of them fails **silently**
+in Chromium. There is no error and the PDF looks valid. Gutterpress therefore
+reports each of them itself — §1 and §2 from the CSS as you type it
+(`printsafe/no-risky-print-effects`), §3 from the built document
+(`engine.page-background.unreferenced`) — so "the CSS is correct but nothing
+painted" reaches you as a warning rather than as a blank page in print.
 
 ---
 
@@ -67,12 +70,19 @@ ignore styling".
 |---|---|
 | `box-shadow` | `text-shadow` (0.1164) |
 | `transform` — `rotate`, `scale`, `translate` | `border-radius` (0.3152) |
-| `opacity` | `background: linear/radial-gradient` (6.15 / 6.21) |
-| `outline` | `writing-mode` (0.3648), `padding`, `border`, `font-size`, `color`, `letter-spacing`, `text-transform`, `visibility` |
-| `filter`, `mix-blend-mode` | |
+| `rotate`, `scale`, `translate` (the individual properties) | `background: linear/radial-gradient` (6.15 / 6.21) |
+| `opacity` | `writing-mode` (0.3648), `padding`, `border`, `font-size`, `color`, `letter-spacing`, `text-transform`, `visibility` |
+| `outline`, and `outline-style`/`-width`/`-color`/`-offset` | |
+| `filter`, `backdrop-filter`, `mix-blend-mode` | |
+| `clip-path`, `perspective` | |
 
 `text-shadow` beside `box-shadow` is the clearest pair: both are shadows, and
 the one that paints outside the box is the one discarded.
+
+A caution for anyone re-running this: a margin box is centred in its slot, so
+**symmetric** `padding` moves nothing and measures `0.000` even though padding
+is honoured. `padding-left: 60px` on the same box measures 0.2927. Vary the
+axis you are testing, or the harness will report a false drop.
 
 **Write instead:** keep margin-box decoration inside the box — borders,
 border-radius, background gradients and `text-shadow` all work. A rotated or
@@ -84,15 +94,30 @@ produces a non-zero diff against the same page without it.
 
 ---
 
-## 3. A `@page { background }` image is dropped unless referenced elsewhere
+## 3. An `@page` image is dropped unless referenced elsewhere
 
 **Tracking:** [#152](https://github.com/dimm-city/gutterpress/issues/152) ·
 found during the 0.10.0 migration · **re-diagnosed 2026-08-24**
 
-A `url()` image in `@page { background }` is not painted when the `@page` rule
-is the document's **only** reference to it. The page shows the background
-*colour* alone. Add any second reference — a `<link rel="preload" as="image">`,
-an `html { background }`, or even a 1×1 invisible `<img>` — and it paints.
+A `url()` image referenced only from inside an `@page` rule is not painted.
+The page shows the background *colour* alone (the colour paints at full
+strength — 129.5258 with and without the dropped `url()`). Add any second
+reference — a `<link rel="preload" as="image">`, an `html { background }`, or
+even a 1×1 invisible `<img>` — and it paints.
+
+Two scope facts, both measured on Chrome 151.0.7922.75 and both load-bearing
+for the check Gutterpress runs:
+
+- **A `data:` URI is immune.** The same artwork inlined as
+  `data:image/png;base64,…` paints from `@page { background }` with no second
+  reference at all (89.3574, identical to the referenced case). Because
+  `asset-inline.ts` inlines every image up to 512 KB, this bug can only reach
+  a book through an image big enough to be *copied* instead — which is why the
+  original diagnosis looked like it was about size.
+- **It is the whole `@page` rule, not just the page box.** A margin box's own
+  `background-image: url()` is dropped the same way when nothing else
+  references it (0.0000 alone, 8.0345 with a `<link rel="preload">`; a
+  gradient on the same box is the control at 16.8009).
 
 The image **is** fetched either way (confirmed in an HTTP access log on the
 failing run), so this is a paint/invalidation problem, not a loading one, and

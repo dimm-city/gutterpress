@@ -5,6 +5,40 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The three Chromium print bugs that print a blank wall now warn you first**
+  (#149, #150, #152). All three are documented in
+  [`docs/known-limitations.md`](docs/known-limitations.md), and all three fail
+  the same way: valid CSS, no error, and nothing on the paper. You now hear
+  about each one before you ship.
+  - A **gradient in `@page { background }`** paints nothing at all — a solid
+    colour in the same place paints the whole sheet. The warning says so and
+    points at the two spots where the same gradient does work (`html`, or a
+    margin box), so it moves you somewhere that prints instead of just
+    stopping you.
+  - **Margin boxes** (`@top-center`, `@bottom-right`, …) drop far more than
+    the `transform`/`box-shadow` we already warned about: `opacity`,
+    `outline`, `filter`, `mix-blend-mode`, `backdrop-filter`, `clip-path` and
+    `perspective` are all discarded too, while `text-shadow`, `border-radius`,
+    background gradients, borders and padding on the same box are honoured.
+    The rule is what the property paints — anything that paints outside the
+    box, or makes it a stacking context, is dropped. The preview drops exactly
+    the same list, so it keeps agreeing with the PDF, and `filter` in a margin
+    box now says it is dropped rather than repeating the "this rasterizes your
+    text" advice that applies to page content.
+  - **An image referenced only from inside an `@page` rule is never painted** —
+    the sheet prints with its background colour alone. A new build diagnostic,
+    `engine.page-background.unreferenced`, finds these in the finished
+    document and tells you the one-line fix (`<link rel="preload"
+    as="image">`). It runs at build time rather than as a CSS check because
+    only the built document knows the two things that decide it: whether
+    anything else references the image, and whether Gutterpress inlined it as
+    a `data:` URI — which is immune, and covers every image under 512 KB.
+
+  No workarounds were added for any of this. Gutterpress reports the gap and
+  names the fix; when Chromium ships these, the checks come out.
+
 ## [0.10.1] - 2026-08-24
 
 ### Added
