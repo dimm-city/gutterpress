@@ -19,7 +19,7 @@ import path from "node:path";
 
 import git from "isomorphic-git";
 
-import { needsAtomicWrite, writeFile as atomicWriteFile } from "./git-fs.ts";
+import { gitFs, needsAtomicWrite } from "./git-fs.ts";
 import { snapshotWorkingTreeUnlocked } from "./source-provider.ts";
 
 describe("needsAtomicWrite", () => {
@@ -65,7 +65,7 @@ describe("the atomic write itself", () => {
       await writeFile(index, "old");
 
       await new Promise<void>((resolve, reject) =>
-        atomicWriteFile(index, "new", undefined, (e) => (e ? reject(e) : resolve())),
+        gitFs.writeFile(index, "new", (e) => (e ? reject(e) : resolve())),
       );
 
       expect(await readFile(index, "utf8")).toBe("new");

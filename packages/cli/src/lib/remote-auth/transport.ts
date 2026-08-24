@@ -6,7 +6,7 @@
  * failure/conflict/setup-error mappers. Pure isomorphic-git glue — CLAUDE.md §7.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
-import * as fs from "../git-fs.ts";
+import { gitFs as fs } from "../git-fs.ts";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";

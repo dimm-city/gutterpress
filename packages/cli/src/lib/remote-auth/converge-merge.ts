@@ -48,7 +48,7 @@
  * (merging a rescued old branch tip back into the repaired history).
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
-import * as fs from "../git-fs.ts";
+import { gitFs as fs } from "../git-fs.ts";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 

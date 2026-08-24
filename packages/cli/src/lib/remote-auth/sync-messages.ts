@@ -22,8 +22,20 @@ export const MSG_INSECURE_TRANSPORT =
   "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to sync.";
 export const MSG_BUSY =
   "The online copy is changing very quickly right now. Your work is saved on this computer — try Sync again in a moment.";
+/**
+ * The project's own version history is unreadable — a damaged or missing
+ * `.git`. Says the three things that are actually true and useful: the writing
+ * is safe, the HISTORY is what broke, and (sync always has a remote, so this
+ * always applies here) a fresh copy from online is the way back.
+ */
+export const MSG_HISTORY_UNREADABLE =
+  "This project's version history can't be read, so syncing can't continue. Your writing is safe — every file is still here on this computer. To get history and syncing working again, download a fresh copy of the project from online, then move any recent changes into it.";
+// Two DIFFERENT causes produce "no common history", and the message must not
+// assert one of them: the online address may point at a different project, or
+// this project's own history may have been lost and started over. Naming both
+// beats sending a writer whose history is gone to inspect a correct address.
 export const MSG_UNRELATED =
-  "The online address points at a different project's files, so the two can't be combined. Check the project's online address.";
+  "This project and the online copy have no history in common, so they can't be combined. Either the online address points at a different project, or this project's own history was lost and started over. Your writing is safe — every file is still here on this computer. Check the online address; if it is correct, download a fresh copy from online and move any recent changes into it.";
 export const MSG_NO_REMOTE =
   "This project isn't connected to an online repository yet.";
 export const MSG_SSH_REMOTE =

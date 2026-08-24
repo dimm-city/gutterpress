@@ -37,7 +37,7 @@
  * remote URL used is pre-sanitized via `extractUrlCredential`).
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
-import * as fs from "../git-fs.ts";
+import { gitFs as fs } from "../git-fs.ts";
 
 import git from "isomorphic-git";
 import { defaultGitHttp } from "./git-http.ts";
@@ -50,6 +50,7 @@ import {
   SYNC_LATE_EDIT_MESSAGE,
   MSG_SYNCED,
   MSG_SYNCED_MERGED,
+  MSG_HISTORY_UNREADABLE,
   MSG_UNRELATED,
   MSG_UP_TO_DATE,
   MSG_UP_TO_DATE_PULLED,
@@ -126,6 +127,24 @@ export function isUnrelatedHistories(e: unknown): boolean {
     code === "MergeNotSupportedError" ||
     /unrelated histories|no common commits|refusing to merge unrelated/i.test(msg)
   );
+}
+
+/**
+ * Can this repo's history be read at all? Asked only AFTER a sync has already
+ * failed, to tell a transient failure ("try again") apart from a damaged
+ * history (trying again will never work). Deliberately a plain read of the
+ * three things every sync needs — the branch tip, its commit, and the index —
+ * rather than a health taxonomy: the answer only has to pick the message.
+ */
+async function historyUnreadable(dir: string): Promise<boolean> {
+  try {
+    const oid = await git.resolveRef({ fs, dir, ref: "HEAD" });
+    await git.readCommit({ fs, dir, oid });
+    await git.listFiles({ fs, dir });
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -273,8 +292,10 @@ export async function syncProject(
               authorEmail: options.authorEmail,
             });
           } catch (e) {
-            // A wrong online address must not silently splice two unrelated
-            // projects together — surface it as a plain setup problem.
+            // Two unrelated projects must never be silently spliced together.
+            // NOTE the message names both causes: a destroyed ref store also
+            // lands here (sync's snapshot restarts the branch from nothing, so
+            // by this point the repo reads fine — it is simply unrelated now).
             if (isUnrelatedHistories(e)) {
               logger.warn("sync", "unrelated histories — refusing to combine");
               return { status: "error", message: MSG_UNRELATED, ...base() };
@@ -370,6 +391,12 @@ export async function syncProject(
     } catch (e) {
       const setupMsg = setupErrorMessage(e);
       if (setupMsg) return { status: "error", message: setupMsg, ...base() };
+      // A damaged history must not be reported as a transient failure: "please
+      // try again" is false when trying again can never work.
+      if (await historyUnreadable(dir)) {
+        logger.error("sync", "the project's history could not be read");
+        return { status: "error", message: MSG_HISTORY_UNREADABLE, ...base() };
+      }
       return { ...failureOutcome(e, snapshotId), ...(filesChanged ? { filesChanged: true } : {}) };
     }
   });

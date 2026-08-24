@@ -31,6 +31,7 @@ import {
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
+import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
   createFixtureRepo,
@@ -834,7 +835,7 @@ describe("sync convergence policy", () => {
         const outcome = await syncProject({ projectDir: h.projectDir });
         expect(outcome.status).toBe("error");
         if (outcome.status !== "error") throw new Error("unreachable");
-        expect(outcome.message).toContain("different project");
+        expect(outcome.message).toContain("no history in common");
         // NOTHING was merged or committed — the local history is untouched.
         expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(before);
       } finally {
@@ -1253,6 +1254,45 @@ describe("syncProject retry budget (BUG 6)", () => {
       await h.cleanup();
     }
   });
+});
+
+// ── A damaged history reports itself honestly ────────────────────────────────
+//
+// With repair gone, this IS the answer for an unreadable `.git`. The bar is
+// that the writer is never told to "try again" at something that can never
+// work, and never told their work is lost when it isn't.
+
+describe("syncProject — a history that cannot be read", () => {
+  for (const [label, damage] of [
+    ["`.git/index` truncated", (d: string) => fs.writeFileSync(path.join(d, ".git", "index"), "")],
+    ["`.git/HEAD` emptied", (d: string) => fs.writeFileSync(path.join(d, ".git", "HEAD"), "")],
+    ["`.git` removed entirely", (d: string) => fs.rmSync(path.join(d, ".git"), { recursive: true, force: true })],
+  ] as const) {
+    test(`${label}: says the history can't be read, never "try again"`, async () => {
+      const h = await setupClone();
+      try {
+        await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nUnsaved work.\n");
+        damage(h.projectDir);
+
+        const outcome = await syncProject({ projectDir: h.projectDir });
+
+        expect(outcome.status).toBe("error");
+        if (outcome.status !== "error") throw new Error("unreachable");
+        expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
+        // The three things the message promises are all true.
+        expect(outcome.message).toContain("version history can't be read");
+        expect(outcome.message).toContain("Your writing is safe");
+        expect(outcome.message).toContain("download a fresh copy");
+        expect(outcome.message).not.toContain("try again");
+        // And the book really IS intact — that is what makes it honest.
+        expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(
+          "Unsaved work.",
+        );
+      } finally {
+        await h.cleanup();
+      }
+    });
+  }
 });
 
 // ── Staged-but-uncommitted recovery ──────────────────────────────────────────

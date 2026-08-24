@@ -9,7 +9,7 @@
  * Pure isomorphic-git over smart HTTPS (CLAUDE.md §7) — no system git, no gh.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
-import * as fs from "../git-fs.ts";
+import { gitFs as fs } from "../git-fs.ts";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 

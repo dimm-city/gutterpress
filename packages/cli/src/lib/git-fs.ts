@@ -23,8 +23,8 @@
  * file and its directory on every ref write, which is a real cost on the
  * snapshot hot path and guards a failure the app does not cause.
  *
- * Everything not named below is re-exported from `node:fs` unchanged, so this
- * module is a drop-in replacement for `import * as fs from "node:fs"`.
+ * Everything not named below passes through to `node:fs` unchanged, so
+ * `import { gitFs as fs }` is a drop-in for `import * as fs from "node:fs"`.
  */
 import * as nodeFs from "node:fs";
 
@@ -104,13 +104,24 @@ async function writeFilePromise(
   }
 }
 
-export const promises: typeof nodeFs.promises = {
+const promises: typeof nodeFs.promises = {
   ...nodeFs.promises,
   writeFile: writeFilePromise as typeof nodeFs.promises.writeFile,
 };
 
-// Everything else passes through untouched. An explicit local export shadows
-// the same name coming from `export *`, so `writeFile`/`promises` above are
-// the ones callers get.
-export * from "node:fs";
-export { writeFile };
+/**
+ * `node:fs` with the two writers above swapped in — the object callers import
+ * as `fs` and hand to isomorphic-git. Everything else passes through
+ * untouched.
+ *
+ * WHY an object and not `export * from "node:fs"`: bun build with
+ * `--packages=external` compiles a star re-export of a BUILTIN into a
+ * `__reExport(exports, node_fs)` call whose `node_fs` binding is never
+ * emitted, so the built lib throws `ReferenceError: node_fs is not defined`
+ * on import. A plain spread has no such hazard.
+ */
+export const gitFs: typeof nodeFs = {
+  ...nodeFs,
+  writeFile: writeFile as typeof nodeFs.writeFile,
+  promises,
+};
