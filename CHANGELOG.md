@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-08-24
+
+### Added
+
+- **A failed export now offers its own way forward: "Build anyway"** (#163).
+  When the desktop export stops on over-wide content, the message used to end
+  with the engine's advice to "pass allowShrink" — a flag that exists on
+  `gutterpress build`, and nowhere a desktop author could reach. The failure
+  itself now carries the escape hatch: it names the offending elements and
+  offers a "Build anyway" button that re-runs the export with the shrink
+  allowed. The offer states what it costs — the whole book scales down (a real
+  book measured 0.693×, 12pt type printing at 8.3pt) with the page size and
+  page count unchanged, so the shrink is invisible in the finished PDF. It is
+  deliberately not a standing checkbox in the export dialog: a permanent
+  opt-out invites shipping a silently scaled-down book, while an offer only
+  exists when a real over-wide element does.
+
 ### Changed
 
 - **The window is now either for writing or for reading, and it says which.**
@@ -61,6 +78,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   uncommitted typing. See `docs/inline-editing-plan.md` and
   [ADR 0009](docs/adr/0009-inline-editing-source-ranges.md) (revised).
 
+- **Your work now uploads in quieter batches** — about every 15 minutes, and
+  once more when you close the project or the app — instead of every couple
+  of minutes. Changes from your other computer (or a co-writer) still arrive
+  promptly: the app keeps checking online every two minutes and merges what
+  it finds; only the sending calmed down. This also thins the "Previous
+  versions" list: while you type, the in-between checks no longer record a
+  version every two minutes — versions are saved when an upload happens, when
+  online changes need combining with yours, and by the usual
+  after-you-pause-writing automatic backup. Uploading always brings the
+  online copy down and combines it first, so it never overwrites work from
+  elsewhere — and if the closing upload can't finish within a few seconds
+  (say the Wi-Fi dropped), the app still closes; that work is safe on your
+  computer and goes online the next time the project opens.
+
 ### Fixed
 
 - **Going straight from Read into Focus now actually gets you there.** It used
@@ -91,8 +122,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   (509ms vs 998ms, measured), which still holds and is now what the comment
   says.
 
-
-
 - **Integration scripts that could not run, and one that reported a constant as
   a measurement.** `drive-app` and `click-and-export` are acceptance-gate
   drivers taking `<fixtureDir> <engineLabel> …`, but they were named `.pw.mjs`,
@@ -116,60 +145,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   `renderingComplete` and short-circuits on `__GUTTERPRESS_RENDERED__`; there is
   no polling branch.
 
-### Removed
-
-- **The last of the two-engine plumbing.** Paged.js has been gone since the
-  native-only migration, and `manifest.ts` already resolved every build to
-  `"native"` — but the desktop still carried a `previewEngine` field typed
-  `"paged" | "native"` and **defaulting to `"paged"`**, fed by a host that read
-  the author's raw `engine:` value rather than the resolved one. A manifest
-  still saying `engine: paged` therefore made the app report an engine that
-  could not possibly be rendering, in a field whose own documentation said "the
-  engine actually rendering this preview".
-
-  Nothing read that field — it was written in four places and consumed in none
-  — so the whole chain is gone rather than merely corrected: the host no longer
-  derives it, the wire type no longer carries it, and the `$state` is deleted.
-  An old host that still sends `engine` is unaffected; the property is simply
-  ignored. The manifest's *input* `engine:` union is unchanged, because
-  existing books must keep parsing (and keep getting their warning); only the
-  *resolved* type narrows to the single value it can hold.
-
-## [0.10.1] - 2026-08-24
-
-### Added
-
-- **A failed export now offers its own way forward: "Build anyway"** (#163).
-  When the desktop export stops on over-wide content, the message used to end
-  with the engine's advice to "pass allowShrink" — a flag that exists on
-  `gutterpress build`, and nowhere a desktop author could reach. The failure
-  itself now carries the escape hatch: it names the offending elements and
-  offers a "Build anyway" button that re-runs the export with the shrink
-  allowed. The offer states what it costs — the whole book scales down (a real
-  book measured 0.693×, 12pt type printing at 8.3pt) with the page size and
-  page count unchanged, so the shrink is invisible in the finished PDF. It is
-  deliberately not a standing checkbox in the export dialog: a permanent
-  opt-out invites shipping a silently scaled-down book, while an offer only
-  exists when a real over-wide element does.
-
-### Changed
-
-- **Your work now uploads in quieter batches** — about every 15 minutes, and
-  once more when you close the project or the app — instead of every couple
-  of minutes. Changes from your other computer (or a co-writer) still arrive
-  promptly: the app keeps checking online every two minutes and merges what
-  it finds; only the sending calmed down. This also thins the "Previous
-  versions" list: while you type, the in-between checks no longer record a
-  version every two minutes — versions are saved when an upload happens, when
-  online changes need combining with yours, and by the usual
-  after-you-pause-writing automatic backup. Uploading always brings the
-  online copy down and combines it first, so it never overwrites work from
-  elsewhere — and if the closing upload can't finish within a few seconds
-  (say the Wi-Fi dropped), the app still closes; that work is safe on your
-  computer and goes online the next time the project opens.
-
-### Fixed
-
 - **Force-quitting the app can no longer damage a project's version history.**
   The record of your versions is kept in a set of small bookkeeping files, and
   the app used to update one by emptying it and writing it again — a moment in
@@ -178,34 +153,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   into place in one step, so an interruption leaves either the previous version
   of the file or the new one — never a half-written one. This was the only way
   the app itself could damage a project's history.
-
-### Removed
-
-- **The repository-repair feature is gone — including the `gutterpress repair`
-  command and the "Tidying up sync…" overlay.** It existed to rebuild a
-  project's version history when the hidden folder that stores it got damaged.
-  What we confirmed while reviewing it: that damage never threatens your book.
-  Your chapters, images, and styles live in ordinary files that come through
-  untouched, and a project whose history is unreadable still opens, still
-  edits, and still builds a PDF — only the record of past versions is
-  affected. So the repair machinery was a large, delicate mechanism standing
-  guard over something that was never actually at risk, and it has been
-  removed rather than maintained. If a project's history ever does become
-  unreadable, the app now tells you plainly: your files are safe, the history
-  can't be read, and — when the project has an online copy — the fix is to
-  download a fresh copy from online. Syncing, version history, and "Previous
-  versions" are unchanged for every healthy project.
-
-- **`gutterpress repair --force` is gone**, along with the app-open check it
-  overrode. The desktop used to leave a liveness marker in the project while
-  it had it open, and `repair` refused to run when that marker looked fresh
-  unless you passed `--force`. The marker carried no actual locking — it
-  could only guess, and it failed open — so it stopped a real repair more
-  readily than it prevented a real clash. `repair` now simply runs. The
-  writes it makes were already serialized per project. Scripts passing
-  `--force` should drop the flag.
-
-### Fixed
 
 - **Automatic syncing no longer rolls back the sentence you just typed.**
   A 0.10.0 report — "this latest update erases my most recent edit and states
@@ -265,6 +212,49 @@ This project follows [Semantic Versioning](https://semver.org/).
   box under a STATIC clipping wrapper, `overflow-y: clip` beside an untouched
   `overflow-x: visible`, and an `overflow-clip-margin` wide enough to let the
   box back out.
+
+### Removed
+
+- **The last of the two-engine plumbing.** Paged.js has been gone since the
+  native-only migration, and `manifest.ts` already resolved every build to
+  `"native"` — but the desktop still carried a `previewEngine` field typed
+  `"paged" | "native"` and **defaulting to `"paged"`**, fed by a host that read
+  the author's raw `engine:` value rather than the resolved one. A manifest
+  still saying `engine: paged` therefore made the app report an engine that
+  could not possibly be rendering, in a field whose own documentation said "the
+  engine actually rendering this preview".
+
+  Nothing read that field — it was written in four places and consumed in none
+  — so the whole chain is gone rather than merely corrected: the host no longer
+  derives it, the wire type no longer carries it, and the `$state` is deleted.
+  An old host that still sends `engine` is unaffected; the property is simply
+  ignored. The manifest's *input* `engine:` union is unchanged, because
+  existing books must keep parsing (and keep getting their warning); only the
+  *resolved* type narrows to the single value it can hold.
+
+- **The repository-repair feature is gone — including the `gutterpress repair`
+  command and the "Tidying up sync…" overlay.** It existed to rebuild a
+  project's version history when the hidden folder that stores it got damaged.
+  What we confirmed while reviewing it: that damage never threatens your book.
+  Your chapters, images, and styles live in ordinary files that come through
+  untouched, and a project whose history is unreadable still opens, still
+  edits, and still builds a PDF — only the record of past versions is
+  affected. So the repair machinery was a large, delicate mechanism standing
+  guard over something that was never actually at risk, and it has been
+  removed rather than maintained. If a project's history ever does become
+  unreadable, the app now tells you plainly: your files are safe, the history
+  can't be read, and — when the project has an online copy — the fix is to
+  download a fresh copy from online. Syncing, version history, and "Previous
+  versions" are unchanged for every healthy project.
+
+- **`gutterpress repair --force` is gone**, along with the app-open check it
+  overrode. The desktop used to leave a liveness marker in the project while
+  it had it open, and `repair` refused to run when that marker looked fresh
+  unless you passed `--force`. The marker carried no actual locking — it
+  could only guess, and it failed open — so it stopped a real repair more
+  readily than it prevented a real clash. `repair` now simply runs. The
+  writes it makes were already serialized per project. Scripts passing
+  `--force` should drop the flag.
 
 ## [0.10.0] - 2026-08-23
 
