@@ -20,6 +20,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   opt-out invites shipping a silently scaled-down book, while an offer only
   exists when a real over-wide element does.
 
+### Changed
+
+- **Your work now uploads in quieter batches** — about every 15 minutes, and
+  once more when you close the project or the app — instead of every couple
+  of minutes. Changes from your other computer (or a co-writer) still arrive
+  promptly: the app keeps checking online every two minutes and merges what
+  it finds; only the sending calmed down. This also thins the "Previous
+  versions" list: while you type, the in-between checks no longer record a
+  version every two minutes — versions are saved when an upload happens, when
+  online changes need combining with yours, and by the usual
+  after-you-pause-writing automatic backup. Uploading always brings the
+  online copy down and combines it first, so it never overwrites work from
+  elsewhere — and if the closing upload can't finish within a few seconds
+  (say the Wi-Fi dropped), the app still closes; that work is safe on your
+  computer and goes online the next time the project opens.
+
 ### Removed
 
 - **`gutterpress repair --force` is gone**, along with the app-open check it
