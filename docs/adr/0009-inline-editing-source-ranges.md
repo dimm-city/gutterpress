@@ -1,12 +1,34 @@
 # ADR 0009 — Inline editing: source ranges, the commit gate, and the preview bridge
 
-Date: 2026-08-04 · Status: accepted
+Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
+
+> **Revision 2026-08-24 — the Paged.js premises are gone.** This ADR was written
+> against the Paged.js preview. Paged.js has since been removed
+> (`docs/native-only-migration-plan.md`); the viewer is now Chromium's own
+> multicol fragmenter (`packages/cli/src/engine/viewer/`). Two of the three
+> premises in Context died with it — and they were the two holding up the
+> floating-overlay design:
+>
+> - **The DOM is no longer fragmented.** The native viewer "never chunks the
+>   DOM" (`fragment.ts` header): a block spanning pages is ONE element with
+>   several client rects, not N cloned elements. Split fragments, `data-ref`
+>   grouping and the `id`-stripping caveat no longer describe anything.
+> - **A DOM edit now re-paginates.** `Gutterpress.refresh()` → `relayout()`
+>   rebuilds the strips from scratch (`buildStrips()`) and re-measures. Paged.js
+>   had no such path.
+>
+> **Unchanged and still load-bearing:** decisions 1–3 (line-based
+> `data-source-range`, `token.meta.line` for markers, the clean-buffer commit
+> gate) — none of them ever depended on the engine — and premise 3, which is
+> still what rules out any HTML→markdown serializer. **Superseded:** decision 4
+> and the v5 half of decision 5. The replacement design is in
+> [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
-> repository (only 0008 is). ADR 0005 in particular is cited as the home of the
-> preview bridge protocol. Rather than amend a missing document, this ADR records
-> the v3 → v5 protocol delta self-containedly.
+> repository (`docs/adr/` holds 0008, 0009 and 0010). ADR 0005 in particular is
+> cited as the home of the preview bridge protocol. Rather than amend a missing
+> document, this ADR records the v3 → v5 protocol delta self-containedly.
 
 ## Context
 
@@ -17,15 +39,21 @@ affordance, and the obvious implementation (a WYSIWYG framework such as
 Milkdown or Tiptap owning the preview DOM) is not available to us. Three
 properties of this app rule it out, each verified by spike rather than assumed:
 
-1. **Paged.js fragments the document.** Blocks that overflow a page are split
-   into multiple DOM elements (`data-split-from` / `data-split-to`) that
-   duplicate every attribute. A 2000-word paragraph was observed splitting into
-   9 fragments across 9 pages. ProseMirror-family editors require a
-   `contenteditable` subtree they own 1:1 against their model; a caret cannot
-   even cross a fragment boundary.
-2. **Every save replaces the preview DOM** (`spliceChapter()` / `swap()` in
-   `preview-shell.js`), destroying anything stateful mounted inside it.
-3. **Gutterpress markdown is not CommonMark.** The renderer stacks
+1. **Paged.js fragments the document** — **DEAD 2026-08-24.** Under Paged.js,
+   a block overflowing a page was split into multiple DOM elements
+   (`data-split-from` / `data-split-to`) duplicating every attribute; a
+   2000-word paragraph was observed splitting into 9 fragments across 9 pages,
+   and a caret could not cross a fragment boundary. The native viewer splits
+   nothing: one element, several client rects. This premise is what ruled out
+   `contenteditable` on the page boxes, and it no longer holds.
+2. **Every save replaces the preview DOM** — still true, and now absolute:
+   `spliceChapter()` was removed and every content update goes through
+   `swap()` (`preview-shell.js`), which replaces the whole book iframe.
+   Anything stateful mounted inside it is destroyed. An in-flow editing surface
+   therefore has to hold the swap open while it is live — the shell's existing
+   `pendingSwap` gate is the hook.
+3. **Gutterpress markdown is not CommonMark** — **still true, and still
+   decisive.** The renderer stacks
    `markdown-it-attrs`, `markdown-it-footnote`, `markdown-it-deflist`,
    `markdown-it-source-map`, `markdown-it-paged`'s whole `@marker` family,
    `html: true`, `typographer: true`, and arbitrary manifest plugins. A
@@ -34,9 +62,11 @@ properties of this app rule it out, each verified by spike rather than assumed:
    make every one-word edit a whole-file diff and destroy the value of the
    automatic snapshot history.
 
-The full analysis is in
-[`docs/reviews/inline-editing-analysis-2026-08-04.md`](../reviews/inline-editing-analysis-2026-08-04.md);
-the phased implementation plan is [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
+The full analysis was in `docs/reviews/inline-editing-analysis-2026-08-04.md`,
+which is **not present in this repository** (noted 2026-08-24 — same class of
+dangling reference as the predecessor ADRs above); this ADR is self-contained
+without it. The current plan is
+[`docs/inline-editing-plan.md`](../inline-editing-plan.md).
 
 ## Decision
 
@@ -125,21 +155,28 @@ through `applyRangeEdit` when a CodeMirror view is mounted on the target file
 so the edit shares that view's undo history. A commit flushes immediately
 rather than waiting out the autosave debounce (default 500 ms).
 
-### 4. The paginated DOM is never patched optimistically
+### 4. The paginated DOM is never patched optimistically — **superseded 2026-08-24**
 
-`.pagedjs_page_content` is a live CSS multi-column container
-(`column-fill: auto`, fixed column width). Content that overflows after a DOM
-patch does **not** visibly overlap or clip — it spills into invisible columns
-thousands of pixels to the side, observable only as
-`getClientRects().length > 1`. The failure mode is silent, so "render the edit
-inline for instant feedback" cannot be validated by looking at the page.
+**The hazard is unchanged.** `.gp-strip` is a live CSS multicol container
+(`column-fill: auto`, fixed column width, `overflow: visible`) whose `.gp-run`
+wrapper is sized to the measured page count and does the clipping. Content that
+grows past that stays invisible rather than overlapping — it flows into columns
+beyond the drawn sheets. Spike-verified again on the native viewer
+(2026-08-24): a strip whose true extent grew to 2400px went on being clipped at
+its 900px run width, with no visual cue. An unrefreshed optimistic patch is
+still forbidden, for exactly this reason.
 
-Paged.js also never re-layouts after a mutation — no observer, no correction.
-Anything the overlay touches in that DOM (mask classes, scroll lock) is purely
-cosmetic and fully reversible; the authoritative refresh is always a real
-re-render through the settled-write → chapter-splice pipeline.
+**What changed is that the viewer can now correct itself.**
+`Gutterpress.refresh()` → `relayout()` unwraps the strips, re-runs
+`buildStrips()` from scratch, and re-measures `scrollWidth / stride` into
+`--gp-pages` before redrawing the sheets. A full rebuild (not a re-measure) is
+what makes this sound for edits that introduce a new page context. So the rule
+becomes: **a DOM mutation is permitted when, and only when, a `refresh()`
+follows it.** Pagination shown mid-edit is a projection of the author's own
+in-progress typing; the authoritative render still arrives on commit, through
+the normal write → regenerate → `swap()` path.
 
-### 5. Bridge protocol v3 → v5
+### 5. Bridge protocol v3 → v5 — **partly superseded 2026-08-24**
 
 The preview bridge stays **read-only plus cosmetic**. It exposes geometry and
 target metadata and can mask/lock presentation; it never mutates markdown. All
@@ -150,6 +187,35 @@ document can at worst produce a menu with wrong labels.
 |---|---|
 | v4 | `getContextTargetAt({x, y})`; the `contextMenuRequested` event (mouse **and** keyboard) |
 | v5 | `getRectsFor({ref} \| {chapter, range})`; `setEditMask({ref, masked})` |
+| v6 | the `{ref}` target form dropped from both (the native viewer never mints a ref) |
+| v7 | `getContextTargetAt()` gains `pageMarker` + the margin-band fallback |
+| v8 | `beginBlockEdit()` / `endBlockEdit()` and the `blockEditRequested` / `blockEditFinished` / `blockEditStateChanged` events. **Removes** `getRectsFor()` and `setEditMask()` |
+
+`getRectsFor()` and `setEditMask()` existed only to position and de-clutter
+behind a floating panel. With the panel gone they had no other caller and are
+removed; the in-flow surface needs neither geometry nor a mask.
+
+The **read-only plus cosmetic** rule above survives v8 in spirit but not in
+letter: the bridge now mutates the book DOM (it swaps a block's rendered HTML for
+its markdown source and back). It still writes nothing to disk — every write
+stays SPA-side behind the gate in decision 3 — and the mutation is fully
+reversible, with the rendered HTML restored on both the commit and cancel paths.
+
+Two constraints on the v8 surface, each a consequence of the caret living in a
+cross-origin document:
+
+- **The host supplies the text; the book document never sources its own.**
+  `beginBlockEdit` takes the source slice as an argument. Deriving it from the
+  DOM would mean editing a projection of possibly-stale content — and the DOM is
+  rendered from SAVED content, which is exactly what decision 3 guards against.
+- **An end the author initiates arrives as an event, not a reply.** Escape,
+  Cmd/Ctrl+Enter and blur happen inside the iframe where the SPA cannot observe
+  them, so `blockEditFinished` carries the text out. `endBlockEdit` is for ends
+  the HOST initiates (a dialog opening over the workspace) and returns the text
+  in its reply. `blockEditStateChanged` fires on every open and close regardless
+  of which side initiated it, because `preview-shell.js` holds hot-reload swaps
+  on it — a swap mid-edit would destroy the caret and the uncommitted text with
+  it, and a missed close would freeze the preview.
 
 Two constraints shaped the surface:
 
@@ -168,9 +234,10 @@ Two constraints shaped the surface:
   needed.
 
 Payloads cross two `postMessage` boundaries and must stay JSON-cloneable
-(rects are spread into plain objects). Split fragments duplicate every
-attribute, so consumers group by `data-ref` — never `id`, which Paged.js
-strips from all fragments but the first.
+(rects are spread into plain objects). ~~Split fragments duplicate every
+attribute, so consumers group by `data-ref`.~~ **Obsolete 2026-08-24:** the
+native viewer never clones, so a `{chapter, range}` spec resolves to at most one
+element and there is nothing to group.
 
 ## Consequences
 
@@ -191,10 +258,17 @@ strips from all fragments but the first.
 
 ## Alternatives rejected
 
-- **Milkdown / Tiptap / BlockNote / Lexical owning the preview DOM** — ruled
-  out by the three properties in Context.
-- **`contenteditable` on page boxes with a DOM→markdown diff** — the caret
-  cannot cross split fragments, and nothing re-paginates after a native edit.
+- **Milkdown / Tiptap / BlockNote / Lexical owning the preview DOM** — still
+  ruled out, but by premise 3 alone now: they need a document model and a
+  serializer for a dialect that has neither. Premise 1 no longer contributes.
+- **`contenteditable` on page boxes with a DOM→markdown diff** — **half of this
+  flipped on 2026-08-24.** The DOM→markdown diff stays rejected: premise 3 means
+  there is no serializer for this dialect and never will be one. The
+  `contenteditable` half was rejected for two reasons that no longer hold ("the
+  caret cannot cross split fragments, and nothing re-paginates after a native
+  edit") — both spike-verified false on the native viewer. `contenteditable`
+  holding the block's markdown **source** (no diff, no serializer) is now the
+  adopted design; see `docs/inline-editing-plan.md`.
 - **Character offsets on the wire** — defeated by markdown-it's and
   CodeMirror's line-ending normalization.
 - **Slice comparison in place of the clean-buffer gate** — cannot detect the

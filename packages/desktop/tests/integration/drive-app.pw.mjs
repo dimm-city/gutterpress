@@ -6,13 +6,19 @@
  * Usage: node drive-app.mjs <fixtureDir> <engineLabel> <editChapterFile>
  */
 import { _electron as electron } from "playwright-core";
+import { setWorkspaceMode } from "./workspace-mode.mjs";
 import { existsSync, mkdtempSync, writeFileSync, readFileSync, appendFileSync, cpSync, rmSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const desktopDir = "/home/founder3/code/dimm-city/print-md/packages/desktop";
+// Resolve from THIS FILE, never a hardcoded absolute path: the literal that
+// used to sit here pointed at one developer's machine
+// (`/home/founder3/code/dimm-city/print-md/...`), so this script could not run
+// anywhere else — including CI and every other checkout. Same convention as
+// inline-editing.pw.mjs.
+const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require_ = createRequire(join(desktopDir, "package.json"));
 const electronBin = require_("electron");
 const mainJs = join(desktopDir, "out", "main", "main.js");
@@ -176,11 +182,8 @@ try {
   results.toolbarNav = { last: navLast, first: navFirst, middleLanded: navMiddle };
 
   // ── 5. view modes toggle ─────────────────────────────────────────────────
-  await page.locator('button[aria-label="Two pages side by side"]').click().catch(async () => {
-    // collapsed toolbar: use the menu
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.locator('button[aria-label="Two pages side by side"]').click();
-  });
+  // Two pages = Read mode (the helper handles the collapsed toolbar).
+  await setWorkspaceMode(page, "Read");
   await sleep(500);
   const shotFn = (el) => {
     const doc = el.ownerDocument;
@@ -189,10 +192,8 @@ try {
     return { bodyClass: doc.body.className, sheets };
   };
   const twoUpShot = await bookEval(shotFn);
-  await page.locator('button[aria-label="Single page view"]').click().catch(async () => {
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.locator('button[aria-label="Single page view"]').click();
-  });
+  // One page = Edit mode.
+  await setWorkspaceMode(page, "Edit");
   await sleep(500);
   const singleShot = await bookEval(shotFn);
   results.viewModes = { twoUp: twoUpShot, single: singleShot };

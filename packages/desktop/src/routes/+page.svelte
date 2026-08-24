@@ -34,8 +34,7 @@
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
-  import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
+  import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "$lib/editor/image-classes";
@@ -943,12 +942,6 @@
   /** `focus` is the editor without the viewer, so the editor shows in both. */
   let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  /** `.preview-pane`'s own element — the block overlay clamps its geometry to
-   *  this rect (inline-editing plan §5.1), not the whole workspace the
-   *  context menu clamps to: `.preview-pane` can itself scroll, so an
-   *  unclamped overlay could engage that scrollbar. */
-  let previewPaneEl = $state<HTMLElement | undefined>(undefined);
-  let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
@@ -976,7 +969,7 @@
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
-    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
+    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
   }
 
@@ -999,7 +992,7 @@
       return;
     }
     contextMenu.close();
-    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
+    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     projectSettingsOpen = true;
   }
 
@@ -1810,8 +1803,8 @@
   });
 
   // ----------------------------------------------------------------
-  // Commit engine (inline-editing plan §4.7) — the single write path for
-  // context-menu (and, later, block-overlay) mutations. Pure logic + injected
+  // Commit engine — the single write path for context-menu AND in-flow
+  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
   // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
   // that, exactly like every other write path in the app).
   // ----------------------------------------------------------------
@@ -1885,25 +1878,21 @@
   }
 
   // ----------------------------------------------------------------
-  // Click-to-edit block overlay (inline-editing plan §5, PR 5). Owns its own
-  // geometry/dismissal-event subscription; the "Edit this block" context-menu
-  // item (below) is its only entry point.
+  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
+  // Two entry points, both landing here: the "Edit this block" context-menu
+  // item (below) and double-click in the preview (which arrives as the
+  // blockEditRequested event on the controller's own subscription).
+  //
+  // No geometry deps: the editing surface is the block's own element inside
+  // the book iframe, so there is no panel to position over it.
   // ----------------------------------------------------------------
-  const blockOverlay = new BlockOverlayController({
+  const inlineEdit = new InlineEditController({
     client: () => client,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
     readFile: (path) => getPlatform().readFile(path),
     commitEngine,
-    getIframeOrigin: () => {
-      const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
-      return rect ? { left: rect.left, top: rect.top } : null;
-    },
-    getPaneRect: () => {
-      if (!previewPaneEl) return null;
-      const rect = previewPaneEl.getBoundingClientRect();
-      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    },
+    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
     toastError: (message) => toast?.error(message),
     toastInfo: (message) => toast?.info?.(message),
   });
@@ -1938,7 +1927,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range, anchor) => void blockOverlay.show({ chapter, range, anchor }),
+    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -2003,7 +1992,7 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
-    blockOverlay.subscribe(c);
+    inlineEdit.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -2725,8 +2714,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); blockOverlayRef?.commitNow(); githubOpen = true; } : undefined}
-      onNewProject={() => { contextMenu.close(); blockOverlayRef?.commitNow(); newProjectWizardRef?.show(); }}
+      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
+      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onShowWelcome={() => {
         contextMenu.close();
         landingRef?.showTab("projects");
@@ -2873,7 +2862,6 @@
       {/if}
       <section
         class="pane preview-pane"
-        bind:this={previewPaneEl}
         use:previewPaneResize
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
@@ -2942,9 +2930,6 @@
         />
         {#if isDesktop()}
           <ContextMenu controller={contextMenu} />
-        {/if}
-        {#if isDesktop() && blockOverlay.open}
-          <BlockEditOverlay controller={blockOverlay} bind:this={blockOverlayRef} />
         {/if}
       </section>
     </div>

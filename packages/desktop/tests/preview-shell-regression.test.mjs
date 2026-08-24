@@ -1041,6 +1041,83 @@ async function runNativeCoreRegression() {
   console.log("[desktop-test] PASS native-engine preview-shell double-buffer swap + anchor preservation");
 }
 
+// A hot-reload swap replaces the whole book iframe, so one arriving while an
+// in-flow block editor is open would destroy the caret AND the author's
+// uncommitted typing with it (docs/inline-editing-plan.md §3.2). The shell
+// holds the swap until preview-interface.js reports the edit closed.
+async function runBlockEditHoldRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  Object.defineProperty(outer, "parent", { configurable: true, value: outer });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  document.body.appendChild(active);
+  installBook(active);
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "cli";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge() {},
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+
+  // No viewport activity in this test, so the scroll-idle gate never defers:
+  // an unheld swap starts synchronously, which is what makes "nothing
+  // happened" a meaningful assertion below.
+  const fakeSetTimeout = (callback, ms = 0) => { if (ms === 0) callback(); return 1; };
+  const fakeClearTimeout = () => {};
+
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node);
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, fakeSetTimeout, fakeClearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+
+  const fromBook = (name, detail) => {
+    const event = new outer.Event("message");
+    Object.defineProperties(event, {
+      data: { value: { type: "gutterpress:event", name, detail } },
+      source: { value: active.contentWindow },
+    });
+    outer.dispatchEvent(event);
+  };
+
+  fromBook("blockEditStateChanged", { open: true });
+  onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
+  assert.equal(
+    document.querySelectorAll("iframe").length,
+    1,
+    "an open in-flow edit holds the swap: no replacement frame is built",
+  );
+  assert.equal(
+    document.getElementById("gutterpress-active").__gutterpressRevision,
+    undefined,
+    "and nothing is applied while the caret is live",
+  );
+
+  // Closing releases the hold and the queued revision goes through — the
+  // author's edit is not silently dropped, it is merely deferred.
+  fromBook("blockEditStateChanged", { open: false });
+  assert.equal(
+    document.getElementById("gutterpress-active").__gutterpressRevision,
+    1,
+    "closing the edit applies the revision that arrived during it",
+  );
+  console.log("[desktop-test] PASS in-flow edit holds hot-reload swaps");
+}
+
 main()
   .then(runNativeCoreRegression)
   .then(runPaginationBeforeLoadRegression)
@@ -1048,6 +1125,7 @@ main()
   .then(runPartialHorizontalAnchorRegression)
   .then(runTopLevelScrollIdleRegression)
   .then(runReplacementTimeoutRegression)
+  .then(runBlockEditHoldRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);
