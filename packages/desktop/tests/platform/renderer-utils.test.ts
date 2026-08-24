@@ -175,6 +175,13 @@ test("relativeTime falls back to a locale date past two weeks", () => {
 // The fixture is a REAL message, verbatim from a failing 208-page build,
 // wrapped exactly as the desktop receives it (engine prefix + Electron's IPC
 // prefix, `code` stripped by the ipcMain boundary).
+//
+// But it is a COPY, and a copy cannot notice the engine rewording itself. The
+// producer-side counterpart that can is
+// `packages/cli/src/engine/compiler/build.over-wide-message.test.ts`: it runs a
+// real build and asserts a mirror of this parser's patterns still matches. The
+// tests below own the sentence assembled from the captures; that one owns the
+// captures still being there.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OVER_WIDE_MESSAGE =

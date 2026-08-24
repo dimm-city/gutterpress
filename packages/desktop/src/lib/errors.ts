@@ -115,6 +115,17 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
  *
  * Returns `null` for every other failure — the caller's normal error mapping
  * still applies.
+ *
+ * COUNTERPART:
+ * `packages/cli/src/engine/compiler/build.over-wide-message.test.ts`. Scraping
+ * prose is forced, not preferred — Electron IPC flattens an `Error` to its
+ * message string, so there is no structured channel to read instead (see
+ * `tests/platform/renderer-utils.test.ts`). That makes the engine's wording a
+ * wire contract, and it is pinned in the package that emits it: that test runs
+ * a REAL build and asserts a verbatim mirror of the three patterns below still
+ * captures what this function needs. Change either side and change both — an
+ * unmatched reword returns `null` here, silently degrading the export back to
+ * the generic error #163 removed.
  */
 const OFFENDER_LINE = /^\s+(\S[^\n]*?)\s+—\s+\d+px\s*>\s*\d+px content box/gm;
 
