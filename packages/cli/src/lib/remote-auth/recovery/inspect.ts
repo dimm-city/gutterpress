@@ -227,7 +227,7 @@ export function isUnbornRepo(repoDir: string): boolean {
  * classifyFromHealth returned (a pure mapping — it cannot drift from the
  * classifier's decision order, because it never re-implements it).
  */
-export function preflightStructuralReason(kind: RepairNeed | null): string {
+function preflightStructuralReason(kind: RepairNeed | null): string {
   switch (kind) {
     case "stale_lock":
       return "health.hasStaleLock";

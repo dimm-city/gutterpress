@@ -13,7 +13,7 @@
  * is explicitly not required for the CLI per ADR 0006 D3).
  *
  * SECURITY INVARIANT: token values must never be logged or embedded in error
- * messages. Use {@link redactCredential} for any diagnostics.
+ * messages — mask them at the point of use.
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -46,13 +46,6 @@ export interface TokenStore {
   delete(host: string): Promise<void>;
   /** All stored credentials (used by "connected accounts" UIs). */
   list(): Promise<HostCredential[]>;
-}
-
-/** A credential with the token value masked — safe for logs/diagnostics. */
-export function redactCredential(
-  cred: HostCredential,
-): Omit<HostCredential, "token"> & { token: string } {
-  return { ...cred, token: "•••redacted•••" };
 }
 
 /**
@@ -285,20 +278,4 @@ export function extractUrlCredential(url: string): UrlCredentialExtraction {
     createdAt: Date.now(),
   };
   return { cleanUrl: parsed.toString(), credential };
-}
-
-/**
- * Migrate any credential embedded in `url` into `store` (only when the store
- * has no existing credential for that host — a stored credential is fresher
- * than one fossilized in a clone URL) and return the sanitized URL.
- */
-export async function migrateUrlCredential(
-  url: string,
-  store: TokenStore,
-): Promise<string> {
-  const { cleanUrl, credential } = extractUrlCredential(url);
-  if (credential && !(await store.get(credential.host))) {
-    await store.set(credential.host, credential);
-  }
-  return cleanUrl;
 }

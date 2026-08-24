@@ -1,12 +1,10 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   FileTokenStore,
   extractUrlCredential,
-  migrateUrlCredential,
-  redactCredential,
   type HostCredential,
 } from "./token-store";
 
@@ -72,12 +70,6 @@ test("corrupt store file degrades to empty, not a crash", async () => {
   }
 });
 
-test("redactCredential masks the token value", () => {
-  const redacted = redactCredential(cred("github.com", "gho_supersecret"));
-  expect(JSON.stringify(redacted)).not.toContain("gho_supersecret");
-  expect(redacted.username).toBe("octocat");
-});
-
 test("extractUrlCredential strips token-in-username (GitHub style)", () => {
   const { cleanUrl, credential } = extractUrlCredential(
     "https://ghp_tok123@github.com/owner/repo.git",
@@ -105,26 +97,3 @@ test("extractUrlCredential passes through clean and non-http URLs", () => {
   expect(extractUrlCredential("git@github.com:o/r.git").credential).toBeUndefined();
 });
 
-test("migrateUrlCredential stores the token and never persists it in the URL", async () => {
-  const { dir, store } = await tempStore();
-  try {
-    const clean = await migrateUrlCredential(
-      "https://alice:s3cret@git.example.com/owner/repo.git",
-      store,
-    );
-    expect(clean).toBe("https://git.example.com/owner/repo.git");
-    expect((await store.get("git.example.com"))?.token).toBe("s3cret");
-    // An existing stored credential wins over one fossilized in a URL.
-    const clean2 = await migrateUrlCredential(
-      "https://alice:older@git.example.com/owner/repo.git",
-      store,
-    );
-    expect(clean2).toBe("https://git.example.com/owner/repo.git");
-    expect((await store.get("git.example.com"))?.token).toBe("s3cret");
-    // The on-disk file never contains a URL-embedded token form.
-    const raw = await readFile(store.filePath, "utf8");
-    expect(raw).not.toContain("alice:s3cret@");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});

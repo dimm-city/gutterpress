@@ -1243,15 +1243,6 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       dir: projectDir,
       ...(credential ? { credential } : {}),
       ...(args.branch ? { branch: args.branch } : {}),
-      ...(args.owner && args.repo
-        ? {
-            provenance: {
-              provider: "github" as const,
-              owner: args.owner,
-              repo: args.repo,
-            },
-          }
-        : {}),
       onProgress: (event: CloneProgressEvent) => {
         safeSend("remote:cloneProgress", event);
       },

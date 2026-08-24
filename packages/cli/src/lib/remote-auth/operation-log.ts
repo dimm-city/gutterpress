@@ -141,11 +141,3 @@ function formatData(data?: LogData): string {
   }
   return parts.length > 0 ? " " + parts.join(" ") : "";
 }
-
-/**
- * Shorten a 40-char OID to the first 7 characters for compact log lines.
- * Same convention as `git log --oneline`.
- */
-export function shortOid(oid: string): string {
-  return oid.length >= 7 ? oid.slice(0, 7) : oid;
-}
