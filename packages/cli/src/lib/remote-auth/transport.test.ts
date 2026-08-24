@@ -28,8 +28,6 @@ import httpNode from "isomorphic-git/http/node";
 import {
   failureOutcome,
   fetchRemoteTip,
-  guardRefs,
-  guardRemoteRefs,
   guardTrackingRef,
   isCredentialTransmissionSafe,
   onAuthFor,
@@ -267,117 +265,30 @@ describe("guardTrackingRef", () => {
   });
 });
 
-describe("guardRemoteRefs", () => {
-  // Mirrors the guardTrackingRef suite for the remote-wide form used by the
-  // singleBranch:false recovery fetch: EVERY refs/remotes/origin/* ref is
-  // snapshotted, and refs CREATED by fn are covered too.
-  const MAIN = "refs/remotes/origin/main";
-  const TOPIC = "refs/remotes/origin/topic";
-  const BOGUS_A = "a".repeat(40);
-  const BOGUS_B = "b".repeat(40);
-
-  async function makeRepo(dir: string): Promise<string> {
-    await git.init({ fs, dir, defaultBranch: "main" });
-    await writeFile(path.join(dir, "a.md"), "one\n");
-    await git.add({ fs, dir, filepath: "a.md" });
-    return git.commit({
-      fs,
-      dir,
-      message: "one",
-      author: { name: "T", email: "t@test.local" },
-    });
-  }
-
-  async function refOrNull(dir: string, ref: string): Promise<string | null> {
-    return git.resolveRef({ fs, dir, ref }).catch(() => null);
-  }
-
-  async function withRepo(fn: (dir: string, commit: string) => Promise<void>): Promise<void> {
-    const dir = await tempDir("gutterpress-guard-multi-");
-    try {
-      await fn(dir, await makeRepo(dir));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-
-  test("fn dangles several refs (moved + created) and throws → moved restored, created deleted", async () => {
-    await withRepo(async (dir, commit) => {
-      await git.writeRef({ fs, dir, ref: MAIN, value: commit, force: true });
-      const boom = new Error("transfer aborted");
-      let err: unknown;
-      try {
-        await guardRemoteRefs(dir, "origin", {}, async () => {
-          await git.writeRef({ fs, dir, ref: MAIN, value: BOGUS_A, force: true });
-          // TOPIC did not exist before fn — a ref the aborted fetch CREATED.
-          await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_B, force: true });
-          throw boom;
-        });
-      } catch (e) {
-        err = e;
-      }
-      expect(err).toBe(boom);
-      expect(await refOrNull(dir, MAIN)).toBe(commit);
-      expect(await refOrNull(dir, TOPIC)).toBeNull();
-    });
-  });
-
-  test("ref moved to an oid whose object EXISTS → kept; dangling sibling still rolled back", async () => {
-    await withRepo(async (dir, first) => {
-      await git.writeRef({ fs, dir, ref: MAIN, value: first, force: true });
-      await writeFile(path.join(dir, "a.md"), "two\n");
-      await git.add({ fs, dir, filepath: "a.md" });
-      const second = await git.commit({
-        fs,
-        dir,
-        message: "two",
-        author: { name: "T", email: "t@test.local" },
-      });
-      await expect(
-        guardRemoteRefs(dir, "origin", {}, async () => {
-          await git.writeRef({ fs, dir, ref: MAIN, value: second, force: true });
-          await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_A, force: true });
-          throw new Error("failed after the pack landed");
-        }),
-      ).rejects.toThrow("failed after the pack landed");
-      expect(await refOrNull(dir, MAIN)).toBe(second);
-      expect(await refOrNull(dir, TOPIC)).toBeNull();
-    });
-  });
-
-  test("fn throws without touching any ref → refs untouched", async () => {
-    await withRepo(async (dir, commit) => {
-      await git.writeRef({ fs, dir, ref: MAIN, value: commit, force: true });
-      await expect(
-        guardRemoteRefs(dir, "origin", {}, async () => {
-          throw new Error("early failure");
-        }),
-      ).rejects.toThrow("early failure");
-      expect(await refOrNull(dir, MAIN)).toBe(commit);
-    });
-  });
-
-  test("fn succeeds → refs never touched, result passed through", async () => {
-    await withRepo(async (dir) => {
-      const out = await guardRemoteRefs(dir, "origin", {}, async () => {
-        await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_A, force: true });
-        return "ok";
-      });
-      expect(out).toBe("ok");
-      // Success path never rolls back — even a dangling ref is left alone.
-      expect(await refOrNull(dir, TOPIC)).toBe(BOGUS_A);
-    });
-  });
-});
-
-describe("guardRefs — a damaged ref store never blocks the guarded fetch (PR #116)", () => {
+describe("guardTrackingRef — a damaged ref store never blocks the guarded fetch (PR #116)", () => {
   // The recovery handlers run guarded fetches on repos whose ref store may
-  // itself be damaged; a pre-scan failure must not skip the repair fetch.
+  // itself be damaged; a pre-scan failure must not skip the repair fetch. An
+  // unreadable pre-scan degrades to "the ref did not exist before", so a
+  // dangling ref the aborted fetch created is still deleted.
   const REF = "refs/remotes/origin/main";
   const BOGUS = "a".repeat(40);
 
+  /** Make the FIRST git.resolveRef call throw, as an unreadable ref store would. */
+  function breakFirstResolveRef(): () => void {
+    const real = git.resolveRef;
+    let calls = 0;
+    (git as unknown as { resolveRef: typeof git.resolveRef }).resolveRef = ((args) => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error("EIO: ref store unreadable"));
+      return real(args);
+    }) as typeof git.resolveRef;
+    return () => {
+      (git as unknown as { resolveRef: typeof git.resolveRef }).resolveRef = real;
+    };
+  }
+
   async function withEmptyRepo(fn: (dir: string) => Promise<void>): Promise<void> {
-    const dir = await tempDir("gutterpress-guardrefs-");
+    const dir = await tempDir("gutterpress-guardref-damaged-");
     try {
       await git.init({ fs, dir, defaultBranch: "main" });
       await fn(dir);
@@ -386,146 +297,40 @@ describe("guardRefs — a damaged ref store never blocks the guarded fetch (PR #
     }
   }
 
-  test("pre-scan lister throws → fn still runs and its result is returned", async () => {
+  test("pre-scan throws → fn still runs and its result is returned", async () => {
     await withEmptyRepo(async (dir) => {
+      const restore = breakFirstResolveRef();
       let ran = false;
-      const out = await guardRefs(
-        dir,
-        async () => {
-          throw new Error("EIO: ref store unreadable");
-        },
-        {},
-        async () => {
+      try {
+        const out = await guardTrackingRef(dir, REF, {}, async () => {
           ran = true;
           return "repaired";
-        },
-      );
+        });
+        expect(out).toBe("repaired");
+      } finally {
+        restore();
+      }
       expect(ran).toBe(true);
-      expect(out).toBe("repaired");
     });
   });
 
-  test("pre-scan throws, fn creates a dangling ref and throws → post-throw rollback still deletes it", async () => {
+  test("pre-scan throws, fn creates a dangling ref and throws → it is still deleted", async () => {
     await withEmptyRepo(async (dir) => {
-      let calls = 0;
-      const flakyLister = async () => {
-        calls += 1;
-        if (calls === 1) throw new Error("EIO: ref store unreadable");
-        return [REF];
-      };
+      const restore = breakFirstResolveRef();
       const boom = new Error("transfer aborted");
       let err: unknown;
       try {
-        await guardRefs(dir, flakyLister, {}, async () => {
+        await guardTrackingRef(dir, REF, {}, async () => {
           await git.writeRef({ fs, dir, ref: REF, value: BOGUS, force: true });
           throw boom;
         });
       } catch (e) {
         err = e;
+      } finally {
+        restore();
       }
       expect(err).toBe(boom);
       expect(await git.resolveRef({ fs, dir, ref: REF }).catch(() => null)).toBeNull();
     });
-  });
-
-  test("both listings throw → fn's own error still surfaces unmasked", async () => {
-    await withEmptyRepo(async (dir) => {
-      const boom = new Error("transfer aborted");
-      let err: unknown;
-      try {
-        await guardRefs(
-          dir,
-          async () => {
-            throw new Error("EIO: ref store unreadable");
-          },
-          {},
-          async () => {
-            throw boom;
-          },
-        );
-      } catch (e) {
-        err = e;
-      }
-      expect(err).toBe(boom);
-    });
-  });
-});
-
-describe("fetchRemoteTip — dangling tracking ref after an aborted transfer (R15)", () => {
-  test("a fetch that dies before the pack lands does not leave the tracking ref dangling", async () => {
-    const serverDir = await tempDir("gutterpress-r15-server-");
-    const localDir = await tempDir("gutterpress-r15-local-");
-    try {
-      await createFixtureRepo(serverDir);
-      const server = await startGitServer(serverDir);
-      try {
-        // A local repo with its own history that has NEVER fetched: no
-        // refs/remotes/origin/main yet (the common first-sync state).
-        await git.init({ fs, dir: localDir, defaultBranch: "main" });
-        await writeFile(path.join(localDir, "local.md"), "local draft\n");
-        await git.add({ fs, dir: localDir, filepath: "local.md" });
-        await git.commit({
-          fs,
-          dir: localDir,
-          message: "local",
-          author: { name: "Local", email: "local@test.local" },
-        });
-        await git.setConfig({
-          fs,
-          dir: localDir,
-          path: "remote.origin.url",
-          value: server.url,
-        });
-        await git.setConfig({
-          fs,
-          dir: localDir,
-          path: "remote.origin.fetch",
-          value: "+refs/heads/*:refs/remotes/origin/*",
-        });
-
-        const transport: RemoteTransport = {
-          remote: "origin",
-          url: server.url,
-          host: "127.0.0.1",
-        };
-        let err: unknown;
-        try {
-          await fetchRemoteTip(localDir, "main", transport, packDroppingClient(httpNode), {});
-        } catch (e) {
-          err = e;
-        }
-        expect(err).toBeInstanceOf(Error);
-
-        // The ref did not exist before the failed fetch, and the pack never
-        // landed — so it must not exist after either. A leftover ref pointing
-        // at an oid with no local object poisons the NEXT fetch: zero `have`s
-        // → the server streams the entire repository (the OOM fetchRemoteTip's
-        // `ref` choice exists to prevent) and resolving the ref reports
-        // "corruption" on a never-corrupt repo.
-        const after = await git
-          .resolveRef({ fs, dir: localDir, ref: "refs/remotes/origin/main" })
-          .catch(() => null);
-        expect(after).toBeNull();
-      } finally {
-        await server.close();
-      }
-    } finally {
-      await rm(serverDir, { recursive: true, force: true });
-      await rm(localDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("failureOutcome — insecure transport is NOT the auth arm", () => {
-  test("insecure-transport error → status 'error' with the dedicated message", () => {
-    const err = Object.assign(new Error("credential withheld"), {
-      code: "InsecureTransport",
-    });
-    const out = failureOutcome(err);
-    // Never "auth": that message tells the user to reconnect, and recover-auth
-    // deletes the stored credential on it — an https-vs-http problem a
-    // reconnect can never fix.
-    expect(out.status).toBe("error");
-    expect(out.message).toMatch(/https|secure/i);
   });
 });

@@ -260,59 +260,45 @@ async function resolveRefOrNull(dir: string, ref: string): Promise<string | null
 }
 
 /**
- * Run `fn` (a fetch that moves remote-tracking refs) with a rollback guard
- * (deep-analysis R15): isomorphic-git updates refs/remotes/<remote>/* from
- * the ref advertisement BEFORE collecting the packfile, so an abort
- * mid-transfer (e.g. the defaultGitHttp idle timeout) leaves refs pointing
- * at oids with no local object. Such a dangling ref poisons the next fetch —
+ * Run `fn` (a fetch that moves ONE remote-tracking ref) with a rollback guard
+ * (deep-analysis R15): isomorphic-git updates `refs/remotes/<remote>/<branch>`
+ * from the ref advertisement BEFORE collecting the packfile, so an abort
+ * mid-transfer (e.g. the defaultGitHttp idle timeout) leaves the ref pointing
+ * at an oid with no local object. Such a dangling ref poisons the next fetch —
  * zero `have`s → the server streams the ENTIRE repository (the OOM
- * fetchRemoteTip's `ref` choice exists to prevent) — and resolving it reports
+ * `fetchRemoteTip`'s `ref` choice exists to prevent) — and resolving it reports
  * missing-object "corruption" on a never-corrupt repo.
  *
- * `listRefs` names the refs at risk; it runs again after a throw so refs
- * CREATED by `fn` are covered too. If `fn` throws, every ref that moved to an
- * oid whose object is MISSING locally is restored to its previous oid (or
- * deleted if it didn't exist); refs whose objects DID land are kept — the
- * pack made it. On success no ref is touched. Restoration is best-effort,
- * per ref, and never masks `fn`'s error.
+ * If `fn` throws and the ref moved to an oid whose object is MISSING locally,
+ * it is restored to its previous oid (or DELETED if it did not exist before).
+ * A ref whose object DID land is kept — the pack made it. On success no ref is
+ * touched.
+ *
+ * Every read here is best-effort and never masks `fn`'s error: a damaged ref
+ * store must not block the guarded fetch, because the recovery handlers run on
+ * exactly such repos and skipping `fn` would skip the repair itself. An
+ * unreadable pre-scan simply degrades to the delete-if-dangling arm.
  */
-export async function guardRefs<T>(
+export async function guardTrackingRef<T>(
   dir: string,
-  listRefs: () => Promise<string[]>,
+  ref: string,
   cache: GitCache,
   fn: () => Promise<T>,
 ): Promise<T> {
-  // Both scans are best-effort: a damaged ref store (fs errors, corrupt
-  // refs) must never block the guarded fetch — the recovery handlers run on
-  // exactly such repos, and skipping `fn` would skip the repair itself. An
-  // empty pre-scan just degrades rollback to delete-if-dangling below.
-  const before = new Map<string, string | null>();
-  for (const ref of await listRefs().catch(() => [] as string[])) {
-    before.set(ref, await resolveRefOrNull(dir, ref));
-  }
+  const before = await resolveRefOrNull(dir, ref);
   try {
     return await fn();
   } catch (e) {
     try {
-      const relisted = await listRefs().catch(() => [] as string[]);
-      const refs = new Set([...before.keys(), ...relisted]);
-      for (const ref of refs) {
-        try {
-          const prev = before.get(ref) ?? null;
-          const after = await resolveRefOrNull(dir, ref);
-          if (!after || after === prev) continue;
-          const landed = await git.readObject({ fs, dir, oid: after, cache }).then(
-            () => true,
-            () => false,
-          );
-          if (landed) continue;
-          if (prev) {
-            await git.writeRef({ fs, dir, ref, value: prev, force: true });
-          } else {
-            await git.deleteRef({ fs, dir, ref });
-          }
-        } catch {
-          // Best-effort per ref — keep restoring the others.
+      const after = await resolveRefOrNull(dir, ref);
+      if (after && after !== before) {
+        const landed = await git.readObject({ fs, dir, oid: after, cache }).then(
+          () => true,
+          () => false,
+        );
+        if (!landed) {
+          if (before) await git.writeRef({ fs, dir, ref, value: before, force: true });
+          else await git.deleteRef({ fs, dir, ref });
         }
       }
     } catch {
@@ -320,40 +306,6 @@ export async function guardRefs<T>(
     }
     throw e;
   }
-}
-
-/** Single-ref form of {@link guardRefs} — guards one remote-tracking ref. */
-export async function guardTrackingRef<T>(
-  dir: string,
-  ref: string,
-  cache: GitCache,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return guardRefs(dir, async () => [ref], cache, fn);
-}
-
-/**
- * All remote-tracking refs for `remote` (full ref names). Excludes the
- * `HEAD` symref — resolveRef would flatten it to an oid and a "restore"
- * would overwrite the symref file with that raw oid.
- */
-async function listRemoteTrackingRefs(dir: string, remote: string): Promise<string[]> {
-  const prefix = `refs/remotes/${remote}`;
-  const names = await git.listRefs({ fs, dir, filepath: prefix });
-  return names.filter((n) => n !== "HEAD").map((n) => `${prefix}/${n}`);
-}
-
-/**
- * Remote-wide form of {@link guardRefs} for a fetch that may move or create
- * ANY refs/remotes/<remote>/* ref (e.g. `singleBranch: false`).
- */
-export async function guardRemoteRefs<T>(
-  dir: string,
-  remote: string,
-  cache: GitCache,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return guardRefs(dir, () => listRemoteTrackingRefs(dir, remote), cache, fn);
 }
 
 /**
