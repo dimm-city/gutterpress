@@ -29,12 +29,15 @@ export interface RepoHealth {
   hasStaleLock: boolean;
   /** How old the YOUNGEST detected lock file is in milliseconds, when present. */
   lockAgeMs?: number;
-  /** True when a MERGE_HEAD file exists (interrupted merge). */
-  hasInterruptedMerge: boolean;
-  /** True when a rebase-in-progress directory exists. */
-  hasInterruptedRebase: boolean;
-  /** True when CHERRY_PICK_HEAD exists. */
-  hasInterruptedCherryPick: boolean;
+  /**
+   * The unfinished git operation another tool left state for, when any:
+   * "merge" (MERGE_HEAD), "rebase" (rebase-merge/ or rebase-apply/), or
+   * "cherry-pick" (CHERRY_PICK_HEAD). One field rather than three booleans —
+   * every one of them classifies identically ("needs_repair") and the repair
+   * itself clears the state files by name, never by reading this. Its only
+   * job is to say WHICH state was seen in the operation log.
+   */
+  interruptedOperation?: "merge" | "rebase" | "cherry-pick";
   /** True when the working tree has uncommitted changes. */
   hasLocalChanges: boolean;
 }

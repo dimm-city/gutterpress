@@ -225,13 +225,11 @@ export function classifyFromHealth(
 ): RepairNeed | null {
   const minLockAgeMs = opts.minLockAgeMs ?? STALE_LOCK_MIN_AGE_MS;
   if (!health.hasGitDir) return "needs_repair";
-  if (health.hasInterruptedRebase) return "needs_repair";
-  if (health.hasInterruptedCherryPick) return "needs_repair";
-  // An abandoned native-git merge (MERGE_HEAD + conflict markers in tracked
-  // files) must be caught BEFORE any sync work: left unclassified, the next
-  // sync would snapshot the literal conflict markers into history and push
-  // them to every collaborator.
-  if (health.hasInterruptedMerge) return "needs_repair";
+  // An abandoned operation another git tool left behind (MERGE_HEAD,
+  // rebase-merge/, CHERRY_PICK_HEAD). A merge in particular must be caught
+  // BEFORE any sync work: left unclassified, the next sync would snapshot the
+  // literal conflict markers into history and push them to every collaborator.
+  if (health.interruptedOperation) return "needs_repair";
   if (health.headUnreadable) return "needs_repair";
   if (health.isDetachedHead) return "needs_repair";
   if (health.hasStaleLock && (health.lockAgeMs ?? 0) >= minLockAgeMs) {

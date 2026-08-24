@@ -14,9 +14,6 @@ function health(overrides: Partial<RepoHealth> = {}): RepoHealth {
     isDetachedHead: false,
     headUnreadable: false,
     hasStaleLock: false,
-    hasInterruptedMerge: false,
-    hasInterruptedRebase: false,
-    hasInterruptedCherryPick: false,
     hasLocalChanges: false,
     ...overrides,
   };
@@ -30,9 +27,9 @@ describe("classifyFromHealth (preflight)", () => {
   test("every structural condition → needs_repair", () => {
     for (const overrides of [
       { hasGitDir: false },
-      { hasInterruptedMerge: true },
-      { hasInterruptedRebase: true },
-      { hasInterruptedCherryPick: true },
+      { interruptedOperation: "merge" },
+      { interruptedOperation: "rebase" },
+      { interruptedOperation: "cherry-pick" },
       { headUnreadable: true },
       { isDetachedHead: true },
     ] as Partial<RepoHealth>[]) {

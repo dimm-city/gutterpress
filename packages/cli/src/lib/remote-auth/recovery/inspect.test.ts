@@ -40,9 +40,7 @@ describe("inspectRepo — missing .git dir", () => {
     expect(health.hasGitDir).toBe(false);
     expect(health.isDetachedHead).toBe(false);
     expect(health.hasStaleLock).toBe(false);
-    expect(health.hasInterruptedMerge).toBe(false);
-    expect(health.hasInterruptedRebase).toBe(false);
-    expect(health.hasInterruptedCherryPick).toBe(false);
+    expect(health.interruptedOperation).toBeUndefined();
     expect(health.hasLocalChanges).toBe(false);
   });
 });
@@ -180,9 +178,7 @@ describe("inspectRepo — clean healthy repo", () => {
     expect(health.isDetachedHead).toBe(false);
     expect(health.currentBranch).toBe("main");
     expect(health.hasStaleLock).toBe(false);
-    expect(health.hasInterruptedMerge).toBe(false);
-    expect(health.hasInterruptedRebase).toBe(false);
-    expect(health.hasInterruptedCherryPick).toBe(false);
+    expect(health.interruptedOperation).toBeUndefined();
   });
 
   test("hasLocalChanges=false when working tree is clean", async () => {
@@ -332,7 +328,7 @@ describe("inspectRepo — stale lock", () => {
 });
 
 describe("inspectRepo — interrupted operations", () => {
-  test("hasInterruptedMerge=true when MERGE_HEAD exists", async () => {
+  test("interruptedOperation=merge when MERGE_HEAD exists", async () => {
     const dir = await makeTempDir();
     await makeCleanRepo(dir);
 
@@ -341,10 +337,10 @@ describe("inspectRepo — interrupted operations", () => {
 
     const health = await inspectRepo({ repoDir: dir });
 
-    expect(health.hasInterruptedMerge).toBe(true);
+    expect(health.interruptedOperation).toBe("merge");
   });
 
-  test("hasInterruptedCherryPick=true when CHERRY_PICK_HEAD exists", async () => {
+  test("interruptedOperation=cherry-pick when CHERRY_PICK_HEAD exists", async () => {
     const dir = await makeTempDir();
     await makeCleanRepo(dir);
 
@@ -353,10 +349,10 @@ describe("inspectRepo — interrupted operations", () => {
 
     const health = await inspectRepo({ repoDir: dir });
 
-    expect(health.hasInterruptedCherryPick).toBe(true);
+    expect(health.interruptedOperation).toBe("cherry-pick");
   });
 
-  test("hasInterruptedRebase=true when rebase-merge dir exists", async () => {
+  test("interruptedOperation=rebase when rebase-merge dir exists", async () => {
     const dir = await makeTempDir();
     await makeCleanRepo(dir);
 
@@ -364,10 +360,10 @@ describe("inspectRepo — interrupted operations", () => {
 
     const health = await inspectRepo({ repoDir: dir });
 
-    expect(health.hasInterruptedRebase).toBe(true);
+    expect(health.interruptedOperation).toBe("rebase");
   });
 
-  test("hasInterruptedRebase=true when rebase-apply dir exists", async () => {
+  test("interruptedOperation=rebase when rebase-apply dir exists", async () => {
     const dir = await makeTempDir();
     await makeCleanRepo(dir);
 
@@ -375,7 +371,7 @@ describe("inspectRepo — interrupted operations", () => {
 
     const health = await inspectRepo({ repoDir: dir });
 
-    expect(health.hasInterruptedRebase).toBe(true);
+    expect(health.interruptedOperation).toBe("rebase");
   });
 });
 

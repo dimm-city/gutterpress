@@ -87,9 +87,6 @@ export async function inspectRepo(
       isDetachedHead: false,
       headUnreadable: false,
       hasStaleLock: false,
-      hasInterruptedMerge: false,
-      hasInterruptedRebase: false,
-      hasInterruptedCherryPick: false,
       hasLocalChanges: false,
     };
   }
@@ -133,11 +130,14 @@ export async function inspectRepo(
     : undefined;
 
   // ── In-progress operations ────────────────────────────────────────────────
-  const hasInterruptedMerge = fs.existsSync(path.join(gitDir, "MERGE_HEAD"));
-  const hasInterruptedRebase =
-    fs.existsSync(path.join(gitDir, "rebase-merge")) ||
-    fs.existsSync(path.join(gitDir, "rebase-apply"));
-  const hasInterruptedCherryPick = fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD"));
+  const interruptedOperation = fs.existsSync(path.join(gitDir, "MERGE_HEAD"))
+    ? ("merge" as const)
+    : fs.existsSync(path.join(gitDir, "rebase-merge")) ||
+        fs.existsSync(path.join(gitDir, "rebase-apply"))
+      ? ("rebase" as const)
+      : fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD"))
+        ? ("cherry-pick" as const)
+        : undefined;
 
   // ── Local changes ─────────────────────────────────────────────────────────
   let hasLocalChanges = false;
@@ -157,9 +157,7 @@ export async function inspectRepo(
     headUnreadable,
     hasStaleLock,
     lockAgeMs,
-    hasInterruptedMerge,
-    hasInterruptedRebase,
-    hasInterruptedCherryPick,
+    interruptedOperation,
     hasLocalChanges,
   };
 }
@@ -259,9 +257,7 @@ export function buildPreflightDiagnostics(
     kind: kind ?? "none",
     reason: preflightStructuralReason(kind),
     hasGitDir: health.hasGitDir,
-    hasInterruptedMerge: health.hasInterruptedMerge,
-    hasInterruptedRebase: health.hasInterruptedRebase,
-    hasInterruptedCherryPick: health.hasInterruptedCherryPick,
+    interruptedOperation: health.interruptedOperation ?? "none",
     hasStaleLock: health.hasStaleLock,
     isDetachedHead: health.isDetachedHead,
     hasLocalChanges: health.hasLocalChanges,

@@ -29,9 +29,6 @@ function health(overrides: Partial<RepoHealth> = {}): RepoHealth {
     isDetachedHead: false,
     headUnreadable: false,
     hasStaleLock: false,
-    hasInterruptedMerge: false,
-    hasInterruptedRebase: false,
-    hasInterruptedCherryPick: false,
     hasLocalChanges: false,
     ...overrides,
   };
@@ -44,9 +41,11 @@ describe("classifyFromHealth", () => {
 
   test("every structural condition → needs_repair", () => {
     expect(classifyFromHealth(health({ hasGitDir: false }))).toBe("needs_repair");
-    expect(classifyFromHealth(health({ hasInterruptedRebase: true }))).toBe("needs_repair");
-    expect(classifyFromHealth(health({ hasInterruptedCherryPick: true }))).toBe("needs_repair");
-    expect(classifyFromHealth(health({ hasInterruptedMerge: true }))).toBe("needs_repair");
+    expect(classifyFromHealth(health({ interruptedOperation: "rebase" }))).toBe("needs_repair");
+    expect(classifyFromHealth(health({ interruptedOperation: "cherry-pick" }))).toBe(
+      "needs_repair",
+    );
+    expect(classifyFromHealth(health({ interruptedOperation: "merge" }))).toBe("needs_repair");
     expect(classifyFromHealth(health({ headUnreadable: true }))).toBe("needs_repair");
     expect(classifyFromHealth(health({ isDetachedHead: true }))).toBe("needs_repair");
   });
@@ -64,7 +63,7 @@ describe("classifyFromHealth", () => {
   test("a structural condition wins over a stale lock", () => {
     expect(
       classifyFromHealth(
-        health({ hasInterruptedMerge: true, hasStaleLock: true, lockAgeMs: 10 * 60_000 }),
+        health({ interruptedOperation: "merge", hasStaleLock: true, lockAgeMs: 10 * 60_000 }),
       ),
     ).toBe("needs_repair");
   });
