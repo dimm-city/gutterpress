@@ -2,10 +2,10 @@
 name: Gutterpress desktop app gates
 
 # This job builds the desktop app once and then runs every gate that needs a
-# LIVE app: behaviour drives first (fast, fail-early), then the render-speed
-# gates. The file keeps its render-perf-gate.yml name because
-# tests/perf/render-gate.mjs and tests/integration/inline-editing.pw.mjs cite
-# it by path.
+# LIVE app: the render-speed gates first, then the behaviour drives (see the
+# note on that step for why that order). The file keeps its
+# render-perf-gate.yml name because tests/perf/render-gate.mjs and
+# tests/integration/inline-editing.pw.mjs cite it by path.
 #
 # ── Behaviour drives ────────────────────────────────────────────────────────
 # packages/desktop/tests/integration/*.pw.mjs launch the real Electron app and
@@ -42,11 +42,12 @@ name: Gutterpress desktop app gates
 #                            step plus a network dependency on the AppImage
 #                            tooling download.
 #
-# Note the drives leak one Electron process each on exit and pick CDP ports at
-# random from narrow ranges, so back-to-back local reruns eventually collide
-# and fail with "CDP endpoint never appeared". That is a rerun artifact, not
-# drive flake: one run per fresh environment — which is what CI does — measured
-# 16/16 green. Kill strays between local reruns.
+# Note the two CDP drives (editor-toggle, panel-reopen) leak their Electron
+# process on exit and pick CDP ports at random from narrow ranges, so
+# back-to-back local reruns eventually collide and fail with "CDP endpoint
+# never appeared". That is a rerun artifact, not drive flake: one run per fresh
+# environment — which is what CI does — measured 16/16 green. Kill strays
+# between local reruns.
 #
 # ── Render-speed gates ──────────────────────────────────────────────────────
 # Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
@@ -104,20 +105,6 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # Behaviour before speed: these take ~15s total, the render gates take
-      # minutes, and a broken app should say so in the first 15 seconds.
-      # One xvfb-run per drive. The two CDP drives fall back to wrapping
-      # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
-      # DISPLAY, so that fallback stays dormant and all three launch the same
-      # way. problems-last-hop drives Playwright's _electron, which has no
-      # such fallback and needs the wrapper.
-      - name: Drive the built app (behaviour)
-        working-directory: packages/desktop
-        run: |
-          xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
-          xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
-          xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
-
       - name: Run render-perf gate
         working-directory: packages/desktop
         # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
@@ -129,3 +116,23 @@ jobs:
       - name: Run instant-preview regression gate
         working-directory: packages/desktop
         run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000
+
+      # LAST, deliberately. Each drive leaks its Electron process on exit
+      # (measured: problems-last-hop does not, the other two do), and the gates
+      # above measure latency on a 2-core runner — leaving stray Electron apps
+      # running before them is exactly the kind of interference that turns a
+      # reliable gate flaky. Running behaviour last means the perf gates keep
+      # the pristine runner they have been green on, and the leak lands where
+      # nothing can be affected by it: the end of the job.
+      #
+      # One xvfb-run per drive. The two CDP drives fall back to wrapping
+      # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
+      # DISPLAY, so that fallback stays dormant and all three launch the same
+      # way. problems-last-hop drives Playwright's _electron, which has no
+      # such fallback and needs the wrapper.
+      - name: Drive the built app (behaviour)
+        working-directory: packages/desktop
+        run: |
+          xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
+          xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
