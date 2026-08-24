@@ -38,6 +38,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **The repository-repair feature is gone — including the `gutterpress repair`
+  command and the "Tidying up sync…" overlay.** It existed to rebuild a
+  project's version history when the hidden folder that stores it got damaged.
+  What we confirmed while reviewing it: that damage never threatens your book.
+  Your chapters, images, and styles live in ordinary files that come through
+  untouched, and a project whose history is unreadable still opens, still
+  edits, and still builds a PDF — only the record of past versions is
+  affected. So the repair machinery was a large, delicate mechanism standing
+  guard over something that was never actually at risk, and it has been
+  removed rather than maintained. If a project's history ever does become
+  unreadable, the app now tells you plainly: your files are safe, the history
+  can't be read, and — when the project has an online copy — the fix is to
+  download a fresh copy from online. Syncing, version history, and "Previous
+  versions" are unchanged for every healthy project.
+
 - **`gutterpress repair --force` is gone**, along with the app-open check it
   overrode. The desktop used to leave a liveness marker in the project while
   it had it open, and `repair` refused to run when that marker looked fresh

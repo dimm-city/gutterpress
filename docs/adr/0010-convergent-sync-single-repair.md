@@ -1,8 +1,18 @@
 # ADR 0010 — Convergent sync and single-path repair
 
-**Status:** Accepted (product owner directive, 2026-08-14)
+**Status:** Partially superseded (product owner directive, 2026-08-21)
 **Supersedes:** the interactive conflict-resolution half of ADR 0006 D5.
 The snapshot-first invariant of D5 is unchanged and remains binding.
+
+> **Decision 2 (repair) was withdrawn on 2026-08-21 and the repair subsystem
+> deleted.** Damage to `.git` never threatens the book: working files come
+> through byte-intact, and a project with a wrecked history still opens,
+> edits, and builds. The pipeline was ~1,600 source lines whose only
+> irreplaceable case was a local-only project losing its version history —
+> the owner's ruling was that this does not earn the weight. A repo whose
+> history cannot be read now reports that plainly and points at the online
+> copy; `gutterpress repair` is gone. **Decision 1 (convergent sync) stands
+> and remains binding.**
 
 ## Context
 
@@ -61,7 +71,7 @@ Deleted: `resolveConflicts`, the resolution plan, the conflict dialog, the
 conflict pill state, the orchestrator conflict latch, the pre-export
 "resolve first" block, and every route/IPC surface serving them.
 
-### 2. Repair is one automatic pipeline
+### 2. Repair is one automatic pipeline — WITHDRAWN 2026-08-21 (see the status note)
 
 `repairRepo()` replaces the classifier→16-handler→policy→backup-zip→
 confirm-gate subsystem. Invariants, in priority order:

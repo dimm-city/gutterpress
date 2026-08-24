@@ -19,7 +19,7 @@
  * recents-upsert shape, the local-status/preflight fire-and-forget
  * triggers, and their relative order are preserved verbatim. Preflight repo
  * recovery itself is NOT reimplemented here — it is owned end-to-end by
- * AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts,
+ * AutoSyncOrchestrator.scheduleInitialSync (electron/auto-sync/orchestrator.ts,
  * finding #7); this class only calls it.
  *
  * Node/lib-side ONLY — never imported by the renderer.
@@ -78,8 +78,8 @@ export interface PreviewOpenControllerDeps {
   getWatchedDir: () => string | null;
   /** AutoSyncOrchestrator.armInterval — starts the periodic safety-sync timer. */
   armSyncInterval: (dir: string) => Promise<void>;
-  /** AutoSyncOrchestrator.runPreflight — owns the whole recovery flow (finding #7). */
-  runSyncPreflight: (dir: string, source: ProjectSourceResult) => Promise<void>;
+  /** AutoSyncOrchestrator.scheduleInitialSync — arms the first sync after open. */
+  scheduleInitialSync: (dir: string) => void;
   /** fs.promises.mkdir — ensure the operation-log dir exists. */
   mkdir: (dir: string, options: { recursive: boolean }) => Promise<unknown>;
   /** fs.promises.appendFile — create the operation-log file if absent. */
@@ -275,14 +275,9 @@ export class PreviewOpenController {
     // their status from runAutoSync and ignore this branch.
     if (lib && source) void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
-    // Preflight recovery: before the initial sync, inspect the repo for structural
-    // conditions (stale lock, interrupted merge, detached head, missing git dir)
-    // and route through recover() BEFORE the first auto-sync run if needed, so the
-    // author sees a transparent repair on open rather than a sync error. The whole
-    // flow (single-flight lock, recovery routing, conflict-latch, and the BUG-3
-    // runAgain decision) is owned by the orchestrator — see
-    // AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
-    if (source) void this.deps.runSyncPreflight(openedDir, source);
+    // Arm the initial sync for a classified project — see
+    // AutoSyncOrchestrator.scheduleInitialSync (electron/auto-sync/orchestrator.ts).
+    if (source) this.deps.scheduleInitialSync(openedDir);
 
     return result;
   }

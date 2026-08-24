@@ -133,10 +133,9 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
-Gutterpress has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
+Gutterpress has 10 subcommands. `new`, `preview`, `build`, and `publish` are the
 primary author commands; `lint`, `validate`, `audit`, and `preflight` are
-CI / advanced checks; `repair` is the version-history escape hatch; and
-`doctor` reports system readiness. `plugin` manages project plugins. Every
+CI / advanced checks; and `doctor` reports system readiness. `plugin` manages project plugins. Every
 command also accepts `--help` for the authoritative, always-current flag list
 (`gutterpress <command> --help`) — this section is regenerated from the same
 source.
@@ -315,17 +314,6 @@ gutterpress preflight [dir] --pdf <path> [options]
 
 Exits 1 when the computed status is `NO-GO` (errors, or a required check skipped/failed).
 
-### `gutterpress repair`
-
-Diagnose and repair the project's version history — no git knowledge (and no system git) required. Detects the states that block syncing (an update that didn't finish, a leftover lock from a crash, a damaged or missing history) and applies the same safe repair the desktop app offers: a safety-copy zip is saved first, and nothing changes without your confirmation.
-
-```sh
-gutterpress repair [dir]
-
-  --check     Diagnose only — never change anything (exit 1 when repair is needed)
-  --yes       Approve the repair without prompting
-```
-
 ### `gutterpress doctor`
 
 Report the Gutterpress version, platform and config paths, and whether each external tool is available. Missing tools include the features that use them and platform-specific installation guidance.
@@ -368,7 +356,7 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
 
-This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `repair`, `publish`, `plugin`, `new`, and `doctor`.
+This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `plugin`, `new`, and `doctor`.
 
 ## Plugins
 

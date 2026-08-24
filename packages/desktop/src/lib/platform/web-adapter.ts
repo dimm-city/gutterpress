@@ -684,9 +684,6 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  // Repair runs in the host as one automatic pipeline (2026-08-14
-  // simplification) — no renderer confirmation/guidance seam remains.
-
   // syncChanges — migrated to server route (Phase 2F).
 
   // ── In-browser live preview (#33 Phase 2) — no server, no Chromium ──────────

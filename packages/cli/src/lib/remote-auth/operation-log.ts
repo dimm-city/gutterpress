@@ -20,10 +20,10 @@
  *   [ISO-timestamp] LEVEL  operation: step=<step> key=value ... | <message>
  *
  * Example:
- *   [2026-06-19T12:34:56.789Z] INFO  recovery: kind=unrelated_histories repo=my-book branch=main | starting recovery
- *   [2026-06-19T12:34:56.890Z] INFO  recovery: step=backup | backup created at /tmp/print-sync-recovery/my-book/...zip
- *   [2026-06-19T12:34:57.789Z] WARN  recovery: step=merge | merge conflicted files=manifest.yaml,notes.md
- *   [2026-06-19T12:34:57.890Z] INFO  recovery: result=needs_user | surfaced 2 conflicted files to user
+ *   [2026-06-19T12:34:56.789Z] INFO  sync: repo=my-book branch=main | starting sync
+ *   [2026-06-19T12:34:56.890Z] INFO  sync: step=snapshot | committed 3 changed files
+ *   [2026-06-19T12:34:57.789Z] WARN  sync: step=merge | combined files=manifest.yaml,notes.md
+ *   [2026-06-19T12:34:57.890Z] INFO  sync: result=synced | pushed to the online copy
  *
  * Cross-platform: uses `node:fs` appendFileSync + `node:path`. The caller
  * is responsible for providing a valid directory (the logger creates the

@@ -198,9 +198,6 @@ export class ElectronAdapter implements Platform {
     await api.sync.setAutoSync(enabled);
   }
 
-  // Repair runs in the host as one automatic pipeline (2026-08-14
-  // simplification) — no renderer confirmation/guidance seam remains.
-
   // syncChanges — migrated to server route (Phase 2F).
 
   // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.

@@ -31,7 +31,7 @@
  *
  * One timer serves the whole request (re-armed via `refresh()`; no per-chunk
  * allocation). On timeout the thrown error's message classifies as offline in
- * recovery/classify.ts. Known limitation (documented, not fixable at this
+ * transport.ts. Known limitation (documented, not fixable at this
  * layer): isomorphic-git's client accepts no AbortSignal, so an abandoned
  * timed-out transfer's socket is left to the OS/agent to reap.
  *
@@ -88,7 +88,8 @@ export function isSmallBody(body: unknown): boolean {
 
 function gitTimeoutError(what: string, ms: number): Error {
   // "couldn't reach" + "ETIMEDOUT" both match the network regex in
-  // recovery/classify.ts, so this surfaces as the offline message, not a crash.
+  // transport.ts's classifyTransportFailure, so this surfaces as the offline
+  // message, not a crash.
   return new Error(
     `Git network operation timed out after ${Math.round(ms / 1000)}s (${what}); ` +
       `couldn't reach the remote (ETIMEDOUT).`,

@@ -15,8 +15,8 @@
  * `Platform`, and the small cluster of types those interfaces' members
  * reference directly (`UpdaterApi`, `FolderRef`/`FileRef`, `PreviewStartArgs`/
  * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
- * `FolderChangedEvent`, and the sync/repair status vocabulary —
- * `SyncStatus`/`SyncState`/`RecoveryProgressInfo`). Plain request/response DTOs that the seam does NOT
+ * `FolderChangedEvent`, and the sync status vocabulary —
+ * `SyncStatus`/`SyncState`). Plain request/response DTOs that the seam does NOT
  * reference — the ~30 shapes server routes return (plugin manager, theme
  * manager, style resolver, media panel, problems panel, project
  * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
@@ -224,8 +224,6 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
  *   offline     — network unavailable; changes are saved locally
  *   auth        — credential missing or rejected ("Reconnect your repository")
  *   error       — a transient/unexpected sync failure; treated like offline by the pill
- *   recovering  — automated repair in progress (translucent overlay, non-dismissable)
- *   recovered   — repair completed successfully; overlay auto-dismisses after ~1.8s
  */
 export type SyncState =
   | "idle"
@@ -237,8 +235,6 @@ export type SyncState =
   | "offline"
   | "auth"
   | "error"
-  | "recovering"
-  | "recovered"
   // "local" — a local-git project with NO usable remote (none configured, or
   // SSH-only). No sync runs, but version history (auto-snapshots) is active;
   // the status pill shows a clickable "Previous versions" label.
@@ -249,22 +245,6 @@ export type SyncState =
   // syncing — the pill and status summary surface a Connect action instead of
   // the misleading "kept on this computer" framing.
   | "connect";
-
-// ── Recovery types — defined locally; no lib value import in the SPA ─────────
-//
-// These mirror the lib's recovery types but are defined here so the SPA never
-// needs to value-import gutterpress (§8 / ADR 0004). The host
-// (electron/main.ts) maps the lib types to these before emitting.
-
-/**
- * Progress information emitted while an automated repair is running.
- * Present on `SyncStatus` when `state === "recovering"`.
- */
-export interface RecoveryProgressInfo {
-  phase: "checking" | "backup" | "repairing" | "done";
-  risk: "none" | "low" | "medium" | "high";
-  message?: string;
-}
 
 /**
  * Payload pushed to the renderer whenever the auto-sync orchestrator's state
@@ -281,32 +261,20 @@ export interface SyncStatus {
    */
   lastSyncAt: string | null;
   /**
-   * Recovery progress info — present when `state === "recovering"`.
-   * Drives the RecoveryOverlay progress copy.
-   */
-  recovery?: RecoveryProgressInfo;
-  /**
-   * Plain-language outcome/repair message — present when `state === "error"`
-   * and the emitting host path has one (a SyncOutcome or RepairResult always
-   * carries author-facing copy, e.g. the insecure-transport guidance). Lets
-   * the ambient pill explain WHY sync is paused (tooltip) instead of only the
-   * generic error copy. Absent on the raw throw paths.
+   * Plain-language outcome message — present when `state === "error"` and the
+   * emitting host path has one (a SyncOutcome always carries author-facing
+   * copy, e.g. the insecure-transport guidance). Lets the ambient pill explain
+   * WHY sync is paused (tooltip) instead of only the generic error copy.
+   * Absent on the raw throw paths.
    */
   message?: string;
   /**
-   * Absolute path to the on-disk backup of the old history folder, when the
-   * repair's last-resort re-clone ran (an OS-temp `gutterpress-damaged-*`
-   * folder — never inside the project). Present on `"recovered"` so the UI
-   * can offer "Show backup".
-   */
-  backupZipPath?: string;
-  /**
-   * Absolute path to the operation log file written during the sync/repair
-   * attempt. Present on `"recovered"` and `"error"` so the UI can offer
-   * "View log" for debugging. Timestamped steps, never secrets.
+   * Absolute path to the operation log file written during the sync attempt.
+   * Present on `"error"` so the UI can offer "View log" for debugging.
+   * Timestamped steps, never secrets.
    */
   logFile?: string;
-  /** True when the completed sync/repair changed files in the local worktree. */
+  /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /**
    * Files whose text now holds BOTH versions inside standard git conflict
@@ -446,7 +414,7 @@ export interface HostServices {
   /**
    * Subscribe to ambient sync-status updates from the host orchestrator.
    * The handler fires on every subsequent transition (`syncing`, `synced`,
-   * `offline`, `auth`, `conflict`, `recovering`, `recovered`, …). NOTE: there
+   * `offline`, `auth`, `error`, …). NOTE: there
    * is NO initial replay — a handler that subscribes after a sync has already
    * settled stays uninvoked until the next transition, so callers should render
    * a sensible default (e.g. blank/idle) until the first event. Returns an
@@ -454,12 +422,6 @@ export interface HostServices {
    * stub never emits and returns a no-op unsubscribe.
    */
   onSyncStatus(handler: (status: SyncStatus) => void): () => void;
-
-  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
-  //
-  // Repair runs in the host (main.ts) as ONE automatic pipeline (repairRepo)
-  // behind the recovering/recovered pill states — no confirmation gates, no
-  // guidance dialogs, no renderer surface (2026-08-14 simplification).
 
   /**
    * Enable or disable the auto-sync master switch for the current project.

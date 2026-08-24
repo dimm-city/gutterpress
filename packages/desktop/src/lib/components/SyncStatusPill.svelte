@@ -94,14 +94,6 @@
       if (pillText) liveMessage = pillText;
       // Retain the latest non-empty log path (later "idle" events omit it).
       if (status.logFile) logFilePath = status.logFile;
-      // Auto-clear "recovered" confirmation back to "synced" after ~4s.
-      if (recoveredTimer) { clearTimeout(recoveredTimer); recoveredTimer = null; }
-      if (status.state === "recovered") {
-        recoveredTimer = setTimeout(() => {
-          recoveredTimer = null;
-          if (syncState === "recovered") { syncState = "synced"; onSyncState?.("synced"); }
-        }, 4000);
-      }
     };
     let receivedLive = false;
     const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
@@ -122,7 +114,6 @@
       .catch(() => {});
     return () => {
       unsubscribe();
-      if (recoveredTimer) { clearTimeout(recoveredTimer); recoveredTimer = null; }
     };
   });
 
@@ -155,13 +146,6 @@
         // same thing as no network, and telling a writer on a working
         // connection they're "Offline" is misleading. Still calm/no-jargon.
         return "Sync paused — changes are saved on this computer";
-      case "recovering":
-        // Calm, task-named, no alarm word in the always-visible chrome
-        // (three-judge gate: keep "problem" out of the ambient pill).
-        return "Tidying up sync…";
-      case "recovered":
-        // Brief confirmation; auto-clears to "Everything is in sync" (see effect).
-        return "Sync all set";
       case "idle":
       default:
         return null;
@@ -178,39 +162,18 @@
   );
 
   /**
-   * Full-sentence aria-label so screen-reader users get the reassuring context
-   * the terse visible chip omits — and a guaranteed closure signal for recovery
-   * even if the overlay was dismissed/auto-cleared (three-judge a11y finding).
+   * Screen-reader label. pillTitle === pillText except on "error" with a host
+   * message, where screen-reader users get the same detail the tooltip shows.
    */
-  let ariaLabel = $derived.by((): string | null => {
-    switch (syncState) {
-      case "recovering":
-        return "A sync problem is being fixed automatically. Your work is backed up.";
-      case "recovered":
-        return "A sync problem was fixed. Your work is safe.";
-      default:
-        // pillTitle === pillText except on "error" with a host message, where
-        // screen-reader users get the same detail the tooltip shows.
-        return pillTitle;
-    }
-  });
+  let ariaLabel = $derived(pillTitle);
 
   /** True for states that are visually "quiet" (no action needed). */
   let isQuiet = $derived(
-    syncState === "synced" ||
-      syncState === "idle" ||
-      syncState === "recovered" ||
-      syncState === "local",
+    syncState === "synced" || syncState === "idle" || syncState === "local",
   );
 
   /** True when the pill should pulse/animate (a sync is actively running). */
-  let isActive = $derived(syncState === "syncing" || syncState === "recovering");
-
-  // Auto-clear the brief "Sync all set" confirmation back to the quiet
-  // in-sync state after ~4s (three-judge gate: a confirmation, not a badge).
-  // The timer is started directly in the onSyncStatus handler when "recovered"
-  // arrives — no reactive tracking needed.
-  let recoveredTimer: ReturnType<typeof setTimeout> | null = null;
+  let isActive = $derived(syncState === "syncing");
 
   /** True for states that require user attention. */
   let isWarning = $derived(syncState === "auth");

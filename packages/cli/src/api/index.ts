@@ -383,27 +383,6 @@ export type {
   CommandResult,
 } from "../lib/publish/types.ts";
 
-// ── Repo repair (node-side only; never imported by renderer) ─────────────────
-// One automatic pipeline (2026-08-14 simplification): health probe → lock
-// sweep → in-place fixes → re-clone with salvage. Working files are never
-// touched; every readable commit stays reachable.
-export { repairRepo } from "../lib/remote-auth/recovery/repair.ts";
-export type { RepairOptions, RepairResult } from "../lib/remote-auth/recovery/repair.ts";
-export {
-  classifyFromHealth,
-  isLikelyRepoCorruption,
-  RepoNeedsRecoveryError,
-  isRepoNeedsRecoveryError,
-  STALE_LOCK_MIN_AGE_MS,
-} from "../lib/remote-auth/recovery/classify.ts";
-export type { RepairNeed } from "../lib/remote-auth/recovery/classify.ts";
-export {
-  inspectRepo,
-  buildPreflightDiagnostics,
-  verifyRepoReadable,
-  isUnbornRepo,
-} from "../lib/remote-auth/recovery/inspect.ts";
-export type { RepoHealth } from "../lib/remote-auth/recovery/types.ts";
 
 // Structured operation logger (node-side only; the SPA never value-imports it).
 export { resolveLogger } from "../lib/remote-auth/operation-log.ts";

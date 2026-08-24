@@ -34,8 +34,6 @@ interface Harness {
   syncCalls: string[];
   /** Full args of every lib.syncProject call, in order. */
   syncArgs: unknown[];
-  /** Full args of every lib.repairRepo call, in order. */
-  repairCalls: unknown[];
   /** Advance the fake clock. */
   setClock: (ms: number) => void;
 }
@@ -50,13 +48,6 @@ interface FakeLibOptions {
   canSync?: boolean;
   /** Called per syncProject invocation; returns the SyncOutcome (or a promise). */
   syncProject?: (projectDir: string) => unknown;
-  /** True when a thrown sync error should look like local repo corruption. */
-  looksLikeCorruption?: boolean;
-  /** RepairResult returned by lib.repairRepo (the repair/runPreflight path). */
-  repair?: () => unknown;
-  /** RepairNeed|null returned by classifyFromHealth (drives runPreflight's
-   *  structural-condition branch). Default null (healthy repo). */
-  classifyFromHealth?: () => string | null;
   /** When set, diagnoseProjectRemote rejects with this — to exercise the
    *  probe-failure path in run() (code-review: must release the lock). */
   diagnoseThrows?: Error;
@@ -64,20 +55,10 @@ interface FakeLibOptions {
   gitIdentity?: { authorName?: string; authorEmail?: string };
 }
 
-/** A minimal local-git-folder ProjectSource for runPreflight tests. */
-const LOCAL_GIT_SOURCE = {
-  type: "local-git-folder" as const,
-  path: DIR,
-  repoRoot: DIR,
-  subPath: "",
-  hasRemote: true,
-};
-
 function makeHarness(opts: FakeLibOptions = {}): Harness {
   const emitted: SyncStatusPayload[] = [];
   const syncCalls: string[] = [];
   const syncArgs: unknown[] = [];
-  const repairCalls: unknown[] = [];
   let clock = 1_700_000_000_000;
 
   const lib = {
@@ -105,19 +86,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
         : { status: "synced" };
       return r;
     },
-    inspectRepo: async () => ({}),
-    isRepoNeedsRecoveryError: (e: unknown) =>
-      (e as { code?: string })?.code === "RepoNeedsRecovery",
-    isLikelyRepoCorruption: () => opts.looksLikeCorruption ?? false,
-    repairRepo: async (args: unknown) => {
-      repairCalls.push(args);
-      return opts.repair
-        ? opts.repair()
-        : { status: "repaired", message: "ok", actions: [] };
-    },
-    classifyFromHealth: () => (opts.classifyFromHealth ? opts.classifyFromHealth() : null),
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
-    buildPreflightDiagnostics: () => ({}),
     AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
   } as unknown as LibModule;
 
@@ -140,8 +109,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     emitted,
     syncCalls,
     syncArgs,
-    repairCalls,
-    setClock: (ms) => {
+      setClock: (ms) => {
       clock = ms;
     },
   };
@@ -230,68 +198,6 @@ test("run() omits blank identity fields instead of sending empty strings", async
   await tick();
   expect(h.syncArgs[0]).not.toHaveProperty("authorName");
   expect(h.syncArgs[0]).not.toHaveProperty("authorEmail");
-});
-
-test("run()'s repair path passes the configured identity + log file to repairRepo", async () => {
-  const h = makeHarness({
-    syncProject: () => {
-      const e = new Error("The project needs repair before it can sync (needs_repair).");
-      (e as Error & { code?: string }).code = "RepoNeedsRecovery";
-      throw e;
-    },
-    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
-  });
-  await h.orch.run(DIR);
-  await tick();
-  expect(h.repairCalls).toHaveLength(1);
-  expect(h.repairCalls[0]).toMatchObject({
-    projectDir: DIR,
-    authorName: "Ada Lovelace",
-    authorEmail: "ada@example.com",
-    logFile: "/logs/book.log",
-  });
-  // The repair ran behind the recovering → recovered statuses.
-  expect(h.emitted.some((e) => e.state === "recovering")).toBe(true);
-  expect(h.emitted.some((e) => e.state === "recovered")).toBe(true);
-});
-
-test("a corruption-looking throw routes to repairRepo; an ordinary throw does NOT", async () => {
-  const corrupt = makeHarness({
-    syncProject: () => {
-      throw new Error("object not found abc123");
-    },
-    looksLikeCorruption: true,
-  });
-  await corrupt.orch.run(DIR);
-  await tick();
-  expect(corrupt.repairCalls).toHaveLength(1);
-
-  const plain = makeHarness({
-    syncProject: () => {
-      throw new Error("some logic bug");
-    },
-  });
-  await plain.orch.run(DIR);
-  await tick();
-  expect(plain.repairCalls).toHaveLength(0);
-  expect(plain.emitted.some((e) => e.state === "error")).toBe(true);
-});
-
-test("a failed repair emits its author-language message; retry_later re-arms later", async () => {
-  const failed = makeHarness({
-    syncProject: () => {
-      const e = new Error("needs repair");
-      (e as Error & { code?: string }).code = "RepoNeedsRecovery";
-      throw e;
-    },
-    repair: () => ({ status: "failed", message: "Files safe; repair could not finish.", actions: [] }),
-  });
-  await failed.orch.run(DIR);
-  await tick();
-  const errEmit = failed.emitted.find((e) => e.state === "error");
-  expect(errEmit?.message).toBe("Files safe; repair could not finish.");
-  // The single-flight slot is free again (a later trigger can run).
-  expect(failed.orch.getState(DIR)?.inFlight).toBe(false);
 });
 
 test("armInterval arms exactly one interval and cancelTimer cancels it", async () => {
@@ -387,8 +293,8 @@ test("an 'error' outcome carries the outcome's plain-language message on the emi
 });
 
 // ── External single-flight lock surface: acquire/release (finding #7) ────────
-// These exist so a caller OUTSIDE run() (runPreflight) can hold the exact same
-// lock across a multi-step async flow without reaching into the state bag.
+// These exist so a caller OUTSIDE run() can hold the exact same lock across a
+// multi-step async flow without reaching into the state bag.
 
 test("acquire succeeds when free and fails while held; release frees it again", () => {
   const h = makeHarness();
@@ -404,68 +310,13 @@ test("release is a no-op for an untracked dir (never creates state)", () => {
   expect(h.orch.hasState("/never-tracked")).toBe(false);
 });
 
-test("runPreflight: non-git source releases the lock without any git I/O", async () => {
+test("scheduleInitialSync never holds the single-flight lock", () => {
+  // The repair preflight this replaced HELD the lock across its whole async
+  // flow. Arming the initial sync must not: the deferred run() acquires it
+  // for itself when it fires.
   const h = makeHarness();
-  await h.orch.runPreflight(DIR, { type: "local-folder", path: DIR });
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: healthy repo (classifyFromHealth → null) releases the lock without repairing", async () => {
-  const h = makeHarness({ classifyFromHealth: () => null });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(0);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: skips entirely when the lock is already held", async () => {
-  const h = makeHarness({ classifyFromHealth: () => "needs_repair" });
-  expect(h.orch.acquire(DIR)).toBe(true); // hold the lock externally first
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(0);
-  expect(h.orch.acquire(DIR)).toBe(false); // still held — runPreflight never touched it
-});
-
-test("runPreflight: structural damage repairs behind recovering/recovered and releases the lock", async () => {
-  const h = makeHarness({ classifyFromHealth: () => "needs_repair" });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.repairCalls).toHaveLength(1);
-  expect(h.emitted.some((e) => e.state === "recovering")).toBe(true);
-  expect(h.emitted.some((e) => e.state === "recovered")).toBe(true);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
-});
-
-test("runPreflight: retry_later emits the repair message and re-arms run() after the delay", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => "needs_repair",
-    repair: () => ({ status: "retry_later", message: "m", actions: [], retryAfterMs: 5 }),
-    syncProject: () => ({ status: "synced" }),
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  const errEmit = h.emitted.find((e) => e.state === "error");
-  expect(errEmit?.message).toBe("m");
-  // The retry timer re-arms run() after retryAfterMs (guarded by getWatchedDir).
-  await waitFor(() => h.syncCalls.length > 0);
-  expect(h.syncCalls).toEqual([DIR]);
-});
-
-test("runPreflight: a failed repair emits error and leaves the lock free", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => "needs_repair",
-    repair: () => ({ status: "failed", message: "Files safe.", actions: [] }),
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.emitted.some((e) => e.state === "error")).toBe(true);
+  h.orch.scheduleInitialSync(DIR);
   expect(h.orch.acquire(DIR)).toBe(true);
-});
-
-test("runPreflight: a thrown step is non-fatal and always releases the lock", async () => {
-  const h = makeHarness({
-    classifyFromHealth: () => {
-      throw new Error("boom");
-    },
-  });
-  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
-  expect(h.orch.acquire(DIR)).toBe(true); // lock released in the catch branch
 });
 
 // ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────

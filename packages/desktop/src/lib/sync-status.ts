@@ -10,7 +10,6 @@ export function shouldReconcileAfterSync(status: SyncStatus): boolean {
     status.state === "synced" ||
     status.state === "offline" ||
     status.state === "auth" ||
-    status.state === "error" ||
-    status.state === "recovered"
+    status.state === "error"
   );
 }

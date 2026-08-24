@@ -204,8 +204,8 @@ packages/cli/src/
 │   ├── build-runner.ts
 │   └── build-runner.test.ts
 └── commands/
-    ├── repair.ts
-    └── repair.test.ts
+    ├── validate.ts
+    └── validate.test.ts
 ```
 
 A separate `tests/` tree holds cross-cutting suites that don't belong to one

@@ -221,10 +221,6 @@ contextBridge.exposeInMainWorld("electron", {
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
 
-  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ─────────────────────
-  // Repair is one automatic pipeline (2026-08-14) — the recovery confirm
-  // channel is gone.
-
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   // syncChanges — migrated to server route (Phase 2F).

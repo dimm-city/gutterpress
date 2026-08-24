@@ -115,7 +115,6 @@ import type {
   ProjectRemoteDiagnosis,
   ProjectStyle,
   RecommendedPlugin,
-  RepoHealth,
   RemoteAccessResult,
   RemoteBranch,
   RemoteRepository,
@@ -1534,10 +1533,7 @@ const previewOpen = new PreviewOpenController({
   emitSyncStatus,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   armSyncInterval: (dir) => autoSync.armInterval(dir),
-  // The whole recovery flow (single-flight lock, recovery routing,
-  // conflict-latch, and the BUG-3 runAgain decision) is owned by the
-  // orchestrator — see AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
-  runSyncPreflight: (dir, source) => autoSync.runPreflight(dir, source),
+  scheduleInitialSync: (dir) => autoSync.scheduleInitialSync(dir),
   mkdir: (dir, options) => mkdir(dir, options),
   appendFile: (filePath, data) => appendFile(filePath, data),
   setTimeout: (cb, ms) => setTimeout(cb, ms),

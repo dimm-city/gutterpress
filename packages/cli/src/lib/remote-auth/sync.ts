@@ -13,8 +13,8 @@
  * called one. The CLI has no sync surface at all and the desktop has exactly
  * one Sync button, so "get theirs" and "send mine" were never separately
  * reachable — splitting them only bought two extra `withRepoLock` +
- * `assertNoStructuralDamage` + transport-resolution + tree-walk rounds per
- * ~2-minute auto-sync, and a window in which the lock was RELEASED between
+ * transport-resolution + tree-walk rounds per ~2-minute auto-sync, and a
+ * window in which the lock was RELEASED between
  * the two halves. The push CADENCE is instead a flag on the one operation
  * (`push: false` = pull-merge-only pass; owner decision 2026-08-23), so the
  * desktop's frequent ticks keep pulling while pushes batch up quietly.
@@ -54,7 +54,6 @@ import {
   MSG_UP_TO_DATE_PULLED,
 } from "./sync-messages.ts";
 import {
-  assertNoStructuralDamage,
   currentBranchOrThrow,
   failureOutcome,
   fetchRemoteTip,
@@ -153,9 +152,7 @@ function defaultSleep(ms: number): Promise<void> {
  * fetch), with a short backoff between passes. The loop is ALWAYS bounded by
  * `retry.attempts`; a remote that races every pass surfaces a friendly "try
  * again in a moment" rather than looping forever. Never throws for expected
- * outcomes — everything is reported through {@link SyncOutcome}. The one
- * exception is the structural preflight, whose typed error routes the caller
- * to `repairRepo`.
+ * outcomes — everything is reported through {@link SyncOutcome}.
  */
 export async function syncProject(
   options: SyncProjectOptions,
@@ -173,14 +170,8 @@ export async function syncProject(
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncOutcome> => {
-    // One logger per locked operation (preflight + body share it).
+    // One logger per locked operation.
     const logger = resolveLogger(options.logFile, "sync");
-    // Structural preflight INSIDE the lock and BEFORE the try/catch: never
-    // snapshot/merge a damaged tree — snapshot-first would otherwise commit
-    // whatever is on disk (e.g. the literal conflict markers a half-done
-    // native-git merge leaves in tracked files) and push it to every
-    // collaborator. The typed error routes the caller to repairRepo.
-    await assertNoStructuralDamage(options.projectDir, logger);
     // One object cache for this sync only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;

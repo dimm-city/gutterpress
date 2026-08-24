@@ -51,8 +51,8 @@ declare global {
   // plugin:*, theme:*, project:listStyles types removed — migrated to server
   // routes (Phase 2E). This block used to also declare ambient `StyleToken`,
   // `ProjectClassification`, `RecoveryConfirmRequest`, and `ConflictPreview`
-  // interfaces left behind by that and the later sync-recovery migration
-  // (§8 / ADR 0004) — none of them were ever referenced (every real call site
+  // interfaces left behind by that migration — none of them were ever
+  // referenced (every real call site
   // imports its own copy from src/lib/platform/dtos.ts or contract.ts).
   // Removed in the 2026-07-28 duplication audit; see
   // docs/reviews/duplication-audit-2026-07-28.md.
@@ -102,15 +102,11 @@ declare global {
       // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
       // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
       /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.
-       *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
-       *  when state is 'recovering', 'recovered', or 'error' (classified failure). */
+       *  Note: data may carry a `message` field when state is 'error'. */
       onSyncStatus(cb: (data: unknown) => void): () => void;
       // setAutoSync migrated to server route (api.sync.setAutoSync) — ARCH
       // review #8: a pure settings write, no push stream or live-BrowserWindow
       // need.
-      // Sync recovery seam (Foundation — §8 / ADR 0004)
-      /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
-      /** Send the author's approval/rejection to main to unblock a pending repair. */
       // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
       // syncChanges — migrated to server route (Phase 2F)
       // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)

@@ -174,7 +174,6 @@
   let onlineCopyText = $derived.by((): string => {
     switch (liveSyncState) {
       case "syncing":
-      case "recovering":
         return "Saving changes…";
       case "offline":
         return "Offline — your work is safe here";
@@ -183,7 +182,6 @@
       case "auth":
         return "Needs reconnecting";
       case "synced":
-      case "recovered":
         return "Up to date";
       case "connect":
         // An HTTPS remote exists but Gutterpress isn't connected to it — one
