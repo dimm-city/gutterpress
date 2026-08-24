@@ -77,6 +77,49 @@ This project follows [Semantic Versioning](https://semver.org/).
   says.
 
 
+
+- **Integration scripts that could not run, and one that reported a constant as
+  a measurement.** `drive-app` and `click-and-export` are acceptance-gate
+  drivers taking `<fixtureDir> <engineLabel> …`, but they were named `.pw.mjs`,
+  which is the suffix `run-ui.mjs` globs to spawn everything with `(exe,
+  fixture)` — so the UI suite handed them an executable path as their fixture
+  directory. Both are renamed to plain `.mjs` (the name their own usage strings
+  already claimed), matching how `app-window.mjs` is kept out of the glob, and
+  the runner now documents the suffix as a contract rather than decoration.
+
+  `drive-app`'s `detectedEngine` result branched on `.pagedjs_page` vs
+  `.gp-sheet` and reported the winner. With one engine that branch was
+  unreachable, so the field was a constant presented as a finding; it is now
+  `renderedSheets`, which fails loudly when the viewer paints nothing — the
+  only thing the check can honestly establish. The remaining `.pagedjs_page`
+  waits and selectors are dropped, and `preview-bridge.test.mjs` stops being
+  parameterised over `["native"]` — a one-element loop kept "so a future second
+  engine slots back in", which the Chromium-only ruling forecloses.
+
+- **A comment in `preview-shell-regression.test.mjs`** describing an
+  `onReady()` branch that polls `.pagedjs_page`. `onReady()` listens for
+  `renderingComplete` and short-circuits on `__GUTTERPRESS_RENDERED__`; there is
+  no polling branch.
+
+### Removed
+
+- **The last of the two-engine plumbing.** Paged.js has been gone since the
+  native-only migration, and `manifest.ts` already resolved every build to
+  `"native"` — but the desktop still carried a `previewEngine` field typed
+  `"paged" | "native"` and **defaulting to `"paged"`**, fed by a host that read
+  the author's raw `engine:` value rather than the resolved one. A manifest
+  still saying `engine: paged` therefore made the app report an engine that
+  could not possibly be rendering, in a field whose own documentation said "the
+  engine actually rendering this preview".
+
+  Nothing read that field — it was written in four places and consumed in none
+  — so the whole chain is gone rather than merely corrected: the host no longer
+  derives it, the wire type no longer carries it, and the `$state` is deleted.
+  An old host that still sends `engine` is unaffected; the property is simply
+  ignored. The manifest's *input* `engine:` union is unchanged, because
+  existing books must keep parsing (and keep getting their warning); only the
+  *resolved* type narrows to the single value it can hold.
+
 ## [0.10.1] - 2026-08-24
 
 ### Added

@@ -251,16 +251,6 @@ test("startFolderPreview: happy path opens the folder and starts the watcher", a
   expect(deps.setPendingRecoveryScanDir.calls.length).toBe(0);
   expect(deps.clearStaleProjectState.calls.length).toBe(1);
   expect(deps.resetFirstRenderGate.calls.length).toBe(1);
-  expect(ctrl.previewEngine).toBe("paged");
-});
-
-test("startFolderPreview captures the started preview's engine", async () => {
-  const { ctrl, deps } = make();
-  deps.startPreviewResult = { previewStarted: true, url: "preview://book", title: "My Book", engine: "native" };
-  await ctrl.startFolderPreview("/proj", "Opening…");
-  await flush();
-
-  expect(ctrl.previewEngine).toBe("native");
 });
 
 test("startFolderPreview retains the successful-open setup banner for a loose folder", async () => {

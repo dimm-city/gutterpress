@@ -75,22 +75,20 @@ try {
   // ── 1. open -> first rendered preview timing ────────────────────────────
   await book.locator("body").waitFor({ state: "attached", timeout: 60_000 });
   // The native viewer exposes each visible page as a .gp-sheet.
-  await Promise.race([
-    book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-    book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-  ]);
+  await book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
   const t1 = Date.now();
   results.openToFirstPreviewMs = t1 - t0;
   log(`1. open->first preview: ${results.openToFirstPreviewMs}ms`);
 
-  // Sanity: which engine did we actually get?
-  const sheetKind = await bookEval((doc) => {
-    if (doc.ownerDocument.querySelector(".pagedjs_page")) return "paged";
-    if (doc.ownerDocument.querySelector(".gp-sheet")) return "native";
-    return "unknown";
-  });
-  results.detectedEngine = sheetKind;
-  log(`detected DOM engine markers: ${sheetKind}`);
+  // Sanity: the viewer really painted pages. This used to branch on
+  // `.pagedjs_page` vs `.gp-sheet` and report the winner as `detectedEngine`
+  // — a constant dressed as a measurement, since native is the only engine.
+  // A missing `.gp-sheet` now means the preview FAILED, which is the only
+  // thing this check can honestly tell us.
+  const sheetCount = await bookEval((el) => el.ownerDocument.querySelectorAll(".gp-sheet").length);
+  results.renderedSheets = sheetCount;
+  log(`viewer painted ${sheetCount} sheet(s)`);
+  if (sheetCount === 0) throw new Error("the native viewer painted no pages");
 
   // ── 2. hot reload, 3 samples ─────────────────────────────────────────────
   const editPath = join(fixtureArg, editFileRel);
@@ -187,7 +185,7 @@ try {
   await sleep(500);
   const shotFn = (el) => {
     const doc = el.ownerDocument;
-    const sheets = [...doc.querySelectorAll(".gp-sheet, .pagedjs_page")].slice(0, 4)
+    const sheets = [...doc.querySelectorAll(".gp-sheet")].slice(0, 4)
       .map((n) => { const r = n.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; });
     return { bodyClass: doc.body.className, sheets };
   };

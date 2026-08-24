@@ -527,9 +527,12 @@ test("WebAdapter.startPreview renders natively regardless of the manifest's (ign
 
     const result = await p.startPreview({ input: ref });
 
+    // The RENDERED document is the proof: it links the native viewer bundle.
+    // This used to also assert `result.engine === "native"`, but that field
+    // only echoed what this line already shows, and it was removed along with
+    // the rest of the dead two-engine surface.
     const html = await urls.blobs.get(result.url)!.text();
     expect(html).toContain('src="/engine/gutterpress-viewer.js"');
-    expect(result.engine).toBe("native");
   } finally {
     urls.restore();
     // @ts-expect-error test global

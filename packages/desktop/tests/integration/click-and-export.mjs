@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Focused check: click-to-edit sync + real PDF export via app UI, on a SMALL
 // fixture (fast open + fast export) — items 6 & 7 of the in-app measurement
-// pass. Usage: node click-and-export.pw.mjs <fixtureDir> <engineLabel>
+// pass. Usage: node click-and-export.mjs <fixtureDir> <engineLabel>
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, writeFileSync, statSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -51,10 +51,8 @@ try {
   const bookBody = book.locator("body");
 
   await bookBody.waitFor({ state: "attached", timeout: 60_000 });
-  await Promise.race([
-    book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-    book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-  ]);
+  // One selector: the native viewer is the only engine.
+  await book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
 
   // ── 6. click-to-edit sync ─────────────────────────────────────────────
   const para = book.locator("p").filter({ hasText: /.{25,}/ }).first();

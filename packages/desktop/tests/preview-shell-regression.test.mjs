@@ -930,11 +930,12 @@ async function runNativeCoreRegression() {
     return result;
   };
 
-  // Unlike main()'s fixtures (which never carry an engine <script> tag, so
-  // onReady() always takes the immediate `.pagedjs_page`-polling branch),
-  // this fixture DOES carry the viewer <script> tag (preview-interface.js
-  // needs it for NATIVE_ENGINE detection) — so onReady() takes the
-  // wait-for-'renderingComplete' branch and arms a real ~180s timeout. Only
+  // CORRECTED: onReady() has no `.pagedjs_page`-polling branch — it listens
+  // for 'renderingComplete' and short-circuits only on the
+  // `__GUTTERPRESS_RENDERED__` flag. What still distinguishes this fixture is
+  // that it DOES carry the viewer <script> tag (preview-interface.js needs it
+  // for NATIVE_ENGINE detection), so the frame reaches readiness through a
+  // real 'renderingComplete' dispatch and arms a real ~180s timeout. Only
   // short (poll/debounce) timers should fire synchronously; the long
   // readiness timeout must NOT fire before the explicit 'gp:layout'
   // dispatch below reaches it, or it discards the frame as "timed out".
