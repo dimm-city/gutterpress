@@ -128,10 +128,10 @@ export class PreviewEventController {
     switch (e.name) {
       case "renderingStarted":
         this.deps.editorSync.invalidatePending();
-        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(true);
+        this.deps.setPreviewUpdating(true);
         break;
       case "renderingCancelled":
-        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(false);
+        this.deps.setPreviewUpdating(false);
         break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
@@ -151,7 +151,10 @@ export class PreviewEventController {
   private onRenderingComplete(detail: PreviewEvent["detail"]): void {
     const d = this.deps;
     const hotReload = detail.hotReload === true;
-    if (hotReload) d.setPreviewUpdating(false);
+    // Any completion ends an in-flight reload: a non-hot-reload completion
+    // means the whole frame re-rendered, so the reload it would have replaced
+    // is over either way.
+    d.setPreviewUpdating(false);
     const n = detail.totalPages ?? 0;
     d.pageNav.totalPages = n;
     d.setRenderProgressPage(n);

@@ -166,6 +166,7 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   // The synchronous portion must have run in exactly this order, and the
   // reveal must NOT have happened yet (it is gated on the async zoom promise).
   expect(h.log).toEqual([
+    "updating:false",
     "setProgress:12",
     "setRendering:false",
     "overlay:true",
@@ -369,6 +370,18 @@ test("hot reload exposes a non-blocking updating state until the replacement is 
 
   h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
   expect(h.updating).toBe(false);
+});
+
+// The pill was the visible half of a dropped `renderingComplete`; the chapter
+// outline and the Problems panel were the quiet half. A hot reload rebuilds
+// both — it is a whole new document, so anything derived from the old one is
+// stale.
+test("a hot reload rebuilds the chapter outline and re-lints the project", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
+  expect(h.log).toContain("refreshOutline");
+  expect(h.log).toContain("refreshProblems");
 });
 
 test("a cancelled replacement clears the non-blocking updating state", () => {

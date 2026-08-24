@@ -3,6 +3,22 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **"Updating preview…" no longer gets stuck on screen.** Save a file and the
+  little status pill would sometimes stay up forever, even though the new
+  pages were already there. Two quieter things were stuck with it: the chapter
+  list you jump around with, and the Problems panel — both kept describing the
+  book as it was before the edit. All three had the same cause. The preview
+  swaps in a freshly laid-out copy of your book and announces "done" when that
+  copy finishes; on a short book it finished so fast that the announcement went
+  out before anyone was listening, and it was simply lost. Whether you saw the
+  bug came down to how quickly your book laid out. The preview now says "done"
+  itself, at the moment it puts the new pages on screen, so there is nothing
+  left to miss.
+
 ## [0.10.1] - 2026-08-24
 
 ### Added
