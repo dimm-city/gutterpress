@@ -20,6 +20,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   opt-out invites shipping a silently scaled-down book, while an offer only
   exists when a real over-wide element does.
 
+### Removed
+
+- **`gutterpress repair --force` is gone**, along with the app-open check it
+  overrode. The desktop used to leave a liveness marker in the project while
+  it had it open, and `repair` refused to run when that marker looked fresh
+  unless you passed `--force`. The marker carried no actual locking — it
+  could only guess, and it failed open — so it stopped a real repair more
+  readily than it prevented a real clash. `repair` now simply runs. The
+  writes it makes were already serialized per project. Scripts passing
+  `--force` should drop the flag.
+
 ### Fixed
 
 - **Automatic syncing no longer rolls back the sentence you just typed.**
