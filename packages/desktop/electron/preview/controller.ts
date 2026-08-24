@@ -7,16 +7,16 @@
  * ---------------
  * `api:preview` used to be a ~300-line god-handler in main.ts (start the
  * preview server, detect the manifest title, upsert recents, arm auto-sync,
- * write the app-open heartbeat, emit a one-shot "local" status for
- * remote-less repos, and kick off preflight recovery) closing over module
- * globals. That made the recents/heartbeat/local-status ordering impossible
+ * emit a one-shot "local" status for remote-less repos, and kick off
+ * preflight recovery) closing over module
+ * globals. That made the recents/local-status ordering impossible
  * to unit-test without a full Electron + lib + network stack. This class owns
  * the exact same control flow, but every external touch-point is INJECTED via
  * `deps`, so tests drive it with fakes — mirrors export/controller.ts.
  *
  * The behavior is a faithful move of the original main.ts code: the
  * serialization of overlapping `api:preview` invocations (see `open()`), the
- * recents-upsert shape, the heartbeat/local-status/preflight fire-and-forget
+ * recents-upsert shape, the local-status/preflight fire-and-forget
  * triggers, and their relative order are preserved verbatim. Preflight repo
  * recovery itself is NOT reimplemented here — it is owned end-to-end by
  * AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts,
@@ -80,8 +80,6 @@ export interface PreviewOpenControllerDeps {
   armSyncInterval: (dir: string) => Promise<void>;
   /** AutoSyncOrchestrator.runPreflight — owns the whole recovery flow (finding #7). */
   runSyncPreflight: (dir: string, source: ProjectSourceResult) => Promise<void>;
-  /** App-open heartbeat refresh (repair-vs-desktop detection, M2). */
-  refreshAppHeartbeat: (dir: string) => Promise<void>;
   /** fs.promises.mkdir — ensure the operation-log dir exists. */
   mkdir: (dir: string, options: { recursive: boolean }) => Promise<unknown>;
   /** fs.promises.appendFile — create the operation-log file if absent. */
@@ -268,15 +266,6 @@ export class PreviewOpenController {
     // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
     // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
     if (source) void this.deps.armSyncInterval(openedDir);
-
-    // App-open heartbeat (repair-vs-desktop detection, M2): write immediately so
-    // a `Gutterpress repair` run right after open already sees a fresh marker —
-    // don't wait for the first periodic tick (up to autoSyncMinutes later).
-    // Reuses the injected refreshAppHeartbeat (not a second inline write) so the
-    // TTL stamped here always matches the one the periodic refresh stamps.
-    if (source?.type === "local-git-folder") {
-      void this.deps.refreshAppHeartbeat(openedDir);
-    }
 
     // Local-git projects the auto-sync engine won't sync still need an ambient
     // status (the pill would otherwise stay blank): "connect" when an HTTPS

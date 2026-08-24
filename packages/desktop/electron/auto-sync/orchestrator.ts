@@ -139,13 +139,6 @@ export interface AutoSyncOrchestratorDeps {
   getWatchedDir: () => string | null;
   /** Resolve the operation-log file path for a repo slug (project basename). */
   operationLogPath: (repoSlug: string) => string;
-  /**
-   * Best-effort: refresh the app-open heartbeat (repair-vs-desktop detection,
-   * M2 — see lib/app-heartbeat.ts) for `dir`. Called on every `run()`
-   * invocation so it piggybacks on the existing periodic safety-sync tick
-   * AND the file-change debounce fire — no dedicated timer is added for it.
-   */
-  refreshHeartbeat?: (dir: string) => void;
 }
 
 /**
@@ -397,9 +390,6 @@ export class AutoSyncOrchestrator {
    * status and emits it to the renderer.
    */
   async run(dir: string): Promise<void> {
-    // Any trigger reaching here is evidence the app is alive on `dir` now.
-    this.deps.refreshHeartbeat?.(dir);
-
     const state = this.getOrCreateState(dir);
 
     // Single-flight guard: if already in flight, arm the runAgain flag so we

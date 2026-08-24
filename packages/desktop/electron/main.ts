@@ -445,57 +445,6 @@ function emitSyncStatus(payload: SyncStatusPayload): void {
   safeSend("sync:status", payload);
 }
 
-// ── App-open heartbeat (repair-vs-desktop detection, M2) ──────────────────────
-// `Gutterpress repair` run from a terminal can race this app on the same repo —
-// the per-repo FIFO lock only serializes operations WITHIN a process. Rather
-// than a cross-process lock manager, this app leaves a small liveness marker
-// under the repo's own `.git` dir while a project is open (lib/app-heartbeat.ts,
-// shared by both hosts). `folderWatch.getWatchedDir()` (the folder watcher's
-// key) may be a BOOK subfolder inside a larger repo (repo-root sessions), so
-// the heartbeat always targets the resolved repo root, re-derived from the
-// watcher's own tracked dir on both write and cleanup — no separate mirror.
-
-/**
- * Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there.
- * Stamps the marker with a TTL derived from this app's OWN current auto-sync
- * cadence (`heartbeatTtlMs`) — `repair` only ever sees the repo, never this
- * app's settings, so the writer (here) is the only place that can translate
- * "refreshed every `autoSyncMinutes`" into "stays fresh for at least this
- * long". Without this, a fixed reader-side window (2 min) would read a live
- * app as closed for most of any longer configured cadence (up to 24 h).
- */
-async function refreshAppHeartbeat(dir: string): Promise<void> {
-  try {
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
-    const settings = await readSettings();
-    const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
-    await lib.writeAppHeartbeat(source.repoRoot, Date.now(), process.pid, lib.heartbeatTtlMs(periodicMs));
-  } catch (e) {
-    console.warn("[app-heartbeat] refresh failed (non-fatal):", e);
-  }
-}
-
-/**
- * Best-effort: remove the heartbeat for the currently (or just-stopped)
- * watched repo, if any. Called from the folder watcher's onStop callback,
- * which fires BEFORE the watcher clears its own tracked dir — so
- * `folderWatch.getWatchedDir()` still returns the project that was open,
- * the same dir refreshAppHeartbeat resolved its repo root from.
- */
-function clearAppHeartbeat(): void {
-  const dir = folderWatch.getWatchedDir();
-  if (!dir) return;
-  void loadLib()
-    .then(async (lib) => {
-      const source = await lib.detectProjectSource(dir);
-      if (source.type !== "local-git-folder") return;
-      await lib.removeAppHeartbeat(source.repoRoot);
-    })
-    .catch((e) => console.warn("[app-heartbeat] cleanup failed (non-fatal):", e));
-}
-
 const autoSync = new AutoSyncOrchestrator({
   loadLib,
   tokenStore: electronTokenStore,
@@ -504,9 +453,6 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
-  // timer added for it (every autoSync.run() call refreshes the heartbeat).
-  refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
 });
 
 const folderWatch = new FolderWatcher({
@@ -527,10 +473,6 @@ const folderWatch = new FolderWatcher({
     void flushAutoSnapshot();
     // Cancel all sync timers when the watched folder changes (project switch/close).
     autoSync.cancelAll();
-    // Same flush point covers app quit (mainWindow "closed" calls stopFolderWatch).
-    // Runs BEFORE the watcher clears its own tracked dir (see FolderWatcher.stop),
-    // so clearAppHeartbeat can still read folderWatch.getWatchedDir() here.
-    clearAppHeartbeat();
   },
 });
 
@@ -1548,7 +1490,7 @@ registerHostServices({
 // (api:doctor handler removed — migrated to server route)
 
 // The preview-open pipeline (start server, detect source, recents upsert,
-// auto-sync arm/heartbeat/preflight, local-status emit) lives in
+// auto-sync arm/preflight, local-status emit) lives in
 // electron/preview/controller.ts as an injected-deps class (unit-tested in
 // tests/platform/preview-open-controller.test.ts) — including the api:preview
 // invocation-serialization behavior (see its open() doc comment: unserialized,
@@ -1576,7 +1518,6 @@ const previewOpen = new PreviewOpenController({
   // conflict-latch, and the BUG-3 runAgain decision) is owned by the
   // orchestrator — see AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
   runSyncPreflight: (dir, source) => autoSync.runPreflight(dir, source),
-  refreshAppHeartbeat,
   mkdir: (dir, options) => mkdir(dir, options),
   appendFile: (filePath, data) => appendFile(filePath, data),
   setTimeout: (cb, ms) => setTimeout(cb, ms),

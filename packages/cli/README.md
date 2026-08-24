@@ -324,7 +324,6 @@ gutterpress repair [dir]
 
   --check     Diagnose only — never change anything (exit 1 when repair is needed)
   --yes       Approve the repair without prompting
-  --force     Repair even if the Gutterpress app appears to have this project open
 ```
 
 ### `gutterpress doctor`

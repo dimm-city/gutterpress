@@ -145,9 +145,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       calls.push(`runSyncPreflight:${dir}`);
       runPreflightCalls.push([dir, source]);
     },
-    refreshAppHeartbeat: async (dir) => {
-      calls.push(`refreshAppHeartbeat:${dir}`);
-    },
     mkdir: async (dir) => {
       mkdirCalls.push(dir);
     },
@@ -367,16 +364,6 @@ test("armSyncInterval and runSyncPreflight always fire for the opened dir", asyn
   expect(h.runPreflightCalls).toEqual([["/book", { type: "local-folder", path: "/book" }]]);
 });
 
-test("refreshAppHeartbeat fires only for local-git-folder sources", async () => {
-  const gitH = makeHarness({ sourceType: "local-git-folder", repoRoot: "/book" });
-  await gitH.controller.open({ input: "/book" });
-  expect(gitH.calls).toContain("refreshAppHeartbeat:/book");
-
-  const plainH = makeHarness({ sourceType: "local-folder" });
-  await plainH.controller.open({ input: "/book" });
-  expect(plainH.calls).not.toContain("refreshAppHeartbeat:/book");
-});
-
 test("local-status: skipped entirely for local-folder sources (no diagnose, no emit)", async () => {
   const h = makeHarness({ sourceType: "local-folder" });
   await h.controller.open({ input: "/book" });
@@ -510,7 +497,6 @@ test("overlapping open() calls are serialized in arrival order", async () => {
     getWatchedDir: () => null,
     armSyncInterval: async () => {},
     runSyncPreflight: async () => {},
-    refreshAppHeartbeat: async () => {},
     mkdir: async () => {},
     appendFile: async () => {},
     setTimeout: (cb) => {

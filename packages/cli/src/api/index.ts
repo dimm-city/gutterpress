@@ -204,22 +204,6 @@ export type {
   HistoryPage,
 } from "../lib/source-provider.ts";
 
-// ── App-open heartbeat (repair-vs-desktop detection) ───────────────────────────
-// A live desktop process leaves a small liveness marker under the repo's own
-// `.git` dir while a project is open; `gutterpress repair` checks it before
-// mutating so a terminal repair can't race a running app on the same repo.
-// One implementation, shared by both hosts — see lib/app-heartbeat.ts.
-export {
-  appHeartbeatPath,
-  heartbeatTtlMs,
-  isAppHeartbeatFresh,
-  readAppHeartbeat,
-  removeAppHeartbeat,
-  writeAppHeartbeat,
-  APP_HEARTBEAT_FRESH_MS,
-} from "../lib/app-heartbeat.ts";
-export type { AppHeartbeat } from "../lib/app-heartbeat.ts";
-
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {
   autoSnapshotDelayMs,

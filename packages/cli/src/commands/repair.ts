@@ -11,13 +11,6 @@
  *   gutterpress repair            diagnose + one y/N prompt before repairing
  *   gutterpress repair --check    diagnose only; exit 1 when repair is needed
  *   gutterpress repair --yes      skip the prompt
- *   gutterpress repair --force    repair even if the app appears to have this open
- *
- * The app-open guard: the desktop leaves a small liveness marker under the
- * repo's own `.git` dir while a project is open (app-heartbeat.ts). A fresh
- * marker means the app may be mid-write on this same repo right now, so
- * `repair` refuses to mutate anything (still safe to `--check`) unless the
- * author passes `--force`.
  *
  * All git work happens in the shared library (isomorphic-git); this file is
  * argument parsing, terminal I/O, and exit codes only.
@@ -32,7 +25,6 @@ import {
   defaultConfigDir,
   FileTokenStore,
   inspectRepo,
-  isAppHeartbeatFresh,
   isUnbornRepo,
   repairRepo,
   verifyRepoReadable,
@@ -69,11 +61,6 @@ const commandArgs = {
   yes: {
     type: "boolean",
     description: "Approve the repair without prompting",
-    default: false,
-  },
-  force: {
-    type: "boolean",
-    description: "Repair even if the Gutterpress app appears to have this project open",
     default: false,
   },
 } as const;
@@ -124,16 +111,6 @@ export default defineCommand({
 
     if (args.check) {
       console.log("\nRun `gutterpress repair` to fix it. Your files will not be changed.");
-      process.exitCode = 1;
-      return;
-    }
-
-    // A fresh heartbeat means the app may be mid-write on this same project
-    // right now — refuse to race it unless overridden.
-    if (!args.force && (await isAppHeartbeatFresh(openedDir))) {
-      console.log(
-        "\nThe Gutterpress app appears to have this project open. Close it first, or re-run with --force.",
-      );
       process.exitCode = 1;
       return;
     }
