@@ -222,6 +222,77 @@ try {
     }
   }
 
+  /**
+   * Double-click the target paragraph until the in-flow editor actually opens.
+   *
+   * Retrying is not flake-papering: "Updating the preview — try that again in a
+   * moment" is the DESIGNED answer while a commit's re-render is in flight, so
+   * ONE refused double-click proves nothing. Being refused FOREVER is the bug —
+   * the stale-range guard behind that message is lowered only by a render, so a
+   * commit that renders nothing used to leave it armed for the whole session.
+   */
+  async function openViaDoubleClick(what) {
+    const editing = book.locator(".gutterpress-editing");
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      const box = await boxOf(targetPara);
+      const { x, y } = centerOf(box);
+      await page.mouse.dblclick(x, y);
+      try {
+        await editing.waitFor({ state: "visible", timeout: 2_000 });
+        return;
+      } catch {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `${what}: the in-flow editor never opened, through 20s of repeated double-clicks`,
+          );
+        }
+      }
+      await sleep(500);
+    }
+  }
+
+  /** Type a sentinel into the OPEN in-flow editor, commit, and wait for disk. */
+  async function commitSentinel(sentinel) {
+    await page.keyboard.type(` ${sentinel}`);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+    // Reaching DISK through the same commit engine every menu action uses is
+    // the claim; asserting the box closed would not prove it.
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const content = readFileSync(chapterPath, "utf8");
+      if (content.includes(sentinel)) return content;
+      await sleep(100);
+    }
+    throw new Error(`a double-click edit (${sentinel}) did not reach disk within 20s of Cmd/Ctrl+Enter`);
+  }
+
+  /** Put the pristine fixture back; step 6 diffs disk byte-for-byte against it. */
+  async function restoreFixture(sentinels) {
+    writeFileSync(chapterPath, originalChapterContent);
+    const settleBy = Date.now() + 20_000;
+    while (Date.now() < settleBy) {
+      if (readFileSync(chapterPath, "utf8") === originalChapterContent) {
+        const stillThere = await book.locator("body").textContent().catch(() => "");
+        if (!sentinels.some((s) => stillThere?.includes(s))) break;
+      }
+      await sleep(200);
+    }
+  }
+
+  /** Same line count, exactly one line different — the edit stayed in its block. */
+  function assertOneLineChanged(before, after, what) {
+    const beforeLines = before.split("\n");
+    const afterLines = after.split("\n");
+    if (beforeLines.length !== afterLines.length) {
+      throw new Error(`${what} changed the line count (${beforeLines.length} -> ${afterLines.length})`);
+    }
+    const changed = beforeLines.map((l, i) => (l === afterLines[i] ? null : i)).filter((i) => i !== null);
+    if (changed.length !== 1) {
+      throw new Error(`${what} touched ${changed.length} lines, expected exactly 1`);
+    }
+  }
+
   async function dismissMenuViaOutsideClick() {
     // Escape does not reliably close the menu (see step 4's note) — click a
     // known-inert point in the MAIN document (never inside either iframe:
@@ -294,50 +365,47 @@ try {
   await dismissMenuViaOutsideClick();
 
   // ── 3c. Double-click is the SECOND entry point (protocol v8) ───────────────
-  await step("3c. double-click opens the in-flow editor and Cmd/Ctrl+Enter commits", async () => {
-    const box = await boxOf(targetPara);
-    const { x, y } = centerOf(box);
-    await page.mouse.dblclick(x, y);
-    const editing = book.locator(".gutterpress-editing");
-    await editing.waitFor({ state: "visible", timeout: 10_000 });
-    const SENTINEL = "ZZ-DBLCLICK-SENTINEL";
-    await page.keyboard.type(` ${SENTINEL}`);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+  // TWO commits in a row, with nothing external in between. One edit cannot
+  // see this: committing arms the stale-range guard and only the re-render the
+  // write causes lowers it again — and this step used to restore the fixture
+  // immediately after edit 1, so the write THAT caused was what cleared the
+  // guard. The second edit is what proves the app's own render does it.
+  await step("3c. two double-click edits in a row each open and commit", async () => {
+    const FIRST = "ZZ-DBLCLICK-SENTINEL";
+    const SECOND = "ZZ-DBLCLICK-SENTINEL-2";
+    await openViaDoubleClick("first double-click edit");
+    const afterFirst = await commitSentinel(FIRST);
+    assertOneLineChanged(originalChapterContent, afterFirst, "the first double-click commit");
 
-    // The double-click path has to reach DISK through the same commit engine
-    // every menu action uses — asserting the box closed would not prove that.
-    let content = originalChapterContent;
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      content = readFileSync(chapterPath, "utf8");
-      if (content.includes(SENTINEL)) break;
-      await sleep(100);
+    await openViaDoubleClick("second double-click edit, immediately after the first");
+    const afterSecond = await commitSentinel(SECOND);
+    if (!afterSecond.includes(FIRST)) {
+      throw new Error("the second double-click commit dropped the first edit");
     }
-    if (!content.includes(SENTINEL)) {
-      throw new Error("a double-click edit did not reach disk within 20s of Cmd/Ctrl+Enter");
-    }
-    // Only the edited block changed: same line count, one line differing.
-    const before = originalChapterContent.split("\n");
-    const after = content.split("\n");
-    if (before.length !== after.length) {
-      throw new Error(`double-click commit changed the line count (${before.length} -> ${after.length})`);
-    }
-    const changed = before.map((l, i) => (l === after[i] ? null : i)).filter((i) => i !== null);
-    if (changed.length !== 1) {
-      throw new Error(`double-click commit touched ${changed.length} lines, expected exactly 1`);
-    }
+    assertOneLineChanged(afterFirst, afterSecond, "the second double-click commit");
 
-    // Restore the pristine fixture: step 6 diffs disk byte-for-byte against it.
-    writeFileSync(chapterPath, originalChapterContent);
-    const settleBy = Date.now() + 20_000;
-    while (Date.now() < settleBy) {
-      if (readFileSync(chapterPath, "utf8") === originalChapterContent) {
-        const stillThere = await book.locator("body").textContent().catch(() => "");
-        if (!stillThere?.includes(SENTINEL)) break;
-      }
-      await sleep(200);
-    }
+    await restoreFixture([FIRST, SECOND]);
     await assertEditorClosed("double-click inline editing");
+  });
+
+  // ── 3d. The same action as a NO-OP, then a normal one after it ────────────
+  await step("3d. a no-op inline edit does not brick the next one", async () => {
+    // Open a block and close it WITHOUT changing anything. Nothing is written,
+    // so no re-render follows — and the stale-range guard is lowered ONLY by a
+    // render. 0.10.1-beta.3 armed it anyway, so every later double-click was
+    // refused with "Updating the preview — try that again in a moment" for the
+    // rest of the session: inline editing worked exactly once (fixed 27c8a2c).
+    await openViaDoubleClick("the no-op edit");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+    await book.locator(".gutterpress-editing").waitFor({ state: "detached", timeout: 10_000 });
+
+    const SENTINEL = "ZZ-AFTER-NOOP-SENTINEL";
+    await openViaDoubleClick("the edit after a no-op edit");
+    const content = await commitSentinel(SENTINEL);
+    assertOneLineChanged(originalChapterContent, content, "the commit after a no-op edit");
+
+    await restoreFixture([SENTINEL]);
+    await assertEditorClosed("inline editing after a no-op edit");
   });
 
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
@@ -909,6 +977,51 @@ try {
     }
     if (after.width - before.width < 80) {
       throw new Error(`two-column fit did not grow with the viewer: ${JSON.stringify({ before, after })}`);
+    }
+  });
+
+  // ── 13. The workspace mode has TWO writers, and they must not race ────────
+  // `setMode` assigns the live mode; `settings.set` notifies synchronously and
+  // echoes the persisted value back through the settings sink. Focus persists
+  // as "editor" (waking into a viewer-less window would be hostile), so
+  // entering Focus FROM Read writes a value the sink has not seen — its dedupe
+  // misses it and the echo assigns `mode = "editor"`. With the assignment
+  // first, that echo landed last and Ctrl+Shift+F from Read opened Edit with
+  // the viewer still up. Only Read → Focus reaches it: from Edit the echo is
+  // the value the sink already holds, so the dedupe swallows it.
+  await step("13. Ctrl+Shift+F enters Focus from Read, on both round trips", async () => {
+    // `aria-pressed` is the app's own signal (same source workspace-mode.mjs
+    // reads), and the buttons stay in the DOM at every width — CSS only
+    // decides which form is visible.
+    const modeActive = async (label) =>
+      (await page.locator(`.mode-group button[aria-label="${label}"]`).getAttribute("aria-pressed")) === "true";
+    const previewHidden = async () =>
+      (await page.locator(".preview-pane").getAttribute("aria-hidden")) === "true";
+
+    // Picking Read while ALREADY in Read is this action performed as a no-op:
+    // it must leave the live mode and its persisted echo agreeing, so the
+    // Ctrl+Shift+F below starts from a genuine Read.
+    await setWorkspaceMode(page, "Read");
+    await setWorkspaceMode(page, "Read");
+    if (!(await modeActive("Read"))) throw new Error("the toolbar does not report Read before Ctrl+Shift+F");
+    if (await previewHidden()) throw new Error("the viewer is already hidden in Read mode");
+
+    for (const round of [1, 2]) {
+      await page.keyboard.press("Control+Shift+F");
+      await page.waitForTimeout(300);
+      if (!(await modeActive("Focus"))) {
+        throw new Error(
+          `round ${round}: Ctrl+Shift+F from Read did not land in Focus ` +
+          `(Edit=${await modeActive("Edit")}, Read=${await modeActive("Read")}, ` +
+          `viewer hidden=${await previewHidden()})`,
+        );
+      }
+      if (!(await previewHidden())) throw new Error(`round ${round}: Focus left the viewer on screen`);
+
+      await page.keyboard.press("Control+Shift+F");
+      await page.waitForTimeout(300);
+      if (!(await modeActive("Read"))) throw new Error(`round ${round}: leaving Focus did not return to Read`);
+      if (await previewHidden()) throw new Error(`round ${round}: leaving Focus left the viewer hidden`);
     }
   });
 } catch (err) {

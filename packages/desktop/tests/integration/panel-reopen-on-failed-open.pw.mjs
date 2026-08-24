@@ -23,13 +23,17 @@
  *   2. Enters a nonexistent path via the location input and presses Enter.
  *   3. Waits for the error to surface (`openError` state).
  *   4. Asserts `.projects-body` is visible again after the failed open.
+ *   5. Submits the SAME bad path a second time — retrying an unchanged typo is
+ *      what an author actually does — and asserts the panel survives that too.
+ *   6. Opens a real book afterwards. Steps 1-5 all describe recovery machinery;
+ *      this is the one that proves the recovery worked.
  *
  * Usage:
- *   node tests/integration/panel-reopen-on-failed-open.pw.mjs [exe-or-main-js]
+ *   node tests/integration/panel-reopen-on-failed-open.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -43,12 +47,14 @@ const PORT = 9950 + Math.floor(Math.random() * 40);
 const log = (m) => console.log(`[panel-reopen] ${m}`);
 let child = null;
 let fakeHome = null;
+let bookDir = null;
 let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
   try { process.kill(-child.pid, "SIGTERM"); } catch { try { child?.kill(); } catch {} }
   try { if (fakeHome) rmSync(fakeHome, { recursive: true, force: true }); } catch {}
+  try { if (bookDir) rmSync(bookDir, { recursive: true, force: true }); } catch {}
 }
 const fail = (m) => {
   console.error(`[panel-reopen] FAIL: ${m}`);
@@ -59,7 +65,7 @@ process.on("exit", cleanup);
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
 
 // ── 1. launch the built app ──────────────────────────────────────────────────
-const [, , exeArg] = process.argv;
+const [, , exeArg, fixtureArg] = process.argv;
 const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.js");
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
@@ -68,6 +74,15 @@ const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}
 
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-panel-reopen-home-"));
 // Fresh userData — no lastProjectDir — so the app shows the welcome Projects panel.
+
+// A real book to open AFTER the failed opens, copied outside this git repo:
+// the committed fixture lives inside the Gutterpress repo, so the app sees a
+// syncable project and the fetch-on-open "New changes online" modal can pop
+// mid-test (same rationale as editor-dropdown-sync.pw.mjs).
+const srcFixture = resolve(fixtureArg ?? join(here, "fixtures", "multichapter"));
+if (!existsSync(srcFixture)) fail(`fixture not found: ${srcFixture}`);
+bookDir = mkdtempSync(join(tmpdir(), "gutterpress-panel-reopen-book-"));
+cpSync(srcFixture, bookDir, { recursive: true });
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
 const cmd = useXvfb ? "xvfb-run" : electronBin;
@@ -152,47 +167,78 @@ for (let i = 0; i < 20; i++) {
 if (!panelOpen) fail("Projects panel did not auto-open on startup (no .projects-body in 10s)");
 log("Projects panel open on startup");
 
-// ── 5. enter a nonexistent path and press Enter ──────────────────────────────
-const badPath = "/this-path-does-not-exist-" + Date.now();
-await evalJs(`(async () => {
-  const inp = document.querySelector('.projects-body .location-input');
-  if (!inp) throw new Error('location-input not found');
-  inp.focus();
-  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-  set.call(inp, ${JSON.stringify(badPath)});
-  inp.dispatchEvent(new Event('input', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 100));
-  inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  return true;
-})()`);
-log(`submitted bad path: ${badPath}`);
+// ── 5. enter a path and press Enter ──────────────────────────────────────────
+async function submitLocation(value) {
+  await evalJs(`(async () => {
+    const inp = document.querySelector('.projects-body .location-input');
+    if (!inp) throw new Error('location-input not found');
+    inp.focus();
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(inp, ${JSON.stringify(value)});
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  })()`);
+  log(`submitted path: ${value}`);
+}
 
-// ── 6. wait for the failed-open error state to surface ───────────────────────
+// ── 6. wait for the open attempt to resolve ──────────────────────────────────
 // The error shows as an openError message or a "set up as a book" prompt.
 // Either way, the key signal is that busy=false and no preview is loading.
-let errorSurfaced = false;
-for (let i = 0; i < 30; i++) {
-  // The busy spinner (aria-label="Loading") disappears when the open attempt resolves.
-  const stillBusy = await evalJs(
-    `!!document.querySelector('[aria-label="Loading"][aria-busy="true"]') || !!document.querySelector('.spinner')`
-  );
-  if (!stillBusy) { errorSurfaced = true; break; }
-  await sleep(500);
+async function waitUntilIdle(what) {
+  for (let i = 0; i < 30; i++) {
+    // The busy spinner (aria-label="Loading") disappears when the open attempt resolves.
+    const stillBusy = await evalJs(
+      `!!document.querySelector('[aria-label="Loading"][aria-busy="true"]') || !!document.querySelector('.spinner')`
+    );
+    if (!stillBusy) return;
+    await sleep(500);
+  }
+  fail(`App stayed busy for >15s after ${what}`);
 }
-if (!errorSurfaced) fail("App stayed busy for >15s after submitting bad path");
-log("error state surfaced (busy resolved)");
-await sleep(500); // allow DOM to settle
 
-// ── 7. assert Projects panel is visible ──────────────────────────────────────
-const panelStillOpen = await evalJs(`!!document.querySelector('.projects-body')`);
-if (!panelStillOpen) {
+// ── 7. a failed open leaves a browsing surface — TWICE, then for real ────────
+// One failure cannot see a latch. The panel is restored by the catch block and
+// the host serializes opens behind a promise chain whose rejections are
+// deliberately swallowed; both are "recover and carry on" machinery that a
+// single failing open exercises but never proves it can do again. So: fail,
+// fail AGAIN on the same path (the author retrying the typo unchanged), and
+// only then open a real book — which is the assertion that matters, because a
+// latched failure strands the author exactly as the original bug did.
+const badPath = "/this-path-does-not-exist-" + Date.now();
+for (const attempt of [1, 2]) {
+  await submitLocation(badPath);
+  await waitUntilIdle(`failed open attempt ${attempt}`);
+  await sleep(500); // allow DOM to settle
+  const panelStillOpen = await evalJs(`!!document.querySelector('.projects-body')`);
+  if (!panelStillOpen) {
+    fail(
+      `Projects panel closed after failed folder open (attempt ${attempt}) — user is stranded. ` +
+      'This is the beta.6 regression: the autoOpenPanel $effect was removed ' +
+      'without adding panel re-open to startFolderPreview\'s catch block.'
+    );
+  }
+  log(`attempt ${attempt}: Projects panel visible after the failed open`);
+}
+
+// ── 8. a real folder still opens afterwards ──────────────────────────────────
+await submitLocation(bookDir);
+let projectOpen = false;
+for (let i = 0; i < 120; i++) {
+  if (await evalJs(`!!(document.querySelector('.toc-item') || document.querySelector('.file-item'))`)) {
+    projectOpen = true;
+    break;
+  }
+  await sleep(1000);
+}
+if (!projectOpen) {
   fail(
-    'Projects panel closed after failed folder open — user is stranded. ' +
-    'This is the beta.6 regression: the autoOpenPanel $effect was removed ' +
-    'without adding panel re-open to startFolderPreview\'s catch block.'
+    `a real book at ${bookDir} never opened after two failed opens (no TOC/file items in 120s) — ` +
+    'the failure latched and the author cannot get out of it'
   );
 }
 
-log("PASS — Projects panel visible after failed folder open; catch block restores the panel");
+log("PASS — the panel survives repeated failed opens, and a real book still opens after them");
 cleanup();
 process.exit(0);
