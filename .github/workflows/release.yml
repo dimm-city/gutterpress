@@ -121,19 +121,21 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      # Finding #44: stable releases must ship with a changelog entry.
-      # Alpha/beta dispatches are iteration builds, so their notes can remain
-      # under Unreleased until the stable release is cut.
+      # Finding #44: a release must ship with a changelog entry.
+      #
+      # Checked against the BASE version, so `0.10.1-beta.4` looks for
+      # `## [0.10.1]` — the same heading the eventual stable cut needs. This
+      # used to skip prereleases entirely, which meant the check's first real
+      # execution was the stable dispatch: the one release that cannot be
+      # re-cut at the same version, because its tag is immutable. Running the
+      # identical check on every beta is what makes the stable path already
+      # proven by the time it matters.
       - name: Verify CHANGELOG.md has an entry for this version
         run: |
-          if echo "$VERSION" | grep -q -- '-'; then
-            echo "Skipping changelog check for prerelease $VERSION."
-            exit 0
-          fi
-
-          ESCAPED_VERSION="$(echo "$VERSION" | sed -e 's/\./\\./g')"
+          BASE_VERSION="${VERSION%%-*}"
+          ESCAPED_VERSION="$(echo "$BASE_VERSION" | sed -e 's/\./\\./g')"
           if ! grep -qE "^## \[${ESCAPED_VERSION}\]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [$VERSION]' heading. Add a changelog entry for this release (Keep a Changelog format) before dispatching."
+            echo "::error::CHANGELOG.md has no '## [$BASE_VERSION]' heading. Add a changelog entry for this release (Keep a Changelog format) before dispatching — head the section when you cut the first prerelease, not at the stable cut."
             exit 1
           fi
 
