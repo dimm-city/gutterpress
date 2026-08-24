@@ -105,13 +105,18 @@ Labelled `upstream` and written up for authors in
 **silently**; each entry carries a workaround and a removal trigger. No shims —
 "Chrome wins once it ships."
 
-- [ ] **#149** gradient-only `@page { background }` paints nothing (solid and
-      `url()` paint the full sheet)
-- [ ] **#150** `box-shadow` and `transform` dropped in `@page` margin boxes
-      (`border`/`background` on the same element paint fine)
-- [ ] **#152** large rasters dropped from `@page { background }` — bounded at
-      450×582 paints / 638×825 dropped; workaround shipped in `dc-op-manual`
-- [ ] A maintainer with a crbug.com account should file all three against
+- [ ] **#149** a gradient in `@page { background }` paints nothing — linear,
+      radial and repeating alike; a solid colour in the same place paints the
+      full sheet (`url()` is a separate bug, #152)
+- [ ] **#150** margin boxes drop every stacking-context / outside-the-box
+      property — `box-shadow`, `transform`, `opacity`, `outline`, `filter`,
+      `mix-blend-mode`; `text-shadow` and `border-radius` on the same box paint
+- [ ] **#152** `@page { background: url() }` is dropped for a **fetched URL**;
+      a `data:` URI paints. Not image dimensions — `asset-inline.ts` inlines
+      images ≤512 KB, so assets under that threshold paint and larger ones do
+      not, which is what the old "450×582 paints / 638×825 dropped" bound was
+      really measuring
+- [ ] A maintainer with a Google account should file all three against
       Chromium; our issues stay open as the citable reference and re-test trigger
 
 ---
