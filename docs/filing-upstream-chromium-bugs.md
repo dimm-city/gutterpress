@@ -17,7 +17,7 @@ rewriting it.
 |---|---|---|
 | [#149](https://github.com/dimm-city/gutterpress/issues/149) | Gradient-only `@page { background }` paints nothing in print | Solid color and `url()` on the same `@page` paint the full sheet |
 | [#150](https://github.com/dimm-city/gutterpress/issues/150) | `box-shadow` and `transform` silently dropped in `@page` margin boxes | `border` on the same margin box paints correctly |
-| [#152](https://github.com/dimm-city/gutterpress/issues/152) | Large raster images silently dropped from `@page { background }` | 450×582 paints; 638×825 and up are dropped — same image, same CSS |
+| [#152](https://github.com/dimm-city/gutterpress/issues/152) | `@page { background: url() }` not painted unless the image is referenced elsewhere | Adding a `<link rel=preload>` for the same URL makes it paint; the image is fetched either way |
 
 The control is the important half. It is what makes each of these a
 Chromium inconsistency rather than "paged media is unsupported," and it is the
@@ -36,10 +36,12 @@ first thing triage will look for.
    line at the top linking back to our issue.
 5. Attach the rasterized before/after if you have it — #152's flat-vs-textured
    pair and #149's blank-vs-painted sheet are the whole argument in one image.
+   For #152, attach the *same* page with and without the one-line
+   `<link rel="preload">`; that pair is the entire bug.
 6. State the versions from the issue, and only those: **#149** records
-   Chromium 148 and 151, **#150** records 148 with the runnable repro
-   re-verified on 151. **#152 records no version at all** — measure it before
-   you claim one. Do not widen the range beyond what was measured.
+   Chromium 148 and 151, **#150** records 148 with the repro re-verified on
+   151, **#152** records 151.0.7922.75. Do not widen the range beyond what was
+   measured.
 
 ## Related issues that already exist (checked 2026-08-24)
 
@@ -48,7 +50,7 @@ triage weights a bug that connects to live work.
 
 | Chromium | What it is | Why it matters to us |
 |---|---|---|
-| [438364050](https://issues.chromium.org/issues/438364050) | "Second section with a background image fails to render only in print preview & resultant saved pdf". P2, **Available**, on the *Rendering Core 2026 Fixit* hotlist, 13 comments. Bisected to **108.0.5343.2**, attributed to *"Set the LayoutNGPrinting feature to stable"*. Renders on screen, not in print; fine in Safari. | The closest existing bug to **#152**. Theirs is a section background, ours is `@page { background }` with a crisp size threshold — plausibly one root cause. **File #152 as related, and put the bounded evidence in it** (450×582 paints, 638×825 and up dropped): a reproducible size boundary is stronger than "an image sometimes vanishes", and that issue currently has no boundary. |
+| [438364050](https://issues.chromium.org/issues/438364050) | "Second section with a background image fails to render only in print preview & resultant saved pdf". P2, on the *Rendering Core 2026 Fixit* hotlist. Comment #13 (Jan 2026, Chromium engineer): *"Already passes with FragmentedOofInCb enabled."* | **Not ours — checked, not assumed.** `--enable-features=FragmentedOofInCb` changes nothing in our case (9/9 cells identical vs `--disable-features` and default), so #152 is a separate bug and belongs in its own report, not as a comment there. |
 | [382190915](https://issues.chromium.org/issues/382190915) | `background-attachment: fixed` does not cover page margins in print. P2, New. | Adjacent, not ours — same spec section ([css-page-3 §painting](https://drafts.csswg.org/css-page-3/#painting)) that #149 and #152 rest on. |
 | [406926291](https://issues.chromium.org/issues/406926291) | "Support for @page :blank selector". P3, New, filed by a Chromium engineer; states forced left/right page breaks are unsupported. | Not one of the three. It is the upstream record for **recto/verso** — the removal trigger for our `break-before: recto` handling. |
 | [40199963](https://issues.chromium.org/issues/40199963) | "Chrome PDF converts text to image when using drop-shadow CSS". P3, Assigned. | Upstream confirmation of exactly what `printsafe/no-risky-print-effects` warns about for `filter`, and the root cause behind dc-op-manual#28's ~30x build cost. |
@@ -72,9 +74,11 @@ Three small updates, so the removal trigger becomes real:
    [`known-limitations.md`](./known-limitations.md) (§1 = #149, §2 = #150,
    §3 = #152).
 3. Leave our issue **open**. It stays the citable reference for theme authors
-   and the trigger for deleting the book-side workaround — dc-op-manual's
-   downsampled `brick-bg-01-tile.png` exists only because of #152 and should be
-   deleted when #152 is fixed upstream.
+   and the trigger for deleting the book-side workaround. Note for #152: the
+   re-diagnosis means dc-op-manual's downsampled `brick-bg-01-tile.png` may not
+   be the fix it was thought to be — a `<link rel="preload">` for the
+   full-resolution asset should work instead. Re-test there before removing
+   anything.
 
 Do not add a shim while waiting. See
 [`CLAUDE.md`](../CLAUDE.md) — *"Chrome wins once it ships."*

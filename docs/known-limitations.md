@@ -89,35 +89,47 @@ element inside a `.page` — where both properties work normally.
 
 ---
 
-## 3. Large raster images in `@page { background }` are dropped
+## 3. A `@page { background }` image is dropped unless referenced elsewhere
 
 **Tracking:** [#152](https://github.com/dimm-city/gutterpress/issues/152) ·
-found during the 0.10.0 migration
+found during the 0.10.0 migration · **re-diagnosed 2026-08-24**
 
-A `url()` image in `@page { background }` is dropped once the **source image's
-pixel dimensions** get large enough. The page then shows only the background
-*colour*. The same image paints fine from `html { background }`.
+A `url()` image in `@page { background }` is not painted when the `@page` rule
+is the document's **only** reference to it. The page shows the background
+*colour* alone. Add any second reference — a `<link rel="preload" as="image">`,
+an `html { background }`, or even a 1×1 invisible `<img>` — and it paints.
 
-Measured bounds: **450×582 paints; 638×825 and up are dropped.** A 2550×3300
-tile produced a flat, textureless wall on all 292 pages of a real book.
+The image **is** fetched either way (confirmed in an HTTP access log on the
+failing run), so this is a paint/invalidation problem, not a loading one, and
+no amount of waiting fixes it: `--virtual-time-budget` at 30s and 60s both
+still produce a flat page.
 
-The trigger is source pixel dimensions — not `var()` resolution, not URL
-rewriting, not `background-size`, not `background-blend-mode`, and not
-shorthand-vs-longhand spelling. Ruling those out matters, because each looks
-like a plausible cause and none of them is.
+Measured on Chrome 151.0.7922.75, left-margin strip std-dev, same artwork at
+three sizes:
 
-**Write instead:** resample the tile to its display resolution. At a 1.5in tile
-width, 450px is exactly 300dpi — so this costs no print quality. Ship the
-downscaled asset and comment the source with the issue number so the swap is
-reversible.
+| tile source size | second reference present | `@page` alone |
+|---|---|---|
+| 450 × 582 | paints (18.63) | dropped (0.00) |
+| 638 × 825 | paints (18.63) | dropped (0.00) |
+| 2550 × 3300 | paints (18.50) | dropped (0.00) |
 
-**Removal trigger:** Chromium paints full-resolution rasters in `@page`
-backgrounds. Re-test at production size, never with a small test tile.
+**Write instead:** reference the image a second time. One
+`<link rel="preload" as="image" href="…">` in `<head>` is enough, and it is
+cheaper than shipping a downscaled duplicate of the asset.
 
-> **Testing note that cost us a full book build:** preflight verification with a
-> 16×16 test tile *passed*. Any fixture that claims to verify
-> `@page { background }` support must use a **production-sized** asset, or it
-> verifies nothing.
+**Removal trigger:** Chromium paints a `@page { background: url() }` image
+with no other reference to it. Test with the `@page` rule as the **only**
+reference.
+
+> **Testing note that cost us a full book build, and then a wrong diagnosis:**
+> this entry previously said the trigger was the image's pixel dimensions
+> (450×582 paints, 638×825 and up dropped) and told you to re-test "at
+> production size, never with a small test tile." Both halves were wrong — the
+> big tile paints and the small one does not, given the same number of
+> references. Every fixture that "verified" `@page { background }` happened to
+> reference the image elsewhere on the page, so all of them passed regardless
+> of the bug. A fixture is only testing this if the `@page` rule is the sole
+> reference.
 
 ---
 
