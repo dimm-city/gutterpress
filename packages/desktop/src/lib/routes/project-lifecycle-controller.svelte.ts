@@ -66,7 +66,6 @@ export type ProjectLifecyclePreviewResult =
       previewStarted: true;
       url: string;
       title: string | null;
-      engine: "paged" | "native";
     }
   | {
       previewStarted: false;
@@ -94,7 +93,6 @@ interface ProjectLifecyclePageNav {
 
 /** Composed `ZoomViewController` surface touched by per-project restore. */
 interface ProjectLifecycleZoomView {
-  userSetViewMode: boolean;
   restoreSplitRatio(ratio: number): void;
 }
 
@@ -131,16 +129,14 @@ export interface ProjectLifecycleDeps {
   pageNav: ProjectLifecyclePageNav;
   /** The composed ZoomViewController instance (shared reference). */
   zoomView: ProjectLifecycleZoomView;
-  /** Seed the settings store's per-project view-mode override on restore. */
-  setViewModeSetting: (mode: "single" | "two-column") => void;
   /** Seed the settings store's split-ratio override on restore (#103) — keeps
    * the durable default and the just-restored per-project ratio consistent so
    * the async settings-load can't clobber it. */
   setSplitRatioSetting: (value: number) => void;
-  /** Seed the pending page/view-mode restore consumed by PreviewEventController. */
-  setPendingRestore: (viewMode: "single" | "two-column" | null, page: number | null) => void;
+  /** Seed the pending page restore consumed by PreviewEventController. */
+  setPendingRestore: (page: number | null) => void;
   /**
-   * Read the per-project page/view-mode/split state for a directory.
+   * Read the per-project page/split state for a directory.
    *
    * Owned by this controller rather than passed in by the caller (2026-07-29
    * audit): the state is WRITTEN under the RESOLVED book dir, but every caller
@@ -176,7 +172,7 @@ export interface ProjectLifecycleDeps {
   /**
    * The single page-local reset hook for state this controller does not own:
    * the Problems panel (`problems`/`problemsError`/`problemsOpen`), the
-   * editor pane (`editorOpen`/`previewHidden`), the
+   * workspace `mode` switch, the
    * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
    * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
@@ -189,8 +185,6 @@ export interface ProjectLifecycleDeps {
 export class ProjectLifecycleController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   previewUrl = $state<string | null>(null);
-  /** The engine actually rendering `previewUrl` — see PreviewStartSuccess's doc comment. */
-  previewEngine = $state<"paged" | "native">("paged");
   currentDir = $state<string | null>(null);
   /** Adapter-precomputed display name (#49) for the open folder, or null when opened by raw key. */
   currentFolderDisplayName = $state<string | null>(null);
@@ -238,7 +232,6 @@ export class ProjectLifecycleController {
    */
   private resetWorkspace(): void {
     this.previewUrl = null;
-    this.previewEngine = "paged";
     this.currentDir = null;
     this.currentFolderDisplayName = null;
     this.currentUrl = null;
@@ -379,23 +372,14 @@ export class ProjectLifecycleController {
         await Promise.resolve();
         if (superseded()) return false;
         this.previewUrl = data.url;
-        this.previewEngine = data.engine;
         this.rendering = true;
       }
       // Settle the restore-state read here, where it is applied.
       const restored = await restoreState;
       if (superseded()) return false;
-      const restoredViewMode = restored?.viewMode;
       d.setPendingRestore(
-        restoredViewMode ?? null,
         restored?.currentPage && restored.currentPage > 1 ? restored.currentPage : null,
       );
-      if (restoredViewMode) {
-        // Per-project DesktopPrefs override → seed the settings store so the
-        // derived viewMode reflects this project's last-used mode.
-        d.setViewModeSetting(restoredViewMode);
-      }
-      d.zoomView.userSetViewMode = !!restoredViewMode;
       if (typeof restored?.splitPaneRatio === "number") {
         d.zoomView.restoreSplitRatio(restored.splitPaneRatio);
         // Mirror the durable settings value to the per-project ratio so the
@@ -467,7 +451,6 @@ export class ProjectLifecycleController {
       await Promise.resolve();
       if (epoch !== this.folderOpenEpoch) return false;
       this.previewUrl = data.url;
-      this.previewEngine = data.engine;
       this.rendering = true;
       return true;
     } catch (e) {
@@ -545,7 +528,7 @@ export class ProjectLifecycleController {
     this.urlPreviewError = null;
     this.saveWarning = null;
     // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
-    // what now also clears the crash-recovery scan state/previewHidden/
+    // what now also clears the crash-recovery scan state/workspace mode/
     // pageNav's counters here, closing the exact divergence the review
     // flagged (openUrl used to miss them; pageEditing itself was later
     // retired entirely with the toolbar refactor — see PageNavController).

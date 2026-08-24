@@ -6,13 +6,19 @@
  * Usage: node drive-app.mjs <fixtureDir> <engineLabel> <editChapterFile>
  */
 import { _electron as electron } from "playwright-core";
+import { setWorkspaceMode } from "./workspace-mode.mjs";
 import { existsSync, mkdtempSync, writeFileSync, readFileSync, appendFileSync, cpSync, rmSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const desktopDir = "/home/founder3/code/dimm-city/print-md/packages/desktop";
+// Resolve from THIS FILE, never a hardcoded absolute path: the literal that
+// used to sit here pointed at one developer's machine
+// (`/home/founder3/code/dimm-city/print-md/...`), so this script could not run
+// anywhere else — including CI and every other checkout. Same convention as
+// inline-editing.pw.mjs.
+const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require_ = createRequire(join(desktopDir, "package.json"));
 const electronBin = require_("electron");
 const mainJs = join(desktopDir, "out", "main", "main.js");
@@ -69,22 +75,20 @@ try {
   // ── 1. open -> first rendered preview timing ────────────────────────────
   await book.locator("body").waitFor({ state: "attached", timeout: 60_000 });
   // The native viewer exposes each visible page as a .gp-sheet.
-  await Promise.race([
-    book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-    book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-  ]);
+  await book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
   const t1 = Date.now();
   results.openToFirstPreviewMs = t1 - t0;
   log(`1. open->first preview: ${results.openToFirstPreviewMs}ms`);
 
-  // Sanity: which engine did we actually get?
-  const sheetKind = await bookEval((doc) => {
-    if (doc.ownerDocument.querySelector(".pagedjs_page")) return "paged";
-    if (doc.ownerDocument.querySelector(".gp-sheet")) return "native";
-    return "unknown";
-  });
-  results.detectedEngine = sheetKind;
-  log(`detected DOM engine markers: ${sheetKind}`);
+  // Sanity: the viewer really painted pages. This used to branch on
+  // `.pagedjs_page` vs `.gp-sheet` and report the winner as `detectedEngine`
+  // — a constant dressed as a measurement, since native is the only engine.
+  // A missing `.gp-sheet` now means the preview FAILED, which is the only
+  // thing this check can honestly tell us.
+  const sheetCount = await bookEval((el) => el.ownerDocument.querySelectorAll(".gp-sheet").length);
+  results.renderedSheets = sheetCount;
+  log(`viewer painted ${sheetCount} sheet(s)`);
+  if (sheetCount === 0) throw new Error("the native viewer painted no pages");
 
   // ── 2. hot reload, 3 samples ─────────────────────────────────────────────
   const editPath = join(fixtureArg, editFileRel);
@@ -176,23 +180,18 @@ try {
   results.toolbarNav = { last: navLast, first: navFirst, middleLanded: navMiddle };
 
   // ── 5. view modes toggle ─────────────────────────────────────────────────
-  await page.locator('button[aria-label="Two pages side by side"]').click().catch(async () => {
-    // collapsed toolbar: use the menu
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.locator('button[aria-label="Two pages side by side"]').click();
-  });
+  // Two pages = Read mode (the helper handles the collapsed toolbar).
+  await setWorkspaceMode(page, "Read");
   await sleep(500);
   const shotFn = (el) => {
     const doc = el.ownerDocument;
-    const sheets = [...doc.querySelectorAll(".gp-sheet, .pagedjs_page")].slice(0, 4)
+    const sheets = [...doc.querySelectorAll(".gp-sheet")].slice(0, 4)
       .map((n) => { const r = n.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; });
     return { bodyClass: doc.body.className, sheets };
   };
   const twoUpShot = await bookEval(shotFn);
-  await page.locator('button[aria-label="Single page view"]').click().catch(async () => {
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.locator('button[aria-label="Single page view"]').click();
-  });
+  // One page = Edit mode.
+  await setWorkspaceMode(page, "Edit");
   await sleep(500);
   const singleShot = await bookEval(shotFn);
   results.viewModes = { twoUp: twoUpShot, single: singleShot };

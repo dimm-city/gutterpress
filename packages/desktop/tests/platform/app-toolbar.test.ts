@@ -101,18 +101,16 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
     expect(src).toMatch(/\.toolbar-start\s*\{[^}]*min-width:\s*0/);
   });
 
-  test("URL mode pre-pays for the page nav: tighter caps, compact view-mode, no hints, no dead pane toggles", () => {
+  test("URL mode pre-pays for the page nav: tighter caps, no mode switch, no hints", () => {
     const src = toolbar();
     // The URL start cluster (title + URL + open-in-browser) is ~2× the folder
     // cluster; without these the middle track starves and the page nav clips
     // on ordinary desktop windows.
     expect(src).toContain('class:url-mode={sourceMode === "url"}');
     expect(src).toMatch(/\.toolbar\.url-mode \.path\s*\{\s*max-width/);
-    expect(src).toMatch(/\.toolbar\.url-mode \.view-mode-group\s*\{\s*display:\s*none/);
+    // A URL source has no editor, so BOTH forms of the mode switch go.
+    expect(src).toMatch(/\.toolbar\.url-mode \.mode-group,\s*\n\s*\.toolbar\.url-mode details\.mode-menu\s*\{\s*display:\s*none/);
     expect(src).toMatch(/\.toolbar\.url-mode \.save-hint\s*\{\s*display:\s*none/);
-    // The preview/editor pane toggles never apply to URL sources — they are
-    // not rendered rather than rendered permanently disabled.
-    expect(src).toMatch(/\{#if !isNarrow && sourceMode !== "url"\}/);
   });
 
   test("edit-narrow hides the separators along with the view controls (no adjacent double rule)", () => {
@@ -157,18 +155,16 @@ describe("AppToolbar — primary action order: Publish, Export, Save", () => {
     expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
   });
 
-  test("the Project settings button sits beside the editor toggle (and stays reachable on narrow layouts)", () => {
+  test("the Project settings button sits beside the view controls (and stays reachable on narrow layouts)", () => {
     const src = toolbar();
-    const editorToggleIdx = src.indexOf('aria-label="Toggle markdown editor"');
+    const zoomIdx = src.indexOf('class="menu zoom-menu"');
     const settingsIdx = src.indexOf('class="icon-btn project-settings-btn"');
-    expect(editorToggleIdx).toBeGreaterThan(-1);
-    expect(settingsIdx).toBeGreaterThan(editorToggleIdx);
+    expect(zoomIdx).toBeGreaterThan(-1);
+    expect(settingsIdx).toBeGreaterThan(zoomIdx);
     // Before the separator that leads into the primary actions.
     expect(settingsIdx).toBeLessThan(src.indexOf('class="publish-btn'));
-    // NOT inside the {#if !isNarrow …} block — narrow layouts keep it.
-    const gateIdx = src.indexOf('{#if !isNarrow && sourceMode !== "url"}');
-    const gateEnd = src.indexOf("{/if}", gateIdx);
-    expect(settingsIdx).toBeGreaterThan(gateEnd);
+    // Gated only on `showProjectSettings` — narrow layouts keep it.
+    expect(src).toMatch(/\{#if showProjectSettings\}[\s\S]{0,400}?project-settings-btn/);
     expect(src).toMatch(/project-settings-btn[\s\S]{0,200}?onclick=\{onOpenProjectSettings\}/);
   });
 });
@@ -239,6 +235,85 @@ describe("AppToolbar — small-screen pane switcher (defunct style tab removed)"
   });
 });
 
+// ── One segmented control per workspace mode ─────────────────────────────────
+//
+// `WorkspaceMode` has three values; the toolbar used to carry FOUR controls for
+// them (an Edit/Read segmented pair, an eye button for `focus`, and a pen
+// button that toggled the editor). The segmented control is now the whole
+// story: one segment per enum value, nothing keyboard-only, no icon buttons
+// duplicating it.
+describe("AppToolbar — the mode control is the whole mode model", () => {
+  test("the segmented group has one segment per WorkspaceMode value", () => {
+    const src = toolbar();
+    const group = src.slice(src.indexOf('<div class="mode-group">'), src.indexOf("</div>", src.indexOf('<div class="mode-group">')));
+    expect(group).toContain('onSetMode("editor")');
+    expect(group).toContain('onSetMode("viewer")');
+    expect(group).toContain('onSetMode("focus")');
+    expect(group).toContain('aria-label="Edit"');
+    expect(group).toContain('aria-label="Read"');
+    expect(group).toContain('aria-label="Focus"');
+  });
+
+  test("segments are mutually exclusive — active/aria-pressed track the mode exactly", () => {
+    const src = toolbar();
+    // Edit used to light up for `focus` too (it was `mode !== "viewer"`), which
+    // is precisely the ambiguity a third segment removes.
+    expect(src).toContain('class:active={mode === "editor"}');
+    expect(src).toContain('class:active={mode === "viewer"}');
+    expect(src).toContain('class:active={mode === "focus"}');
+    expect(src).not.toContain("editorShowing");
+  });
+
+  test("the collapsed menu twin carries the same three modes", () => {
+    const src = toolbar();
+    const menu = src.slice(src.indexOf('<details class="menu mode-menu">'), src.indexOf("</details>", src.indexOf('<details class="menu mode-menu">')));
+    for (const m of ["editor", "viewer", "focus"]) {
+      expect(menu).toContain(`onSetMode("${m}"); closeMenu(e);`);
+    }
+    // Its summary icon reports the CURRENT mode — all three of them.
+    expect(src).toMatch(/"book-open"[\s\S]{0,80}?"maximize"[\s\S]{0,80}?"pen-line"/);
+  });
+
+  test("Focus is unavailable below the narrow breakpoint — there is no side-by-side viewer to hide", () => {
+    const src = toolbar();
+    // Matches togglePreview()'s own `if (!lifecycle.previewUrl || isNarrow) return`
+    // guard: narrow layouts pick their single pane with the tab bar, so a
+    // viewer-less `focus` there leaves the preview on screen but inert.
+    expect(src).toContain("disabled={editorToggleDisabled || isNarrow}");
+  });
+
+  test("the eye and pen icon buttons are gone, along with the props that fed them", () => {
+    const src = toolbar();
+    for (const dead of ["onTogglePreview", "previewToggleDisabled", "onToggleEditor"]) {
+      expect(src).not.toContain(dead);
+    }
+    expect(src).not.toContain('aria-label="Toggle markdown editor"');
+    expect(src).not.toContain("Hide preview");
+    expect(src).not.toContain("Show preview");
+    // The whole `{#if !isNarrow && sourceMode !== "url"}` block existed only to
+    // host those two buttons.
+    expect(src).not.toContain('{#if !isNarrow && sourceMode !== "url"}');
+  });
+
+  test("+page.svelte stops handing the toolbar the retired props", () => {
+    const src = page();
+    for (const dead of ["onTogglePreview=", "previewToggleDisabled=", "onToggleEditor="]) {
+      expect(src).not.toContain(dead);
+    }
+    // Both shortcut targets survive — they are keyboard/editor-toolbar paths,
+    // not toolbar buttons.
+    expect(src).toContain("function togglePreview");
+    expect(src).toContain("function toggleEditor()");
+  });
+
+  test("Ctrl+E keeps a visible home now that the pen button is gone", () => {
+    const src = toolbar();
+    // The pen button's tooltip was the only place the app named Ctrl+E.
+    expect(src).toContain("(Ctrl+E)");
+    expect(src).toContain("(Ctrl+Shift+F)");
+  });
+});
+
 describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere", () => {
   test("focus mode is an editor-toolbar item, advanced setup lives in app Settings, template export in the export dialog", () => {
     const actions = read("src/lib/editor/toolbar-actions.ts");
@@ -248,8 +323,8 @@ describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere"
     expect(settings).toContain("<ConnectionsSettings {projectDir} />");
     const exportDialog = read("src/lib/components/ExportDialog.svelte");
     expect(exportDialog).toContain("template");
-    // +page routes the editor-toolbar action to the focus-mode toggle.
-    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?toggleFocusMode\(\)/);
+    // +page routes the editor-toolbar action to the hide-the-viewer toggle.
+    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?togglePreview\(\)/);
   });
 });
 

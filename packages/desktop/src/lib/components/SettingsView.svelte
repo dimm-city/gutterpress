@@ -13,7 +13,6 @@
     onClose,
     projectDir = null,
     initialTab = "app",
-    onViewModeChange,
     onCrashRecoveryChange,
     embedded = false,
     idPrefix = "settings",
@@ -25,8 +24,6 @@
     /** The tab to land on when the view opens (e.g. "connections" from the
      *  reconnect / advanced-setup entry points). */
     initialTab?: SettingsTab;
-    /** Called immediately when the user changes the view mode setting. */
-    onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
     onCrashRecoveryChange?: (enabled: boolean) => void;
     /** Rendered INSIDE another surface (the start screen's Settings tab)
@@ -207,17 +204,6 @@
         <div class="group-head">
           <h3>Preview</h3>
           <button class="reset" onclick={() => settings.resetSection("preview")} title="Reset preview settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-viewmode">View mode</label>
-          <select
-            id="set-viewmode"
-            value={s.preview.viewMode}
-            onchange={(e) => { const mode = (e.currentTarget as HTMLSelectElement).value as "single" | "two-column"; settings.set({ preview: { viewMode: mode } }); onViewModeChange?.(mode); }}
-          >
-            <option value="single">Single page</option>
-            <option value="two-column">Two pages side by side</option>
-          </select>
         </div>
         <div class="row">
           <label for="set-zoom">Default zoom</label>

@@ -9,7 +9,6 @@ import {
   resolveIccProfile,
   BuildError,
 } from "./build-runner.ts";
-import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 
 /**
@@ -18,26 +17,16 @@ import { getAssetPath } from "./embedded-assets.ts";
  * full HTML build path and the extracted pure ICC-resolution helper, so the
  * god-function -> stages+strategies refactor is provably behavior-preserving.
  *
- * The HTML build assertion exercises the runtime-pagination fallback
+ * The HTML build assertion exercises runtime pagination
  * (shipRuntimePaginatedHtml): markdown -> book.html + index.html + fingerprint,
- * and the returned BuildRunnerResult shape. That fallback path is only taken
- * when NO Chromium is resolvable, so — mirroring pagination.test.ts's
- * `chromium ? test : test.skip` gate, inverted — it runs only when Chromium is
- * absent. When Chromium IS present (e.g. CI's Test job sets
- * PUPPETEER_EXECUTABLE_PATH), runBuild paginates in Chromium instead; that path
- * is covered by pagination.test.ts, and launching a real browser here
- * would both change the exercised code path and blow the test timeout.
+ * and the returned BuildRunnerResult shape. It runs unconditionally. An html
+ * build never paginates in Chromium regardless of whether one is resolvable —
+ * `rendersInPooledChromium()` in build-preflight.ts is
+ * `format !== "html" && !opts.engineBrowser` — so there is no second code path
+ * for a Chromium-present run to take, and nothing to gate on. This test was
+ * previously skipped whenever a Chromium resolved, which is every CI run.
  * The ICC-resolver tests below are pure and always run.
  */
-
-const chromium = await resolveChromiumExecutable();
-const htmlFallbackTest = chromium ? test.skip : test;
-if (chromium) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[build-runner.orchestration.test] Chromium resolved — skipping the HTML runtime-pagination fallback assertion (the Chromium path is covered by pagination.test.ts)."
-  );
-}
 
 const dirsToClean: string[] = [];
 
@@ -47,7 +36,7 @@ afterEach(async () => {
   }
 });
 
-htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
+test("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
   const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-in-"));
   const outDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-out-"));
   dirsToClean.push(inputDir, outDir);

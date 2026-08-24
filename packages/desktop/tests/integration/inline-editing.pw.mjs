@@ -40,6 +40,7 @@
  */
 import { _electron as electron } from "playwright-core";
 import { waitForAppWindow } from "./app-window.mjs";
+import { setWorkspaceMode } from "./workspace-mode.mjs";
 import { cpSync, existsSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -258,22 +259,86 @@ try {
     }
   });
 
-  await step("3b. the real block-menu action opens an operable inline editor", async () => {
+  await step("3b. the real block-menu action edits the block IN THE PAGE", async () => {
+    // Protocol v8: there is no SPA-side panel to look for. The editing surface
+    // is the block's own element inside the book iframe, so the assertions are
+    // about that element — it becomes contenteditable, holds the block's
+    // markdown SOURCE (not its rendered text), and takes typing.
     await page.locator(".context-menu-item", { hasText: "Edit this block" }).click();
-    const overlay = page.locator(".block-edit-overlay");
-    await overlay.waitFor({ state: "visible", timeout: 10_000 });
-    const input = overlay.locator(".cm-content");
-    await input.click();
-    await page.keyboard.press("End");
-    await page.keyboard.type(" test");
-    const text = await input.textContent();
-    if (!text?.includes("test")) throw new Error("typing did not reach the inline block editor");
+    const box = book.locator(".gutterpress-editing");
+    await box.waitFor({ state: "visible", timeout: 10_000 });
+    if ((await box.count()) !== 1) {
+      throw new Error(`expected exactly one editing block, got ${await box.count()}`);
+    }
+    if ((await box.getAttribute("contenteditable")) !== "plaintext-only") {
+      throw new Error("the block did not become a plaintext-only editing surface");
+    }
+    // A sentinel, NOT the word "test": the fixture paragraph already reads
+    // "...for right click testing", so `includes("test")` matched the original
+    // text and made both checks below pass vacuously (caught by this test
+    // reporting "Escape did not discard the edit" on an edit it had discarded
+    // correctly).
+    const SENTINEL = "ZZ-INFLOW-SENTINEL";
+    await page.keyboard.type(` ${SENTINEL}`);
+    const text = await box.textContent();
+    if (!text?.includes(SENTINEL)) throw new Error("typing did not reach the in-flow block editor");
+
+    // Escape cancels: the box reverts to rendered HTML, and the typing is gone.
     await page.keyboard.press("Escape");
-    await overlay.waitFor({ state: "hidden", timeout: 10_000 });
+    await book.locator(".gutterpress-editing").waitFor({ state: "detached", timeout: 10_000 });
+    const reverted = await targetPara.first().textContent();
+    if (reverted?.includes(SENTINEL)) throw new Error("Escape did not discard the edit");
     await assertEditorClosed("inline block editing");
   });
 
   await dismissMenuViaOutsideClick();
+
+  // ── 3c. Double-click is the SECOND entry point (protocol v8) ───────────────
+  await step("3c. double-click opens the in-flow editor and Cmd/Ctrl+Enter commits", async () => {
+    const box = await boxOf(targetPara);
+    const { x, y } = centerOf(box);
+    await page.mouse.dblclick(x, y);
+    const editing = book.locator(".gutterpress-editing");
+    await editing.waitFor({ state: "visible", timeout: 10_000 });
+    const SENTINEL = "ZZ-DBLCLICK-SENTINEL";
+    await page.keyboard.type(` ${SENTINEL}`);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+
+    // The double-click path has to reach DISK through the same commit engine
+    // every menu action uses — asserting the box closed would not prove that.
+    let content = originalChapterContent;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      content = readFileSync(chapterPath, "utf8");
+      if (content.includes(SENTINEL)) break;
+      await sleep(100);
+    }
+    if (!content.includes(SENTINEL)) {
+      throw new Error("a double-click edit did not reach disk within 20s of Cmd/Ctrl+Enter");
+    }
+    // Only the edited block changed: same line count, one line differing.
+    const before = originalChapterContent.split("\n");
+    const after = content.split("\n");
+    if (before.length !== after.length) {
+      throw new Error(`double-click commit changed the line count (${before.length} -> ${after.length})`);
+    }
+    const changed = before.map((l, i) => (l === after[i] ? null : i)).filter((i) => i !== null);
+    if (changed.length !== 1) {
+      throw new Error(`double-click commit touched ${changed.length} lines, expected exactly 1`);
+    }
+
+    // Restore the pristine fixture: step 6 diffs disk byte-for-byte against it.
+    writeFileSync(chapterPath, originalChapterContent);
+    const settleBy = Date.now() + 20_000;
+    while (Date.now() < settleBy) {
+      if (readFileSync(chapterPath, "utf8") === originalChapterContent) {
+        const stillThere = await book.locator("body").textContent().catch(() => "");
+        if (!stillThere?.includes(SENTINEL)) break;
+      }
+      await sleep(200);
+    }
+    await assertEditorClosed("double-click inline editing");
+  });
 
   // ── 4. Shift+F10 opens the menu too (keyboard path, listener lives in the
   //      cross-origin book iframe) ────────────────────────────────────────────
@@ -388,7 +453,7 @@ try {
   // ── 7. Only Go to source opens the editor ────────────────────────────────
   const DEEP_TARGET_TEXT = "This deep paragraph is the click to source target";
   await step("7. normal preview clicks stay passive; Go to source opens and places the caret", async () => {
-    // Step 6's edit triggers an async settled-write -> chapter-splice
+    // Step 6's edit triggers an async settled-write -> full-reload swap
     // refresh; let it fully settle first (the loading overlay clears, the
     // book iframe re-attaches) so this step's coordinates are computed
     // against final, stable layout rather than a mid-reflow snapshot.
@@ -433,7 +498,8 @@ try {
     }
 
     // Close it again so the remaining menu actions prove they do not open it.
-    await page.locator('[aria-label="Toggle markdown editor"]').click();
+    // Closing IS choosing Read — the mode control has no separate editor toggle.
+    await page.locator('[aria-label="Read"]').click();
     await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
     await assertEditorClosed("closing after Go to source");
   });
@@ -619,7 +685,7 @@ try {
   await step("9. a real preview update preserves the two-column scroll position", async () => {
     await dismissMenuViaOutsideClick();
     if (await page.locator(".cm-editor").count()) {
-      await page.locator('[aria-label="Toggle markdown editor"]').click();
+      await page.locator('[aria-label="Read"]').click();
       await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
     }
 
@@ -732,11 +798,9 @@ try {
     });
     await page.waitForTimeout(250);
 
-    const singleButton = page.getByRole("button", { name: "Single page" });
-    if (!(await singleButton.count())) {
-      await page.locator('summary[aria-label="Page view mode"]').click();
-    }
-    await page.getByRole("button", { name: "Single page" }).click();
+    // One page = Edit mode. The window is 1100px here, comfortably above
+    // NARROW_BREAKPOINT, so nothing is clamping the choice.
+    await setWorkspaceMode(page, "Edit");
     await page.locator('summary[aria-label="Zoom level"]').click();
     await page.getByRole("button", { name: "Fit to width" }).click();
 
@@ -779,14 +843,35 @@ try {
     if (Math.abs(after.left - after.right) > gutterTolerance || after.leftSpread > 1) {
       throw new Error(`single fit is not centered/aligned after resize: ${JSON.stringify(after)}`);
     }
-    if (before.width - after.width < 100) {
-      throw new Error(`fit width did not react to the narrower viewer: ${JSON.stringify({ before, after })}`);
+    // Assert the INVARIANT, not a magic pixel budget: fit-to-width keeps the
+    // page filling the same fraction of the viewer, whatever the viewer's
+    // width. The old `before.width - after.width < 100` was calibrated to a
+    // model where single-page and "editor open" were independent switches, so
+    // the pane saw the whole window delta. Single page now means the editor is
+    // beside it, so the pane absorbs about half — the fit reacted by 87px to a
+    // 97px viewport change and the absolute threshold called that a failure.
+    // The ratio catches a fit that ignores the viewport, and cannot drift with
+    // the layout.
+    if (!(after.viewport < before.viewport)) {
+      throw new Error(`the viewer did not get narrower: ${JSON.stringify({ before, after })}`);
+    }
+    const fillBefore = before.width / before.viewport;
+    const fillAfter = after.width / after.viewport;
+    if (Math.abs(fillBefore - fillAfter) > 0.02) {
+      throw new Error(
+        `fit width did not track the narrower viewer: fill ${fillBefore.toFixed(3)} -> ` +
+        `${fillAfter.toFixed(3)} ${JSON.stringify({ before, after })}`,
+      );
     }
   });
 
   await step("12. two-column fit-to-width uses the visible spread and refits after resize", async () => {
-    await page.locator('summary[aria-label="Page view mode"]').click();
-    await page.getByRole("button", { name: "Two pages side by side" }).click();
+    // Two pages = Read mode. Step 11 left the window at 900px — above
+    // NARROW_BREAKPOINT (820), so `isNarrow` does not clamp this back to a
+    // single page. That margin is thin on purpose: it is the same window the
+    // resize assertions below narrow to 1050, and widening it here would stop
+    // this step exercising the spread at a realistic size.
+    await setWorkspaceMode(page, "Read");
 
     const measureSpreadFit = async () => book.locator("body").evaluate(() => {
       const viewport = document.documentElement.clientWidth;

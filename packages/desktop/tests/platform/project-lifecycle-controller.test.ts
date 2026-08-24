@@ -50,9 +50,8 @@ interface Harness {
     invalidateDiscoveredProjects: Spy<[]>;
     classify: Spy<[string]>;
     clearSyncDiag: Spy<[]>;
-    setViewModeSetting: Spy<[string]>;
     setSplitRatioSetting: Spy<[number]>;
-    setPendingRestore: Spy<[unknown, unknown]>;
+    setPendingRestore: Spy<[unknown]>;
     getDesktopProjectState: Spy<[string]>;
     resetFirstRenderGate: Spy<[]>;
     flushBuffer: Spy<[]>;
@@ -68,7 +67,7 @@ interface Harness {
     toastInfo: Spy<[string]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
-    zoomView: { userSetViewMode: boolean; restoreSplitRatio: Spy<[number]> };
+    zoomView: { restoreSplitRatio: Spy<[number]> };
     startPreviewResult: ProjectLifecyclePreviewResult;
     startPreviewImpl?: (input: {
       key: string;
@@ -78,7 +77,7 @@ interface Harness {
     flushResult: boolean;
     activeBookHasManifest: boolean;
     /** Per-project persisted state, keyed by the dir it is stored under. */
-    projectStateByDir: Record<string, { currentPage?: number; viewMode?: "single" | "two-column" } | null>;
+    projectStateByDir: Record<string, { currentPage?: number } | null>;
     flushImpl?: () => Promise<boolean>;
   };
 }
@@ -91,9 +90,8 @@ function make(): Harness {
   const invalidateDiscoveredProjects = spy<[]>();
   const classify = spy<[string]>();
   const clearSyncDiag = spy<[]>();
-  const setViewModeSetting = spy<[string]>();
   const setSplitRatioSetting = spy<[number]>();
-  const setPendingRestore = spy<[unknown, unknown]>();
+  const setPendingRestore = spy<[unknown]>();
   const resetFirstRenderGate = spy<[]>();
   const flushBuffer = spy<[]>();
   const resetBuffer = spy<[]>();
@@ -116,7 +114,6 @@ function make(): Harness {
     invalidateDiscoveredProjects,
     classify,
     clearSyncDiag,
-    setViewModeSetting,
     setSplitRatioSetting,
     setPendingRestore,
     getDesktopProjectState,
@@ -134,12 +131,12 @@ function make(): Harness {
     toastInfo,
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
-    zoomView: { userSetViewMode: false, restoreSplitRatio: spy<[number]>() },
+    zoomView: { restoreSplitRatio: spy<[number]>() },
     startPreviewResult: { previewStarted: true, url: "preview://book", title: "My Book", engine: "paged" },
     flushResult: true,
     activeBookHasManifest: true,
     /** Per-project persisted state, keyed by the dir it is stored under. */
-    projectStateByDir: {} as Record<string, { currentPage?: number; viewMode?: "single" | "two-column" } | null>,
+    projectStateByDir: {} as Record<string, { currentPage?: number } | null>,
   };
 
   const projectSession = {
@@ -180,9 +177,8 @@ function make(): Harness {
     zoomView: state.zoomView as unknown as Harness["deps"]["zoomView"] & {
       restoreSplitRatio(ratio: number): void;
     },
-    setViewModeSetting: (mode) => setViewModeSetting(mode),
     setSplitRatioSetting: (value) => setSplitRatioSetting(value),
-    setPendingRestore: (viewMode, page) => setPendingRestore(viewMode, page),
+    setPendingRestore: (page) => setPendingRestore(page),
     getDesktopProjectState: (dir: string) => {
       getDesktopProjectState(dir);
       return Promise.resolve(state.projectStateByDir[dir] ?? null);
@@ -255,16 +251,6 @@ test("startFolderPreview: happy path opens the folder and starts the watcher", a
   expect(deps.setPendingRecoveryScanDir.calls.length).toBe(0);
   expect(deps.clearStaleProjectState.calls.length).toBe(1);
   expect(deps.resetFirstRenderGate.calls.length).toBe(1);
-  expect(ctrl.previewEngine).toBe("paged");
-});
-
-test("startFolderPreview captures the started preview's engine", async () => {
-  const { ctrl, deps } = make();
-  deps.startPreviewResult = { previewStarted: true, url: "preview://book", title: "My Book", engine: "native" };
-  await ctrl.startFolderPreview("/proj", "Opening…");
-  await flush();
-
-  expect(ctrl.previewEngine).toBe("native");
 });
 
 test("startFolderPreview retains the successful-open setup banner for a loose folder", async () => {
@@ -483,8 +469,7 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
     },
     clearSyncDiag: () => {},
     pageNav: { totalPages: 0, currentPage: 1 },
-    zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
-    setViewModeSetting: () => {},
+    zoomView: { restoreSplitRatio: () => {} },
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     getDesktopProjectState: () => Promise.resolve(null),
@@ -545,8 +530,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     },
     clearSyncDiag: () => {},
     pageNav: { totalPages: 0, currentPage: 1 },
-    zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
-    setViewModeSetting: () => {},
+    zoomView: { restoreSplitRatio: () => {} },
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     getDesktopProjectState: () => Promise.resolve(null),
@@ -663,8 +647,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     },
     clearSyncDiag: () => {},
     pageNav: { totalPages: 0, currentPage: 1 },
-    zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
-    setViewModeSetting: () => {},
+    zoomView: { restoreSplitRatio: () => {} },
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     getDesktopProjectState: () => Promise.resolve(null),
@@ -740,8 +723,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
     },
     clearSyncDiag: () => {},
     pageNav: { totalPages: 0, currentPage: 1 },
-    zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
-    setViewModeSetting: () => {},
+    zoomView: { restoreSplitRatio: () => {} },
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     getDesktopProjectState: () => Promise.resolve(null),
@@ -866,11 +848,11 @@ test("all three teardown paths (stopPreview, openUrl, failed-open catch) call th
 
 // ── 2026-07-29 audit: the restore-state key must be the RESOLVED book ─────────
 //
-// The per-project page/view-mode/split state is WRITTEN under the resolved book
-// dir (`lifecycle.currentDir`), but every caller used to READ it under the dir
-// the user PICKED — and those differ exactly when the session retargets: an
-// open keyed to the repo root, or to a folder inside a book. So the read missed
-// and the book silently opened at page 1 with the default view mode.
+// The per-project page/split state is WRITTEN under the resolved book dir
+// (`lifecycle.currentDir`), but every caller used to READ it under the dir the
+// user PICKED — and those differ exactly when the session retargets: an open
+// keyed to the repo root, or to a folder inside a book. So the read missed and
+// the book silently opened at page 1.
 //
 // Switching books had a second form of the same bug: `switchBook` passed no
 // restore state at all, so the target book ALWAYS opened at page 1 even when it
@@ -880,26 +862,26 @@ test("restore state is read for the RESOLVED book dir, not the picked dir", asyn
   const h = make();
   h.projectSession.repoRoot = "/repo";
   h.projectSession.activeBookDir = "/repo/books/field-guide";
-  h.deps.projectStateByDir["/repo/books/field-guide"] = { currentPage: 7, viewMode: "two-column" };
+  h.deps.projectStateByDir["/repo/books/field-guide"] = { currentPage: 7 };
   h.deps.projectStateByDir["/repo"] = { currentPage: 1 };
 
   await h.ctrl.startFolderPreview("/repo");
 
   expect(h.deps.getDesktopProjectState.calls).toEqual([["/repo/books/field-guide"]]);
-  expect(h.deps.setPendingRestore.calls).toEqual([["two-column", 7]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([[7]]);
 });
 
-test("switching books restores the TARGET book's saved page and view mode", async () => {
+test("switching books restores the TARGET book's saved page", async () => {
   const h = make();
   h.projectSession.repoRoot = "/repo";
   h.projectSession.activeBookDir = "/repo/books/beta";
-  h.deps.projectStateByDir["/repo/books/beta"] = { currentPage: 4, viewMode: "single" };
+  h.deps.projectStateByDir["/repo/books/beta"] = { currentPage: 4 };
 
   // switchBook's shape: no restore state supplied by the caller.
   await h.ctrl.startFolderPreview("/repo/books/beta", "Switching book…");
 
   expect(h.deps.getDesktopProjectState.calls).toEqual([["/repo/books/beta"]]);
-  expect(h.deps.setPendingRestore.calls).toEqual([["single", 4]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([[4]]);
 });
 
 test("a book with no saved state opens at the defaults, with no restore applied", async () => {
@@ -909,5 +891,5 @@ test("a book with no saved state opens at the defaults, with no restore applied"
   await h.ctrl.startFolderPreview("/loose-folder");
 
   expect(h.deps.getDesktopProjectState.calls).toEqual([["/loose-folder"]]);
-  expect(h.deps.setPendingRestore.calls).toEqual([[null, null]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([[null]]);
 });

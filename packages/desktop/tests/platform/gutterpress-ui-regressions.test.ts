@@ -14,14 +14,18 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");
 });
 
-test("preview toolbar button toggles preview visibility so the editor can fill the workspace", () => {
+test("the Focus segment hides the preview so the editor can fill the workspace", () => {
   const src = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
-  expect(src).toContain("let previewHidden");
+  // Hiding the preview IS the `focus` workspace mode — one enum, not a
+  // second boolean beside it.
+  expect(src).toContain("let previewVisible = $derived(mode !== \"focus\")");
   expect(src).toContain("function togglePreview");
-  expect(src).toContain("class:preview-hidden={previewHidden}");
-  // The toggle control itself lives in the extracted AppToolbar now.
-  expect(toolbar).toContain("title={previewHidden ? \"Show preview\" : \"Hide preview\"}");
+  expect(src).toContain("class:preview-hidden={!previewVisible}");
+  // The control is a segment of the one mode switch, not an eye button beside
+  // it: a three-state model gets a three-segment control.
+  expect(toolbar).toContain('onclick={() => onSetMode("focus")}');
+  expect(toolbar).toContain('aria-label="Focus"');
   expect(toolbar).not.toContain("Preview only");
 });
 
@@ -48,9 +52,9 @@ test("Electron windows and AppImage package carry the app icon", () => {
 
 test("closing activity restores the workspace it displaced (no stuck 'Loading content')", () => {
   const src = read("src/routes/+page.svelte");
-  // Activity borrows the editor pane and captures the displaced
-  // editorOpen/previewHidden state…
-  expect(src).toContain("paneViewRestore = { editorOpen, previewHidden }");
+  // Activity borrows the editor pane and captures the displaced workspace
+  // mode…
+  expect(src).toContain("paneViewRestore = { mode }");
   // …and closing restores it, loading the editor module + a file whenever the
   // pane stays open (the activity view needed neither, so the editor used to
   // come back mounted-but-empty, stuck on "Loading content" until the author
@@ -58,8 +62,7 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
   const closeIdx = src.indexOf("function closePaneView()");
   expect(closeIdx).toBeGreaterThan(-1);
   const closeBody = src.slice(closeIdx, closeIdx + 900);
-  expect(closeBody).toContain("editorOpen = restore.editorOpen");
-  expect(closeBody).toContain("previewHidden = restore.previewHidden");
+  expect(closeBody).toContain("setMode(restore.mode)");
   expect(closeBody).toContain("loadEditorModule()");
   expect(closeBody).toContain("ensureEditorFile()");
   // Manually toggling Edit while activity is shown exits that mode.
@@ -83,7 +86,7 @@ test("a persisted narrow Edit tab cannot open the editor without an explicit act
     src.indexOf("let editorPaneOpen = $derived("),
     src.indexOf("let splitGridColumns = $derived("),
   );
-  expect(derived).toContain("editorOpen &&");
+  expect(derived).toContain("editorVisible &&");
   expect(src).toContain("class:show-edit={isNarrow && editorPaneOpen}");
   expect(src).toContain("class:show-view={isNarrow && !editorPaneOpen}");
 });
@@ -415,4 +418,85 @@ test("ContextMenu focus-on-open runs per menu-open, not once at app boot (keyboa
   expect(menuDiv).toContain('class="context-menu"');
   expect(src).toContain("node.focus({ preventScroll: true });");
   expect(src).toContain("focusFirstEnabled(node)");
+});
+
+// ── One workspace-mode enum ──────────────────────────────────────────────────
+//
+// The wide workspace used to be described by four overlapping switches —
+// `editorOpen`, `previewHidden`, `focusMode`, and a persisted `preview.viewMode`
+// that a width heuristic and a `userSetViewMode` lock fought over. They could
+// disagree, and the combinations nobody intended were reachable. There is now
+// ONE enum; every other layout value is derived from it.
+
+test("the workspace layout derives from one mode enum, in exactly one direction", () => {
+  const src = read("src/routes/+page.svelte");
+  expect(src).toContain('let mode = $state<WorkspaceMode>(settings.current.preview.mode)');
+  // The three derivations ARE the rule — read them off the source.
+  expect(src).toContain('mode === "viewer" && !isNarrow ? "two-column" : "single"');
+  expect(src).toContain('let previewVisible = $derived(mode !== "focus")');
+  expect(src).toContain('let editorVisible = $derived(mode !== "viewer")');
+  // `isNarrow` clamps the derived value; it is not a second decider, and the
+  // duplicated 1280 width heuristic that used to be one is gone.
+  expect(src).not.toContain("1280");
+  expect(read("src/lib/routes/preview-event-controller.ts")).not.toContain("1280");
+});
+
+test("`focus` is transient: it never reaches the persisted settings", () => {
+  const src = read("src/routes/+page.svelte");
+  // One writer, and it maps focus to the layout it is a variant of — waking
+  // into a viewer-less window would be hostile.
+  expect(src).toContain('settings.set({ preview: { mode: next === "focus" ? "editor" : next } })');
+  // Enforced by the type too: the persisted field cannot hold "focus".
+  expect(read("src/lib/platform/shared-types.ts")).toContain(
+    'mode: Exclude<WorkspaceMode, "focus">',
+  );
+});
+
+test("setMode persists BEFORE it assigns, so its own write-back cannot land on `focus`", () => {
+  const src = read("src/routes/+page.svelte");
+  const body = src.slice(
+    src.indexOf("function setMode(next: WorkspaceMode): void {"),
+    src.indexOf("function togglePreview()"),
+  );
+  const persistIdx = body.indexOf("settings.set({ preview:");
+  const assignIdx = body.indexOf("mode = next;");
+  expect(persistIdx).toBeGreaterThan(-1);
+  expect(assignIdx).toBeGreaterThan(-1);
+  // `focus` persists AS "editor", and the settings notify is synchronous, so
+  // entering focus from `viewer` fires modeSink with a value it has not seen
+  // ("editor" ≠ "viewer") — the sink then assigns mode = "editor" and the
+  // author lands in Edit with the viewer still on screen. Persisting first
+  // means that echo happens BEFORE the assignment, so the one writer of
+  // `mode` still wins. The guard's dedupe is a nicety, not the correctness
+  // argument.
+  expect(persistIdx).toBeLessThan(assignIdx);
+});
+
+test("only leaving `focus` is ambiguous, so only entering it stores a previous mode", () => {
+  const src = read("src/routes/+page.svelte");
+  const writes = src.match(/modeBeforeFocus = (?!null)/g) ?? [];
+  expect(writes.length).toBe(1);
+  expect(src).toContain('if (next === "focus") modeBeforeFocus =');
+  // Closing the editor needs no stored state — it always lands on the viewer.
+  const toggleIdx = src.indexOf("function toggleEditor()");
+  expect(toggleIdx).toBeGreaterThan(-1);
+  expect(src.slice(toggleIdx, toggleIdx + 900)).toContain("setMode(\"viewer\")");
+});
+
+test("the retired view-mode machinery is gone, not merely unused", () => {
+  const page = read("src/routes/+page.svelte");
+  const zoomView = read("src/lib/routes/zoom-view-controller.svelte.ts");
+  const settingsView = read("src/lib/components/SettingsView.svelte");
+  for (const dead of ["userSetViewMode", "persistViewMode", "pendingRestoreViewMode", "focusMode"]) {
+    expect(page).not.toContain(dead);
+    expect(zoomView).not.toContain(dead);
+  }
+  expect(zoomView).not.toContain("toggleViewMode");
+  // No Settings control for a value that is no longer stored.
+  expect(settingsView).not.toContain("set-viewmode");
+  // Focus keeps the toolbar, so the chrome-hiding class + CSS have no reason
+  // to exist. (The "focus-mode" COMMAND id survives — it is the Ctrl+Shift+F
+  // shortcut's identity, and it now hides the viewer.)
+  expect(page).not.toContain("class:focus-mode");
+  expect(page).not.toContain(".shell.focus-mode");
 });

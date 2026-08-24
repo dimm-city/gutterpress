@@ -125,12 +125,13 @@ export interface ContextMenuDeps {
   toastSuccess: (message: string) => void;
   toastError: (message: string) => void;
   /**
-   * Open the click-to-edit block overlay on this block (PR 5,
-   * `block-overlay-controller.svelte.ts`) — the "Edit this block" item's
-   * destination, closing the menu itself is this controller's job, not the
-   * overlay's.
+   * Start editing this block in place (`inline-edit-controller.svelte.ts`) —
+   * the "Edit this block" item's destination. Closing the menu itself is this
+   * controller's job, not the editor's. `caret` is where to seat the caret: the
+   * menu passes its own request point, so the caret lands where the author
+   * right-clicked rather than at the end of the block.
    */
-  openBlockOverlay: (chapter: string, range: SourceRange, anchor: { x: number; y: number }) => void;
+  openInlineEdit: (chapter: string, range: SourceRange, caret: { x: number; y: number }) => void;
 }
 
 export interface ContextMenuItem {
@@ -695,7 +696,7 @@ export class ContextMenuController {
         label: "Edit this block",
         enabled: true,
         run: () => {
-          this.deps.openBlockOverlay(chapter, range, anchor);
+          this.deps.openInlineEdit(chapter, range, anchor);
           this.close();
         },
       },

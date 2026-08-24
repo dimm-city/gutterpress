@@ -85,7 +85,6 @@
     onUpdateDownload,
     onCheckForUpdates,
     onDismiss,
-    onViewModeChange,
     onCrashRecoveryChange,
   }: {
     visible?: boolean;
@@ -121,9 +120,6 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
-    /** Forwarded to the embedded Settings so a view-mode change reaches the
-     *  live preview immediately, exactly as the full-window sheet does. */
-    onViewModeChange?: (mode: "single" | "two-column") => void;
     onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
@@ -447,7 +443,6 @@
           idPrefix="landing-settings"
           initialTab={settingsTab}
           {projectDir}
-          {onViewModeChange}
           {onCrashRecoveryChange}
         />
       </section>

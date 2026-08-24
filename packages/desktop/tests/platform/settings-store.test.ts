@@ -45,7 +45,7 @@ test("mergeSettings patches preview.splitRatio, preserving sibling preview field
 
   expect(merged.preview.splitRatio).toBe(0.3);
   // Sibling preview fields survive the section-level spread.
-  expect(merged.preview.viewMode).toBe(DEFAULT_SETTINGS.preview.viewMode);
+  expect(merged.preview.mode).toBe(DEFAULT_SETTINGS.preview.mode);
   expect(merged.preview.paneMode).toBe(DEFAULT_SETTINGS.preview.paneMode);
   expect(merged.preview.defaultZoom).toBe(DEFAULT_SETTINGS.preview.defaultZoom);
 });
@@ -222,12 +222,12 @@ test("readSettings migrates the old persisted 2500ms default once", async () => 
 test("readSettings fills in preview.splitRatio default for a stored file missing it (#103)", async () => {
   const { store } = makeStore({
     readFileImpl: async () =>
-      JSON.stringify({ preview: { viewMode: "single" } }),
+      JSON.stringify({ preview: { mode: "editor" } }),
   });
   const s = await store.readSettings();
 
   // The stored partial's field is honoured…
-  expect(s.preview.viewMode).toBe("single");
+  expect(s.preview.mode).toBe("editor");
   // …and the new field a pre-existing file never wrote picks up the default.
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });

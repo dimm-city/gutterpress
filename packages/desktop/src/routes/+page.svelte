@@ -34,8 +34,7 @@
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
-  import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
+  import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "$lib/editor/image-classes";
@@ -48,6 +47,7 @@
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import type { WorkspaceMode } from "$lib/platform";
   import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -282,10 +282,8 @@
   const zoomView = new ZoomViewController({
     client: () => client,
     zoom: () => zoom,
-    viewMode: () => viewMode,
     isNarrow: () => isNarrow,
     persistZoom: (value) => settings.set({ preview: { defaultZoom: value } }),
-    persistViewMode: (mode) => settings.set({ preview: { viewMode: mode } }),
     persistSplitRatio: (value) => settings.set({ preview: { splitRatio: value } }),
     saveDesktopPrefs: (patch) => saveDesktopPrefs(patch),
     measureContainerWidth: () => {
@@ -313,15 +311,14 @@
       pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
   });
   // ── User settings (#45) ────────────────────────────────────────────────
-  // bgColor, viewMode and zoom are sourced from the persisted settings store
-  // (their old inline defaults #5a5a5a / two-column / fit-width now live in
-  // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
+  // bgColor and zoom are sourced from the persisted settings store (their old
+  // inline defaults #5a5a5a / fit-width now live in DEFAULT_SETTINGS). Local
+  // mutations write back through useSettings().set().
   // bgColor has no toolbar control (that was removed in the toolbar redesign);
   // it is set via the Settings panel only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
-  let viewMode = $derived(settings.current.preview.viewMode);
   let bgColor = $derived(settings.current.appearance.previewBg);
   // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
   // Only consulted below the responsive breakpoint; above it the layout is the
@@ -332,7 +329,6 @@
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
   let pendingRestorePage = $state<number | null>(null);
-  let pendingRestoreViewMode = $state<"single" | "two-column" | null>(null);
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
@@ -346,24 +342,20 @@
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
   // The activity view borrows the editor pane and restores the workspace it
   // displaces, avoiding an editor left open without a loaded file on close.
-  let paneViewRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
+  let paneViewRestore: { mode: WorkspaceMode } | null = null;
   function showActivityView(): void {
     if (editorView === "editor") {
-      paneViewRestore = { editorOpen, previewHidden };
+      paneViewRestore = { mode };
     }
     editorView = "activity";
-    editorOpen = true;
-    previewHidden = false;
+    setMode("editor");
   }
   function closePaneView(): void {
     editorView = "editor";
     const restore = paneViewRestore;
     paneViewRestore = null;
-    if (restore) {
-      editorOpen = restore.editorOpen;
-      previewHidden = restore.previewHidden;
-    }
-    if (editorOpen) {
+    if (restore) setMode(restore.mode);
+    if (editorVisible) {
       loadEditorModule();
       void ensureEditorFile();
       focusEditorWhenReady();
@@ -521,10 +513,8 @@
     refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
     pageNav,
     zoomView,
-    setViewModeSetting: (mode) => settings.set({ preview: { viewMode: mode } }),
     setSplitRatioSetting: (value) => settings.set({ preview: { splitRatio: value } }),
-    setPendingRestore: (viewMode, page) => {
-      pendingRestoreViewMode = viewMode;
+    setPendingRestore: (page) => {
       pendingRestorePage = page;
     },
     // Read by the controller for the RESOLVED book dir — the same key every
@@ -558,8 +548,7 @@
       // A project closed while its settings view was up must not show that
       // view over the next project (or the empty workspace).
       projectSettingsOpen = false;
-      editorOpen = false;
-      previewHidden = false;
+      setMode("viewer");
       // A project closed while activity borrowed the editor must not reopen the
       // next project on that stale view.
       editorView = "editor";
@@ -842,7 +831,7 @@
   // template reads `crashRecovery.items` and calls the intent methods
   // (scan/restore/discard/dismiss). Host coupling injected (§8):
   // forward-references to page-local functions/state declared further down
-  // (ensureBuffer, editorRef, editorOpen, …) are safe closures, the same
+  // (ensureBuffer, editorRef, mode, …) are safe closures, the same
   // pattern `lifecycle`'s deps use.
   const crashRecovery = new CrashRecoveryController({
     isDesktop: () => isDesktop(),
@@ -933,25 +922,26 @@
   }
 
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
-  // editorOpen toggles the file-tree + editor split alongside the preview.
+  // The workspace mode decides whether the file-tree + editor split shows.
   // EditorBuffer (#44) is the single owner of ONE FILE's edit lifecycle: path,
   // in-memory content, the dirty/save state machine, the debounced disk write
   // (which the preview file-watcher picks up to re-render), debounced
   // crash-recovery snapshots, the close/navigate flush, and external-edit
   // reconciliation. The editor owns exactly one file buffer at a time.
-  let editorOpen = $state(false);
-  let previewHidden = $state(false);
-  // Focus mode (#104) — transient editor-only layout. Declared here (before the
-  // split-grid deriveds that read it) so it's initialised ahead of them.
-  let focusMode = $state(false);
-  let focusRestore: { editorOpen: boolean; paneMode: "edit" | "view" } | null = null;
+  // The ONE workspace-layout switch (see `WorkspaceMode`). Declared here
+  // (before the deriveds that read it) so it is initialised ahead of them.
+  // A local $state rather than a settings derived, because `focus` is
+  // deliberately absent from the persisted shape — `setMode` writes the
+  // durable half through and `modeSink` below reads it back on load.
+  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
+  // The one genuinely ambiguous transition: leaving `focus` could mean either
+  // `editor` or `viewer`. Written ONLY on entering focus.
+  let modeBeforeFocus: "editor" | "viewer" | null = null;
+  /** The viewer is hidden in `focus` and nowhere else. */
+  let previewVisible = $derived(mode !== "focus");
+  /** `focus` is the editor without the viewer, so the editor shows in both. */
+  let editorVisible = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  /** `.preview-pane`'s own element — the block overlay clamps its geometry to
-   *  this rect (inline-editing plan §5.1), not the whole workspace the
-   *  context menu clamps to: `.preview-pane` can itself scroll, so an
-   *  unclamped overlay could engage that scrollbar. */
-  let previewPaneEl = $state<HTMLElement | undefined>(undefined);
-  let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
@@ -979,7 +969,7 @@
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
-    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
+    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
   }
 
@@ -1002,7 +992,7 @@
       return;
     }
     contextMenu.close();
-    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
+    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     projectSettingsOpen = true;
   }
 
@@ -1020,9 +1010,9 @@
     if (!(await selectEditorFile(absPath))) return;
     editorView = "editor";
     paneViewRestore = null;
-    editorOpen = true;
+    if (mode === "viewer") setMode("editor");
     // Narrow single-pane layout keys editor visibility off paneMode, not
-    // editorOpen — switch panes too, or the loaded stylesheet stays hidden
+    // the workspace mode — switch panes too, or the loaded stylesheet stays hidden
     // behind the preview with no way to reveal it (the Markdown tab would
     // swap the file away first).
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
@@ -1038,13 +1028,20 @@
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
 
-  // Whether the editor pane is shown — always requires an explicit action that
-  // sets editorOpen. A persisted narrow Edit preference alone never opens it.
+  // Reading gets two pages side by side; editing gets one page beside the
+  // editor. `isNarrow` is a CLAMP on that, not a competing decider — there is
+  // no room for a second page below the breakpoint.
+  let viewMode = $derived<"single" | "two-column">(
+    mode === "viewer" && !isNarrow ? "two-column" : "single",
+  );
+
+  // Whether the editor pane is shown. A persisted narrow Edit preference
+  // alone never opens it.
   let editorPaneOpen = $derived(
     editorView === "activity" ||
       (!!lifecycle.currentDir &&
         lifecycle.sourceMode === "folder" &&
-        editorOpen &&
+        editorVisible &&
         (!isNarrow || paneMode === "edit")),
   );
   // ── Global find (Ctrl+F) — VIEWER only (owner ruling 2026-08-15) ──────────
@@ -1055,17 +1052,17 @@
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
   const viewerVisibleForFind = $derived(
     !!lifecycle.previewUrl &&
-      !previewHidden &&
+      previewVisible &&
       !(isNarrow && (editorPaneOpen || editorView !== "editor")),
   );
 
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewHidden && !focusMode
+    editorPaneOpen && !isNarrow && previewVisible
       ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
   let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewHidden && !focusMode
+    editorPaneOpen && !isNarrow && !previewVisible
       ? "minmax(0, 1fr) 0 minmax(0, 0)"
       : "",
   );
@@ -1090,7 +1087,7 @@
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
   function loadEditorModule() {
-    if (!editorOpen || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
+    if (!editorVisible || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
     editorModuleLoading = true;
     import("$lib/components/MarkdownEditor.svelte")
       .then((m) => {
@@ -1140,7 +1137,7 @@
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
-      editorOpen = true;
+      if (mode === "viewer") setMode("editor");
       loadEditorModule();
     }
     let tries = 0;
@@ -1276,6 +1273,13 @@
   const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
     if (!enabled) contextMenu.close();
   });
+  // Workspace mode: the live value is local $state (it can hold `focus`, which
+  // the persisted shape cannot), so the async settings load has to be pushed
+  // into it. The guard dedupes against the last value seen, so setMode's own
+  // write-back cannot bounce back and clobber a live `focus`.
+  const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
+    mode = m;
+  });
   onMount(() =>
     onSettingsChange((s) => {
       autoSaveDelaySink(s.editor.autoSaveDelay);
@@ -1283,6 +1287,7 @@
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
+      modeSink(s.preview.mode);
     }),
   );
 
@@ -1511,7 +1516,7 @@
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
     const { focus = true, ensureFile = true } = opts;
-    editorOpen = true;
+    if (mode === "viewer") setMode("editor");
     loadEditorModule();
     if (ensureFile) void ensureEditorFile();
     if (focus) focusEditorWhenReady();
@@ -1536,14 +1541,16 @@
       editorView = "editor";
       paneViewRestore = null;
     }
-    editorOpen = !editorOpen;
+    // Closing the editor always lands on the viewer — there is no stored
+    // "what was showing before" to consult, and nothing else it could mean.
+    if (editorVisible) {
+      setMode("viewer");
+      return;
+    }
     // On open, move keyboard focus into the editor so Ctrl+E acts as a
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
-    if (editorOpen) {
-      // Defer focus until the (lazy-loaded) pane + CodeMirror view mount.
-      openEditorPane();
-    }
+    openEditorPane();
   }
 
   // ── Problems panel (#28) ───────────────────────────────────────────────────
@@ -1624,9 +1631,8 @@
     // wide = the editor split).
     if (isNarrow) {
       setPaneMode("edit");
-    } else if (!editorOpen) {
-      editorOpen = true;
-      loadEditorModule();
+    } else if (!editorVisible) {
+      setMode("editor");
     }
     void selectEditorFile(p.filePath).then((selected) => {
       if (selected && p.line) {
@@ -1640,8 +1646,7 @@
   }
 
   // Canvas styles are injected by the renderingComplete handler (which already
-  // calls client.injectStyles). View-mode changes from the Settings panel are
-  // handled by the onViewModeChange callback passed to SettingsView.
+  // calls client.injectStyles).
 
   onMount(() => {
     api.doctor()
@@ -1798,8 +1803,8 @@
   });
 
   // ----------------------------------------------------------------
-  // Commit engine (inline-editing plan §4.7) — the single write path for
-  // context-menu (and, later, block-overlay) mutations. Pure logic + injected
+  // Commit engine — the single write path for context-menu AND in-flow
+  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
   // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
   // that, exactly like every other write path in the app).
   // ----------------------------------------------------------------
@@ -1873,25 +1878,21 @@
   }
 
   // ----------------------------------------------------------------
-  // Click-to-edit block overlay (inline-editing plan §5, PR 5). Owns its own
-  // geometry/dismissal-event subscription; the "Edit this block" context-menu
-  // item (below) is its only entry point.
+  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
+  // Two entry points, both landing here: the "Edit this block" context-menu
+  // item (below) and double-click in the preview (which arrives as the
+  // blockEditRequested event on the controller's own subscription).
+  //
+  // No geometry deps: the editing surface is the block's own element inside
+  // the book iframe, so there is no panel to position over it.
   // ----------------------------------------------------------------
-  const blockOverlay = new BlockOverlayController({
+  const inlineEdit = new InlineEditController({
     client: () => client,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
     readFile: (path) => getPlatform().readFile(path),
     commitEngine,
-    getIframeOrigin: () => {
-      const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
-      return rect ? { left: rect.left, top: rect.top } : null;
-    },
-    getPaneRect: () => {
-      if (!previewPaneEl) return null;
-      const rect = previewPaneEl.getBoundingClientRect();
-      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    },
+    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
     toastError: (message) => toast?.error(message),
     toastInfo: (message) => toast?.info?.(message),
   });
@@ -1926,7 +1927,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range, anchor) => void blockOverlay.show({ chapter, range, anchor }),
+    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -1958,16 +1959,14 @@
       activeOutlineIndex = 0;
     },
     consumePendingRestore: () => {
-      const restore = { page: pendingRestorePage, viewMode: pendingRestoreViewMode };
+      const restore = { page: pendingRestorePage };
       pendingRestorePage = null;
-      pendingRestoreViewMode = null;
       return restore;
     },
     refreshOutline: () => refreshOutline(),
     refreshProblems: () => refreshProblems(),
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
-    viewportWidth: () => window.innerWidth,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
   });
 
@@ -1993,7 +1992,7 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
-    blockOverlay.subscribe(c);
+    inlineEdit.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -2045,15 +2044,14 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
-      // Cmd/Ctrl+Shift+F toggles focus mode (#104); Esc also exits it.
+      // Cmd/Ctrl+Shift+F hides the viewer so the editor has the window
+      // (#104). Esc is deliberately NOT an exit: focus keeps the toolbar, so
+      // the control that entered it is still on screen — and a global Esc
+      // that reshuffles panes mid-sentence is a surprise. Esc stays the
+      // dismiss-the-transient-thing key (find bar, dialogs, menus).
       if (command === "focus-mode") {
         e.preventDefault();
-        toggleFocusMode();
-        return;
-      }
-      if (focusMode && e.key === "Escape") {
-        e.preventDefault();
-        exitFocusMode();
+        togglePreview();
         return;
       }
       // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
@@ -2169,26 +2167,6 @@
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-  });
-
-  // ----------------------------------------------------------------
-  // Responsive auto view-mode on resize (unless user locked it)
-  // ----------------------------------------------------------------
-  onMount(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    function onResize() {
-      if (!lifecycle.previewUrl || zoomView.userSetViewMode) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        zoomView.applyViewMode(auto, false);
-      }, 150);
-    }
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      if (timer) clearTimeout(timer);
-    };
   });
 
   // ----------------------------------------------------------------
@@ -2356,6 +2334,9 @@
     isNarrow = mq.matches;
     const onChange = (e: MediaQueryListEvent) => {
       isNarrow = e.matches;
+      // isNarrow clamps the derived view mode, so crossing the breakpoint can
+      // change it. Push it, the same way setMode does.
+      zoomView.applyViewMode(viewMode);
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
@@ -2393,15 +2374,45 @@
       // Only steal focus if the editor was previously closed.
       // Callers that need a default file request it explicitly; navigation
       // callers already have a target and must not race a background default.
-      openEditorPane({ focus: !editorOpen, ensureFile: false });
+      openEditorPane({ focus: !editorVisible, ensureFile: false });
     }
   }
 
+  /**
+   * The ONE writer of `mode`. Persists the durable half (`focus` stores as
+   * `editor` — waking into a viewer-less window would be hostile), pushes the
+   * derived page layout into the viewer, and guarantees the editor module is
+   * loading whenever the editor pane is about to be on screen (the pane
+   * renders "Loading editor…" until it is).
+   *
+   * Persist BEFORE assigning. `settings.set` notifies synchronously, so the
+   * write-back reaches `modeSink` inside this call — and entering `focus`
+   * from `viewer` writes "editor", a value the sink has NOT seen, so its
+   * dedupe does not catch it and it assigns `mode = "editor"`. Doing that
+   * echo first and the assignment last keeps the one writer of `mode` the
+   * last word; Read → Focus used to land in Edit with the viewer still up.
+   */
+  function setMode(next: WorkspaceMode): void {
+    if (next === mode) return;
+    if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
+    settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
+    mode = next;
+    zoomView.applyViewMode(viewMode);
+    if (next !== "viewer") loadEditorModule();
+  }
+
+  /** Hide/show the viewer — the focus toggle. */
   function togglePreview() {
     if (!lifecycle.previewUrl || isNarrow) return;
-    previewHidden = !previewHidden;
-    if (previewHidden && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      // Preview was hidden — open the editor but don't yank focus into it.
+    if (mode === "focus") {
+      setMode(modeBeforeFocus ?? "editor");
+      modeBeforeFocus = null;
+      return;
+    }
+    setMode("focus");
+    // Don't yank focus into the editor — the author asked to hide the preview,
+    // not to start typing.
+    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       openEditorPane({ focus: false });
     }
   }
@@ -2437,40 +2448,6 @@
     else return;
     e.preventDefault();
     zoomView.nudgeSplit(direction);
-  }
-
-  // ── Focus mode (#104) ──────────────────────────────────────────────────────
-  // Transient (never persisted): hides all chrome so only the editor fills the
-  // window. Toggled by Cmd/Ctrl+Shift+F, a menu item, or Esc. The chrome
-  // (toolbar / left panel / status bar / preview) is hidden purely via the
-  // `.shell.focus-mode` CSS class, so leftPanelOpen/previewHidden are untouched
-  // and return automatically on exit; only `editorOpen` must be forced true (the
-  // editor pane only mounts when it is), so we snapshot and restore just that.
-  // (`focusMode`/`focusRestore` are declared up by `editorOpen` so the split-grid
-  // deriveds that read `focusMode` see it initialised.)
-  function enterFocusMode() {
-    if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    focusRestore = { editorOpen, paneMode };
-    openEditorPane();
-    // Narrow single-pane layout is left functionally unchanged — focus mode
-    // there just shows the editor tab (setPaneMode also opens/focuses it).
-    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
-    focusMode = true;
-  }
-
-  function exitFocusMode() {
-    if (!focusMode) return;
-    focusMode = false;
-    if (focusRestore) {
-      editorOpen = focusRestore.editorOpen;
-      if (isNarrow && paneMode !== focusRestore.paneMode) setPaneMode(focusRestore.paneMode);
-      focusRestore = null;
-    }
-  }
-
-  function toggleFocusMode() {
-    if (focusMode) exitFocusMode();
-    else enterFocusMode();
   }
 
   // ── Mobile tab bar (#34): Markdown / Preview ───────────────────────────────
@@ -2668,7 +2645,7 @@
   </div>
 {/if}
 
-<div class="shell" class:focus-mode={focusMode}>
+<div class="shell">
   <AppToolbar
     bind:panelToggleEl={leftPanelToggleBtn}
     {leftPanelOpen}
@@ -2688,17 +2665,12 @@
     editorTabDisabled={!toolbarProjectOpen}
     previewTabDisabled={!lifecycle.previewUrl && !lifecycle.previewError}
     hidePreviewControls={isNarrow && editorPaneOpen}
-    {viewMode}
+    {mode}
+    onSetMode={(next) => { contextMenu.close(); setMode(next); }}
     {zoom}
     previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyViewMode={(mode) => { contextMenu.close(); zoomView.applyViewMode(mode, true); }}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
-    {previewHidden}
-    previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen}
-    onTogglePreview={togglePreview}
-    {editorOpen}
     editorToggleDisabled={!toolbarProjectOpen}
-    onToggleEditor={toggleEditor}
     publishVisible={isDesktop()}
     publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
     onPublish={() => (publishOpen = true)}
@@ -2734,7 +2706,7 @@
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
         selectEditorFile(path);
-        if (!editorOpen && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+        if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
         }
@@ -2746,8 +2718,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); blockOverlayRef?.commitNow(); githubOpen = true; } : undefined}
-      onNewProject={() => { contextMenu.close(); blockOverlayRef?.commitNow(); newProjectWizardRef?.show(); }}
+      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
+      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onShowWelcome={() => {
         contextMenu.close();
         landingRef?.showTab("projects");
@@ -2785,8 +2757,8 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && editorPaneOpen}
       class:show-view={isNarrow && !editorPaneOpen}
-      class:preview-hidden={previewHidden}
-      class:preview-collapsed={previewHidden}
+      class:preview-hidden={!previewVisible}
+      class:preview-collapsed={!previewVisible}
       bind:this={workspaceEl}
       style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
@@ -2830,7 +2802,7 @@
                   return;
                 }
                 if (action === "focus-mode") {
-                  toggleFocusMode();
+                  togglePreview();
                   return;
                 }
                 editorRef?.runToolbarAction(action, payload);
@@ -2862,7 +2834,7 @@
             {/if}
           {/if}
         </section>
-        {#if !isNarrow && !previewHidden}
+        {#if !isNarrow && previewVisible}
           <!-- Focusable separator (ARIA window-splitter pattern): drag, or
                Arrow-key resize / double-click reset for the non-drag path
                (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
@@ -2894,13 +2866,12 @@
       {/if}
       <section
         class="pane preview-pane"
-        bind:this={previewPaneEl}
         use:previewPaneResize
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        aria-hidden={previewHidden}
-        inert={previewHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
+        aria-hidden={!previewVisible}
+        inert={!previewVisible || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
       >
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
@@ -2963,9 +2934,6 @@
         />
         {#if isDesktop()}
           <ContextMenu controller={contextMenu} />
-        {/if}
-        {#if isDesktop() && blockOverlay.open}
-          <BlockEditOverlay controller={blockOverlay} bind:this={blockOverlayRef} />
         {/if}
       </section>
     </div>
@@ -3055,7 +3023,6 @@
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
-  onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
   onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
 {#if projectSettingsOpen}
@@ -3267,35 +3234,8 @@
     outline-offset: 1px;
   }
 
-  /* ── Focus mode (#104) ─────────────────────────────────────────────────────
-     Editor-only: hide every chrome surface so the editor pane fills the window.
-     Purely CSS so leftPanelOpen/previewHidden state is untouched and returns on
-     exit. Scoped to the WIDE layout (min-width:821px, the complement of the
-     `(max-width:820px)` narrow breakpoint) so the ≤820px single-column layout
-     is left functionally unchanged — there focus mode only shows the editor tab
-     (via setPaneMode in JS) and the toolbar's mobile tab bar must stay. */
-  @media (min-width: 821px) {
-    .shell.focus-mode > :global(.toolbar),
-    .shell.focus-mode :global(.status-bar),
-    .shell.focus-mode :global(.left-panel),
-    .shell.focus-mode .splitter,
-    .shell.focus-mode .preview-pane {
-      display: none;
-    }
-    /* LeftPanel is display:none'd above, so drop the negative-margin
-       compensation that assumed its ghost width. */
-    .shell.focus-mode .left-panel-region .main-content {
-      margin-left: 0;
-    }
-    /* Collapse the (now editor-only) split grid to a single column. Higher
-       specificity than `.workspace.editor-open`, and the inline grid style is
-       nulled out while focusMode is on (deriveds gated), so no !important. */
-    .shell.focus-mode .workspace.editor-open {
-      grid-template-columns: 1fr;
-    }
-  }
   @media (prefers-reduced-motion: reduce) {
-    /* Honour reduced motion for the layout shift focus mode triggers. */
+    /* Honour reduced motion for the layout shift a panel toggle triggers. */
     .left-panel-region .main-content {
       transition: none;
     }

@@ -19,22 +19,27 @@
    *    collapse progressively by the toolbar's OWN width (not the viewport),
    *    with thresholds derived from the measured cluster widths so the middle
    *    track always has room for the page nav:
-   *      ≤1150px  view-mode segmented group → dropdown menu
+   *      ≤1150px  Edit/Read/Focus segmented group → dropdown menu
    *      ≤1000px  button text labels drop (icon-only), title/path trim
    *      ≤900px   page nav compacts (first/last jump buttons drop)
-   *      ≤620px   title/path, view-mode/zoom menus, separators, hints drop
+   *      ≤620px   title/path, mode/zoom menus, separators, hints drop
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
+   * The workspace mode is ONE control with one segment per `WorkspaceMode`
+   * value — no icon button beside it duplicating a mode the segments already
+   * offer, and nothing reachable only from the keyboard.
+   *
    * Primary actions are ordered Publish → Export → Save so Save is always the
    * right-most button. There is no overflow menu: Export opens the export
-   * dialog, project settings is a dedicated button beside the editor toggle,
-   * focus mode lives on the editor toolbar, advanced setup in app Settings.
+   * dialog, project settings is a dedicated button beside the mode control,
+   * advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { adjacentTab, type MobileTab } from "$lib/editor/mobile-layout";
+  import type { WorkspaceMode } from "$lib/platform";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
   let {
@@ -59,17 +64,12 @@
     editorTabDisabled,
     previewTabDisabled,
     hidePreviewControls,
-    viewMode,
+    mode,
+    onSetMode,
     zoom,
     previewControlsDisabled,
-    onApplyViewMode,
     onApplyZoom,
-    previewHidden,
-    previewToggleDisabled,
-    onTogglePreview,
-    editorOpen,
     editorToggleDisabled,
-    onToggleEditor,
     publishVisible,
     publishDisabled,
     onPublish,
@@ -108,17 +108,14 @@
     previewTabDisabled: boolean;
     /** Narrow + editor tab: the preview controls are noise — hide them. */
     hidePreviewControls: boolean;
-    viewMode: "single" | "two-column";
+    /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
+    mode: WorkspaceMode;
+    onSetMode: (mode: WorkspaceMode) => void;
     zoom: string;
     previewControlsDisabled: boolean;
-    onApplyViewMode: (mode: "single" | "two-column") => void;
     onApplyZoom: (zoom: string) => void;
-    previewHidden: boolean;
-    previewToggleDisabled: boolean;
-    onTogglePreview: () => void;
-    editorOpen: boolean;
+    /** No project open — the whole mode control has nothing to switch. */
     editorToggleDisabled: boolean;
-    onToggleEditor: () => void;
     publishVisible: boolean;
     publishDisabled: boolean;
     onPublish: () => void;
@@ -140,6 +137,11 @@
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
+
+  // The collapsed menu's summary reports the mode it stands in for.
+  const modeIcon = $derived(
+    mode === "viewer" ? "book-open" : mode === "focus" ? "maximize" : "pen-line",
+  );
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
@@ -309,55 +311,82 @@
     {/if}
     <span class="toolbar-sep" aria-hidden="true"></span>
 
-    <!-- View-mode (single/spread): a pair of segmented buttons on wide
-         toolbars; collapses into a single menu button when space is tight. -->
-    <div class="view-mode-group">
+    <!-- Workspace mode (Edit/Read/Focus): one segment per `WorkspaceMode`
+         value on wide toolbars; collapses into a single menu button when space
+         is tight. Reading is two pages side by side; editing is one page
+         beside the editor; focus is the editor alone — the page layout follows
+         from the mode, it is not a separate choice (see `WorkspaceMode`).
+         Focus is the odd one out on narrow layouts: there the tab bar already
+         picks the single visible pane, so hiding the viewer just leaves it on
+         screen but inert — the same reason togglePreview() refuses when
+         `isNarrow`. -->
+    <div class="mode-group">
       <button
         class="icon-text"
-        class:active={viewMode === "single"}
-        onclick={() => onApplyViewMode("single")}
-        disabled={previewControlsDisabled}
-        title="Show one page at a time"
-        aria-label="Single page view"
-        aria-pressed={viewMode === "single"}
+        class:active={mode === "editor"}
+        onclick={() => onSetMode("editor")}
+        disabled={editorToggleDisabled}
+        title="Write, with one page of the book beside you (Ctrl+E)"
+        aria-label="Edit"
+        aria-pressed={mode === "editor"}
       >
-        <Icon name="rectangle-vertical" /><span class="view-label">Single</span>
+        <Icon name="pen-line" /><span class="view-label">Edit</span>
       </button>
       <button
         class="icon-text"
-        class:active={viewMode === "two-column"}
-        onclick={() => onApplyViewMode("two-column")}
-        disabled={previewControlsDisabled}
-        title="Show two pages side by side, like an open book"
-        aria-label="Two pages side by side"
-        aria-pressed={viewMode === "two-column"}
+        class:active={mode === "viewer"}
+        onclick={() => onSetMode("viewer")}
+        disabled={editorToggleDisabled}
+        title="Read the book two pages at a time, like an open book"
+        aria-label="Read"
+        aria-pressed={mode === "viewer"}
       >
-        <Icon name="columns-2" /><span class="view-label">Two-page</span>
+        <Icon name="book-open" /><span class="view-label">Read</span>
+      </button>
+      <button
+        class="icon-text"
+        class:active={mode === "focus"}
+        onclick={() => onSetMode("focus")}
+        disabled={editorToggleDisabled || isNarrow}
+        title="Write with nothing beside you — just your words (Ctrl+Shift+F)"
+        aria-label="Focus"
+        aria-pressed={mode === "focus"}
+      >
+        <Icon name="maximize" /><span class="view-label">Focus</span>
       </button>
     </div>
-    <details class="menu view-mode-menu">
-      <summary class="icon-btn menu-summary" title="Page view mode" aria-label="Page view mode">
-        <Icon name={viewMode === "single" ? "rectangle-vertical" : "columns-2"} />
+    <details class="menu mode-menu">
+      <summary class="icon-btn menu-summary" title="Edit, read or focus" aria-label="Edit, read or focus">
+        <Icon name={modeIcon} />
         <Icon name="chevron-down" size={12} />
       </summary>
       <div class="menu-panel">
         <button
-          aria-pressed={viewMode === "single"}
+          aria-pressed={mode === "editor"}
           class="menu-item"
-          class:active={viewMode === "single"}
-          onclick={(e) => { onApplyViewMode("single"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          class:active={mode === "editor"}
+          onclick={(e) => { onSetMode("editor"); closeMenu(e); }}
+          disabled={editorToggleDisabled}
         >
-          <Icon name="rectangle-vertical" /> Single page
+          <Icon name="pen-line" /> Edit
         </button>
         <button
-          aria-pressed={viewMode === "two-column"}
+          aria-pressed={mode === "viewer"}
           class="menu-item"
-          class:active={viewMode === "two-column"}
-          onclick={(e) => { onApplyViewMode("two-column"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          class:active={mode === "viewer"}
+          onclick={(e) => { onSetMode("viewer"); closeMenu(e); }}
+          disabled={editorToggleDisabled}
         >
-          <Icon name="columns-2" /> Two pages side by side
+          <Icon name="book-open" /> Read
+        </button>
+        <button
+          aria-pressed={mode === "focus"}
+          class="menu-item"
+          class:active={mode === "focus"}
+          onclick={(e) => { onSetMode("focus"); closeMenu(e); }}
+          disabled={editorToggleDisabled || isNarrow}
+        >
+          <Icon name="maximize" /> Focus
         </button>
       </div>
     </details>
@@ -383,36 +412,9 @@
       </div>
     </details>
 
-    {#if !isNarrow && sourceMode !== "url"}
-      <!-- Pane toggles only exist for folder projects — in URL mode there is
-           no editor, so rendering them permanently disabled is pure noise
-           (and toolbar width the URL-mode start cluster badly needs). -->
-      <button
-        class="icon-btn"
-        class:active={previewHidden}
-        onclick={onTogglePreview}
-        disabled={previewToggleDisabled}
-        title={previewHidden ? "Show preview" : "Hide preview"}
-        aria-label={previewHidden ? "Show preview" : "Hide preview"}
-        aria-pressed={previewHidden}
-      >
-        <Icon name="eye" />
-      </button>
-      <button
-        class="icon-btn"
-        class:active={editorOpen}
-        onclick={onToggleEditor}
-        disabled={editorToggleDisabled}
-        title="Toggle markdown editor (Ctrl+E)"
-        aria-label="Toggle markdown editor"
-        aria-pressed={editorOpen}
-      >
-        <Icon name="pen-line" />
-      </button>
-    {/if}
     {#if showProjectSettings}
-      <!-- Project settings (manifest) — beside the editor toggle. Rendered on
-           narrow layouts too (the tab bar replaces the pane toggles there,
+      <!-- Project settings (manifest) — beside the mode control. Rendered on
+           narrow layouts too (the tab bar replaces the mode control there,
            but project settings must stay reachable). -->
       <button
         class="icon-btn project-settings-btn"
@@ -435,9 +437,9 @@
     {/if}
 
     <!-- Primary actions — Publish, Export, Save (Save right-most). No
-         overflow menu: focus mode lives on the editor toolbar, advanced setup
-         in the app Settings view, save-as-template in the export dialog, and
-         project settings beside the editor toggle above. -->
+         overflow menu: focus mode is a segment of the mode control, advanced
+         setup lives in the app Settings view, save-as-template in the export
+         dialog, and project settings beside the mode control above. -->
     {#if publishVisible}
       <button
         class="publish-btn primary app-btn-primary icon-text"
@@ -628,7 +630,7 @@
   /* ---- Collapsible dropdown menus (view-mode + zoom + more) ---- */
   .menu { position: relative; display: inline-block; }
   /* The view-mode menu only appears when the segmented group collapses. */
-  details.view-mode-menu { display: none; }
+  details.mode-menu { display: none; }
   .menu-summary {
     list-style: none;
     display: inline-flex;
@@ -683,7 +685,7 @@
 
   /* Page/Spread as a true segmented control: one bordered track, the selected
      segment filled, the other transparent. */
-  .view-mode-group {
+  .mode-group {
     display: inline-flex;
     gap: 0;
     background: var(--app-control-bg);
@@ -691,17 +693,17 @@
     border-radius: 7px;
     padding: 2px;
   }
-  .view-mode-group button {
+  .mode-group button {
     border: 1px solid transparent;
     background: transparent;
     border-radius: 5px;
     padding: 4px 9px;
   }
-  .view-mode-group button:hover:not(:disabled) {
+  .mode-group button:hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: transparent;
   }
-  .view-mode-group button.active {
+  .mode-group button.active {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
@@ -811,8 +813,8 @@
      toolbar is just Panel · Tabs · Actions. The separators go too: with the
      view controls gone they would render as an adjacent double rule. */
   .toolbar.edit-narrow .toolbar-center,
-  .toolbar.edit-narrow .view-mode-group,
-  .toolbar.edit-narrow .view-mode-menu,
+  .toolbar.edit-narrow .mode-group,
+  .toolbar.edit-narrow .mode-menu,
   .toolbar.edit-narrow .zoom-menu,
   .toolbar.edit-narrow .toolbar-sep {
     display: none;
@@ -826,16 +828,18 @@
      track starves and the page nav clips on ordinary desktop windows. */
   .toolbar.url-mode .doc-title { max-width: 140px; }
   .toolbar.url-mode .path { max-width: 120px; }
-  .toolbar.url-mode .view-mode-group { display: none; }
-  .toolbar.url-mode details.view-mode-menu { display: inline-block; }
+  /* A URL source has no editor, so two of the three modes are meaningless —
+     drop the whole switch rather than show it permanently disabled. */
+  .toolbar.url-mode .mode-group,
+  .toolbar.url-mode details.mode-menu { display: none; }
   .toolbar.url-mode .save-hint { display: none; }
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
     /* Swap the inline view-mode buttons for the compact menu button; the
        export hints yield to the page nav from here down. */
-    .view-mode-group { display: none; }
-    details.view-mode-menu { display: inline-block; }
+    .mode-group { display: none; }
+    details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
     .path { max-width: 140px; }
   }
@@ -860,8 +864,8 @@
     .path,
     .toolbar-sep,
     .save-hint,
-    .view-mode-group,
-    .view-mode-menu,
+    .mode-group,
+    .mode-menu,
     .zoom-menu {
       display: none;
     }

@@ -3,6 +3,8 @@
 All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
 ## [0.10.1] - 2026-08-24
 
 ### Added
@@ -22,6 +24,60 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The window is now either for writing or for reading, and it says which.**
+  The old toolbar asked you to manage two things at once: whether the editor
+  was open, and separately whether the book showed one page or two. The
+  combinations mostly did not make sense, and the app kept quietly changing
+  the page count on you when you resized the window. There is now one control
+  with three settings, and nothing else beside it: **Edit** puts the editor
+  next to a single page, **Read** gives the whole window to the book — two
+  pages side by side, like a real one — and **Focus** clears the book away so
+  it is just you and your words. All three keep the toolbar, so there is
+  always a visible way back, and the button you pressed to get here is still
+  lit. The eye and pen buttons that used to sit beside this control are gone;
+  they only ever offered the same three arrangements a second time. The app
+  opens on Read and remembers whether you left it writing or reading — Focus
+  is a posture for the afternoon, not a room to wake up in. The trade is
+  deliberate and worth naming: you can no longer edit with two pages showing.
+  That arrangement never had room for either half.
+
+  `Ctrl+E` still swaps between writing and reading, and `Ctrl+Shift+F` still
+  drops you into Focus.
+
+- **Editing a block in the preview now happens IN the page.** Right-click →
+  "Edit this block", or just double-click any block, and that block itself
+  becomes an editing surface holding its markdown source. The caret sits in the
+  book's own typography, at the size and position the text really occupies, and
+  the pages reflow around your typing — including across a page break, which is
+  edited as one block rather than one fragment at a time. `Cmd`/`Ctrl+Enter` or
+  clicking away commits; `Escape` discards. Nothing is dimmed and the page no
+  longer locks its scroll while you work.
+
+  This replaces the floating edit panel. That panel existed because the old
+  Paged.js preview split a block spanning a page into several cloned elements —
+  a caret could not cross the seam — and never re-paginated after a DOM change.
+  Neither is true of the native viewer: it never chunks the DOM, and
+  `Gutterpress.refresh()` rebuilds and re-measures, so the page count stays
+  right as a block grows. Verified rather than assumed, including that
+  multi-line markdown (lists, tables, fences) round-trips byte-for-byte and that
+  a rich-text paste lands as plain text.
+
+  Three things only the end-to-end test could catch shaped the final behaviour:
+  "clicked away" is a pointer press rather than a `blur` (the frame takes focus
+  a moment after the box opens, and the blur that follows is not the author
+  leaving); keyboard focus is walked down the frame chain before the open
+  command, not after it; and the caret is preserved across re-pagination, which
+  re-parents the box and would otherwise drop it on the first refresh after you
+  start typing.
+
+  Under the hood: bridge protocol v8 adds `beginBlockEdit`/`endBlockEdit` and
+  drops `getRectsFor`/`setEditMask`, which existed only to place and de-clutter
+  behind the panel. The write path is unchanged — every mutation still flows
+  through the same commit engine and its clean-buffer gate — and hot-reload
+  swaps are held while an edit is open so a save elsewhere cannot destroy your
+  uncommitted typing. See `docs/inline-editing-plan.md` and
+  [ADR 0009](docs/adr/0009-inline-editing-source-ranges.md) (revised).
+
 - **Your work now uploads in quieter batches** — about every 15 minutes, and
   once more when you close the project or the app — instead of every couple
   of minutes. Changes from your other computer (or a co-writer) still arrive
@@ -38,6 +94,67 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Inline editing no longer stops working after the first block.** Open a
+  block, decide it was fine as it was, and close it — and every double-click
+  after that was turned away with "Updating the preview — try that again in a
+  moment," for the rest of the session. The preview was not updating. Closing
+  a block without changing anything writes nothing, so the re-render that was
+  being waited on was never going to arrive, and the guard that holds off
+  edits between a save and its re-render stayed up forever. A block you did
+  not change is now simply let go, which also skips a pointless save and a
+  full re-layout of the book.
+
+- **Going straight from Read into Focus now actually gets you there.** It used
+  to drop you in Edit instead, with the book still sitting beside you — you
+  asked for the whole window and got half of it, and had to ask twice. (The
+  same thing happened to `Ctrl+Shift+F` pressed while reading.) Focus is not a
+  setting the app remembers between sessions, so it saves itself as "Edit";
+  that saved value was arriving back a beat too early and overwriting the
+  thing you had just asked for.
+
+- **"Updating preview…" no longer gets stuck on screen.** Save a file and the
+  little status pill would sometimes stay up forever, even though the new
+  pages were already there. Two quieter things were stuck with it: the chapter
+  list you jump around with, and the Problems panel — both kept describing the
+  book as it was before the edit. All three had the same cause. The preview
+  swaps in a freshly laid-out copy of your book and announces "done" when that
+  copy finishes; on a short book it finished so fast that the announcement went
+  out before anyone was listening, and it was simply lost. Whether you saw the
+  bug came down to how quickly your book laid out. The preview now says "done"
+  itself, at the moment it puts the new pages on screen, so there is nothing
+  left to miss.
+
+- **A comment in `preview-shell.js` claiming the viewer cannot re-paginate a
+  DOM edit.** It said `relayout()` "only re-`measure()`s the EXISTING strips";
+  the current `fragment.ts` rebuilds them from scratch via `buildStrips()`. The
+  claim had been the standing argument against ever updating the preview in
+  place. The reason to prefer a full swap for content updates is performance
+  (509ms vs 998ms, measured), which still holds and is now what the comment
+  says.
+
+- **Integration scripts that could not run, and one that reported a constant as
+  a measurement.** `drive-app` and `click-and-export` are acceptance-gate
+  drivers taking `<fixtureDir> <engineLabel> …`, but they were named `.pw.mjs`,
+  which is the suffix `run-ui.mjs` globs to spawn everything with `(exe,
+  fixture)` — so the UI suite handed them an executable path as their fixture
+  directory. Both are renamed to plain `.mjs` (the name their own usage strings
+  already claimed), matching how `app-window.mjs` is kept out of the glob, and
+  the runner now documents the suffix as a contract rather than decoration.
+
+  `drive-app`'s `detectedEngine` result branched on `.pagedjs_page` vs
+  `.gp-sheet` and reported the winner. With one engine that branch was
+  unreachable, so the field was a constant presented as a finding; it is now
+  `renderedSheets`, which fails loudly when the viewer paints nothing — the
+  only thing the check can honestly establish. The remaining `.pagedjs_page`
+  waits and selectors are dropped, and `preview-bridge.test.mjs` stops being
+  parameterised over `["native"]` — a one-element loop kept "so a future second
+  engine slots back in", which the Chromium-only ruling forecloses.
+
+- **A comment in `preview-shell-regression.test.mjs`** describing an
+  `onReady()` branch that polls `.pagedjs_page`. `onReady()` listens for
+  `renderingComplete` and short-circuits on `__GUTTERPRESS_RENDERED__`; there is
+  no polling branch.
+
 - **Force-quitting the app can no longer damage a project's version history.**
   The record of your versions is kept in a set of small bookkeeping files, and
   the app used to update one by emptying it and writing it again — a moment in
@@ -46,34 +163,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   into place in one step, so an interruption leaves either the previous version
   of the file or the new one — never a half-written one. This was the only way
   the app itself could damage a project's history.
-
-### Removed
-
-- **The repository-repair feature is gone — including the `gutterpress repair`
-  command and the "Tidying up sync…" overlay.** It existed to rebuild a
-  project's version history when the hidden folder that stores it got damaged.
-  What we confirmed while reviewing it: that damage never threatens your book.
-  Your chapters, images, and styles live in ordinary files that come through
-  untouched, and a project whose history is unreadable still opens, still
-  edits, and still builds a PDF — only the record of past versions is
-  affected. So the repair machinery was a large, delicate mechanism standing
-  guard over something that was never actually at risk, and it has been
-  removed rather than maintained. If a project's history ever does become
-  unreadable, the app now tells you plainly: your files are safe, the history
-  can't be read, and — when the project has an online copy — the fix is to
-  download a fresh copy from online. Syncing, version history, and "Previous
-  versions" are unchanged for every healthy project.
-
-- **`gutterpress repair --force` is gone**, along with the app-open check it
-  overrode. The desktop used to leave a liveness marker in the project while
-  it had it open, and `repair` refused to run when that marker looked fresh
-  unless you passed `--force`. The marker carried no actual locking — it
-  could only guess, and it failed open — so it stopped a real repair more
-  readily than it prevented a real clash. `repair` now simply runs. The
-  writes it makes were already serialized per project. Scripts passing
-  `--force` should drop the flag.
-
-### Fixed
 
 - **Automatic syncing no longer rolls back the sentence you just typed.**
   A 0.10.0 report — "this latest update erases my most recent edit and states
@@ -133,6 +222,49 @@ This project follows [Semantic Versioning](https://semver.org/).
   box under a STATIC clipping wrapper, `overflow-y: clip` beside an untouched
   `overflow-x: visible`, and an `overflow-clip-margin` wide enough to let the
   box back out.
+
+### Removed
+
+- **The last of the two-engine plumbing.** Paged.js has been gone since the
+  native-only migration, and `manifest.ts` already resolved every build to
+  `"native"` — but the desktop still carried a `previewEngine` field typed
+  `"paged" | "native"` and **defaulting to `"paged"`**, fed by a host that read
+  the author's raw `engine:` value rather than the resolved one. A manifest
+  still saying `engine: paged` therefore made the app report an engine that
+  could not possibly be rendering, in a field whose own documentation said "the
+  engine actually rendering this preview".
+
+  Nothing read that field — it was written in four places and consumed in none
+  — so the whole chain is gone rather than merely corrected: the host no longer
+  derives it, the wire type no longer carries it, and the `$state` is deleted.
+  An old host that still sends `engine` is unaffected; the property is simply
+  ignored. The manifest's *input* `engine:` union is unchanged, because
+  existing books must keep parsing (and keep getting their warning); only the
+  *resolved* type narrows to the single value it can hold.
+
+- **The repository-repair feature is gone — including the `gutterpress repair`
+  command and the "Tidying up sync…" overlay.** It existed to rebuild a
+  project's version history when the hidden folder that stores it got damaged.
+  What we confirmed while reviewing it: that damage never threatens your book.
+  Your chapters, images, and styles live in ordinary files that come through
+  untouched, and a project whose history is unreadable still opens, still
+  edits, and still builds a PDF — only the record of past versions is
+  affected. So the repair machinery was a large, delicate mechanism standing
+  guard over something that was never actually at risk, and it has been
+  removed rather than maintained. If a project's history ever does become
+  unreadable, the app now tells you plainly: your files are safe, the history
+  can't be read, and — when the project has an online copy — the fix is to
+  download a fresh copy from online. Syncing, version history, and "Previous
+  versions" are unchanged for every healthy project.
+
+- **`gutterpress repair --force` is gone**, along with the app-open check it
+  overrode. The desktop used to leave a liveness marker in the project while
+  it had it open, and `repair` refused to run when that marker looked fresh
+  unless you passed `--force`. The marker carried no actual locking — it
+  could only guess, and it failed open — so it stopped a real repair more
+  readily than it prevented a real clash. `repair` now simply runs. The
+  writes it makes were already serialized per project. Scripts passing
+  `--force` should drop the flag.
 
 ## [0.10.0] - 2026-08-23
 

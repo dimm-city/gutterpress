@@ -7,6 +7,15 @@
  *   bun run test:ui -- <exe>   # or point at a specific packaged executable
  *
  * Uses the playwright-core devDependency — no ad-hoc installs, no file copies.
+ *
+ * The `.pw.mjs` suffix is the CONTRACT, not decoration: every file carrying it
+ * is spawned with exactly `(exe, fixture)`, so a script that reads different
+ * positional arguments must not carry the suffix. `drive-app.mjs` and
+ * `click-and-export.mjs` are acceptance-gate drivers taking
+ * `<fixtureDir> <engineLabel> …`; run by this runner they silently received the
+ * executable path as their fixture directory. They are named without the suffix
+ * for the same reason `app-window.mjs` and `workspace-mode.mjs` are — the glob
+ * is the only thing deciding what runs here.
  */
 import { readdirSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";

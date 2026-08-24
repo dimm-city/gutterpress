@@ -107,7 +107,7 @@ gutterpress/
 │   ├── Markdown editor                        SHIPPED  (MarkdownEditor, CodeMirror 6, #38)
 │   ├── CSS editing                            SHIPPED  (language mode of the same editor —
 │   │                                                    css-editor.ts, #39; NOT a separate panel)
-│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + paged.js bridge, ADR 0005)
+│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + preview bridge, ADR 0005)
 │   ├── Editor toolbar                         SHIPPED  (EditorToolbar, #31; SnippetPicker, #29)
 │   ├── Page navigation                        SHIPPED  (PageNavController toolbar pager + TOC outline, #20)
 │   └── Page thumbnail navigator               NOT PLANNED (evaluated 2026-07-14 — the
@@ -446,7 +446,7 @@ accounts — see Anti-Patterns table).
 shipped; the visual layout editor is **#37 (open)**.
 
 Reference research: InDesign/Affinity (preflight, master pages), Scribus
-(what to avoid), Paged.js (engine).
+(what to avoid), Paged.js (prior art — no longer our engine).
 
 From print tools, keep: page navigation for long documents; non-destructive,
 always-revertible CSS overrides; preflight before export. Avoid: tool-mode
@@ -495,7 +495,7 @@ only token-backed properties (others shown read-only), so the tool never
 writes raw values; the shipped **DesignSection token editor is the
 baseline** it extends (do not build a second token panel).
 
-**Overflow indicator (PROPOSED):** paged.js does not report overflow.
+**Overflow indicator (PROPOSED):** the engine does not report overflow.
 Detection = post-pagination geometry probe in the preview process
 (content-area `scrollHeight/Width` vs client box; opt-out class for
 intentional bleeds), surfaced through the ADR 0005 bridge to both the page
@@ -1095,7 +1095,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
 | Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview |
-| Raw Paged.js / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
+| Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |
 | A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts CLAUDE.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
@@ -1111,7 +1111,7 @@ Obsidian (panel flexibility, community themes) · Bear · Ulysses.
 
 **Print/layout:** Affinity Publisher 2 (preflight, masters) · Canva
 (non-designer layout) · Visme (template-first onboarding) ·
-[Paged.js](https://pagedjs.org/) (the actual engine).
+[Paged.js](https://pagedjs.org/) (prior art; Gutterpress paginates with Chromium directly).
 
 **Publish:** Netlify (preflight + deploy log drawer) · Shopify (provider
 cards) · Leanpub (author-centric flow).

@@ -23,9 +23,8 @@ interface Harness {
     syncPageState: (detail: unknown) => void;
   };
   zoomView: {
-    userSetViewMode: boolean;
     rejectFit: boolean;
-    applyViewMode: (mode: "single" | "two-column", fromUser: boolean) => void;
+    applyViewMode: (mode: "single" | "two-column") => void;
     applyFitWidthZoom: () => Promise<void>;
   };
   // Mutable ambient state the controller reads through injected getters.
@@ -36,8 +35,7 @@ interface Harness {
   renderProgressPage: number;
   overlay: boolean;
   updating: boolean;
-  viewportWidth: number;
-  pendingRestore: { page: number | null; viewMode: "single" | "two-column" | null };
+  pendingRestore: { page: number | null };
 }
 
 function make(): Harness {
@@ -53,11 +51,7 @@ function make(): Harness {
     renderProgressPage: 0,
     overlay: false,
     updating: false,
-    viewportWidth: 1400,
-    pendingRestore: { page: null, viewMode: null } as {
-      page: number | null;
-      viewMode: "single" | "two-column" | null;
-    },
+    pendingRestore: { page: null } as { page: number | null },
   } as Harness;
 
   h.client = {
@@ -96,9 +90,8 @@ function make(): Harness {
   };
 
   h.zoomView = {
-    userSetViewMode: false,
     rejectFit: false,
-    applyViewMode: (mode, fromUser) => log.push(`applyViewMode:${mode}:${fromUser}`),
+    applyViewMode: (mode) => log.push(`applyViewMode:${mode}`),
     applyFitWidthZoom: () => {
       log.push("applyFitWidth");
       return h.zoomView.rejectFit ? Promise.reject(new Error("fit-boom")) : Promise.resolve();
@@ -137,14 +130,13 @@ function make(): Harness {
     resetOutline: () => log.push("resetOutline"),
     consumePendingRestore: () => {
       const r = h.pendingRestore;
-      h.pendingRestore = { page: null, viewMode: null };
+      h.pendingRestore = { page: null };
       return r;
     },
     refreshOutline: () => log.push("refreshOutline"),
     refreshProblems: () => log.push("refreshProblems"),
     revealSettledPages: () => log.push("reveal"),
     toastSuccess: (m) => log.push(`toast:${m}`),
-    viewportWidth: () => h.viewportWidth,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
   });
   return h;
@@ -160,17 +152,18 @@ const rc = (totalPages?: number): PreviewEvent => ({
 test("renderingComplete runs the settle sequence in the JUMP-preventing order", async () => {
   const h = make();
   h.zoom = "0.5"; // numeric-zoom path
-  h.viewportWidth = 1400; // auto → two-column
+  h.viewMode = "two-column";
   h.ctrl.handleEvent(rc(12));
 
   // The synchronous portion must have run in exactly this order, and the
   // reveal must NOT have happened yet (it is gated on the async zoom promise).
   expect(h.log).toEqual([
+    "updating:false",
     "setProgress:12",
     "setRendering:false",
     "overlay:true",
     "inject:desktop-canvas",
-    "applyViewMode:two-column:false",
+    "applyViewMode:two-column",
     "call:setZoom",
     "toast:Your book is ready — 12 pages",
     "refreshOutline",
@@ -271,44 +264,29 @@ test("reveal still fires when fit-width zoom rejects", async () => {
   expect(h.log[h.log.length - 1]).toBe("reveal");
 });
 
-// ── renderingComplete: view-mode auto-selection ──────────────────────────────
+// ── renderingComplete: view mode ─────────────────────────────────────────────
 
-test("view mode auto-selects single below 1280px and two-column above", () => {
-  const narrow = make();
-  narrow.viewportWidth = 1000;
-  narrow.ctrl.handleEvent(rc(2));
-  expect(narrow.log).toContain("applyViewMode:single:false");
+// View mode is derived from the workspace mode, not decided here. A fresh
+// frame starts in the viewer's own default, so the settle sequence relays the
+// host's current value into it — and nothing else. There is no width
+// heuristic, no user lock, and no per-project restore left to arbitrate.
+test("the settle sequence relays the host's derived view mode, whatever it is", () => {
+  const single = make();
+  single.viewMode = "single";
+  single.ctrl.handleEvent(rc(2));
+  expect(single.log).toContain("applyViewMode:single");
 
-  const wide = make();
-  wide.viewportWidth = 1400;
-  wide.ctrl.handleEvent(rc(2));
-  expect(wide.log).toContain("applyViewMode:two-column:false");
-});
-
-test("a user-locked view mode overrides the responsive auto default", () => {
-  const h = make();
-  h.viewportWidth = 1000; // auto would be single
-  h.zoomView.userSetViewMode = true;
-  h.viewMode = "two-column";
-  h.ctrl.handleEvent(rc(2));
-  expect(h.log).toContain("applyViewMode:two-column:false");
-});
-
-test("a pending restore view mode wins over both auto and the user lock", () => {
-  const h = make();
-  h.viewportWidth = 1400; // auto two-column
-  h.zoomView.userSetViewMode = true;
-  h.viewMode = "two-column";
-  h.pendingRestore = { page: null, viewMode: "single" };
-  h.ctrl.handleEvent(rc(2));
-  expect(h.log).toContain("applyViewMode:single:false");
+  const two = make();
+  two.viewMode = "two-column";
+  two.ctrl.handleEvent(rc(2));
+  expect(two.log).toContain("applyViewMode:two-column");
 });
 
 // ── renderingComplete: page restore ──────────────────────────────────────────
 
 test("a pending restore page > 1 is restored via a microtask", async () => {
   const h = make();
-  h.pendingRestore = { page: 4, viewMode: null };
+  h.pendingRestore = { page: 4 };
   h.ctrl.handleEvent(rc(10));
   // Not restored synchronously.
   expect(h.log).not.toContain("restorePage:4");
@@ -318,7 +296,7 @@ test("a pending restore page > 1 is restored via a microtask", async () => {
 
 test("page 1 (or no) restore does not schedule a restore", async () => {
   const h = make();
-  h.pendingRestore = { page: 1, viewMode: null };
+  h.pendingRestore = { page: 1 };
   h.ctrl.handleEvent(rc(10));
   await flush();
   expect(h.log.some((l) => l.startsWith("restorePage:"))).toBe(false);
@@ -369,6 +347,18 @@ test("hot reload exposes a non-blocking updating state until the replacement is 
 
   h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
   expect(h.updating).toBe(false);
+});
+
+// The pill was the visible half of a dropped `renderingComplete`; the chapter
+// outline and the Problems panel were the quiet half. A hot reload rebuilds
+// both — it is a whole new document, so anything derived from the old one is
+// stale.
+test("a hot reload rebuilds the chapter outline and re-lints the project", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
+  expect(h.log).toContain("refreshOutline");
+  expect(h.log).toContain("refreshProblems");
 });
 
 test("a cancelled replacement clears the non-blocking updating state", () => {
