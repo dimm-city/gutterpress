@@ -472,7 +472,16 @@ export type SyncOutcome =
       /** Files kept as a pair (ours at `path`, theirs at `onlinePath`). */
       keptBothFiles?: KeptBothFile[];
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | {
+      status: "up-to-date";
+      message: string;
+      snapshotId?: string;
+      filesChanged?: boolean;
+      // A pull-merge-only pass reports here and CAN have combined files
+      // (both sides moved, the push was held). Mirrors the lib.
+      combinedFiles?: string[];
+      keptBothFiles?: KeptBothFile[];
+    }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };

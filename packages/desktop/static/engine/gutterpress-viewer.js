@@ -1276,38 +1276,43 @@
   }
   var SCROLLABLE = /^(auto|scroll|hidden)$/;
   function makeOverflowFragmentable(strips) {
-    let mapped = 0;
+    const todo = [];
     for (const strip of strips) {
       for (const el of Array.from(strip.el.querySelectorAll("*"))) {
         const cs = getComputedStyle(el);
         const x = SCROLLABLE.test(cs.overflowX);
         const y = SCROLLABLE.test(cs.overflowY);
-        if (!x && !y)
-          continue;
-        el.dataset.gpOverflow = "clipped";
-        el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
-        el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
-        if (x)
-          el.style.setProperty("overflow-x", "clip");
-        if (y)
-          el.style.setProperty("overflow-y", "clip");
-        mapped++;
+        if (x || y)
+          todo.push({ el, x, y });
       }
     }
-    return mapped;
+    for (const { el, x, y } of todo) {
+      el.dataset.gpOverflow = "clipped";
+      el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+      el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+      el.dataset.gpOverflowXPriority = el.style.getPropertyPriority("overflow-x");
+      el.dataset.gpOverflowYPriority = el.style.getPropertyPriority("overflow-y");
+      if (x)
+        el.style.setProperty("overflow-x", "clip");
+      if (y)
+        el.style.setProperty("overflow-y", "clip");
+    }
   }
   function restoreScrollContainers(doc = document) {
     for (const el of Array.from(doc.querySelectorAll('[data-gp-overflow="clipped"]'))) {
       for (const axis of ["x", "y"]) {
         const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
+        const priority = axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
         if (value)
-          el.style.setProperty(`overflow-${axis}`, value);
+          el.style.setProperty(`overflow-${axis}`, value, priority || "");
         else
           el.style.removeProperty(`overflow-${axis}`);
       }
       delete el.dataset.gpOverflow;
       delete el.dataset.gpOverflowX;
       delete el.dataset.gpOverflowY;
+      delete el.dataset.gpOverflowXPriority;
+      delete el.dataset.gpOverflowYPriority;
     }
   }
   function compensateTrailingMarginsBeforeAvoids(model, strips) {

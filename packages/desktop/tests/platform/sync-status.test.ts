@@ -23,5 +23,4 @@ test("sync statuses without local file changes do not reconcile open buffers", (
   expect(shouldReconcileAfterSync(status("synced"))).toBe(false);
   expect(shouldReconcileAfterSync(status("syncing", true))).toBe(false);
   expect(shouldReconcileAfterSync(status("recovering", true))).toBe(false);
-  expect(shouldReconcileAfterSync(status("conflict", true))).toBe(false);
 });

@@ -47,3 +47,27 @@ export const SYNC_SNAPSHOT_MESSAGE = "Automatic backup of your work";
  * rename permanently grows the timeline's superseded-spelling list).
  */
 export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while syncing";
+
+/**
+ * The keep-both sibling contract, kept HERE rather than in converge-merge.ts
+ * because every consumer needs it and converge-merge pulls in isomorphic-git:
+ * the markdown file resolver must not render a sibling as a chapter, and the
+ * merge-marker check must report it. This file imports nothing, so any of
+ * them can depend on it.
+ *
+ * `art/cover.png` -> `art/cover.online.png`; extensionless `NOTES` -> `NOTES.online`.
+ */
+export function onlineSiblingPath(filepath: string): string {
+  const dot = filepath.lastIndexOf(".");
+  const slash = filepath.lastIndexOf("/");
+  const hasExt = dot > slash + 1;
+  return hasExt ? `${filepath.slice(0, dot)}.online${filepath.slice(dot)}` : `${filepath}.online`;
+}
+
+/** True for a path `onlineSiblingPath` produced — Gutterpress's artifact, not the author's. */
+export function isOnlineSibling(filepath: string): boolean {
+  const dot = filepath.lastIndexOf(".");
+  const slash = filepath.lastIndexOf("/");
+  const stem = dot > slash + 1 ? filepath.slice(0, dot) : filepath;
+  return stem.endsWith(".online");
+}

@@ -57,6 +57,12 @@ import git from "isomorphic-git";
 // byte-identically to a plain `git.merge`. Pinned exact in package.json.
 import diff3Merge from "diff3";
 
+// The keep-both sibling contract lives in the zero-import leaf so the
+// markdown resolver and the merge-marker check can share it without
+// pulling isomorphic-git in. Re-exported for existing importers.
+import { onlineSiblingPath, isOnlineSibling } from "./sync-messages.ts";
+export { onlineSiblingPath, isOnlineSibling };
+
 import {
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
@@ -96,16 +102,6 @@ export const CONVERGE_MERGE_MESSAGE =
  */
 const MARKER_UNSAFE_EXT = /\.svg$/i;
 
-/**
- * Where the online version of a file that cannot carry conflict markers is
- * kept: the same name with `.online` before the extension
- * (`art/cover.png` -> `art/cover.online.png`). Repo-relative, always posix.
- */
-export function onlineSiblingPath(filepath: string): string {
-  const ext = path.posix.extname(filepath);
-  return ext ? `${filepath.slice(0, -ext.length)}.online${ext}` : `${filepath}.online`;
-}
-
 /** Marker labels — author language, never git jargon. */
 const OUR_LABEL = "your version";
 const THEIR_LABEL = "online version";
@@ -115,9 +111,6 @@ function stringLooksBinary(s: string): boolean {
   return s.includes("\u0000");
 }
 
-function blobLooksBinary(b: Uint8Array): boolean {
-  return b.subarray(0, 8192).includes(0);
-}
 
 const LINEBREAKS = /^.*(\r?\n|$)/gm;
 
@@ -354,7 +347,8 @@ export async function convergeMerge(params: {
       await attempt();
     } else if ((e as { code?: string })?.code === "MergeNotSupportedError") {
       // Added on both sides with different content — no merge base for the
-      // driver to work from. Newer side wins; the other stays in history.
+      // driver to work from. Keep BOTH: ours stays at the path, theirs lands
+      // at the `.online` sibling, same as any file markers would corrupt.
       // (null = truly unrelated histories → rethrow untouched.)
       const added = await bothAddedPaths(
         dir,

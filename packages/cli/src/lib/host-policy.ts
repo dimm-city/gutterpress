@@ -135,8 +135,9 @@ export function autoSnapshotDelayMs(
  * the default and is then clamped into [AUTO_SYNC_MIN_MINUTES,
  * AUTO_SYNC_MAX_MINUTES].
  *
- * Note: the host orchestrator ALSO debounces on file-change triggers; this
- * cadence governs only the periodic safety timer (§4.2 "Periodic safety").
+ * Note: this is the host orchestrator's ONLY sync trigger — the file-change
+ * debounce that used to sit beside it was removed (it could never fire before
+ * this interval already had).
  */
 export function autoSyncDelayMs(
   policy: Partial<AutoSyncPolicy> | undefined,

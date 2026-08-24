@@ -13,7 +13,7 @@
  *
  * That is a preview↔print divergence at every code block that straddles a page
  * boundary, and it is what put `examples/with-validation`'s "Filtering" heading
- * on preview page 2 against the PDF's page 1. `expandScrollContainers()` maps
+ * on preview page 2 against the PDF's page 1. `makeOverflowFragmentable()` maps
  * the computed `auto`/`scroll` overflow of a strip descendant to `clip` —
  * still clipped, no longer a scroll container, and so fragmentable again.
  */

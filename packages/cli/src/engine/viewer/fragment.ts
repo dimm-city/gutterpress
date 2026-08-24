@@ -632,37 +632,50 @@ const SCROLLABLE = /^(auto|scroll|hidden)$/;
  * `visible` would not. The author's overflow is re-presented, not discarded: a
  * box a fixed height constrains still clips to it in both fragmenters.
  */
-export function makeOverflowFragmentable(strips: StripInfo[]): number {
-  let mapped = 0;
+export function makeOverflowFragmentable(strips: StripInfo[]): void {
+  // READ phase, then WRITE phase — the convention `buildStrips` and the
+  // table-repeat pass both document: a `setProperty` dirties style, so the
+  // next iteration's `getComputedStyle` would force a synchronous recalc.
+  // Interleaved, that is one forced recalc per mapped element, and
+  // `pre code { overflow-x: auto }` maps two per code block.
+  const todo: Array<{ el: HTMLElement; x: boolean; y: boolean }> = [];
   for (const strip of strips) {
     for (const el of Array.from(strip.el.querySelectorAll<HTMLElement>("*"))) {
       const cs = getComputedStyle(el);
       const x = SCROLLABLE.test(cs.overflowX);
       const y = SCROLLABLE.test(cs.overflowY);
-      if (!x && !y) continue;
-      // Authored inline state is saved for refresh restoration, exactly as
-      // `compensateTrailingMarginsBeforeAvoids` saves margins.
-      el.dataset.gpOverflow = "clipped";
-      el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
-      el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
-      if (x) el.style.setProperty("overflow-x", "clip");
-      if (y) el.style.setProperty("overflow-y", "clip");
-      mapped++;
+      if (x || y) todo.push({ el, x, y });
     }
   }
-  return mapped;
+  for (const { el, x, y } of todo) {
+    // Authored inline state is saved for refresh restoration, exactly as
+    // `compensateTrailingMarginsBeforeAvoids` saves margins — priority
+    // included, or an author's `overflow-x: auto !important` comes back
+    // without its priority after a refresh.
+    el.dataset.gpOverflow = "clipped";
+    el.dataset.gpOverflowX = el.style.getPropertyValue("overflow-x");
+    el.dataset.gpOverflowY = el.style.getPropertyValue("overflow-y");
+    el.dataset.gpOverflowXPriority = el.style.getPropertyPriority("overflow-x");
+    el.dataset.gpOverflowYPriority = el.style.getPropertyPriority("overflow-y");
+    if (x) el.style.setProperty("overflow-x", "clip");
+    if (y) el.style.setProperty("overflow-y", "clip");
+  }
 }
 
 function restoreScrollContainers(doc: Document = document): void {
   for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-gp-overflow="clipped"]'))) {
     for (const axis of ["x", "y"] as const) {
       const value = axis === "x" ? el.dataset.gpOverflowX : el.dataset.gpOverflowY;
-      if (value) el.style.setProperty(`overflow-${axis}`, value);
+      const priority =
+        axis === "x" ? el.dataset.gpOverflowXPriority : el.dataset.gpOverflowYPriority;
+      if (value) el.style.setProperty(`overflow-${axis}`, value, priority || "");
       else el.style.removeProperty(`overflow-${axis}`);
     }
     delete el.dataset.gpOverflow;
     delete el.dataset.gpOverflowX;
     delete el.dataset.gpOverflowY;
+    delete el.dataset.gpOverflowXPriority;
+    delete el.dataset.gpOverflowYPriority;
   }
 }
 

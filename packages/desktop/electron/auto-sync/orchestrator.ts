@@ -419,14 +419,10 @@ export class AutoSyncOrchestrator {
       if (this.deps.getWatchedDir() !== dir) return releaseFlight();
       if (lib.autoSyncDelayMs(settings.versionHistory) === null) return releaseFlight();
 
-      const source = await lib.detectProjectSource(dir);
-      if (source.type !== "local-git-folder") return releaseFlight();
-      repoRoot = lib.repoRootForSource(source, dir);
-
-      // Guard: canSync = HTTPS remote + stored credential. Use the
-      // credential-aware diagnosis — the same gate the renderer pill shows on.
-      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
-      if (!diag.canSync) return releaseFlight();
+      // Gate: local git folder + HTTPS remote + stored credential.
+      const gate = await this.syncGate(lib, dir);
+      if (!gate) return releaseFlight();
+      repoRoot = gate.repoRoot;
     } catch (probeErr) {
       releaseFlight();
       throw probeErr;
@@ -492,25 +488,13 @@ export class AutoSyncOrchestrator {
     // Map outcome → ambient status emit. There is no conflict arm — sync
     // always converges; the converge report rides on the payload.
     switch (outcome.status) {
+      // Both report "in sync" to the writer. A pull-merge-only pass lands on
+      // `up-to-date` and CAN still have combined files (both sides moved, the
+      // push was held), so the converge report is forwarded from either —
+      // keeping them one arm is what stops the next field being added to only
+      // one of them.
       case "synced":
-        this.deps.emit({
-          state: "synced",
-          projectDir: dir,
-          lastSyncAt: completedAt,
-          ...(outcome.filesChanged ? { filesChanged: true } : {}),
-          ...(outcome.combinedFiles && outcome.combinedFiles.length > 0
-            ? { combinedFiles: outcome.combinedFiles }
-            : {}),
-          ...(outcome.keptBothFiles && outcome.keptBothFiles.length > 0
-            ? { keptBothFiles: outcome.keptBothFiles }
-            : {}),
-        });
-        break;
-
       case "up-to-date":
-        // A pull-merge-only pass reports through this arm and CAN have
-        // combined files (both sides moved; the push was held) — forward the
-        // converge report exactly like the "synced" arm does.
         this.deps.emit({
           state: "synced",
           projectDir: dir,
@@ -579,19 +563,38 @@ export class AutoSyncOrchestrator {
    * - No status emits: the pill has moved on with the project (or the window
    *   is gone); the operation log still records the pass.
    */
+  /**
+   * "Can this project sync right now?" — the gate `run()` and `runExitPush()
+   * must agree on. Kept in one place because the exit pass is the copy that
+   * runs unwatched: a new source type or credential rule added to only one of
+   * them would diverge silently.
+   *
+   * Passes the already-detected `source` to `diagnoseProjectRemote`, which
+   * would otherwise re-run `detectProjectSource` itself.
+   */
+  private async syncGate(
+    lib: LibModule,
+    dir: string,
+  ): Promise<{ repoRoot: string } | null> {
+    const source = await lib.detectProjectSource(dir);
+    if (source.type !== "local-git-folder") return null;
+    const diag = await lib.diagnoseProjectRemote(dir, {
+      source,
+      tokenStore: this.deps.tokenStore,
+    });
+    if (!diag.canSync) return null;
+    return { repoRoot: lib.repoRootForSource(source, dir) };
+  }
+
   async runExitPush(dir: string, budgetMs: number = EXIT_PUSH_BUDGET_MS): Promise<void> {
     if (!this.acquire(dir)) return;
     try {
       const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
       if (lib.autoSyncDelayMs(settings.versionHistory) === null) return;
-      const source = await lib.detectProjectSource(dir);
-      if (source.type !== "local-git-folder") return;
-      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
-      if (!diag.canSync) return;
+      const gate = await this.syncGate(lib, dir);
+      if (!gate) return;
 
-      const logFile = this.deps.operationLogPath(
-        operationLogSlug(lib.repoRootForSource(source, dir)),
-      );
+      const logFile = this.deps.operationLogPath(operationLogSlug(gate.repoRoot));
       const sync = lib.syncProject({
         projectDir: dir,
         tokenStore: this.deps.tokenStore,

@@ -56,9 +56,7 @@ const check: Check = {
     // Text scan: every file the build will actually render/ship — chapters
     // AND stylesheets (the converge merge writes markers into any text file,
     // and a marker-broken stylesheet is exactly as invisible until print).
-    const textFiles = [...(ctx.markdownFiles ?? []), ...(ctx.cssFiles ?? [])]
-      .slice()
-      .sort();
+    const textFiles = [...(ctx.markdownFiles ?? []), ...(ctx.cssFiles ?? [])].sort();
     for (const file of textFiles) {
       let content: string;
       try {
@@ -69,6 +67,10 @@ const check: Check = {
         );
         continue;
       }
+      // Cheap whole-string probe first: this check runs on every preview
+      // rebuild, and splitting a 50KB chapter allocates ~1,500 strings that
+      // are discarded immediately. Marker files are ~0% of a healthy book.
+      if (!content.includes(OPEN_SENTINEL) && !content.includes(CLOSE_SENTINEL)) continue;
       let inBlock = false;
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
@@ -116,7 +118,7 @@ const check: Check = {
         absolute: true,
         ignore: [...ASSET_SCAN_IGNORE_GLOBS],
       });
-      for (const sibling of [...new Set(siblings)].sort()) {
+      for (const sibling of siblings.sort()) {
         const rel = path.relative(ctx.inputDir, sibling).split(path.sep).join("/");
         results.push(
           finding(check.id, {

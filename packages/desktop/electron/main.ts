@@ -404,13 +404,13 @@ function flushAutoSnapshot(): Promise<void> | undefined {
 
 // ── Automatic sync orchestrator (transparent-sync plan §4.1/§4.2/§5.3) ────────
 //
-// Modelled on the auto-snapshot scheduler above: scheduleAutoSync arms/resets a
-// debounce timer; runAutoSync calls syncProject ONLY (never statusMatrix/walks).
-// The sync debounce is STRICTLY LONGER than the snapshot debounce so a burst of
-// edits is always committed locally before the push attempt (§4.2 ordering
-// invariant). syncProject itself also snapshots-first, making a race safe.
+// The orchestrator calls syncProject ONLY (never statusMatrix/walks), and
+// syncProject snapshots-first, which is what makes a race with the editor's
+// autosave safe. There is deliberately NO file-change debounce — see the
+// orchestrator's own note: the periodic tick already covers every case the
+// debounce could, at every non-absurd cadence.
 //
-// Triggers handled here: file-change debounce and periodic safety interval.
+// Triggers handled here: the periodic safety interval.
 // Project-open and network-restored triggers are wired at their respective sites.
 //
 // Single-flight + runAgain (§4.1): if a sync is already in flight when another

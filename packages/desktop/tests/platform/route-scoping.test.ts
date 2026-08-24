@@ -79,7 +79,6 @@ import { POST as showInFolder } from "../../src/routes/api/shell/show-in-folder/
 type RouteHandler = (event: { request: Request }) => Promise<Response>;
 
 const HEX40_A = "a".repeat(40);
-const HEX40_B = "b".repeat(40);
 
 /**
  * Every route that takes a renderer-supplied `projectDir` and does real

@@ -1,4 +1,5 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { isOnlineSibling } from "../remote-auth/sync-messages";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../desktop";
 import { canonicalChapterId } from "./chapter-id";
@@ -31,7 +32,13 @@ export async function resolveActiveMarkdownFiles(
   configuredFiles?: string[] | null
 ): Promise<string[]> {
   if (configuredFiles && configuredFiles.length > 0) return configuredFiles;
-  return (await readdir(inputDir)).filter((f: string) => f.endsWith(".md")).sort();
+  // `.online` siblings are Gutterpress's own keep-both artifacts, not
+  // chapters: a sync that cannot merge two versions of chapter-04.md
+  // writes chapter-04.online.md beside it. Globbing it in would render
+  // the online copy as a duplicate chapter and print it.
+  return (await readdir(inputDir))
+    .filter((f: string) => f.endsWith(".md") && !isOnlineSibling(f))
+    .sort();
 }
 
 /**
