@@ -23,13 +23,33 @@ The control is the important half. It is what makes each of these a
 Chromium inconsistency rather than "paged media is unsupported," and it is the
 first thing triage will look for.
 
+## The script
+
+`node tools/file-upstream-chromium-bugs.mjs` fills the wizard for all three
+(or pass ids: `… 150 152`). It opens Chrome with a persistent profile so you
+sign in to Google once, then for each report selects the role and category,
+ticks the search acknowledgement, and types the summary, repro and description
+into the right fields.
+
+**It does not submit.** The wizard ends in a reCAPTCHA, and Submit is a
+public, permanent, attributed action — both are yours. The script waits for
+the URL to become a real issue number, prints it, and moves on.
+
+Do the steps below by hand only if the wizard changes and the script breaks;
+the selectors it depends on are in its `STEP1`/`STEP2` blocks.
+
 ## Steps
 
 1. Go to <https://issues.chromium.org/issues/new>, choose the **Chromium**
    tracker.
 2. Component: **`Blink > Layout > Printing`** — verified, not guessed: it is
    the component every existing `@page`/print bug below sits in. (An earlier
-   draft of this file said `Blink>Printing`, which does not exist.)
+   draft of this file said `Blink>Printing`, which does not exist.) **The
+   wizard will not let you set it** — a non-committer gets routed by category
+   instead, so each report asks for the component in its description. The
+   reporter of 438364050 hit the same wall and said so in their filing.
+   Closest category: **Content** ("Problems with webpages not working
+   correctly"); role: **Web Developer**.
 3. Type **Bug**. Title: the row above.
 4. Body: paste the GitHub issue's *Repro*, *Expected*, and *Environment*
    sections verbatim. They are already in the shape Chromium asks for. Add one
