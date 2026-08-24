@@ -46,7 +46,6 @@ interface FakeLibOptions {
   /** The book's path relative to `repoRoot` ("" when the book IS the repo root). */
   subPath?: string;
   autoSyncDelayMs?: number | null;
-  autoSnapshotDelayMs?: number | null;
   sourceType?: string;
   canSync?: boolean;
   /** Called per syncProject invocation; returns the SyncOutcome (or a promise). */
@@ -84,8 +83,6 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
   const lib = {
     autoSyncDelayMs: () =>
       opts.autoSyncDelayMs === undefined ? 120_000 : opts.autoSyncDelayMs,
-    autoSnapshotDelayMs: () =>
-      opts.autoSnapshotDelayMs === undefined ? 600_000 : opts.autoSnapshotDelayMs,
     detectProjectSource: async () => ({
       type: opts.sourceType ?? "local-git-folder",
       // The real lib always reports the enclosing repo root for a
@@ -316,14 +313,6 @@ test("armInterval is a no-op when auto-sync is disabled by policy", async () => 
   await h.orch.armInterval(DIR);
   // No state row is even created for a disabled interval past the policy gate.
   expect(h.orch.getState(DIR)?.intervalHandle ?? null).toBeNull();
-});
-
-test("armDebounce arms a debounce timer", async () => {
-  const h = makeHarness();
-  await h.orch.armDebounce(DIR);
-  expect(h.orch.getState(DIR)?.debounceTimer).toBeTruthy();
-  h.orch.cancelTimer(DIR);
-  expect(h.orch.getState(DIR)?.debounceTimer).toBeNull();
 });
 
 test("cancelAll clears every tracked dir and its timers", async () => {

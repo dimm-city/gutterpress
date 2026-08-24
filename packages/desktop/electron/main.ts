@@ -464,7 +464,7 @@ const folderWatch = new FolderWatcher({
     // Edit signal: external editors and in-app saves both land here. `dir` is
     // already the normalized (resolved) form, matching folderWatch.getWatchedDir().
     scheduleAutoSnapshot(dir);
-    // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
+    // Make sure the periodic safety sync is running for this project.
     autoSync.schedule(dir);
   },
   onStop: () => {

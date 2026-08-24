@@ -14,7 +14,7 @@
  * conflict latch, the per-kind recovery routing, and the confirmation
  * plumbing are gone. What remains:
  *
- *   - the single-flight + runAgain + debounce/interval timers (unchanged);
+ *   - the single-flight + runAgain guards and the periodic safety interval;
  *   - outcome → ambient status mapping (conflict arm no longer exists; the
  *     converge report — combinedFiles/keptBothFiles — rides on the payload);
  *   - ONE repair path: a structurally damaged repo (typed preflight error or
@@ -37,11 +37,9 @@ import type {
 type LibModule = typeof import("gutterpress");
 
 /** The `versionHistory` slice of AppSettings that the auto-sync policy reads.
- *  Derived from the lib's own delay-policy signatures (the intersection of what
- *  autoSyncDelayMs and autoSnapshotDelayMs accept) so it stays decoupled from
- *  main.ts's full AppSettings shape yet satisfies both callees. */
-type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"]>[0]> &
-  NonNullable<Parameters<LibModule["autoSnapshotDelayMs"]>[0]>;
+ *  Derived from the lib's own delay-policy signature so it stays decoupled
+ *  from main.ts's full AppSettings shape yet satisfies the callee. */
+type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"]>[0]>;
 
 /** The classification `lib.detectProjectSource` returns. */
 type ProjectSourceResult = Awaited<ReturnType<LibModule["detectProjectSource"]>>;
@@ -60,8 +58,6 @@ export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
  * own methods (acquire/release/runPreflight), never by reaching into the bag.
  */
 interface AutoSyncState {
-  /** Debounce timer armed on file-change; fires runAutoSync when it expires. */
-  debounceTimer: NodeJS.Timeout | null;
   /** Periodic safety-sync interval handle. */
   intervalHandle: NodeJS.Timeout | null;
   /** True while syncProject is awaiting a network round-trip. */
@@ -141,14 +137,6 @@ export interface AutoSyncOrchestratorDeps {
   operationLogPath: (repoSlug: string) => string;
 }
 
-/**
- * The additional file-change sync debounce (30 s on top of the snapshot delay).
- * Short enough to feel transparent to the author but long enough that the
- * auto-snapshot timer almost always fires first so the burst is committed
- * locally before the push attempt (§4.2 ordering invariant).
- */
-const AUTO_SYNC_EXTRA_DEBOUNCE_MS = 30_000;
-
 export class AutoSyncOrchestrator {
   /** One orchestrator slot per directory (in practice 0 or 1 entries). */
   private readonly states = new Map<string, AutoSyncState>();
@@ -167,7 +155,6 @@ export class AutoSyncOrchestrator {
     let s = this.states.get(dir);
     if (!s) {
       s = {
-        debounceTimer: null,
         intervalHandle: null,
         inFlight: false,
         runAgain: false,
@@ -213,14 +200,10 @@ export class AutoSyncOrchestrator {
 
   // ── Timer management ────────────────────────────────────────────────────────
 
-  /** Cancel the file-change debounce timer and periodic interval for `dir`. */
+  /** Cancel the periodic safety-sync interval for `dir`. */
   cancelTimer(dir: string): void {
     const state = this.states.get(dir);
     if (!state) return;
-    if (state.debounceTimer) {
-      clearTimeout(state.debounceTimer);
-      state.debounceTimer = null;
-    }
     if (state.intervalHandle) {
       clearInterval(state.intervalHandle);
       state.intervalHandle = null;
@@ -262,40 +245,19 @@ export class AutoSyncOrchestrator {
   }
 
   /**
-   * Arm/reset the file-change debounce for `dir`. The debounce is STRICTLY
-   * LONGER than the snapshot debounce so auto-snapshot always commits the
-   * burst BEFORE auto-sync pushes it. syncProject itself snapshots-first, so
-   * even a race is safe — it just double-snapshots.
-   */
-  async armDebounce(dir: string): Promise<void> {
-    try {
-      const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
-      // Project may have switched while the awaits above yielded.
-      if (this.deps.getWatchedDir() !== dir) return;
-      const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
-      if (periodicMs === null) return; // auto-sync disabled
-
-      const state = this.getOrCreateState(dir);
-      const snapshotMs = lib.autoSnapshotDelayMs(settings.versionHistory) ?? 0;
-      const syncDebounceMs = snapshotMs + AUTO_SYNC_EXTRA_DEBOUNCE_MS;
-
-      if (state.debounceTimer) clearTimeout(state.debounceTimer);
-      state.debounceTimer = setTimeout(() => {
-        state.debounceTimer = null;
-        void this.run(dir);
-      }, syncDebounceMs);
-      if (typeof state.debounceTimer.unref === "function") state.debounceTimer.unref();
-    } catch (e) {
-      console.warn("[auto-sync] scheduleAutoSync failed (non-fatal):", e);
-    }
-  }
-
-  /**
-   * Public "an edit happened" trigger. Arms the file-change debounce AND ensures
-   * the periodic safety interval is running (idempotent). Fire-and-forget.
+   * Public "an edit happened" trigger: ensure the periodic safety interval is
+   * running (idempotent). Fire-and-forget.
+   *
+   * There is deliberately NO file-change debounce. The one that used to live
+   * here waited `autoSnapshotDelayMs + 30 s` — 10 min + 30 s = 10.5 min at
+   * defaults — while this interval already ticks every `autoSyncMinutes`
+   * (2 min at defaults) for as long as the project is open. Five interval
+   * ticks fit inside one debounce window, so it could never cause a sync the
+   * interval had not already caused. Raising `autoSyncMinutes` past 10.5 min
+   * is the only way it would fire first, and that is a writer explicitly
+   * asking to sync LESS often.
    */
   schedule(dir: string): void {
-    void this.armDebounce(dir);
     void this.armInterval(dir);
   }
 
