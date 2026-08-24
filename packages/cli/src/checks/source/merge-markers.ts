@@ -24,8 +24,12 @@
  * merge-markers.test.ts, which runs this check over `mergeWithMarkers`'s real
  * output rather than a hand-typed copy).
  *
- * Severity is always `warning` — the document still renders, so this must not
- * abort a build (only `error` results set ok=false).
+ * Severity splits by what actually reaches the book. The two MARKER findings
+ * are `error`: those lines are setext syntax, so they print as a chapter-sized
+ * heading and a stack of blockquotes, and a warning would let a book ship that
+ * way. The `.online` SIBLING finding is `warning`: it is a separate file that
+ * `resolveActiveMarkdownFiles` skips, so it never renders — it is unfinished
+ * business, not a broken build. Only `error` results set ok=false.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -80,7 +84,11 @@ const check: Check = {
           inBlock = true;
           results.push(
             finding(check.id, {
-              severity: "warning",
+              // ERROR, not warning: a `<<<<<<< your version` line is setext
+              // syntax — the paragraph above it renders as a chapter-sized H1
+              // and the closer as seven nested blockquotes. It is never
+              // intentional, and a warning would let the book print that way.
+              severity: "error",
               code: "two-versions-passage",
               message:
                 "This passage has two versions (yours and the online copy) — keep what you want, then delete the marker lines.",
@@ -94,7 +102,7 @@ const check: Check = {
             // wall of nested quotes, so it gets its own finding.
             results.push(
               finding(check.id, {
-                severity: "warning",
+                severity: "error",
                 code: "leftover-version-marker",
                 message:
                   "This marker line is left over from combining two versions — delete it.",
@@ -122,6 +130,10 @@ const check: Check = {
         const rel = path.relative(ctx.inputDir, sibling).split(path.sep).join("/");
         results.push(
           finding(check.id, {
+            // Warning, not error: unlike the marker findings this is a
+            // separate FILE, and `resolveActiveMarkdownFiles` skips `.online`
+            // siblings — so it never reaches the book. It is unfinished
+            // business to settle, not a broken build.
             severity: "warning",
             code: "kept-both-versions",
             message: `Two versions of ${withoutOnlineTag(rel)} are in your project — keep the one you want, then delete the other.`,

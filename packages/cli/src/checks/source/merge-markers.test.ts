@@ -50,9 +50,10 @@ describe("source.sync.merge-markers", () => {
     expect(results).toHaveLength(1);
     const r = results[0]!;
     expect(r.checkId).toBe("source.sync.merge-markers");
-    // Warnings only — the document still renders, so this must never set
-    // ok=false and abort a build (runner.ts keys ok off `error`).
-    expect(r.severity).toBe("warning");
+    // ERROR: these lines are setext syntax and PRINT — a chapter-sized
+    // heading plus nested blockquotes in the PDF. The build must not finish
+    // with them in a chapter (runner.ts keys ok off `error`).
+    expect(r.severity).toBe("error");
     expect(r.code).toBe("two-versions-passage");
     expect(r.file).toContain("chapter-01.md");
     expect(r.line).toBe(combined.split("\n").indexOf("<<<<<<< your version") + 1);
