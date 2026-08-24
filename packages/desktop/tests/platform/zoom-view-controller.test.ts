@@ -49,11 +49,9 @@ interface Harness {
   ctrl: ZoomViewController;
   client: FakeClient | undefined;
   persistZoom: ReturnType<typeof spy>;
-  persistViewMode: ReturnType<typeof spy>;
   persistSplitRatio: ReturnType<typeof spy>;
   saveDesktopPrefs: ReturnType<typeof spy>;
   zoom: string;
-  viewMode: "single" | "two-column";
   isNarrow: boolean;
   containerWidth: number;
   workspaceRect: { left: number; width: number } | null;
@@ -62,17 +60,14 @@ interface Harness {
 function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
   const client = over.hasClient === false ? undefined : new FakeClient();
   const persistZoom = spy();
-  const persistViewMode = spy();
   const persistSplitRatio = spy();
   const saveDesktopPrefs = spy();
   const h = {
     client,
     persistZoom,
-    persistViewMode,
     persistSplitRatio,
     saveDesktopPrefs,
     zoom: "fit-width",
-    viewMode: "single" as "single" | "two-column",
     isNarrow: false,
     containerWidth: 800,
     workspaceRect: { left: 0, width: 1000 } as { left: number; width: number } | null,
@@ -80,10 +75,8 @@ function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
   h.ctrl = new ZoomViewController({
     client: () => h.client,
     zoom: () => h.zoom,
-    viewMode: () => h.viewMode,
     isNarrow: () => h.isNarrow,
     persistZoom: (v) => persistZoom(v),
-    persistViewMode: (m) => persistViewMode(m),
     persistSplitRatio: (v) => persistSplitRatio(v),
     saveDesktopPrefs: (patch) => saveDesktopPrefs(patch),
     measureContainerWidth: () => h.containerWidth,
@@ -98,7 +91,6 @@ test("initial public rune state matches the +page.svelte defaults", () => {
   const { ctrl } = make();
   expect(ctrl.splitPaneRatio).toBe(0.42);
   expect(ctrl.draggingSplit).toBe(false);
-  expect(ctrl.userSetViewMode).toBe(false);
 });
 
 // ── applyZoom ─────────────────────────────────────────────────────────────────
@@ -210,29 +202,22 @@ test("stepZoom rounds to two decimal places", () => {
   expect(h.persistZoom.calls).toEqual([["1.25"]]);
 });
 
-// ── view-mode transitions ─────────────────────────────────────────────────────
+// ── view mode ─────────────────────────────────────────────────────────────────
 
-test("applyViewMode(fromUser=true) persists, saves prefs, sets the lock, and drives the host", () => {
+// View mode is derived from the workspace mode, so this only relays it into
+// the viewer: nothing to persist, no per-project snapshot, no user lock.
+test("applyViewMode drives the host and stores nothing", () => {
   const h = make();
-  h.ctrl.applyViewMode("two-column", true);
-  expect(h.persistViewMode.calls).toEqual([["two-column"]]);
-  expect(h.saveDesktopPrefs.calls).toEqual([[{ viewMode: "two-column" }]]);
-  expect(h.ctrl.userSetViewMode).toBe(true);
+  h.ctrl.applyViewMode("two-column");
   expect((h.client as FakeClient).last).toEqual({ cmd: "setViewMode", args: ["two-column"] });
-});
-
-test("applyViewMode(fromUser=false) does not set the user lock", () => {
-  const h = make();
-  h.ctrl.applyViewMode("two-column", false);
-  expect(h.ctrl.userSetViewMode).toBe(false);
-  expect(h.persistViewMode.calls).toEqual([["two-column"]]);
+  expect(h.saveDesktopPrefs.calls).toEqual([]);
 });
 
 test("changing view mode re-fits after the new layout is applied", async () => {
   const h = make();
   h.zoom = "fit-width";
   (h.client as FakeClient).dims = { width: 1600, height: 1400 };
-  h.ctrl.applyViewMode("two-column", true);
+  h.ctrl.applyViewMode("two-column");
   await flush();
   expect((h.client as FakeClient).calls.map((call) => call.cmd)).toEqual([
     "setViewMode",
@@ -241,26 +226,10 @@ test("changing view mode re-fits after the new layout is applied", async () => {
   ]);
 });
 
-test("applyViewMode with no client still persists and saves prefs", () => {
+test("applyViewMode with no client is a no-op", () => {
   const h = make({ hasClient: false });
-  h.ctrl.applyViewMode("single", true);
-  expect(h.persistViewMode.calls).toEqual([["single"]]);
-  expect(h.saveDesktopPrefs.calls).toEqual([[{ viewMode: "single" }]]);
-});
-
-test("toggleViewMode flips single→two-column and always locks (fromUser)", () => {
-  const h = make();
-  h.viewMode = "single";
-  h.ctrl.toggleViewMode();
-  expect(h.persistViewMode.calls).toEqual([["two-column"]]);
-  expect(h.ctrl.userSetViewMode).toBe(true);
-});
-
-test("toggleViewMode flips two-column→single", () => {
-  const h = make();
-  h.viewMode = "two-column";
-  h.ctrl.toggleViewMode();
-  expect(h.persistViewMode.calls).toEqual([["single"]]);
+  h.ctrl.applyViewMode("single");
+  expect(h.saveDesktopPrefs.calls).toEqual([]);
 });
 
 // ── split-drag ratio clamping ─────────────────────────────────────────────────

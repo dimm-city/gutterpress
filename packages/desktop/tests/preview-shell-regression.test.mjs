@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const scriptDir = path.resolve(__dirname, "..", "..", "cli", "src", "assets", "preview", "scripts");
 const shellSource = readFileSync(path.join(scriptDir, "preview-shell.js"), "utf8");
 const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"), "utf8");
+const bridgeSource = readFileSync(path.join(scriptDir, "preview-bridge.js"), "utf8");
 
 // `.gp-sheet` elements (the viewer's page unit — see
 // engine/viewer/decorate.ts). Paged.js has been removed
@@ -123,6 +124,126 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
     setTimeout,
     clearTimeout,
   );
+}
+
+// Run the REAL preview-bridge.js inside a fixture frame so its
+// 'renderingComplete' postMessage happens when production would send it —
+// during the frame's own 'gp:layout' dispatch — instead of being synthesized
+// by the test after the swap. `window.parent` is routed back into the shell
+// window as a genuine `message` event carrying the frame as `source`.
+function installBridge(frame, outer) {
+  const frameWindow = frame.contentWindow;
+  Object.defineProperty(frameWindow, "parent", {
+    configurable: true,
+    value: {
+      postMessage(message) {
+        const event = new outer.Event("message");
+        Object.defineProperties(event, {
+          data: { value: message },
+          source: { value: frameWindow },
+        });
+        outer.dispatchEvent(event);
+      },
+    },
+  });
+  const run = new Function("window", "document", "setTimeout", bridgeSource);
+  run(frameWindow, frame.contentDocument, setTimeout);
+}
+
+// A replacement frame paginates on DOMContentLoaded, so on a small book it
+// finishes BEFORE the iframe's `load` event — i.e. before preview-shell.js
+// promotes it from `building` to `active`. Its own 'renderingComplete'
+// postMessage then matches no relay branch and is silently dropped, so the
+// host's "Updating preview…" pill never clears and the chapter outline and
+// Problems panel stay stale. finish() reports completion itself.
+async function runPaginationBeforeLoadRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  const hostEvents = [];
+  Object.defineProperty(outer, "parent", {
+    configurable: true,
+    value: { postMessage: (message) => hostEvents.push(message) },
+  });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  active.title = "preview";
+  document.body.appendChild(active);
+  installBook(active);
+  installBridge(active, outer);
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "instance-a";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge() {},
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node);
+      installBridge(node, outer);
+      // The ordering under test: pagination completes, THEN `load` fires.
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+
+  // The initial frame's own completion is legitimate and already relayed;
+  // only what the REPLACEMENT reports is under test here.
+  const beforeReload = hostEvents.length;
+  assert.equal(
+    hostEvents.some((message) => message?.name === "renderingComplete"),
+    true,
+    "pagination-before-load: the initial frame's completion still reaches the host",
+  );
+  onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
+
+  const fresh = document.getElementById("gutterpress-active");
+  assert.notEqual(fresh, active, "pagination-before-load: the replacement is promoted to active");
+
+  const reloadEvents = hostEvents.slice(beforeReload);
+  const completions = reloadEvents.filter((message) => message?.name === "renderingComplete");
+  assert.equal(
+    completions.length,
+    1,
+    "pagination-before-load: the host is told the replacement finished rendering",
+  );
+  assert.equal(completions[0].detail?.hotReload, true);
+  assert.equal(completions[0].detail?.revision, 1);
+  assert.equal(completions[0].detail?.totalPages, 3);
+  assert.equal(completions[0].detail?.updateMode, "full-reload");
+  assert.equal(typeof completions[0].detail?.hotReloadMs, "number");
+  assert.equal(completions[0].detail.hotReloadMs >= 0, true);
+  assert.deepEqual(
+    reloadEvents.find((message) => message?.name === "pageChanged")?.detail,
+    { currentPage: 1, totalPages: 3 },
+    "pagination-before-load: the real bridge still relays the refresh page state",
+  );
+
+  // postMessage is asynchronous: the frame's own completion may instead be
+  // delivered after the swap. It must not produce a second completion.
+  const lateEvent = new outer.Event("message");
+  Object.defineProperties(lateEvent, {
+    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
+    source: { value: fresh.contentWindow },
+  });
+  outer.dispatchEvent(lateEvent);
+  assert.equal(
+    hostEvents.slice(beforeReload).filter((message) => message?.name === "renderingComplete").length,
+    1,
+    "pagination-before-load: the swapped-in frame's own late completion is suppressed",
+  );
+  console.log("[desktop-test] PASS pagination-before-load completion reporting");
 }
 
 async function runHorizontalAnchorRegression() {
@@ -557,12 +678,9 @@ async function main() {
     "a hidden-frame ready event cannot flash the host loading overlay after the swap",
   );
 
-  const completeEvent = new outer.Event("message");
-  Object.defineProperties(completeEvent, {
-    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
-    source: { value: fresh.contentWindow },
-  });
-  outer.dispatchEvent(completeEvent);
+  // finish() reports the swap itself — see preview-shell.js's
+  // reportSwapComplete(), and runPaginationBeforeLoadRegression() for why the
+  // frame's own relayed event could not be trusted to arrive.
   const hotReloadDetail = hostEvents.find((message) => message?.name === "renderingComplete")?.detail;
   assert.equal(hotReloadDetail?.totalPages, 3);
   assert.equal(hotReloadDetail?.hotReload, true);
@@ -696,16 +814,7 @@ async function main() {
   const afterUpdate = document.getElementById("gutterpress-active");
   assert.notEqual(afterUpdate, beforeUpdate, "a content-update triggers a full swap, same as full-reload");
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
-  // preview-bridge.js (not loaded by this fixture — see the file header)
-  // is what relays the swapped-in frame's own 'renderingComplete' DOM event
-  // to the host via postMessage in production; simulate that one message so
-  // the shell's hotReload-detail enrichment can be asserted directly.
-  const updateCompleteEvent = new outer.Event("message");
-  Object.defineProperties(updateCompleteEvent, {
-    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
-    source: { value: afterUpdate.contentWindow },
-  });
-  outer.dispatchEvent(updateCompleteEvent);
+  // A content-update swap reports completion the same way a full-reload does.
   const updateComplete = hostEvents.slice(beforeUpdateEvents).find(
     (message) => message?.name === "renderingComplete",
   );
@@ -893,12 +1002,6 @@ async function runNativeCoreRegression() {
     totalPages: 3,
   }, "native: refresh pageChanged is relayed from the active frame");
 
-  const completeEvent = new outer.Event("message");
-  Object.defineProperties(completeEvent, {
-    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
-    source: { value: fresh.contentWindow },
-  });
-  outer.dispatchEvent(completeEvent);
   const hotReloadDetail = hostEvents.find((message) => message?.name === "renderingComplete")?.detail;
   assert.equal(hotReloadDetail?.totalPages, 3);
   assert.equal(hotReloadDetail?.hotReload, true);
@@ -940,6 +1043,7 @@ async function runNativeCoreRegression() {
 
 main()
   .then(runNativeCoreRegression)
+  .then(runPaginationBeforeLoadRegression)
   .then(runHorizontalAnchorRegression)
   .then(runPartialHorizontalAnchorRegression)
   .then(runTopLevelScrollIdleRegression)

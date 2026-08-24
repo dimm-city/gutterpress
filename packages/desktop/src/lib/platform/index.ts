@@ -38,6 +38,8 @@ export type {
 
 export type { RecentFolderEntry, FavoriteEntry, PrintSafeWarning } from "./dtos";
 
+export type { WorkspaceMode } from "./shared-types";
+
 let instance: Platform | null = null;
 
 /** True when running inside the Electron shell (the preload bridge is present). */
