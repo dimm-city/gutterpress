@@ -103,7 +103,7 @@ build-pdf:
 | Dependency | Provides |
 |---|---|
 | gutterpress CLI (Node bundle) | the CLI (lint/build/validate); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
-| Chromium | Paged.js PDF rendering (**required for any PDF**) |
+| Chromium | PDF rendering (**required for any PDF**) |
 | Ghostscript | PDF/X CMYK conversion + per-page ink-coverage validation |
 | qpdf | PDF/X annotation stripping + OutputIntent/metadata validation |
 | `fonts-liberation`, `fonts-dejavu-core`, fontconfig | base fonts (your project fonts come from the mount) |

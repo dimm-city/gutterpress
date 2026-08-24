@@ -233,14 +233,14 @@ preset: book
 ```
 
 #### `engine` (string)
-Pagination engine. `"native"` (default) routes both `gutterpress build` and `gutterpress preview` through the Gutterpress engine — native Chromium pagination, no Paged.js polyfill. `"paged"` is the deprecated Chromium+Paged.js pipeline, kept for compatibility (see [`docs/migrations/2026-08-native-engine-default.md`](./migrations/2026-08-native-engine-default.md)). Preview and PDF always use the same engine for a given project (they switch together, never independently). The CLI `--engine` flag overrides this per invocation for either command.
+Accepted-but-ignored. Paged.js has been removed, so the Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading (see [`docs/migrations/2026-08-native-engine-default.md`](./migrations/2026-08-native-engine-default.md)).
 
 ```yaml
 engine: paged
 ```
 
 #### `engineStyles` (object)
-Engine-conditional stylesheets, appended after `styles` for the resolved engine only. This is the per-book migration mechanism: a book whose chrome is coupled to one engine's DOM (for example, `.pagedjs_sheet` backgrounds that only exist in Paged.js's output) declares the other engine's replacement furniture here, so the same project renders correctly under both engines while it migrates. Loaded last, so the furniture wins the cascade.
+Engine-conditional stylesheets, appended after `styles`. `.native` is the only list that still applies; `.paged` is accepted-but-ignored, like `engine` above. This was the per-book migration mechanism while both engines existed — a book whose chrome was coupled to one engine's DOM declared the other engine's replacement furniture here. Loaded last, so the furniture wins the cascade.
 
 ```yaml
 engineStyles:

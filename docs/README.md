@@ -160,7 +160,6 @@ Found an error or want to improve the documentation?
 
 ## Additional Resources
 
-- **Paged.js Documentation:** https://www.pagedjs.org/
 - **Markdown Guide:** https://www.markdownguide.org/
 - **CSS Paged Media:** https://www.w3.org/TR/css-page-3/
 - **Print Design Principles:** Research professional book design

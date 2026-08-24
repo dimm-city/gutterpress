@@ -260,17 +260,23 @@
   // Paged.js's `.pagedjs_page` DOM to find a chapter's live page range and
   // graft a freshly-paginated replacement into it. Paged.js has been removed
   // (native-only-migration-plan.md Phase 6). A native in-place splice was
-  // also tried and removed (2026-08-08 review): grafting a fresh
-  // `.gutterpress-chapter` node in and calling `Gutterpress.refresh()` is not
-  // sound, because `refresh()` -> `relayout()` only re-`measure()`s the
-  // EXISTING strips — it never re-runs `buildStrips()`/`explodeChildren()`.
-  // So any page context the edit introduces (a new `@page`/`page:`
-  // assignment inside the chapter) is silently dropped: measured 2 preview
-  // pages where the same content prints 3 — a preview<->PDF divergence, the
-  // worst failure this project can produce. It also bought nothing: measured
-  // end-to-end (file write -> change visible, 5 samples, 34pp field guide)
-  // the plain full reload (`swap`, below) is 509ms avg vs the incremental
-  // splice's 998ms avg. Every content-update now goes straight to `swap()`.
+  // also tried and removed (2026-08-08 review), and the standing reason is
+  // PERFORMANCE, not soundness: measured end-to-end (file write -> change
+  // visible, 5 samples, 34pp field guide) the plain full reload (`swap`,
+  // below) is 509ms avg vs the incremental splice's 998ms avg. Every
+  // content-update goes straight to `swap()`.
+  //
+  // CORRECTED 2026-08-24: the 2026-08-08 review ALSO recorded a soundness
+  // objection — that `refresh()` -> `relayout()` "only re-measures the
+  // EXISTING strips", silently dropping any page context the edit
+  // introduces. That is false against the current `fragment.ts`, whose
+  // `relayout()` unwraps the strips and re-runs `buildStrips()` from
+  // scratch before re-measuring, precisely so a mutation that adds or
+  // removes a page-context run is seen. Do not cite the old objection as a
+  // reason a DOM mutation cannot be re-paginated — it can, and the inline
+  // editing work depends on it (docs/inline-editing-plan.md, ADR 0009
+  // decision 4 as revised). The perf comparison above still stands on its
+  // own for the full-document reload path.
 
   function markActiveReady() {
     onReady(active, function () {
