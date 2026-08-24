@@ -7,8 +7,9 @@
 // #30: `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` were removed
 // from `ProjectState` (dead schema — never had a real consumer), and
 // `migrateLegacyProjectState` was deleted outright (the release carrying its
-// migration fallback has shipped). `ProjectState` now only carries the three
-// live fields: `currentPage`, `viewMode`, `splitPaneRatio`.
+// migration fallback has shipped). `viewMode` went the same way once view mode
+// stopped being stored at all, leaving the two live fields: `currentPage` and
+// `splitPaneRatio`.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, test } from "bun:test";
@@ -28,8 +29,8 @@ describe("readProjectState", () => {
   });
 
   test("returns the stored bucket for a present key", () => {
-    const map: ProjectStateMap = { "/a": { currentPage: 5, viewMode: "single" } };
-    expect(readProjectState(map, "/a")).toEqual({ currentPage: 5, viewMode: "single" });
+    const map: ProjectStateMap = { "/a": { currentPage: 5, splitPaneRatio: 0.5 } };
+    expect(readProjectState(map, "/a")).toEqual({ currentPage: 5, splitPaneRatio: 0.5 });
   });
 });
 
@@ -40,23 +41,23 @@ describe("writeProjectState", () => {
   });
 
   test("merge-patches an existing bucket without clearing other fields", () => {
-    const map: ProjectStateMap = { "/a": { currentPage: 5, viewMode: "single" } };
+    const map: ProjectStateMap = { "/a": { currentPage: 5, splitPaneRatio: 0.5 } };
     const out = writeProjectState(map, "/a", { currentPage: 9 });
-    expect(out["/a"]).toEqual({ currentPage: 9, viewMode: "single" });
+    expect(out["/a"]).toEqual({ currentPage: 9, splitPaneRatio: 0.5 });
   });
 
   test("opening project B never touches project A's bucket", () => {
     let map: ProjectStateMap = {};
-    map = writeProjectState(map, "/a", { currentPage: 5, viewMode: "single" });
-    map = writeProjectState(map, "/b", { currentPage: 1, viewMode: "two-column" });
-    expect(map["/a"]).toEqual({ currentPage: 5, viewMode: "single" });
-    expect(map["/b"]).toEqual({ currentPage: 1, viewMode: "two-column" });
+    map = writeProjectState(map, "/a", { currentPage: 5, splitPaneRatio: 0.3 });
+    map = writeProjectState(map, "/b", { currentPage: 1, splitPaneRatio: 0.6 });
+    expect(map["/a"]).toEqual({ currentPage: 5, splitPaneRatio: 0.3 });
+    expect(map["/b"]).toEqual({ currentPage: 1, splitPaneRatio: 0.6 });
   });
 
   test("ignores undefined patch values (never clears a field)", () => {
     const map: ProjectStateMap = { "/a": { currentPage: 5 } };
-    const out = writeProjectState(map, "/a", { currentPage: undefined, viewMode: "single" });
-    expect(out["/a"]).toEqual({ currentPage: 5, viewMode: "single" });
+    const out = writeProjectState(map, "/a", { currentPage: undefined, splitPaneRatio: 0.5 });
+    expect(out["/a"]).toEqual({ currentPage: 5, splitPaneRatio: 0.5 });
   });
 
   test("splitPaneRatio round-trips through write→read", () => {

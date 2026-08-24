@@ -8,10 +8,10 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 test("hidden preview is collapsed to zero width instead of unmounted and editor gets full track", () => {
   const page = read("src/routes/+page.svelte");
   expect(page).toContain("previewCollapseGridColumns");
-  expect(page).toContain("class:preview-collapsed={previewHidden}");
-  expect(page).toContain("aria-hidden={previewHidden}");
-  expect(page).toContain("inert={previewHidden");
-  expect(page).not.toContain("{#if !previewHidden}\n      <section");
+  expect(page).toContain("class:preview-collapsed={!previewVisible}");
+  expect(page).toContain("aria-hidden={!previewVisible}");
+  expect(page).toContain("inert={!previewVisible");
+  expect(page).not.toContain("{#if previewVisible}\n      <section");
 });
 
 test("project activity view has an explicit close action returning to the editor", () => {

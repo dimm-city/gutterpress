@@ -19,10 +19,10 @@
    *    collapse progressively by the toolbar's OWN width (not the viewport),
    *    with thresholds derived from the measured cluster widths so the middle
    *    track always has room for the page nav:
-   *      ≤1150px  view-mode segmented group → dropdown menu
+   *      ≤1150px  Edit/Read segmented group → dropdown menu
    *      ≤1000px  button text labels drop (icon-only), title/path trim
    *      ≤900px   page nav compacts (first/last jump buttons drop)
-   *      ≤620px   title/path, view-mode/zoom menus, separators, hints drop
+   *      ≤620px   title/path, mode/zoom menus, separators, hints drop
    *  - `(pointer: coarse)` keeps ≥44×44px touch targets on touch devices
    *    without fattening the desktop layout.
    *
@@ -35,6 +35,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { adjacentTab, type MobileTab } from "$lib/editor/mobile-layout";
+  import type { WorkspaceMode } from "$lib/platform";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
   let {
@@ -59,15 +60,13 @@
     editorTabDisabled,
     previewTabDisabled,
     hidePreviewControls,
-    viewMode,
+    mode,
+    onSetMode,
     zoom,
     previewControlsDisabled,
-    onApplyViewMode,
     onApplyZoom,
-    previewHidden,
     previewToggleDisabled,
     onTogglePreview,
-    editorOpen,
     editorToggleDisabled,
     onToggleEditor,
     publishVisible,
@@ -108,15 +107,14 @@
     previewTabDisabled: boolean;
     /** Narrow + editor tab: the preview controls are noise — hide them. */
     hidePreviewControls: boolean;
-    viewMode: "single" | "two-column";
+    /** The workspace mode — the ONE layout switch (see `WorkspaceMode`). */
+    mode: WorkspaceMode;
+    onSetMode: (mode: WorkspaceMode) => void;
     zoom: string;
     previewControlsDisabled: boolean;
-    onApplyViewMode: (mode: "single" | "two-column") => void;
     onApplyZoom: (zoom: string) => void;
-    previewHidden: boolean;
     previewToggleDisabled: boolean;
     onTogglePreview: () => void;
-    editorOpen: boolean;
     editorToggleDisabled: boolean;
     onToggleEditor: () => void;
     publishVisible: boolean;
@@ -140,6 +138,10 @@
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
+
+  // `focus` is the editor with the viewer hidden, so the editor is showing in
+  // both non-viewer modes. The eye toggle is what distinguishes them.
+  const editorShowing = $derived(mode !== "viewer");
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
@@ -309,55 +311,58 @@
     {/if}
     <span class="toolbar-sep" aria-hidden="true"></span>
 
-    <!-- View-mode (single/spread): a pair of segmented buttons on wide
-         toolbars; collapses into a single menu button when space is tight. -->
-    <div class="view-mode-group">
+    <!-- Workspace mode (Edit/Read): a pair of segmented buttons on wide
+         toolbars; collapses into a single menu button when space is tight.
+         Reading is two pages side by side; editing is one page beside the
+         editor — the page layout follows from the mode, it is not a separate
+         choice (see `WorkspaceMode`). -->
+    <div class="mode-group">
       <button
         class="icon-text"
-        class:active={viewMode === "single"}
-        onclick={() => onApplyViewMode("single")}
-        disabled={previewControlsDisabled}
-        title="Show one page at a time"
-        aria-label="Single page view"
-        aria-pressed={viewMode === "single"}
+        class:active={editorShowing}
+        onclick={() => onSetMode("editor")}
+        disabled={editorToggleDisabled}
+        title="Write, with one page of the book beside you"
+        aria-label="Edit"
+        aria-pressed={editorShowing}
       >
-        <Icon name="rectangle-vertical" /><span class="view-label">Single</span>
+        <Icon name="pen-line" /><span class="view-label">Edit</span>
       </button>
       <button
         class="icon-text"
-        class:active={viewMode === "two-column"}
-        onclick={() => onApplyViewMode("two-column")}
-        disabled={previewControlsDisabled}
-        title="Show two pages side by side, like an open book"
-        aria-label="Two pages side by side"
-        aria-pressed={viewMode === "two-column"}
+        class:active={mode === "viewer"}
+        onclick={() => onSetMode("viewer")}
+        disabled={editorToggleDisabled}
+        title="Read the book two pages at a time, like an open book"
+        aria-label="Read"
+        aria-pressed={mode === "viewer"}
       >
-        <Icon name="columns-2" /><span class="view-label">Two-page</span>
+        <Icon name="book-open" /><span class="view-label">Read</span>
       </button>
     </div>
-    <details class="menu view-mode-menu">
-      <summary class="icon-btn menu-summary" title="Page view mode" aria-label="Page view mode">
-        <Icon name={viewMode === "single" ? "rectangle-vertical" : "columns-2"} />
+    <details class="menu mode-menu">
+      <summary class="icon-btn menu-summary" title="Edit or read" aria-label="Edit or read">
+        <Icon name={editorShowing ? "pen-line" : "book-open"} />
         <Icon name="chevron-down" size={12} />
       </summary>
       <div class="menu-panel">
         <button
-          aria-pressed={viewMode === "single"}
+          aria-pressed={editorShowing}
           class="menu-item"
-          class:active={viewMode === "single"}
-          onclick={(e) => { onApplyViewMode("single"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          class:active={editorShowing}
+          onclick={(e) => { onSetMode("editor"); closeMenu(e); }}
+          disabled={editorToggleDisabled}
         >
-          <Icon name="rectangle-vertical" /> Single page
+          <Icon name="pen-line" /> Edit
         </button>
         <button
-          aria-pressed={viewMode === "two-column"}
+          aria-pressed={mode === "viewer"}
           class="menu-item"
-          class:active={viewMode === "two-column"}
-          onclick={(e) => { onApplyViewMode("two-column"); closeMenu(e); }}
-          disabled={previewControlsDisabled}
+          class:active={mode === "viewer"}
+          onclick={(e) => { onSetMode("viewer"); closeMenu(e); }}
+          disabled={editorToggleDisabled}
         >
-          <Icon name="columns-2" /> Two pages side by side
+          <Icon name="book-open" /> Read
         </button>
       </div>
     </details>
@@ -389,23 +394,23 @@
            (and toolbar width the URL-mode start cluster badly needs). -->
       <button
         class="icon-btn"
-        class:active={previewHidden}
+        class:active={mode === "focus"}
         onclick={onTogglePreview}
         disabled={previewToggleDisabled}
-        title={previewHidden ? "Show preview" : "Hide preview"}
-        aria-label={previewHidden ? "Show preview" : "Hide preview"}
-        aria-pressed={previewHidden}
+        title={mode === "focus" ? "Show preview" : "Hide preview"}
+        aria-label={mode === "focus" ? "Show preview" : "Hide preview"}
+        aria-pressed={mode === "focus"}
       >
         <Icon name="eye" />
       </button>
       <button
         class="icon-btn"
-        class:active={editorOpen}
+        class:active={editorShowing}
         onclick={onToggleEditor}
         disabled={editorToggleDisabled}
         title="Toggle markdown editor (Ctrl+E)"
         aria-label="Toggle markdown editor"
-        aria-pressed={editorOpen}
+        aria-pressed={editorShowing}
       >
         <Icon name="pen-line" />
       </button>
@@ -628,7 +633,7 @@
   /* ---- Collapsible dropdown menus (view-mode + zoom + more) ---- */
   .menu { position: relative; display: inline-block; }
   /* The view-mode menu only appears when the segmented group collapses. */
-  details.view-mode-menu { display: none; }
+  details.mode-menu { display: none; }
   .menu-summary {
     list-style: none;
     display: inline-flex;
@@ -683,7 +688,7 @@
 
   /* Page/Spread as a true segmented control: one bordered track, the selected
      segment filled, the other transparent. */
-  .view-mode-group {
+  .mode-group {
     display: inline-flex;
     gap: 0;
     background: var(--app-control-bg);
@@ -691,17 +696,17 @@
     border-radius: 7px;
     padding: 2px;
   }
-  .view-mode-group button {
+  .mode-group button {
     border: 1px solid transparent;
     background: transparent;
     border-radius: 5px;
     padding: 4px 9px;
   }
-  .view-mode-group button:hover:not(:disabled) {
+  .mode-group button:hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: transparent;
   }
-  .view-mode-group button.active {
+  .mode-group button.active {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
@@ -811,8 +816,8 @@
      toolbar is just Panel · Tabs · Actions. The separators go too: with the
      view controls gone they would render as an adjacent double rule. */
   .toolbar.edit-narrow .toolbar-center,
-  .toolbar.edit-narrow .view-mode-group,
-  .toolbar.edit-narrow .view-mode-menu,
+  .toolbar.edit-narrow .mode-group,
+  .toolbar.edit-narrow .mode-menu,
   .toolbar.edit-narrow .zoom-menu,
   .toolbar.edit-narrow .toolbar-sep {
     display: none;
@@ -826,16 +831,19 @@
      track starves and the page nav clips on ordinary desktop windows. */
   .toolbar.url-mode .doc-title { max-width: 140px; }
   .toolbar.url-mode .path { max-width: 120px; }
-  .toolbar.url-mode .view-mode-group { display: none; }
-  .toolbar.url-mode details.view-mode-menu { display: inline-block; }
+  /* A URL source has no editor, so the Edit/Read switch has nothing to
+     switch between — drop it entirely rather than show it permanently
+     disabled, exactly as the pane toggles below are not rendered at all. */
+  .toolbar.url-mode .mode-group,
+  .toolbar.url-mode details.mode-menu { display: none; }
   .toolbar.url-mode .save-hint { display: none; }
 
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
     /* Swap the inline view-mode buttons for the compact menu button; the
        export hints yield to the page nav from here down. */
-    .view-mode-group { display: none; }
-    details.view-mode-menu { display: inline-block; }
+    .mode-group { display: none; }
+    details.mode-menu { display: inline-block; }
     .save-hint { display: none; }
     .path { max-width: 140px; }
   }
@@ -860,8 +868,8 @@
     .path,
     .toolbar-sep,
     .save-hint,
-    .view-mode-group,
-    .view-mode-menu,
+    .mode-group,
+    .mode-menu,
     .zoom-menu {
       display: none;
     }

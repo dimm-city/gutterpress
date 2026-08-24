@@ -3,8 +3,9 @@
  * that used to live inline as the `onClientReady` closure in `+page.svelte`.
  *
  * It reduces over preview-frame lifecycle/navigation/source events and drives the post-render *settle
- * sequence*: view-mode auto-selection, the fit-width-vs-numeric-zoom reveal
- * race, page restore, outline rebuild, and re-lint.
+ * sequence*: pushing the derived view mode into the fresh frame, the
+ * fit-width-vs-numeric-zoom reveal race, page restore, outline rebuild, and
+ * re-lint.
  *
  * The ordering of that settle sequence is load-bearing — it is what prevents
  * the visible page JUMP. The pages stay invisible (iframe opacity 0) through
@@ -40,8 +41,7 @@ interface PreviewEventPageNav {
 
 /** Composed ZoomViewController surface (the bits this router touches). */
 interface PreviewEventZoomView {
-  userSetViewMode: boolean;
-  applyViewMode(mode: "single" | "two-column", fromUser: boolean): void;
+  applyViewMode(mode: "single" | "two-column"): void;
   applyFitWidthZoom(): Promise<void>;
 }
 
@@ -75,11 +75,8 @@ export interface PreviewEventDeps {
   setPreviewUpdating: (v: boolean) => void;
   /** Clear the outline + reset the active index (on a new render starting). */
   resetOutline: () => void;
-  /** Read-and-clear the pending per-project restore (page + view mode). */
-  consumePendingRestore: () => {
-    page: number | null;
-    viewMode: "single" | "two-column" | null;
-  };
+  /** Read-and-clear the pending per-project page restore. */
+  consumePendingRestore: () => { page: number | null };
   // ── Side effects ─────────────────────────────────────────────────────────
   refreshOutline: () => void;
   refreshProblems: () => void;
@@ -87,7 +84,6 @@ export interface PreviewEventDeps {
   revealSettledPages: () => void;
   toastSuccess: (message: string) => void;
   // ── Environment / clock ──────────────────────────────────────────────────
-  viewportWidth: () => number;
   scheduleMicrotask: (fn: () => void) => void;
 }
 
@@ -176,12 +172,10 @@ export class PreviewEventController {
       // background is the one rule the native viewer needs injected here (it
       // is the author's preview-background setting, not engine chrome).
       client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));
-      const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
-      const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
-      const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);
+      const { page: restorePage } = d.consumePendingRestore();
       const zoom = d.zoom();
       void (async () => {
-        d.zoomView.applyViewMode(mode, false);
+        d.zoomView.applyViewMode(d.viewMode());
         try {
           if (zoom === "fit-width") {
             await d.zoomView.applyFitWidthZoom();

@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────
 // project-state.ts — pure transforms for PER-PROJECT editor state (#43).
 //
-// Editor state (current page, view mode, split-pane ratio) is keyed by the
-// project folder so opening project B never overwrites project A's state.
+// Editor state (current page, split-pane ratio) is keyed by the project
+// folder so opening project B never overwrites project A's state.
 // These transforms operate on the `projectStates` map stored in
 // gutterpress-prefs.json. They are intentionally side-effect-free (no electron,
 // no filesystem) so main.ts reuses its readPrefs()/writePrefs() helpers AND so
@@ -18,21 +18,15 @@
 /**
  * State persisted for a single project, keyed by its folder path.
  *
- * `viewMode` here is a per-project SNAPSHOT, not the live value the UI reads:
- * `AppSettings.preview.viewMode` (settings-store.ts) is the durable default
- * the UI reads/writes at all times; this snapshot is applied ONLY when a
- * project is opened, overriding the durable value with that project's
- * last-used mode (see `ZoomViewController.applyViewMode`'s doc comment in the
- * SPA, and `+page.svelte`'s restore-on-open flow). AppSettings wins
- * everywhere else — this is the full resolution of the old "viewMode exists
- * in three places" fragmentation (#30); the third place (a legacy top-level
- * `viewMode` in DesktopPrefs, prefs-store.ts) has been deleted outright.
+ * A per-project `viewMode` snapshot lived here too, as the last of the three
+ * places view mode was stored (#30 deleted the legacy top-level `viewMode` in
+ * DesktopPrefs; `AppSettings.preview.viewMode` was the durable default). The
+ * fragmentation is now fully resolved by not storing view mode anywhere: it
+ * is derived from the workspace mode, so nothing has a snapshot to restore.
  */
 export interface ProjectState {
   /** Current preview page (1-based). */
   currentPage?: number;
-  /** Per-project preview view mode snapshot — see the interface doc above. */
-  viewMode?: "single" | "two-column";
   /** Split-pane size ratio (0..1). */
   splitPaneRatio?: number;
 }
