@@ -94,6 +94,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Inline editing no longer stops working after the first block.** Open a
+  block, decide it was fine as it was, and close it — and every double-click
+  after that was turned away with "Updating the preview — try that again in a
+  moment," for the rest of the session. The preview was not updating. Closing
+  a block without changing anything writes nothing, so the re-render that was
+  being waited on was never going to arrive, and the guard that holds off
+  edits between a save and its re-render stayed up forever. A block you did
+  not change is now simply let go, which also skips a pointless save and a
+  full re-layout of the book.
+
 - **Going straight from Read into Focus now actually gets you there.** It used
   to drop you in Edit instead, with the book still sitting beside you — you
   asked for the whole window and got half of it, and had to ask twice. (The
