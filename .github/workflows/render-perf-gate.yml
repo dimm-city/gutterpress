@@ -2,9 +2,9 @@
 name: Gutterpress desktop app gates
 
 # This job builds the desktop app once and then runs every gate that needs a
-# LIVE app: the render-speed gates first, then the behaviour drives (see the
-# note on that step for why that order). The file keeps its
-# render-perf-gate.yml name because tests/perf/render-gate.mjs and
+# LIVE app: the behaviour drives first, then the render-speed gates (see the
+# note on the drive step — only one of them can have a clean machine). The file
+# keeps its render-perf-gate.yml name because tests/perf/render-gate.mjs and
 # tests/integration/inline-editing.pw.mjs cite it by path.
 #
 # ── Behaviour drives ────────────────────────────────────────────────────────
@@ -105,25 +105,14 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run render-perf gate
-        working-directory: packages/desktop
-        # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
-        run: node tests/perf/render-gate.mjs
-
-      # v0.8.3 fast-path contract: a Markdown save must render /__chapter in
-      # place, not request a replacement book.html, and must stay far below the
-      # multi-second full-document regression. Reuses the app built above.
-      - name: Run instant-preview regression gate
-        working-directory: packages/desktop
-        run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000
-
-      # LAST, deliberately. Each drive leaks its Electron process on exit
-      # (measured: problems-last-hop does not, the other two do), and the gates
-      # above measure latency on a 2-core runner — leaving stray Electron apps
-      # running before them is exactly the kind of interference that turns a
-      # reliable gate flaky. Running behaviour last means the perf gates keep
-      # the pristine runner they have been green on, and the leak lands where
-      # nothing can be affected by it: the end of the job.
+      # Behaviour first, on the pristine runner. Every step here launches
+      # Electron and leaks it, and whatever runs SECOND is badly degraded:
+      # measured on this job, problems-last-hop takes 3.2s first but 23s after
+      # the perf gates, and editor-toggle's 79ms preview update blew a 30s
+      # timeout. So the order is not a preference — only one step gets a clean
+      # machine, and the drives are the cheap, high-yield ones (~16s vs
+      # minutes). The pkill hands the perf gates back a runner with no residue
+      # from the drives, which is what they were green on 14/14 before this.
       #
       # One xvfb-run per drive. The two CDP drives fall back to wrapping
       # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
@@ -136,3 +125,17 @@ jobs:
           xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
           xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
+          pkill -f 'out/main/main.js' || true
+
+      - name: Run render-perf gate
+        working-directory: packages/desktop
+        # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
+        run: node tests/perf/render-gate.mjs
+
+      # v0.8.3 fast-path contract: a Markdown save must render /__chapter in
+      # place, not request a replacement book.html, and must stay far below the
+      # multi-second full-document regression. Reuses the app built above.
+      - name: Run instant-preview regression gate
+        working-directory: packages/desktop
+        run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000
+
