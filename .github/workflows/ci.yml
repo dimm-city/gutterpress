@@ -35,8 +35,10 @@ jobs:
       # §6). It needs Chromium AND Ghostscript, and self-skips on either. A
       # skipped canary is a green CI that has stopped watching for the day
       # Chromium fixes #152 — the shim then entrenches silently, which is the
-      # exact failure §7 risk 10 names. Do not drop this step or the Setup
-      # Chrome step above without deleting that test and its shim first.
+      # exact failure §7 risk 10 names. So this job must always leave SOME
+      # Chromium and SOME Ghostscript resolvable (which of the two Chromes it
+      # resolves does not matter — both track stable). Removing either tool
+      # entirely means deleting that test and its shim in the same change.
       - name: Install PDF tooling (Ghostscript, qpdf)
         run: |
           sudo apt-get update
