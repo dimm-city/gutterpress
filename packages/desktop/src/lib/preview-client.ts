@@ -32,7 +32,7 @@ export interface PreviewEvent {
     /** renderingComplete: acknowledged preview content revision. */
     revision?: number;
     /** renderingComplete: how the shell applied the update. Always
-     * `"full-reload"` — the incremental chapter splice went with Paged.js, and
+     * `"full-reload"` — the incremental chapter splice was removed, and
      * preview-shell.js has one mint site that hardcodes this. Kept as a field
      * rather than dropped so the host can tell a shell that predates the
      * change. (The file-watcher's own `chapter-splice` decision kind is a

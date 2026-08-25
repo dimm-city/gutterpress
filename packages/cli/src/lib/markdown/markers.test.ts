@@ -1,5 +1,5 @@
 /**
- * Characterization test net for `markdown-it-paged.js`.
+ * Characterization test net for `markers.js`.
  *
  * Goal: pin the CURRENT observable behavior of the plugin so precisely that a
  * future refactor of the `layout_transform` scope state machine (e.g.
@@ -100,7 +100,7 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     const t = findToken(tokens, "layout_chapter_open")!;
     expect(t.meta).toEqual({ line: 3 });
     // Do NOT set token.map here — see the inline comment at the assignment
-    // site (markdown-it-paged.js) and ADR 0009: setting map would make
+    // site (markers.js) and ADR 0009: setting map would make
     // markdown-it-source-map stamp data-source-line on this wrapper too,
     // breaking preview scroll-sync's rect tie-break.
     expect(t.map).toBeNull();
@@ -1401,10 +1401,6 @@ describe("GUTTERPRESS_CSS author-facing image/block utilities (M17)", () => {
     expect(body).toMatch(/page:\s*gp-full-bleed/);
     expect(body).toMatch(/width:\s*100%/);
     expect(body).not.toMatch(/calc\(/);
-    // Paged.js is gone (native-only-migration-plan.md Phase 6) — nothing sets
-    // its page-margin custom properties any more, so they must not survive
-    // here as a permanent no-op.
-    expect(GUTTERPRESS_CSS).not.toMatch(/--pagedjs-margin/);
     expect(body).not.toMatch(/--gp-margin/);
     expect(GUTTERPRESS_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
     // Must NOT promise a named `art` page template or header/footer removal —

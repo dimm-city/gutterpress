@@ -192,8 +192,8 @@ export function decorate(
       entries.sort((a, b) => a.page - b.page);
       api.stringMap.set(decl.name, entries);
     }
-    // front-matter -> body folio restart (`counter-reset: page N`,
-    // MIGRATION.md gap #1): the same `pageCounterValues` policy the compiler
+    // front-matter -> body folio restart (`counter-reset: page N`): the
+    // same `pageCounterValues` policy the compiler
     // applies via a generated `@counter-style`, applied here by overriding the
     // `page` fed to `evaluate()` — no CSS synthesis needed on this side.
     // Computed BEFORE the cross-reference targets below (F3), so

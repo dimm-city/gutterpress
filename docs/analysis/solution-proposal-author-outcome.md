@@ -397,8 +397,7 @@ not.
    book's CSS, pagination and paint are byte-identical.
 3. **Track the spec, not our shims.** No book can couple to it. It emits no
    class, no attribute, no custom property, no DOM node an author or a
-   stylesheet can select. This is exactly the property the Paged.js migration
-   lacked when books bound themselves to `.pagedjs_*` internals.
+   stylesheet can select — which is the property that keeps a shim deletable.
 4. **Design for deletion.** Its boundary is one expression in one file. Its
    removal trigger is *executable today* — `tools/page-background-repro.mjs`
    exit 2 — and §2.4 wires it into CI so the trigger fires by itself.

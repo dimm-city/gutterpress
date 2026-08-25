@@ -446,7 +446,7 @@ accounts — see Anti-Patterns table).
 shipped; the visual layout editor is **#37 (open)**.
 
 Reference research: InDesign/Affinity (preflight, master pages), Scribus
-(what to avoid), Paged.js (prior art — no longer our engine).
+(what to avoid).
 
 From print tools, keep: page navigation for long documents; non-destructive,
 always-revertible CSS overrides; preflight before export. Avoid: tool-mode
@@ -1110,8 +1110,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 Obsidian (panel flexibility, community themes) · Bear · Ulysses.
 
 **Print/layout:** Affinity Publisher 2 (preflight, masters) · Canva
-(non-designer layout) · Visme (template-first onboarding) ·
-[Paged.js](https://pagedjs.org/) (prior art; Gutterpress paginates with Chromium directly).
+(non-designer layout) · Visme (template-first onboarding).
 
 **Publish:** Netlify (preflight + deploy log drawer) · Shopify (provider
 cards) · Leanpub (author-centric flow).

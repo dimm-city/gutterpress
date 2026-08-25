@@ -70,8 +70,7 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
-   * Pagination engine. Paged.js has been removed (native-only-migration-
-   * plan.md Phase 6) — the Gutterpress engine (`src/engine/`, native Chromium
+   * Pagination engine. The Gutterpress engine (`src/engine/`, native Chromium
    * pagination) is the only engine. This field and `--engine` on the CLI are
    * accepted-but-ignored for backward compatibility: an explicit "paged"
    * produces a one-line warning and the build proceeds natively regardless.
@@ -80,12 +79,12 @@ export interface GutterpressManifest {
   /**
    * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
    * only list that still applies; `.paged` is accepted-but-ignored (a warning
-   * fires if it has entries) now that Paged.js has been removed.
+   * fires if it has entries).
    */
   engineStyles?: {
     /**
-     * REMOVED — Paged.js has been deleted. Accepted for backward-compatible
-     * manifest parsing only; entries here are ignored with a warning.
+     * Accepted for backward-compatible manifest parsing only; entries here are
+     * ignored with a warning.
      */
     paged?: string[];
     native?: string[];

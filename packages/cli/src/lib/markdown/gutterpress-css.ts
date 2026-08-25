@@ -61,17 +61,12 @@
  *                   and a plain `width: 100%` already reaches both edges —
  *                   with no shrink-to-fit trigger, because nothing out-dents
  *                   past the content box. MEASURED (Chromium 148, 6x4in
- *                   sheet, 0.75in margins): the earlier mechanism (a negative
- *                   out-dent of the real page margins, inherited from the
- *                   Paged.js era, where the polyfill published them as
- *                   `--pagedjs-margin-left/right`) shrank the WHOLE document
- *                   ~10% under native print (text run 204.4pt -> 182.9pt),
+ *                   sheet, 0.75in margins): the obvious alternative — a
+ *                   negative out-dent of the real page margins — shrank the
+ *                   WHOLE document ~10% (text run 204.4pt -> 182.9pt),
  *                   because the shrink-to-fit trigger is the page CONTENT
- *                   box, not the sheet — that failure mode is why the named
- *                   page exists. Paged.js has since been removed
- *                   (native-only-migration-plan.md Phase 6), so the out-dent
- *                   (whose custom properties nothing sets any more, making it
- *                   a permanent no-op) went with it.
+ *                   box, not the sheet. That failure mode is why the named
+ *                   page exists.
  *
  *                   KNOWN GAP: on the bleed page, native's running head/folio
  *                   move onto the trim line (margin boxes are positioned by

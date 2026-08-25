@@ -2,7 +2,7 @@
  * Declarations Chromium accepts syntactically in `@page` margin boxes but
  * silently drops in native print. These were measured with deliberately
  * visible values (`rotate(-12deg)`, `6px 6px 0 #c00`) and are documented in
- * docs/engine-history/ENGINE.md §8 and docs/known-limitations.md §2.
+ * docs/engine/ENGINE.md §8 and docs/known-limitations.md §2.
  *
  * The line is what the property PAINTS, not the property family: everything
  * that establishes a stacking context or paints outside the border box is

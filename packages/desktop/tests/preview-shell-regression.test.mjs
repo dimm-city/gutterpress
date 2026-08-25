@@ -12,12 +12,9 @@ const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"
 const bridgeSource = readFileSync(path.join(scriptDir, "preview-bridge.js"), "utf8");
 
 // `.gp-sheet` elements (the viewer's page unit — see
-// engine/viewer/decorate.ts). Paged.js has been removed
-// (native-only-migration-plan.md Phase 6) — the incremental chapter-splice
-// scenario this fixture set used to also cover (UPDATED_CHAPTER) was removed
-// with it: every content-update now goes through the same full-reload swap
-// as a geometry-wide change (see preview-shell.js's header comment on the
-// removed spliceChapter()).
+// engine/viewer/decorate.ts). Every content-update goes through the same
+// full-reload swap as a geometry-wide change (see preview-shell.js's header
+// comment on the removed spliceChapter()).
 const BOOK_NATIVE = `
   <div class="gp-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
     <p data-source-line="1">Chapter one</p>
@@ -799,10 +796,9 @@ async function main() {
   );
   flushAnimationFrames();
 
-  // A `content-update` message now goes through the exact same full-reload
-  // swap as `full-reload` (Paged.js's incremental chapter splice was removed
-  // along with Paged.js — see preview-shell.js's header comment on the
-  // removed spliceChapter()).
+  // A `content-update` message goes through the exact same full-reload swap
+  // as `full-reload` (see preview-shell.js's header comment on the removed
+  // spliceChapter()).
   const beforeUpdate = document.getElementById("gutterpress-active");
   const beforeUpdateEvents = hostEvents.length;
   onChange?.({
@@ -851,10 +847,9 @@ async function main() {
 
 }
 
-// ── Native engine: the same double-buffer swap + anchor-preservation core
-// (the property this suite exists to guard), against `.gp-sheet` fixtures
-// instead of `.pagedjs_page`. The chapter-splice scenario in main() above
-// stays paged-only — see BOOK_NATIVE's comment.
+// ── The same double-buffer swap + anchor-preservation core (the property
+// this suite exists to guard), driven through a frame that carries the viewer
+// <script> tag so readiness goes through a real 'renderingComplete'.
 async function runNativeCoreRegression() {
   const outer = new Window({ url: "http://localhost/" });
   const document = outer.document;
@@ -930,12 +925,11 @@ async function runNativeCoreRegression() {
     return result;
   };
 
-  // CORRECTED: onReady() has no `.pagedjs_page`-polling branch — it listens
-  // for 'renderingComplete' and short-circuits only on the
-  // `__GUTTERPRESS_RENDERED__` flag. What still distinguishes this fixture is
-  // that it DOES carry the viewer <script> tag (preview-interface.js needs it
-  // for NATIVE_ENGINE detection), so the frame reaches readiness through a
-  // real 'renderingComplete' dispatch and arms a real ~180s timeout. Only
+  // onReady() listens for 'renderingComplete' and short-circuits only on the
+  // `__GUTTERPRESS_RENDERED__` flag. This fixture DOES carry the viewer
+  // <script> tag (preview-interface.js needs it for NATIVE_ENGINE detection),
+  // so the frame reaches readiness through a real 'renderingComplete'
+  // dispatch and arms a real ~180s timeout. Only
   // short (poll/debounce) timers should fire synchronously; the long
   // readiness timeout must NOT fire before the explicit 'gp:layout'
   // dispatch below reaches it, or it discards the frame as "timed out".

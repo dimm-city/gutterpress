@@ -3,9 +3,9 @@
  * (WORK PACKAGE B item 1, docs/native-engine-acceptance-gate.md C.15).
  *
  * The native viewer lays sheets out one CHAPTER per row (`.gp-run`), each
- * row scrolling HORIZONTALLY when its chapter is wider than the viewport —
- * unlike Paged.js's single vertical page stack. `detectVisiblePage()` used to
- * scan by `top` only, which can't distinguish two sheets in the same row (they
+ * row scrolling HORIZONTALLY when its chapter is wider than the viewport, so
+ * a page is NOT identified by its vertical position alone. `detectVisiblePage()`
+ * used to scan by `top` only, which can't distinguish two sheets in a row (they
  * share the same `top`), so it always resolved to the LAST sheet of whichever
  * row was vertically visible — the toolbar's `goToPage(N)` for any N deep in a
  * later row would settle back on an earlier page once the scroll-end handler

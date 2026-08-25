@@ -135,12 +135,6 @@ function setup(markup) {
 
 async function main() {
   // Native is the only engine, so this runs once against one DOM shape.
-  // This used to be `for (const engine of ["native"])` — a one-element loop
-  // kept "so a future second engine slots back in with minimal diff". The
-  // Chromium-only ruling forecloses that engine, `pageWrap` already ignored
-  // the parameter, and the `.pagedjs_page` branch it selected was
-  // unreachable. A seam held open for something that is not coming costs
-  // every later reader the question of which engine a given line is about.
  // ── 1. Chapter-scoped line resolution (the critical correctness property) ──
  {
    const { api, scrolls } = setup(undefined);

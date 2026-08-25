@@ -67,8 +67,6 @@ Last updated 2026-08-13.
 - [x] Failsafe tests clean their repository and isolated backup fixtures.
 - [x] Stale tracked `.claude/worktrees/` copy and plugin hot-reload snapshot
       removed (recoverable from git).
-- [x] Paged.js-era AKM guidance superseded/reframed as history; current native
-      fragmentation and field-guide ownership policies are indexed.
 
 ### Engineering
 - [x] **Split card corner notch**: fragmentable cards use final-slice decoration;

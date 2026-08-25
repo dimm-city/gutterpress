@@ -651,7 +651,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 
 ### 2. Why puppeteer-core + Chromium for PDF?
 
-**Chosen over**: Prince XML, Playwright, pagedjs-cli subprocess
+**Chosen over**: Prince XML, Playwright
 
 **Reasons**:
 - Open-source and cross-platform (macOS, Linux, Windows)

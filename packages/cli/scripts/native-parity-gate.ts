@@ -54,9 +54,8 @@
  * fragmentation divergence, not an artifact of an unpinned viewport.
  *
  * Any divergence must be an explicit entry in KNOWN_DIVERGENCES with a
- * reason, following the migration spike's own pattern
- * (the same KNOWN_DIVERGENCES pattern the retired migration-fixtures harness used — see docs/engine-history/MIGRATION.md) — never a
- * silent tolerance. An unlisted divergence fails the run (exit 1).
+ * reason — never a silent tolerance. An unlisted divergence fails the run
+ * (exit 1).
  *
  * Usage:
  *   bun scripts/native-parity-gate.ts
@@ -149,11 +148,10 @@ interface Divergence {
 }
 
 /**
- * Explicit allowlist (the same KNOWN_DIVERGENCES pattern the retired migration-fixtures harness used, see docs/engine-history/MIGRATION.md):
- * KNOWN_DIVERGENCES pattern: every entry names exactly what it excuses and
- * why. A divergence NOT matched here fails the run. Empty until a real,
- * understood divergence is found — see this script's own report output for
- * what was actually observed on this run.
+ * Explicit allowlist: every entry names exactly what it excuses and why. A
+ * divergence NOT matched here fails the run. Empty until a real, understood
+ * divergence is found — see this script's own report output for what was
+ * actually observed on this run.
  */
 const KNOWN_DIVERGENCES: Array<{
   fixture: string;

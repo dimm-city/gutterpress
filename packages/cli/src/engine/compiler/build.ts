@@ -373,9 +373,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // in: an engine-launched window, a pooled puppeteer default, or the
     // width check's cleared override each gave DIFFERENT sizes — measured
     // as a 0.84x shrink-to-fit on one path and none on another, for the
-    // same document. Pin the viewport to the author's page size (what the
-    // Paged.js pipeline has always laid out at) before anything measures
-    // or prints, and keep it pinned for the build's whole life.
+    // same document. Pin the viewport to the author's page size before
+    // anything measures or prints, and keep it pinned for the build's whole
+    // life.
     const baseGeom = resolvePage(model).geometry;
     const sheetViewport = {
       width: Math.max(1, Math.round((baseGeom.width * 96) / 72)),
@@ -540,8 +540,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // ---- publish the page content box to CSS ----------------------------
     // MARKER_CSS gives `.page`/`.spread` `min-height: var(--gp-content-h)`,
     // which is what makes a page root the containing block for the PAGE
-    // rather than for its own prose (see that rule's comment: this is what
-    // Paged.js used to do with `height: inherit`). Only an engine knows the
+    // rather than for its own prose (see that rule's comment). Only an
+    // engine knows the
     // number, because it is `size` minus the vertical margins of the `@page`
     // context the element actually lands in — author CSS, not the manifest.
     // The viewer's twin publishes the same property on each `.gp-strip`
@@ -734,8 +734,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const sites = await page.evaluate<any[]>(
         `window.__gp.xrefSites(${JSON.stringify(xrefSelectors)})`,
       );
-      // front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
-      // gap #1): Chromium ignores the restart (ENGINE.md §8), so the elements
+      // front-matter -> body folio restart (`counter-reset: page N`):
+      // Chromium ignores the restart (ENGINE.md §8), so the elements
       // that declare it need ids too, to learn which page they land on.
       const resetSites = model.counterResets.length
         ? await page.evaluate<any[]>(
@@ -1520,7 +1520,7 @@ async function findWidthOffenders(
 }> {
   const contexts = [
     resolvePage(model),
-    // Exclude core's own `gp-` reserved-namespace pages (markdown-it-paged.js
+    // Exclude core's own `gp-` reserved-namespace pages (markers.js
     // MARKER_CSS — today `gp-full-bleed`): they are injected into EVERY
     // document with zero side margins so `.full-bleed` art can reach the
     // sheet edge, which would otherwise raise this Math.max to the full
@@ -1792,8 +1792,8 @@ export function counterStyleCss(
   }
   for (const entries of byName.values()) entries.sort((a, b) => a.page - b.page);
 
-  // Front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
-  // gap #1). `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
+  // Front-matter -> body folio restart (`counter-reset: page N`).
+  // `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
   // formats it per the `counter(page[, style])` style each context actually
   // requests, so `gp-page--lower-roman` and `gp-page--decimal` can carry
   // the SAME restarted numbering with different symbols.

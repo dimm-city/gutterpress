@@ -85,11 +85,10 @@ import type {
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
-// Same-origin path of the native engine's viewer bundle the desktop ships in
+// Same-origin path of the engine's viewer bundle the desktop ships in
 // static/engine/. The service worker precaches it; startPreview injects a
-// <script src> pointing at it so preview works offline. Paged.js has been
-// removed (native-only-migration-plan.md Phase 6) — native is the only
-// engine, so there is no manifest `engine:` field left to honor here.
+// <script src> pointing at it so preview works offline. Native is the only
+// engine, so there is no manifest `engine:` field to honor here.
 const VENDOR_VIEWER_URL = "/engine/gutterpress-viewer.js";
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────

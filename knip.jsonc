@@ -27,12 +27,7 @@
         // importing ink-coverage/rasterized-pages/embedded-fonts defaults).
         "src/checks/{asset,heuristic,pdf,source}/*.ts"
       ],
-      "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"],
-      // Vendored third-party code (patched Paged.js) — never edited for lint.
-      "ignore": ["src/assets/vendor/**"],
-      // Source for vendor refreshes of src/assets/vendor/paged.polyfill.js —
-      // see src/assets/vendor/PAGEDJS-PATCHES.md.
-      "ignoreDependencies": ["pagedjs"]
+      "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"]
     },
     "packages/desktop": {
       "entry": [

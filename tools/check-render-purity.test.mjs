@@ -151,22 +151,6 @@ try {
   rmSync(emptyDir, { recursive: true, force: true });
 }
 
-
-// Case 11 (vendored exemption): a guarded UMD require of a builtin inside a
-// vendor/ directory (the paged.js polyfill pattern) must PASS — layer 3 is
-// scoped to bundler output — while the same content outside vendor/ fails.
-const vendorDir = mkdtempSync(join(tmpdir(), "render-purity-vendor-"));
-try {
-  mkdirSync(join(vendorDir, "vendor"));
-  const umd = "if (typeof require === 'function') { var u = require('util'); }\n";
-  writeFileSync(join(vendorDir, "vendor", "paged.polyfill.js"), umd);
-  check("vendored guarded require passes (exit 0)", run(vendorDir).status, 0);
-  writeFileSync(join(vendorDir, "chunk.js"), umd);
-  check("same require outside vendor/ fails (exit 1)", run(vendorDir).status, 1);
-} finally {
-  rmSync(vendorDir, { recursive: true, force: true });
-}
-
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);
   process.exit(1);

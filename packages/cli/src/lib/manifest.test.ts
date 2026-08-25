@@ -83,7 +83,7 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 // (`styles`'s preset default, `allowedCallouts`) are characterized
 // separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
 // here.
-describe("resolveConfig engineStyles — Paged.js removed, only .native applies (native-only-migration-plan.md Phase 6)", () => {
+describe("resolveConfig engineStyles — only .native applies", () => {
   test("native extras append after base styles regardless of the (ignored) engine field", () => {
     const m = {
       styles: ["css/index.css"],

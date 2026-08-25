@@ -80,11 +80,8 @@ try {
   results.openToFirstPreviewMs = t1 - t0;
   log(`1. open->first preview: ${results.openToFirstPreviewMs}ms`);
 
-  // Sanity: the viewer really painted pages. This used to branch on
-  // `.pagedjs_page` vs `.gp-sheet` and report the winner as `detectedEngine`
-  // — a constant dressed as a measurement, since native is the only engine.
-  // A missing `.gp-sheet` now means the preview FAILED, which is the only
-  // thing this check can honestly tell us.
+  // Sanity: the viewer really painted pages. A missing `.gp-sheet` means the
+  // preview FAILED, which is the only thing this check can honestly tell us.
   const sheetCount = await bookEval((el) => el.ownerDocument.querySelectorAll(".gp-sheet").length);
   results.renderedSheets = sheetCount;
   log(`viewer painted ${sheetCount} sheet(s)`);

@@ -22,14 +22,12 @@ test("getAssetsDir re-extracts when the cached temp dir was removed", async () =
   expect(existsSync(viewer)).toBe(true);
 });
 
-// Regression test for the sentinel-asset choice (native-only-migration-plan.md
-// Phase 6 housekeeping, item 1). The cache-validity check in `getAssetsDir()`
-// keys off ONE asset's presence on disk; if that sentinel ever named a
-// Paged.js-only asset, deleting Paged.js would make the sentinel check fail
-// forever and every call would pay for a fresh full extraction. The sentinel
-// is the native engine's viewer bundle, which now outlives Paged.js's removal
-// (Paged.js's assets are gone entirely from the embedded set).
-test("sentinel asset is a native-engine asset that survives Paged.js's removal", async () => {
+// Regression test for the sentinel-asset choice. The cache-validity check in
+// `getAssetsDir()` keys off ONE asset's presence on disk; if that sentinel
+// ever named an asset some builds omit, the check would fail forever for those
+// builds and every call would pay for a fresh full extraction. The sentinel is
+// the engine's viewer bundle, which is embedded unconditionally.
+test("sentinel asset is an unconditionally embedded engine asset", async () => {
   const dir1 = await getAssetsDir();
 
   // Deleting a non-sentinel asset must NOT invalidate the cached extraction —

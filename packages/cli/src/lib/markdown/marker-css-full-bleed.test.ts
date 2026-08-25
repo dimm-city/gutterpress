@@ -16,16 +16,14 @@ import { closeBrowser, getBrowser } from "../browser-pool.ts";
  * `@page gp-full-bleed`, whose side margins are zero — so the PAGE content
  * box is the sheet. But `width: 100%` resolves against the element's
  * containing block, which is the BODY, and the UA default `body { margin:
- * 8px }` survives native print (Paged.js's polisher drops it, which is why
- * only the native leg was affected). The art therefore stopped 8px short of
- * each edge unless the book happened to reset the body itself.
+ * 8px }` survives print. The art therefore stopped 8px short of each edge
+ * unless the book happened to reset the body itself.
  *
- * MEASURED before the fix, 300dpi raster of a real `gutterpress build
- * --engine native` on a 6x4in sheet with 0.75in margins and no author body
- * rule: ink on the bleed page spanned 0.080..5.917in instead of
- * 0.000..6.000in — a visible white frame. Adding `body { margin: 0 }` to
- * MARKER_CSS took the same build to exactly 0.000..6.000in, and left the
- * Paged.js leg byte-for-byte where it already was.
+ * MEASURED before the fix, 300dpi raster of a real `gutterpress build` on a
+ * 6x4in sheet with 0.75in margins and no author body rule: ink on the bleed
+ * page spanned 0.080..5.917in instead of 0.000..6.000in — a visible white
+ * frame. Adding `body { margin: 0 }` to MARKER_CSS took the same build to
+ * exactly 0.000..6.000in.
  *
  * This test asserts the layout cause rather than re-rastering a PDF: with
  * MARKER_CSS applied and no author reset, a `.gp-bleed` block must span the

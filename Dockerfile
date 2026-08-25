@@ -6,7 +6,7 @@
 # needs to turn a markdown project into a validated, print-ready PDF — including
 # the full PDF/X (CMYK) pre-print path:
 #   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
-#   - Chromium            (PDF rendering via Paged.js — REQUIRED for any PDF)
+#   - Chromium            (PDF rendering — REQUIRED for any PDF)
 #   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation)
 #   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
 #   - base fonts + fontconfig

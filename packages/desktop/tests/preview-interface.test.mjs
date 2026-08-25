@@ -44,8 +44,7 @@ function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
 
 // Loads preview-interface.js with a `script[src*="/engine/gutterpress-viewer.js"]`
 // tag present (the NATIVE_ENGINE detection signal) and a minimal
-// window.Gutterpress stub, against `.gp-sheet` fixtures instead of
-// `.pagedjs_page`.
+// window.Gutterpress stub, against `.gp-sheet` fixtures.
 function loadNativePreviewApi(sheets, runs = []) {
   const listeners = new Map();
 
@@ -174,9 +173,7 @@ function loadInterfaceWithDom(html, opts = {}) {
 }
 
 async function main() {
-  // ── Native engine navigation, driven off .gp-sheet elements +
-  // window.Gutterpress (Paged.js has been removed — see
-  // native-only-migration-plan.md Phase 6) ────────────────────────────────────
+  // ── Navigation, driven off .gp-sheet elements + window.Gutterpress ────────
   {
     const sheets = [makeSheet(1), makeSheet(2), makeSheet(3), makeSheet(4)];
     const { api } = loadNativePreviewApi(sheets);
@@ -349,11 +346,10 @@ async function main() {
     assert.equal(detail.blockTag, "code");
   }
 
-  // The native fragmenter MOVES elements into strips rather than cloning
-  // them (unlike Paged.js, which cloned an element across pages and marked
-  // the clone with data-split-from/-to) — a block that visually spans pages
-  // is still exactly ONE element, so split is always false, even on an
-  // element carrying a stale data-split-from attribute.
+  // The fragmenter MOVES elements into strips rather than cloning them — a
+  // block that visually spans pages is still exactly ONE element, so split is
+  // always false, even on an element carrying a stale data-split-from
+  // attribute.
   {
     const { document, api } = loadInterfaceWithDom(contextHtml);
     document.elementFromPoint = () => document.getElementById("frag1");

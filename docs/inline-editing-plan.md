@@ -1,11 +1,10 @@
 # Inline editing plan
 
-> **Status 2026-08-24: SHIPPED.** The original 1128-line plan (six PRs against
-> the Paged.js preview) shipped in full — click-to-source, `data-source-range`,
-> the bridge protocol, the commit engine, the right-click menu, selection
-> formatting, and the click-to-edit block overlay. Then the native viewer made
-> the overlay unnecessary, and **in-flow editing replaced it** (bridge protocol
-> v8). This document records that design as built.
+> **Status 2026-08-24: SHIPPED.** The original 1128-line plan shipped in full
+> over six PRs — click-to-source, `data-source-range`, the bridge protocol, the
+> commit engine, the right-click menu, selection formatting, and the
+> click-to-edit block overlay. **In-flow editing then replaced the overlay**
+> (bridge protocol v8). This document records that design as built.
 >
 > Entry points: the context menu's "Edit this block" **and** double-click on any
 > annotated block. Both land on the same host handler.
@@ -13,34 +12,22 @@
 > Background and the decisions that survive: [ADR 0009](./adr/0009-inline-editing-source-ranges.md)
 > (revised 2026-08-24).
 
-## 1. Why this changes now
+## 1. Why editing happens in the page
 
-The overlay is a floating CodeMirror panel drawn in SPA coordinates on top of a
-cross-origin iframe. Everything expensive about it exists to maintain that
-illusion: fragment-rect geometry (`getRectsFor`), a dimming mask and scroll lock
-on the book document (`setEditMask`), iframe-origin translation, pane clamping,
-`maxHeight` math, and dismissal on every `renderingComplete` / page change /
-viewport change. None of that is editing. It is compensation for the editor not
-being *in* the page.
+Two properties of the viewer are what make in-flow editing possible, and both
+are load-bearing for everything below:
 
-It was built that way because two properties of the Paged.js preview made in-flow
-editing impossible:
+1. the viewer **never chunks the DOM**
+   (`packages/cli/src/engine/viewer/fragment.ts`), so a block spanning a page
+   is still ONE element and a caret crosses the break natively; and
+2. `Gutterpress.refresh()` → `relayout()` rebuilds the strips from scratch and
+   re-measures, so an in-place edit re-paginates instead of overflowing into
+   invisible columns.
 
-1. a block spanning a page was **several cloned DOM elements**, so a caret could
-   not cross a page boundary; and
-2. **nothing re-paginated** after a DOM mutation, so any in-place edit silently
-   overflowed into invisible columns.
-
-Both died with Paged.js. The native viewer "never chunks the DOM"
-(`packages/cli/src/engine/viewer/fragment.ts`), and `Gutterpress.refresh()` →
-`relayout()` rebuilds the strips from scratch and re-measures. The overlay is now
-solving a problem the product no longer has.
-
-> Note: `preview-shell.js` used to carry a comment claiming `relayout()` "only
-> re-`measure()`s the EXISTING strips" — true of an earlier revision, false
-> against the current `fragment.ts`, which calls `buildStrips()`. It was the
-> single most misleading sentence in the preview code for anyone evaluating
-> in-place updates, and it is corrected in place.
+Without those, an editor has to float above the page in host coordinates and
+pay for the illusion — fragment-rect geometry, a dimming mask and scroll lock,
+iframe-origin translation, pane clamping, and dismissal on every
+`renderingComplete` / page change / viewport change. None of that is editing.
 
 ## 2. Evidence (spike-verified 2026-08-24, Chromium 1194)
 

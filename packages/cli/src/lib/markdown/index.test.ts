@@ -169,7 +169,7 @@ test("resolveActiveMarkdownFiles: an empty configured-files array still falls ba
  * ARCH finding #4 — `assemble.ts`'s render loop previously called
  * `md.render(content)` with NO env, so every `env.layoutWarnings`
  * markdown-it-paged computed (8 typed, line-numbered author-mistake classes —
- * see markdown-it-paged.js's header) landed in markdown-it's own throwaway
+ * see markers.js's header) landed in markdown-it's own throwaway
  * internal env and was discarded before `renderChapters` ever returned.
  * Before this fix there was NO way for a `renderChapters` caller to observe a
  * marker mistake at all. `onChapterWarnings` is the fix: it must fire, keyed

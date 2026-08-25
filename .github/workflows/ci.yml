@@ -161,8 +161,8 @@ jobs:
         working-directory: packages/cli
 
       # Keep this explicit even though the full desktop suite also runs it. If
-      # the suite wiring changes, CI must still protect active-frame identity,
-      # page-count-changing splices, and standalone Paged.js page metadata.
+      # the suite wiring changes, CI must still protect active-frame identity
+      # and page-count-changing swaps.
       - name: Run instant-preview splice contract
         run: node tests/preview-shell-regression.test.mjs
         working-directory: packages/desktop

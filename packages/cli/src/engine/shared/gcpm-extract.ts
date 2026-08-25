@@ -749,7 +749,7 @@ export function resolvePage(
   // WEAKER rule beat a shorthand from a stronger one: `@page :right {
   // margin-left: .75in }` would override `@page cover { margin: 0 }` and inset
   // a full-bleed cover by three quarters of an inch. (Observed in the
-  // Gutterpress user-guide theme; see compare/COMPARISON.md.)
+  // Gutterpress user-guide theme.)
   const margin = { top: 72, right: 72, bottom: 72, left: 72 };
   for (const rule of applicable) {
     for (const [prop, value] of Object.entries(rule.decls)) {

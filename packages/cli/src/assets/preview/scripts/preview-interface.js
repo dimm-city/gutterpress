@@ -637,8 +637,8 @@
   // ONLY to serve that panel and went with it (protocol v8).
   //
   // Three properties of the native viewer are what make this work, each
-  // spike-verified rather than assumed (plan §2) — under Paged.js none of them
-  // held, which is why the panel existed:
+  // spike-verified rather than assumed (plan §2) — the floating panel existed
+  // because none of them can be assumed of a paginator that pre-cuts the DOM:
   //   1. A block spanning a page break is ONE element with several client
   //      rects, so it takes ONE contenteditable and the caret crosses the
   //      break natively (ArrowDown walks into the next page).
