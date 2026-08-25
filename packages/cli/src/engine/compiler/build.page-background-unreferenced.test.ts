@@ -28,11 +28,12 @@ import { build } from "./build.ts";
  *     (control: a gradient on the same box                   16.8009)
  *
  * The two `(!)` rows are why this audit's predicate had to change. An `<img>`
- * does not protect the page box under this pipeline's print sequence, and when
- * a preload is present the `<img>` MATCHES and CONSUMES it — so an element
- * reference is not weak evidence of safety, it is evidence of the failure.
- * "Something else mentions this URL" is the wrong question; the right one is
- * "does an unconsumed preload name it".
+ * naming the URL does not protect the page box under this pipeline's print
+ * sequence — it breaks it, with or without a preload present (measured 12/12,
+ * either document order). An element reference is not weak evidence of safety;
+ * it is evidence of the failure. "Something else mentions this URL" is the
+ * wrong question, and this is the one reference type for which it is not
+ * merely incomplete but backwards.
  *
  * Why this is a build-time audit and not a CSS lint: `checkCss` sees CSS
  * source only, and the references that decide the outcome are in the HTML.
@@ -81,16 +82,15 @@ body { font: 14px/1.4 serif; margin: 0 }
  *
  * `tile.png` is named by an `<img src>` and nothing else: measured, that does
  * NOT protect the page box under this pipeline's print sequence, it drops.
- * `chrome.png` has the `<link rel="preload">` that would protect it AND an
- * `<img src>` — the `<img>` matches the preload and consumes it, so the page
- * box has to start a fresh fetch and drops too (measured by request count:
- * preload+img issues 2 tile requests, not 3).
+ * `chrome.png` has the `<link rel="preload">` that WOULD protect it AND an
+ * `<img src>` — and it drops too. The element reference is fatal on its own;
+ * the preload does not rescue it.
  *
  * Both must be reported. Treating `[src]` as protective is not merely
  * incomplete — it is inverted for exactly the reference type that breaks the
  * thing the audit exists to protect.
  */
-const consumed = `<!doctype html><meta charset="utf-8">
+const elementReferenced = `<!doctype html><meta charset="utf-8">
 <link rel="preload" as="image" href="chrome.png">
 <style>
 @page {
@@ -143,10 +143,10 @@ testIf(
 
       // An `<img src>` naming the URL is not protection — with or without a
       // preload it drops, so both must still be reported.
-      const consumedFound = await run("consumed", consumed);
-      expect(consumedFound.map((d) => d.message).join("\n")).toContain("tile.png");
-      expect(consumedFound.map((d) => d.message).join("\n")).toContain("chrome.png");
-      expect(consumedFound).toHaveLength(2);
+      const elementFound = await run("element-referenced", elementReferenced);
+      expect(elementFound.map((d) => d.message).join("\n")).toContain("tile.png");
+      expect(elementFound.map((d) => d.message).join("\n")).toContain("chrome.png");
+      expect(elementFound).toHaveLength(2);
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

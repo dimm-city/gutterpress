@@ -18,9 +18,9 @@ import { build } from "./build.ts";
  * EXPIRY CANARY for the `<link rel="preload" as="image">` emitter in
  * `lib/markdown/assemble.ts`.
  *
- * It asserts THE CHROMIUM BUG IS STILL THERE (crbug: an image referenced only
- * from inside an `@page` rule is fetched and then not painted — #152,
- * docs/known-limitations.md §3). While it is green the emitter is doing
+ * It asserts THE CHROMIUM BUG IS STILL THERE (#152,
+ * docs/known-limitations.md §3): an image referenced only from inside an
+ * `@page` rule prints as nothing. While it is green the emitter is doing
  * necessary work. **The day this test goes red, Chromium has fixed the bug:
  * delete the preload emitter (`preloadImages` in `assemble.ts` and the one
  * `.map()` that feeds it in `lib/markdown/index.ts`) and delete this file.**
@@ -28,14 +28,25 @@ import { build } from "./build.ts";
  * A shim with no removal trigger is a shim that outlives its gap. This is that
  * trigger, in the repo's own suite, so nobody has to remember to check.
  *
+ * THE TRIGGER IS BEHAVIOURAL ON PURPOSE. It measures pixels off the product's
+ * own print path and asserts nothing about how Chromium reaches that outcome.
+ * The mechanism is known — `PrintRenderFrameHelper::PrintWithParams`, the path
+ * CDP `Page.printToPDF` reaches, never calls `Document::WillPrintSoon()`, so
+ * the print does not wait for the resource it just requested
+ * (PR #187's `docs/analysis/why-page-background-drops.md`) — but three earlier
+ * explanations of this defect were wrong, and a canary pinned to an
+ * explanation retires on the wrong day.
+ *
  * WHY A STANDALONE FIXTURE, NOT A BUILT BOOK: every book the product builds
  * now carries a preload, so a book fixture could never exercise the
  * unprotected case this is measuring.
  *
- * WHY IT MUST DRIVE `build()`: the outcome depends on the browser state the
- * print happens in, not just on the CSS. `build()` navigates first and only
- * then applies `Emulation.setDeviceMetricsOverride` — and the third assertion
- * below is what keeps it that way (see there).
+ * HARNESS CONDITIONS (this defect has been misdiagnosed three times by harness
+ * artifacts): a browser from `launchChromium()` with no `--window-size`, a
+ * page that is NAVIGATED FIRST and only then put under
+ * `Emulation.setDeviceMetricsOverride` (`build()`'s own order), a `file://`
+ * input, and no `--virtual-time-budget`. The third assertion below is what
+ * enforces the one that matters, executably.
  */
 
 const chromium = await resolveChromiumExecutable();
@@ -121,11 +132,14 @@ testIf(
 
       // 3. THE LAUNCH-CONFIG CHECK, executable rather than a comment. Measured:
       //    an element reference protects the page box ONLY when the page was
-      //    already under a device-metrics override before it loaded. This
+      //    already under a device-metrics override before it loaded (which is
+      //    what puppeteer's `defaultViewport` does at page creation). This
       //    pipeline establishes none — it navigates first — so an `<img>` must
-      //    NOT protect. If it does, the browser this canary runs in is in the
-      //    immunised state, and assertion 1 above would be measuring a
-      //    different browser from the one the product prints with.
+      //    NOT protect. If it does, the browser this canary runs in is in that
+      //    immunised state, and assertion 1 would be measuring a different
+      //    browser from the one the product prints with. This is the guard for
+      //    the accident named in #187: acquiring a pre-navigation override by
+      //    switching to puppeteer, a pooled browser, or a `BrowserWindow`.
       expect(
         viaElement,
         `An <img> reference protected the @page background (mean-abs-diff ${viaElement.toFixed(4)}, expected 0). That only happens when a device-metrics override was established BEFORE navigation, so this canary is no longer running the print path the product uses — check how the browser and page were launched, not this assertion.`,

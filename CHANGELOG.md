@@ -56,15 +56,15 @@ This project follows [Semantic Versioning](https://semver.org/).
     "images under 512 KB are embedded as `data:` URIs" rule is gone — images
     are files now, whatever they weigh. The name matters as much as the
     copying: a CSS image's URL can no longer be the same string as a prose
-    image's, and it needs to be, because an `<img>` naming the same URL
-    *consumes* the preload and the background goes blank again. One file used
-    both ways is now written twice, under two names.
+    image's, and it needs to be, because an `<img>` naming the same URL sends
+    the background blank again — on its own, preload or no preload. One file
+    used both ways is now written twice, under two names.
   - **`engine.page-background.unreferenced` no longer treats an `<img>` as
     proof of safety.** Measured, an element reference is not weak evidence
     that a background will paint — it is evidence that it will not. The check
-    now protects on an unconsumed preload or a CSS rule outside `@page`, and
-    its message no longer suggests adding a `<link>` to a `<head>` you cannot
-    edit.
+    now protects on a preload nothing else names, or a CSS rule outside
+    `@page`, and its message no longer suggests adding a `<link>` to a
+    `<head>` you cannot edit.
 
 ## [0.10.1] - 2026-08-24
 

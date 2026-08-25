@@ -15,14 +15,15 @@ import type { AssetCopy } from "./asset-inline.ts";
  * `inlineOne` content-addresses every CSS image instead of keeping the
  * author's project-relative path for in-project ones.
  *
- * Chromium does not paint a `url()` image owned by an `@page` rule unless a
- * second, unconsumed reference to that exact URL exists — and an `<img src>`
- * to the same URL does not merely fail to protect it, it CONSUMES the
- * `<link rel="preload">` that would have (measured: `preload + <img>` issues
- * 2 tile requests, not 3, and the page box drops). So the moment a CSS URL
- * and a prose URL can coincide, an author writing `![](images/tile.png)` for
- * a file their stylesheet also uses as the page background silently loses the
- * background — 292 blank pages in a valid PDF, no error anywhere.
+ * Chromium does not paint a `url()` image owned by an `@page` rule unless the
+ * document gives that exact URL a second reference of the RIGHT KIND — and an
+ * `<img src>` to the same URL is the wrong kind. Measured, it does not merely
+ * fail to protect the page box: it breaks it, 12/12, with or without the
+ * `<link rel="preload">` the build emits, in either document order. So the
+ * moment a CSS URL and a prose URL can coincide, an author writing
+ * `![](images/tile.png)` for a file their stylesheet also uses as the page
+ * background silently loses the background — 292 blank pages in a valid PDF,
+ * no error anywhere.
  *
  * Content-addressing makes that collision UNREPRESENTABLE rather than
  * detected: the hash is computed by the build, so nothing an author, a

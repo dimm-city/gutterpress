@@ -114,14 +114,20 @@ exactly why the build does it.
 Three scope facts, all measured on Chrome 151.0.7922.75, all load-bearing for
 what Gutterpress does about it:
 
-- **A second reference must be an unconsumed preload — an `<img>` is not one.**
+- **The second reference has to be the right kind — an `<img>` is not.**
   A `<link rel="preload" as="image">` restores the background (89.3574) and an
   `html { background }` for the same URL does too (89.3574). An `<img src>`
-  does **not**: through Gutterpress's print path it scores 0.0000, and a
-  preload *plus* an `<img>` also scores 0.0000, because the `<img>` matched the
-  preload and consumed it. This is why the build gives every CSS image a
-  content-addressed URL — so nothing in your document can name it, and nothing
-  can consume its preload.
+  does **not**: through Gutterpress's print path it scores 0.0000, and it
+  scores 0.0000 with a preload present too — an element reference breaks the
+  page box on its own (measured 12/12, either document order). This is why the
+  build gives every CSS image a content-addressed URL: so nothing in your
+  document can name it.
+- **The preload is not a timing guarantee.** What it buys is that the fetch
+  starts while the document loads, rather than during the print — which never
+  waits for a pending resource. A response slow enough still loses (measured:
+  held 1500 ms, the preload row drops too). On the PDF path the image is a
+  local file staged beside `book.html`, so there is no server to be slow; a
+  published HTML bundle read over a slow network can still lose.
 - **A `data:` URI is immune** (89.3574 with no second reference at all), which
   is why the original diagnosis looked like it was about image size: the build
   used to inline images under 512 KB, so only bigger ones could reach the bug.
@@ -130,13 +136,15 @@ what Gutterpress does about it:
 - **It is the whole `@page` rule, not just the page box.** A margin box's own
   `background-image: url()` is dropped the same way when nothing else
   references it (0.0000 alone, 8.0345 with a `<link rel="preload">`; a
-  gradient on the same box is the control at 16.8009). One preload covers a
-  page box and every margin box that shares the URL.
+  gradient on the same box is the control at 16.8009). Measured, one preload
+  is enough for a page box and every margin box on the same URL.
 
 The image **is** fetched either way (confirmed in an HTTP access log on the
-failing run), so this is a paint/invalidation problem, not a loading one, and
-no amount of waiting fixes it: `--virtual-time-budget` at 30s and 60s both
-still produce a flat page.
+failing run) — the print issues the request itself and then does not wait for
+it. `--virtual-time-budget` at 30s and 60s both still produce a flat page. The
+mechanism, read from Chromium source at tag 151.0.7922.75, is in
+[#187](https://github.com/dimm-city/gutterpress/pull/187)'s
+`docs/analysis/why-page-background-drops.md`.
 
 Measured on Chrome 151.0.7922.75, left-margin strip std-dev, same artwork at
 three sizes:

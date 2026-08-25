@@ -66,11 +66,23 @@ export interface AssembleBookHtmlOptions {
    * stylesheets staged (`inlineStyles`'s copy plan, verbatim), each emitted as
    * one `<link rel="preload" as="image">`.
    *
-   * Chromium fetches an image referenced only from inside an `@page` rule and
-   * then paints NOTHING — no error, a valid PDF of blank paper. A preload is
-   * the one second reference that restores it at zero extra fetches, and
-   * unlike an element reference it is immune to the browser-state transition
-   * that otherwise defeats one (docs/known-limitations.md §3).
+   * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
+   * print path CDP drives never waits for a pending resource — so the sheet
+   * comes back with its background colour alone, no error, a valid PDF of
+   * blank paper (docs/known-limitations.md §3; mechanism in
+   * PR #187's `docs/analysis/why-page-background-drops.md`).
+   *
+   * What the preload buys is that the fetch STARTS during document load
+   * instead of during the print. That is not a timing guarantee: a response
+   * slow enough still loses (measured — held 1500 ms server-side, the preload
+   * row drops too). On the PDF path the asset is a local file staged beside
+   * `book.html`, so there is no server to be slow; a published `--format html`
+   * bundle read over a slow network can still lose the race.
+   *
+   * A second ELEMENT reference is not an alternative. Any `[src]` naming the
+   * URL drops the page box (measured 12/12, with or without a preload, in
+   * either document order) — which is why `asset-inline.ts` content-addresses
+   * every CSS image so no element can name one.
    *
    * WHAT PROVES IT IS STILL NEEDED: the expiry canary,
    * `engine/compiler/page-background-chromium-bug.canary.test.ts`. The day it

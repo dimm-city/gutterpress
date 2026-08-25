@@ -1120,23 +1120,23 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // with its background colour alone (docs/known-limitations.md §3, #152).
     // MEASURED on Chrome 151.0.7922.75, 96dpi raster, mean absolute pixel
     // difference against the same page with no background image: the sole
-    // reference scores 0.0000, and an unconsumed `<link rel="preload"
-    // as="image">` or an `html { background }` for the same URL restores it
-    // (89.3574 both). An `<img>` does NOT: under this pipeline's print
-    // sequence it scores 0.0000, and with a preload present it scores 0.0000
-    // too, because it matched and consumed the preload. A margin box's own
-    // `background-image` fails the same way (0.0000 alone, 8.0345 with a
-    // preload), which is why the whole `@page` rule — not just the page box —
-    // is what "owns" a URL here. This CANNOT be a CSS-source lint (#151's
-    // ruling): `checkCss` sees CSS source only, and the references that decide
-    // the outcome are in the HTML. The built document knows them, exactly.
+    // reference scores 0.0000, and a `<link rel="preload" as="image">` or an
+    // `html { background }` for the same URL restores it (89.3574 both). An
+    // `<img>` does NOT: under this pipeline's print sequence it scores 0.0000,
+    // and it scores 0.0000 with a preload present too — measured 12/12, either
+    // document order. A margin box's own `background-image` fails the same way
+    // (0.0000 alone, 8.0345 with a preload), which is why the whole `@page`
+    // rule — not just the page box — is what "owns" a URL here. This CANNOT be
+    // a CSS-source lint (#151's ruling): `checkCss` sees CSS source only, and
+    // the references that decide the outcome are in the HTML. The built
+    // document knows them, exactly.
     //
     // `assemble.ts` now preloads every staged CSS image, so this fires only on
     // what that cannot cover: a remote `url(https://…)` in `@page` (never
     // staged), CSS that reaches the document without passing through
     // `inlineStyles` (plugin CSS), and — as the backstop for
-    // asset-inline.ts's content-addressing invariant — a `[src]` element that
-    // consumed a preload.
+    // asset-inline.ts's content-addressing invariant — a `[src]` element
+    // naming a CSS image's URL.
     {
       const { leaks, multicol, layerTraps, pageBackgrounds } = JSON.parse(
         await page.evaluate<string>(`(() => {
@@ -1164,13 +1164,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             // outside @page, or an element's inline style. Unconditionally
             // protective: the image is a StyleImage the load already resolved.
             const cssReferenced = new Set();
-            // Named by a <link rel="preload">. Protective ONLY while nothing
-            // consumes it (see srcNamed).
+            // Named by a <link rel="preload">. Protective, unless an element
+            // src names the same URL (see srcNamed).
             const preloaded = new Set();
             // Named by an element's src. NEVER protective — measured, this is
-            // the one reference type that breaks the page box: it matches the
-            // preload and consumes it, leaving the page box to start a fresh
-            // fetch that arrives too late to paint.
+            // the one reference type that BREAKS the page box, and it breaks
+            // it whether or not a preload is present (12/12, either document
+            // order). An element reference is evidence of the failure, not of
+            // safety.
             const srcNamed = new Set();
             for (const el of document.querySelectorAll("[src]"))
               srcNamed.add(absolute(el.getAttribute("src")));
@@ -1197,9 +1198,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               walk(rules, null);
             }
             // PROTECTED iff another CSS rule resolves it, OR a preload names
-            // it and no element src has consumed that preload. "Something else
-            // mentions this URL" is NOT the test — that inference is inverted
-            // for [src], the very reference type that breaks the page box.
+            // it and no element src names it too. "Something else mentions
+            // this URL" is NOT the test — that inference is inverted for
+            // [src], the very reference type that breaks the page box.
             return [...owned]
               .filter(([abs, hit]) =>
                 !/^data:/i.test(hit.url) &&
@@ -1352,7 +1353,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const hit of pageBackgrounds)
         diagnose(
           "engine.page-background.unreferenced",
-          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Gutterpress stages and preloads every image your project stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src and consumed the preload. Use a local image, referenced from one of your project stylesheets, and not also used as an <img>.`,
+          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Gutterpress stages and preloads every image your project stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your project stylesheets, and not also used as an <img>.`,
         );
       if (pageBackgrounds.length)
         log(`audit: ${pageBackgrounds.length} unreferenced @page background image(s)`);

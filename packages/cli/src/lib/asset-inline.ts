@@ -322,12 +322,12 @@ async function inlineOne(
 
       // EVERY CSS image is copied, and content-addressed. Not a naming
       // preference — it is the INVARIANT that a CSS image URL and a prose
-      // image URL can never be the same string, which is what makes an
-      // `@page` background printable at all: Chromium needs a second,
-      // UNCONSUMED reference to that URL, and an `<img src>` naming it
-      // consumes the preload instead of supplying one. The hash is computed
-      // by the build, so nothing an author, a plugin, or raw HTML can write
-      // is able to utter this name (see
+      // image URL can never be the same string, and that invariant is what
+      // makes an `@page` background printable at all. Measured: ANY element
+      // reference to the URL drops the page box — 12/12, with or without the
+      // `<link rel="preload">` assemble.ts emits, in either document order.
+      // The hash is computed by the build, so nothing an author, a plugin, or
+      // raw HTML can write is able to utter this name (see
       // asset-inline.css-prose-url-disjoint.test.ts). It also keeps
       // same-basename files from outside the project collision-proof.
       const bytes = await readOrThrow(absAsset, "asset", abs);
