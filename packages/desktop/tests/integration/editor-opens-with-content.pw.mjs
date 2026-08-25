@@ -166,6 +166,16 @@ async function poll(expr, ms) {
   }
   return false;
 }
+/** Poll until `expr` evaluates to something non-null, and return it. */
+async function pollValue(expr, ms) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const v = await evalJs(expr);
+    if (v != null) return v;
+    await sleep(500);
+  }
+  return null;
+}
 // Checks RECORD rather than abort, so one run against a broken build shows
 // every defect that is still present instead of only the first.
 const failures = [];
@@ -238,34 +248,100 @@ if (cmMounted && await evalJs(`[...document.querySelectorAll('.editor-loading')]
 }
 
 // ── CHECK 2 — a single click on viewer content reveals it in the editor ─────
-// Park the viewer on a page belonging to a DIFFERENT source file than the one
+// Park the viewer on a block belonging to a DIFFERENT source file than the one
 // the editor shows, so "loads that content into the editor" is binary.
+//
+// Finding that block is anchored on the OUTLINE, not on frame geometry. An
+// earlier version read `getTotalPages()` once and grid-scanned fractions of the
+// iframe: on a slower CI machine pagination had not reached page 2 when the
+// count was read, so the scan loop never ran at all and the control tripped.
+// The outline is authoritative about which chapters exist, `scrollTo` puts the
+// target on screen, and `queryDom` reports where it actually landed — so the
+// only thing left to geometry is a horizontal sweep along one known y.
 let clickTarget = null;
+let targetDiag = { stage: "editor never loaded" };
 if (cmHasContent) {
-  const total = (await evalJs(`window.__ask('getTotalPages', [])`)) || 1;
-  for (let pg = 2; pg <= total && !clickTarget; pg++) {
-    await evalJs(`window.__ask('scrollTo', [{page: ${pg}}, {}])`);
-    await sleep(1200);
-    clickTarget = await evalJs(`(async () => {
-      const f = document.querySelector('iframe');
-      const r = f.getBoundingClientRect();
-      for (let fy = 0.12; fy <= 0.92; fy += 0.08) {
-        for (let fx = 0.25; fx <= 0.8; fx += 0.15) {
-          const t = await window.__ask('getContextTargetAt', [{ x: Math.round(r.width*fx), y: Math.round(r.height*fy) }]);
-          if (t && t.kind && t.kind !== 'none' && t.rect && t.chapter && t.chapter !== '01-alpha.md') {
-            return { chapter: t.chapter, rect: t.rect, frame: { left: r.left, top: r.top } };
+  // 1. Wait for pagination to actually reach a second chapter. Keyed on the
+  //    outline's own content, not on a fixed sleep.
+  const secondChapter = await pollValue(
+    `(async () => {
+       const outline = await window.__ask('getOutline', []);
+       const hit = (outline ?? []).find(e => e.chapter && e.chapter !== '01-alpha.md' && e.sourceLine != null);
+       return hit ? { chapter: hit.chapter, line: hit.sourceLine, text: hit.text } : null;
+     })()`,
+    90000,
+  );
+  targetDiag = { stage: "outline", secondChapter };
+
+  if (secondChapter) {
+    // 2. Bring it on screen (same reason inline-editing.pw.mjs scrolls before
+    //    reading a box: absolute click coords are only meaningful in view).
+    await evalJs(
+      `window.__ask('scrollTo', [{ line: ${secondChapter.line}, chapter: ${JSON.stringify(secondChapter.chapter)} }, { block: 'start' }])`,
+    );
+    // 3. Wait for a block of that chapter to be genuinely inside the frame,
+    //    and take its measured y from the viewer rather than guessing.
+    // Filter on the viewer's OWN `chapter` field rather than a selector:
+    // `data-chapter-src` sits on each block element itself, not on a wrapper,
+    // so a descendant selector matches nothing. Asking the viewer which chapter
+    // a block belongs to is placement-independent and cannot drift.
+    const band = await pollValue(
+      `(async () => {
+         const f = document.querySelector('iframe');
+         const h = f.getBoundingClientRect().height;
+         const rows = await window.__ask('queryDom', [{
+           selector: '[data-source-line]',
+           fields: ['chapter', 'rectTop', 'tag', 'sourceLine'],
+         }]);
+         const hit = (rows ?? []).find(r =>
+           r.chapter === ${JSON.stringify(secondChapter.chapter)} && r.rectTop > 4 && r.rectTop < h - 60);
+         return hit ? { y: Math.round(hit.rectTop + 6), tag: hit.tag, frameH: Math.round(h) } : null;
+       })()`,
+      30000,
+    );
+    targetDiag = { ...targetDiag, stage: "band", band };
+
+    if (band) {
+      // 4. One horizontal sweep at that y — the page may be narrower than the
+      //    frame and centred, so sweep the full width rather than assume it.
+      clickTarget = await evalJs(`(async () => {
+        const f = document.querySelector('iframe');
+        const r = f.getBoundingClientRect();
+        const tried = [];
+        for (const dy of [0, 10, 22, -8]) {
+          for (let fx = 0.08; fx <= 0.94; fx += 0.045) {
+            const x = Math.round(r.width * fx), y = ${band.y} + dy;
+            if (y < 2 || y > r.height - 2) continue;
+            const t = await window.__ask('getContextTargetAt', [{ x, y }]);
+            if (t && t.kind && t.kind !== 'none' && t.rect &&
+                t.chapter === ${JSON.stringify(secondChapter.chapter)}) {
+              return { chapter: t.chapter, rect: t.rect, frame: { left: r.left, top: r.top }, at: { x, y } };
+            }
+            if (tried.length < 8) tried.push({ x, y, kind: t && t.kind, ch: t && t.chapter });
           }
         }
+        return { __miss: true, tried, frame: { w: Math.round(r.width), h: Math.round(r.height) } };
+      })()`);
+      if (clickTarget && clickTarget.__miss) {
+        targetDiag = { ...targetDiag, stage: "sweep", sweep: clickTarget };
+        clickTarget = null;
       }
-      return null;
-    })()`);
+    }
   }
 }
 if (!cmHasContent) {
   check(false, "DEFECT 2: not evaluable — the editor never loaded (see CHECK 1)");
 } else if (!clickTarget) {
-  fail("CONTROL: no source-mapped block from a second chapter was reachable in the viewer");
+  // Deliberately a hard failure, not a skip: a click assertion that passes when
+  // its target was never reachable is not an assertion.
+  fail(
+    `CONTROL: no source-mapped block from a second chapter was reachable in the viewer — ${JSON.stringify(targetDiag)}`,
+  );
 } else {
+  // The render overlay sits above the iframe; clicking through it would land on
+  // chrome instead of the book.
+  await waitFor(`!document.querySelector('.loading-overlay')`, 30000,
+    "CONTROL: the render overlay never cleared, so a click cannot reach the book");
   const before = await evalJs(`document.querySelector('.cm-content')?.textContent?.slice(0, 60) ?? ''`);
   const cx = Math.round(clickTarget.frame.left + clickTarget.rect.left + Math.min(40, clickTarget.rect.width / 2));
   const cy = Math.round(clickTarget.frame.top + clickTarget.rect.top + Math.min(10, clickTarget.rect.height / 2));
@@ -279,7 +355,6 @@ if (!cmHasContent) {
   check(moved,
     `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor (it still showed "${before.slice(0, 34)}…")`);
 }
-
 // ── CHECK 3 — a TOC click navigates BOTH panes ──────────────────────────────
 await evalJs(`document.querySelector('#panel-tab-toc')?.click(); true`);
 await waitFor(`document.querySelectorAll('.toc-item').length > 0`, 20000, "CONTROL: TOC tab never listed any headings");
