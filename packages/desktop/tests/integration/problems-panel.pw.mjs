@@ -205,32 +205,43 @@ for (let i = 0; i < 120; i++) {
 if (!projectOpen) fail("project never opened — no TOC items or file items appeared (120s)");
 log("project opened");
 
-// ── 5. badge count on the problems strip toggle ───────────────────────────────
-// The problems strip is always visible at the bottom of the screen (not in navbar).
-// The strip shows error/warning counts without a dedicated badge element.
-let stripVisible = false;
-for (let i = 0; i < 30; i++) {
-  const counts = await evalJs(`(() => {
-    const strip = document.querySelector('.toggle-strip');
-    if (!strip) return null;
-    const errs = strip.querySelector('.error-count')?.textContent?.trim() ?? null;
-    const warns = strip.querySelector('.warning-count')?.textContent?.trim() ?? null;
-    return { errs, warns };
-  })()`);
-  if (counts?.errs || counts?.warns) { stripVisible = true; break; }
-  await sleep(1000);
-}
-if (!stripVisible) fail("problems strip never showed error/warning counts");
-log(`problems strip counts visible`);
-
-// Also check the strip shows error count = 1
-const stripCounts = await evalJs(`(() => {
+// ── 5. counts on the problems strip ──────────────────────────────────────────
+// The strip is always visible at the bottom of the screen (not in the navbar)
+// and shows error/warning counts without a dedicated badge element.
+//
+// Those counts are downstream of the FIRST FULL RENDER, not of the project-open
+// gate above: the app calls refreshProblems() from its renderingComplete
+// handler, while that gate fires as soon as the sources are parsed. Measured on
+// a green CI run the counts land ~9s after "project opened", so the old 30s was
+// sized for the lint round-trip alone and left the rest of the render ~3x
+// headroom — which is what ran out on 5 of 40 CI runs. Budget it like the
+// project-open gate above, since it waits on the same pipeline, and report what
+// the strip actually showed on the way out: a render that never finished, a
+// lint that errored, and a lint that found nothing were indistinguishable
+// before, and only one of the three is fixed by waiting longer.
+const readStrip = () => evalJs(`(() => {
   const strip = document.querySelector('.toggle-strip');
+  if (!strip) return { strip: false };
   return {
-    errorCount: strip?.querySelector('.error-count')?.textContent?.trim() ?? null,
-    warningCount: strip?.querySelector('.warning-count')?.textContent?.trim() ?? null,
+    strip: true,
+    errs: strip.querySelector('.error-count')?.textContent?.trim() ?? null,
+    warns: strip.querySelector('.warning-count')?.textContent?.trim() ?? null,
+    status: strip.querySelector('.strip-status')?.textContent?.trim() ?? null,
+    stillRendering: !!document.querySelector('.loading-overlay'),
   };
 })()`);
+const hasCounts = (s) => !!(s?.errs || s?.warns);
+let stripCounts = await readStrip();
+const stripDeadline = Date.now() + 120000;
+// "Couldn't check" is lint reporting its own failure: the counts are never
+// coming, so sitting out the budget would only delay the same verdict.
+while (!hasCounts(stripCounts) && stripCounts?.status !== "Couldn't check" && Date.now() < stripDeadline) {
+  await sleep(500);
+  stripCounts = await readStrip();
+}
+if (!hasCounts(stripCounts)) {
+  fail(`problems strip never showed error/warning counts — last strip state ${JSON.stringify(stripCounts)}`);
+}
 log(`strip counts: ${JSON.stringify(stripCounts)}`);
 
 // ── 6. open the panel; verify both findings render ───────────────────────────

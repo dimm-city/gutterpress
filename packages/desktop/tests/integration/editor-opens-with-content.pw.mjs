@@ -261,6 +261,29 @@ if (cmMounted && await evalJs(`[...document.querySelectorAll('.editor-loading')]
 let clickTarget = null;
 let targetDiag = { stage: "editor never loaded" };
 if (cmHasContent) {
+  // 0. Let the render SETTLE before measuring anything. Coordinates taken
+  //    while the book is still paginating do not survive to the click:
+  //    reproduced under CPU load, the band below came back at y=82 instead of
+  //    the settled y=66, the layout moved 0.8s later, and the click landed on
+  //    the wrong block — CHECK 2 went red for a reason it does not test.
+  //    This also puts the wait where its budget makes sense. It used to sit
+  //    AFTER the measuring below, with 30s, and the measuring had already
+  //    burned ~14s of the render by then; the overlay is up for the WHOLE
+  //    initial pagination, which the gates above budget 90-120s for.
+  //    The overlay's own label says which half is still running, so a stalled
+  //    pagination and a stalled post-render reveal no longer look alike.
+  if (!(await poll(`!document.querySelector('.loading-overlay')`, 90000))) {
+    // Ask the BOOK how many pages it has, not the host. The two answers
+    // disagree exactly when the host never heard the frame's renderingComplete:
+    // a paginated book under a stuck "Rendering…" scrim is an event the host
+    // lost, which no budget here can wait out, while zero pages is pagination
+    // that genuinely never finished.
+    const stuck = await evalJs(`(async () => ({
+      overlay: document.querySelector('.loading-overlay .label')?.textContent?.trim() ?? null,
+      viewerPages: await window.__ask('getTotalPages', []),
+    }))()`);
+    fail(`CONTROL: the render never settled in 90s — ${JSON.stringify(stuck)}`);
+  }
   // 1. Wait for pagination to actually reach a second chapter. Keyed on the
   //    outline's own content, not on a fixed sleep.
   const secondChapter = await pollValue(
@@ -353,10 +376,6 @@ if (!cmHasContent) {
     `CONTROL: no source-mapped block from a second chapter was reachable in the viewer — ${JSON.stringify(targetDiag)}`,
   );
 } else {
-  // The render overlay sits above the iframe; clicking through it would land on
-  // chrome instead of the book.
-  await waitFor(`!document.querySelector('.loading-overlay')`, 30000,
-    "CONTROL: the render overlay never cleared, so a click cannot reach the book");
   const before = await evalJs(`document.querySelector('.cm-content')?.textContent?.slice(0, 60) ?? ''`);
   const cx = Math.round(clickTarget.frame.left + clickTarget.rect.left + Math.min(40, clickTarget.rect.width / 2));
   const cy = Math.round(clickTarget.frame.top + clickTarget.rect.top + Math.min(10, clickTarget.rect.height / 2));
