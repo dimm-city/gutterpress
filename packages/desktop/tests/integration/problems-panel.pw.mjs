@@ -258,7 +258,13 @@ const allEntries = panel.groups.flatMap((g) => g.entries.map((e) => ({ ...e, fil
 const brokenRef = allEntries.find((e) => (e.message ?? "").includes("missing-art.png"));
 if (!brokenRef) fail("broken local-ref finding not listed");
 if (brokenRef.file !== "01-alpha.md") fail(`broken-ref grouped under ${brokenRef.file}, expected 01-alpha.md`);
-if (!/error/.test(brokenRef.severity)) fail(`broken-ref severity class ${brokenRef.severity}, expected sev-error`);
+// A missing IMAGE is a warning, not an error, and deliberately so: the
+// asset planner substitutes a loud magenta placeholder, so the build still
+// produces a book (checks/source/local-refs.ts — `kind === "image" ?
+// "warning" : "error"`). A missing link has no such fallback and stays an
+// error. This assertion read `sev-error` and had been failing ever since,
+// unnoticed because no workflow ran this drive.
+if (!/warning/.test(brokenRef.severity)) fail(`broken-ref severity class ${brokenRef.severity}, expected sev-warning`);
 const risky = allEntries.find((e) => (e.message ?? "").includes("filter"));
 if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);

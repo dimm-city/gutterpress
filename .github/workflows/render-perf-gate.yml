@@ -18,15 +18,21 @@ name: Gutterpress desktop app gates
 #     problems-last-hop            ~2-7s   marker diagnostics + click-to-source
 #     editor-toggle-loads-module   ~5s     edit toggle, autosave delay, Ctrl+S
 #     panel-reopen-on-failed-open  ~2-4s   never-stranded after a failed open
+#     problems-panel               ~15s    diagnostics panel + click-through
+#     inline-editing               ~90s    in-flow block editing, 16 checks
 #
-#   excluded — deterministically red against current code (stale assertions,
-#   NOT flakes; gating them would just train everyone to ignore red):
-#     problems-panel     expects sev-error for a missing local image; the app
-#                        now reports sev-warning ("will substitute a magenta
-#                        placeholder").
-#     inline-editing     12/14 checks pass; checks 11-12 wait 30s each on
-#                        summary[aria-label="Edit or read"], a selector that no
-#                        longer exists anywhere in packages/desktop/src.
+#   The last two were excluded when this gate first landed, both for stale
+#   assertions rather than flake, and both are now fixed:
+#     problems-panel   asserted sev-error for a missing image. A missing IMAGE
+#                      is deliberately a warning — the asset planner writes a
+#                      magenta placeholder so the build still yields a book
+#                      (checks/source/local-refs.ts). The product was right and
+#                      the assertion was stale.
+#     inline-editing   checks 11-12 waited 30s each on
+#                      summary[aria-label="Edit or read"], renamed to
+#                      "Edit, read or focus" by f01d64b in 0.10.1. Nothing
+#                      caught it because this drive ran in no workflow — which
+#                      is the exact hole this gate closes. Now 16/16.
 #
 #   excluded — need an electron-builder AppImage, which this job does not build
 #   (both pass 3/3 against a locally packaged 0.10.1 AppImage, so they are
@@ -125,6 +131,8 @@ jobs:
           xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
           xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
+          xvfb-run -a node tests/integration/problems-panel.pw.mjs
+          xvfb-run -a node tests/integration/inline-editing.pw.mjs
           pkill -f 'out/main/main.js' || true
 
       - name: Run render-perf gate
