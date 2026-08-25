@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-08-25
+
 ### Added
 
 - **The three Chromium print bugs that print a blank wall now warn you first**
@@ -40,6 +42,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   names the fix; when Chromium ships those, the checks come out.
 
 ### Fixed
+
+- **The desktop app and the `gutterpress` command now agree about your book.**
+  They were measuring the page differently — by fifteen pixels — and both ways
+  the difference ran in the direction that hid problems from you. The desktop
+  would happily build and hand you a PDF for a book the command line refuses to
+  build, because content that overflows the page looked like it fitted. And it
+  stayed quiet about images printing below the resolution you asked for: on one
+  real 289-page book the command line reported twenty-one, the desktop
+  thirteen — the eight it swallowed were the full-page chapter plates, the
+  largest art in the book. Both now report the same thing, because the page is
+  measured as the sheet rather than the sheet minus whatever the window happens
+  to draw around it. The PDFs themselves were always identical and still are.
 
 - **`@page { background: url(…) }` now prints.** Chromium fetches an image
   referenced only from inside an `@page` rule and then paints nothing — no
