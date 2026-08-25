@@ -299,7 +299,22 @@ if (cmHasContent) {
        })()`,
       30000,
     );
-    targetDiag = { ...targetDiag, stage: "band", band };
+    // Record the layout too: below NARROW_BREAKPOINT (820) the workspace shows
+    // ONE pane, so in Edit mode the book is not on screen to be clicked at all.
+    // Without this, a stacked layout and a genuinely missing block both look
+    // like `band: null`.
+    const layout = await evalJs(`(() => {
+      const f = document.querySelector('iframe');
+      const r = f ? f.getBoundingClientRect() : null;
+      const ws = document.querySelector('.workspace');
+      return {
+        win: { w: window.innerWidth, h: window.innerHeight },
+        frame: r ? { w: Math.round(r.width), h: Math.round(r.height) } : null,
+        narrow: !!ws?.classList.contains('narrow'),
+        showEdit: !!ws?.classList.contains('show-edit'),
+      };
+    })()`);
+    targetDiag = { ...targetDiag, stage: "band", band, layout };
 
     if (band) {
       // 4. One horizontal sweep at that y — the page may be narrower than the
