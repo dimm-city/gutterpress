@@ -535,12 +535,55 @@ launch configuration is part of the test: a canary that runs with a
 pre-navigation override would be testing the immunised state (§3) and could pass
 for the wrong reason.
 
-**Why this and not `tools/page-background-repro.mjs` exit 2.** Keep the script in
-CI as a cheap Chromium-level signal, but it is not the authoritative trigger: it
-prints with `--print-to-pdf --virtual-time-budget=15000`, and §2 measures that
-this flag changes the outcome for the preload control it validates. A trigger
-that runs a browser configuration the product does not ship can pass — or fail —
-for reasons the product will never have.
+**Why this and not `tools/page-background-repro.mjs` exit 2.** The script is not
+the authoritative trigger: it prints with
+`--print-to-pdf --virtual-time-budget=15000`, and §2 measures that this flag
+changes the outcome for the preload control it validates. A trigger that runs a
+browser configuration the product does not ship can pass — or fail — for reasons
+the product will never have.
+
+> **Resolved 2026-08-25 — neither `tools/` script is wired into CI.** This
+> paragraph originally added "keep the script in CI as a cheap Chromium-level
+> signal". Measured against what shipped in #188, that would have subtracted
+> confidence rather than added it, so it is withdrawn. The canary is the whole
+> mechanism.
+>
+> - **The canary already runs in CI and is not skipped.** CI's `test` job
+>   (`bun --filter gutterpress test`) installs Chrome and Ghostscript, so
+>   `testIf` resolves to `test`. Run `32812569951` on `0b35fe3` logs
+>   `(pass) CANARY: Chromium still drops an @page background image that nothing
+>   else references [1463.87ms]` — no skip warning. Added wall-clock for the
+>   trigger today: **zero**. `setup-chrome`'s `chrome-version: stable` and the
+>   runner image's own Chrome both move, so the trigger is re-evaluated against
+>   a current stable Chromium on every run, with nothing to bump.
+> - **The launch-config warning above is satisfied, executably.** Assertion 3
+>   measures `viaElement`, and an `<img>` reference must NOT protect the page
+>   box. Measured `0.0000` locally and green in CI, so neither browser is in
+>   the immunised state (§3). Assertion 2 measures `painted = 230.7204`: the
+>   `0.0000` in assertion 1 is Chromium dropping the image, not a harness
+>   printing blank paper. Its red path was re-confirmed by inverting assertion
+>   1, which fails with the intended *"the bug this shim exists for is FIXED"*
+>   message.
+> - **The repro script would put two contradictory expectations in one CI.**
+>   Its `page-url-img` control asserts an `<img>` reference PAINTS — the
+>   immunised behaviour — because `--virtual-time-budget=15000` and
+>   `--print-to-pdf` put it in a different browser state from the product's
+>   print path, where the canary asserts the exact opposite. Non-blocking it
+>   makes a job that cannot fail; blocking it makes exit 2 a *false* removal
+>   trigger fired by a flag we do not ship. Cost measured: 15.4 s locally plus
+>   a `poppler-utils` install CI does not currently do.
+> - **The mechanism script's only failure mode misdirects.** Its A-row-1
+>   control expects DROPPED, so the day Chromium fixes #152 it exits 1 with
+>   `HARNESS BROKEN … Fix the harness or the environment` — the opposite of the
+>   correct action. It also gates CI on the *explanation*, which the canary's
+>   own header refuses on the grounds that three earlier explanations of this
+>   defect were wrong. Its most load-bearing control (`<img>` + override after
+>   load → DROPPED) is already assertion 3, measured on the product's own print
+>   path rather than a CDP replica. Cost measured: 18.7 s locally, same missing
+>   dependency.
+>
+> Both scripts stay as investigation tools — run by hand, with their conditions
+> printed — which is what they were built to be.
 
 **Where the boundary is.** One `.map()` in `assemble.ts`, one field in
 `markdown/index.ts`. The header comment on those four lines records the spec gap
