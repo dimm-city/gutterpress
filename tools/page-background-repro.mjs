@@ -26,9 +26,16 @@
  * EXIT CODES
  *   0  the defect reproduces and every control passes — status quo
  *   1  a control failed: the harness or the environment is wrong, not Chromium
- *   2  every control passed and the defect did NOT reproduce — this is the
- *      removal trigger in `docs/known-limitations.md` §3. Chromium fixed it;
- *      delete the workarounds and the warning.
+ *   2  every control passed and the defect did NOT reproduce — a hint that
+ *      Chromium may have fixed it. NOT the removal trigger, and not wired into
+ *      CI. This script prints with `--virtual-time-budget=15000` (line ~244),
+ *      which RECOMMENDATION.md §2 measures as outcome-changing: its
+ *      `page-url-img` control expects an `<img>` reference to PAINT, which is
+ *      true here and FALSE on the product's print path. The authoritative
+ *      trigger is behavioural, in the suite, on the product's own path:
+ *      `packages/cli/src/engine/compiler/page-background-chromium-bug.canary.test.ts`
+ *      (see `docs/known-limitations.md` §3 and RECOMMENDATION.md §6).
+ *      Confirm any exit 2 there before deleting anything.
  *
  * REQUIREMENTS: `google-chrome` (or `$CHROMIUM_PATH`), `pdftoppm` (poppler),
  * and node >= 22 / bun (for the WebSocket global the CDP leg uses). No npm
