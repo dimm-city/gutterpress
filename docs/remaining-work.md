@@ -111,11 +111,13 @@ Labelled `upstream` and written up for authors in
 - [ ] **#150** margin boxes drop every stacking-context / outside-the-box
       property — `box-shadow`, `transform`, `opacity`, `outline`, `filter`,
       `mix-blend-mode`; `text-shadow` and `border-radius` on the same box paint
-- [ ] **#152** `@page { background: url() }` is dropped for a **fetched URL**;
-      a `data:` URI paints. Not image dimensions — `asset-inline.ts` inlines
-      images ≤512 KB, so assets under that threshold paint and larger ones do
-      not, which is what the old "450×582 paints / 638×825 dropped" bound was
-      really measuring
+- [ ] **#152** `@page { background: url() }` is dropped for a **fetched URL**
+      that no unconsumed `<link rel="preload">` names; a `data:` URI paints.
+      Not image dimensions — `asset-inline.ts` used to inline images ≤512 KB,
+      so assets under that threshold painted and larger ones did not, which is
+      what the old "450×582 paints / 638×825 dropped" bound was really
+      measuring. The build now preloads every staged CSS image; the canary
+      `page-background-chromium-bug.canary.test.ts` is the removal trigger
 - [ ] A maintainer with a Google account should file all three against
       Chromium; our issues stay open as the citable reference and re-test trigger
 

@@ -109,6 +109,11 @@ export async function renderChapters(
     // readable on POSIX hosts (canonicalChapterId already normalised slashes).
     readText: (relPath) => readFile(join(inputDir, canonicalChapterId(relPath)), "utf-8"),
     projectCss: inlined.css,
+    // SHIM — spec gap #152. Every staged CSS image gets a
+    // `<link rel="preload" as="image">`, or Chromium prints an `@page`
+    // background as blank paper. See `preloadImages` in ./assemble.ts for the
+    // full rationale and the canary that says when to delete this.
+    preloadImages: inlined.copies.map((c) => c.to),
     title: opts.title,
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,

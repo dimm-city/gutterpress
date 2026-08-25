@@ -28,16 +28,43 @@ This project follows [Semantic Versioning](https://semver.org/).
     box now says it is dropped rather than repeating the "this rasterizes your
     text" advice that applies to page content.
   - **An image referenced only from inside an `@page` rule is never painted** —
-    the sheet prints with its background colour alone. A new build diagnostic,
-    `engine.page-background.unreferenced`, finds these in the finished
-    document and tells you the one-line fix (`<link rel="preload"
-    as="image">`). It runs at build time rather than as a CSS check because
-    only the built document knows the two things that decide it: whether
-    anything else references the image, and whether Gutterpress inlined it as
-    a `data:` URI — which is immune, and covers every image under 512 KB.
+    the sheet prints with its background colour alone. Gutterpress now fixes
+    this one for you (see below); the build diagnostic
+    `engine.page-background.unreferenced` stays, for the shapes the fix cannot
+    reach. It runs at build time rather than as a CSS check because only the
+    built document knows what decides it: which references to the image exist,
+    and of what kind.
 
-  No workarounds were added for any of this. Gutterpress reports the gap and
-  names the fix; when Chromium ships these, the checks come out.
+  Only #152 got a workaround, and it has an expiry test that fails the day
+  Chromium fixes the bug. For #149 and #150 Gutterpress reports the gap and
+  names the fix; when Chromium ships those, the checks come out.
+
+### Fixed
+
+- **`@page { background: url(…) }` now prints.** Chromium fetches an image
+  referenced only from inside an `@page` rule and then paints nothing — no
+  error, a perfectly valid PDF of blank paper (#152). Every image your
+  stylesheets reference is now staged and declared with a
+  `<link rel="preload" as="image">` in the built document, which is the second
+  reference Chromium needs. You write nothing; the `@page` background you
+  already have starts printing. This covers the `--paper: url()` +
+  `var(--paper)` form the design system uses, and one image shared by the page
+  box and every margin box needs one preload between them.
+
+  Two supporting changes come with it:
+  - **CSS images are always copied, under a content-addressed name.** The old
+    "images under 512 KB are embedded as `data:` URIs" rule is gone — images
+    are files now, whatever they weigh. The name matters as much as the
+    copying: a CSS image's URL can no longer be the same string as a prose
+    image's, and it needs to be, because an `<img>` naming the same URL sends
+    the background blank again — on its own, preload or no preload. One file
+    used both ways is now written twice, under two names.
+  - **`engine.page-background.unreferenced` no longer treats an `<img>` as
+    proof of safety.** Measured, an element reference is not weak evidence
+    that a background will paint — it is evidence that it will not. The check
+    now protects on a preload nothing else names, or a CSS rule outside
+    `@page`, and its message no longer suggests adding a `<link>` to a
+    `<head>` you cannot edit.
 
 ## [0.10.1] - 2026-08-24
 

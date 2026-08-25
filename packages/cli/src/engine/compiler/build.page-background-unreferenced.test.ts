@@ -20,18 +20,25 @@ import { build } from "./build.ts";
  *   @page { background: url(tile.png) }, sole reference       0.0000
  *     + <link rel="preload" as="image">                      89.3574
  *     + html { background: url(same) }                       89.3574
- *     + a 1x1 <img src="same">                               89.6402
+ *     + an <img src="same">                                   0.0000  (!)
+ *     + a preload AND an <img src="same">                     0.0000  (!)
  *   the same url as a `data:` URI, sole reference            89.3574  (immune)
  *   @top-center { background-image: url(tile.png) }, sole      0.0000
  *     + <link rel="preload" as="image">                       8.0345
  *     (control: a gradient on the same box                   16.8009)
  *
+ * The two `(!)` rows are why this audit's predicate had to change. An `<img>`
+ * naming the URL does not protect the page box under this pipeline's print
+ * sequence — it breaks it, with or without a preload present (measured 12/12,
+ * either document order). An element reference is not weak evidence of safety;
+ * it is evidence of the failure. "Something else mentions this URL" is the
+ * wrong question, and this is the one reference type for which it is not
+ * merely incomplete but backwards.
+ *
  * Why this is a build-time audit and not a CSS lint: `checkCss` sees CSS
- * source only. It can see neither of the two facts that decide the outcome —
- * the second reference is normally in the HTML (`<img>`, `<link>`), and
- * `asset-inline.ts` turns every image up to 512 KB into a `data:` URI, which
- * the measurement above shows is immune. A source lint would fire on the
- * common, correct case and stay silent on half the broken one.
+ * source only, and the references that decide the outcome are in the HTML.
+ * A source lint would fire on the common, correct case and stay silent on
+ * half the broken one.
  */
 
 const RENDER_TEST_TIMEOUT_MS = 90_000;
@@ -69,6 +76,34 @@ body { font: 14px/1.4 serif; margin: 0 }
 </style>
 <p>Page text.</p><div class="crumb"></div>`;
 
+/**
+ * The two shapes where an ELEMENT reference to the same URL is what breaks the
+ * page box, and the audit used to read as proof of safety.
+ *
+ * `tile.png` is named by an `<img src>` and nothing else: measured, that does
+ * NOT protect the page box under this pipeline's print sequence, it drops.
+ * `chrome.png` has the `<link rel="preload">` that WOULD protect it AND an
+ * `<img src>` — and it drops too. The element reference is fatal on its own;
+ * the preload does not rescue it.
+ *
+ * Both must be reported. Treating `[src]` as protective is not merely
+ * incomplete — it is inverted for exactly the reference type that breaks the
+ * thing the audit exists to protect.
+ */
+const elementReferenced = `<!doctype html><meta charset="utf-8">
+<link rel="preload" as="image" href="chrome.png">
+<style>
+@page {
+  size: 300px 400px; margin: 40px;
+  background: #fff url("tile.png") repeat;
+  @top-center { content: "F"; background-image: url("chrome.png"); }
+}
+body { font: 14px/1.4 serif; margin: 0 }
+</style>
+<p>Page text.</p>
+<img src="tile.png" style="display:none" alt="">
+<img src="chrome.png" style="display:none" alt="">`;
+
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
 if (!chromium) {
@@ -102,10 +137,16 @@ testIf(
       expect(page).toBeDefined();
       expect(page.message).toContain("@page");
       expect(page.message).toContain("will not print");
-      expect(page.message).toContain('<link rel="preload" as="image"');
       expect(found.some((d) => d.message.includes("chrome.png"))).toBe(true);
 
       expect(await run("painted", painted)).toHaveLength(0);
+
+      // An `<img src>` naming the URL is not protection — with or without a
+      // preload it drops, so both must still be reported.
+      const elementFound = await run("element-referenced", elementReferenced);
+      expect(elementFound.map((d) => d.message).join("\n")).toContain("tile.png");
+      expect(elementFound.map((d) => d.message).join("\n")).toContain("chrome.png");
+      expect(elementFound).toHaveLength(2);
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

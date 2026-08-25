@@ -231,8 +231,8 @@ shared/themes/publisher/theme.css
   └── url("../../fonts/Publisher.woff2")   → embedded in the book
 ```
 
-Fonts are always embedded as data URIs. Images under about 512 KB are embedded;
-larger ones are copied into the generated output tree. An HTML build is a bundle:
+Fonts are always embedded as data URIs. Images are copied into the generated
+output tree under a content-addressed name. An HTML build is a bundle:
 besides `book.html`, it includes navigation scripts, `index.html`, a fingerprint,
 copied assets, and, when Chromium is unavailable at build time, the Paged.js
 runtime fallback.
