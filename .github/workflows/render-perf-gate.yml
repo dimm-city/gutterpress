@@ -1,18 +1,42 @@
 
 name: Gutterpress desktop app gates
 
-# This job builds the desktop app once and then runs every gate that needs a
-# LIVE app: the behaviour drives first, then the render-speed gates (see the
-# note on the drive step — only one of them can have a clean machine). The file
-# keeps its render-perf-gate.yml name because tests/perf/render-gate.mjs and
+# Two jobs, one per gate class, because they cannot share a runner (see
+# "── Why two jobs" below). Both build the desktop app the same way and then
+# launch it; neither can be reduced below that. The file keeps its
+# render-perf-gate.yml name because tests/perf/render-gate.mjs and
 # tests/integration/inline-editing.pw.mjs cite it by path.
+#
+# ── Why two jobs ────────────────────────────────────────────────────────────
+# Every step in both classes launches Electron and leaks it on exit, and
+# whatever ran SECOND on a shared runner was badly degraded: problems-last-hop
+# took 3.2s first but 23s after the perf gates, and — with the order reversed —
+# render-gate.mjs hit "layout never started within 120s" on a book it lays out
+# in seconds. Ordering only picked the victim; a trailing
+# `pkill -f 'out/main/main.js'` was tried as a cheaper fix and was not enough.
+#
+# Measured over the run history of this workflow: 0 failures in 27 runs before
+# the drives shared this runner, 8 in 30 after (26.7%) — of which 2 were the
+# perf gate losing to drive residue and 1 was a runner-infrastructure failure
+# with every step green. Separate runners remove the contention entirely, which
+# is the only class of failure a CI change can honestly remove; a drive that
+# genuinely fails still fails, and should.
+#
+# The two jobs duplicate ~35s of setup rather than passing an artifact between
+# them. Measured on a green run, the whole build chain (checkout, cached bun
+# install, lib build, SPA + electron-vite build, xvfb, electron binary
+# download) is 35s, which is less than uploading and downloading node_modules
+# plus the two build trees would cost. Because the jobs run in parallel, wall
+# clock went DOWN — ~3m04s serial before, ~2m10s now — for one extra runner
+# (~4.3 runner-minutes instead of ~3).
 #
 # ── Behaviour drives ────────────────────────────────────────────────────────
 # packages/desktop/tests/integration/*.pw.mjs launch the real Electron app and
-# assert real behaviour. Until now they ran in NO workflow, while two shipped
-# user-facing bugs slipped past 2117 desktop + 1845 CLI unit tests this cycle —
-# both were caught only by driving the app. Three of the seven drives are gated
-# here; the other four are excluded on evidence, not oversight:
+# assert real behaviour. Until they were gated, they ran in NO workflow, while
+# two shipped user-facing bugs slipped past 2117 desktop + 1845 CLI unit tests
+# in one cycle — both were caught only by driving the app. Five of the eight
+# drives are gated here; the other three are excluded on evidence, not
+# oversight:
 #
 #   gated (each measured green over repeated local runs):
 #     problems-last-hop            ~2-7s   marker diagnostics + click-to-source
@@ -56,17 +80,17 @@ name: Gutterpress desktop app gates
 #     editor-dropdown-sync   hardcodes executablePath; DOES have unique
 #                            coverage (outline<->editor sync). Teaching it the
 #                            `isMainJs ? require_("electron") : target` pattern
-#                            the gated three already use would let it join this
+#                            the gated drives already use would let it join that
 #                            job for ~5s instead of a multi-minute packaging
 #                            step plus a network dependency on the AppImage
 #                            tooling download.
 #
 # Note the two CDP drives (editor-toggle, panel-reopen) leak their Electron
 # process on exit and pick CDP ports at random from narrow ranges, so
-# back-to-back local reruns eventually collide and fail with "CDP endpoint
+# back-to-back LOCAL reruns eventually collide and fail with "CDP endpoint
 # never appeared". That is a rerun artifact, not drive flake: one run per fresh
-# environment — which is what CI does — measured 16/16 green. Kill strays
-# between local reruns.
+# environment — which is what CI gives each job — measured 16/16 green. Kill
+# strays between local reruns.
 #
 # ── Render-speed gates ──────────────────────────────────────────────────────
 # Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
@@ -99,8 +123,8 @@ env:
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
 jobs:
-  desktop-gates:
-    name: App behaviour + render speed (xvfb)
+  behaviour:
+    name: App behaviour (xvfb)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -124,19 +148,10 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # Behaviour first, on the pristine runner. Every step here launches
-      # Electron and leaks it, and whatever runs SECOND is badly degraded:
-      # measured on this job, problems-last-hop takes 3.2s first but 23s after
-      # the perf gates, and editor-toggle's 79ms preview update blew a 30s
-      # timeout. So the order is not a preference — only one step gets a clean
-      # machine, and the drives are the cheap, high-yield ones (~16s vs
-      # minutes). The pkill hands the perf gates back a runner with no residue
-      # from the drives, which is what they were green on 14/14 before this.
-      #
       # One xvfb-run per drive. The two CDP drives fall back to wrapping
       # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
-      # DISPLAY, so that fallback stays dormant and all three launch the same
-      # way. problems-last-hop drives Playwright's _electron, which has no
+      # DISPLAY, so that fallback stays dormant and every drive launches the
+      # same way. problems-last-hop drives Playwright's _electron, which has no
       # such fallback and needs the wrapper.
       - name: Drive the built app (behaviour)
         working-directory: packages/desktop
@@ -146,7 +161,34 @@ jobs:
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
           xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
-          pkill -f 'out/main/main.js' || true
+
+  render-perf:
+    name: Packaged-app render speed (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build lib
+        run: bun run build
+
+      # Both gates below launch `electron out/main/main.js`, and that main
+      # serves the SPA from build/handler.js — so both halves of the desktop
+      # build are required; neither gate can run against less.
+      - name: Build desktop (SPA + electron main)
+        working-directory: packages/desktop
+        run: |
+          npm run build
+          npm run electron:build
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Run render-perf gate
         working-directory: packages/desktop
@@ -159,4 +201,3 @@ jobs:
       - name: Run instant-preview regression gate
         working-directory: packages/desktop
         run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000
-
