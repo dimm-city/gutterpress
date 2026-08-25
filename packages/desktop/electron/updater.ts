@@ -42,6 +42,7 @@ import electronUpdater from "electron-updater";
 import semverClean from "semver/functions/clean.js";
 import semverGt from "semver/functions/gt.js";
 import semverPrerelease from "semver/functions/prerelease.js";
+import { logAppError } from "./app-log";
 import type {
   UpdateChannel,
   UpdaterAvailableAction,
@@ -157,9 +158,22 @@ const GITHUB_RELEASE_TIMEOUT_MS = 30_000;
 const NETWORK_ERROR_PATTERN =
   /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|AbortError|TimeoutError|timed out|timeout|net::ERR_|getaddrinfo|network error|NetworkError|fetch failed|net::/i;
 const MISSING_INSTALLER_PATTERN = /No update filepath|ENOENT|not found|no longer available/i;
+// GitHub answers a throttled unauthenticated caller with 403 (primary and
+// secondary rate limits) or 429. The app's own REST calls (the check-only
+// macOS path) read the status code directly and throw GitHubRateLimitError;
+// on Windows/Linux electron-updater's provider makes the request itself and
+// hands back only a message string ("HttpError: 403 rate limit exceeded",
+// `Cannot download "…", HTTP 403`), so the string is where the same condition
+// has to be recognized. Without this it fell through to the generic branch
+// and the identical throttling read as a bare "Update check failed".
+const RATE_LIMIT_PATTERN = /\b(?:403|429)\b|rate limit/i;
 
 function isNetworkError(message: string): boolean {
   return NETWORK_ERROR_PATTERN.test(message);
+}
+
+function isRateLimitError(message: string): boolean {
+  return RATE_LIMIT_PATTERN.test(message);
 }
 
 function isMissingInstallerError(message: string): boolean {
@@ -170,8 +184,8 @@ class GitHubRateLimitError extends Error {}
 
 /**
  * Map a raw electron-updater/Node error string to a message a non-technical
- * author can act on. The raw string is never shown to the user — callers
- * that want it for diagnostics log it themselves (main-process log only).
+ * author can act on. The raw string is never shown to the user — every
+ * failure path logs it to the app's own fault log (see ./app-log.ts).
  */
 function friendlyMessage(raw: string, op: "check" | "download" | "install"): string {
   if (op === "install") {
@@ -183,6 +197,9 @@ function friendlyMessage(raw: string, op: "check" | "download" | "install"): str
     }
     return "The update installer could not start. Try Restart & Update again.";
   }
+  // Checked before the network branch: throttling is the more specific
+  // condition, and naming it is what tells the author to just wait.
+  if (isRateLimitError(raw)) return GITHUB_RATE_LIMIT_MESSAGE;
   const verb = op === "download" ? "download the update" : "check for updates";
   if (isNetworkError(raw)) {
     return `Couldn't ${verb}. Check your internet connection and try again.`;
@@ -565,25 +582,24 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
         // The permanent error listener is deliberately log-only. This
         // operation-scoped handler owns every check failure state transition.
         const raw = err instanceof Error ? err.message : String(err);
+        void logAppError(`[updater] check failed: ${raw}`);
+        const rateLimited = err instanceof GitHubRateLimitError || isRateLimitError(raw);
         let checkError: string | null;
         let failedPhase: "idle" | "error";
-        if (err instanceof GitHubRateLimitError) {
-          if (checkInFlightSilent) {
-            // Keep the completed-check timestamp so focus events do not hammer
-            // an already rate-limited endpoint.
-            failedPhase = "idle";
-            checkError = null;
-          } else {
-            failedPhase = "error";
-            checkError = GITHUB_RATE_LIMIT_MESSAGE;
-          }
-        } else if (checkInFlightSilent && isNetworkError(raw)) {
+        if (checkInFlightSilent && (rateLimited || isNetworkError(raw))) {
+          // A background check never latches a user-visible error for a
+          // transient condition (H1).
           failedPhase = "idle";
           checkError = null;
-          // A failed background check must allow an immediate retry.
-          lastCheckAt = 0;
+          // It must also allow an immediate retry — EXCEPT when throttled,
+          // where keeping the completed-check timestamp is what stops focus
+          // events hammering an already rate-limited endpoint.
+          if (!rateLimited) lastCheckAt = 0;
         } else {
           failedPhase = "error";
+          // friendlyMessage classifies throttling from the raw string, which
+          // covers both a GitHubRateLimitError (its message carries the
+          // status) and electron-updater's own provider errors.
           checkError = friendlyMessage(raw, "check");
         }
         // A successful updater event that arrived after this check began is
@@ -649,7 +665,7 @@ export async function download(): Promise<UpdaterStatus> {
       })
       .catch((err) => {
         const raw = err instanceof Error ? err.message : String(err);
-        console.error("[updater] download failed:", raw);
+        void logAppError(`[updater] download failed: ${raw}`);
         markAvailableActionFailed(friendlyMessage(raw, "download"));
       })
       .finally(() => {
@@ -761,7 +777,7 @@ async function runInstallAttempt(version: string): Promise<InstallResult> {
     const message = friendlyMessage(raw, "install");
     if (isMissingInstallerError(raw)) markStagedUpdateMissing(version, message);
     else markInstallFailed(message);
-    console.error("[updater] installer did not start:", raw);
+    void logAppError(`[updater] installer did not start: ${raw}`);
     if (!lockReacquired) {
       // A replacement/second process became primary while the installer call
       // held no lock. This process already flushed author work; bow out rather

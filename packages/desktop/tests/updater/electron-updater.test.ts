@@ -1027,3 +1027,103 @@ test("macOS download action opens GitHub and can never stage or install", async 
   expect(installResult).toEqual({ applied: false });
   expect(fake.quitAndInstallCalls).toHaveLength(0);
 });
+
+// ── Rate limiting is one condition, not one per platform ──────────────────
+// GitHub's unauthenticated limit is 60 requests/hour per IP, shared with
+// everything else on the machine. The app's own REST calls (the check-only
+// macOS path) already classify a 403/429 as rate limiting. On Windows/Linux
+// electron-updater's provider makes the request itself and surfaces only a
+// message string — so the raw string has to be classified the same way, or
+// the identical condition names itself on one platform and reads as a bare
+// "Update check failed" on the other.
+const RATE_LIMIT_MESSAGE =
+  "Update checks are temporarily limited by GitHub. Try again later.";
+
+test("user-initiated check: an electron-updater rate-limit error names the throttling", async () => {
+  await withAppImage(async () => {
+    for (const raw of [
+      "HttpError: 403 rate limit exceeded",
+      'Cannot download "https://api.github.com/repos/dimm-city/gutterpress/releases/latest", HTTP 403',
+      "HttpError: 429 Too Many Requests",
+    ]) {
+      const fake = new FakeAutoUpdater();
+      fake.checkImpl = async () => {
+        throw new Error(raw);
+      };
+      initUpdater(() => {}, { autoUpdater: fake });
+
+      const status = await checkForUpdates();
+
+      expect(status.phase).toBe("error");
+      expect(status.error).toBe(RATE_LIMIT_MESSAGE);
+    }
+  });
+});
+
+test("silent check: an electron-updater rate-limit error stays quiet and keeps the throttle window", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake.checkImpl = async () => {
+      throw new Error("HttpError: 403 rate limit exceeded");
+    };
+    initUpdater(() => {}, { autoUpdater: fake });
+
+    const status = await checkForUpdates({ silent: true });
+
+    // Exactly what the macOS path already does with a GitHubRateLimitError: a
+    // background check never latches a banner, and the completed-check
+    // timestamp stands so focus events cannot hammer a throttled endpoint.
+    expect(status.phase).toBe("idle");
+    expect(status.error).toBeNull();
+    expect(shouldBackgroundCheck()).toBe(false);
+  });
+});
+
+test("download failure: a rate-limit error names the throttling too", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake.checkImpl = async () => {
+      fake.emit("update-available", { version: "2.0.0" });
+      return null;
+    };
+    fake.downloadImpl = async () => {
+      throw new Error('Cannot download "https://api.github.com/…", HTTP 403');
+    };
+    initUpdater(() => {}, { autoUpdater: fake });
+
+    await checkForUpdates();
+    const status = await download();
+
+    expect(status.phase).toBe("available");
+    expect(status.error).toBe(RATE_LIMIT_MESSAGE);
+  });
+});
+
+test("a failed check records the raw error for diagnostics", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake.checkImpl = async () => {
+      throw new Error("HttpError: 403 rate limit exceeded");
+    };
+    initUpdater(() => {}, { autoUpdater: fake });
+
+    const logged: string[] = [];
+    const realConsoleError = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(args.map(String).join(" "));
+    };
+    try {
+      await checkForUpdates();
+    } finally {
+      console.error = realConsoleError;
+    }
+
+    // The author only ever sees the friendly message. Without the raw string
+    // recorded in the main process, a failed check cannot be diagnosed after
+    // the fact — which is exactly how the incident behind this change ended
+    // unresolved.
+    expect(
+      logged.some((line) => line.includes("HttpError: 403 rate limit exceeded")),
+    ).toBe(true);
+  });
+});
