@@ -434,6 +434,15 @@ if (headingId == null) {
 // a plain nested list (no treeitem role), and aria-expanded lives on the button
 // because that is the element focus lands on and the element the arrow keys act
 // on -- i.e. the state this reads is the state a screen reader is told.
+// The outline populates asynchronously, so a single query races it: on a
+// slower machine the tree can still be flat when this runs, and the control
+// then reports "no expandable row" for a book that has plenty. Wait for one to
+// exist before asking. (Observed failing in CI while passing locally.)
+await waitFor(
+  `!!document.querySelector('.toc-list .toc-item[aria-expanded]')`,
+  15000,
+  "CONTROL: no expandable TOC row in this book",
+);
 const parentName = await evalJs(`(() => {
   const btn = document.querySelector('.toc-list .toc-item[aria-expanded]');
   const li = btn?.closest('li');
@@ -442,7 +451,7 @@ const parentName = await evalJs(`(() => {
   if (btn.getAttribute('aria-expanded') === 'false') tw.click();
   return li.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? null;
 })()`);
-if (!parentName) fail("CONTROL: no expandable TOC row in this book");
+if (!parentName) fail("CONTROL: the expandable TOC row vanished between the poll and the read");
 await sleep(800);
 const childName = await evalJs(`(() => {
   const li = document.querySelector('.toc-list .toc-item[aria-expanded]')?.closest('li');
