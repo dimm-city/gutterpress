@@ -1,4 +1,4 @@
-****# Alpha Chapter {#ch-alpha}
+# Alpha Chapter {#ch-alpha}
 
 | Header 1 | Header 2 | Header 3 |
 | ------ | ------ | ------ |
