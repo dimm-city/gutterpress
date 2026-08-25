@@ -278,7 +278,7 @@ poster-style folio chip without any DOM element.
 `box-shadow: 6px 6px 0 #c00`): the chip renders axis-aligned with no shadow.
 A design that relies on rotated or shadowed margin-box furniture cannot get it
 from a margin box — it needs an in-flow element, which then cannot know its
-page number (§9).
+page number (see the page-counter subsection below).
 
 ### Page-counter restart does NOT work from the content flow
 
