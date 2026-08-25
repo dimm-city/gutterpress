@@ -15,7 +15,7 @@ prints it on every page of this chapter.
 ## Named Page
 
 This page uses `@page probe-named` (assigned via the `.page-probe-named` class
-emitted by markdown-it-paged), which has a distinctive margin-top so the audit
+emitted by the marker plugin), which has a distinctive margin-top so the audit
 can measure whether the named-page rule applied.
 
 @page probe-named

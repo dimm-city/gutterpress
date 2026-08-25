@@ -26,7 +26,7 @@ book-override styles after the theme when that is the project's chosen cascade.
 What the built document contains, in order:
 
 ```text
-1. markdown-it-paged layout primitives
+1. markers.js layout primitives
 2. Gutterpress plugin default CSS
 3. manifest `styles:` entries, in listed order
 ```

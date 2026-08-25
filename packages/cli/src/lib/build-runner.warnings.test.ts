@@ -1,7 +1,7 @@
 /**
  * ARCH finding #4 — build-log surfacing.
  *
- * `markdown-it-paged` computes typed, line-numbered author-mistake warnings
+ * `markers.js` computes typed, line-numbered author-mistake warnings
  * (`env.layoutWarnings`) — e.g. a stray `@continue` with no open `@section`.
  * Before this fix, `renderBook` (build-runner.ts stage 3) called
  * `renderChaptersToFile` with no way to observe those warnings, so a marker
