@@ -1997,8 +1997,8 @@
   // remounts on lifecycle.previewUrl change via {#key lifecycle.previewUrl}).
   //
   // M31: this is also where the client's postMessage security is wired up.
-  // PreviewFrame calls attach() itself (on the iframe's "load" event, after
-  // this callback has already run), so `setExpectedOrigin`/`lockDown` must
+  // PreviewFrame calls attach() itself on the very next line of its own mount,
+  // so `setExpectedOrigin`/`lockDown` must
   // happen HERE, synchronously, ahead of that — PreviewFrame cannot read the
   // pinned origin from the cross-origin iframe's own window.location (that
   // throws), and in URL-preview mode the SAME component loads an arbitrary
