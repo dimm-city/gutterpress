@@ -63,6 +63,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Opening a book in Edit mode now puts the book in the editor.** The editor
+  panel came up empty and stayed on "Loading editor…" — you had to toggle out
+  of Edit and back in before you could type. The same fault made the contents
+  list only half work: clicking a heading moved the book but left the editor
+  where it was, because there was no editor there to move.
+
+- **Clicking a paragraph in the book now opens it in the editor.** A single
+  click on any text in the page loads that chapter — switching files if it is
+  a different one — and scrolls the editor to the line you clicked. Previously
+  the click did nothing at all.
+
+- **"Collapse" in the contents list works on the chapter you are reading.**
+  The one branch you most want to fold away — the chapter holding your current
+  position — was the one branch whose collapse button did nothing, because the
+  list kept forcing it back open.
+
+- **The contents list no longer lies to a screen reader.** It announced itself
+  as a tree and promised keyboard navigation it never implemented, with the
+  state attached to a row that never receives focus. It is now an ordinary
+  nested list, which is what it behaves like.
+
 - **The desktop app and the `gutterpress` command now agree about your book.**
   They were measuring the page differently — by fifteen pixels — and both ways
   the difference ran in the direction that hid problems from you. The desktop
