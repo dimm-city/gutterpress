@@ -31,21 +31,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    env:
-      # THE ONE definition of the pinned Chromium. Referenced by the setup step
-      # and by the verification below, so the two cannot drift apart.
-      #
-      # WHY 151 AND NOT CURRENT STABLE (152.0.7977.54 as of 2026-08-25): this is
-      # the milestone the suite is demonstrably green on. The ubuntu-24.04 runner
-      # image ships Google Chrome 151.0.7922.137, so every ci.yml run — which
-      # deliberately uses the runner's Chrome — exercises 151. Pinning here to
-      # 151.0.7922.138 (the nearest Chrome for Testing build; .137 is not
-      # published there, and the difference is a patch-level security roll, not a
-      # Paged Media change) makes this gate REPRODUCIBLE without also making it
-      # the first thing in the project to run a milestone nothing has tested.
-      #
-      # Pinning is for reproducibility, not for being newest. Moving to 152 is a
-      # deliberate act with a procedure, not a default — see below.
     steps:
       # Test the branch the release is dispatched from (default branch for a
       # stable release, or a release/* branch for a prerelease).
