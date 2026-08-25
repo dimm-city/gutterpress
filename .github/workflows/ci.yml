@@ -19,11 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
       # The PDF/X tests self-skip when their external tool is absent
       # (ghostscript.integration.test.ts uses `ghostscript ? test : test.skip`),
       # so without these the suite reports green while never exercising real
@@ -39,6 +34,22 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # NO `browser-actions/setup-chrome` step, on purpose — do not re-add one.
+      # It used to sit directly after `checkout`, downloading ~150MB of Chrome for
+      # Testing to /opt/hostedtoolcache/setup-chrome/..., which nothing then
+      # used: this step pins PUPPETEER_EXECUTABLE_PATH to the runner IMAGE's
+      # Chrome (/usr/bin/google-chrome-stable), and BOTH resolvers check that
+      # env var before any other candidate (lib/chromium.ts's SYSTEM_PATHS and
+      # engine/shared/cdp.ts's CANDIDATES). So every Chromium test here already
+      # ran on the runner's Chrome, the download was dead weight, and
+      # `chrome-version: stable` made the browser look pinned when in fact both
+      # sides were just moving stable Chromes.
+      #
+      # Removed rather than adopted: `stable` pins nothing, so the action bought
+      # no reproducibility the runner image doesn't already give. If a SPECIFIC
+      # Chromium is ever needed (e.g. to hold the engine's REQUIRED_MILESTONE
+      # floor, cdp.ts:67), add it back with an EXACT version and delete this
+      # override — one or the other, never both, or the pin is a no-op again.
       - name: Configure Puppeteer to use system Chrome
         run: |
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
@@ -111,17 +122,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
 
+      # No `setup-chrome` step here either — same reason as the `test` job above:
+      # this override wins over anything that action installs, so the download
+      # was pure cost. Read that comment before adding one back.
       - name: Configure Puppeteer to use system Chrome
         run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
