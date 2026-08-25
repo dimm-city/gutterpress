@@ -24,6 +24,68 @@
  *      force-revealed active ancestors, so clicking "Collapse X" could never
  *      win against the second operand.
  *
+ * ---------------------------------------------------------------------------
+ * WHY THIS DRIVE USED TO FLAKE (~5-15% of CI runs), and what was ruled out
+ * ---------------------------------------------------------------------------
+ * The symptom was always the CONTROL below:
+ *
+ *   CONTROL: the render never settled in 90s
+ *     — {"overlay":"Rendering…","viewerPages":2}
+ *
+ * i.e. the BOOK had paginated (its own page count is 2) while the host still
+ * had a render scrim over it. For an author that is a permanent "Rendering…"
+ * scrim over a finished book, a page count stuck at 0, and a Problems panel
+ * that never re-lints — so it was worth chasing rather than muting.
+ *
+ * ROOT CAUSE: these CDP drives leaked their Electron app. `cleanup()` sent
+ * SIGTERM to the detached process group, which Chromium does not reliably die
+ * on — it starts a graceful shutdown that outlives this script. Measured: one
+ * passing local run left one live Electron behind, and a 10-run CI leg ended
+ * with exactly 10 orphan Electrons in the job's "Terminate orphan process"
+ * sweep. Every leaked instance kept competing for the runner's cores, so the
+ * failure rate climbed with how many launches the job had already done:
+ *
+ *   stuck scrim, runs 1-5 of a leg :  2/95  (2.1%)
+ *   stuck scrim, runs 6-10 of a leg: 10/95 (10.5%)     z = 2.39
+ *
+ *   (runs 1 and 2 of a leg: 0 failures in 19 attempts each)
+ *
+ * That is also why the flake looked worst here: the CI behaviour job runs five
+ * drives back to back and this one is LAST, so it inherited four leaked apps.
+ * The fix is in `cleanup()` below — SIGKILL, which cannot be caught.
+ *
+ * RULED OUT, with evidence — do not re-derive these:
+ *
+ *   1. The host attach gate. `PreviewClient` drops messages until `attach()`
+ *      names a window, and `PreviewFrame` used to attach on the iframe's
+ *      `load`. That IS a real defect (instrumented: `ready` lost in 8/8 runs,
+ *      `renderingComplete` clearing attach by as little as 0ms) and was fixed
+ *      separately — but closing it did NOT move the rate: 6/70 stuck before
+ *      vs 4/80 after, z = 0.87. It only changed the overlay LABEL, because the
+ *      host then heard `pageChanged` and showed "Laying out page 2…" instead.
+ *   2. preview-shell.js's `active === hotReloadFrame` suppression of
+ *      `ready`/`renderingComplete`. Instrumented across two forced hot
+ *      reloads, every suppressed completion was paired with a
+ *      `reportSwapComplete()` in the SAME millisecond. Never orphaned.
+ *   3. A second `renderingComplete` after frame promotion (from a zoom or
+ *      view-mode change). Impossible: `gp:layout` — the only thing that
+ *      produces `renderingComplete` — is dispatched in exactly one place,
+ *      inside the viewer's `mount()`, so a document emits it once.
+ *   4. The shell dropping messages from the `building` replacement frame.
+ *      Instrumented on failing CI runs: no such drop occurred.
+ *   5. `renderingCancelled`. It has ONE emitter, preview-shell.js's swap
+ *      `onReady` timeout, whose `timeoutMs` defaults to 180000 — it cannot
+ *      have fired inside this drive's 90s budget, and no failing trace
+ *      contained one. (Separately: the host's `renderingCancelled` handler
+ *      clears the "Updating preview…" pill but NOT `lifecycle.rendering`,
+ *      unlike `handleCancelRender()` which clears both. That is a real latent
+ *      bug — it would strand the scrim permanently after a 180s swap timeout —
+ *      but it is NOT this flake and is tracked on its own.)
+ *
+ * The instrumented traces from failing runs showed the host receiving almost
+ * nothing (one showed an empty message log and a `getTotalPages` that never
+ * answered at all) — the signature of a starved renderer, not a lost event.
+ *
  * Usage:
  *   node tests/integration/editor-opens-with-content.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
@@ -48,7 +110,13 @@ let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
-  try { process.kill(-child.pid, "SIGTERM"); } catch { try { child?.kill(); } catch {} }
+  // SIGKILL, not SIGTERM: Electron does not reliably die on SIGTERM — Chromium
+  // begins a graceful shutdown that outlives this script, so the app survives the
+  // run. Measured on CI, a 10-run leg left exactly 10 orphan Electrons, and every
+  // leaked instance kept competing for the runner (see the diagnosis in
+  // editor-opens-with-content.pw.mjs's header). SIGKILL cannot be caught, so the
+  // process group actually ends.
+  try { process.kill(-child.pid, "SIGKILL"); } catch { try { child?.kill("SIGKILL"); } catch {} }
   try { if (fakeHome) rmSync(fakeHome, { recursive: true, force: true }); } catch {}
   try { if (bookDir) rmSync(bookDir, { recursive: true, force: true }); } catch {}
 }

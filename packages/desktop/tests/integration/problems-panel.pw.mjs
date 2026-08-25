@@ -44,7 +44,13 @@ function cleanup() {
   cleaned = true;
   // POSIX: signal the whole detached process group. Windows: no process
   // groups / negative PIDs — kill the direct child instead.
-  try { process.kill(-child.pid, "SIGTERM"); } catch { try { child?.kill(); } catch {} }
+  // SIGKILL, not SIGTERM: Electron does not reliably die on SIGTERM — Chromium
+  // begins a graceful shutdown that outlives this script, so the app survives the
+  // run. Measured on CI, a 10-run leg left exactly 10 orphan Electrons, and every
+  // leaked instance kept competing for the runner (see the diagnosis in
+  // editor-opens-with-content.pw.mjs's header). SIGKILL cannot be caught, so the
+  // process group actually ends.
+  try { process.kill(-child.pid, "SIGKILL"); } catch { try { child?.kill("SIGKILL"); } catch {} }
   // Throwaway dirs created BY THIS SCRIPT via mkdtemp — safe to remove.
   try { if (fakeHome) rmSync(fakeHome, { recursive: true, force: true }); } catch {}
   try { if (bookDir) rmSync(bookDir, { recursive: true, force: true }); } catch {}
