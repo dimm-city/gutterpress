@@ -29,6 +29,17 @@ three image policies collapse to one. It is a shim; §4 argues from the
 constitution's own text why it is the *cheaper* shim than the one the project
 is already running by accident.
 
+> **Amended after the referee round (§8).** Two changes. §1b is **retracted** —
+> a preload does not block the load event; I proved it with a contaminated
+> harness and the referee caught it. The fix still holds, on a better mechanism
+> (preload-list identity, stable across every load→print gap tested). And I
+> **concur with v2**: content-address *every* CSS image, so a CSS URL and a
+> prose URL can never coincide. I measured v2's two author-facing costs — PDF
+> size and opaque filenames — and both are ~zero (§8.3). Separately, I could not
+> reproduce the `<img>`-consumes-the-preload collision in 15 configurations with
+> a live positive control (§8.2); I concur with v2 regardless, but that fixture
+> should be published.
+
 ---
 
 ## 0. What already happened to the one real author this project has
@@ -108,31 +119,17 @@ This independently re-confirms #183's finding that the defect has nothing to do
 with size, and it disposes of the standing advice in `dc-op-manual`'s styling
 guide.
 
-### 1b. The preload *blocks* the print — it does not merely win a race
+### 1b. ~~The preload *blocks* the print~~ — **RETRACTED, see §8.1**
 
-This is the question that decides whether the fix is deterministic or lucky.
-Served over HTTP with the image response held back server-side, **one** print:
-
-| case | diff | result |
-|---|---:|---|
-| preload, response delayed **0 ms** | `95.8760` | PAINTS |
-| preload, response delayed **2500 ms** | `95.8760` | **PAINTS** |
-
-Server log for the 2500 ms run:
-
-```
-312ms   /doc.html
-317ms   /images/huge.png          <- requested during document load
-2819ms  -> responded huge.png
-2827ms  /favicon.ico              <- Chromium requests this after load
-```
-
-Compare #183's §A3, the same 2500 ms delay **without** a preload: prints #1 and
-#2 both dropped, only #3 painted. With a preload, a single print paints. The
-preload makes the image a **load-blocking** fetch, and both print paths wait for
-load — `cdp.ts`'s `navigate()` awaits `Page.loadEventFired`, and the desktop's
-`engine-browser.ts` awaits `win.loadURL(url)` (read from source). The fix is
-deterministic, not probabilistic.
+> **This subsection was wrong and is retracted.** It claimed a preload makes the
+> image a load-blocking fetch. It does not. My harness inherited
+> `--virtual-time-budget=15000` from `tools/page-background-repro.mjs`, under
+> which the *print* waits for network quiescence but the *load event* does not,
+> and I inferred "load waited" from a favicon timestamp that is itself deferred
+> by virtual time. Re-measured with an independent server-logged load beacon in
+> §8.1: **a preload does not block load.** The conclusion the section was
+> supporting — that the fix is deterministic rather than a race — survives, on a
+> different and better mechanism. §8.1 has the corrected numbers.
 
 ### 1c. A preload costs zero extra fetches
 
@@ -240,12 +237,18 @@ one `<link>`.
 The emitter carries a header comment recording, per CLAUDE.md's shim rule 4,
 which spec gap it fills (#152), the measurement, and the removal trigger.
 
-### 2.2 Delete `IMAGE_INLINE_MAX_BYTES`
+### 2.2 Delete `IMAGE_INLINE_MAX_BYTES` — **and the in-project/out-of-project branch with it (§8.3)**
 
 `asset-inline.ts` lines 27–28 and 327–329. CSS images always take the existing
 copy branch. Fonts stay inlined (recorded PDF/X rationale); `--gp-shape` stays
 inlined (measured CORS rationale). Prose images already copy. **Three image
 policies become one: images are copied.**
+
+**Amended after the referee round:** also delete the conditional at lines
+335–339, so *every* CSS image is content-addressed to
+`assets/<contentHash><ext>` regardless of where it lives. I concur with the
+other agent's v2 on this, and §8.3 records the author-facing costs I measured
+for it — both smaller than either of us assumed.
 
 Why this is part of the proposal and not a separate cleanup:
 
@@ -587,3 +590,156 @@ commit `eda42d2`.
   carrying many CSS images.** I measured one image. A 200-image art book is
   200 load-blocking fetches. Local files, and they would be fetched anyway when
   used — but the *unused* ones are new work, and I did not measure it.
+
+---
+
+## 8. Referee round — what I got wrong, what I cannot reproduce, what I concur with
+
+Added after PR #186. Everything here is re-measured on the same Chrome
+151.0.7922.75, with the harness defect that caused my original error removed.
+
+### 8.1 CONCEDED: a preload does **not** block the load event
+
+The referee is right and my §1b was wrong. Verified independently with an
+unconditional, **server-logged** load beacon (`new Image().src="/beacon-load?t="+
+performance.now()` on `window.load`), so load timing can never be inferred from
+the print. Image response held 2500 ms server-side, one `--print-to-pdf`:
+
+| configuration | tile requested | **load beacon** | diff | result |
+|---|---:|---:|---:|---|
+| preload, **no** `--virtual-time-budget` | 359 ms | **123 ms** | `0.0000` | **DROPPED** |
+| prose `<img>`, **no** `--virtual-time-budget` | 332 ms | **2571 ms** | `98.5887` | PAINTS |
+| preload, `--virtual-time-budget=15000` | 342 ms | **93 ms** | `101.3627` | PAINTS |
+
+The beacon settles it. An `<img>` *does* block load (2571 ms — it waits out the
+delay). A **preload does not** (123 ms / 93 ms, long before the tile arrives).
+Under `--virtual-time-budget` the print waits for network quiescence while the
+load event does not, which is why my run painted and why my favicon inference
+was invalid — the favicon is itself deferred by virtual time.
+
+My harness inherited that flag from `tools/page-background-repro.mjs`
+(lines 243–245), exactly as the referee diagnosed. **Any future measurement of
+this defect must state whether `--virtual-time-budget` was set.** It silently
+converts a drop into a paint.
+
+**What survives.** The *conclusion* — the fix is deterministic, not a race —
+holds on a better mechanism: **preload-list identity, not timing.** Under the
+real build sequence the paint is stable across every gap I tested between load
+and print (§8.2, gaps 0 / 3.5 s / 10 s, identical diff). So a slow disk, a slow
+server or a large asset is not a threat to the fix. That is a *better* risk
+profile than the one my retracted §1b claimed, and it is the referee's finding,
+not mine.
+
+### 8.2 NOT REPRODUCED: the `<img>`-consumes-the-preload collision
+
+The referee reports that a prose `<img>` of the same URL consumes the preload
+and the background then drops with the fix in place (`0.0000`). **I could not
+reproduce this in 15 configurations.** Fixture:
+`@page { background: url(X) }` + `<link rel=preload as=image href=X>` +
+`<img src=X>`, each measured against the identical document with only the
+`@page` URL removed.
+
+| transport | harness | result |
+|---|---|---|
+| `http://` | `--print-to-pdf`, no vtb, no delay | `98.5887` PAINTS |
+| `http://` | `--print-to-pdf`, vtb=15000, no delay | `98.5887` PAINTS |
+| `http://` | `--print-to-pdf`, no vtb, 2500 ms delay | `98.5887` PAINTS |
+| `http://` | `--print-to-pdf`, vtb=15000, 2500 ms delay | `98.5887` PAINTS |
+| `http://` | **real sequence**, load→print gap 0 / 3.5 s / 10 s | `98.5887` PAINTS (all three) |
+| `http://` | real sequence, + inline-`style` background instead | `99.3406` PAINTS |
+| `http://` | real sequence, + CSS element background instead | `99.3406` PAINTS |
+| `file://` | `--print-to-pdf`, 542,693 B and 158 B assets | `93.5062` / `98.5887` PAINTS |
+| `file://` | **real sequence**, 542,693 B and 158 B assets | `93.5062` / `98.5887` PAINTS |
+
+"Real sequence" is `Page.navigate` → await `Page.loadEventFired` →
+`Page.printToPDF`, which is exactly what `cdp.ts` does.
+
+**The harness is not blind.** In the same `file://` runs, `@page` URL alone
+measured `0.0000` DROPPED and `@page` URL + preload measured `96.1545` PAINTS.
+It detects this drop when there is one.
+
+Two further reasons to hold the `0.0000` open rather than treat it as settled:
+the other agent's own comparison table lists the collision at `101.6601` in the
+**status quo** column *and* `101.6601` under v2 — i.e. painting in both; and
+Gutterpress emits prose images as a plain `<img src>` (`images.ts` records
+references, it does not add `loading`, `srcset` or a wrapper), so my fixture
+matches what a book actually contains.
+
+I am not claiming the referee is wrong — they caught a real error of mine and
+their method is sound. I am saying **the fixture that produced `0.0000` needs to
+be published**, because two independent harnesses now disagree and this defect
+has already been misdiagnosed twice by harness artifacts (#152's original
+diagnosis, and my own §1b).
+
+### 8.3 CONCUR with v2 (content-address every CSS image) — and both its costs measure ~zero
+
+I concur, and I would take v2 **even though I cannot reproduce the bug that
+motivated it**, because I measured its author-facing costs and they are
+approximately nothing:
+
+**Cost 1 — an asset used both ways ships twice. Measured: no PDF cost.**
+An 8-page book, a 480,771 B image used as both the `@page` background and a
+prose image, printed from `file://`:
+
+| build shape | PDF bytes | embedded image objects |
+|---|---:|---:|
+| shared (one URL, one file on disk) | 800,220 | 1 |
+| **v2** (two URLs, two byte-identical files) | **800,216** | **1** |
+
+A 4-byte difference — the URL length — and **one** embedded image object either
+way. The double-shipping does **not** reach the artifact the author uploads to a
+print service. That was my main worry about v2 and it is empirically unfounded.
+
+**Cost 2 — opaque `assets/<hash>.png` names. Measured: they never reach the
+author.** I checked every path that could surface one:
+
+- `auditContent` (`agent.ts:247`) names elements by `tag#id.class`, never by
+  URL, so `engine.image.low-dpi` and `engine.content.overheight` are unaffected;
+- `readOrThrow` errors name the **absolute source path** and the referencing
+  stylesheet (`Missing asset: <abs> referenced from <css>`), not the dest;
+- the preview already resolves hashed names (`server-context.ts`,
+  `http-server.ts:742` — that is what `7b6122d` built).
+
+So an author never sees a hash in a message they have to act on.
+
+**The one residual cost, stated plainly.** A `--format html` bundle carries a
+both-ways asset twice on disk (a 3.7 MB brick used both ways ⇒ +3.7 MB in the
+*published folder*, not in the PDF). And `planImageCopies`'s stated value —
+*"the author's own folder layout is the layout that ships"* — now holds only for
+prose images; a CSS-referenced image ships under a hash. That is a **legibility**
+loss in the HTML bundle, not a correctness one, and it is visible rather than
+silent.
+
+**Why I concur anyway.** v2 makes the collision *unrepresentable* instead of
+*handled*, which kills the class rather than the instance; it deletes a branch
+rather than adding a predicate, so it is subtractive where my alternative was
+not; and it independently fixes the many-margin-boxes-one-URL case
+(`0.0000` → `89.1921`), which is exactly dc-op-manual's sixteen-box shape from
+§0. A structural fix whose measured author cost is ~zero is worth taking even
+while its motivating bug is disputed.
+
+**Answering the coordinator's question directly — does v2 change any
+author-visible behaviour for the worse?** Measured: **no**, with the single
+exception of a both-ways asset appearing twice inside an HTML bundle. Nothing
+becomes silent, nothing produces wrong paper, and no diagnostic becomes harder
+to act on. Against a silent 292-page blank, that is not a close trade.
+
+**One assertion worth having.** v2's whole guarantee is that a CSS URL and a
+prose URL can never coincide — prose keeps `images/…`, CSS becomes
+`assets/<hash>…`. That invariant should be asserted in a test, because it is
+now load-bearing and a future "let's make asset names friendlier" change would
+silently retract it.
+
+### 8.4 The alternative I considered and am withdrawing
+
+Before v2 I had a two-line filter: *do not preload a URL the document already
+references from an element*, using the `imageRefs` set `assembleBookHtml`
+already holds. It is cheaper than v2 and — worth noting, since the other
+agent rejected a related option on this ground — the `index.ts:92` vs `:99`
+ordering objection does **not** apply to it, because it runs inside
+`assembleBookHtml`, after the body render loop has filled `imageRefs`.
+
+I am withdrawing it anyway. It is a predicate that must stay correct forever
+against a Chromium matching rule we do not control, and it covers only the
+element references the assembler can see. v2 needs no predicate. Recorded here
+so the option is not re-invented.
