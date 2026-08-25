@@ -31,6 +31,22 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      # THE ONE definition of the pinned Chromium. Referenced by the setup step
+      # and by the verification below, so the two cannot drift apart.
+      #
+      # WHY 151 AND NOT CURRENT STABLE (152.0.7977.54 as of 2026-08-25): this is
+      # the milestone the suite is demonstrably green on. The ubuntu-24.04 runner
+      # image ships Google Chrome 151.0.7922.137, so every ci.yml run — which
+      # deliberately uses the runner's Chrome — exercises 151. Pinning here to
+      # 151.0.7922.138 (the nearest Chrome for Testing build; .137 is not
+      # published there, and the difference is a patch-level security roll, not a
+      # Paged Media change) makes this gate REPRODUCIBLE without also making it
+      # the first thing in the project to run a milestone nothing has tested.
+      #
+      # Pinning is for reproducibility, not for being newest. Moving to 152 is a
+      # deliberate act with a procedure, not a default — see below.
+      CHROME_PIN: '151.0.7922.138'
     steps:
       # Test the branch the release is dispatched from (default branch for a
       # stable release, or a release/* branch for a prerelease).
@@ -38,10 +54,29 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - name: Setup Chrome
+      # THE RELEASE GATE PINS CHROMIUM. ci.yml deliberately does NOT — PR CI
+      # tracks whatever stable Chrome the runner image ships, because it should
+      # see what users see. This job is different: it decides whether an
+      # artifact ships, so it has to be reproducible. Re-dispatching the same
+      # release must exercise the same renderer.
+      #
+      # THE 151 INCIDENT (engine/shared/cdp.ts, above REQUIRED_MILESTONE) is the
+      # concrete reason: a Chromium milestone changed Paged Media behaviour with
+      # NO error, and every cross-reference in the document silently vanished.
+      # Pinning turns that class of change into a reviewable diff on one line
+      # instead of a surprise in a shipped PDF.
+      #
+      # BUMPING IT: pick a version from Chrome for Testing's
+      # known-good-versions-with-downloads.json; it must be >= the engine floor
+      # (REQUIRED_MILESTONE, currently 148). Then re-run `bun run spikes` and
+      # treat every changed measurement as a finding — the same bar cdp.ts sets
+      # for moving the floor itself. release.yml is workflow_dispatch-only, so
+      # no PR run will catch a bad bump for you; dispatch a prerelease first.
+      - name: Setup Chrome (PINNED — read the note above before changing)
+        id: chrome
         uses: browser-actions/setup-chrome@v2
         with:
-          chrome-version: stable
+          chrome-version: ${{ env.CHROME_PIN }}
 
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
@@ -49,9 +84,39 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Configure Puppeteer to use system Chrome
+      # Point the engine at THE PINNED BUILD, via the action's own output.
+      # This used to be `which google-chrome-stable`, which resolved to the
+      # runner IMAGE's Chrome (/usr/bin/google-chrome-stable) and silently won:
+      # both resolvers check PUPPETEER_EXECUTABLE_PATH before any other
+      # candidate (lib/chromium.ts's SYSTEM_PATHS, engine/shared/cdp.ts's
+      # CANDIDATES). So the pin above was decorative, the ~150MB download was
+      # never used, and this gate tested a browser nobody had chosen.
+      - name: Point the engine at the pinned Chrome
+        run: echo "PUPPETEER_EXECUTABLE_PATH=${{ steps.chrome.outputs.chrome-path }}" >> $GITHUB_ENV
+
+      # A pin nobody verifies is precisely the bug this replaced, so verify it.
+      # release.yml is workflow_dispatch-only — no PR run exercises these steps
+      # — which makes an executable check the only thing standing between a
+      # silently-unapplied pin and a release rendered by an unknown browser.
+      - name: Verify the pin applied
         run: |
-          echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+          set -euo pipefail
+          if [ -z "${PUPPETEER_EXECUTABLE_PATH:-}" ]; then
+            echo "::error::PUPPETEER_EXECUTABLE_PATH is empty — setup-chrome reported no chrome-path."
+            exit 1
+          fi
+          resolved="$("$PUPPETEER_EXECUTABLE_PATH" --version | grep -oE '[0-9]+(\.[0-9]+){3}')"
+          echo "pinned=$CHROME_PIN resolved=$resolved path=$PUPPETEER_EXECUTABLE_PATH"
+          if [ "$resolved" != "$CHROME_PIN" ]; then
+            echo "::error::Chromium pin did not apply: expected $CHROME_PIN, the engine resolves $resolved."
+            exit 1
+          fi
+          # engine/shared/cdp.ts's REQUIRED_MILESTONE. Belt and braces: the
+          # engine also refuses at runtime, but failing here names the cause.
+          if [ "${resolved%%.*}" -lt 148 ]; then
+            echo "::error::Pinned Chromium $resolved is below the engine floor (148)."
+            exit 1
+          fi
 
       # The desktop suite imports gutterpress by name (resolves to its
       # built dist/), so build the package before running all-package tests.
