@@ -94,9 +94,9 @@ expectation is a design constraint on every engine/shim change:
    no-op for every book.
 3. **Track the spec, not our shims.** Where our implementation and the spec
    disagree, the implementation is what changes. Never let book CSS, docs,
-   or tooling depend on a shim-specific behavior, DOM shape, or property
-   (this is how the Paged.js migration got expensive — books coupled to
-   `.pagedjs_*` internals and polyfill quirks).
+   or tooling depend on a shim-specific behavior, DOM shape, or property.
+   A book coupled to a shim's internals cannot survive that shim's removal,
+   which turns a deletion into a migration.
 4. **Design for deletion.** Each shim's boundary should be sharp enough that
    deleting it when Chrome catches up is a small, safe change — feature-
    detect where possible, keep shims out of the author-facing surface, and
@@ -122,8 +122,8 @@ Two constraints survive the relaxation, and they are what keep it honest:
 1. **It must READ standard CSS.** The viewer consumes the same standard
    `@page`/GCPM the print path does. Authors never write viewer-specific CSS,
    and no book may depend on viewer internals (DOM shape, classes, custom
-   properties) — that coupling is exactly what made the Paged.js migration
-   expensive.
+   properties) — that coupling is what turns a viewer change into a
+   rewrite of every book.
 2. **It must not change what the document means.** Tooling may re-present the
    author's pages; it may not re-decide them. Where the viewer derives
    pagination by any means other than the print fragmenter, the preview↔print
@@ -557,7 +557,7 @@ seam) **first**, before the first feature adds a host call.
 The Dimm City design guide — the seven-file CSS layer contract, the
 `dc-components`/`fg-overrides` ownership rules, the Contextual Cascade pattern's
 DC-specific application, the specialty variant system, the frozen chapter-opener
-composite, and the R1–R12 paged.js CSS anti-patterns — used to live in
+composite, and the R1–R12 print-CSS anti-patterns — used to live in
 `examples/dc-design-guide/` here. That example was removed (commit `db0f0fc`)
 and the full design guide now lives in the **`dc-op-manual`** repo
 (`dc-op-manual/dc-design-guide/`). Do that work there, against that repo's
@@ -571,8 +571,8 @@ What remains relevant to **this** repo:
 - The frozen chapter-opener's **plugin** half still lives in this repo at
   `packages/cli/src/lib/markdown/markers.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
-  moved to dc-op-manual. The full frozen contract and the historical Paged.js
-  CSS anti-patterns are preserved in AKM
+  moved to dc-op-manual. The full frozen contract and the print-CSS
+  anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
 
