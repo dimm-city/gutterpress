@@ -72,6 +72,22 @@ jobs:
       # treat every changed measurement as a finding — the same bar cdp.ts sets
       # for moving the floor itself. release.yml is workflow_dispatch-only, so
       # no PR run will catch a bad bump for you; dispatch a prerelease first.
+      # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
+      # page-background-chromium-bug.canary.test.ts — the expiry trigger that
+      # goes red the day Chromium fixes the @page background bug so we delete
+      # the workaround instead of entrenching it. ci.yml has installed this
+      # since the canary landed; release.yml did not, so the release gate ran
+      # those suites as silent skips while reporting green.
+      #
+      # Caught by ci-preconditions.test.ts on its first release dispatch — the
+      # guard exists because a skipped removal trigger and a passing one look
+      # identical in CI output. Do not remove this step without removing that
+      # guard's reason for existing.
+      - name: Install PDF tooling (Ghostscript, qpdf)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghostscript qpdf
+
       - name: Setup Chrome (PINNED — read the note above before changing)
         id: chrome
         uses: browser-actions/setup-chrome@v2
