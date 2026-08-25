@@ -37,7 +37,7 @@ export async function setWorkspaceMode(page, mode) {
   }
   // Collapsed toolbar: the same choice lives behind a disclosure, where the
   // items carry their label as TEXT rather than aria-label.
-  await page.locator('summary[aria-label="Edit or read"]').click();
+  await page.locator('summary[aria-label="Edit, read or focus"]').click();
   await page.locator(".mode-menu .menu-item", { hasText: mode }).click();
 }
 
