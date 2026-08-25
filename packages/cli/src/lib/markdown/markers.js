@@ -721,14 +721,10 @@ export default function plugin(md, pluginOptions = {}) {
       //
       //     <div class="chapter-opener" data-chapter-label="C.01">C.01</div>
       //
-      // HISTORICAL: this is a real element rather than a `::before` because
-      // the Paged.js polisher stripped `::before` on `.chapter`/`.page`. That
-      // engine is gone, so a pseudo-element may now be viable — but the
-      // structural element is also what carries `data-chapter-label` to the
-      // viewer, so this is a deliberate keep, not an unexamined leftover. A structural element is the simplest
-      // mechanism that survives pagination and is reusable across
-      // projects (any project styling `.chapter-opener` gets the same
-      // markup).
+      // A real element rather than a `::before`: it is what carries
+      // `data-chapter-label` to the viewer, it survives pagination, and it is
+      // reusable across projects (any project styling `.chapter-opener` gets
+      // the same markup).
       if (label && !chapter.openerEmitted) {
         const opener = new state.Token('html_block', '', 0);
         opener.content = `<div class="chapter-opener" data-chapter-label="${escapeAttr(label)}">${escapeHtml(label)}</div>\n`;
@@ -1030,12 +1026,12 @@ export default function plugin(md, pluginOptions = {}) {
 
   // Renderer rules for injected tokens.
   //
-  // col-split handling. HISTORICAL: Paged.js stripped `break-after: column` during CSS
-  // preprocessing, so CSS column breaks never fire. Authors opt in by adding
-  // `.col-split` to an @section; the renderer then emits explicit
+  // col-split handling. Authors who want HARD column boundaries opt in by
+  // adding `.col-split` to an @section; the renderer then emits explicit
   // <div class="col"> sibling wrappers and treats @column-break as the
-  // closing/opening div boundary. @section .two-column WITHOUT .col-split
-  // keeps native CSS multi-column balancing behavior.
+  // closing/opening div boundary, so the split is structural rather than a
+  // hint the fragmenter may balance away. A column section WITHOUT
+  // `.col-split` keeps native CSS multi-column balancing behavior.
   //
   // Depth state lives on env (per-render) so renders can't leak state into
   // one another. layout_page_open / layout_chapter_open also reset depth
@@ -1158,12 +1154,10 @@ export default function plugin(md, pluginOptions = {}) {
  * page root that only shrink-wraps its text is a containing block whose
  * `bottom` edge is the end of the PROSE, so `.gp-pin .gp-bottom` (and every
  * hand-written `position: absolute; bottom: 0`) lands under the last
- * paragraph instead of at the page foot. Paged.js used to supply this height
- * for free — `.pagedjs_pagebox > .pagedjs_area > .pagedjs_page_content > div
- * { height: inherit; }` stretched the page root to the page area — and
- * deleting the polyfill (native-only migration, Phase 6) silently took
- * page-boundary pinning with it. Both renderers now publish the page
- * CONTENT height as `--gp-content-h` for the page context the element is in
+ * paragraph instead of at the page foot. Nothing in a continuous document
+ * stretches a page root to the page area on its own, so both renderers
+ * publish the page CONTENT height as `--gp-content-h` for the page context
+ * the element is in
  * (the viewer on each `.gp-strip`; the compiler on `:root` plus every
  * `page:` assignment selector), and custom properties inherit, so this one
  * rule reaches a page root at any wrapper depth. Undefined var (plain

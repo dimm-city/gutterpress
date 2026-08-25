@@ -1,9 +1,9 @@
 import { test, expect } from "bun:test";
 import { checkCss, ruleRiskyProps, rulePageContainment } from "./printsafe";
 
-// MIGRATION.md Step 1 "Scope filter:" — filter: is measured to rasterize its
-// subtree to a 300 DPI bitmap and dominate build time (~90%; 57.0s -> 6.2s
-// over 60pp when scoped, ENGINE.md §10). The warning must fire and must carry
+// filter: is measured to rasterize its subtree to a 300 DPI bitmap and
+// dominate build time (~90%; 57.0s -> 6.2s over 60pp when scoped,
+// docs/engine/ENGINE.md §10). The warning must fire and must carry
 // those measured consequences, not just the generic risky-property message.
 test("checkCss warns on filter: with the measured rasterization/build-time message", () => {
   const css = `.card { filter: drop-shadow(0 0 4px #000); }`;
@@ -42,8 +42,8 @@ test("checkCss does not flag transform: outside an @page margin box", () => {
 // A margin box is sized by its margin AREA: `width: fit-content` collapses
 // only the inline axis, so a chip stays stretched to the full band height and
 // paints as a tall rectangle around its text. This shipped in a real book's
-// folio (reported against 0.10.0-alpha.1) — the author wrote the Paged.js-era
-// `align-self: end`, which does nothing under native.
+// folio (reported against 0.10.0-alpha.1) — the author reached for
+// `align-self: end`, which does nothing in a margin box.
 test("checkCss warns on width: fit-content with no block-axis size in a margin box", () => {
   const css = `@page { @bottom-left { content: "P." counter(page); width: fit-content; align-self: end; } }`;
   const warnings = checkCss(css).filter((w) => w.rule === ruleRiskyProps);

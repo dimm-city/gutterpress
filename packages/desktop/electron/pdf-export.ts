@@ -5,12 +5,8 @@
  * pipeline: progress events, cancellation, and the accessors
  * `electron/export/controller.ts` uses to drive an export.
  *
- * The Electron-native `printToPDF` renderer that used to live here
- * (`electronPdfRenderer`) was Paged.js-only — it polled
- * `window.__PAGED_RENDERED__` and measured `.pagedjs_page`'s computed size —
- * and was removed along with Paged.js (native-only-migration-plan.md Phase
- * 6). The native engine's own Electron-hosted PDF renderer is
- * `electron/engine-browser.ts`'s `createElectronEngineBrowser`, injected into
+ * The Electron-hosted PDF renderer itself lives in
+ * `electron/engine-browser.ts` (`createElectronEngineBrowser`), injected into
  * `lib.runBuild` as `engineBrowser`.
  */
 import type { BrowserWindow } from "electron";

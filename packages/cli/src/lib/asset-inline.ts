@@ -10,8 +10,8 @@
  * under a content-addressed name, whatever it weighs.
  *
  * A missing stylesheet or font is a build error here, at read time, rather than
- * a 404 during pagination that Paged.js parsed as CSS or silently replaced with
- * a system face.
+ * a 404 during pagination that gets parsed as CSS or silently replaced with a
+ * system face.
  *
  * Bundle-safe (CLAUDE.md §1/§3): postcss only.
  */

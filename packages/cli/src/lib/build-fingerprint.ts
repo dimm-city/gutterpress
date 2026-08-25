@@ -183,11 +183,7 @@ async function getGitRevision(sourceDir?: string): Promise<{
 
 /**
  * Content hash of the two committed native-engine bundles (viewer + compiler
- * agent, `scripts/build-engine-bundles.mjs`'s output). Replaces the old
- * `pagedjs` devDependency-version cache-key input (native-only-migration-
- * plan.md Phase 6 housekeeping, item 2): the pagedjs version stopped being a
- * meaningful fingerprint input once native became the default engine, and
- * would go away entirely with the eventual Paged.js deletion. A build's
+ * agent, `scripts/build-engine-bundles.mjs`'s output). A build's
  * output depends on which engine bundle produced it, so a fingerprint that
  * wants to detect "did the engine change since this artifact was built"
  * needs an engine-appropriate input — the bundle's own bytes, not a package
@@ -239,7 +235,7 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     node: process.versions.node,
     "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
     // Content hash of the committed engine bundles — see getEngineBundleHash's
-    // docstring. Replaces the old `pagedjs` devDependency-version field.
+    // docstring.
     engineBundle: engineBundleHash,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,

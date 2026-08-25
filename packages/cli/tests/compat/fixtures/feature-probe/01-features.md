@@ -2,8 +2,8 @@
 
 <p class="rh-probe">RUNNING-ELEMENT-SENTINEL</p>
 
-This fixture exercises the Paged.js features flagged in issue #46 as suspect on
-non-Chromium engines. Each feature is probed by the cross-browser audit script.
+This fixture exercises the CSS Paged Media / GCPM features flagged in issue #46.
+Each feature is probed by the audit script.
 
 ## String Sets
 

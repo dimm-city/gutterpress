@@ -191,7 +191,7 @@ charset, viewport, title, one `<style>` — and the manifest has no head-injecti
 field. The author writes Markdown and CSS; neither reaches `<head>`. Their only
 available second reference is a decorative `url()` hidden somewhere in their own
 stylesheet, i.e. exactly the "book CSS coupled to a workaround" that CLAUDE.md
-names as what made the Paged.js migration expensive.
+names as the thing that makes a shim undeletable.
 
 We are currently shipping a warning whose remedy is available only to us.
 That, more than the byte threshold, is what makes "just tell the author" not a
@@ -723,8 +723,8 @@ seriously. It fails on the constitution's own terms:
 - **The author cannot act on the advice.** §1c: there is no head-injection
   point. Their only reachable second reference is a decorative `url()` in their
   own stylesheet — which puts the workaround in **book CSS, in every affected
-  book, permanently**, and CLAUDE.md names that as the thing that made the
-  Paged.js migration expensive. A workaround we own is deletable in one commit.
+  book, permanently**, and CLAUDE.md names that coupling as what makes a shim
+  undeletable. A workaround we own is deletable in one commit.
   A workaround 292 books own is not deletable at all. This option does not
   avoid a shim; it exports it to people who cannot maintain it.
 - **It amputates a feature Chromium implements.** Not a missing feature — a

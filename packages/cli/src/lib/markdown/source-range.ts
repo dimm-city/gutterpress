@@ -12,7 +12,7 @@
  *      items, blockquotes, table rows, fences, footnote definitions, …).
  *   2. `token.meta.line` — the 1-based marker line threaded onto
  *      `layout_*_open` / `layout_page_break` / `layout_column_break` tokens
- *      by `markdown-it-paged.js` (see that file's header and the
+ *      by `markers.js` (see that file's header and the
  *      `t.meta = …` assignment sites). Converted to the same half-open
  *      convention as `[line - 1, line)`.
  *
@@ -65,7 +65,7 @@ export const SOURCE_CHAPTER_ATTR = "data-chapter-src";
  * tokens (they carry `token.map`). `layout_page_break` /
  * `layout_column_break` are this project's own self-closing tokens,
  * threaded with `token.meta.line` specifically so this rule can annotate
- * them — their custom renderer rules in markdown-it-paged.js were updated
+ * them — their custom renderer rules in markers.js were updated
  * to actually emit the attribute this rule sets (they bypass
  * `self.renderToken`, so an attr not named there is silently dropped); see
  * the comments at those renderer rules. Without this, the two "break"

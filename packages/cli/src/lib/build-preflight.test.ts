@@ -1,8 +1,7 @@
 /**
  * `preflightBuildTools`'s Chromium check: required for a pooled-Chromium
  * build, skipped when an `engineBrowser` (the desktop's Electron host) is
- * injected (native-only-migration-plan.md Phase 6 — the pdfRenderer/paged
- * distinction this used to also cover is gone with Paged.js).
+ * injected.
  *
  * `./chromium` is spied on (not `mock.module`-replaced): `mock.module`
  * clobbers the shared resolution registry for every other test file in the

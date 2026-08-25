@@ -1250,10 +1250,8 @@
   const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
-      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
-      // native is the only engine, and the native viewer honours this
-      // background rule directly. See buildCanvasBackgroundStyles' doc
-      // comment.
+      // The viewer honours this background rule directly. See
+      // buildCanvasBackgroundStyles' doc comment.
       client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(bg));
     },
     () => !!client,

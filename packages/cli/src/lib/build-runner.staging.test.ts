@@ -14,9 +14,9 @@ import { resolveChromiumExecutable } from "./chromium.ts";
  * side effect and breaks concurrent builds.
  *
  * Drives the FULL native PDF path of runBuild against a real Chromium — the
- * native engine's compiler evaluates JS against a real DOM to fragment pages,
- * so (unlike the deleted Paged.js `pdfRenderer` seam) there is no trivial
- * in-process fake for it. Skipped when no Chromium is resolvable, same
+ * engine's compiler evaluates JS against a real DOM to fragment pages, so
+ * there is no trivial in-process fake for it. Skipped when no Chromium is
+ * resolvable, same
  * pattern as the other Chromium-driven engine tests (e.g. nav-native.test.ts).
  */
 

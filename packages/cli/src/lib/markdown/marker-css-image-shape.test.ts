@@ -15,12 +15,10 @@ import { loadPdf, getTextPass } from "../pdf-inspect.ts";
  *   1. The shape actually takes effect — text wraps INTO a floated image's
  *      transparent region, so the shaped paragraph is measurably shorter
  *      than an identical control paragraph without the class.
- *   2. Print stays vector — the Paged.js-era warning in tools/README.md
- *      ("shape-outside: url() causes Chromium to rasterize entire pages")
- *      does NOT hold on the native path: the printed page's text must
- *      remain extractable and the PDF must stay small. If either assertion
- *      fails on a Chromium bump, shape has started rasterizing and that is
- *      a release blocker for this class.
+ *   2. Print stays vector — `shape-outside: url()` does NOT rasterize the
+ *      page: the printed page's text must remain extractable and the PDF
+ *      must stay small. If either assertion fails on a Chromium bump, shape
+ *      has started rasterizing and that is a release blocker for this class.
  *
  * The fixture uses data: URIs for both src and --gp-shape, which is exactly
  * what the PRINT input contains after staging (inlineShapeUrls in

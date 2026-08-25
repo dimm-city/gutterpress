@@ -7,11 +7,6 @@
 //
 //  - no-remote-urls           blocks http(s):// and protocol-relative url()
 //  - no-risky-print-effects   warns on properties that can force rasterization
-//
-// `no-pagedjs-crash-selectors` was removed along with Paged.js
-// (native-only-migration-plan.md Phase 6): authors regain sibling
-// combinators (`+`/`~`) combined with `:is()`/`:where()`/`:not()`/
-// `:nth-of-type` in their CSS — Chromium's native print has no such crash.
 
 import postcss from "postcss";
 import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
@@ -112,9 +107,9 @@ function isInPageMarginBox(decl: postcss.Declaration): boolean {
  * collapses a chip horizontally while it stays stretched to the full band
  * height — a 9pt folio in a 0.75in bottom margin paints as a tall rectangle
  * around the number instead of a pill. `height: fit-content` collapses the
- * other axis; `align-self`/`vertical-align` (the Paged.js-era reflex, where
- * the chrome sat on an already-text-sized inner `.pagedjs_margin-content`)
- * do nothing here. Measured: Chromium 148, 7x4in sheet, 0.75in margins.
+ * other axis; `align-self`/`vertical-align` do nothing here, because there is
+ * no inner box to align — the margin box IS the box. Measured: Chromium 148,
+ * 7x4in sheet, 0.75in margins.
  */
 function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
   const prop = decl.prop.toLowerCase();
@@ -256,7 +251,7 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
     } else if (prop === "filter") {
       // `filter:` gets its own message (not the generic risky-props text
       // below): it's the one property measured to have a specific, severe
-      // cost — see MIGRATION.md Step 1 "Scope filter:" and ENGINE.md §10.
+      // cost — see docs/engine/ENGINE.md §10.
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",

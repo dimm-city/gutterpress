@@ -279,7 +279,7 @@ describe("source_range: layout markers", () => {
       `<div class="section gp-continued" data-section="S" ${SOURCE_RANGE_ATTR}="4:5"`
     );
     // line 7: "@page-break" -> break div range [7,8) — proves the renderer
-    // rule fix (markdown-it-paged.js) actually emits the attribute a custom
+    // rule fix (markers.js) actually emits the attribute a custom
     // renderer rule would otherwise silently drop.
     expect(html).toContain(`class="gp-page-break" aria-hidden="true" ${SOURCE_RANGE_ATTR}="7:8"`);
 

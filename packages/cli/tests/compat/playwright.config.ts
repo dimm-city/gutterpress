@@ -15,9 +15,8 @@
  * `src/engine/viewer/`) renders the shipped example projects without
  * collapsing or erroring. Chromium is the only supported engine (CLAUDE.md,
  * ratified 2026-08-23); the firefox/webkit legs this suite used to carry were
- * removed with that ruling. Paged.js has been removed
- * (native-only-migration-plan.md Phase 6); every web server below uses the
- * manifest default (native), no `--engine` flag needed.
+ * removed with that ruling. Every web server below uses the manifest default
+ * (native), no `--engine` flag needed.
  */
 import { defineConfig } from "playwright/test";
 

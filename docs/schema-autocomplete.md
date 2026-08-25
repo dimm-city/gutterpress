@@ -233,7 +233,7 @@ preset: book
 ```
 
 #### `engine` (string)
-Accepted-but-ignored. Paged.js has been removed, so the Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading (see [`docs/migrations/2026-08-native-engine-default.md`](./migrations/2026-08-native-engine-default.md)).
+Accepted-but-ignored. The Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading.
 
 ```yaml
 engine: paged

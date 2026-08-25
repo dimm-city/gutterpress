@@ -132,8 +132,8 @@ Where the answer genuinely cannot be computed in one shot — table header and
 footer reservation — the state is made **sticky** instead: claims only ever grow,
 and the loop ends when a pass adds nothing new.
 
-**What keeps it honest.** `s10` requires convergence and page-for-page equality
-with Paged.js; `s5` requires rows-per-page to match print exactly.
+**What keeps it honest.** The measurement loop must converge, and `s5` requires
+rows-per-page to match print exactly.
 
 ---
 
@@ -216,17 +216,15 @@ The generated corpus was green at 331/331 blocks. The first real theme
 the first real POD geometry test produced two more — including one where Folio
 turned a working full-bleed cover into a broken one.
 
-Generated fixtures test the shapes you thought of. `compare/run.ts` therefore
-stages the **actual** pre-pagination `book.html` that Gutterpress hands to
-Paged.js — neither engine gets a hand-tuned document — and
-`compare/diff-report.ts` aligns the two PDFs **by content** (Needleman-Wunsch
-over per-page word overlap) before diffing, so one inserted page doesn't smear
-across the whole book.
+Generated fixtures test the shapes you thought of. Run the comparison against
+the **actual** pre-pagination `book.html` a real project produces, never a
+hand-tuned document, and align the PDFs **by content** before diffing so one
+inserted page doesn't smear across the whole book.
 
-Add a third baseline whenever you can: the same file printed by plain Chromium
-with no Folio at all. That is what separates "the two engines disagree" from
-"Folio does something wrong" — and it is how we know Folio reproduces native
-Chromium 61/61 pages, adding only the running heads it synthesizes.
+Take a baseline whenever you can: the same file printed by plain Chromium with
+no engine code at all. That is what separates "the renderers disagree" from
+"the engine does something wrong" — and it is how we know the engine reproduces
+native Chromium 61/61 pages, adding only the running heads it synthesizes.
 
 ---
 
@@ -262,7 +260,7 @@ optimistic path is new. The risk is bounded by viewer↔print parity (330/331
 blocks, ±1 page at knife edges — `ENGINE.md` §4): a chapter opener on a
 knife-edge boundary simply falls back to two prints.
 
-**Built** (§C2 of `MIGRATION.md`). `predictPageMap()` in `build.ts` opens a
+**Built.** `predictPageMap()` in `build.ts` opens a
 SECOND page/tab (never the page about to print), navigates it to the same
 `url`, and reuses two things verbatim rather than re-implementing them: the
 compiler agent's own id-assignment calls (`stringSources`/`forcedBreakSites`/

@@ -35,9 +35,9 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  * The SECOND test covers the case a hard-coded fixture height can never
  * catch: a page root with short prose and no height of its own. There the
  * container's box comes from `--gp-content-h`, published per page context by
- * the compiler and the viewer — remove that publication (as deleting
- * Paged.js's `height: inherit` silently did) and the page root shrink-wraps,
- * putting `.gp-bottom` under the last paragraph instead of at the page foot.
+ * the compiler and the viewer — remove that publication and the page root
+ * shrink-wraps, putting `.gp-bottom` under the last paragraph instead of at
+ * the page foot.
  */
 
 const RENDER_TEST_TIMEOUT_MS = 60_000;

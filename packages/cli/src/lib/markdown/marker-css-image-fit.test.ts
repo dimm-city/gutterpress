@@ -24,9 +24,9 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  *
  * Observed on the field guide (34pp, native engine, Chromium 148/151): a 956px
  * image on a 960px content box made a 963.59px paragraph, and page 7 — the
- * first `citizen-file` page — printed with no running head and no folio, while
- * the Paged.js leg printed both. `vertical-align: bottom` in MARKER_CSS
- * collapses the line box onto the image and fixes it.
+ * first `citizen-file` page — printed with no running head and no folio.
+ * `vertical-align: bottom` in MARKER_CSS collapses the line box onto the
+ * image and fixes it.
  *
  * The fixture below is that bug with nothing else in it: no plugin, no book
  * CSS, no images from disk. It asserts BOTH halves —

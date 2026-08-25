@@ -6,13 +6,11 @@
  * cannot reach the iframe's DOM. We push them in via the gutterpress:inject-styles
  * postMessage protocol added to preview-bridge.js.
  *
- * Paged.js has been removed (native-only-migration-plan.md Phase 6) — the
- * `.pagedjs_*`-targeting canvas/view-mode/debug sheet this file used to also
- * export was deleted with it (the native viewer's own chrome — zoom, sheet
- * background, view modes, debug guides — lives in decorate.ts + viewer.css
- * instead). Only the one engine-agnostic rule below survives: the preview
- * canvas background, which the native viewer's `<body>` (its `.gp-stage`)
- * still needs pushed in from the toolbar's settings.
+ * The viewer owns its own chrome — zoom, sheet background, view modes, debug
+ * guides all live in decorate.ts + viewer.css. The one rule below is the
+ * exception: the preview canvas background is an author SETTING held by the
+ * toolbar, so it has to be pushed in to the viewer's `<body>` (its
+ * `.gp-stage`).
  */
 export function buildCanvasBackgroundStyles(bg: string): string {
   return `

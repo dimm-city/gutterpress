@@ -38,10 +38,8 @@ export { RENDER_TIMEOUT_MS };
 // EngineBrowser/EngineSession are part of this module's long-standing public
 // surface (re-exported through src/api/index.ts) — re-export so existing
 // `import { type EngineBrowser } from "./build-runner"` call sites keep
-// working unchanged. PdfRenderer/PdfRenderInput (the Paged.js renderer seam)
-// were removed with the Paged.js pipeline (native-only-migration-plan.md
-// Phase 6); the desktop's Electron PDF export now goes through the native
-// engine's own Chromium seam (`engineBrowser`) instead.
+// working unchanged. The desktop's Electron PDF export goes through the
+// engine's own Chromium seam (`engineBrowser`).
 export type { EngineBrowser, EngineSession };
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
@@ -84,10 +82,10 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * CLI `--engine` override. Paged.js has been removed — the native engine is
-   * the only engine — so this is a deprecated no-op accepted for backward
-   * compatibility only: `"paged"` triggers a one-line warning
-   * (`manifest.ts`'s resolution) and the build proceeds natively regardless.
+   * CLI `--engine` override. The native engine is the only engine, so this is
+   * a deprecated no-op accepted for backward compatibility only: `"paged"`
+   * triggers a one-line warning (`manifest.ts`'s resolution) and the build
+   * proceeds natively regardless.
    */
   engine?: "paged" | "native";
   /**
@@ -116,9 +114,8 @@ export interface BuildRunnerResult {
   /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
   fingerprintPath: string | null;
   /**
-   * Author-facing print-quality findings from the render (native engine only
-   * — Paged.js has no equivalent audit). Empty for a clean build. The desktop
-   * maps these into the Problems panel; the CLI logs them.
+   * Author-facing print-quality findings from the render. Empty for a clean
+   * build. The desktop maps these into the Problems panel; the CLI logs them.
    */
   diagnostics: BuildDiagnostic[];
 }
