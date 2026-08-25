@@ -61,6 +61,31 @@ export interface AssembleBookHtmlOptions {
    * relocate or lose during staging.
    */
   projectCss?: string;
+  /**
+   * SHIM — spec gap #152. Output-relative hrefs of the images the project's
+   * stylesheets staged (`inlineStyles`'s copy plan, verbatim), each emitted as
+   * one `<link rel="preload" as="image">`.
+   *
+   * Chromium fetches an image referenced only from inside an `@page` rule and
+   * then paints NOTHING — no error, a valid PDF of blank paper. A preload is
+   * the one second reference that restores it at zero extra fetches, and
+   * unlike an element reference it is immune to the browser-state transition
+   * that otherwise defeats one (docs/known-limitations.md §3).
+   *
+   * WHAT PROVES IT IS STILL NEEDED: the expiry canary,
+   * `engine/compiler/page-background-chromium-bug.canary.test.ts`. The day it
+   * goes red, Chromium has fixed the bug — delete this option, the `.map()`
+   * that feeds it in `markdown/index.ts`, and the canary.
+   *
+   * The copy plan is the source, NOT a scan of the assembled CSS: `pluginCss`
+   * never passes through `inlineStyles`, so a `url()` inside it is never
+   * staged and a scan would emit a `<link>` to a file that does not exist.
+   * The plan is already deduped (keyed by destination), already excludes fonts
+   * (inlined) and remote urls (left alone), and already covers the
+   * `--paper: url()` + `var(--paper)` shape, because `walkDecls` sees custom
+   * properties like any other declaration.
+   */
+  preloadImages?: string[];
   title?: string;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
@@ -181,12 +206,17 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 
+  // SHIM — spec gap #152; see `preloadImages` above for why and when to delete.
+  const preloadTags = (opts.preloadImages ?? [])
+    .map((href) => `\n  <link rel="preload" as="image" href="${href}">`)
+    .join("");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${title}</title>${preloadTags}
   <style data-project-css>\n${inlineCss}\n</style>
 </head>
 <body>

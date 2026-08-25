@@ -8,7 +8,6 @@ import {
   planImageCopies,
   collectStyleDependencies,
   decodeRef,
-  IMAGE_INLINE_MAX_BYTES,
 } from "./asset-inline";
 
 let dir: string;
@@ -103,29 +102,31 @@ describe("inlineStyles", () => {
     await expect(inlineStyles(dir, ["styles/book.css"])).rejects.toThrow(/absent\.eot/);
   });
 
-  test("a small image inlines; nothing is copied", async () => {
+  test("a small image is copied and content-addressed, not inlined", async () => {
     await put("images/icon.png", Buffer.alloc(16, 7));
     await put("styles/book.css", 'h1 { background-image: url("../images/icon.png"); }');
 
     const { css, copies } = await inlineStyles(dir, ["styles/book.css"]);
-    expect(css).toContain("data:image/png;base64,");
-    expect(copies).toHaveLength(0);
+    expect(css).not.toContain("base64");
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.to).toMatch(/^assets\/[a-f0-9]{16}\.png$/);
   });
 
-  test("a large in-project image keeps its project-relative path (so markdown and CSS share one copy)", async () => {
-    await put("art/bg.png", Buffer.alloc(IMAGE_INLINE_MAX_BYTES + 1, 3));
+  test("an in-project image is content-addressed too, so it can never share a URL with a prose image", async () => {
+    await put("art/bg.png", Buffer.alloc(64, 3));
     await put("styles/book.css", 'h1 { background-image: url("../art/bg.png"); }');
 
     const { css, copies } = await inlineStyles(dir, ["styles/book.css"]);
-    expect(css).toContain("art/bg.png");
+    expect(css).not.toContain("art/bg.png");
     expect(css).not.toContain("base64");
-    expect(copies).toEqual([
-      { from: path.join(dir, "art/bg.png"), to: "art/bg.png" },
-    ]);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.from).toBe(path.join(dir, "art/bg.png"));
+    expect(copies[0]!.to).toMatch(/^assets\/[a-f0-9]{16}\.png$/);
+    expect(css).toContain(`url("${copies[0]!.to}")`);
   });
 
-  test("a large image OUTSIDE the project is content-addressed", async () => {
-    await put("shared/art/bg.png", Buffer.alloc(IMAGE_INLINE_MAX_BYTES + 1, 4));
+  test("an image OUTSIDE the project is content-addressed", async () => {
+    await put("shared/art/bg.png", Buffer.alloc(64, 4));
     await put("book/styles/book.css", 'h1 { background-image: url("../../shared/art/bg.png"); }');
 
     const { copies } = await inlineStyles(path.join(dir, "book"), ["styles/book.css"]);
@@ -289,13 +290,14 @@ describe("inlineStyles — @import correctness", () => {
     // Regression: imports used to be expanded BEFORE the url() walk, so the
     // parent re-resolved the child's already-rewritten path and aborted with a
     // bogus missing-asset error.
-    await put("images/bg.png", Buffer.alloc(IMAGE_INLINE_MAX_BYTES + 1, 1));
+    await put("images/bg.png", Buffer.alloc(64, 1));
     await put("styles/parts/page.css", 'body { background-image: url("../../images/bg.png"); }');
     await put("styles/book.css", '@import "parts/page.css";\nh1 { color: red; }');
 
     const { css, copies } = await inlineStyles(dir, ["styles/book.css"]);
-    expect(copies).toEqual([{ from: path.join(dir, "images/bg.png"), to: "images/bg.png" }]);
-    expect(css).toContain('url("images/bg.png")');
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.from).toBe(path.join(dir, "images/bg.png"));
+    expect(css).toContain(`url("${copies[0]!.to}")`);
   });
 
   test("an @import's media condition is preserved, not silently dropped", async () => {
@@ -318,12 +320,14 @@ describe("inlineStyles — @import correctness", () => {
 });
 
 describe("inlineStyles — url() parsing", () => {
+  // "Resolved" = the inliner found and READ the file, which is what a
+  // content-addressed destination proves: the hash is of the file's bytes.
   test("a quoted filename containing ) is resolved", async () => {
     await put("images/Figure (1).png", Buffer.alloc(8, 1));
     await put("styles/book.css", 'h1 { background-image: url("../images/Figure (1).png"); }');
 
     const { css } = await inlineStyles(dir, ["styles/book.css"]);
-    expect(css).toContain("data:image/png;base64,");
+    expect(css).toMatch(/url\("assets\/[a-f0-9]{16}\.png"\)/);
   });
 
   test("a double-quoted filename containing an apostrophe is resolved", async () => {
@@ -331,7 +335,7 @@ describe("inlineStyles — url() parsing", () => {
     await put("styles/book.css", `h1 { background-image: url("../images/author's-photo.png"); }`);
 
     const { css } = await inlineStyles(dir, ["styles/book.css"]);
-    expect(css).toContain("data:image/png;base64,");
+    expect(css).toMatch(/url\("assets\/[a-f0-9]{16}\.png"\)/);
   });
 });
 

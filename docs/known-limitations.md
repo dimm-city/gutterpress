@@ -21,7 +21,8 @@ in Chromium. There is no error and the PDF looks valid. Gutterpress therefore
 reports each of them itself — §1 and §2 from the CSS as you type it
 (`printsafe/no-risky-print-effects`), §3 from the built document
 (`engine.page-background.unreferenced`) — so "the CSS is correct but nothing
-painted" reaches you as a warning rather than as a blank page in print.
+painted" reaches you as a warning rather than as a blank page in print. §3 is
+also the one the build now works around on your behalf; see there.
 
 ---
 
@@ -101,23 +102,36 @@ found during the 0.10.0 migration · **re-diagnosed 2026-08-24**
 
 A `url()` image referenced only from inside an `@page` rule is not painted.
 The page shows the background *colour* alone (the colour paints at full
-strength — 129.5258 with and without the dropped `url()`). Add any second
-reference — a `<link rel="preload" as="image">`, an `html { background }`, or
-even a 1×1 invisible `<img>` — and it paints.
+strength — 129.5258 with and without the dropped `url()`).
 
-Two scope facts, both measured on Chrome 151.0.7922.75 and both load-bearing
-for the check Gutterpress runs:
+**Gutterpress handles this for you, and you do not write anything.** Every
+image your project stylesheets reference is staged and declared with one
+`<link rel="preload" as="image">` in the built `<head>`, which is the second
+reference Chromium needs. You cannot add that `<link>` yourself — the `<head>`
+is generated and the manifest has no key for injecting into it — which is
+exactly why the build does it.
 
-- **A `data:` URI is immune.** The same artwork inlined as
-  `data:image/png;base64,…` paints from `@page { background }` with no second
-  reference at all (89.3574, identical to the referenced case). Because
-  `asset-inline.ts` inlines every image up to 512 KB, this bug can only reach
-  a book through an image big enough to be *copied* instead — which is why the
-  original diagnosis looked like it was about size.
+Three scope facts, all measured on Chrome 151.0.7922.75, all load-bearing for
+what Gutterpress does about it:
+
+- **A second reference must be an unconsumed preload — an `<img>` is not one.**
+  A `<link rel="preload" as="image">` restores the background (89.3574) and an
+  `html { background }` for the same URL does too (89.3574). An `<img src>`
+  does **not**: through Gutterpress's print path it scores 0.0000, and a
+  preload *plus* an `<img>` also scores 0.0000, because the `<img>` matched the
+  preload and consumed it. This is why the build gives every CSS image a
+  content-addressed URL — so nothing in your document can name it, and nothing
+  can consume its preload.
+- **A `data:` URI is immune** (89.3574 with no second reference at all), which
+  is why the original diagnosis looked like it was about image size: the build
+  used to inline images under 512 KB, so only bigger ones could reach the bug.
+  There is no such threshold now; every CSS image is a file, and every one is
+  preloaded.
 - **It is the whole `@page` rule, not just the page box.** A margin box's own
   `background-image: url()` is dropped the same way when nothing else
   references it (0.0000 alone, 8.0345 with a `<link rel="preload">`; a
-  gradient on the same box is the control at 16.8009).
+  gradient on the same box is the control at 16.8009). One preload covers a
+  page box and every margin box that shares the URL.
 
 The image **is** fetched either way (confirmed in an HTTP access log on the
 failing run), so this is a paint/invalidation problem, not a loading one, and
@@ -133,13 +147,18 @@ three sizes:
 | 638 × 825 | paints (18.63) | dropped (0.00) |
 | 2550 × 3300 | paints (18.50) | dropped (0.00) |
 
-**Write instead:** reference the image a second time. One
-`<link rel="preload" as="image" href="…">` in `<head>` is enough, and it is
-cheaper than shipping a downscaled duplicate of the asset.
+**Write instead:** nothing, for the ordinary case. Reference the image from one
+of your project stylesheets with a local `url()` and the build covers it. The
+shapes it cannot cover, and which `engine.page-background.unreferenced` still
+reports: a remote `url(https://…)` in `@page` (never staged, so never
+preloaded) and an image that reaches the document from CSS your stylesheets do
+not contain.
 
 **Removal trigger:** Chromium paints a `@page { background: url() }` image
 with no other reference to it. Test with the `@page` rule as the **only**
-reference.
+reference. This is executable and it runs in the suite —
+`packages/cli/src/engine/compiler/page-background-chromium-bug.canary.test.ts`
+asserts the bug is still present, and goes red the day it is fixed.
 
 > **Testing note that cost us a full book build, and then a wrong diagnosis:**
 > this entry previously said the trigger was the image's pixel dimensions

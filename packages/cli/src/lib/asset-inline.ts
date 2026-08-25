@@ -6,7 +6,8 @@
  * local `@import` closure) is inlined, so a stylesheet's location is irrelevant
  * to the output and themes/shared design systems need no copying. Fonts become
  * `data:` URIs — which is what guarantees the byte-identical face reaches
- * Chromium, and therefore the PDF. Small images inline; large ones are copied.
+ * Chromium, and therefore the PDF. Images are files: every CSS image is copied
+ * under a content-addressed name, whatever it weighs.
  *
  * A missing stylesheet or font is a build error here, at read time, rather than
  * a 404 during pagination that Paged.js parsed as CSS or silently replaced with
@@ -24,10 +25,7 @@ import { BuildError } from "./build-error";
 /** Font files always inline — they are small and must be in the PDF. */
 const FONT_EXTS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 
-/** Inline images up to this size; copy larger ones (full-bleed page art). */
-export const IMAGE_INLINE_MAX_BYTES = 512 * 1024;
-
-/** Where content-addressed (too-large-to-inline) CSS images are written. */
+/** Where content-addressed CSS images are written. */
 const HASHED_ASSET_DIR = "assets";
 
 /** MIME types for the file types we embed. Extension-driven, lowercased. */
@@ -323,20 +321,18 @@ async function inlineOne(
         return dataUri(bytes, ext);
       }
 
+      // EVERY CSS image is copied, and content-addressed. Not a naming
+      // preference — it is the INVARIANT that a CSS image URL and a prose
+      // image URL can never be the same string, which is what makes an
+      // `@page` background printable at all: Chromium needs a second,
+      // UNCONSUMED reference to that URL, and an `<img src>` naming it
+      // consumes the preload instead of supplying one. The hash is computed
+      // by the build, so nothing an author, a plugin, or raw HTML can write
+      // is able to utter this name (see
+      // asset-inline.css-prose-url-disjoint.test.ts). It also keeps
+      // same-basename files from outside the project collision-proof.
       const bytes = await readOrThrow(absAsset, "asset", abs);
-      if (bytes.byteLength <= IMAGE_INLINE_MAX_BYTES) {
-        return dataUri(bytes, ext);
-      }
-
-      // An in-project image keeps its project-relative path, so a file used by
-      // both CSS and markdown lands in one place instead of two. An image from
-      // outside the project has no representable relative path, so it is
-      // content-addressed (which also makes same-basename files collision-proof).
-      const projectRel = path.relative(projectDir, absAsset);
-      const dest =
-        projectRel && !escapesProjectRoot(projectDir, absAsset)
-          ? toPosix(projectRel)
-          : `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
+      const dest = `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
       copies.set(dest, { from: absAsset, to: dest });
       return dest;
     });
@@ -461,8 +457,11 @@ export async function collectStyleDependencies(
 }
 
 /**
- * Turn the renderer's recorded image references into a copy plan. Images keep
- * their authored relative path, so the author's folder layout is what ships.
+ * Turn the renderer's recorded image references into a copy plan. PROSE images
+ * keep their authored relative path, so the author's folder layout is what
+ * ships for them. CSS images do NOT — `inlineOne` content-addresses every one,
+ * deliberately, so a CSS URL and a prose URL can never coincide (see the
+ * comment there). A file used both ways therefore ships twice under two names.
  * A `../` reference is rejected rather than silently relocated — it has no
  * representable path under the output root.
  */

@@ -420,8 +420,7 @@ describe('createPreviewServer', () => {
 
   test('serves a content-addressed CSS asset from OUTSIDE the project (shared repo-root art)', async () => {
     // R6: a shared repo-root stylesheet's `url()` closure crosses out of the
-    // book folder, and an image over IMAGE_INLINE_MAX_BYTES is too big to
-    // embed — the inliner rewrites it to `assets/<contentHash><ext>` and
+    // book folder — the inliner rewrites it to `assets/<contentHash><ext>` and
     // returns a copy plan. The BUILD executes that plan into its output dir;
     // the preview serves the project in place and has no such dir, so the
     // rewritten URL used to 404 and shared art rendered broken in the live
@@ -439,7 +438,6 @@ describe('createPreviewServer', () => {
       await mkdir(sharedStyles, { recursive: true });
       await mkdir(sharedArt, { recursive: true });
 
-      // A PNG over the 512 KB inline threshold.
       const big = Buffer.alloc(600 * 1024, 7);
       await writeFile(join(sharedArt, 'backdrop.png'), big);
       await writeFile(
