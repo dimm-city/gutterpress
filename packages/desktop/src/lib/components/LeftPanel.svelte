@@ -141,7 +141,9 @@
   }
   // Arrow keys expand/collapse the focused node WITHOUT navigating (Enter/Space
   // on the row's label button navigates); this keeps expansion and navigation
-  // independent, per the tree-view contract.
+  // independent. These rows are a plain nested list, not an ARIA tree, so this
+  // is a convenience on the label button -- not the full tree contract, which
+  // would also owe Up/Down/Home/End roving-tabindex navigation.
   function onTocKeydown(e: KeyboardEvent, node: { key: string; children: unknown[] }) {
     if (node.children.length === 0) return;
     if (e.key === "ArrowRight" && !tocOpen(node.key)) {
@@ -333,7 +335,7 @@
           <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
         </div>
       {:else}
-        <ul class="toc-list" role="tree" aria-label="Table of contents">
+        <ul class="toc-list" aria-label="Table of contents">
           {#each tocTree as node (node.key)}
             {@render tocRow(node, 1)}
           {/each}
@@ -344,7 +346,14 @@
     {#snippet tocRow(node: TocNode, depth: number)}
       {@const hasChildren = node.children.length > 0}
       {@const isOpen = tocOpen(node.key)}
-      <li role="treeitem" aria-level={depth} aria-expanded={hasChildren ? isOpen : undefined} aria-selected={node.entry.index === activeEntryIndex}>
+      <!-- A plain <li>, deliberately: ARIA forbids interactive descendants
+           inside a treeitem, and the two buttons below are exactly that.
+           Depth is carried by the <ul> nesting itself; expanded/current state
+           lives on the label button, which is what focus actually lands on.
+           Do not re-add the tree/treeitem roles without also implementing the
+           roving-tabindex + Up/Down/Home/End contract they promise (the Files
+           panel is a plain list for the same reason). -->
+      <li>
         <div class="toc-row" style="padding-left: {6 + (depth - 1) * 14}px">
           {#if hasChildren}
             <button
@@ -361,6 +370,8 @@
           {/if}
           <button
             class="toc-item"
+            aria-expanded={hasChildren ? isOpen : undefined}
+            aria-current={node.entry.index === activeEntryIndex ? "true" : undefined}
             class:active={node.entry.index === activeEntryIndex}
             class:toc-top={depth === 1}
             class:toc-sub={depth >= 3}
@@ -373,7 +384,7 @@
           </button>
         </div>
         {#if hasChildren && isOpen}
-          <ul class="toc-list nested" role="group">
+          <ul class="toc-list nested">
             {#each node.children as child (child.key)}
               {@render tocRow(child, depth + 1)}
             {/each}
