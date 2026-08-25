@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The editor comes up with your book in it.** Opening a book while the
+  workspace was already in Edit mode left the editor pane on
+  "Loading editor…" forever: the open path filled the editor's buffer but
+  never imported the editor itself. Because nothing was mounted, clicking a
+  heading in the table of contents appeared to move only the preview — the
+  same bug wearing a second face. Both are fixed by loading the editor
+  wherever a file is loaded for it.
+- **Clicking a paragraph in the preview now opens it in the editor.** A single
+  click on any block that came from your Markdown loads that chapter, if it is
+  not already open, and scrolls to the line — without stealing the cursor, so
+  selecting and copying text out of the preview still works. Scrolling the
+  preview still leaves the editor where it is.
+- **The table of contents can be collapsed again.** A section containing the
+  heading you were reading could not be collapsed: its "Collapse" arrow did
+  nothing, however many times it was clicked. Your own expand and collapse
+  choices now win, and the automatic reveal only applies to sections you have
+  not touched.
+
 ## [0.10.2] - 2026-08-25
 
 ### Added
