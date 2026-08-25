@@ -4,9 +4,8 @@ Gutterpress used to ship `markdown-it-container`, which parsed triple-colon
 fences (`::: name ... :::`) into a `<div class="name">` wrapper. That plugin
 and syntax were **removed** on 2026-05-17. The `@`-prefixed marker family
 already built into core (`@page`, `@section`, `@end-section`, `@column-break`,
-etc. — implemented in `packages/cli/src/lib/markdown/markers.js`, which was
-called `markdown-it-paged` when this was written) is the canonical way to wrap
-a block of markdown in a styled `<div>`.
+etc. — implemented in `packages/cli/src/lib/markdown/markers.js`) is the
+canonical way to wrap a block of markdown in a styled `<div>`.
 
 ## Why
 

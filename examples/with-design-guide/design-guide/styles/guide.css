@@ -914,7 +914,7 @@ a.download::after { content: none; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    § 7  CHAPTER-SPECIFIC OVERRIDES
-   Scoped rules using markdown-it-paged @chapter markers.
+   Scoped rules using @chapter markers.
    Each chapter wraps its content in <div class="chapter" id="ch-name">.
    These rules override or extend §3–§6 for a single chapter only.
    ───────────────────────────────────────────────────────────────────────────── */

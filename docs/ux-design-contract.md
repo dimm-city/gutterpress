@@ -468,7 +468,7 @@ coverage — per ADR 0002), exposed via a server route. It extends the shipped
    PDF/X, external qpdf/gs — they can never run per keystroke).
 
 **Master pages / page templates (PROPOSED):** a UI over the **existing
-`@page` / `@section` / `@chapter` markers** (markdown-it-paged, CLAUDE.md
+`@page` / `@section` / `@chapter` markers** (`markers.js`, CLAUDE.md
 §5/§6). "Section" = a marker block; "picking a template" = the inspector
 writes/updates the marker's class argument (e.g. `@section chapter-opener`)
 in the markdown source. Templates are plain CSS classes; the markdown file

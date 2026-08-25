@@ -1,13 +1,13 @@
 /**
- * `gp_pin_scope_check` — a Gutterpress diagnostic, not a markdown-it-paged one.
+ * `gp_pin_scope_check` — the `.gp-pin` diagnostic.
  *
- * The plugin is a standalone, independently published markdown-it extension;
- * `.gp-pin` is Gutterpress product vocabulary (see gutterpress-css.ts), so the
- * rule that polices it belongs here rather than inside the plugin.
+ * The split from `markers.js` is by role: that module owns the structural DOM,
+ * while `.gp-pin` is author utility vocabulary (see gutterpress-css.ts), so the
+ * rule that polices it lives with the utility layer.
  *
- * renderer.ts registers this immediately after the paged plugin, which
+ * renderer.ts registers this immediately after the marker plugin, which
  * preserves the ordering the check depends on: markdown-it-attrs has already
- * attached `{.gp-pin}` classes, and the paged plugin has already produced the
+ * attached `{.gp-pin}` classes, and the marker plugin has already produced the
  * layout_*_open/_close tokens this walk counts.
  *
  * It only ever appends to `env.layoutWarnings` — it never changes output — so
@@ -16,9 +16,9 @@
  * precisely the leak this warns about.
  */
 
-/** Local copy of the paged plugin's private `warn`: env.layoutWarnings is the
- * shared diagnostic channel both write to, and this module must not reach into
- * the plugin for a helper. */
+/** Local copy of `markers.js`'s private `warn`: env.layoutWarnings is the
+ * shared diagnostic channel both write to, and `markers.js` does not export
+ * the helper. */
 function warn(env, line, type, message, marker) {
   if (!env.layoutWarnings) env.layoutWarnings = [];
   env.layoutWarnings.push({ line, type, message, marker });

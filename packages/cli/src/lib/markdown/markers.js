@@ -2,27 +2,6 @@
  * Gutterpress layout markers — the `@page`/`@section`/`@chapter` authoring
  * surface, and the CSS the DOM it emits requires (`MARKER_CSS`).
  *
- * OWNERSHIP: this is Gutterpress code. It began as an inlined copy of the
- * standalone `markdown-it-paged` package (itlackey/markdown-it-paged) and was
- * absorbed at 0.10.0, because the copy had stopped being that package: it had
- * grown to 812 lines against upstream's 433 — a 635-line divergence — was
- * never consumed from npm (no dependency, ever), and carried four feature
- * clusters upstream has none of, all of them Gutterpress-specific:
- *
- *   - `data-source-range` threading for the desktop editor (ADR 0009)
- *   - `data-chapter-label` propagation and `.chapter-opener` injection
- *   - `env.__colSplitDepth` per-render state
- *   - the emitted-class contract the viewer and preview depend on
- *
- * Keeping the third-party label had a real cost: it argued against cleaning
- * up comments that describe a removed engine, and it made the ownership
- * boundary for the `gp-*` vocabulary ambiguous. CLAUDE.md's constitution
- * already names these markers "the product's authoring surface — permanent".
- *
- * The upstream package remains its own project; Gutterpress no longer tracks
- * it. Do not re-converge: `data-source-range` is editor plumbing that has no
- * business in a general-purpose markdown-it plugin.
- *
  * Emitted classes use the `gp-` prefix, matching the rest of the product's
  * vocabulary (`gutterpress-css.ts`). This module owns the STRUCTURAL DOM
  * (`.page`, `.spread`, `.section`, `.chapter`, `.gp-page-break`,
@@ -652,8 +631,8 @@ export default function plugin(md, pluginOptions = {}) {
       addClasses(t, 'chapter', classes);
       // Pass meta.name so attachDataAttrs emits `data-chapter-label="<name>"`
       // (e.g. data-chapter-label="C.01"). Consumer plugins use this to render
-      // the chapter's badge / opener UI; standard markdown-it-paged treats it
-      // as opaque metadata.
+      // the chapter's badge / opener UI; this module treats it as opaque
+      // metadata.
       attachDataAttrs(t, 'chapter', meta.name, meta.attrs || {});
       // Resolve chapter counter class: explicit `.chapter-N` in the class
       // list takes priority over the `ch="N"` attribute.

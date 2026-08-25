@@ -6,8 +6,9 @@ pagination. Verified against the Gutterpress source that ships this package,
 
 ## Markers
 
-`markdown-it-paged` is the layout primitive layer. Markers are lines beginning
-with `@`, and the plugin is inert in a document that uses none of them.
+The marker plugin (`markers.js`) is the layout primitive layer. Markers are
+lines beginning with `@`, and the plugin is inert in a document that uses none
+of them.
 
 ```text
 @chapter  [name] [key=value ...] [#id] [.class ...]

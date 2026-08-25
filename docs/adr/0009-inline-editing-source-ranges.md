@@ -55,7 +55,7 @@ properties of this app rule it out, each verified by spike rather than assumed:
 3. **Gutterpress markdown is not CommonMark** — **still true, and still
    decisive.** The renderer stacks
    `markdown-it-attrs`, `markdown-it-footnote`, `markdown-it-deflist`,
-   `markdown-it-source-map`, `markdown-it-paged`'s whole `@marker` family,
+   `markdown-it-source-map`, `markers.js`'s whole `@marker` family,
    `html: true`, `typographer: true`, and arbitrary manifest plugins. A
    remark-based editor means a second, drifting implementation of that dialect,
    and `remark-stringify` reformats the *whole document* on save — which would
@@ -98,7 +98,7 @@ fall back to the nearest annotated ancestor.
 
 ### 2. Layout markers thread `token.meta.line` — **never** `token.map`
 
-`markdown-it-paged`'s `layout_*_open` and break tokens carry
+`markers.js`'s `layout_*_open` and break tokens carry
 `token.meta = { line }` (1-based marker line), and the annotation rule
 converts it to `[line - 1, line)`.
 

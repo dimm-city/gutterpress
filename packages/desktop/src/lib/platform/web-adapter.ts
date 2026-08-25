@@ -32,7 +32,7 @@ import {
 } from "./web-fs";
 // §8 / ADR 0004: VALUE import of the PURE, node-free render core ONLY
 // (`gutterpress/render`). This subpath transitively imports markdown-it
-// + the inlined paged plugin and contains ZERO `node:*`/`fs`/`path`/`url`, so it
+// + the marker plugin and contains ZERO `node:*`/`fs`/`path`/`url`, so it
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
