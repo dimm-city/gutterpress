@@ -2,7 +2,24 @@
  * Declarations Chromium accepts syntactically in `@page` margin boxes but
  * silently drops in native print. These were measured with deliberately
  * visible values (`rotate(-12deg)`, `6px 6px 0 #c00`) and are documented in
- * docs/engine-history/ENGINE.md §8.
+ * docs/engine-history/ENGINE.md §8 and docs/known-limitations.md §2.
+ *
+ * The line is what the property PAINTS, not the property family: everything
+ * that establishes a stacking context or paints outside the border box is
+ * dropped, everything that paints inside it is honoured. `text-shadow` beside
+ * `box-shadow` is the clearest pair. Re-measured on Chrome 151.0.7922.75,
+ * 96dpi raster, mean absolute pixel difference against the same box without
+ * the declaration (control: removing the box entirely, 2.6485):
+ *
+ *   dropped, all 0.0000   box-shadow · transform (rotate/scale/translate) ·
+ *                         rotate/scale/translate · opacity · outline (and its
+ *                         longhands) · filter · mix-blend-mode ·
+ *                         backdrop-filter · clip-path · perspective
+ *   honoured              text-shadow 0.1375 · border-radius 0.3397 ·
+ *                         background gradient 11.2260 · writing-mode 0.3200 ·
+ *                         padding-left 0.2927 · font-size 0.7864 ·
+ *                         color 0.1063 · letter-spacing 0.2781 ·
+ *                         text-transform 0.1804 · visibility 2.6485
  *
  * Keep the viewer and print-safety linter on this one contract: preview must
  * omit the same effects native PDF omits, while every other declaration is
@@ -13,7 +30,18 @@ export const MARGIN_BOX_IGNORED_PROPERTIES: ReadonlySet<string> = new Set([
   "rotate",
   "translate",
   "scale",
+  "perspective",
   "box-shadow",
+  "opacity",
+  "outline",
+  "outline-color",
+  "outline-style",
+  "outline-width",
+  "outline-offset",
+  "filter",
+  "backdrop-filter",
+  "mix-blend-mode",
+  "clip-path",
 ]);
 
 export function isIgnoredMarginBoxProperty(property: string): boolean {
