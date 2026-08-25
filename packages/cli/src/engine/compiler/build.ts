@@ -383,6 +383,19 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       deviceScaleFactor: 1,
       mobile: false,
     };
+    // The pinned viewport is a MEASUREMENT device: every audit, the width
+    // check and the viewer prediction read boxes laid out inside it, so it
+    // must be the sheet — not the sheet minus a scrollbar. Chromium only
+    // hides scrollbars if something asks, and until this line nothing in the
+    // print path did: the CLI's browser is launched by puppeteer, which
+    // passes `--hide-scrollbars` in its defaults, and the desktop's Electron
+    // `BrowserWindow` is not. Measured 2026-08-24, same staged bytes: 576px
+    // on the CLI and 561px on the desktop, and one box that measured 450px
+    // against a 442px limit on the CLI measured 435px on the desktop — a hard
+    // error on one host, a shipped book on the other, and 8 of 21 low-DPI
+    // warnings on a real book that the desktop author never saw. Owned here
+    // so no host can contribute it (docs/analysis/cli-desktop-print-parity.md).
+    await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
 
     // Every audit below (the width check, the abspos/multicol passes, the
@@ -1688,7 +1701,10 @@ async function predictPageMap(
   try {
     page = await browser.newPage();
     // Same pinned viewport as the print page — vw/vh-sized content must
-    // measure identically on both sides or the prediction always misses.
+    // measure identically on both sides or the prediction always misses. Same
+    // scrollbar state too, and for the same reason: this page measures, so
+    // the host must not be the one deciding how wide it measures.
+    await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
     await page.navigate(url);
     await page.evaluate(agentScript);
