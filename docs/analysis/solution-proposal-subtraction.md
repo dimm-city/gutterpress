@@ -1,11 +1,14 @@
 # Solution proposal — the subtraction reading
 
-**Status:** design proposal. No product code changed. Every product-code edit
-made while measuring was reverted before commit (the working tree is clean;
-`git diff` is empty).
+**Status:** design proposal, **amended once** — see the amendment immediately
+below, which withdraws a claim this document made and adds a second deletion to
+the recommendation. No product code changed. Every product-code edit made while
+measuring was reverted before commit (the working tree is clean; `git diff` is
+empty).
 **Builds on:** [`page-background-url-root-cause.md`](./page-background-url-root-cause.md)
 (PR #183) · [#152](https://github.com/dimm-city/gutterpress/issues/152) ·
-[`known-limitations.md` §3](../known-limitations.md)
+[`known-limitations.md` §3](../known-limitations.md) · the referee's findings
+(PR #186)
 **Measured on:** Google Chrome 151.0.7922.75, Linux x64, 2026-08-24, through
 the real `gutterpress build` / `gutterpress preview` pipeline unless stated.
 
@@ -14,19 +17,104 @@ the analysis I am building on, I say so and show the measurement.
 
 ---
 
+## AMENDMENT 1 — this proposal was wrong, here is where and how it was caught
+
+The referee (PR #186) found a hole neither the analysis nor I had looked for,
+and it was not a rough edge: **as originally written, this proposal would have
+turned working books into blank paper.**
+
+### What I claimed, and why it was false
+
+§4 said: *"Books whose CSS image is under 512 KB: identical output."* **That
+claim is withdrawn.** It holds only for books in which the CSS image is not
+also referenced by an element. When the same file is used as an `@page`
+background *and* as a prose image — `![](images/tile.png)` — an `<img>` request
+**consumes the preload entry**, and the page box, finding none, drops.
+
+Reproduced here on a 189-byte tile referenced from both places:
+
+| fixture: one tile, `@page` background **and** `![]()` prose image | result |
+|---|---|
+| status quo (`≤512 KB`, so the CSS copy is a `data:` URI) | `101.6601` **PAINTS** |
+| this proposal as first written | **`0.0000` DROPPED** |
+
+**And the audit stayed silent: `audit fired: 0`.** That is the part a reader
+most needs. `engine.page-background.unreferenced` asks *"is this URL owned by
+an `@page` rule **and not referenced elsewhere**?"* — in a collision the URL
+**is** referenced elsewhere, by the very `<img>` that broke it, so the detector
+reads its own cause as proof of safety. The failure would have shipped
+unreported, in a book that works today, which is the exact class of defect this
+whole exercise exists to eliminate. Deleting the byte threshold does not merely
+fail to fix these books; it **creates** them.
+
+### What fixes it — one more deletion, not an addition
+
+Content-address **every** CSS image. In `inlineOne`, delete the conditional
+that keeps an in-project image at its project-relative path:
+
+```ts
+const dest = `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
+```
+
+The CSS asset's URL becomes `assets/15311b5348c233b4.png` — **a name nothing in
+the document can utter.** Prose keeps `images/tile.png`. Two URLs, two preload
+entries, nothing to consume. The branch being deleted exists, by its own
+comment, *"so a file used by both CSS and markdown lands in one place instead
+of two"* — and that sharing **is** the bug. Complexity found is a suspect, not
+a requirement.
+
+This does not *handle* the collision. It makes it **unrepresentable**, which
+closes the whole class — prose `<img>`, plugin-emitted `<img>`, author raw
+HTML, a stray second `<link>` — rather than the one instance we happened to
+find.
+
+### Measured across every shape, status quo vs amended proposal
+
+| shape | status quo | amended |
+|---|---|---|
+| `@page` only, 2,431,757 B asset | `0.0000` DROPPED | **`91.2541` PAINTS** |
+| `@page` only, 387 B asset | `98.3307` PAINTS | `98.3307` PAINTS |
+| `:root { --paper: url(…) }` + `var(--paper)` | `0.0000` DROPPED | **`91.2541` PAINTS** |
+| **collision — CSS + prose, same file** | `101.6601` PAINTS | **`101.6601` PAINTS** (identical) |
+| **multi-consumer — page box + 3 margin boxes, one URL** | `0.0000` DROPPED | **`89.1921` PAINTS** |
+
+The last row is load-bearing for a real book. **One preload entry serves many
+*style* consumers**; only *element* requests consume it. `dc-op-manual`'s
+`native-furniture.css` puts sixteen margin boxes on a single
+`brick-bg-01.png` — measured here at four consumers on one URL, all painting
+from one preload. That shape is covered.
+
+### Cost of the amendment
+
+The file ships twice when used from both CSS and prose (189 B twice, measured;
+a 3.7 MB brick used both ways would be +3.7 MB in the bundle), and built CSS
+assets carry content-hash filenames instead of authored ones. No helper is
+orphaned — `escapesProjectRoot` and `toPosix` both retain other callers.
+The author-facing weight of those two costs is not mine to rule on and is with
+the author-outcome lens.
+
+Sections 0, 2, 3, 4, 7 and 8 below have been brought into line with this
+amendment. §4 keeps the withdrawn sentence visible rather than quietly
+deleting it.
+
+---
+
 ## 0. The recommendation in one paragraph
 
-Delete `IMAGE_INLINE_MAX_BYTES` and the size branch it guards, so a CSS image
-is copied beside the book exactly like a prose image — one policy for images
-instead of three. Then emit, in `<head>`, one
-`<link rel="preload" as="image" href="…">` per entry of the copy plan
-`inlineStyles` **already returns**. That is the whole change: a deletion, and
-four lines that iterate a list the pipeline computes today. Measured
-end-to-end: a 2,431,757-byte `@page` background that prints blank today prints
-correctly (mean-abs-diff `0.0000` → `91.2541`), a 387-byte one keeps printing
-correctly, and the `:root { --paper: url(…) } @page { background: var(--paper) }`
-shape — which no `@page`-scoped fix can see — is covered for free, because the
-inliner rewrites every `url()` in the stylesheet regardless of where it sits.
+**Two deletions and four lines.** Delete `IMAGE_INLINE_MAX_BYTES` and the size
+branch it guards, so a CSS image is copied beside the book exactly like a prose
+image — one policy for images instead of three. Delete the branch that lets an
+in-project CSS image keep its authored path, so every CSS image is
+content-addressed and its URL is one **nothing in the document can name**. Then
+emit, in `<head>`, one `<link rel="preload" as="image" href="…">` per entry of
+the copy plan `inlineStyles` **already returns**. Measured end-to-end across
+five shapes — a 2,431,757-byte `@page` background (`0.0000` → `91.2541`), a
+387-byte one (unchanged), the `:root { --paper: url(…) }` custom-property form
+that no `@page`-scoped fix can see (`0.0000` → `91.2541`), a page box plus
+three margin boxes on one URL (`0.0000` → `89.1921`), and the collision that
+broke the first draft of this proposal (`101.6601`, identical to today) — every
+one paints, and none of them depends on a byte count, on whether the book has a
+cross-reference, or on what else happens to mention the file.
 
 ---
 
@@ -157,13 +245,70 @@ instrumentation on `printPdf` that was reverted before commit:
   three consecutive builds gave `print1 = print2 = 1,167,796 B`.
 
 So: outside our pipeline both forms work; inside it only the preload does.
-**Inferred, not proven:** Blink can satisfy the page-box style image request
-synchronously from the *preload list*, whereas an `<img>`-owned
-`ImageResource` needs a fetch round-trip the print does not wait for. I did not
-read Chromium source for this and I am not asserting it. What I *am* asserting
-is the empirical result, reproduced four times, and its consequence: **do not
-propose an element-based second reference. It is measurably the one that fails
-here.**
+The empirical result was reproduced four times, and its consequence stands:
+**do not propose an element-based second reference. It is measurably the one
+that fails here.**
+
+### 1f. The §1e trigger, bounded — with a correction to the referee
+
+The referee (PR #186) bisected the post-load sequence and identified
+`Emulation.setDeviceMetricsOverride` — the build's viewport pin — as what
+defeats the `<img>`. **Concurred**, with one refinement: it is not *the call*,
+it is the **first transition into a device-metrics override after load**. A
+page that already had one is immune to a later one.
+
+Same staged document (carrying the hidden `<img>` guard), same post-load
+`setDeviceMetricsOverride(480×288)`, same emulated print media, same print
+options. The only difference is the pre-navigation state:
+
+| pre-navigation state | post-load override | result |
+|---|---|---|
+| puppeteer `defaultViewport: {800,600}` — override set at page creation | 480×288 | **15,620 B PAINTS** |
+| puppeteer `defaultViewport: null` — no override until after load | 480×288 | **14,403 B DROPPED** |
+
+That reconciles the referee's result with §1e's without either being wrong:
+§1e's harness used puppeteer's default viewport and painted; the build's
+raw-CDP session has no pre-navigation override and drops.
+
+**A consequence, and an explicit recommendation against acting on it.** The
+referee wrote that the build cannot apply the pin before navigation because the
+sheet size is derived from `@page` CSS read after load. That reasoning does not
+hold — the geometry is irrelevant (an 800×600 override immunizes a 480×288
+page), so *any* dummy pre-navigation override would restore the `<img>` form,
+with the real pin applied afterwards. **Do not do this.** It is a second
+undocumented Chromium behaviour stacked on the first, load-bearing for
+correctness, invisible in the code, and impossible to write a removal trigger
+for. It is exactly the compensating machinery this repo's constitution rejects,
+and the amended proposal does not need it. I record it only so a future reader
+does not rediscover it and mistake it for a fix.
+
+### 1g. The mechanism is bounded, not explained
+
+This must be said plainly, because the rest of the document depends on it.
+
+**What is established (measured):** a `<link rel="preload" as="image">` in
+`<head>` makes the page box paint on print #1 through the real build, stably
+(three consecutive builds, `print1 = print2 = 1,167,796 B`); it survives
+0/5/30/120 s between load and print; **one entry serves many *style* consumers**
+(page box + three margin boxes on one URL → `89.1921`); and an *element*
+request for the same URL **consumes** it (`0.0000`, the collision in Amendment
+1). Together these say the mechanism is **preload-list identity, not timing** —
+which is why the fix is more robust than §7 of the first draft credited it, and
+why the collision existed at all.
+
+**What is not established:** *why* an `<img>`-owned resource does not serve the
+page box when a preload entry does, and *why* a post-load device-metrics
+override changes that. I have bounded the trigger; I have not read the Blink
+code that causes it, and I am not going to pretend otherwise.
+
+**What would break it, and how we would find out.** Any Chromium change to
+preload-list matching, preload-entry lifetime, or when page style is resolved
+during pagination. We would find out from the CI regression test in §2.4 — an
+end-to-end build asserting a non-zero pixel diff — which is why that test is a
+merge blocker and not a nicety. `tools/page-background-repro.mjs` tells us
+about *Chromium's* bug; only the end-to-end test tells us about *our fix*. A
+proposal whose mechanism is bounded rather than explained earns its keep by
+being continuously verified, not by being elegant.
 
 ---
 
@@ -180,9 +325,36 @@ if (bytes.byteLength <= IMAGE_INLINE_MAX_BYTES) {   // delete
 }
 ```
 
-What remains in `inlineOne` is the copy path that already exists, unchanged:
-in-project images keep their project-relative path, out-of-project images are
-content-addressed to `assets/<contentHash><ext>`.
+### 2.1b Delete the destination branch too (same file) — *added by Amendment 1*
+
+The copy path that remains still chooses between two destinations. Delete the
+choice:
+
+```ts
+// An in-project image keeps its project-relative path, so a file used by      // delete
+// both CSS and markdown lands in one place instead of two. […]               // delete
+const projectRel = path.relative(projectDir, absAsset);                        // delete
+const dest =                                                                   // delete
+  projectRel && !escapesProjectRoot(projectDir, absAsset)                      // delete
+    ? toPosix(projectRel)                                                      // delete
+    : `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;                       // delete
+
+const dest = `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;                 // keep
+```
+
+Every CSS image is now content-addressed, so **the URL the preload names is one
+nothing in the document can name**. That is what makes the collision in
+Amendment 1 unrepresentable rather than merely handled: an element cannot
+consume a preload for a URL it has no way to write. Verified in the built
+bundle — `url("assets/15311b5348c233b4.png")` and
+`href="assets/15311b5348c233b4.png"` in the CSS and the preload,
+`src="images/tile.png"` in the prose, two files on disk.
+
+Note what this deletes: the branch's own comment says it exists so that a file
+used by both CSS and markdown "lands in one place instead of two". That
+sharing was never measured as a benefit, and it is now measured as the cause of
+a silent blank-page regression. Neither `escapesProjectRoot` nor `toPosix` is
+orphaned — both keep other callers in the same file.
 
 **Not touched:** fonts (`FONT_EXTS`, always inlined — the PDF/X
 subset-embedding rationale is recorded and verified) and `inlineShapeUrls`
@@ -228,6 +400,21 @@ including custom properties, so the ref is in `copies` like any other. The
 general rule is both shorter and more correct than the targeted one. That is
 the subtraction lens paying off, not a coincidence.
 
+**One entry, many style consumers — measured.** A single preload serves every
+`@page`-side consumer of that URL: a page box plus `@top-center`,
+`@bottom-center` and `@left-middle` all referencing one file paint together
+from one `<link>` (`0.0000` → `89.1921`). This matters for a real book —
+`dc-op-manual`'s `native-furniture.css` puts **sixteen** margin boxes on one
+`brick-bg-01.png`. Only *element* requests consume an entry, which is precisely
+why §2.1b's content-addressing is the right shape: it removes the elements'
+ability to name the URL at all.
+
+**Concur with the referee on the source: the copy plan, not a regex over the
+assembled CSS.** Plugin CSS never passes through the inliner, so an
+assembled-CSS collector would emit `<link>`s to files the build never staged.
+Amendment 1 strengthens that: under content-addressing the correct href only
+*exists* because the inliner minted it, so a regex could not produce it at all.
+
 ### 2.3 Keep the audit; fix what it says
 
 `engine.page-background.unreferenced`
@@ -244,7 +431,19 @@ reach (§1c).
 I considered deleting it. I am not proposing that: it is the only check that
 runs against the DOM the print actually sees, and its cost is a few lines
 inside an evaluate we already do. Subtraction is about removing complexity, not
-about removing the instrument that tells you the complexity came back.
+about removing the instrument that tells you the complexity came back. It also
+still has a real job the copy plan cannot cover: **plugin CSS never passes
+through the inliner**, so a `url()` a plugin puts in an `@page` rule is neither
+rewritten, content-addressed, nor preloaded — and the audit is what catches it.
+
+**Know its blind spot, and do not try to close it.** The audit was silent
+through the collision (`audit fired: 0`, Amendment 1), because the consuming
+`<img>` satisfies its "referenced elsewhere" test. One could invert the
+predicate to *"referenced by an element ⇒ the preload is consumed ⇒ fail"* —
+**do not.** That writes a Chromium preload-consumption internal into our
+diagnostics, which is the least deletable thing we could ship, and it hard-fails
+a legitimate authoring pattern. §2.1b removes the condition instead of
+detecting it, which is why the blind spot stops mattering.
 
 ### 2.4 One end-to-end regression test, and the removal trigger in CI
 
@@ -256,6 +455,10 @@ about removing the instrument that tells you the complexity came back.
   measurement whose entire value is that today it reads `0.0000`. Every
   existing fixture passed regardless of the bug because each happened to carry
   a second reference; a test that does not fail red here is not testing this.
+  **Amendment 1 adds a second required case:** the collision — one file used as
+  both an `@page` background and a prose image. It must be in the same test,
+  because it is the case the audit cannot see (§2.3) and the case that would
+  have shipped silently.
 - **Removal trigger.** Run `tools/page-background-repro.mjs` in CI. Exit 2
   means Chromium fixed it and the preload emission — one `.map()` — gets
   deleted. Exit 1 means the harness broke, which is the signature that produced
@@ -276,11 +479,13 @@ about removing the instrument that tells you the complexity came back.
 | the `bytes.byteLength <= …` branch and its `dataUri` return for images | `asset-inline.ts:327–329` |
 | three threshold-pinned test cases | `asset-inline.test.ts:116, 128, 292` |
 | the threshold's doc-comment on `ServerState.cssAssets` and in `http-server.test.ts` | `server-context.ts:41`, `http-server.test.ts:423` |
+| **the destination branch** — `projectRel && !escapesProjectRoot(…) ? toPosix(projectRel) : assets/<hash>` — *added by Amendment 1* | `asset-inline.ts:331–339` |
 | **the rule that an image's fate depends on its byte count** | everywhere |
 | **the rule that an image's fate depends on where it was referenced** | everywhere |
 | **the content-dependence** (a book with a `target-counter()` prints twice and paints; the same book without one does not) | everywhere |
 | **the preview↔print divergence** for `@page` background images | everywhere |
 | **the size-dependence of `--format html`'s advertised self-containedness** | everywhere |
+| **the ability of any element to name — and therefore consume the preload for — a CSS asset** | everywhere |
 
 The line count is small on purpose. The thing being subtracted is not lines, it
 is **rules**. Gutterpress has three policies for one asset class today —
@@ -290,8 +495,9 @@ prose images always copy, CSS images copy or inline by byte count,
 measured reason in their own header. Nobody has to know a number to predict
 what the build will do.
 
-Net new code: four lines and one optional field. I could not find a way to
-reach zero — see §6.1 for the option that does, and why I think it is worse.
+Net new code: four lines and one optional field — unchanged by Amendment 1,
+which was a second deletion, not an addition. I could not find a way to reach
+zero — see §6.1 for the option that does, and why I think it is worse.
 
 ---
 
@@ -323,23 +529,56 @@ the "under" bundle is four files, the "over" bundle five). The PDF path stages
 into a directory and prints from `file://`, where siblings resolve; a 771 KB
 *prose* image has always been a sibling and has always printed.
 
-**Existing books.** Two groups.
-- Books whose CSS image is **under** 512 KB: identical output. Measured — the
-  `under` PDF is 13,525 B today and 13,526 B under this proposal, and the pixel
-  diff is byte-for-byte the same value (`98.3307`).
+**Existing books.**
+
+> **WITHDRAWN — this is what the first draft said, kept visible on purpose:**
+>
+> > *Books whose CSS image is **under** 512 KB: identical output.*
+>
+> **That was false**, and it was false in the direction that matters: for a
+> book where the same file is used as an `@page` background *and* as a prose
+> image, the first draft of this proposal turned `101.6601` PAINTS into
+> `0.0000` DROPPED — **and the audit did not fire** (`audit fired: 0`). It
+> would have converted working books into blank paper, silently, with no
+> diagnostic. See Amendment 1. Amendment 1's §2.1b is what makes the corrected
+> claim true.
+
+With §2.1b in place, three groups:
+
+- Books whose CSS image is **under** 512 KB and **not** also referenced by an
+  element: identical output. Measured — the `under` PDF is 13,525 B today and
+  13,526 B under this proposal, same pixel diff (`98.3307`).
+- Books with the **collision** (same file in CSS and prose, any size):
+  identical output, measured — `101.6601` both before and after. They now cost
+  one duplicated file in the bundle (below).
 - Books whose CSS image is **over** 512 KB: they start printing what they
   always declared. `dc-op-manual`'s downscale-to-306,778-bytes workaround
   becomes unnecessary (it can go back to full resolution), and its
   `html { background-image }` rule stops being load-bearing (§1b) — it becomes
   safe to delete, which today it is not.
 
-**One real regression risk.** A preload for an image used only by a rule that
-never matches (a `@media screen` block, an unused component) is now always
-fetched, and Chrome will log "preloaded but not used". On the print path that
-is a local file read. On a published `--format html` bundle it is a real
-download. I am accepting that rather than adding a predicate to avoid it: the
-predicate is the machinery, and §2.2 shows targeting is exactly what breaks the
-`var()` shape.
+**Two accepted regressions, both from Amendment 1.**
+
+1. **A file used from both CSS and prose ships twice** — once at its authored
+   path for the prose reference, once content-addressed for the CSS one.
+   Measured at 189 B × 2 on the collision fixture; a 3.7 MB brick used both
+   ways would add 3.7 MB to the bundle. Content-addressing still dedupes
+   *within* CSS, so N stylesheet references to one file remain one copy.
+2. **Built CSS assets carry content-hash filenames** (`assets/15311b….png`)
+   instead of authored ones. Prose images keep theirs. Someone reading the
+   built bundle loses the authored names for CSS assets — and gains
+   indefinitely-cacheable ones.
+
+Both are author-visible and I am not the right lens to weigh them; that is with
+the author-outcome review.
+
+**One further regression risk, unchanged from the first draft.** A preload for
+an image used only by a rule that never matches (a `@media screen` block, an
+unused component) is now always fetched, and Chrome will log "preloaded but not
+used". On the print path that is a local file read. On a published
+`--format html` bundle it is a real download. I am accepting that rather than
+adding a predicate to avoid it: the predicate is the machinery, and §2.2 shows
+targeting is exactly what breaks the `var()` shape.
 
 ---
 
@@ -405,8 +644,14 @@ principled option it looks like.
 ### 6.1 "Always inline CSS images" — the strongest rival, and the one I reject on a measured number
 
 It is genuinely attractive under my own lens: zero new code, one policy,
-immune to every shape including `var()`, and it is the option that actually
-*deletes* the preview plumbing (§1a) — `onCssAssets`, `ServerState.cssAssets`,
+immune to every shape including `var()` — **and, I must concede after
+Amendment 1, immune to the collision class as well**, since a `data:` URI is
+not a URL any element can request and therefore cannot have its preload
+consumed. That is a real point in its favour that the first draft did not know
+to make. §2.1b makes my proposal immune to the same class by construction, so
+the two now tie on immunity; the rest of this section is why they do not tie
+overall. It is also the option that actually *deletes* the preview plumbing
+(§1a) — `onCssAssets`, `ServerState.cssAssets`,
 the HTTP route branch, `HASHED_ASSET_DIR`, `contentHash`, `InlineStylesResult.copies`,
 the required `cssAssets` parameter across five preview modules,
 `stageBookAssets`'s `cssAssets` option, and the parity gate's collector. That
@@ -502,14 +747,60 @@ gate depends on. Both are additive.
 
 The form that *is* load-blocking (§1d) and therefore looks strictly better.
 Measured, it **fails through our pipeline** while the preload succeeds (§1e),
-and it puts an element in `<body>` that author `:last-child` / `:nth-child`
-selectors can see. Rejected on measurement, not on taste.
+and the trigger is now bounded to the build's post-load device-metrics
+override (§1f). It could be revived by applying a dummy override before
+navigation — and §1f is explicit that we should not, because that stacks a
+second undocumented Chromium behaviour under our correctness with no removal
+trigger. It also puts an element in `<body>` that author `:last-child` /
+`:nth-child` selectors can see, and — after Amendment 1 — an element that
+would **consume the very preload the page box needs**. Rejected on
+measurement, not on taste.
 
 ### 6.5 "Print twice"
 
 Refuted by the analysis's A3 and by my own §1e: with the response held
 2500 ms, prints #1 *and* #2 both drop. The second print is not a fix, it is a
 race that usually wins — and it doubles the print cost of every book to buy it.
+
+### 6.6 The three ways to *handle* the collision instead of removing it — *added by Amendment 1*
+
+When the referee surfaced the collision, three fixes were on the table besides
+§2.1b. All three are additive; all three are worse.
+
+**"Emit the preload with a distinguishing attribute so the `<img>` cannot
+consume it."** Self-defeating by construction. Preload matching keys on
+(URL, destination, mode, credentials); an `<img>` and a CSS background image
+are both `destination: image`, `mode: no-cors`, same-origin credentials. There
+is no axis that separates them, so any attribute that excludes the `<img>`
+excludes the page box too. *(Reasoned from the matching keys, not measured —
+but the deeper objection does not need the measurement: it would make us depend
+on preload-list matching internals, the most shim-specific and least deletable
+thing in the entire design.)*
+
+**"Keep `data:` for images that appear in BOTH CSS and prose."** It restores
+content-dependence — the exact disease the analysis set out to kill, merely
+re-triggered. An author adding `![](images/tile.png)` to a chapter would
+silently change how the CSS asset is represented and how big the document is.
+It is also strictly more machinery than §2.1b: `inlineStyles` runs at
+`index.ts:92`, **before** `assembleBookHtml` at `:99`, so the inliner does not
+yet know the prose refs — you need a second pass or backward plumbing. And it
+is unbounded: a 3.7 MB brick used both ways becomes ~5 MB of base64, i.e. the
+always-inline cost arriving unpredictably because someone added a figure. It
+also restores a third image policy, undoing §3's whole point.
+
+**"Accept it and make the audit hard-fail the build."** Measured: the audit
+fires **zero** times on the collision, because the consuming `<img>` satisfies
+its "referenced elsewhere" test. Hard-failing therefore changes nothing until
+you first *invert* the predicate to *"referenced by an element ⇒ the preload is
+consumed ⇒ fail"* — which writes a Chromium preload-consumption internal into
+our diagnostics, the least deletable thing we could ship. And what it would
+then hard-fail is a perfectly reasonable book: a texture used as page
+background *and* shown as a figure. Telling that author their book is illegal
+because of a browser bug is the worst outcome available.
+
+§2.1b beats all three on the same test: it does not detect the collision, does
+not special-case it, and does not warn about it. It removes the precondition —
+a URL an element can name — so there is nothing left to handle.
 
 ---
 
@@ -531,17 +822,39 @@ Not the shim objection — I think §5 answers that. The real one is this:
 > pages of blank paper inside a valid PDF. Always-inline has no mechanism to
 > misunderstand: there is no load.
 
-I think this is right and I am not going to argue it away. What I can say:
+**Amendment 1 sharpens this rather than answering it, and it is worth being
+exact about how much ground moved.**
 
-- It is a reason to **require the end-to-end regression test in §2.4**, not a
-  reason to prefer always-inline. That test converts "silently stops working on
-  the next Chromium" into "the build fails on the next Chromium", which is the
-  outcome we actually want and which *no* option gives us for free —
-  always-inline included, since its determinism is also inferred (§6.1).
-- The asymmetry is itself an argument against the alternative that looks safer:
-  anyone proposing an element-based second reference is proposing the form that
-  measurably does not work here.
-- It should be run down before merge. §8 lists exactly how.
+*Partly retired.* The trigger is now **bounded**: the first transition into a
+device-metrics override after load (§1f), reproduced outside the pipeline. And
+the mechanism is now known to be **identity, not timing** (§1g) — the fix holds
+at 0/5/30/120 s between load and print, and one entry serves many style
+consumers. The fix is more deterministic than this objection assumed.
+
+*Sharpened, and this is the part that stands.* The objection said "unknown
+mechanism"; the honest restatement is **bounded but unexplained** — and
+Amendment 1 is the proof that this costs real money. The collision was found by
+the referee, not by me, and it existed *precisely because* nobody had
+articulated that preload entries are consumable. I did not know the mechanism,
+so I did not predict the failure mode, so my proposal would have shipped a
+silent blank-page regression. That is not a hypothetical about a future
+Chromium bump. It already happened once, on this Chromium, in this document.
+
+So what I can say is narrower than before:
+
+- It is a reason to **require the end-to-end regression test in §2.4 —
+  including the collision case**, not a reason to prefer always-inline. That
+  test converts "silently stops working" into "the build fails", which is the
+  outcome we want and which *no* option gives us for free — always-inline
+  included, since its determinism is also inferred (§6.1).
+- The `<img>` asymmetry remains an argument against the alternative that looks
+  safer: anyone proposing an element-based second reference is proposing the
+  form that measurably does not work here.
+- **The residual is the honest form of the removal trigger** (§1g): any
+  Chromium change to preload-list matching, entry lifetime, or when page style
+  resolves during pagination breaks this, and the end-to-end test is the only
+  thing that would tell us. That is the price of a bounded-but-unexplained fix,
+  and it should be paid deliberately rather than assumed away.
 
 A second objection I can only partly answer: **the preload is always-on and
 unconditional**, so it fetches images that a particular build may not paint
@@ -573,17 +886,30 @@ disagreement with me, not a confused one.
 | 13 | `dc-op-manual`'s brick has an `html { background-image }` second reference | `native-furniture.css:32` |
 | 14 | authors have no `<head>` injection point | `assemble.ts:184–196`, manifest schema |
 
-All product-code edits used for 1–10 were reverted; `git diff` is empty.
+**Added by Amendment 1:**
+
+| # | claim | result |
+|---|---|---|
+| 15 | **the collision** (one 189 B tile as `@page` background *and* `![]()` prose image), status quo | `101.6601` **PAINTS** |
+| 16 | the same book under the first draft of this proposal | **`0.0000` DROPPED**, and `audit fired: 0` |
+| 17 | the same book with §2.1b (content-address every CSS image) | **`101.6601` PAINTS** — identical to status quo |
+| 18 | §2.1b does not disturb the other shapes | over `91.2541`, under `98.3307`, `var()` `91.2541` |
+| 19 | **multi-consumer**: page box + `@top-center` + `@bottom-center` + `@left-middle`, one URL, one preload | `0.0000` → **`89.1921` PAINTS** |
+| 20 | content-addressing produces two distinct URLs in the built bundle | `url("assets/15311b5348c233b4.png")` + `href="assets/…"` vs `src="images/tile.png"`, 2 files |
+| 21 | the §1e trigger is the **first** post-load device-metrics override, not the call | pre-nav override present → 15,620 B PAINTS; absent → 14,403 B DROPPED |
+
+All product-code edits used for 1–10 and 15–20 were reverted; `git diff` is
+empty.
 
 **Not measured — and #1 and #2 should block merge:**
 
-1. **Why §1e happens.** Bisect the build: run the pipeline's exact CDP sequence
-   step by step against the staged document with the `<img>` guard until the
-   step that defeats it is identified. Until then the preload's success is an
-   observation, not an explanation. (Candidates I ruled out: emulated print
-   media, the pinned device metrics, tagged-PDF/outline options, stream
-   transfer, elapsed time to 12 s, and DOM mutation — the guard is present and
-   `complete` at print time.)
+1. **Why §1e happens.** *Partly closed by Amendment 1:* the referee bisected
+   the trigger to `Emulation.setDeviceMetricsOverride`, and §1f narrows it to
+   the first post-load transition into an override. **Still open: the Blink
+   reason.** Why an `<img>`-owned resource does not serve the page box when a
+   preload entry does, and why a device-metrics transition changes that.
+   Reading `css_image_value.cc` / the `ResourceFetcher` preload path is what
+   would close it. Until then the fix is bounded, not explained (§1g).
 2. **The parity gate.** `scripts/native-parity-gate.ts`, green with an empty
    allowlist. A `<link>` in `<head>` establishes no box, and page counts were
    unchanged in every build I ran (1 page before and after), but the gate is
@@ -606,6 +932,11 @@ All product-code edits used for 1–10 were reverted; `git diff` is empty.
 
 The 512 KB number is not a threshold to tune — it is a coin flip we have been
 asking every book to make, and the fix is to stop flipping it: copy every CSS
-image like every other image, declare each one in `<head>` the way the platform
-provides for, and keep the four lines that do it deletable the day Chromium
-fixes #152.
+image like every other image, give it a name only the stylesheet can utter,
+declare each one in `<head>` the way the platform provides for, and keep the
+four lines that do it deletable the day Chromium fixes #152.
+
+And one sentence about the process, because it is the more useful lesson: the
+first draft of this document would have turned working books into blank paper,
+the audit would not have said a word, and the only reason it did not ship is
+that somebody adversarially looked for the shape I had not tested.
