@@ -216,11 +216,30 @@ describe("Failure & conflict copy reassures that local work is safe", () => {
 
 describe("Table of contents — collapsible tree matching the Files panel", () => {
   const left = read("src/lib/components/LeftPanel.svelte");
-  test("renders an accessible tree with expanded-state + level semantics", () => {
-    expect(left).toContain('role="tree"');
-    expect(left).toContain('role="treeitem"');
-    expect(left).toContain("aria-expanded={hasChildren ? isOpen : undefined}");
-    expect(left).toContain("aria-level={depth}");
+  // The rows used to claim role="tree"/"treeitem" while nesting two <button>s
+  // inside each treeitem. ARIA forbids interactive descendants there, so
+  // aria-level/aria-expanded/aria-selected sat on an <li> that never receives
+  // focus and were never announced, and the tree role advertised an
+  // arrow-key contract the panel does not implement. The markup now promises
+  // only what it honours: a plain nested list (depth comes from the <ul>
+  // nesting itself) with the state on the button focus actually lands on --
+  // the same shape the Files panel has always had.
+  test("does not claim a tree contract the keyboard does not honour", () => {
+    expect(left).not.toContain('role="tree"');
+    expect(left).not.toContain('role="treeitem"');
+    expect(left).not.toContain("aria-level=");
+    expect(left).not.toContain("aria-selected={node.entry.index === activeEntryIndex}");
+  });
+  test("expanded + current state live on the focusable label button", () => {
+    // Not on the <li>: the label button is the element that takes Tab focus
+    // AND the element ArrowLeft/ArrowRight are bound to, so it is the real
+    // expansion control.
+    expect(left).toMatch(
+      /class="toc-item"[\s\S]{0,400}aria-expanded=\{hasChildren \? isOpen : undefined\}/,
+    );
+    expect(left).toMatch(
+      /class="toc-item"[\s\S]{0,400}aria-current=\{node\.entry\.index === activeEntryIndex \? "true" : undefined\}/,
+    );
   });
   test("derives the hierarchy from the flat outline and reveals the active branch", () => {
     expect(left).toContain("buildTocTree(outline)");
