@@ -115,23 +115,27 @@
   const tocTree = $derived(buildTocTree(outline));
   const activeEntryIndex = $derived(outline[activeOutlineIndex]?.index);
   const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
-  let tocExpanded = $state<Set<string>>(new Set());
+  // The author's OWN expand/collapse decisions, keyed by node. Revealing the
+  // active item's ancestors is only the DEFAULT for a node the author has not
+  // touched — it used to be OR-ed over this state, which made "Collapse X" a
+  // dead control on every ancestor of the active heading: the second operand
+  // held it open no matter how often the twisty was clicked.
+  let tocChoice = $state<Map<string, boolean>>(new Map());
   function tocOpen(key: string): boolean {
-    return tocExpanded.has(key) || activeAncestorKeys.has(key);
+    return tocChoice.get(key) ?? activeAncestorKeys.has(key);
   }
   function toggleToc(key: string) {
-    const next = new Set(tocExpanded);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    tocExpanded = next;
+    const next = new Map(tocChoice);
+    next.set(key, !tocOpen(key));
+    tocChoice = next;
   }
   // Selecting a section navigates to it AND expands it (user feedback), so its
   // subsections come into view — expand-then-navigate, never a collapse.
   function selectToc(node: TocNode) {
     if (node.children.length > 0 && !tocOpen(node.key)) {
-      const next = new Set(tocExpanded);
-      next.add(node.key);
-      tocExpanded = next;
+      const next = new Map(tocChoice);
+      next.set(node.key, true);
+      tocChoice = next;
     }
     onJumpToOutline?.(node.entry);
   }

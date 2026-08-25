@@ -19,6 +19,15 @@ name: Gutterpress desktop app gates
 #     editor-toggle-loads-module   ~5s     edit toggle, autosave delay, Ctrl+S
 #     panel-reopen-on-failed-open  ~2-4s   never-stranded after a failed open
 #     problems-panel               ~7s     diagnostics panel + click-through
+#     editor-opens-with-content    ~40s    book opened straight into Edit mode:
+#                                          editor mounts with the first chapter,
+#                                          a viewer click loads that block's
+#                                          source, a TOC click moves BOTH panes,
+#                                          and the TOC collapses on the active
+#                                          branch. Each check was observed red
+#                                          against 0.10.2 before its fix; the
+#                                          checks record rather than abort, so
+#                                          one run reports every defect present.
 #
 #   problems-panel was excluded when this gate first landed, for a stale
 #   assertion rather than flake: it asserted sev-error for a missing image, but
@@ -136,6 +145,7 @@ jobs:
           xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
+          xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
           pkill -f 'out/main/main.js' || true
 
       - name: Run render-perf gate

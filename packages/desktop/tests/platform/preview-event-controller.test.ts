@@ -105,6 +105,7 @@ function make(): Harness {
     editorSync: {
       invalidatePending: () => log.push("invalidateEditorSync"),
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
+      revealEditorLine: (chapter, line) => log.push(`revealEditorLine:${chapter}:${line}`),
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -379,9 +380,28 @@ test("sourceLineChanged updates outline state but never moves the editor", () =>
   expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
-test("normal preview activation never moves or opens the editor; Go to source owns navigation", () => {
+// Clicking a block in the viewer while the editor is open must bring that
+// block's source into the editor and scroll to it (product-owner report, 0.10.2).
+// The host owns the "is the editor open?" decision — the controller just
+// forwards the activation, so a click with the editor CLOSED still opens
+// nothing (that is `revealEditorLine`'s own no-op, asserted in the app drive).
+test("clicking a source-mapped block in the viewer reveals that line in the editor", () => {
   const h = make();
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
+  expect(h.log).toContain("revealEditorLine:ch1.md:12");
+});
+
+test("an activation with no source line is ignored (page furniture, unmapped block)", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: null, chapter: "ch1.md" } });
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
+});
+
+// Scroll-driven sync stays chrome-only: that feedback loop caused delayed
+// editor jumps after a hot reload. Only an explicit CLICK moves the editor.
+test("sourceLineChanged still never moves the editor", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch2.md" } });
   expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
