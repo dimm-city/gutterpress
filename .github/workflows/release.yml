@@ -140,7 +140,19 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
+      # Chrome for Testing ships no sandbox helper, and this runner's AppArmor
+      # blocks unprivileged user namespaces — so the PINNED binary aborts with
+      # "No usable sandbox!" where the runner image's google-chrome-stable
+      # (which ci.yml uses) launches fine. That difference only became visible
+      # when #194 made the pin actually take effect.
+      #
+      # browser-pool.ts reads these flags from GUTTERPRESS_CHROMIUM_ARGS and
+      # its own comment names this exact case ("containers/CI"). cdp.ts's
+      # launcher already passes --no-sandbox; the pool did not, because nothing
+      # set the variable in any workflow.
       - name: Run tests
+        env:
+          GUTTERPRESS_CHROMIUM_ARGS: "--no-sandbox --disable-dev-shm-usage"
         run: bun --filter '*' test
 
       - name: Check release distribution tooling and metadata
