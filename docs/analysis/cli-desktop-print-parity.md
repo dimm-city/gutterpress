@@ -27,13 +27,14 @@ whether there is a PDF at all.**
    identical), printed by both hosts: identical page count, identical page size,
    identical embedded image objects, identical text layer, and **mean-abs-diff
    `0.0000` on every page** — colour, 200 dpi on the purpose-built fixture and
-   150 dpi on a real 66-page book. The only differences in the artefact are the
-   `Producer` string (`Skia/PDF m151` vs `m148`) and the file length that string
-   changes (§4).
+   150 dpi on a real 66-page book. On the 289-page `dc-op-manual/field-guide`,
+   all **2,869** embedded image objects and **every word's bounding box on every
+   page** are identical. The only differences in any artefact are the `Producer`
+   string (`Skia/PDF m151` vs `m148`) and the bytes that string costs (§4).
 2. **The desktop is NOT in the immunised state, and neither host waits for
    resources.** Running the published mechanism fixture
    (`tools/page-background-mechanism.mjs`) through the Electron host, cell for
-   cell: **all ten gated cells produced the same verdict and the same
+   cell: **all thirteen gated cells produced the same verdict and the same
    independent server hit counts as the CDP host**, including the `serverHits=2`
    cache-wipe signature. With the tile held 1500 ms server-side,
    `webContents.printToPDF` returned in **12 ms** — it does not reach
@@ -46,7 +47,9 @@ whether there is a PDF at all.**
    the CLI's Chromium happens to be launched by puppeteer with
    `--hide-scrollbars`. Measured consequence, same book, byte-identical source:
    **the CLI hard-errors with exit 3 and produces no PDF; the desktop builds
-   successfully and ships one** (§6).
+   successfully and ships one**. On the real field guide the desktop emits
+   **13** low-DPI print-quality warnings where the CLI emits **21** — eight real
+   warnings the app's author never sees (§6).
 4. **The cause is that the print path does not own the whole browser state.**
    The engine explicitly owns viewport, emulated media, the ready probe and the
    print options — and those are shared and correct. Scrollbar visibility is not
@@ -199,6 +202,22 @@ chapters, its own 800-line stylesheet:
 | **raster, colour, 150 dpi** | — | **`0.0000` on all 66 pages** |
 | bytes | 600,249 | 600,706 |
 
+**Art-heavy real book** — `dc-op-manual/field-guide`: 289 pages, 621 × 810 pt,
+a markdown-it plugin, seven stylesheets, `.gp-flush` pins, `@page` background
+art, Tier 3 with 17 cross-reference targets, 172 MB of output. Built through
+each host's own product path with the same options (`--skip-pre-validate` on
+both), read-only against the source repo:
+
+| | CLI | desktop |
+|---|---|---|
+| staged `book.html` md5 | `26005a08df9929781d6fa7295a0e3356` | **identical** |
+| pages | 289 | 289 |
+| page size | 621 × 810 pt | 621 × 810 pt |
+| **embedded image XObjects** | **2,869** | **identical list** — every page, pixel size, colour space and effective ppi |
+| **`pdftotext -bbox`, every word on all 289 pages** | 31,313 lines | **identical** apart from the two timestamp `<meta>` lines |
+| **raster, grey, 100 dpi, 10 sampled pages** | — | **`0.0000` on every sampled page** |
+| bytes | 172,199,374 | 172,199,509 |
+
 **The engine's internal decisions agree too.** Driving `build()` directly on the
 same staged file with progress logging, on both hosts: identical
 `--gp-content-h: 715px`, identical tier (3), passes (1), prints (1), page count
@@ -234,9 +253,14 @@ bytes. The only thing swapped is the print driver.
 | `<img>` guard, **override AFTER load** | DROPPED, **2** | **DROPPED, 2** |
 | `<img>` guard, **override BEFORE navigation** | PAINTS, 1 | **PAINTS, 1** |
 | preload guard, override AFTER load | PAINTS, 1 | **PAINTS, 1** |
+| preload + `<img>`, no pre-nav override, `file://` | DROPPED | **DROPPED** |
+| `<img>` + preload, no pre-nav override, `file://` | DROPPED | **DROPPED** |
+| preload alone, no pre-nav override, `file://` | PAINTS | **PAINTS** |
+| preload + `<img>`, PRE-NAV override, `file://` *(ungated)* | PAINTS | **PAINTS** |
 
-Hit counts are the server's own account, not the browser's. Every gated cell
-matched, including the `2` on the cache-wipe row — the signature of
+Hit counts are the server's own account, not the browser's (the `file://` rows
+have no server, hence no count). Every gated cell matched, including the `2` on
+the cache-wipe row — the signature of
 `DevToolsEmulator::EnableDeviceEmulation` evicting the memory cache on the first
 transition into emulation.
 
@@ -302,11 +326,31 @@ same source, same manifest, same lib:
 | **CLI** | **3** | `--engine native failed: content wider than the page content box … div.overwide — 450px > 442px content box`. **No PDF.** |
 | **desktop** | **0** | builds; writes a 1,465,619-byte PDF; no width diagnostic at all. |
 
-An author who exports from the desktop app gets a book Chromium is silently
-shrinking to ~0.98×. The same author running `gutterpress build` on the same
-folder is told to fix it and gets no artefact. That is the divergence, and it is
-in the direction that hides the problem from the GUI user — the non-technical
-author this project exists for.
+**And on the real book it silently suppresses print-quality warnings.** Same
+`dc-op-manual/field-guide`, same staged bytes:
+
+| diagnostic | CLI | desktop |
+|---|---:|---:|
+| `engine.image.low-dpi` | **21** | **13** |
+| `engine.flush.margin-box` | 7 | 7 |
+| `engine.width.intrinsic` | 1 | 1 |
+
+**Eight warnings the CLI raises never reach the desktop author.** The mechanism
+is visible in the surviving pairs — the same image is reported as
+`952px wide printed at 8.63in = 110 DPI` by the CLI and
+`952px … at 8.47in = 112 DPI` by the desktop — and the eight that vanish are the
+`2550px` chapter-opener plates, which measure `8.63in = 296 DPI` on the CLI
+(under the 300 bar, warn) and `8.47in ≈ 301 DPI` on the desktop (over it,
+silent). A book that fails the print shop's DPI bar is told so by the CLI and
+not by the app.
+
+An author who exports from the desktop app gets an artefact plus silence. The
+same author running `gutterpress build` on the same folder is told the engine's
+own estimate of the damage — *"scales the WHOLE document … to about 0.98x its
+declared size … the shrink is invisible in the PDF"* — and gets no artefact
+until they fix it. That is the divergence, and it runs in the direction that
+hides the problem from the GUI user: the non-technical author this project
+exists for.
 
 ---
 
@@ -341,7 +385,7 @@ with no product source touched:
 | | desktop, today | desktop, with the call |
 |---|---|---|
 | low-DPI diagnostic | `5.84in = 137 DPI` | **`6.00in = 133 DPI`** — identical to the CLI |
-| width-check fixture | exit 0, ships a PDF | **exit 1, `div.overwide — 450px > 442px`** — identical to the CLI |
+| width-check fixture | exit 0, ships a PDF | **build fails: `div.overwide — 450px > 442px content box`** — the CLI's message, verbatim |
 | baseline book vs CLI's PDF | `0.0000` | **`0.0000`** — the call changes nothing in the print |
 
 ---
@@ -408,8 +452,9 @@ the two `setDeviceMetricsOverride` calls that pin the sheet — the print page a
 // something asks; the CLI's browser is launched by puppeteer, which passes
 // --hide-scrollbars in its defaults, and an Electron BrowserWindow is not.
 // Measured 2026-08-24: the same document measured 576px on the CLI and 561px
-// on the desktop, and a book 8px inside the limit hard-errored on one host and
-// shipped on the other. Owned here so no host can contribute it.
+// on the desktop, and one box that measured 450px against a 442px limit on the
+// CLI measured 435px on the desktop — hard error on one host, shipped book on
+// the other. Owned here so no host can contribute it.
 await page.send("Emulation.setScrollbarsHidden", { hidden: true });
 ```
 
@@ -443,7 +488,7 @@ version**, and that cannot be removed without shipping or requiring a browser
 (option C). A two-host CI gate samples that residual at exactly one point while
 costing a job, a runtime doubling and an allowlist. Meanwhile the evidence that
 the version gap is currently benign is already strong and was cheap: two whole
-books at `0.0000` across a three-milestone gap, and ten gated mechanism cells
+books at `0.0000` across a three-milestone gap, and thirteen gated mechanism cells
 matching exactly.
 
 The cheaper structural answer, and the one that generalises, is in §10: a
@@ -497,15 +542,16 @@ than it was for #186, where the change was a `<link>` in `<head>`.
 
 ## 11. What I could not determine
 
-1. **The art-heavy real book.** `dc-op-manual/field-guide` (1.3 GB of assets, a
-   plugin, seven stylesheets, sixteen margin boxes on one URL) is the book that
-   motivated #152. Its CLI build was still running when this document was
-   written; the comparison is **not measured**. The staged `book.html` was
-   preserved so the run can be repeated on both hosts without re-staging. Until
-   it lands, §4's generalisation rests on a 5-page purpose-built fixture and a
-   66-page real book.
+1. **Whole-book pixels on the art book.** `dc-op-manual/field-guide` was
+   measured (§4, §6), but its 289 colour pages could not be differenced
+   pixel-by-pixel in this environment — no numpy, no ImageMagick, and pure
+   Python cannot afford ~3.6 GB of byte comparisons. Ten sampled pages at 100 dpi
+   grey came out `0.0000`; the exhaustive checks on that book are structural
+   (2,869 image XObjects, every word's bbox on all 289 pages). A page whose only
+   difference is colour, between the sampled pages, would not have been caught.
 2. **Tier 2 and the print-production path.** Bleed, slug, crop marks, signature
-   imposition and PDF/X were not exercised. Post-processing is pure Node and
+   imposition and PDF/X were not exercised (the field guide does exercise
+   `.gp-flush` and generated page contexts). Post-processing is pure Node and
    host-independent by construction (read from source), but the geometry that
    feeds it comes from the measurement channel §6 is about.
 3. **Colour management.** Puppeteer passes `--force-color-profile=srgb`;
@@ -542,10 +588,12 @@ than it was for #186, where the change was a `<link>` in `<head>`.
 | 3 | the comparison is sensitive | preload-guard control: `17.03`–`29.88`, image objects 3 → 8 |
 | 4 | neither host is nondeterministic | CLI×2 and desktop×2 both `0.0000` |
 | 5 | the engine's internal decisions agree | identical tier/passes/prints/pageCount/converged/viewport/`pageMap`/`predicted.pageMap`/`--gp-content-h` |
-| 6 | a fresh Electron `BrowserWindow` carries no device emulation | mechanism §B: all four cells match the CDP host, including `serverHits=2` on the cache-wipe row |
+| 6 | a fresh Electron `BrowserWindow` carries no device emulation | mechanism §B: all four cells match the CDP host, including `serverHits=2` on the cache-wipe row; §A and §C match too (13 gated cells, 0 divergences) |
 | 7 | `webContents.printToPDF` does not wait for resources | tile held 1500 ms → print#1 = 12/13/12 ms (CDP: 17/22/24 ms) |
 | 8 | the measurement channel diverges by 15 px | CLI 576/576/576 scrollbar 0; desktop 576/561/561 scrollbar 15 |
 | 9 | the divergence decides the build | same source: CLI exit 3 no PDF, desktop exit 0 + 1,465,619 B PDF |
+| 9b | it silently suppresses real warnings | `dc-op-manual/field-guide`: 21 `engine.image.low-dpi` on the CLI, **13** on the desktop; the other two codes match 7/7 and 1/1 |
+| 9c | the art book's artefacts still agree | 289 pages, 2,869 identical image XObjects, identical word bboxes on every page, `0.0000` on 10 sampled pages |
 | 10 | the cause is `--hide-scrollbars`, not Electron | one host, three legs: 576 / 561 / 576 |
 | 11 | the proposed call fixes it on both hosts | desktop diagnostics and width-check verdict become identical to the CLI; PDF unchanged at `0.0000` |
 | 12 | Electron silently ignores CDP-shaped print options | `marginTop`/`paperWidth` produce byte-identical output, no throw |
