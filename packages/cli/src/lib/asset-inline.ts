@@ -182,7 +182,7 @@ function dataUri(bytes: Buffer, ext: string): string {
   return `data:${mimeFor(ext)};base64,${bytes.toString("base64")}`;
 }
 
-/** Short content hash used to name copied (too-large-to-inline) images. */
+/** Short content hash used to name copied CSS images. */
 function contentHash(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
@@ -267,7 +267,6 @@ function importTarget(atRule: AtRule): string | null {
  */
 async function inlineOne(
   cssPath: string,
-  projectDir: string,
   copies: Map<string, AssetCopy>,
   warnings: string[],
   seen: Set<string>
@@ -348,7 +347,7 @@ async function inlineOne(
   });
   for (const { node, target } of imports) {
     const importedAbs = path.resolve(cssDir, stripUrlSuffix(decodeRef(target)));
-    const inlined = await inlineOne(importedAbs, projectDir, copies, warnings, seen);
+    const inlined = await inlineOne(importedAbs, copies, warnings, seen);
     node.replaceWith(wrapImportConditions(node, postcss.parse(inlined, { from: importedAbs })));
   }
 
@@ -370,7 +369,7 @@ export async function inlineStyles(
   const parts: string[] = [];
   for (const rel of stylePaths) {
     const abs = path.resolve(projectDir, rel);
-    const css = await inlineOne(abs, projectDir, copies, warnings, seen);
+    const css = await inlineOne(abs, copies, warnings, seen);
     if (css.trim().length > 0) {
       parts.push(`/* ${toPosix(path.relative(projectDir, abs))} */\n${css.trim()}`);
     }

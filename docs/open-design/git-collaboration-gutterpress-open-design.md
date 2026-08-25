@@ -125,8 +125,8 @@ shared/themes/publisher/theme.css → url("../../fonts/Publisher.woff2")
                                   → embedded as a data URI in the book
 ```
 
-Fonts always embed. Images under about 512 KB embed; larger ones are copied
-beside `book.html`. There is no asset list, no basename flattening, and no
+Fonts always embed. Images are copied beside `book.html` under a
+content-addressed name. There is no asset list, no basename flattening, and no
 collision rule to remember — to shadow a shared decision, list the book's own
 stylesheet later and let the cascade settle it.
 

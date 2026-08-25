@@ -70,9 +70,9 @@ shared/themes/publisher/theme.css
 
 - **Fonts always embed.** This is what guarantees the exact face reaches
   Chromium and therefore the PDF.
-- **Images ≤ ~512 KB embed**; larger ones are copied next to `book.html`,
-  keeping their project-relative path when they live inside the book and
-  content-addressed under `assets/` when they come from outside it.
+- **Images are copied**, never embedded, under a content-addressed name in
+  `assets/` — wherever they live. That keeps a CSS image's URL distinct from
+  any prose image's, which is what lets an `@page` background print.
 - **A missing stylesheet or font is a build error**, named and located, at read
   time — not a silent fallback during pagination.
 - **Remote `url()`s are left untouched** and warned about; print work should not
