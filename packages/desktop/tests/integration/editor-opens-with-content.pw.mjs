@@ -430,19 +430,22 @@ if (headingId == null) {
 // ── CHECK 4 — the TOC collapse control works on the ACTIVE branch ───────────
 // Select a nested heading so its parent becomes a force-revealed ancestor, then
 // demand that the parent's own "Collapse" button actually collapses it.
+// The expandable-row handle is the .toc-item BUTTON, not the <li>: the rows are
+// a plain nested list (no treeitem role), and aria-expanded lives on the button
+// because that is the element focus lands on and the element the arrow keys act
+// on -- i.e. the state this reads is the state a screen reader is told.
 const parentName = await evalJs(`(() => {
-  const li = [...document.querySelectorAll('.toc-list li[role="treeitem"]')]
-    .find(l => l.getAttribute('aria-expanded') !== null);
+  const btn = document.querySelector('.toc-list .toc-item[aria-expanded]');
+  const li = btn?.closest('li');
   if (!li) return null;
   const tw = li.querySelector(':scope > .toc-row > .toc-twisty');
-  if (li.getAttribute('aria-expanded') === 'false') tw.click();
+  if (btn.getAttribute('aria-expanded') === 'false') tw.click();
   return li.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? null;
 })()`);
 if (!parentName) fail("CONTROL: no expandable TOC row in this book");
 await sleep(800);
 const childName = await evalJs(`(() => {
-  const li = [...document.querySelectorAll('.toc-list li[role="treeitem"]')]
-    .find(l => l.getAttribute('aria-expanded') !== null);
+  const li = document.querySelector('.toc-list .toc-item[aria-expanded]')?.closest('li');
   const child = li?.querySelector(':scope > ul.nested > li > .toc-row > .toc-item');
   if (!child) return null;
   child.click();
@@ -452,16 +455,17 @@ if (!childName) fail("CONTROL: expandable TOC row rendered no children to select
 await sleep(2500);
 
 const readParent = () => evalJs(`(() => {
-  const li = [...document.querySelectorAll('.toc-list li[role="treeitem"]')]
+  const li = [...document.querySelectorAll('.toc-list li')]
     .find(l => (l.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? '') === ${JSON.stringify(parentName)});
-  return li ? { exp: li.getAttribute('aria-expanded'), kids: !!li.querySelector(':scope > ul.nested') } : null;
+  const btn = li?.querySelector(':scope > .toc-row > .toc-item');
+  return li ? { exp: btn?.getAttribute('aria-expanded'), kids: !!li.querySelector(':scope > ul.nested') } : null;
 })()`);
 const parentBefore = await readParent();
 if (parentBefore?.exp !== "true") {
   fail(`CONTROL: selecting "${childName}" did not leave "${parentName}" revealed (got ${JSON.stringify(parentBefore)})`);
 }
 await evalJs(`(() => {
-  const li = [...document.querySelectorAll('.toc-list li[role="treeitem"]')]
+  const li = [...document.querySelectorAll('.toc-list li')]
     .find(l => (l.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? '') === ${JSON.stringify(parentName)});
   li.querySelector(':scope > .toc-row > .toc-twisty').click();
   return true;
@@ -475,7 +479,7 @@ check(
 
 // Re-expanding must still work, so the fix cannot have simply pinned it shut.
 await evalJs(`(() => {
-  const li = [...document.querySelectorAll('.toc-list li[role="treeitem"]')]
+  const li = [...document.querySelectorAll('.toc-list li')]
     .find(l => (l.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? '') === ${JSON.stringify(parentName)});
   li.querySelector(':scope > .toc-row > .toc-twisty').click();
   return true;
