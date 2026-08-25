@@ -2,20 +2,20 @@
 
 Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 
-> **Revision 2026-08-24 — the Paged.js premises are gone.** This ADR was written
-> against the Paged.js preview. Paged.js has since been removed
-> (`docs/native-only-migration-plan.md`); the viewer is now Chromium's own
-> multicol fragmenter (`packages/cli/src/engine/viewer/`). Two of the three
-> premises in Context died with it — and they were the two holding up the
-> floating-overlay design:
+> **Revision 2026-08-24 — two of the three premises are dead.** This ADR was
+> written against a preview that pre-dated the current engine. The viewer is
+> now Chromium's own multicol fragmenter
+> (`packages/cli/src/engine/viewer/`), and two of the three premises in
+> Context died with the change — the two that held up the floating-overlay
+> design:
 >
 > - **The DOM is no longer fragmented.** The native viewer "never chunks the
 >   DOM" (`fragment.ts` header): a block spanning pages is ONE element with
 >   several client rects, not N cloned elements. Split fragments, `data-ref`
 >   grouping and the `id`-stripping caveat no longer describe anything.
 > - **A DOM edit now re-paginates.** `Gutterpress.refresh()` → `relayout()`
->   rebuilds the strips from scratch (`buildStrips()`) and re-measures. Paged.js
->   had no such path.
+>   rebuilds the strips from scratch (`buildStrips()`) and re-measures. The
+>   earlier preview had no such path.
 >
 > **Unchanged and still load-bearing:** decisions 1–3 (line-based
 > `data-source-range`, `token.meta.line` for markers, the clean-buffer commit
@@ -39,9 +39,9 @@ affordance, and the obvious implementation (a WYSIWYG framework such as
 Milkdown or Tiptap owning the preview DOM) is not available to us. Three
 properties of this app rule it out, each verified by spike rather than assumed:
 
-1. **Paged.js fragments the document** — **DEAD 2026-08-24.** Under Paged.js,
-   a block overflowing a page was split into multiple DOM elements
-   (`data-split-from` / `data-split-to`) duplicating every attribute; a
+1. **The preview fragments the document** — **DEAD 2026-08-24.** In the
+   earlier preview, a block overflowing a page was split into multiple DOM
+   elements duplicating every attribute; a
    2000-word paragraph was observed splitting into 9 fragments across 9 pages,
    and a caret could not cross a fragment boundary. The native viewer splits
    nothing: one element, several client rects. This premise is what ruled out
@@ -111,8 +111,9 @@ code: `sourcedBlocks()` selects `[data-source-line]`, and
 rect top. A wrapper's top ties exactly with its first child's, the wrapper
 comes first in document order, and a tie never displaces it — so scroll-sync
 would resolve to the `@chapter` marker's line instead of the paragraph on
-screen, on every page of a multi-page chapter (Paged.js clones the wrapper per
-page). `preview-shell.js`'s `capture()`/`restore()` has the same exposure.
+screen, on every page of a multi-page chapter (the earlier preview cloned the
+wrapper per page). `preview-shell.js`'s `capture()`/`restore()` has the same
+exposure.
 
 Threading `meta` leaves `data-source-line` coverage byte-identical, which a
 regression test asserts by extracting and diffing all `data-source-line`
