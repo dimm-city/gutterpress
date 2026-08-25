@@ -53,6 +53,11 @@ interface PreviewEventEditorSync {
   /** Invalidate replies issued against a preview frame/render being replaced. */
   invalidatePending: () => void;
   updateActiveOutline: (line: number) => void;
+  /**
+   * Bring one source line into an ALREADY-OPEN editor. The host decides
+   * whether an editor is open at all — a click never opens the pane.
+   */
+  revealEditorLine: (chapter: string | null, line: number) => void;
 }
 
 export interface PreviewEventDeps {
@@ -135,6 +140,9 @@ export class PreviewEventController {
       case "sourceLineChanged":
         this.onSourceLineChanged(e.detail);
         break;
+      case "elementActivated":
+        this.onElementActivated(e.detail);
+        break;
       case "pageChanged":
         this.onPageChanged(e.detail);
         break;
@@ -213,6 +221,22 @@ export class PreviewEventController {
     const line = detail.sourceLine;
     if (typeof line !== "number") return;
     this.deps.editorSync.updateActiveOutline(line);
+  }
+
+  /**
+   * The author clicked a source-mapped block in the book. Bring that block's
+   * source into the editor and scroll to it.
+   *
+   * This is a CLICK, not scrolling: `sourceLineChanged` above stays chrome-only
+   * precisely because a scroll-driven editor jump is a feedback loop, but a
+   * deliberate click carries the author's intent to work on that block. The
+   * host's `revealEditorLine` is a no-op unless the editor pane is already
+   * open, so clicking around a book in viewer mode still opens nothing.
+   */
+  private onElementActivated(detail: PreviewEvent["detail"]): void {
+    const line = detail.sourceLine;
+    if (typeof line !== "number") return;
+    this.deps.editorSync.revealEditorLine(detail.chapter ?? null, line);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {
