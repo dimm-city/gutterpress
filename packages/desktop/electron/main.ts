@@ -126,11 +126,13 @@ import type {
   TokenStore as RecoveryTokenStore,
 } from "gutterpress";
 import {
+  appLogPath as appLogPathImpl,
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
+import { initAppLog } from "./app-log";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -302,6 +304,10 @@ const recoveryDir = (): string => recoveryDirImpl(app.getPath("userData"));
 const logsDir = (): string => logsDirImpl(app.getPath("userData"));
 const operationLogPath = (repoSlug: string): string =>
   operationLogPathImpl(app.getPath("userData"), repoSlug);
+
+// The app's OWN fault log goes in that same logs dir, so the start screen's
+// Logs tab lists it alongside the project logs (electron/app-log.ts).
+initAppLog(() => appLogPathImpl(app.getPath("userData")));
 
 /**
  * The operation-log path for a project directory, keyed to its REPOSITORY.
