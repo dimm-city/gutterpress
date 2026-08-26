@@ -46,7 +46,7 @@ removed:
 - **No more `afterPack.cjs`** — electron-builder's default dependency walker
   handles the lib correctly.
 - **No more CJS↔ESM `new Function` interop trick** — the ESM main loads the lib
-  with a plain dynamic `import("gutterpress")` (removed in `c5e75ae`).
+  with a plain dynamic `import("gutterpress")`.
 - **No more Bun runtime requirement** — the packaged app is self-contained.
 
 ## Prerequisites
@@ -122,9 +122,9 @@ npm run build
 npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
-npm run dist:linux   # → dist/gutterpress-<version>.AppImage
+npm run dist:linux   # → dist/Gutterpress-<version>.AppImage
 npm run dist:win     # → stable-named setup .exe + versioned portable .zip
-npm run dist:mac     # → dist/gutterpress-<version>-{arm64,x64}.dmg
+npm run dist:mac     # → dist/Gutterpress-<version>-{arm64,x64}.dmg
 ```
 
 Each `dist:*` script runs the build and electron:build steps automatically
@@ -173,7 +173,7 @@ exist.
 
 ```bash
 npm run dist:linux
-# Output: dist/gutterpress-<version>.AppImage
+# Output: dist/Gutterpress-<version>.AppImage
 ```
 
 The AppImage is a bare portable executable — there is no installer, so nothing
@@ -198,8 +198,8 @@ filename + icon basename written by `appimage-integration.ts` — all
 
 ```bash
 npm run dist:win
-# Installer: dist/gutterpress-setup-win-x64.exe
-# Portable:  dist/gutterpress-<version>-win-x64.zip
+# Installer: dist/Gutterpress-setup-win-x64.exe
+# Portable:  dist/Gutterpress-<version>-win-x64.zip
 ```
 
 For normal users, download and run the `.exe` installer. It installs per-user
@@ -213,8 +213,8 @@ register an uninstaller and is not the installed app's auto-update channel.
 
 ```bash
 npm run dist:mac
-# Output: dist/gutterpress-<version>-arm64.dmg and
-#         dist/gutterpress-<version>-x64.dmg
+# Output: dist/Gutterpress-<version>-arm64.dmg and
+#         dist/Gutterpress-<version>-x64.dmg
 ```
 
 Both Apple Silicon and Intel DMGs are built explicitly. Release builds remain
@@ -232,9 +232,9 @@ packages/desktop/
 │   ├── appimage-integration.ts # opt-in Linux application-menu install/repair/remove
 │   └── tsconfig.json
 ├── electron.vite.config.ts  # electron-vite config (main + preload builds)
-├── out/                     # electron-vite output (ESM, git-ignored)
-│   ├── main/main.js
-│   └── preload/preload.js
+├── out/                     # electron-vite output (git-ignored)
+│   ├── main/main.js         # ESM
+│   └── preload/preload.cjs  # CJS (sandboxed preload can't load ESM)
 ├── src/                     # SvelteKit SPA
 │   ├── routes/
 │   │   ├── +layout.ts       # ssr=false (client-rendered SPA; not prerendered)

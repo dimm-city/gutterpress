@@ -11,16 +11,16 @@ release](https://github.com/dimm-city/gutterpress/releases/latest):
 
 | Platform | Release file | Support note |
 | --- | --- | --- |
-| macOS Apple Silicon | `gutterpress-<version>-arm64.dmg` | Native ARM64 build |
-| macOS Intel | `gutterpress-<version>-x64.dmg` | Native Intel build |
-| Windows x64 | `gutterpress-setup-win-x64.exe` | Native x64 installer; Windows ARM64 can use x64 emulation |
-| Linux x64 | `gutterpress-<version>.AppImage` | Native x64 AppImage |
+| macOS Apple Silicon | `Gutterpress-<version>-arm64.dmg` | Native ARM64 build |
+| macOS Intel | `Gutterpress-<version>-x64.dmg` | Native Intel build |
+| Windows x64 | `Gutterpress-setup-win-x64.exe` | Native x64 installer; Windows ARM64 can use x64 emulation |
+| Linux x64 | `Gutterpress-<version>.AppImage` | Native x64 AppImage |
 
 There is currently no native Windows ARM64 or Linux ARM64 desktop build; those are
 accepted support-matrix gaps until demand justifies new release targets. The
 Windows installer deliberately keeps the same basename across releases to help
 unsigned SmartScreen reputation accumulate. The separately attached
-`gutterpress-<version>-win-x64.zip` is a portable extract-and-run build: it
+`Gutterpress-<version>-win-x64.zip` is a portable extract-and-run build: it
 does not install shortcuts or an uninstaller and is not the installed app's
 auto-update channel.
 
@@ -58,11 +58,11 @@ npm install -g gutterpress
 
 | Platform | Release file |
 | --- | --- |
-| Linux x64 (glibc) | `gutterpress-linux-x64` |
-| Linux ARM64 (glibc) | `gutterpress-linux-arm64` |
-| macOS Apple Silicon | `gutterpress-macos-arm64` |
-| macOS Intel | `gutterpress-macos-x64` |
-| Windows x64 | `gutterpress-windows-x64.exe` |
+| Linux x64 (glibc) | `gutterpress-cli-linux-x64` |
+| Linux ARM64 (glibc) | `gutterpress-cli-linux-arm64` |
+| macOS Apple Silicon | `gutterpress-cli-macos-arm64` |
+| macOS Intel | `gutterpress-cli-macos-x64` |
+| Windows x64 | `gutterpress-cli-windows-x64.exe` |
 
 Windows ARM64 can run the x64 CLI through emulation. Alpine and other musl
 Linux systems are not supported by the standalone binaries; use the
@@ -88,15 +88,15 @@ commands below.
 
 ```sh
 # Linux
-sha256sum gutterpress-linux-x64
+sha256sum gutterpress-cli-linux-x64
 
 # macOS
-shasum -a 256 gutterpress-<version>-arm64.dmg
+shasum -a 256 Gutterpress-<version>-arm64.dmg
 ```
 
 ```powershell
 # Windows PowerShell
-Get-FileHash .\gutterpress-setup-win-x64.exe -Algorithm SHA256
+Get-FileHash .\Gutterpress-setup-win-x64.exe -Algorithm SHA256
 ```
 
 ## Unsigned applications
@@ -114,7 +114,7 @@ the SHA-256 checksum, the command-line alternative is:
 ```sh
 xattr -dr com.apple.quarantine "/Applications/Gutterpress.app"
 # CLI example:
-xattr -d com.apple.quarantine /path/to/gutterpress-macos-arm64
+xattr -d com.apple.quarantine /path/to/gutterpress-cli-macos-arm64
 ```
 
 ### Windows SmartScreen

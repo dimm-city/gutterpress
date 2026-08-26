@@ -29,7 +29,7 @@ pay for the illusion — fragment-rect geometry, a dimming mask and scroll lock,
 iframe-origin translation, pane clamping, and dismissal on every
 `renderingComplete` / page change / viewport change. None of that is editing.
 
-## 2. Evidence (spike-verified 2026-08-24, Chromium 1194)
+## 2. Evidence (spike-verified 2026-08-24)
 
 Run against a faithful model of `viewer.css` — `.gp-run` (clips, sized to the
 measured run width) wrapping `.gp-strip` (`width` = one content box,

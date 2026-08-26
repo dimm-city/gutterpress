@@ -35,11 +35,10 @@ This repo is a Bun workspace with two packages:
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("gutterpress")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
-  electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
+  electron-vite + asar). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
   its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF` — see
-  `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md`).
+  uses Electron's own Chromium via `webContents.printToPDF`).
   See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
@@ -302,8 +301,8 @@ dependency selectors are intentionally unsupported. Receipt-backed loads verify
 the full tree from a private snapshot, then rewrite reachable literal ESM and
 CommonJS package requests to receipt-approved private copies; unresolved or
 nonliteral requests fail closed, and an invalid marker never falls back to a
-global cache. Full rationale and optional/peer semantics:
-[`docs/adr/0007-npm-plugin-vendoring.md`](./.reviews/adr/0007-npm-plugin-vendoring.md).
+global cache. Full rationale and optional/peer semantics were captured in ADR 0007,
+removed in the 2026-07-29 docs cleanup.
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
@@ -371,10 +370,10 @@ wrapping or a warning for that shape.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 
-The upcoming project-source / version-history / GitHub features (milestones
-0.4.0 and 0.5.0 — see GitHub issues #12, #13, #14, #15, #16, #25) must perform
-**all Git and GitHub operations with a Node-native, pure-JS implementation
-(e.g. `isomorphic-git`)**. Non-negotiable:
+The project-source / version-history / GitHub features (shipped in milestones
+0.4.0 and 0.5.0, all tracking issues closed — GitHub issues #12, #13, #14,
+#15, #16, #25) perform **all Git and GitHub operations with a Node-native,
+pure-JS implementation (e.g. `isomorphic-git`)**. Non-negotiable:
 
 - **Do NOT shell out to the system `git` binary.** The user must not be required
   to have Git installed, and we do **not** bundle a Git binary on any platform
@@ -403,7 +402,7 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > [!ALERT]
 > This is a **non-negotiable core architecture requirement** for the desktop app and
 > for **every Electron application started in this org** — it is the gold
-> standard, applied by default. See `docs/adr/0004-platform-abstraction.md`.
+> standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
 `@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
@@ -438,7 +437,7 @@ the client bundle.
 
 **Two seams, not one.** The route-first split (server route + `fetch()`) is
 the **default path** and the one most of the app actually uses today: 26+
-files call `src/lib/api.ts` directly (`+page.svelte` alone has 33 `api.*`
+files call `src/lib/api.ts` directly (`+page.svelte` alone has 36 `api.*`
 call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
 (`src/lib/platform/contract.ts` + `ElectronAdapter`/`WebAdapter`, reached via
 `import { getPlatform, isDesktop } from "$lib/platform"`) is real and still

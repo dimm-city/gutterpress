@@ -115,7 +115,7 @@ smaller, more pages, different pagination) appears far from the cause.
 - **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
   modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe
-  way: PAGED_CSS supplies `inset: 0` + explicit self-alignment, the
+  way: GUTTERPRESS_CSS supplies `inset: 0` + explicit self-alignment, the
   containing block is the `.page`/`.spread` the image sits in, and a
   `pin_outside_page` parse-time warning fires when there is no such
   container (the preview would otherwise mask exactly that mistake — its

@@ -1,6 +1,6 @@
 # Design rules, and the bug that taught each one
 
-Folio's shape is not a matter of taste — nearly every structural decision here
+Gutterpress's shape is not a matter of taste — nearly every structural decision here
 was forced by a defect that shipped first. This file records the rule, the bug
 behind it, and the check that keeps it from coming back, so the next person does
 not have to rediscover them.
@@ -11,7 +11,7 @@ Engine facts these rules are built on: [`ENGINE.md`](./ENGINE.md).
 
 ## 1. Every synthesis decision lives in ONE shared function
 
-`src/shared/synthesis.ts` holds every rule that *decides* something: where blank
+`packages/cli/src/engine/shared/synthesis.ts` holds every rule that *decides* something: where blank
 pages go (`planRectoBlanks`), what a running string reads on a given page
 (`stringValueAt` / `stringSymbols`), how far a leader fills
 (`leaderFillCount`), which generated CSS out-specifies the author
@@ -41,7 +41,7 @@ shared module has 20 unit tests.
 ## 2. Measurement must be invisible to the author's CSS
 
 Elements are measured through ids the author already wrote, or through a
-zero-size `<folio-anchor>` injected as a first child. Nothing the author can
+zero-size `<gp-anchor>` injected as a first child. Nothing the author can
 select is ever mutated.
 
 **The bug.** Measurement used to assign `id` attributes to author elements. Ids
@@ -95,10 +95,10 @@ build; `s11` checks the cover and TOC carry no head.
 
 ## 4. A generated override must out-specify the author's own rule
 
-`generatedContentCss()` reuses the author's selector and adds Folio's attribute:
-`a.xref::after` → `a.xref[data-folio-after]::after` (0,2,1 beats 0,1,1).
+`generatedContentCss()` reuses the author's selector and adds Gutterpress's attribute:
+`a.xref::after` → `a.xref[data-gp-after]::after` (0,2,1 beats 0,1,1).
 
-**The bug.** The shim used a bare `[data-folio-after]::after` (0,1,0). That was
+**The bug.** The shim used a bare `[data-gp-after]::after` (0,1,0). That was
 safe only because the engine of the day *dropped* the author's unsupported
 declaration entirely. When Chromium started parsing `target-counter()` while
 still computing it to `none`, the author's declaration survived, outranked the
@@ -167,10 +167,10 @@ alternative before hardening it.
 
 ## 7. Verify with an independent reader, never the tool's own model
 
-Every spike asserts against a PDF reader Folio does not share code with —
+Every spike asserts against a PDF reader Gutterpress does not share code with —
 PyMuPDF where available, poppler otherwise (`spikes/pdfprobe*.py`, selected
 automatically by `probe.ts`; both expose the same CLI and JSON shapes, so the
-spikes never learn which answered). Folio only ever *writes* PDFs, with pdf-lib.
+spikes never learn which answered). Gutterpress only ever *writes* PDFs, with pdf-lib.
 
 This is what makes findings falsifiable rather than self-confirming: when the
 tool's model and the reader disagree, the reader wins.
@@ -179,7 +179,7 @@ The same principle applies to sub-agent reports and to your own earlier
 conclusions. Of three agent reports in this project, **two contained a
 conclusion that did not survive independent re-measurement**: a "viewer clips
 overheight images" rule that failed to reproduce in nine isolated
-configurations, and a check that passed while its own detail read "Folio does
+configurations, and a check that passed while its own detail read "Gutterpress does
 not warn about it."
 
 ---
@@ -190,7 +190,7 @@ Two anti-patterns cost real time here:
 
 - **A check that asserts its own setup.** `"72 DPI source image is flagged as
   sub-print-quality"` passed by asserting the *fixture* was 72 DPI, while its
-  detail string said Folio did not warn. It could never fail. It now asserts the
+  detail string said Gutterpress did not warn. It could never fail. It now asserts the
   audit actually fires.
 - **A test loosened to go green.** When an engine bump moved one block to an
   adjacent page, the temptation was to relax the assertion. What went in instead
@@ -213,7 +213,7 @@ measurement.
 
 The generated corpus was green at 331/331 blocks. The first real theme
 (`examples/gutterpress-user-guide`) immediately produced four Tier 2 bugs, and
-the first real POD geometry test produced two more — including one where Folio
+the first real POD geometry test produced two more — including one where Gutterpress
 turned a working full-bleed cover into a broken one.
 
 Generated fixtures test the shapes you thought of. Run the comparison against
@@ -265,16 +265,16 @@ SECOND page/tab (never the page about to print), navigates it to the same
 `url`, and reuses two things verbatim rather than re-implementing them: the
 compiler agent's own id-assignment calls (`stringSources`/`forcedBreakSites`/
 `xrefSites`/`counterResetSites`, in the exact order `build()` already calls
-them in, so the synthetic `folio-m-N` ids line up between the two pages with
-nothing transferred), and the viewer's own `fragmentDocument()` (`dist/folio.js`,
-unmodified — ARCHITECTURE.md §1, not a second pagination implementation). The
+them in, so the synthetic `gp-m-N` ids line up between the two pages with
+nothing transferred), and the viewer's own `fragmentDocument()` (`gutterpress-viewer.js`,
+unmodified — §1, not a second pagination implementation). The
 predicted map seeds the fixpoint loop's `previous` signature and is fed through
 the SAME `applySynthesis()` the loop already used per-pass; pass 1 of the
 existing loop therefore already carries the guessed synthesis, and IS the
 verification print. If its own `/Dests` matches the prediction (`mapSignature()`,
 a key-order-independent comparison — the earlier naive `JSON.stringify`
 comparison would have false-mismatched whenever Chromium's own /Dests table
-included ids from real in-content cross-reference links Folio never
+included ids from real in-content cross-reference links Gutterpress never
 instrumented, which the real `gutterpress-user-guide` book does; `pageMap` is
 now scoped to `targets` on both sides), the loop converges after pass 1 — one
 print. If not, the loop's existing pass-2 body runs exactly as it always did,
@@ -286,7 +286,7 @@ input, warm browser): content is byte-identical to the un-predicted baseline —
 61 pages, 9,699 words, 0 pages with differing text, 0 words added or dropped
 either direction (poppler-backed `pdfText`). Print count is now instrumented
 (`BuildResult.prints`), not inferred. On this specific book prediction
-currently **misses**: `previous` (from `folio-m-1`, the first string-set
+currently **misses**: `previous` (from `gp-m-1`, the first string-set
 source) predicts page 2 where print lands page 1, a flat +1 offset that
 widens further mid-book — traced to the guide's own cover page, where
 `.cover-page h1 { page: cover; }` assigns the named page to a DESCENDANT of
@@ -335,7 +335,7 @@ cross-reference resolves to the page the target actually printed on.
 **This cost is export-only.** The viewer contains zero print/CDP code — it
 paginates with multicol and `getBoundingClientRect()`, feeding the same shared
 `synthesis.ts` functions. Printing happens only in `build()`, reached from
-`folio build` and the dev server's `/proof.pdf` route. The editing loop never
+`gutterpress build` and the dev server's `/proof.pdf` route. The editing loop never
 pays it. The predict step adds a second, throwaway page/tab to that same
 export-only cost center — never to the editing loop.
 
@@ -343,7 +343,7 @@ export-only cost center — never to the editing loop.
 
 ## 11. State the limits you cannot fix
 
-Three things Folio cannot do, written down rather than left to be discovered:
+Three things Gutterpress cannot do, written down rather than left to be discovered:
 
 - **Bleed art in the content flow only works on zero-margin pages** — Chromium
   clips content to the content box ([`ENGINE.md`](./ENGINE.md) §5). Note the

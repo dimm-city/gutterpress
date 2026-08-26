@@ -128,9 +128,10 @@ There's no `shared/` or `styles/` in the output: your stylesheets are read and
 inlined straight into `book.html`, not copied. Any images the guide actually
 references travel with it too, at the relative path you authored them at (or
 under `assets/` for a CSS-referenced image that lives outside the project).
-`vendor/paged.polyfill.js` only appears as a fallback when no Chromium is
-available at build time — the browser paginates at load instead of shipping
-pre-paginated pages.
+If no Chromium is available at build time, the build fails with a hard error
+(`No Chrome or Chromium binary found` — see
+[CLI README: Troubleshooting](../packages/cli/README.md#troubleshooting))
+rather than falling back to client-side pagination.
 
 Open `_site/book.html` directly in Chrome, Edge, or another Chromium-based
 browser to view the paginated guide — the viewer is Chromium-only, like the
