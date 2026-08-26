@@ -133,6 +133,14 @@ export class PreviewEventController {
         break;
       case "renderingCancelled":
         this.deps.setPreviewUpdating(false);
+        // A cancel says this render will not complete, and `renderingComplete`
+        // is the only other thing that clears the BLOCKING scrim — so leaving
+        // `rendering` set strands the author under a permanent "Rendering…"
+        // overlay waiting on an event that is never coming. The overlay's own
+        // Cancel button (`handleCancelRender`) already clears both flags; this
+        // is the same decision arriving from the frame instead of the mouse.
+        this.deps.setRendering(false);
+        this.deps.setRenderCompleteOverlay(false);
         break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
