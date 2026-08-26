@@ -7,6 +7,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The preview no longer gets stuck on "Rendering…".** Opening a book could
+  leave the spinner up for good — the book behind it laid out and ready, the
+  page count stuck at 0, the Problems panel never re-checking, and nothing you
+  could do to clear any of it short of reopening the folder. The app started
+  listening for the "finished laying out" signal a moment too late and missed
+  it, and that signal is never sent twice. It now listens from the moment the
+  preview begins loading.
 - **The editor comes up with your book in it.** Opening a book while the
   workspace was already in Edit mode left the editor pane on
   "Loading editor…" forever: the open path filled the editor's buffer but
