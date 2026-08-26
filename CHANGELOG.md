@@ -73,13 +73,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   but the full-page spinner stayed, over a book that was finished and readable.
   The two ways of cancelling now do the same thing.
 
-- **A throttled update check now says so.** GitHub limits how often an app may
-  ask for release information, and when that limit was reached the app reported
-  only "Update check failed" — the same words it uses for a genuine fault. It
-  now tells you checks are temporarily limited and to try later. The raw cause
-  of any update failure is also written to a log you can read: the start
-  screen's Logs tab lists it as **Gutterpress app.log**, beside your per-book
-  logs.
+- **A throttled update now says so, and names the part that was throttled.**
+  GitHub limits how often an app may ask for release information, and when that
+  limit was reached the app reported only "Update check failed" — the same words
+  it uses for a genuine fault. It now tells you the operation is temporarily
+  limited and to try later, and it says which one: an update whose check
+  succeeded and whose *download* was then throttled no longer blames the check.
+  The raw cause of any update failure is also written to a log you can read: the
+  start screen's Logs tab lists it as **Gutterpress app.log**, beside your
+  per-book logs.
 
 - **The contents list no longer lies to a screen reader.** It announced itself
   as a tree and promised keyboard navigation it never implemented, with the
