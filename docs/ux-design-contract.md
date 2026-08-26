@@ -192,6 +192,13 @@ Shipped baseline:
   `scrollTo({line, chapter})` over the preview-bridge protocol, with cross-chapter
   reveal and echo suppression. Remaining delta (PROPOSED): a user-facing
   toggle to disable sync, persisted via the settings store.
+- **Click-to-source follows across chapters — SHIPPED, deliberate** (owner-
+  ratified 2026-08-26): a single click on any source-mapped block, with the
+  editor pane open, loads that block's chapter into the editor — switching
+  files if needed, flushing the outgoing buffer first so nothing is lost —
+  and reveals the line without stealing the caret or selection. The editor
+  follows the author's attention; this is the intended contract, not a
+  side-effect.
   - Mapping spec (for reference and for any rework): block-level
     `data-source-line` anchors from markdown-it token maps; after pagination
     the preview scrolls to the page containing the nearest preceding mapped
