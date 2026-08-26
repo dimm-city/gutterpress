@@ -1344,6 +1344,13 @@
    * `focus` also places the caret (see MarkdownEditor.revealLine) — right for a
    * deliberate "take me there" action, wrong for a click in the book, which
    * should scroll the editor without stealing the caret or the selection.
+   *
+   * The cross-chapter file switch below is DELIBERATE for both callers
+   * (owner-ratified 2026-08-26): clicking a block from another chapter in the
+   * preview follows the author's attention there — the editor loads that
+   * chapter, flushing the outgoing buffer first via selectEditorFile's atomic
+   * handoff, so no edit is lost. `focus` governs only caret placement, never
+   * whether the follow happens.
    */
   async function revealInEditor(
     chapter: string | null,
