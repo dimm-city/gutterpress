@@ -107,7 +107,7 @@ gutterpress/
 │   ├── Markdown editor                        SHIPPED  (MarkdownEditor, CodeMirror 6, #38)
 │   ├── CSS editing                            SHIPPED  (language mode of the same editor —
 │   │                                                    css-editor.ts, #39; NOT a separate panel)
-│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + preview bridge, ADR 0005)
+│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + preview bridge)
 │   ├── Editor toolbar                         SHIPPED  (EditorToolbar, #31; SnippetPicker, #29)
 │   ├── Page navigation                        SHIPPED  (PageNavController toolbar pager + TOC outline, #20)
 │   └── Page thumbnail navigator               NOT PLANNED (evaluated 2026-07-14 — the
@@ -118,7 +118,7 @@ gutterpress/
 ├── Plugin manager                             SHIPPED  (Config panel → PluginsSection, #30)
 ├── Theme selector / importer                  SHIPPED  (Config panel → "Look & style" theme grid, #32)
 ├── Design tokens editor                       SHIPPED  (DesignSection: guided :root custom-property editor)
-├── Project source / version history / GitHub  SHIPPED  (#12–#16, ADR 0006; AdvancedSetupDialog,
+├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
@@ -189,7 +189,7 @@ Shipped baseline:
   820px → Markdown / CSS / Preview tabs (see Navigation model).
 - **Synchronized scroll is SHIPPED and bidirectional**: editor→preview
   anchor-line follow and preview→editor follow via `sourceLineChanged` /
-  `scrollTo({line, chapter})` over the ADR 0005 bridge, with cross-chapter
+  `scrollTo({line, chapter})` over the preview-bridge protocol, with cross-chapter
   reveal and echo suppression. Remaining delta (PROPOSED): a user-facing
   toggle to disable sync, persisted via the settings store.
   - Mapping spec (for reference and for any rework): block-level
@@ -198,7 +198,7 @@ Shipped baseline:
     block. Content with no direct mapping (generated content, running
     headers) falls back to the nearest mapped ancestor.
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
-  `webContents.printToPDF` (ADR 0002).
+  `webContents.printToPDF`.
 
 Proposed refinements:
 
@@ -458,7 +458,7 @@ exposing low-level engine concepts to non-technical users.
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
 refs/licensing, broken local refs, heuristics, alt text, heading order,
 print-safety CSS; post-build PDF checks — embedded fonts, page size, ink
-coverage — per ADR 0002), exposed via a server route. It extends the shipped
+coverage — per the printToPDF/pure-JS posture), exposed via a server route. It extends the shipped
 #24 readiness check; it is not a parallel subsystem. Check tiers:
 
 1. live (debounced ≥1s): metadata fields, link syntax;
@@ -498,7 +498,7 @@ baseline** it extends (do not build a second token panel).
 **Overflow indicator (PROPOSED):** the engine does not report overflow.
 Detection = post-pagination geometry probe in the preview process
 (content-area `scrollHeight/Width` vs client box; opt-out class for
-intentional bleeds), surfaced through the ADR 0005 bridge to both the page
+intentional bleeds), surfaced through the preview-bridge protocol to both the page
 navigation UI and a Problems-panel entry with the page number.
 
 ### 6. Publishing workflow
@@ -595,7 +595,7 @@ Binding constraints (regardless of final design):
 - Provider calls run **host-side** via an `api/ai/*` server route, and the
   file reads that build the agent's context are host-side too — the renderer
   never assembles provider payloads. Keys live in host credential storage
-  (reuse the ADR 0006 token layering). The UI discloses plainly that
+  (reuse the Node-native git layer's token layering). The UI discloses plainly that
   document text is sent to the configured provider. Local Ollama is the
   offline/no-cloud path (#36).
 - **Context is allow-listed, never "the whole folder."** A local-first
@@ -653,7 +653,7 @@ Proposed refinements (file issues):
 - Token-hover element highlighting, defined precisely: highlight elements
   matched by selectors of rules containing `var(--token)` in a declaration
   (static stylesheet analysis + `querySelectorAll` in the preview via the
-  ADR 0005 bridge); inheritance-only consumers are **not** highlighted; cap
+  preview-bridge protocol); inheritance-only consumers are **not** highlighted; cap
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
