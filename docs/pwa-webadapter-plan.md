@@ -464,7 +464,12 @@ it back. No preview, no SW, no persistence.
   the Node path, on a fixture book). Playwright: load a fixture folder, assert
   the iframe `book.html` body contains a sentinel and `renderingComplete` fires.
 
-### Phase 3 — Persistence (IndexedDB) + recents/favorites/prefs/project-state
+### Phase 3 — Persistence (IndexedDB) + recents/favorites/prefs/project-state — ✅ shipped
+> Status: implemented in `web-adapter.ts` (tagged `#33 Phase 3`) — IndexedDB-backed
+> `getDesktopPrefs`/`setDesktopPrefs`, `getRecentFolders`/`getFavorites`/
+> `toggleFavorite`/`removeRecent`, and the `queryPermission`/`requestPermission`
+> re-grant flow in `reopenFolder`. Covered by
+> `tests/platform/web-adapter-persistence.test.ts`.
 **Goal:** reopen a previously opened folder across sessions.
 - IndexedDB stores; persist handles; `getRecentFolders/getFavorites/...`,
   `getDesktopPrefs/...`, `getDesktopProjectState/...`, `getLastProject`.

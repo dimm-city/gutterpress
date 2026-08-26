@@ -42,7 +42,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   names the fix; when Chromium ships those, the checks come out.
 
 ### Fixed
-### Fixed
 
 - **The preview no longer gets stuck on "Rendering…".** Opening a book could
   leave the spinner up for good — the book behind it laid out and ready, the

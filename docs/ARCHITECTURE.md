@@ -102,7 +102,6 @@ packages/cli/src/
 │   ├── chromium.ts         # Chromium executable resolution
 │   ├── asset-inline.ts     # Inlines CSS/fonts, plans image copies from references
 │   ├── output-paths.ts     # dist/<title-slug>/ + <slug>-<format> artifact naming
-│   ├── logger.ts           # Colored console output
 │   └── markdown/           # Markdown processing
 │       ├── index.ts        # Main renderer (createMarkdownRenderer)
 │       ├── plugins.ts      # Plugin loader
@@ -131,7 +130,7 @@ User Input (CLI)
     ↓
 Configuration Manager (loads manifest.yaml + resolveConfig)
     ↓
-Pipeline Orchestrator (run.ts — 6 steps)
+Pipeline Orchestrator (build-runner.ts — 6 steps)
     │
     ├── 1. CSS Linting (print-safety / postcss)
     ├── 2. Pre-build Validation (source + asset checks)
@@ -173,10 +172,10 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**33 checks across 4 categories:**
-- **Source (7)**: markdownlint + htmlhint wrappers, print-safety CSS checks
-  (PostCSS), local link/ref checks, layout-marker diagnostics, and alt-text and
-  heading-order accessibility checks
+**34 checks across 4 categories:**
+- **Source (8)**: markdownlint + htmlhint wrappers, print-safety CSS checks
+  (PostCSS), local link/ref checks, layout-marker diagnostics, alt-text and
+  heading-order accessibility checks, and leftover sync-merge-marker detection
 - **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
 - **Asset (7)**: Image size/DPI/color space/alpha/TAC and font approval/license checks
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
@@ -620,8 +619,8 @@ and export entries. It then copies packages separately into a digest-addressed
 process-local tree with no `node_modules` links. Literal ESM imports and
 CommonJS requires in the reachable module graph are resolved through the
 receipt and rewritten to those private copies; unresolved or nonliteral module
-requests fail closed instead of substituting project or ancestor packages. See
-[ADR 0007](../.reviews/adr/0007-npm-plugin-vendoring.md).
+requests fail closed instead of substituting project or ancestor packages.
+(Full rationale was ADR 0007, removed in the 2026-07-29 docs cleanup.)
 
 Plugin modules normally expose a default function. A manifest entry may set
 `export` to explicitly select a named function when a package exposes several
@@ -698,7 +697,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
   exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
   `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
   streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
-  §8 and `docs/adr/0004-platform-abstraction.md`).
+  §8).
 - The lib (`gutterpress`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic
@@ -781,9 +780,10 @@ confine author assets and chapter-update requests to the selected project.
 ### Preview Performance
 
 - **Debouncing**: File changes debounced (100ms) to prevent excessive rebuilds
-- **Incremental updates over WebSocket**: a single Markdown edit republishes
-  only that chapter; CSS, manifest, multi-file, and structural changes publish
-  a full-document reload
+- **Full-document swap over WebSocket**: every update — a single Markdown edit
+  or a wider CSS/manifest/multi-file/structural change — republishes the
+  complete regenerated book; incremental per-chapter splicing was tried and
+  removed (2026-08-08 review) because a full swap measured faster end-to-end
 - **Orphan cleanup**: leftover preview temp dirs from a run that didn't shut
   down cleanly are removed on the next startup via a PID-liveness check, not
   an idle-connection timer
@@ -810,5 +810,5 @@ confine author assets and chapter-update requests to the selected project.
 
 ---
 
-**Last Updated**: 2026-08-12
-**Version**: 0.10.0 release candidate (packages/cli + packages/desktop)
+**Last Updated**: 2026-08-26
+**Version**: 0.10.2-alpha.3 (packages/cli + packages/desktop)

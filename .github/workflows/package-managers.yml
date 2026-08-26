@@ -134,7 +134,8 @@ jobs:
           git -C $bucketRepo init --quiet
            git -C $bucketRepo -c user.name=package-test -c user.email=package-test@example.invalid add bucket/gutterpress.json
           git -C $bucketRepo -c user.name=package-test -c user.email=package-test@example.invalid commit --quiet -m "test manifest"
-           scoop bucket add gutterpress $bucketRepo
+           $bucketRepoUrl = "file:///" + ($bucketRepo -replace '\\', '/')
+           scoop bucket add gutterpress $bucketRepoUrl
            scoop install gutterpress/gutterpress
           if ($LASTEXITCODE -ne 0) { throw "scoop install failed with exit code $LASTEXITCODE" }
            $actual = (& gutterpress --version | Out-String).Trim()

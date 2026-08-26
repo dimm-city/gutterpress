@@ -178,9 +178,11 @@ These run automatically before any user plugins and do not need to be declared i
 > **Not built in:** GitHub-style `> [!NOTE]` alert syntax is **not** a core
 > plugin — it lives in the (separate, DC-branded) Dimm City plugin. A project
 > with no plugins configured will print `> [!NOTE]` as a literal blockquote
-> starting with the text `[!NOTE]`. For a callout that core renders on its
-> own, use `@section .callout-tip` … `@end-section` (see
-> [Chapter 8 — Publishing](./08-publishing.md)) or a plain `>` blockquote.
+> starting with the text `[!NOTE]`. `.callout-tip` is **this guide's own**
+> project-layer class (defined in `styles/guide.css`), not something core
+> renders — use `@section .callout-tip` … `@end-section` (see
+> [Chapter 8 — Publishing](./08-publishing.md)) or a plain `>` blockquote if
+> you have no project stylesheet.
 
 > The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead — a named block like `::: callout-note ... :::` becomes `@section .callout-note ... @end-section`.
 

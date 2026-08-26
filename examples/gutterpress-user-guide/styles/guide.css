@@ -9,7 +9,7 @@
    § 2  PAGE SETUP         ← Page geometry, running headers, folios.
    § 3  BASE TYPOGRAPHY    ← Headings, body, links, code, tables.
    § 4  COMPONENTS         ← Callouts, sidebars, pull quotes, spec blocks.
-   § 5  LAYOUT UTILITIES   ← Columns, floats, page breaks, cover page.
+   § 5  LAYOUT UTILITIES   ← Floats, page breaks, cover page.
    § 6  GUIDE CHROME       ← Visual helpers specific to this guide.
    § 7  CHAPTER OVERRIDES  ← Chapter-scoped rules via chapter IDs.
    § 8  BOOK LAYER         ← Project-specific customizations.
@@ -574,18 +574,6 @@ figcaption,
 /* ─────────────────────────────────────────────────────────────────────────────
    § 5  LAYOUT UTILITIES
    ───────────────────────────────────────────────────────────────────────────── */
-
-.two-column {
-  columns: 2;
-  column-gap: 0.4in;
-  column-rule: var(--border-thin);
-}
-
-.three-column {
-  columns: 3;
-  column-gap: 0.3in;
-  column-rule: var(--border-thin);
-}
 
 .no-break     { break-inside: avoid; page-break-inside: avoid; }
 .break-before { break-before: page;  page-break-before: always; }

@@ -682,14 +682,15 @@ figcaption {
    § 5  LAYOUT UTILITIES
    ───────────────────────────────────────────────────────────────────────────── */
 
-.two-column {
-  columns: 2;
+/* Project-layer refinement on core's .gp-columns-2/.gp-columns-3 (see
+   gutterpress-css.ts) — layers this guide's hairline column-rule and
+   gutter width onto the core classes. Not a competing class name. */
+.gp-columns-2 {
   column-gap: 0.4in;
   column-rule: var(--border-thin);
 }
 
-.three-column {
-  columns: 3;
+.gp-columns-3 {
   column-gap: 0.3in;
   column-rule: var(--border-thin);
 }
@@ -752,7 +753,7 @@ figcaption {
 }
 
 /* ── CSS grid — two equal columns, independent flow ── */
-/* Unlike .two-column (CSS columns, text flows between), .grid keeps
+/* Unlike .gp-columns-2 (CSS columns, text flows between), .grid keeps
    each child independent. Use for side-by-side blocks, comparison tables,
    or any layout where left and right don't share a single text flow. */
 .grid {

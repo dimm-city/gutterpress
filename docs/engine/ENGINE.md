@@ -4,8 +4,8 @@ Every row here was **measured**, not read from a spec or a compatibility table,
 and each names the spike that re-measures it on every run. If you are building
 anything on Chromium's print path, this is the ground truth to build against.
 
-**Folio is pinned to Chrome 151** (`REQUIRED_MILESTONE` in
-`src/shared/cdp.ts`; launching an older engine throws). Everything below is a
+**Gutterpress is pinned to Chrome 148** (`REQUIRED_MILESTONE` in
+`packages/cli/src/engine/shared/cdp.ts`; launching an older engine throws). Everything below is a
 property of *that engine*, not of "Chromium" in general — §2 is a worked example
 of a milestone bump silently disabling a shim with no error anywhere, which is
 why the version is pinned and why these facts are re-measured rather than
@@ -75,12 +75,12 @@ Two consequences, both load-bearing:
    claims support.
 2. **A surviving declaration wins the cascade.** The author's
    `a.xref::after` (specificity 0,1,1) outranks a generated
-   `[data-folio-after]::after` (0,1,0), so the author's *empty* value wins and
+   `[data-gp-after]::after` (0,1,0), so the author's *empty* value wins and
    the shim's text never appears. A generated override must out-specify the
-   author's own rule — see [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4.
+   author's own rule — see [`DESIGN-RULES.md`](./DESIGN-RULES.md) §4.
 
 **Why the engine is pinned.** Chrome 141 did *not* parse `target-counter()`; it
-dropped the declaration, so any override of Folio's won by default. The 151
+dropped the declaration, so any override of Gutterpress's won by default. The 151
 change flipped that with no error, no console warning, and no failing feature
 check — output silently went from `"See target (p. 2)"` to `"See target"`. That
 is the whole argument for `REQUIRED_MILESTONE`: an engine upgrade can disable a
@@ -105,7 +105,7 @@ This matters for any tool that injects generated `@page` CSS, which is exactly
 what a shim does. It caused two separate production-shaped bugs here: duplicated
 running heads, and mirrored gutters collapsing to a single margin on every page.
 The fix is to never depend on the cross-sheet cascade — resolve every page
-context and emit it flat (`ARCHITECTURE.md` §3).
+context and emit it flat (`DESIGN-RULES.md` §3).
 
 ### Shorthand and longhand must be resolved in cascade order
 
@@ -238,7 +238,7 @@ own (`s4`, `s7`):
 - An `id` is **not inert**, though: `h1[id] { counter-increment: chapter }` is
   real theme CSS, and assigning ids renumbered every chapter. Measure through
   ids the author already wrote, or inject a zero-size custom element to carry
-  the id (`ARCHITECTURE.md` §2).
+  the id (`DESIGN-RULES.md` §2).
 
 The document outline is a second channel (heading → page, 14/14 correct), but
 `/Dests` is keyed and needs no title matching.
@@ -290,7 +290,7 @@ compiler must synthesize it. The engine's counter-style map does exactly this:
 the symbol list is per-page and arbitrary, so `i, ii, iii, 1, 2, 3…` is just a
 different symbol list.
 
-**Built** (`src/shared/synthesis.ts`'s `pageCounterValues`).
+**Built** (`packages/cli/src/engine/shared/synthesis.ts`'s `pageCounterValues`).
 `gcpm-extract.ts` records every `counter-reset: page N` declaration
 (`GcpmModel.counterResets`); the compiler measures which page each one's
 element lands on (`agent.ts`'s `counterResetSites`, same `/Dests` measurement
@@ -298,7 +298,7 @@ channel as every other Tier 3 site) and `pageCounterValues` replays the
 restart as a plain per-page number list — analytic, one pass, the same trick
 `planRectoBlanks` uses for blanks. `counterStyleCss` (`build.ts`) then rewrites
 every `counter(page[, style])` found in ANY page context into
-`counter(page, folio-page--<style>)`, one generated `@counter-style` per
+`counter(page, gp-page--<style>)`, one generated `@counter-style` per
 distinct style keyword actually used (`lower-roman`, plain decimal, …) — so
 front matter and body can display the SAME restarted number sequence in
 different symbols without the compiler ever having to know which named
@@ -311,7 +311,7 @@ screen-side, since the number substitution can happen directly in JS.
 inserted before the restart. The blank spacer is a DOM sibling of the element
 it precedes, so on screen it falls inside THAT element's named-page run (front
 matter or body) — but the compiler gives every blank its own isolated context
-(`page: folio--blank`, resolved with no name and only the `blank` pseudo). The
+(`page: gp--blank`, resolved with no name and only the `blank` pseudo). The
 viewer used to have no equivalent: a blank landing right before a restart
 picked up the WRONG run's format (`counter(page)` decimal instead of the
 unnamed context's `counter(page, lower-roman)`), which is invisible unless the
@@ -321,7 +321,7 @@ OWN fragment position (not `strip.page`) so `decorate.ts`'s `pageContext` can
 resolve it the same isolated way the compiler does.
 
 **A second, compiler-only instance of the same class of bug (found by review,
-now fixed)**: `build.ts` built the `folio--blank` named page's CSS separately
+now fixed)**: `build.ts` built the `gp--blank` named page's CSS separately
 from `counterStyleCss`, copying the author's `@page :blank` declarations
 VERBATIM instead of through the `counter(page)`->`@counter-style` rewrite. A
 blank inserted for a recto/verso break AFTER the restart is already in effect
@@ -329,7 +329,7 @@ blank inserted for a recto/verso break AFTER the restart is already in effect
 number — the viewer, which always went through the shared `pageCounterValues`
 path, showed the correct restarted folio, so print and viewer disagreed on the
 one page in the book that is hardest to spot (it carries no other content).
-`counterStyleCss` now owns the `folio--blank` block too (a `hasBlank`
+`counterStyleCss` now owns the `gp--blank` block too (a `hasBlank`
 parameter), through the exact same `rewrite` closure every other page context
 uses — one function, verified with an independent reader (`pdftotext`): a
 fixture with 3pp roman front matter, a restart, and a SECOND forced-recto

@@ -60,9 +60,8 @@ import diff3Merge from "diff3";
 
 // The keep-both sibling contract lives in the zero-import leaf so the
 // markdown resolver and the merge-marker check can share it without
-// pulling isomorphic-git in. Re-exported for existing importers.
-import { onlineSiblingPath, isOnlineSibling } from "./sync-messages.ts";
-export { onlineSiblingPath, isOnlineSibling };
+// pulling isomorphic-git in.
+import { onlineSiblingPath } from "./sync-messages.ts";
 
 import {
   hasPendingChanges,

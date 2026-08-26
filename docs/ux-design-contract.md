@@ -2,7 +2,7 @@
 
 > **Status: draft revision** of the contract originally proposed in issue
 > [#40](https://github.com/dimm-city/gutterpress/issues/40). Baselined against
-> desktop **0.8.0-beta.1** (2026-07-14).
+> desktop **0.10.2-alpha.3** (2026-08-26).
 >
 > This document is the normative home of the UX contract. Issue #40 remains
 > the tracking issue and links here. **Deviations are proposed as PRs against
@@ -37,11 +37,11 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8, `docs/adr/0004-platform-abstraction.md` | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
-| Preview bridge protocol | `docs/adr/0005-preview-bridge-protocol.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Plugin manager) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md` | Preflight/export UX; "export" not "download". |
-| Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7, `docs/adr/0006-remote-git-github-integration.md` | Project source / sync / provider-auth UX. |
+| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
+| Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
 

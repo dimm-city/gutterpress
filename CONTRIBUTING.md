@@ -271,7 +271,7 @@ describe('Feature name', () => {
    bun --filter gutterpress test
 
    # Run specific test file
-   bun test packages/cli/tests/integration/cli-build.test.ts
+   bun test packages/cli/tests/integration/runtime-deps-classification.test.ts
 
    # Watch mode (from packages/cli)
    cd packages/cli && bun test --watch
@@ -455,17 +455,31 @@ test(config): add tests for manifest validation
 
 *(For maintainers only)*
 
-1. **Update version in package.json**
-2. **Update CHANGELOG.md**
-3. **Create git tag**
-   ```bash
-   git tag -a v0.2.0 -m "Release v0.2.0"
-   git push origin v0.2.0
-   ```
-4. **Publish to npm** (via GitHub Actions OIDC trusted publisher)
-   - Tag push triggers the release workflow automatically.
-   - The workflow cross-compiles CLI binaries on `ubuntu-latest` and uploads
-      them to GitHub Releases alongside the Gutterpress desktop package.
+Releases are triggered by **dispatching** the [Release workflow](./.github/workflows/release.yml)
+— it runs on `workflow_dispatch` only, so pushing a tag by hand does nothing.
+
+1. **Update CHANGELOG.md**
+   - Add a `## [x.y.z]` entry for the release. The workflow verifies this
+     entry exists (checked against the base version, so a prerelease like
+     `0.10.1-beta.4` looks for `## [0.10.1]`) and fails if it's missing.
+
+2. **Dispatch the Release workflow** (Actions → Release → Run workflow, or
+   `gh workflow run release.yml -f version=1.2.3`)
+   - `version`: `1.2.3` for a stable release, or `1.2.3-alpha.1` /
+     `1.2.3-beta.1` for a prerelease. No other suffix is accepted — alpha and
+     beta are the only update channels the desktop app's auto-updater
+     recognizes.
+   - Stable releases must be dispatched from the default branch. Prereleases
+     may also be dispatched from a `release/*` branch.
+
+3. **The workflow does the rest**
+   - Bumps the version in both `packages/cli/package.json` and
+     `packages/desktop/package.json`, commits, and creates and pushes the
+     `v<version>` tag (stable tags are immutable; re-dispatching an existing
+     stable version fails instead of re-pointing it).
+   - Builds all release artifacts, publishes to npm via OIDC trusted
+     publishing (unless `skip_npm_publish` is set), and creates the GitHub
+     release.
 
 ## Getting Help
 

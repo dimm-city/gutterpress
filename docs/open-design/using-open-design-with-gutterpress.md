@@ -377,5 +377,4 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 - [Gutterpress styling and themes](../../examples/gutterpress-user-guide/04-styling-theming.md)
 - [Gutterpress plugins](../../examples/gutterpress-user-guide/05-plugins.md)
 - [Gutterpress companion design guides](../design-guides.md)
-- [Gutterpress compatibility plan for filesystem design tools](./gutterpress-open-design-implementation-plan.md)
 - [Open Design](https://github.com/nexu-io/open-design)
