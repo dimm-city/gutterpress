@@ -103,6 +103,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Gate on knip's actionable categories only (files, dependencies,
+      # unlisted, binaries) — see knip.jsonc for why exports/types findings
+      # are excluded (hand-traced false positives, advisory-only, not gated).
+      # Runs the root `knip` script so CI and local `bun run knip` agree, and
+      # sits before the build steps below so a real finding fails fast.
+      - name: Check for unused files/dependencies (knip)
+        run: bun run knip
+
       - name: Build CLI npm bundle
         working-directory: packages/cli
         run: bun run build
