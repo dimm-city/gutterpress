@@ -5,33 +5,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **The preview no longer gets stuck on "Rendering…".** Opening a book could
-  leave the spinner up for good — the book behind it laid out and ready, the
-  page count stuck at 0, the Problems panel never re-checking, and nothing you
-  could do to clear any of it short of reopening the folder. The app started
-  listening for the "finished laying out" signal a moment too late and missed
-  it, and that signal is never sent twice. It now listens from the moment the
-  preview begins loading.
-- **The editor comes up with your book in it.** Opening a book while the
-  workspace was already in Edit mode left the editor pane on
-  "Loading editor…" forever: the open path filled the editor's buffer but
-  never imported the editor itself. Because nothing was mounted, clicking a
-  heading in the table of contents appeared to move only the preview — the
-  same bug wearing a second face. Both are fixed by loading the editor
-  wherever a file is loaded for it.
-- **Clicking a paragraph in the preview now opens it in the editor.** A single
-  click on any block that came from your Markdown loads that chapter, if it is
-  not already open, and scrolls to the line — without stealing the cursor, so
-  selecting and copying text out of the preview still works. Scrolling the
-  preview still leaves the editor where it is.
-- **The table of contents can be collapsed again.** A section containing the
-  heading you were reading could not be collapsed: its "Collapse" arrow did
-  nothing, however many times it was clicked. Your own expand and collapse
-  choices now win, and the automatic reveal only applies to sections you have
-  not touched.
-
 ## [0.10.2] - 2026-08-25
 
 ### Added
@@ -69,22 +42,45 @@ This project follows [Semantic Versioning](https://semver.org/).
   names the fix; when Chromium ships those, the checks come out.
 
 ### Fixed
+### Fixed
 
-- **Opening a book in Edit mode now puts the book in the editor.** The editor
-  panel came up empty and stayed on "Loading editor…" — you had to toggle out
-  of Edit and back in before you could type. The same fault made the contents
-  list only half work: clicking a heading moved the book but left the editor
-  where it was, because there was no editor there to move.
+- **The preview no longer gets stuck on "Rendering…".** Opening a book could
+  leave the spinner up for good — the book behind it laid out and ready, the
+  page count stuck at 0, the Problems panel never re-checking, and nothing you
+  could do to clear any of it short of reopening the folder. The app started
+  listening for the "finished laying out" signal a moment too late and missed
+  it, and that signal is never sent twice. It now listens from the moment the
+  preview begins loading.
+- **The editor comes up with your book in it.** Opening a book while the
+  workspace was already in Edit mode left the editor pane on
+  "Loading editor…" forever: the open path filled the editor's buffer but
+  never imported the editor itself. Because nothing was mounted, clicking a
+  heading in the table of contents appeared to move only the preview — the
+  same bug wearing a second face. Both are fixed by loading the editor
+  wherever a file is loaded for it.
+- **Clicking a paragraph in the preview now opens it in the editor.** A single
+  click on any block that came from your Markdown loads that chapter, if it is
+  not already open, and scrolls to the line — without stealing the cursor, so
+  selecting and copying text out of the preview still works. Scrolling the
+  preview still leaves the editor where it is.
+- **The table of contents can be collapsed again.** A section containing the
+  heading you were reading could not be collapsed: its "Collapse" arrow did
+  nothing, however many times it was clicked. Your own expand and collapse
+  choices now win, and the automatic reveal only applies to sections you have
+  not touched.
 
-- **Clicking a paragraph in the book now opens it in the editor.** A single
-  click on any text in the page loads that chapter — switching files if it is
-  a different one — and scrolls the editor to the line you clicked. Previously
-  the click did nothing at all.
+- **A cancelled render no longer strands you under the spinner.** If the
+  preview gave up on a layout, the little "Updating preview…" pill went away
+  but the full-page spinner stayed, over a book that was finished and readable.
+  The two ways of cancelling now do the same thing.
 
-- **"Collapse" in the contents list works on the chapter you are reading.**
-  The one branch you most want to fold away — the chapter holding your current
-  position — was the one branch whose collapse button did nothing, because the
-  list kept forcing it back open.
+- **A throttled update check now says so.** GitHub limits how often an app may
+  ask for release information, and when that limit was reached the app reported
+  only "Update check failed" — the same words it uses for a genuine fault. It
+  now tells you checks are temporarily limited and to try later. The raw cause
+  of any update failure is also written to a log you can read: the start
+  screen's Logs tab lists it as **Gutterpress app.log**, beside your per-book
+  logs.
 
 - **The contents list no longer lies to a screen reader.** It announced itself
   as a tree and promised keyboard navigation it never implemented, with the
