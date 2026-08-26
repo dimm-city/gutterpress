@@ -5,7 +5,7 @@
  * and individual check modules (unit-level, no external tools required).
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1741,25 +1741,48 @@ describe("Tool Check", () => {
     }
   });
 
-  test("reportMissingTools does not throw when no tools missing", () => {
-    reportMissingTools({
-      available: ["qpdf"],
-      missing: [],
-      skippedChecks: [],
-      toolToChecks: new Map(),
-    });
+  test("reportMissingTools logs nothing when no tools are missing", () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      reportMissingTools({
+        available: ["qpdf"],
+        missing: [],
+        skippedChecks: [],
+        toolToChecks: new Map(),
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
-  test("reportMissingTools does not throw when tools are missing", () => {
+  test("reportMissingTools warns with the tool name and only the checks actually skipped", () => {
     const toolToChecks = new Map<string, string[]>();
-    toolToChecks.set("qpdf", ["pdf.print.pdfx-markers"]);
+    // "pdf.print.not-skipped" is tied to the missing tool but never actually
+    // skipped — reportMissingTools must filter it out of the warning rather
+    // than naming every check that merely requires the tool.
+    toolToChecks.set("qpdf", ["pdf.print.pdfx-markers", "pdf.print.not-skipped"]);
 
-    reportMissingTools({
-      available: [],
-      missing: ["qpdf"],
-      skippedChecks: ["pdf.print.pdfx-markers"],
-      toolToChecks,
-    });
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    let lines: string[];
+    try {
+      reportMissingTools({
+        available: [],
+        missing: ["qpdf"],
+        skippedChecks: ["pdf.print.pdfx-markers"],
+        toolToChecks,
+      });
+      // Read mock.calls BEFORE mockRestore() — bun's mockRestore() clears the
+      // recorded call history (mockReset semantics), same as Jest.
+      lines = (warnSpy.mock.calls as unknown[][]).map((call) => call.join(" "));
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain("qpdf");
+    expect(lines[0]).toContain("pdf.print.pdfx-markers");
+    expect(lines[0]).not.toContain("pdf.print.not-skipped");
   });
 });
 

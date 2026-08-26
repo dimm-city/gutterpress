@@ -15,11 +15,18 @@
         "src/index.ts",
         "src/api/index.ts",
         "src/render.ts",
+        // Browser-side engine bundles: the sole `Bun.build` entrypoints
+        // invoked by scripts/build-engine-bundles.mjs (see that script's
+        // header) and embedded into the CLI binary via embedded-assets.ts —
+        // nothing in src/ imports them, so knip needs them named explicitly
+        // or the whole engine reads as dead code.
+        "src/engine/viewer/global.ts",
+        "src/engine/compiler/agent.ts",
         "scripts/*.mjs",
         "src/**/*.test.ts",
         "tests/**/*.test.ts",
         // Run by CI via `playwright test -c tests/compat/playwright.config.ts`
-        // (.github/workflows/preview-cross-browser.yml).
+        // (.github/workflows/preview-smoke.yml).
         "tests/compat/*.pw.ts",
         // Check modules are self-registering roots (registerCheck side effect,
         // loaded via checks/register-builtins). Their `export default check` is

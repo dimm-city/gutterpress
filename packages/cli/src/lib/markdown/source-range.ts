@@ -129,5 +129,3 @@ export const sourceRangeRule: RuleCore = (state) => {
     annotateToken(token, chapter);
   }
 };
-
-export default sourceRangeRule;

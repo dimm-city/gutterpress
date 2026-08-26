@@ -153,6 +153,8 @@ const GITHUB_RELEASE_TAG_PAGE =
   "https://github.com/dimm-city/gutterpress/releases/tag/";
 const GITHUB_RATE_LIMIT_MESSAGE =
   "Update checks are temporarily limited by GitHub. Try again later.";
+const GITHUB_RATE_LIMIT_MESSAGE_DOWNLOAD =
+  "Update downloads are temporarily limited by GitHub. Try again later.";
 const GITHUB_RELEASE_TIMEOUT_MS = 30_000;
 
 const NETWORK_ERROR_PATTERN =
@@ -199,7 +201,9 @@ function friendlyMessage(raw: string, op: "check" | "download" | "install"): str
   }
   // Checked before the network branch: throttling is the more specific
   // condition, and naming it is what tells the author to just wait.
-  if (isRateLimitError(raw)) return GITHUB_RATE_LIMIT_MESSAGE;
+  if (isRateLimitError(raw)) {
+    return op === "download" ? GITHUB_RATE_LIMIT_MESSAGE_DOWNLOAD : GITHUB_RATE_LIMIT_MESSAGE;
+  }
   const verb = op === "download" ? "download the update" : "check for updates";
   if (isNetworkError(raw)) {
     return `Couldn't ${verb}. Check your internet connection and try again.`;

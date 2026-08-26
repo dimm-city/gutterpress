@@ -1038,6 +1038,8 @@ test("macOS download action opens GitHub and can never stage or install", async 
 // "Update check failed" on the other.
 const RATE_LIMIT_MESSAGE =
   "Update checks are temporarily limited by GitHub. Try again later.";
+const RATE_LIMIT_MESSAGE_DOWNLOAD =
+  "Update downloads are temporarily limited by GitHub. Try again later.";
 
 test("user-initiated check: an electron-updater rate-limit error names the throttling", async () => {
   await withAppImage(async () => {
@@ -1095,7 +1097,7 @@ test("download failure: a rate-limit error names the throttling too", async () =
     const status = await download();
 
     expect(status.phase).toBe("available");
-    expect(status.error).toBe(RATE_LIMIT_MESSAGE);
+    expect(status.error).toBe(RATE_LIMIT_MESSAGE_DOWNLOAD);
   });
 });
 
