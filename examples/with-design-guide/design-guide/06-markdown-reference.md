@@ -148,7 +148,7 @@ Content that must stay on one page.
 
 Flows content in two equal CSS columns.
 
-@section .two-column
+@section .gp-columns-2
 
 Left column content. Use `@column-break` to force content into the right column early.
 
@@ -159,7 +159,7 @@ Right column content. The column rule runs between both columns.
 @end-section
 
 ```markdown
-@section .two-column
+@section .gp-columns-2
 Left column content. Use `@column-break` to force content into the right column early.
 
 @column-break
@@ -367,7 +367,7 @@ Forces a column break inside a two- or three-column `@section`.
 
 **Syntax** — `@column-break` on its own line.
 
-@section .two-column
+@section .gp-columns-2
 
 Left column content. The break below pushes everything after it into the right column.
 
@@ -378,7 +378,7 @@ Right column content. This paragraph begins here because of the column break dir
 @end-section
 
 ```markdown
-@section .two-column
+@section .gp-columns-2
 Left column content. The break below pushes everything after it into the right column.
 
 @column-break

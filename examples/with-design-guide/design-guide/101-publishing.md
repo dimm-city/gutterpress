@@ -27,8 +27,8 @@ Starts the live preview server with hot reload. Edits to markdown, CSS, or asset
 **Examples**:
 
 ```
-gutterpress preview field-guide --port 3579 --open false
-gutterpress preview design-guide --port 3580 --open false
+gutterpress preview field-guide --port 3579 --no-open
+gutterpress preview design-guide --port 3580 --no-open
 ```
 
 The preview opens at `http://localhost:PORT/` (root).
@@ -148,7 +148,7 @@ If your project uses a `package.json`, add these as convenience scripts:
 
 ```json
 "scripts": {
-  "preview": "gutterpress preview design-guide --port 3580 --open false",
+  "preview": "gutterpress preview design-guide --port 3580 --no-open",
   "build:guide": "gutterpress build design-guide --format html --out ./_site"
 }
 ```
@@ -171,7 +171,7 @@ The guide is reachable at `https://<owner>.github.io/<repo>/`. The desktop outpu
 
 The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` output produced by `gutterpress build --format html`.
 
-### Include a downloadable PDF
+### Include a downloadable PDF {#include-a-downloadable-pdf}
 
 To publish a PDF alongside the HTML guide:
 
@@ -196,7 +196,7 @@ to it from `00-toc.md`, e.g. `[Download PDF](your-book-title-design-guide-pdf.pd
 With the design guide published and the PDF generated, you're ready to ship:
 
 1. **Proof the PDF** — open the built PDF in Acrobat or Preview and page through it at 100%. Check running headers, folios, page breaks, and component rendering.
-2. **Preflight** — run `gutterpress preflight your-book.pdf` to validate trim, bleed, font embedding, and ink limits before sending to the printer.
+2. **Preflight** — run `gutterpress preflight --pdf your-book.pdf` to validate trim, bleed, font embedding, and ink limits before sending to the printer.
 3. **Submit** — upload the preflighted PDF to your print provider (DriveThruRPG, IngramSpark, Lulu, or your offset print partner).
 
 *Design guide · Gutterpress · MPL-2.0*
