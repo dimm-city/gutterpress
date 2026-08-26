@@ -159,6 +159,7 @@ jobs:
         working-directory: packages/desktop
         run: |
           xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/app-lifecycle-log.pw.mjs out/main/main.js
           xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
           xvfb-run -a node tests/integration/problems-panel.pw.mjs

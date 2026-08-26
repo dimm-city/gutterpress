@@ -1,10 +1,11 @@
 // ──────────────────────────────────────────────────────────────────────────
-// app-log.ts — the app's own fault log (main process only).
+// app-log.ts — the app's own diagnostic log (main process only).
 //
-// Records the RAW failure behind a friendly message, so an incident can be
-// diagnosed after the fact instead of from "Update check failed" and a
-// shrug. Today's only caller is electron/updater.ts (check/download/install
-// failures).
+// Records two things an author can't otherwise see: RAW failures behind a
+// friendly message (so an incident can be diagnosed after the fact instead of
+// from "Update check failed" and a shrug — electron/updater.ts's check/
+// download/install failures), and the app's own start/close, so the log
+// exists on every run rather than only after something has gone wrong.
 //
 // It writes ONE `.log` file into userData/logs/, beside the per-project
 // operation logs — which is the whole point: the start screen's Logs tab
@@ -13,8 +14,8 @@
 // route and no UI change. `recovery-paths.ts`'s appLogPath() names it.
 //
 // Deliberately NOT a logging framework: no levels, no transports, no config,
-// no filtering. One function, one file, one size cap. Nothing leaves the
-// machine.
+// no filtering. Two entry points sharing one writer, one file, one size cap.
+// Nothing leaves the machine.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
@@ -40,12 +41,11 @@ export function initAppLog(resolve: () => string): void {
 }
 
 /**
- * Record one app fault: always to the console (dev terminal), and to the log
- * file once initAppLog has run (packaged app). Never rejects — a logging
- * failure must not break the operation that was already failing.
+ * Append one timestamped line to the app log, restarting the file at the
+ * cap instead of growing without bound. Never rejects — a logging failure
+ * must not break the operation that was already happening.
  */
-export async function logAppError(message: string): Promise<void> {
-  console.error(message);
+async function writeLine(message: string): Promise<void> {
   const file = resolveLogPath?.();
   if (!file) return;
   const line = `${new Date().toISOString()} ${message}\n`;
@@ -55,7 +55,7 @@ export async function logAppError(message: string): Promise<void> {
     try {
       size = (await stat(file)).size;
     } catch {
-      // No log yet — the first fault on a fresh install.
+      // No log yet — the first line on a fresh install.
     }
     // Bytes, not characters: an error string can carry multibyte characters
     // (electron-updater's own messages contain them), and stat().size — the
@@ -63,6 +63,25 @@ export async function logAppError(message: string): Promise<void> {
     if (size + Buffer.byteLength(line) > APP_LOG_MAX_BYTES) await writeFile(file, line);
     else await appendFile(file, line);
   } catch {
-    // Console already has it.
+    // Console already has it (both callers below log there first).
   }
+}
+
+/**
+ * Record one app fault: always to the console (dev terminal), and to the log
+ * file once initAppLog has run (packaged app).
+ */
+export async function logAppError(message: string): Promise<void> {
+  console.error(message);
+  await writeLine(message);
+}
+
+/**
+ * Record one app lifecycle event (start, close): console.log, not
+ * console.error — this is not a fault, and logAppError's console.error would
+ * print a false error on every ordinary launch/quit.
+ */
+export async function logAppEvent(message: string): Promise<void> {
+  console.log(message);
+  await writeLine(message);
 }

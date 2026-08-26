@@ -132,7 +132,7 @@ import {
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
-import { initAppLog } from "./app-log";
+import { initAppLog, logAppEvent } from "./app-log";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -1716,6 +1716,33 @@ if (!gotSingleInstanceLock) {
     );
     focusMainWindow();
   });
+
+  // Record a closing line before the app actually exits — registered only in
+  // this branch (the primary instance) so the loser's own app.quit() above
+  // never writes a bogus "closing" entry into the log the PRIMARY instance is
+  // using; that process never reaches here.
+  //
+  // before-quit fires before Electron proceeds with its default action, and
+  // is NOT awaited by Electron — an async listener's promise is ignored, so
+  // the only way to delay real quitting is the standard preventDefault-then-
+  // requeue dance: cancel this attempt synchronously, write the line, then
+  // call app.quit() again once the write settles (or after a short bound, so
+  // a stalled disk can't leave the app unable to quit at all — logAppEvent
+  // itself never rejects, but it can still hang on a wedged filesystem).
+  let closingLogStarted = false;
+  app.on("before-quit", (event) => {
+    if (closingLogStarted) return;
+    // Set BEFORE the async work starts, not in .finally() — before-quit
+    // listeners aren't awaited, so a second quit trigger arriving while the
+    // write is still in flight (double Cmd+Q, a second app.quit() call) would
+    // otherwise still see this false and start a duplicate write + timer.
+    closingLogStarted = true;
+    event.preventDefault();
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+    Promise.race([logAppEvent("[app] closing"), timeout]).finally(() => {
+      app.quit();
+    });
+  });
 }
 
 app.whenReady().then(async () => {
@@ -1723,6 +1750,7 @@ app.whenReady().then(async () => {
   // proceed to create a contending window.
   if (!gotSingleInstanceLock) return;
   slog("app whenReady");
+  void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
   // server is already running externally — skip the local handler.js launch.

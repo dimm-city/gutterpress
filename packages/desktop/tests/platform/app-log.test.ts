@@ -10,7 +10,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { APP_LOG_MAX_BYTES, initAppLog, logAppError } from "../../electron/app-log";
+import { APP_LOG_MAX_BYTES, initAppLog, logAppError, logAppEvent } from "../../electron/app-log";
 
 test("a logged fault lands in the file, timestamped, creating the log dir", async () => {
   const base = await mkdtemp(path.join(tmpdir(), "gutterpress-app-log-"));
@@ -54,6 +54,38 @@ test("the log restarts at the cap instead of growing without bound", async () =>
     expect(text).not.toContain("first ");
   } finally {
     console.error = realConsoleError;
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("a lifecycle event lands in the same file as a fault, via console.log not console.error", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "gutterpress-app-log-event-"));
+  const file = path.join(base, "logs", "Gutterpress app.log");
+  initAppLog(() => file);
+  const realConsoleError = console.error;
+  const realConsoleLog = console.log;
+  const errorCalls: string[] = [];
+  const logCalls: string[] = [];
+  console.error = (msg: string) => errorCalls.push(msg);
+  console.log = (msg: string) => logCalls.push(msg);
+  try {
+    await logAppEvent("[app] started 0.10.2-beta.2");
+    await logAppError("[updater] check failed: HttpError: 403 rate limit exceeded");
+    await logAppEvent("[app] closing");
+
+    // A start/close line must never be reported as a fault.
+    expect(logCalls).toEqual(["[app] started 0.10.2-beta.2", "[app] closing"]);
+    expect(errorCalls).toEqual(["[updater] check failed: HttpError: 403 rate limit exceeded"]);
+
+    const text = await readFile(file, "utf8");
+    const lines = text.trimEnd().split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("[app] started 0.10.2-beta.2");
+    expect(lines[1]).toContain("[updater] check failed");
+    expect(lines[2]).toContain("[app] closing");
+  } finally {
+    console.error = realConsoleError;
+    console.log = realConsoleLog;
     await rm(base, { recursive: true, force: true });
   }
 });
