@@ -244,7 +244,7 @@ describe('generateAndWriteHtml', () => {
   // ARCH finding #4 — preview terminal surfacing. Before this fix, the
   // preview's renderPreviewBook() (shared by generateAndWriteHtml AND the
   // incremental per-chapter splice) called renderChapters() with no way to
-  // observe markdown-it-paged's env.layoutWarnings, so an author whose marker
+  // observe the marker plugin's env.layoutWarnings, so an author whose marker
   // was silently ignored (e.g. a stray @continue) got zero feedback anywhere
   // in the running preview server. warn() (leveled logger) prints via
   // console.log, not console.warn — see utils/logger.ts's emit().

@@ -2,7 +2,7 @@
 
 > **Status: draft revision** of the contract originally proposed in issue
 > [#40](https://github.com/dimm-city/gutterpress/issues/40). Baselined against
-> desktop **0.8.0-beta.1** (2026-07-14).
+> desktop **0.10.2-alpha.3** (2026-08-26).
 >
 > This document is the normative home of the UX contract. Issue #40 remains
 > the tracking issue and links here. **Deviations are proposed as PRs against
@@ -37,11 +37,11 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8, `docs/adr/0004-platform-abstraction.md` | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
-| Preview bridge protocol | `docs/adr/0005-preview-bridge-protocol.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Plugin manager) below. |
-| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md` | Preflight/export UX; "export" not "download". |
-| Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7, `docs/adr/0006-remote-git-github-integration.md` | Project source / sync / provider-auth UX. |
+| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
+| Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
 
@@ -107,7 +107,7 @@ gutterpress/
 │   ├── Markdown editor                        SHIPPED  (MarkdownEditor, CodeMirror 6, #38)
 │   ├── CSS editing                            SHIPPED  (language mode of the same editor —
 │   │                                                    css-editor.ts, #39; NOT a separate panel)
-│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + preview bridge, ADR 0005)
+│   ├── Live paginated preview                 SHIPPED  (PreviewFrame + preview bridge)
 │   ├── Editor toolbar                         SHIPPED  (EditorToolbar, #31; SnippetPicker, #29)
 │   ├── Page navigation                        SHIPPED  (PageNavController toolbar pager + TOC outline, #20)
 │   └── Page thumbnail navigator               NOT PLANNED (evaluated 2026-07-14 — the
@@ -118,7 +118,7 @@ gutterpress/
 ├── Plugin manager                             SHIPPED  (Config panel → PluginsSection, #30)
 ├── Theme selector / importer                  SHIPPED  (Config panel → "Look & style" theme grid, #32)
 ├── Design tokens editor                       SHIPPED  (DesignSection: guided :root custom-property editor)
-├── Project source / version history / GitHub  SHIPPED  (#12–#16, ADR 0006; AdvancedSetupDialog,
+├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
@@ -189,16 +189,23 @@ Shipped baseline:
   820px → Markdown / CSS / Preview tabs (see Navigation model).
 - **Synchronized scroll is SHIPPED and bidirectional**: editor→preview
   anchor-line follow and preview→editor follow via `sourceLineChanged` /
-  `scrollTo({line, chapter})` over the ADR 0005 bridge, with cross-chapter
+  `scrollTo({line, chapter})` over the preview-bridge protocol, with cross-chapter
   reveal and echo suppression. Remaining delta (PROPOSED): a user-facing
   toggle to disable sync, persisted via the settings store.
+- **Click-to-source follows across chapters — SHIPPED, deliberate** (owner-
+  ratified 2026-08-26): a single click on any source-mapped block, with the
+  editor pane open, loads that block's chapter into the editor — switching
+  files if needed, flushing the outgoing buffer first so nothing is lost —
+  and reveals the line without stealing the caret or selection. The editor
+  follows the author's attention; this is the intended contract, not a
+  side-effect.
   - Mapping spec (for reference and for any rework): block-level
     `data-source-line` anchors from markdown-it token maps; after pagination
     the preview scrolls to the page containing the nearest preceding mapped
     block. Content with no direct mapping (generated content, running
     headers) falls back to the nearest mapped ancestor.
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
-  `webContents.printToPDF` (ADR 0002).
+  `webContents.printToPDF`.
 
 Proposed refinements:
 
@@ -446,7 +453,7 @@ accounts — see Anti-Patterns table).
 shipped; the visual layout editor is **#37 (open)**.
 
 Reference research: InDesign/Affinity (preflight, master pages), Scribus
-(what to avoid), Paged.js (prior art — no longer our engine).
+(what to avoid).
 
 From print tools, keep: page navigation for long documents; non-destructive,
 always-revertible CSS overrides; preflight before export. Avoid: tool-mode
@@ -458,7 +465,7 @@ exposing low-level engine concepts to non-technical users.
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
 refs/licensing, broken local refs, heuristics, alt text, heading order,
 print-safety CSS; post-build PDF checks — embedded fonts, page size, ink
-coverage — per ADR 0002), exposed via a server route. It extends the shipped
+coverage — per the printToPDF/pure-JS posture), exposed via a server route. It extends the shipped
 #24 readiness check; it is not a parallel subsystem. Check tiers:
 
 1. live (debounced ≥1s): metadata fields, link syntax;
@@ -468,7 +475,7 @@ coverage — per ADR 0002), exposed via a server route. It extends the shipped
    PDF/X, external qpdf/gs — they can never run per keystroke).
 
 **Master pages / page templates (PROPOSED):** a UI over the **existing
-`@page` / `@section` / `@chapter` markers** (markdown-it-paged, CLAUDE.md
+`@page` / `@section` / `@chapter` markers** (`markers.js`, CLAUDE.md
 §5/§6). "Section" = a marker block; "picking a template" = the inspector
 writes/updates the marker's class argument (e.g. `@section chapter-opener`)
 in the markdown source. Templates are plain CSS classes; the markdown file
@@ -498,7 +505,7 @@ baseline** it extends (do not build a second token panel).
 **Overflow indicator (PROPOSED):** the engine does not report overflow.
 Detection = post-pagination geometry probe in the preview process
 (content-area `scrollHeight/Width` vs client box; opt-out class for
-intentional bleeds), surfaced through the ADR 0005 bridge to both the page
+intentional bleeds), surfaced through the preview-bridge protocol to both the page
 navigation UI and a Problems-panel entry with the page number.
 
 ### 6. Publishing workflow
@@ -595,7 +602,7 @@ Binding constraints (regardless of final design):
 - Provider calls run **host-side** via an `api/ai/*` server route, and the
   file reads that build the agent's context are host-side too — the renderer
   never assembles provider payloads. Keys live in host credential storage
-  (reuse the ADR 0006 token layering). The UI discloses plainly that
+  (reuse the Node-native git layer's token layering). The UI discloses plainly that
   document text is sent to the configured provider. Local Ollama is the
   offline/no-cloud path (#36).
 - **Context is allow-listed, never "the whole folder."** A local-first
@@ -653,7 +660,7 @@ Proposed refinements (file issues):
 - Token-hover element highlighting, defined precisely: highlight elements
   matched by selectors of rules containing `var(--token)` in a declaration
   (static stylesheet analysis + `querySelectorAll` in the preview via the
-  ADR 0005 bridge); inheritance-only consumers are **not** highlighted; cap
+  preview-bridge protocol); inheritance-only consumers are **not** highlighted; cap
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
@@ -1110,8 +1117,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 Obsidian (panel flexibility, community themes) · Bear · Ulysses.
 
 **Print/layout:** Affinity Publisher 2 (preflight, masters) · Canva
-(non-designer layout) · Visme (template-first onboarding) ·
-[Paged.js](https://pagedjs.org/) (prior art; Gutterpress paginates with Chromium directly).
+(non-designer layout) · Visme (template-first onboarding).
 
 **Publish:** Netlify (preflight + deploy log drawer) · Shopify (provider
 cards) · Leanpub (author-centric flow).

@@ -136,14 +136,12 @@ docs/
 ├── known-limitations.md                   # Silent Chromium print gaps (upstream-tracked)
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
-│   └── 2026-05-removing-container-syntax.md
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides
 ├── desktop-shortcut.md                    # OS desktop shortcuts for the desktop app
-├── reviews/                               # Point-in-time critical review reports
 └── [remaining files are point-in-time audits/plans, kept for history — not
      part of the current documentation set]
 ```

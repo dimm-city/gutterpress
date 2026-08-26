@@ -105,6 +105,7 @@ function make(): Harness {
     editorSync: {
       invalidatePending: () => log.push("invalidateEditorSync"),
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
+      revealEditorLine: (chapter, line) => log.push(`revealEditorLine:${chapter}:${line}`),
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -370,6 +371,35 @@ test("a cancelled replacement clears the non-blocking updating state", () => {
   expect(h.updating).toBe(false);
 });
 
+/**
+ * A cancel that arrives while the BLOCKING scrim is up must take the scrim down.
+ *
+ * `renderingCancelled` says this render will not complete, and `renderingComplete`
+ * is the only other thing that clears `lifecycle.rendering` — so leaving the flag
+ * set strands the author under a permanent "Rendering…" scrim over a book that is
+ * never going to send the event that would lift it. The overlay's own Cancel
+ * button (`handleCancelRender`) already clears both flags; the event handler is
+ * the same decision arriving from the frame instead of the mouse, so it must
+ * clear them too.
+ *
+ * Reachable path: the initial open sets `rendering = true`, the author saves
+ * before that first pagination finishes, and the resulting swap's replacement
+ * frame never paginates — preview-shell.js's `onReady` timeout (the one and only
+ * emitter of this event) then fires `renderingCancelled` with the initial render's
+ * scrim still up.
+ */
+test("a cancel arriving under the blocking scrim takes the scrim down", () => {
+  const h = make();
+  // The initial open's state: blocking scrim up, no completion yet.
+  h.rendering = true;
+  h.overlay = true;
+
+  h.ctrl.handleEvent({ name: "renderingCancelled", detail: { hotReload: true, revision: 2 } });
+
+  expect(h.rendering).toBe(false);
+  expect(h.overlay).toBe(false);
+});
+
 // ── preview → editor policy ──────────────────────────────────────────────────
 
 test("sourceLineChanged updates outline state but never moves the editor", () => {
@@ -379,9 +409,28 @@ test("sourceLineChanged updates outline state but never moves the editor", () =>
   expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
-test("normal preview activation never moves or opens the editor; Go to source owns navigation", () => {
+// Clicking a block in the viewer while the editor is open must bring that
+// block's source into the editor and scroll to it (product-owner report, 0.10.2).
+// The host owns the "is the editor open?" decision — the controller just
+// forwards the activation, so a click with the editor CLOSED still opens
+// nothing (that is `revealEditorLine`'s own no-op, asserted in the app drive).
+test("clicking a source-mapped block in the viewer reveals that line in the editor", () => {
   const h = make();
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
+  expect(h.log).toContain("revealEditorLine:ch1.md:12");
+});
+
+test("an activation with no source line is ignored (page furniture, unmapped block)", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: null, chapter: "ch1.md" } });
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
+});
+
+// Scroll-driven sync stays chrome-only: that feedback loop caused delayed
+// editor jumps after a hot reload. Only an explicit CLICK moves the editor.
+test("sourceLineChanged still never moves the editor", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch2.md" } });
   expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 

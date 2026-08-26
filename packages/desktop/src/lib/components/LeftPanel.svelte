@@ -115,29 +115,35 @@
   const tocTree = $derived(buildTocTree(outline));
   const activeEntryIndex = $derived(outline[activeOutlineIndex]?.index);
   const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
-  let tocExpanded = $state<Set<string>>(new Set());
+  // The author's OWN expand/collapse decisions, keyed by node. Revealing the
+  // active item's ancestors is only the DEFAULT for a node the author has not
+  // touched — it used to be OR-ed over this state, which made "Collapse X" a
+  // dead control on every ancestor of the active heading: the second operand
+  // held it open no matter how often the twisty was clicked.
+  let tocChoice = $state<Map<string, boolean>>(new Map());
   function tocOpen(key: string): boolean {
-    return tocExpanded.has(key) || activeAncestorKeys.has(key);
+    return tocChoice.get(key) ?? activeAncestorKeys.has(key);
   }
   function toggleToc(key: string) {
-    const next = new Set(tocExpanded);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    tocExpanded = next;
+    const next = new Map(tocChoice);
+    next.set(key, !tocOpen(key));
+    tocChoice = next;
   }
   // Selecting a section navigates to it AND expands it (user feedback), so its
   // subsections come into view — expand-then-navigate, never a collapse.
   function selectToc(node: TocNode) {
     if (node.children.length > 0 && !tocOpen(node.key)) {
-      const next = new Set(tocExpanded);
-      next.add(node.key);
-      tocExpanded = next;
+      const next = new Map(tocChoice);
+      next.set(node.key, true);
+      tocChoice = next;
     }
     onJumpToOutline?.(node.entry);
   }
   // Arrow keys expand/collapse the focused node WITHOUT navigating (Enter/Space
   // on the row's label button navigates); this keeps expansion and navigation
-  // independent, per the tree-view contract.
+  // independent. These rows are a plain nested list, not an ARIA tree, so this
+  // is a convenience on the label button -- not the full tree contract, which
+  // would also owe Up/Down/Home/End roving-tabindex navigation.
   function onTocKeydown(e: KeyboardEvent, node: { key: string; children: unknown[] }) {
     if (node.children.length === 0) return;
     if (e.key === "ArrowRight" && !tocOpen(node.key)) {
@@ -329,7 +335,7 @@
           <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
         </div>
       {:else}
-        <ul class="toc-list" role="tree" aria-label="Table of contents">
+        <ul class="toc-list" aria-label="Table of contents">
           {#each tocTree as node (node.key)}
             {@render tocRow(node, 1)}
           {/each}
@@ -340,7 +346,14 @@
     {#snippet tocRow(node: TocNode, depth: number)}
       {@const hasChildren = node.children.length > 0}
       {@const isOpen = tocOpen(node.key)}
-      <li role="treeitem" aria-level={depth} aria-expanded={hasChildren ? isOpen : undefined} aria-selected={node.entry.index === activeEntryIndex}>
+      <!-- A plain <li>, deliberately: ARIA forbids interactive descendants
+           inside a treeitem, and the two buttons below are exactly that.
+           Depth is carried by the <ul> nesting itself; expanded/current state
+           lives on the label button, which is what focus actually lands on.
+           Do not re-add the tree/treeitem roles without also implementing the
+           roving-tabindex + Up/Down/Home/End contract they promise (the Files
+           panel is a plain list for the same reason). -->
+      <li>
         <div class="toc-row" style="padding-left: {6 + (depth - 1) * 14}px">
           {#if hasChildren}
             <button
@@ -357,6 +370,8 @@
           {/if}
           <button
             class="toc-item"
+            aria-expanded={hasChildren ? isOpen : undefined}
+            aria-current={node.entry.index === activeEntryIndex ? "true" : undefined}
             class:active={node.entry.index === activeEntryIndex}
             class:toc-top={depth === 1}
             class:toc-sub={depth >= 3}
@@ -369,7 +384,7 @@
           </button>
         </div>
         {#if hasChildren && isOpen}
-          <ul class="toc-list nested" role="group">
+          <ul class="toc-list nested">
             {#each node.children as child (child.key)}
               {@render tocRow(child, depth + 1)}
             {/each}

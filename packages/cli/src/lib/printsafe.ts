@@ -7,11 +7,6 @@
 //
 //  - no-remote-urls           blocks http(s):// and protocol-relative url()
 //  - no-risky-print-effects   warns on properties that can force rasterization
-//
-// `no-pagedjs-crash-selectors` was removed along with Paged.js
-// (native-only-migration-plan.md Phase 6): authors regain sibling
-// combinators (`+`/`~`) combined with `:is()`/`:where()`/`:not()`/
-// `:nth-of-type` in their CSS — Chromium's native print has no such crash.
 
 import postcss from "postcss";
 import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
@@ -68,8 +63,36 @@ const marginBoxAtRuleNames = new Set([
 
 // Chromium silently ignores these inside @page margin boxes (renders square,
 // unshadowed) though they are valid per CSS Paged Media. Delete this check if/
-// when Chromium implements them in margin boxes — see ENGINE recommendation #11.
+// when Chromium implements them in margin boxes — see ENGINE recommendation #11
+// and docs/known-limitations.md §2, which carries the measured drop list.
 const marginBoxIgnoredProperties = MARGIN_BOX_IGNORED_PROPERTIES;
+
+/** Directly inside `@page { … }` itself — not inside one of its margin boxes,
+ * where the same declaration behaves differently. */
+function isInPageBox(decl: postcss.Declaration): boolean {
+  const page = decl.parent;
+  return (
+    !!page && page.type === "atrule" && (page as postcss.AtRule).name.toLowerCase() === "page"
+  );
+}
+
+/**
+ * A gradient in the `@page` box's own background paints NOTHING in print —
+ * measured on Chrome 151.0.7922.75 (96dpi raster, mean absolute pixel
+ * difference against the same page with the declaration removed): a solid
+ * colour there paints the whole sheet (129.0673) while `linear-gradient`,
+ * `radial-gradient` and `repeating-linear-gradient` all score 0.0000.
+ *
+ * Scope is exactly the `@page` box. The same gradient renders on `html`
+ * (127.1714) and as a margin box background (11.1627), so the check must not
+ * reach either — those are where the fix sends the author.
+ */
+function isDroppedPageGradient(decl: postcss.Declaration): boolean {
+  const prop = decl.prop.toLowerCase();
+  if (prop !== "background" && prop !== "background-image") return false;
+  if (!/(^|[\s,(])[\w-]*gradient\(/i.test(decl.value)) return false;
+  return isInPageBox(decl);
+}
 
 function isInPageMarginBox(decl: postcss.Declaration): boolean {
   const box = decl.parent;
@@ -84,9 +107,9 @@ function isInPageMarginBox(decl: postcss.Declaration): boolean {
  * collapses a chip horizontally while it stays stretched to the full band
  * height — a 9pt folio in a 0.75in bottom margin paints as a tall rectangle
  * around the number instead of a pill. `height: fit-content` collapses the
- * other axis; `align-self`/`vertical-align` (the Paged.js-era reflex, where
- * the chrome sat on an already-text-sized inner `.pagedjs_margin-content`)
- * do nothing here. Measured: Chromium 148, 7x4in sheet, 0.75in margins.
+ * other axis; `align-self`/`vertical-align` do nothing here, because there is
+ * no inner box to align — the margin box IS the box. Measured: Chromium 148,
+ * 7x4in sheet, 0.75in margins.
  */
 function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
   const prop = decl.prop.toLowerCase();
@@ -214,10 +237,21 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
 
   root.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
-    if (prop === "filter") {
+    // The margin-box drop comes first: `filter`, `mix-blend-mode`,
+    // `clip-path` and `backdrop-filter` are all in `riskyProperties` too, and
+    // there the generic "can force rasterization" text would be wrong —
+    // nothing is rasterized in a margin box because nothing paints at all.
+    if (marginBoxIgnoredProperties.has(prop) && isInPageMarginBox(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `Property "${decl.prop}" is not supported in Chromium @page margin boxes and is silently ignored — the chrome renders square/unshadowed. Anything that would paint outside the box (box-shadow, outline, filter) or make it a stacking context (transform, opacity, mix-blend-mode) is dropped; text-shadow, border, border-radius, padding and background gradients all work inside the box.`,
+        ...nodeLoc(decl),
+      });
+    } else if (prop === "filter") {
       // `filter:` gets its own message (not the generic risky-props text
       // below): it's the one property measured to have a specific, severe
-      // cost — see MIGRATION.md Step 1 "Scope filter:" and ENGINE.md §10.
+      // cost — see docs/engine/ENGINE.md §10.
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
@@ -232,11 +266,11 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         message: `Property is high-risk for print/PDF (can force rasterization): ${decl.prop}`,
         ...nodeLoc(decl),
       });
-    } else if (marginBoxIgnoredProperties.has(prop) && isInPageMarginBox(decl)) {
+    } else if (isDroppedPageGradient(decl)) {
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
-        message: `Property "${decl.prop}" is not supported in Chromium @page margin boxes and is silently ignored — the chrome renders square/unshadowed.`,
+        message: `"${decl.prop}: ${decl.value}" on @page paints nothing in print — Chromium drops a gradient in the @page box's own background, with no error and a valid-looking PDF. A solid colour there paints the whole sheet; the same gradient also works on "html" (it covers the content area, not the sheet) or in a margin box.`,
         ...nodeLoc(decl),
       });
     } else if (isUnpairedFitContentWidth(decl)) {

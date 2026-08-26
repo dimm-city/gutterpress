@@ -63,8 +63,14 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
   expect(closeIdx).toBeGreaterThan(-1);
   const closeBody = src.slice(closeIdx, closeIdx + 900);
   expect(closeBody).toContain("setMode(restore.mode)");
-  expect(closeBody).toContain("loadEditorModule()");
   expect(closeBody).toContain("ensureEditorFile()");
+  // The lazy editor chunk is loaded BY ensureEditorFile, so every caller that
+  // wants a usable editor gets one — including the project-open path, which
+  // called only ensureEditorFile and so opened a book in Edit mode behind a
+  // pane stuck on "Loading editor…" (0.10.2 defect 1).
+  const ensureIdx = src.indexOf("async function ensureEditorFile()");
+  expect(ensureIdx).toBeGreaterThan(-1);
+  expect(src.slice(ensureIdx, ensureIdx + 400)).toContain("loadEditorModule()");
   // Manually toggling Edit while activity is shown exits that mode.
   const toggleIdx = src.indexOf("function toggleEditor()");
   const toggleBody = src.slice(toggleIdx, toggleIdx + 700);
@@ -75,9 +81,12 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
 
 test("preview interactions treat Project Activity as closed, not as a Markdown editor", () => {
   const src = read("src/routes/+page.svelte");
-  expect(src).toContain(
-    'entry.sourceLine != null && editorPaneOpen && editorView === "editor"',
-  );
+  // Both preview→editor navigations (a TOC jump and a click in the book) share
+  // one guard, so neither can move the editor while the activity view is
+  // borrowing the pane, and neither ever OPENS the pane.
+  const idx = src.indexOf("function syncOpenEditorTo(");
+  expect(idx).toBeGreaterThan(-1);
+  expect(src.slice(idx, idx + 400)).toContain('!editorPaneOpen || editorView !== "editor"');
 });
 
 test("a persisted narrow Edit tab cannot open the editor without an explicit action", () => {

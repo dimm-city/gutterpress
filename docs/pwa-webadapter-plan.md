@@ -53,9 +53,9 @@ Three facts make #33 tractable with the **simplest possible** architecture:
    is Node-coupled (`node:fs/promises`, `node:path`). A browser render path
    reuses the renderer and replaces the file-reading wrapper with FSA reads.
 
-2. **Paged.js already renders client-side in the browser.** Today the preview
-   is an `<iframe src="http://127.0.0.1:PORT/book.html">` that loads
-   `/vendor/paged.polyfill.js` and paginates **in the iframe's own browser
+2. **The viewer already paginates client-side in the browser.** Today the
+   preview is an `<iframe src="http://127.0.0.1:PORT/book.html">` that loads
+   `/engine/gutterpress-viewer.js` and paginates **in the iframe's own browser
    context**. There is no Chromium/puppeteer in the *preview* path — puppeteer
    is only in the *PDF build* path. So "live preview without Chromium" is
    already how preview works; we only need to change **where book.html comes
@@ -67,11 +67,12 @@ Three facts make #33 tractable with the **simplest possible** architecture:
    this off on web.
 
 **Recommended split (Occam's razor):** the **WebAdapter is pure-browser** — File
-System Access API for folders/files, in-browser `markdown-it` + Paged.js for
-preview, IndexedDB for handle persistence, `localStorage` for settings. It does
+System Access API for folders/files, in-browser `markdown-it` + the viewer
+bundle for preview, IndexedDB for handle persistence, `localStorage` for
+settings. It does
 **NOT** call back to a local CLI server for any core editing/preview operation.
 The CLI's `--serve` mode is **only a static file host** for the built SPA plus
-the PWA assets (manifest, service worker, vendor paged.js) — it is the
+the PWA assets (manifest, service worker, viewer bundle) — it is the
 *delivery* mechanism, not a runtime backend. Git sync and PDF build stay
 out-of-scope for web in this milestone (degrade via `capabilities()`).
 
@@ -197,21 +198,22 @@ All of these stay as-is (reject / `[]`), gated in the UI by
    `startPreviewServer()` — a **real `node:http` server inside Electron**
    (`packages/cli/src/preview/http-server.ts`).
 3. The server renders the book with `renderChapters()` (`markdown-it` →
-   `markdown-it-paged` HTML), writes `book.html` to a temp dir, and injects
-   `<script src="/vendor/paged.polyfill.js">`.
+   `markers.js` HTML), writes `book.html` to a temp dir, and injects
+   `<script src="/engine/gutterpress-viewer.js">`.
 4. Main returns `{ url: "http://127.0.0.1:PORT/book.html" }`.
 5. The SPA loads it in a sandboxed cross-origin `<iframe src=previewUrl>`.
-6. **Paged.js paginates inside the iframe's browser context** — no
+6. **The viewer paginates inside the iframe's browser context** — no
    puppeteer/Chromium-headless involved in preview. (Puppeteer is only in the
    PDF *build* path.)
 
 ### Key finding: the render is **pure JS**, the *file loader* is Node-coupled
-- `createMarkdownRenderer()` and `markdown-it-paged.js` use **zero `node:*`** —
+- `createMarkdownRenderer()` and `markers.js` use **zero `node:*`** —
   they run unchanged in a browser bundle.
 - Only `renderChapters(inputDir, …)` is Node-coupled: it calls
   `readdir`/`readFile` from `node:fs/promises` and `join` from `node:path` to
   read the project's `.md`/`.css` off disk.
-- Paged.js (`/vendor/paged.polyfill.js`) is already a browser script.
+- The viewer bundle (`/engine/gutterpress-viewer.js`) is already a browser
+  script.
 
 ### On web (no server, no Chromium)
 Add a **browser render module** that mirrors `renderChapters()` but takes its
@@ -232,11 +234,11 @@ inputs from FSA instead of `node:fs`. The simplest, §8-compliant home for it is
    (pure) + a thin Node wrapper. The CLI keeps its wrapper; the WebAdapter
    passes an FSA reader.
 4. WebAdapter builds the full `book.html` string: the same `<head>` (linked CSS
-   inlined or served as Blob URLs), the assembled body, and the paged.js script
-   tag pointing at the **app-shell-cached** `/vendor/paged.polyfill.js`.
+   inlined or served as Blob URLs), the assembled body, and the viewer script
+   tag pointing at the **app-shell-cached** `/engine/gutterpress-viewer.js`.
 5. It wraps the HTML in a `Blob` and returns
    `{ url: URL.createObjectURL(blob), port: 0, input: input.key, title }`.
-6. The SPA loads it in the **same `<iframe>`** — Paged.js paginates in-browser
+6. The SPA loads it in the **same `<iframe>`** — the viewer paginates in-browser
    exactly as on desktop. No code change in `+page.svelte`.
 
 > **CSS / asset references inside the iframe.** `book.html` references `css/*`
@@ -304,7 +306,7 @@ What a static host (or the CLI) must serve for the PWA:
   prerendered `index.html` shell described above.
 - The **PWA assets**: `manifest.webmanifest`, the service worker, app icons
   (✅ these exist in `static/` and `src/service-worker.ts` today).
-- The **vendored Paged.js** (`/vendor/paged.polyfill.js`) and the preview
+- The **viewer bundle** (`/engine/gutterpress-viewer.js`) and the preview
   helper scripts, so the in-iframe render can load them offline (the SW caches
   them on first load).
 - Correct headers: a) MIME types; b) the service worker served at the SPA root
@@ -384,7 +386,7 @@ localhost), valid manifest, a registered SW with a `fetch` handler, icons.
 SvelteKit exposes `$service-worker` (`build`, `files`, `version`) under
 adapter-node as well. `src/service-worker.ts` exists and implements:
 - **Precache** the app shell on `install`: all `build` assets (`_app/*`),
-  `index.html`, the vendored `paged.polyfill.js`, icons. This satisfies the
+  `index.html`, `gutterpress-viewer.js`, icons. This satisfies the
   acceptance criterion "service worker caches app shell for offline use".
 - **Runtime**: cache-first for the precached shell; network-first (with cache
   fallback) for anything else. **Do not** cache project file *contents* — those
@@ -462,7 +464,12 @@ it back. No preview, no SW, no persistence.
   the Node path, on a fixture book). Playwright: load a fixture folder, assert
   the iframe `book.html` body contains a sentinel and `renderingComplete` fires.
 
-### Phase 3 — Persistence (IndexedDB) + recents/favorites/prefs/project-state
+### Phase 3 — Persistence (IndexedDB) + recents/favorites/prefs/project-state — ✅ shipped
+> Status: implemented in `web-adapter.ts` (tagged `#33 Phase 3`) — IndexedDB-backed
+> `getDesktopPrefs`/`setDesktopPrefs`, `getRecentFolders`/`getFavorites`/
+> `toggleFavorite`/`removeRecent`, and the `queryPermission`/`requestPermission`
+> re-grant flow in `reopenFolder`. Covered by
+> `tests/platform/web-adapter-persistence.test.ts`.
 **Goal:** reopen a previously opened folder across sessions.
 - IndexedDB stores; persist handles; `getRecentFolders/getFavorites/...`,
   `getDesktopPrefs/...`, `getDesktopProjectState/...`, `getLastProject`.
@@ -472,14 +479,14 @@ it back. No preview, no SW, no persistence.
 
 ### Phase 4 — PWA manifest + service worker + offline + install — 🟡 mostly shipped
 **Goal:** "installable from Chrome/Edge," "SW caches app shell for offline."
-- ✅ Manifest, icons, `src/service-worker.ts` (precache shell + paged.js),
+- ✅ Manifest, icons, `src/service-worker.ts` (precache shell + viewer bundle),
   registration gated on `!isDesktop()` — all in the tree today.
 - ⬜ **Prerendered static shell** (§3b gap): add `prerender = true` to
   `+layout.ts` so a static host has an `index.html` to serve.
-- ⬜ CLI `serve`/`--pwa` static host for the client bundle + manifest/SW/vendor.
+- ⬜ CLI `serve`/`--pwa` static host for the client bundle + manifest/SW/engine.
 - **TDD:** Lighthouse PWA audit (installability) in CI; Playwright offline test
   (go offline, reload, shell still loads). Unit-test SW precache list includes
-  `paged.polyfill.js`.
+  `gutterpress-viewer.js`.
 
 ### Phase 5 — HTML export + PDF gating + polish
 **Goal:** acceptance "Save PDF hidden/disabled on web"; HTML download works.

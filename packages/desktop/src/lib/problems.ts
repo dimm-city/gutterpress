@@ -56,6 +56,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.content.overheight": "Taller than the page",
   "engine.image.low-dpi": "Image resolution",
   "engine.flush.margin-box": "Running head on a flushed edge",
+  "engine.page-background.unreferenced": "Page background image not printed",
 };
 
 export function friendlySource(checkId: string): string {

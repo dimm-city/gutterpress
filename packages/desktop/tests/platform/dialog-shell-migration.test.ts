@@ -24,7 +24,6 @@ const DIALOGS = [
   "NewProjectWizard",
   "GitHubDialog",
   "SnippetPicker",
-  "OperationLogDialog",
 ];
 
 function readDialog(name: string): string {

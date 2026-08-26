@@ -226,14 +226,14 @@ authors:
 ```
 
 #### `preset` (string)
-Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg` or `book`. Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
+Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 
 ```yaml
 preset: book
 ```
 
 #### `engine` (string)
-Accepted-but-ignored. Paged.js has been removed, so the Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading (see [`docs/migrations/2026-08-native-engine-default.md`](./migrations/2026-08-native-engine-default.md)).
+Accepted-but-ignored. The Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading.
 
 ```yaml
 engine: paged

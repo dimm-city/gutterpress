@@ -1092,8 +1092,6 @@
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
     for (const { el, prop } of sites) {
-      if (prop === "break-before" && el.style.breakBefore === "auto")
-        continue;
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
@@ -1226,14 +1224,6 @@
     if (trailing.length)
       pushRun(runs, undefined, trailing);
     return runs;
-  }
-  var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
-  function clearLeadingForcedBreaks(strip) {
-    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
-      const cs = getComputedStyle(el);
-      if (FORCED_BREAK.test(cs.breakBefore))
-        el.style.breakBefore = "auto";
-    }
   }
   function stabilizeFullHeightPageRoots(model, strips) {
     let stabilized = 0;
@@ -1446,8 +1436,6 @@
         offset: 0
       });
     }
-    for (const s of strips)
-      clearLeadingForcedBreaks(s.el);
     return strips;
   }
   function compensateRepeatedHeaders(strips, maxPasses = 24) {
@@ -2012,7 +2000,18 @@
     "rotate",
     "translate",
     "scale",
-    "box-shadow"
+    "perspective",
+    "box-shadow",
+    "opacity",
+    "outline",
+    "outline-color",
+    "outline-style",
+    "outline-width",
+    "outline-offset",
+    "filter",
+    "backdrop-filter",
+    "mix-blend-mode",
+    "clip-path"
   ]);
   function isIgnoredMarginBoxProperty(property) {
     return MARGIN_BOX_IGNORED_PROPERTIES.has(property.toLowerCase());

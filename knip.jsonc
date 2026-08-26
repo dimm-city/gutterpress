@@ -1,5 +1,13 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Invocation shape: the root `knip` script (package.json) runs the SCOPED,
+  // CI-gating check (`--include files,dependencies,unlisted,binaries`) — the
+  // only categories with real findings, so `bun run knip` locally and CI
+  // agree. The exports/types findings outside that scope are advisory only:
+  // every one was hand-traced during the 2026-08 audit as a false positive of
+  // the "export keyword is superfluous / used within the same build graph"
+  // class. They are intentionally left unsuppressed and ungated — run
+  // `bunx knip` with no flags to see them.
   "workspaces": {
     ".": {
       "entry": ["tools/*.mjs"],
@@ -7,7 +15,12 @@
       // packages/open-design-plugin is a Claude plugin (SKILL.md + evals) whose
       // test-fixtures are data trees referenced by string from manifest.yaml
       // files, not by imports — not part of the dead-code surface.
-      "ignore": ["packages/open-design-plugin/**"]
+      "ignore": ["packages/open-design-plugin/**"],
+      // pdftoppm is an external PDF tool invoked via execCapture by
+      // tools/page-background-mechanism.mjs and tools/page-background-repro.mjs —
+      // the same documented qpdf/gs/pdf* external-tools exemption as CLAUDE.md's
+      // PDF-validation tooling (not an npm dependency to declare).
+      "ignoreBinaries": ["pdftoppm"]
     },
     "packages/cli": {
       "entry": [
@@ -15,11 +28,22 @@
         "src/index.ts",
         "src/api/index.ts",
         "src/render.ts",
+        // Browser-side engine bundles: the sole `Bun.build` entrypoints
+        // invoked by scripts/build-engine-bundles.mjs (see that script's
+        // header) and embedded into the CLI binary via embedded-assets.ts —
+        // nothing in src/ imports them, so knip needs them named explicitly
+        // or the whole engine reads as dead code.
+        "src/engine/viewer/global.ts",
+        "src/engine/compiler/agent.ts",
+        // Standalone hand-run dev CLI (`bun src/engine/dev-cli.ts build|dev|export …`)
+        // for exercising the engine directly, independent of the CLI's own
+        // preview server — no in-repo importer by design.
+        "src/engine/dev-cli.ts",
         "scripts/*.mjs",
         "src/**/*.test.ts",
         "tests/**/*.test.ts",
         // Run by CI via `playwright test -c tests/compat/playwright.config.ts`
-        // (.github/workflows/preview-cross-browser.yml).
+        // (.github/workflows/preview-smoke.yml).
         "tests/compat/*.pw.ts",
         // Check modules are self-registering roots (registerCheck side effect,
         // loaded via checks/register-builtins). Their `export default check` is
@@ -27,12 +51,7 @@
         // importing ink-coverage/rasterized-pages/embedded-fonts defaults).
         "src/checks/{asset,heuristic,pdf,source}/*.ts"
       ],
-      "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"],
-      // Vendored third-party code (patched Paged.js) — never edited for lint.
-      "ignore": ["src/assets/vendor/**"],
-      // Source for vendor refreshes of src/assets/vendor/paged.polyfill.js —
-      // see src/assets/vendor/PAGEDJS-PATCHES.md.
-      "ignoreDependencies": ["pagedjs"]
+      "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"]
     },
     "packages/desktop": {
       "entry": [

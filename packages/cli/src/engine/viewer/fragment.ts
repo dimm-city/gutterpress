@@ -213,10 +213,9 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  *
  * Processed in document order, remeasuring between insertions: an insertion
  * shifts every later break site, and a site that already lands at the top of
- * its column (the strip's own leading break — see `clearLeadingForcedBreaks`
- * — or the second half of a wrapper/inner-heading pair that both carry the
- * same forced break) needs no spacer, which is what dedupes those pairs
- * without extra bookkeeping.
+ * its column (the strip's own leading break, or the second half of a
+ * wrapper/inner-heading pair that both carry the same forced break) needs no
+ * spacer, which is what dedupes those pairs without extra bookkeeping.
  */
 export function synthesizeColumnBreaks(model: GcpmModel): void {
   const sites: Array<{ el: Element; prop: string }> = [];
@@ -250,14 +249,6 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
   );
   for (const { el, prop } of sites) {
-    // `buildStrips()` already ran `clearLeadingForcedBreaks()`, which sets
-    // this exact inline style on a break-before element sitting on the
-    // strip's leading in-flow chain — a forced break there is spec-ignorable
-    // (CSS Fragmentation Module Level 3), and Chromium/WebKit already ignore
-    // it. Honour the same call here instead of re-deriving it from geometry,
-    // which a chapter opener with a non-zero margin-top would get wrong (see
-    // `clearLeadingForcedBreaks`'s own doc comment).
-    if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
     // A forced page break is only valid between sibling boxes in the same
@@ -321,7 +312,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
  * nothing propagates), the outermost chain ancestor with a preceding
  * sibling when it doesn't, or null when the chain reaches the strip with no
  * preceding sibling anywhere: that is the strip's leading edge, where a
- * forced break is spec-ignorable (`clearLeadingForcedBreaks`'s call).
+ * forced break is spec-ignorable.
  *
  * The walk is deliberately conservative — it only steps up while the chain
  * is a plain in-flow first-child chain, since that is the only shape §3.1
@@ -497,35 +488,6 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
   const trailing = carry();
   if (trailing.length) pushRun(runs, undefined, trailing);
   return runs;
-}
-
-const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
-
-/**
- * Neutralize a forced `break-before` sitting on the LEADING in-flow chain of a
- * strip (the strip's first child, its first child, …).
- *
- * A strip IS a fragmentation container, and a forced break at the very start of
- * one is spec-ignorable — Chromium ignores it (measured: neutralizing changes
- * NOTHING in Chromium, all 18 design-guide strip widths byte-identical before
- * and after). WebKit does not always: on the design-guide's `#ch-palette`
- * chapter opener — whose wrapper carries a non-zero `margin-top`, unlike every
- * other opener in that book — WebKit honours the `break-before` mapped onto the
- * opener `h1`, leaves column 1 empty and pushes the `h1` into column 2, so the
- * strip measures 1488px against a 840px column stride (2 pages) where Chromium
- * measures 648px (1 page). That is the single spurious page behind the
- * published-HTML 54-vs-53 page-count divergence in
- * `docs/native-engine-acceptance-gate.md` §E.
- *
- * Clearing it here is Chromium-neutral by construction (a break Chromium
- * already ignores) and makes the published artifact paginate identically in
- * Chromium, Firefox and WebKit.
- */
-function clearLeadingForcedBreaks(strip: HTMLElement) {
-  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
-    const cs = getComputedStyle(el);
-    if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
-  }
 }
 
 /**
@@ -888,10 +850,6 @@ export function buildStrips(
       offset: 0,
     });
   }
-  // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
-  // that inside the loop above would force one synchronous style recalc per
-  // strip right after that strip's own DOM writes.
-  for (const s of strips) clearLeadingForcedBreaks(s.el);
   return strips;
 }
 

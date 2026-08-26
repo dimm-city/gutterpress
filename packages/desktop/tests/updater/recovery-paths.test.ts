@@ -9,6 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import {
+  appLogPath,
   recoveryDir,
   operationLogPath,
   slugifyRepo,
@@ -89,5 +90,21 @@ describe("slugifyRepo", () => {
 
   test("mixed separators are preserved (not 'repo')", () => {
     expect(slugifyRepo("-_-")).toBe("-_-");
+  });
+});
+
+describe("appLogPath", () => {
+  test("sits beside the per-project operation logs so the Logs tab lists it", () => {
+    expect(path.dirname(appLogPath(DIR))).toBe(path.dirname(operationLogPath(DIR, "mybook")));
+    expect(appLogPath(DIR).endsWith(".log")).toBe(true);
+  });
+
+  test("its name can never collide with a project log", () => {
+    // slugifyRepo maps every char outside [A-Za-z0-9_-] to "_", so a project
+    // log's name cannot contain a space — which is what keeps the app's own
+    // log distinguishable at a glance in the Logs tab's file list.
+    const name = path.basename(appLogPath(DIR), ".log");
+    expect(name).toContain(" ");
+    expect(slugifyRepo(name)).not.toBe(name);
   });
 });

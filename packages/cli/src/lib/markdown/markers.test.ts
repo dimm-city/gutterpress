@@ -1,5 +1,5 @@
 /**
- * Characterization test net for `markdown-it-paged.js`.
+ * Characterization test net for `markers.js`.
  *
  * Goal: pin the CURRENT observable behavior of the plugin so precisely that a
  * future refactor of the `layout_transform` scope state machine (e.g.
@@ -19,7 +19,7 @@
  */
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
-import markdownItPaged, { MARKER_CSS } from "./markers.js";
+import markerPlugin, { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { createMarkdownRenderer } from "./renderer";
 import { assembleBookHtml } from "./assemble";
@@ -38,20 +38,20 @@ interface PagedEnv {
   [key: string]: unknown;
 }
 
-/** Render markdown through a bare MarkdownIt + markdown-it-paged instance. */
+/** Render markdown through a bare MarkdownIt + marker plugin instance. */
 function renderPaged(
   src: string,
   options: Record<string, unknown> = {},
   env: PagedEnv = {}
 ): { html: string; env: PagedEnv } {
   const md = new MarkdownIt({ html: true });
-  md.use(markdownItPaged, options);
+  md.use(markerPlugin, options);
   const html = md.render(src, env);
   return { html, env };
 }
 
 /**
- * Parse (not render) markdown through a bare MarkdownIt + markdown-it-paged
+ * Parse (not render) markdown through a bare MarkdownIt + marker plugin
  * instance, for tests that inspect `token.meta` directly (source-line
  * threading — §2.1 of docs/inline-editing-plan.md) rather than rendered HTML.
  */
@@ -61,7 +61,7 @@ function parsePaged(
   env: PagedEnv = {}
 ): { tokens: import("markdown-it/lib/token.mjs").default[]; env: PagedEnv } {
   const md = new MarkdownIt({ html: true });
-  md.use(markdownItPaged, options);
+  md.use(markerPlugin, options);
   const tokens = md.parse(src, env);
   return { tokens, env };
 }
@@ -100,7 +100,7 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     const t = findToken(tokens, "layout_chapter_open")!;
     expect(t.meta).toEqual({ line: 3 });
     // Do NOT set token.map here — see the inline comment at the assignment
-    // site (markdown-it-paged.js) and ADR 0009: setting map would make
+    // site (markers.js) and ADR 0009: setting map would make
     // markdown-it-source-map stamp data-source-line on this wrapper too,
     // breaking preview scroll-sync's rect tie-break.
     expect(t.map).toBeNull();
@@ -1027,7 +1027,7 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
 
   test("two independent renders on fresh envs (same md instance) never see each other's depth", () => {
     const md = new MarkdownIt({ html: true });
-    md.use(markdownItPaged);
+    md.use(markerPlugin);
 
     const env1: PagedEnv = {};
     const html1 = md.render(
@@ -1401,10 +1401,6 @@ describe("GUTTERPRESS_CSS author-facing image/block utilities (M17)", () => {
     expect(body).toMatch(/page:\s*gp-full-bleed/);
     expect(body).toMatch(/width:\s*100%/);
     expect(body).not.toMatch(/calc\(/);
-    // Paged.js is gone (native-only-migration-plan.md Phase 6) — nothing sets
-    // its page-margin custom properties any more, so they must not survive
-    // here as a permanent no-op.
-    expect(GUTTERPRESS_CSS).not.toMatch(/--pagedjs-margin/);
     expect(body).not.toMatch(/--gp-margin/);
     expect(GUTTERPRESS_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
     // Must NOT promise a named `art` page template or header/footer removal —
@@ -1610,7 +1606,7 @@ describe("gp-* vocabulary — rendered output", () => {
 // the document canvas in print (and the preview MASKS it — the viewer strip
 // is positioned and one page tall), so the plugin warns at parse time. These
 // tests go through createMarkdownRenderer() because the classes only exist
-// after markdown-it-attrs runs — a bare MarkdownIt + markdownItPaged never
+// after markdown-it-attrs runs — a bare MarkdownIt + markerPlugin never
 // attaches `{.gp-pin}`.
 describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   function pinWarnings(src: string): { all: LayoutWarning[]; pin: LayoutWarning[] } {
@@ -1678,7 +1674,7 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
  * shipped that way. Both spellings must now mean the same thing.
  */
 describe("marker arguments accept the {.class} spelling", () => {
-  const render = (src: string) => new MarkdownIt().use(markdownItPaged).render(src);
+  const render = (src: string) => new MarkdownIt().use(markerPlugin).render(src);
 
   test("{.class} on @section is equivalent to .class", () => {
     const braced = render("@section {.two-column}\n\ntext\n");

@@ -35,11 +35,10 @@ This repo is a Bun workspace with two packages:
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("gutterpress")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
-  electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
+  electron-vite + asar). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
   its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF` — see
-  `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md`).
+  uses Electron's own Chromium via `webContents.printToPDF`).
   See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
@@ -94,9 +93,9 @@ expectation is a design constraint on every engine/shim change:
    no-op for every book.
 3. **Track the spec, not our shims.** Where our implementation and the spec
    disagree, the implementation is what changes. Never let book CSS, docs,
-   or tooling depend on a shim-specific behavior, DOM shape, or property
-   (this is how the Paged.js migration got expensive — books coupled to
-   `.pagedjs_*` internals and polyfill quirks).
+   or tooling depend on a shim-specific behavior, DOM shape, or property.
+   A book coupled to a shim's internals cannot survive that shim's removal,
+   which turns a deletion into a migration.
 4. **Design for deletion.** Each shim's boundary should be sharp enough that
    deleting it when Chrome catches up is a small, safe change — feature-
    detect where possible, keep shims out of the author-facing surface, and
@@ -122,8 +121,8 @@ Two constraints survive the relaxation, and they are what keep it honest:
 1. **It must READ standard CSS.** The viewer consumes the same standard
    `@page`/GCPM the print path does. Authors never write viewer-specific CSS,
    and no book may depend on viewer internals (DOM shape, classes, custom
-   properties) — that coupling is exactly what made the Paged.js migration
-   expensive.
+   properties) — that coupling is what turns a viewer change into a
+   rewrite of every book.
 2. **It must not change what the document means.** Tooling may re-present the
    author's pages; it may not re-decide them. Where the viewer derives
    pagination by any means other than the print fragmenter, the preview↔print
@@ -161,6 +160,13 @@ resolve the categorization questions future work will hit):
   Care is needed distinguishing "only for another engine" from "surfaced by
   another engine": a fallback that also corrects Chromium behaviour stays, on
   its Chromium merits, with its comment rewritten to say so.
+
+- **Published-HTML is not exempt. Ratified 2026-08-26.** Chromium-only
+  governs the viewer's published-HTML surface too, even though that surface
+  is permanent tooling (above): `clearLeadingForcedBreaks()`
+  (`packages/cli/src/engine/viewer/fragment.ts`), a proven Chromium no-op
+  kept only to fix a WebKit-only page-count divergence in published
+  `book.html`, was removed rather than kept as a cross-browser accommodation.
 
 - **Chrome wins once it ships.** When Chrome implements a Paged Media
   feature, we drop our shim and match Chrome's behavior even where it is
@@ -302,8 +308,8 @@ dependency selectors are intentionally unsupported. Receipt-backed loads verify
 the full tree from a private snapshot, then rewrite reachable literal ESM and
 CommonJS package requests to receipt-approved private copies; unresolved or
 nonliteral requests fail closed, and an invalid marker never falls back to a
-global cache. Full rationale and optional/peer semantics:
-[`docs/adr/0007-npm-plugin-vendoring.md`](./.reviews/adr/0007-npm-plugin-vendoring.md).
+global cache. Full rationale and optional/peer semantics were captured in ADR 0007,
+removed in the 2026-07-29 docs cleanup.
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
@@ -371,10 +377,10 @@ wrapping or a warning for that shape.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 
-The upcoming project-source / version-history / GitHub features (milestones
-0.4.0 and 0.5.0 — see GitHub issues #12, #13, #14, #15, #16, #25) must perform
-**all Git and GitHub operations with a Node-native, pure-JS implementation
-(e.g. `isomorphic-git`)**. Non-negotiable:
+The project-source / version-history / GitHub features (shipped in milestones
+0.4.0 and 0.5.0, all tracking issues closed — GitHub issues #12, #13, #14,
+#15, #16, #25) perform **all Git and GitHub operations with a Node-native,
+pure-JS implementation (e.g. `isomorphic-git`)**. Non-negotiable:
 
 - **Do NOT shell out to the system `git` binary.** The user must not be required
   to have Git installed, and we do **not** bundle a Git binary on any platform
@@ -403,7 +409,7 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > [!ALERT]
 > This is a **non-negotiable core architecture requirement** for the desktop app and
 > for **every Electron application started in this org** — it is the gold
-> standard, applied by default. See `docs/adr/0004-platform-abstraction.md`.
+> standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
 `@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
@@ -438,7 +444,7 @@ the client bundle.
 
 **Two seams, not one.** The route-first split (server route + `fetch()`) is
 the **default path** and the one most of the app actually uses today: 26+
-files call `src/lib/api.ts` directly (`+page.svelte` alone has 33 `api.*`
+files call `src/lib/api.ts` directly (`+page.svelte` alone has 36 `api.*`
 call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
 (`src/lib/platform/contract.ts` + `ElectronAdapter`/`WebAdapter`, reached via
 `import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
@@ -557,7 +563,7 @@ seam) **first**, before the first feature adds a host call.
 The Dimm City design guide — the seven-file CSS layer contract, the
 `dc-components`/`fg-overrides` ownership rules, the Contextual Cascade pattern's
 DC-specific application, the specialty variant system, the frozen chapter-opener
-composite, and the R1–R12 paged.js CSS anti-patterns — used to live in
+composite, and the R1–R12 print-CSS anti-patterns — used to live in
 `examples/dc-design-guide/` here. That example was removed (commit `db0f0fc`)
 and the full design guide now lives in the **`dc-op-manual`** repo
 (`dc-op-manual/dc-design-guide/`). Do that work there, against that repo's
@@ -571,8 +577,8 @@ What remains relevant to **this** repo:
 - The frozen chapter-opener's **plugin** half still lives in this repo at
   `packages/cli/src/lib/markdown/markers.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
-  moved to dc-op-manual. The full frozen contract and the historical Paged.js
-  CSS anti-patterns are preserved in AKM
+  moved to dc-op-manual. The full frozen contract and the print-CSS
+  anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
 

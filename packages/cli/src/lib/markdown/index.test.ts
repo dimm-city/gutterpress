@@ -168,14 +168,14 @@ test("resolveActiveMarkdownFiles: an empty configured-files array still falls ba
 /**
  * ARCH finding #4 — `assemble.ts`'s render loop previously called
  * `md.render(content)` with NO env, so every `env.layoutWarnings`
- * markdown-it-paged computed (8 typed, line-numbered author-mistake classes —
- * see markdown-it-paged.js's header) landed in markdown-it's own throwaway
+ * the marker plugin computed (8 typed, line-numbered author-mistake classes —
+ * see markers.js's header) landed in markdown-it's own throwaway
  * internal env and was discarded before `renderChapters` ever returned.
  * Before this fix there was NO way for a `renderChapters` caller to observe a
  * marker mistake at all. `onChapterWarnings` is the fix: it must fire, keyed
  * by the exact chapter file, with the line number and message intact.
  */
-test("renderChapters surfaces markdown-it-paged layout warnings via onChapterWarnings (ARCH #4)", async () => {
+test("renderChapters surfaces marker layout warnings via onChapterWarnings (ARCH #4)", async () => {
   const dir = await makeProject();
   // A deliberate marker mistake: @continue with no open @section.
   await writeFile(

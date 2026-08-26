@@ -1,10 +1,7 @@
 <script lang="ts">
   /**
    * ProjectActivityView — the writer-facing view of a project's version
-   * history and operation log (UX review M37: the ONE log/activity surface;
-   * OperationLogDialog is a separate, self-contained modal used by the
-   * recovery flows and is intentionally NOT folded in here — see its own
-   * header comment).
+   * history and operation log (UX review M37: the ONE log/activity surface).
    *
    * Restore (H2): the host's `/api/vcs/restore-snapshot` route validates the
    * snapshot id and snapshots the current state before restoring (ADR 0006

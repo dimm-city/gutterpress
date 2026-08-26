@@ -243,7 +243,8 @@ export type BuildDiagnosticCode =
   | "engine.multicol.dead-column"
   | "engine.content.overheight"
   | "engine.image.low-dpi"
-  | "engine.flush.margin-box";
+  | "engine.flush.margin-box"
+  | "engine.page-background.unreferenced";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -255,6 +256,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.content.overheight",
   "engine.image.low-dpi",
   "engine.flush.margin-box",
+  "engine.page-background.unreferenced",
 ];
 
 export interface BuildDiagnostic {
@@ -371,9 +373,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // in: an engine-launched window, a pooled puppeteer default, or the
     // width check's cleared override each gave DIFFERENT sizes — measured
     // as a 0.84x shrink-to-fit on one path and none on another, for the
-    // same document. Pin the viewport to the author's page size (what the
-    // Paged.js pipeline has always laid out at) before anything measures
-    // or prints, and keep it pinned for the build's whole life.
+    // same document. Pin the viewport to the author's page size before
+    // anything measures or prints, and keep it pinned for the build's whole
+    // life.
     const baseGeom = resolvePage(model).geometry;
     const sheetViewport = {
       width: Math.max(1, Math.round((baseGeom.width * 96) / 72)),
@@ -381,6 +383,19 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       deviceScaleFactor: 1,
       mobile: false,
     };
+    // The pinned viewport is a MEASUREMENT device: every audit, the width
+    // check and the viewer prediction read boxes laid out inside it, so it
+    // must be the sheet — not the sheet minus a scrollbar. Chromium only
+    // hides scrollbars if something asks, and until this line nothing in the
+    // print path did: the CLI's browser is launched by puppeteer, which
+    // passes `--hide-scrollbars` in its defaults, and the desktop's Electron
+    // `BrowserWindow` is not. Measured 2026-08-24, same staged bytes: 576px
+    // on the CLI and 561px on the desktop, and one box that measured 450px
+    // against a 442px limit on the CLI measured 435px on the desktop — a hard
+    // error on one host, a shipped book on the other, and 8 of 21 low-DPI
+    // warnings on a real book that the desktop author never saw. Owned here
+    // so no host can contribute it (docs/analysis/cli-desktop-print-parity.md).
+    await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
 
     // Every audit below (the width check, the abspos/multicol passes, the
@@ -525,8 +540,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // ---- publish the page content box to CSS ----------------------------
     // MARKER_CSS gives `.page`/`.spread` `min-height: var(--gp-content-h)`,
     // which is what makes a page root the containing block for the PAGE
-    // rather than for its own prose (see that rule's comment: this is what
-    // Paged.js used to do with `height: inherit`). Only an engine knows the
+    // rather than for its own prose (see that rule's comment). Only an
+    // engine knows the
     // number, because it is `size` minus the vertical margins of the `@page`
     // context the element actually lands in — author CSS, not the manifest.
     // The viewer's twin publishes the same property on each `.gp-strip`
@@ -719,8 +734,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const sites = await page.evaluate<any[]>(
         `window.__gp.xrefSites(${JSON.stringify(xrefSelectors)})`,
       );
-      // front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
-      // gap #1): Chromium ignores the restart (ENGINE.md §8), so the elements
+      // front-matter -> body folio restart (`counter-reset: page N`):
+      // Chromium ignores the restart (ENGINE.md §8), so the elements
       // that declare it need ids too, to learn which page they land on.
       const resetSites = model.counterResets.length
         ? await page.evaluate<any[]>(
@@ -1064,9 +1079,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
-    // Abspos containing-block leak + fragmenting-multicol + trapped-layer
-    // warnings — one shared `querySelectorAll("*")` walk with a single base
-    // `getComputedStyle` call per element (was separate document-wide walks).
+    // Abspos containing-block leak + fragmenting-multicol + trapped-layer +
+    // unreferenced-@page-image warnings — one evaluate, sharing a single
+    // `querySelectorAll("*")` walk with one base `getComputedStyle` call per
+    // element (was separate document-wide walks).
     // Only a `.gp-behind` hit performs the additional, targeted ancestor-style
     // reads needed to answer the containment question against the live DOM.
     //
@@ -1111,14 +1127,101 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // mirrors exactly that. This build-time result is authoritative;
     // findings are capped like the sibling audits so malformed generated
     // markup cannot flood the Problems panel.
+    //
+    // Unreferenced @page image: Chromium fetches a `url()` referenced only
+    // from inside an `@page` rule and then paints nothing — the sheet prints
+    // with its background colour alone (docs/known-limitations.md §3, #152).
+    // MEASURED on Chrome 151.0.7922.75, 96dpi raster, mean absolute pixel
+    // difference against the same page with no background image: the sole
+    // reference scores 0.0000, and a `<link rel="preload" as="image">` or an
+    // `html { background }` for the same URL restores it (89.3574 both). An
+    // `<img>` does NOT: under this pipeline's print sequence it scores 0.0000,
+    // and it scores 0.0000 with a preload present too — measured 12/12, either
+    // document order. A margin box's own `background-image` fails the same way
+    // (0.0000 alone, 8.0345 with a preload), which is why the whole `@page`
+    // rule — not just the page box — is what "owns" a URL here. This CANNOT be
+    // a CSS-source lint (#151's ruling): `checkCss` sees CSS source only, and
+    // the references that decide the outcome are in the HTML. The built
+    // document knows them, exactly.
+    //
+    // `assemble.ts` now preloads every staged CSS image, so this fires only on
+    // what that cannot cover: a remote `url(https://…)` in `@page` (never
+    // staged), CSS that reaches the document without passing through
+    // `inlineStyles` (plugin CSS), and — as the backstop for
+    // asset-inline.ts's content-addressing invariant — a `[src]` element
+    // naming a CSS image's URL.
     {
-      const { leaks, multicol, layerTraps } = JSON.parse(
+      const { leaks, multicol, layerTraps, pageBackgrounds } = JSON.parse(
         await page.evaluate<string>(`(() => {
           const desc = ${DESC_JS};
           const leaks = [];
           const multicol = [];
           const layerTraps = [];
           const seenLayerTraps = new Set();
+
+          // Images referenced ONLY from inside an @page rule. Chromium fetches
+          // them and then paints nothing — see the pass comment above.
+          const pageBackgrounds = (() => {
+            const absolute = (u) => {
+              try { return new URL(u, document.baseURI).href } catch { return u }
+            };
+            const urlsIn = (text) => {
+              const out = [];
+              const re = /url\\(\\s*(['"]?)([^'")]*)\\1\\s*\\)/g;
+              let m;
+              while ((m = re.exec(text))) if (m[2]) out.push(m[2]);
+              return out;
+            };
+            const owned = new Map();
+            // Resolved by something OTHER than an @page rule — a CSS rule
+            // outside @page, or an element's inline style. Unconditionally
+            // protective: the image is a StyleImage the load already resolved.
+            const cssReferenced = new Set();
+            // Named by a <link rel="preload">. Protective, unless an element
+            // src names the same URL (see srcNamed).
+            const preloaded = new Set();
+            // Named by an element's src. NEVER protective — measured, this is
+            // the one reference type that BREAKS the page box, and it breaks
+            // it whether or not a preload is present (12/12, either document
+            // order). An element reference is evidence of the failure, not of
+            // safety.
+            const srcNamed = new Set();
+            for (const el of document.querySelectorAll("[src]"))
+              srcNamed.add(absolute(el.getAttribute("src")));
+            for (const el of document.querySelectorAll("link[rel~=preload][href]"))
+              preloaded.add(absolute(el.getAttribute("href")));
+            for (const el of document.querySelectorAll("[style]"))
+              for (const u of urlsIn(el.getAttribute("style"))) cssReferenced.add(absolute(u));
+            const walk = (rules, owner) => {
+              for (const rule of rules) {
+                let own = owner;
+                if (rule.constructor.name === "CSSPageRule")
+                  own = "@page" + (rule.selectorText ? " " + rule.selectorText : "");
+                else if (owner && rule.name) own = owner + " { @" + rule.name + " }";
+                for (const u of urlsIn(rule.style ? rule.style.cssText : "")) {
+                  if (!own) cssReferenced.add(absolute(u));
+                  else if (!owned.has(absolute(u))) owned.set(absolute(u), { url: u, where: own });
+                }
+                if (rule.cssRules) walk(rule.cssRules, own);
+              }
+            };
+            for (const sheet of document.styleSheets) {
+              let rules;
+              try { rules = sheet.cssRules } catch { continue }
+              walk(rules, null);
+            }
+            // PROTECTED iff another CSS rule resolves it, OR a preload names
+            // it and no element src names it too. "Something else mentions
+            // this URL" is NOT the test — that inference is inverted for
+            // [src], the very reference type that breaks the page box.
+            return [...owned]
+              .filter(([abs, hit]) =>
+                !/^data:/i.test(hit.url) &&
+                !cssReferenced.has(abs) &&
+                !(preloaded.has(abs) && !srcNamed.has(abs)))
+              .map(([, hit]) => hit)
+              .slice(0, 20);
+          })();
 
           const stackingReasons = (el, cs) => {
             const reasons = [];
@@ -1240,12 +1343,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               }
             }
           }
-          return JSON.stringify({ leaks, multicol, layerTraps });
+          return JSON.stringify({ leaks, multicol, layerTraps, pageBackgrounds });
         })()`),
       ) as {
         leaks: string[];
         multicol: string[];
         layerTraps: Array<{ behind: string; ancestor: string; detail: string }>;
+        pageBackgrounds: Array<{ url: string; where: string }>;
       };
       for (const d of leaks)
         diagnose(
@@ -1259,6 +1363,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `${trap.behind} cannot paint behind the page as intended because ancestor ${trap.ancestor} ${trap.detail}. Remove or narrowly scope that containment style around the .gp-behind element.`,
         );
       if (layerTraps.length) log(`audit: ${layerTraps.length} trapped layer warning(s)`);
+      for (const hit of pageBackgrounds)
+        diagnose(
+          "engine.page-background.unreferenced",
+          `"${hit.url}" is only referenced from "${hit.where}", and Chromium will not print an image referenced nowhere else — the page prints with its background colour alone, with no error. Gutterpress stages and preloads every image your project stylesheets reference, so this one is outside that: it is remote (a url(https://...), which is never staged), or it comes from CSS that does not pass through your stylesheets, or an element in the document uses the same URL as its src, which drops it on its own. Use a local image, referenced from one of your project stylesheets, and not also used as an <img>.`,
+        );
+      if (pageBackgrounds.length)
+        log(`audit: ${pageBackgrounds.length} unreferenced @page background image(s)`);
       for (const d of multicol)
         diagnose(
           "engine.multicol.dead-column",
@@ -1409,7 +1520,7 @@ async function findWidthOffenders(
 }> {
   const contexts = [
     resolvePage(model),
-    // Exclude core's own `gp-` reserved-namespace pages (markdown-it-paged.js
+    // Exclude core's own `gp-` reserved-namespace pages (markers.js
     // MARKER_CSS — today `gp-full-bleed`): they are injected into EVERY
     // document with zero side margins so `.full-bleed` art can reach the
     // sheet edge, which would otherwise raise this Math.max to the full
@@ -1590,7 +1701,10 @@ async function predictPageMap(
   try {
     page = await browser.newPage();
     // Same pinned viewport as the print page — vw/vh-sized content must
-    // measure identically on both sides or the prediction always misses.
+    // measure identically on both sides or the prediction always misses. Same
+    // scrollbar state too, and for the same reason: this page measures, so
+    // the host must not be the one deciding how wide it measures.
+    await page.send("Emulation.setScrollbarsHidden", { hidden: true });
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
     await page.navigate(url);
     await page.evaluate(agentScript);
@@ -1678,8 +1792,8 @@ export function counterStyleCss(
   }
   for (const entries of byName.values()) entries.sort((a, b) => a.page - b.page);
 
-  // Front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
-  // gap #1). `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
+  // Front-matter -> body folio restart (`counter-reset: page N`).
+  // `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
   // formats it per the `counter(page[, style])` style each context actually
   // requests, so `gp-page--lower-roman` and `gp-page--decimal` can carry
   // the SAME restarted numbering with different symbols.

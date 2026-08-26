@@ -44,7 +44,13 @@ function cleanup() {
   cleaned = true;
   // POSIX: signal the whole detached process group. Windows: no process
   // groups / negative PIDs — kill the direct child instead.
-  try { process.kill(-child.pid, "SIGTERM"); } catch { try { child?.kill(); } catch {} }
+  // SIGKILL, not SIGTERM: Electron does not reliably die on SIGTERM — Chromium
+  // begins a graceful shutdown that outlives this script, so the app survives the
+  // run. Measured on CI, a 10-run leg left exactly 10 orphan Electrons, and every
+  // leaked instance kept competing for the runner (see the diagnosis in
+  // editor-opens-with-content.pw.mjs's header). SIGKILL cannot be caught, so the
+  // process group actually ends.
+  try { process.kill(-child.pid, "SIGKILL"); } catch { try { child?.kill("SIGKILL"); } catch {} }
   // Throwaway dirs created BY THIS SCRIPT via mkdtemp — safe to remove.
   try { if (fakeHome) rmSync(fakeHome, { recursive: true, force: true }); } catch {}
   try { if (bookDir) rmSync(bookDir, { recursive: true, force: true }); } catch {}
@@ -205,32 +211,43 @@ for (let i = 0; i < 120; i++) {
 if (!projectOpen) fail("project never opened — no TOC items or file items appeared (120s)");
 log("project opened");
 
-// ── 5. badge count on the problems strip toggle ───────────────────────────────
-// The problems strip is always visible at the bottom of the screen (not in navbar).
-// The strip shows error/warning counts without a dedicated badge element.
-let stripVisible = false;
-for (let i = 0; i < 30; i++) {
-  const counts = await evalJs(`(() => {
-    const strip = document.querySelector('.toggle-strip');
-    if (!strip) return null;
-    const errs = strip.querySelector('.error-count')?.textContent?.trim() ?? null;
-    const warns = strip.querySelector('.warning-count')?.textContent?.trim() ?? null;
-    return { errs, warns };
-  })()`);
-  if (counts?.errs || counts?.warns) { stripVisible = true; break; }
-  await sleep(1000);
-}
-if (!stripVisible) fail("problems strip never showed error/warning counts");
-log(`problems strip counts visible`);
-
-// Also check the strip shows error count = 1
-const stripCounts = await evalJs(`(() => {
+// ── 5. counts on the problems strip ──────────────────────────────────────────
+// The strip is always visible at the bottom of the screen (not in the navbar)
+// and shows error/warning counts without a dedicated badge element.
+//
+// Those counts are downstream of the FIRST FULL RENDER, not of the project-open
+// gate above: the app calls refreshProblems() from its renderingComplete
+// handler, while that gate fires as soon as the sources are parsed. Measured on
+// a green CI run the counts land ~9s after "project opened", so the old 30s was
+// sized for the lint round-trip alone and left the rest of the render ~3x
+// headroom — which is what ran out on 5 of 40 CI runs. Budget it like the
+// project-open gate above, since it waits on the same pipeline, and report what
+// the strip actually showed on the way out: a render that never finished, a
+// lint that errored, and a lint that found nothing were indistinguishable
+// before, and only one of the three is fixed by waiting longer.
+const readStrip = () => evalJs(`(() => {
   const strip = document.querySelector('.toggle-strip');
+  if (!strip) return { strip: false };
   return {
-    errorCount: strip?.querySelector('.error-count')?.textContent?.trim() ?? null,
-    warningCount: strip?.querySelector('.warning-count')?.textContent?.trim() ?? null,
+    strip: true,
+    errs: strip.querySelector('.error-count')?.textContent?.trim() ?? null,
+    warns: strip.querySelector('.warning-count')?.textContent?.trim() ?? null,
+    status: strip.querySelector('.strip-status')?.textContent?.trim() ?? null,
+    stillRendering: !!document.querySelector('.loading-overlay'),
   };
 })()`);
+const hasCounts = (s) => !!(s?.errs || s?.warns);
+let stripCounts = await readStrip();
+const stripDeadline = Date.now() + 120000;
+// "Couldn't check" is lint reporting its own failure: the counts are never
+// coming, so sitting out the budget would only delay the same verdict.
+while (!hasCounts(stripCounts) && stripCounts?.status !== "Couldn't check" && Date.now() < stripDeadline) {
+  await sleep(500);
+  stripCounts = await readStrip();
+}
+if (!hasCounts(stripCounts)) {
+  fail(`problems strip never showed error/warning counts — last strip state ${JSON.stringify(stripCounts)}`);
+}
 log(`strip counts: ${JSON.stringify(stripCounts)}`);
 
 // ── 6. open the panel; verify both findings render ───────────────────────────
@@ -258,7 +275,13 @@ const allEntries = panel.groups.flatMap((g) => g.entries.map((e) => ({ ...e, fil
 const brokenRef = allEntries.find((e) => (e.message ?? "").includes("missing-art.png"));
 if (!brokenRef) fail("broken local-ref finding not listed");
 if (brokenRef.file !== "01-alpha.md") fail(`broken-ref grouped under ${brokenRef.file}, expected 01-alpha.md`);
-if (!/error/.test(brokenRef.severity)) fail(`broken-ref severity class ${brokenRef.severity}, expected sev-error`);
+// A missing IMAGE is a warning, not an error, and deliberately so: the
+// asset planner substitutes a loud magenta placeholder, so the build still
+// produces a book (checks/source/local-refs.ts — `kind === "image" ?
+// "warning" : "error"`). A missing link has no such fallback and stays an
+// error. This assertion read `sev-error` and had been failing ever since,
+// unnoticed because no workflow ran this drive.
+if (!/warning/.test(brokenRef.severity)) fail(`broken-ref severity class ${brokenRef.severity}, expected sev-warning`);
 const risky = allEntries.find((e) => (e.message ?? "").includes("filter"));
 if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);

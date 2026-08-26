@@ -37,6 +37,16 @@ export function operationLogPath(userDataDir: string, repoSlug: string): string 
   return path.join(logsDir(userDataDir), `${slugifyRepo(repoSlug)}.log`);
 }
 
+// The app's OWN fault log (updater failures) — see electron/app-log.ts. It
+// lives in the same userData/logs/ dir as the per-project operation logs, so
+// the start screen's Logs tab lists and reads it with no extra route.
+// The SPACE in the name is what keeps it distinguishable from a project's log
+// at a glance: slugifyRepo maps every char outside [A-Za-z0-9_-] to "_", so no
+// project log's name can ever contain one.
+export function appLogPath(userDataDir: string): string {
+  return path.join(logsDir(userDataDir), "Gutterpress app.log");
+}
+
 /**
  * The operation-log slug for a project: the REPOSITORY's name.
  *

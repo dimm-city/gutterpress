@@ -1,16 +1,11 @@
 /**
- * `--engine native` — thin bridge from `packages/cli`'s PDF build to the
- * Gutterpress engine at `src/engine/` (promoted 2026-08-06 from the
- * `folio` integration spike — see `docs/engine-history/MIGRATION.md` "Step 3
- * — integration spike results" for the blast-radius findings this module
- * resolves: the engine is now an ordinary in-package module, not a relative
- * cross-directory import out of a non-workspace directory, and it ships in
- * both the source checkout and the compiled binary).
+ * Thin bridge from `packages/cli`'s PDF build to the Gutterpress engine at
+ * `src/engine/`. The engine is an ordinary in-package module, not a relative
+ * cross-directory import, and it ships in both the source checkout and the
+ * compiled binary.
  *
  * This module calls the engine directly on the plain `book.html` FILE — no
- * HTTP staging, no overlay, no pagination polyfill of any kind (the Paged.js
- * pipeline this used to deliberately bypass was deleted along with Paged.js
- * itself — native-only-migration-plan.md Phase 6).
+ * HTTP staging, no overlay, no pagination polyfill of any kind.
  *
  * The engine used to drive its OWN Chromium via `src/engine/shared/cdp.ts`'s
  * raw-CDP `launchChromium()` per build, entirely separate from
@@ -57,9 +52,9 @@ export interface NativePdfOptions {
 }
 
 /**
- * Render `htmlFile` to `outPdf` via the Gutterpress engine. No HTTP staging,
- * no Paged.js polyfill — but the pooled/pre-warmed Chromium IS reused (see
- * module doc comment): this module never launches or closes a browser itself.
+ * Render `htmlFile` to `outPdf` via the Gutterpress engine. No HTTP staging —
+ * but the pooled/pre-warmed Chromium IS reused (see module doc comment): this
+ * module never launches or closes a browser itself.
  *
  * Returns the build's author-facing diagnostics so the caller can surface
  * them (the desktop Problems panel, the CLI's own output). Dropping them here

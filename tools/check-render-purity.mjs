@@ -18,12 +18,7 @@
 //      a bare `node:x` also matches minified object properties like `{node:t}`.
 //   3. Bare `require("<builtin>")` for every entry in node:module's
 //      builtinModules — CJS-interop output that survives bundling. Generated,
-//      never hand-listed, so new builtins are covered automatically. This
-//      layer SKIPS files under a vendor/ directory: vendored third-party
-//      browser libs (the paged.js polyfill) legitimately carry guarded UMD
-//      `require('util')` branches that never execute in the browser, while a
-//      real leak lives in bundler-emitted chunks. Layers 1-2 still apply to
-//      vendored files.
+//      never hand-listed, so new builtins are covered automatically.
 //
 // Usage:  node tools/check-render-purity.mjs [buildDir] [--strict]
 //   buildDir defaults to packages/desktop/build/client (relative to the repo
@@ -83,17 +78,14 @@ function walk(dir, out) {
   }
 }
 
-function findViolation(text, file) {
+function findViolation(text) {
   for (const token of FORBIDDEN_IDENTIFIERS) {
     if (text.includes(token)) return token;
   }
   const quoted = QUOTED_NODE_SPECIFIER.exec(text);
   if (quoted) return quoted[0];
-  const isVendored = /[\\/]vendor[\\/]/.test(file);
-  if (!isVendored) {
-    const bare = BARE_BUILTIN_REQUIRE.exec(text);
-    if (bare) return bare[0];
-  }
+  const bare = BARE_BUILTIN_REQUIRE.exec(text);
+  if (bare) return bare[0];
   return null;
 }
 
@@ -131,7 +123,7 @@ function main() {
 
   const violations = [];
   for (const file of files) {
-    const token = findViolation(readFileSync(file, "utf8"), file);
+    const token = findViolation(readFileSync(file, "utf8"));
     if (token) violations.push({ file, token });
   }
 

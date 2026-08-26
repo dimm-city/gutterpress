@@ -1,6 +1,6 @@
 /**
  * ARCH finding #49: command-level smoke tests for citty arg parsing → handler
- * dispatch. `runBuild` (the real pipeline — Chromium, Paged.js, ghostscript)
+ * dispatch. `runBuild` (the real pipeline — Chromium, ghostscript)
  * is `spyOn`-stubbed so these tests never touch a real browser; they only
  * verify `build.ts` maps citty's parsed args into `runBuild`'s options shape
  * correctly, and that the UsageError/BuildError → exit-code contract holds.

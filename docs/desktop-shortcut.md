@@ -15,7 +15,7 @@ If you want the app in your KDE/GNOME menu, you want the **first** one.
 
 ## Linux AppImage application-menu integration (desktop app)
 
-The released `gutterpress-<version>.AppImage` is a portable executable: it
+The released `Gutterpress-<version>.AppImage` is a portable executable: it
 runs from wherever you downloaded it, and — like every AppImage — it does not
 register itself with your desktop environment. That is deliberate; a portable
 file should not copy itself into your home directory or edit your desktop
@@ -122,11 +122,11 @@ use the **Gutterpress desktop app** (`packages/desktop`) instead of a browser sh
 #### Windows (install.ps1)
 
 **Shortcut Details:**
-- **File**: `Gutterpress Preview.lnk` (created on Desktop)
+- **File**: `gutterpress Desktop.lnk` (created on Desktop)
 - **Target**: the installed `gutterpress.exe` binary, with arguments `preview --open true`
 - **Working Directory**: `Documents\gutterpress` (the examples directory the installer sets up), falling back to the user's Documents folder
 - **Icon**: the binary's own embedded icon (`<gutterpress.exe>,0`)
-- **Description**: "Start Gutterpress Preview Server"
+- **Description**: "Start gutterpress Desktop"
 
 #### Linux (install.sh)
 
@@ -143,8 +143,8 @@ use the **Gutterpress desktop app** (`packages/desktop`) instead of a browser sh
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Gutterpress Preview
-Comment=Start Gutterpress Preview Server
+Name=gutterpress Desktop
+Comment=Start gutterpress Desktop
 Exec=/path/to/gutterpress preview --open true
 Path=/home/user/Documents/gutterpress
 Terminal=true
@@ -166,7 +166,7 @@ Currently, macOS users install the binary without a shortcut. Desktop shortcuts 
 4. User sees success message with instructions
 
 #### Daily Use
-1. User double-clicks "Gutterpress Preview" shortcut
+1. User double-clicks "gutterpress Desktop" shortcut
 2. Terminal/PowerShell window opens showing server logs
 3. Browser automatically opens to `http://localhost:3579`
 4. The rendered book is displayed (headless — no toolbar)

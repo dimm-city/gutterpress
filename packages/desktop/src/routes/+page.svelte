@@ -356,7 +356,6 @@
     paneViewRestore = null;
     if (restore) setMode(restore.mode);
     if (editorVisible) {
-      loadEditorModule();
       void ensureEditorFile();
       focusEditorWhenReady();
     }
@@ -1136,9 +1135,8 @@
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
     if (!isMd(editorFilePath)) {
-      void ensureEditorFile();
       if (mode === "viewer") setMode("editor");
-      loadEditorModule();
+      void ensureEditorFile();
     }
     let tries = 0;
     const tryInsert = () => {
@@ -1252,10 +1250,8 @@
   const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
-      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
-      // native is the only engine, and the native viewer honours this
-      // background rule directly. See buildCanvasBackgroundStyles' doc
-      // comment.
+      // The viewer honours this background rule directly. See
+      // buildCanvasBackgroundStyles' doc comment.
       client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(bg));
     },
     () => !!client,
@@ -1277,8 +1273,15 @@
   // the persisted shape cannot), so the async settings load has to be pushed
   // into it. The guard dedupes against the last value seen, so setMode's own
   // write-back cannot bounce back and clobber a live `focus`.
+  // Restoring a persisted `editor` mode assigns `mode` directly rather than
+  // going through setMode, so it has to kick the lazy import the way setMode
+  // does. The settings fetch and the auto-open of the last project are
+  // independent async starts: when settings land LAST, the project-open path
+  // already ran `ensureEditorFile()` while the workspace still looked like
+  // viewer mode, and nothing else would ever load the editor component.
   const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
     mode = m;
+    if (m !== "viewer") loadEditorModule();
   });
   onMount(() =>
     onSettingsChange((s) => {
@@ -1335,16 +1338,30 @@
     requestAnimationFrame(attempt);
   }
 
-  /** Explicit navigation: switch to the source file, place the caret, focus. */
+  /**
+   * Explicit navigation: switch to the source file and reveal the line.
+   *
+   * `focus` also places the caret (see MarkdownEditor.revealLine) — right for a
+   * deliberate "take me there" action, wrong for a click in the book, which
+   * should scroll the editor without stealing the caret or the selection.
+   *
+   * The cross-chapter file switch below is DELIBERATE for both callers
+   * (owner-ratified 2026-08-26): clicking a block from another chapter in the
+   * preview follows the author's attention there — the editor loads that
+   * chapter, flushing the outgoing buffer first via selectEditorFile's atomic
+   * handoff, so no edit is lost. `focus` governs only caret placement, never
+   * whether the follow happens.
+   */
   async function revealInEditor(
     chapter: string | null,
     line: number,
+    focus = true,
   ): Promise<void> {
     if (!chapter) {
       const path = editorFilePath;
       if (path) {
         whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+          if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
         });
       }
       return;
@@ -1357,7 +1374,7 @@
       if (!(await selectEditorFile(path))) return;
     }
     whenEditorReady(() => {
-      if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+      if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
     });
   }
 
@@ -1455,8 +1472,18 @@
   }
 
   // When the editor opens with nothing loaded, choose one real file.
+  //
+  // Loading the lazy editor chunk belongs here, not at each call site: every
+  // caller wants a USABLE editor, and the buffer alone is not one. The
+  // project-open path (ProjectLifecycleController -> deps.ensureEditorFile)
+  // called only this function, so a book opened while the workspace was
+  // already in Edit mode filled the buffer behind a pane still showing
+  // "Loading editor…" — nothing on that path ever imported the component.
+  // `loadEditorModule()` self-guards on `editorVisible`, so this stays a no-op
+  // while the book is being previewed in viewer mode.
   async function ensureEditorFile() {
     if (!lifecycle.currentDir || !isDesktop()) return;
+    loadEditorModule();
     // Fire-and-forget continuation: capture the dir and bail if a different
     // project took over during the listing, or this would load the OLD
     // project's chapters (and auto-save edits into the wrong book on disk).
@@ -1944,6 +1971,7 @@
     editorSync: {
       invalidatePending: () => editorSync.invalidatePending(),
       updateActiveOutline: (line) => updateActiveOutline(line),
+      revealEditorLine: (chapter, line) => syncOpenEditorTo(chapter, line, false),
     },
     zoom: () => zoom,
     viewMode: () => viewMode,
@@ -1976,8 +2004,8 @@
   // remounts on lifecycle.previewUrl change via {#key lifecycle.previewUrl}).
   //
   // M31: this is also where the client's postMessage security is wired up.
-  // PreviewFrame calls attach() itself (on the iframe's "load" event, after
-  // this callback has already run), so `setExpectedOrigin`/`lockDown` must
+  // PreviewFrame calls attach() itself on the very next line of its own mount,
+  // so `setExpectedOrigin`/`lockDown` must
   // happen HERE, synchronously, ahead of that — PreviewFrame cannot read the
   // pinned origin from the cross-origin iframe's own window.location (that
   // throws), and in URL-preview mode the SAME component loads an arbitrary
@@ -2276,6 +2304,21 @@
     activeOutlineIndex = activeOutlineIndexForLine(outline, line);
   }
 
+  /**
+   * Keep an ALREADY-OPEN editor in step with a preview navigation. Never opens
+   * the pane and never switches away from the activity view — the explicit
+   * "Go to source" action owns opening the editor.
+   *
+   * Shared by the two preview→editor navigations: a TOC jump (`focus`, because
+   * the author asked to go there) and a click on a block in the book (no
+   * focus — the click may be the start of a text selection in the viewer, and
+   * stealing focus mid-gesture would break selecting/copying from the book).
+   */
+  function syncOpenEditorTo(chapter: string | null, line: number | null, focus: boolean) {
+    if (line == null || !editorPaneOpen || editorView !== "editor") return;
+    void revealInEditor(chapter, line, focus);
+  }
+
   // Jump the preview (and, if open, the editor) to a heading.
   function jumpToOutline(entry: OutlineEntry) {
     if (!client) return;
@@ -2289,11 +2332,7 @@
         : entry.sourceLine != null
           ? { line: entry.sourceLine, chapter: entry.chapter }
           : { page: entry.page };
-    // An outline jump may keep an already-open editor in step, but it never
-    // opens the editor. Preview scrolling/clicking alone never moves it.
-    if (entry.sourceLine != null && editorPaneOpen && editorView === "editor") {
-      revealInEditor(entry.chapter, entry.sourceLine);
-    }
+    syncOpenEditorTo(entry.chapter, entry.sourceLine, true);
     client
       .scrollTo(target, { block: "start" })
       .then((res) => {

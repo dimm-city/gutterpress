@@ -1,6 +1,100 @@
 
-name: Gutterpress render-perf gate
+name: Gutterpress desktop app gates
 
+# Two jobs, one per gate class, because they cannot share a runner (see
+# "── Why two jobs" below). Both build the desktop app the same way and then
+# launch it; neither can be reduced below that. The file keeps its
+# render-perf-gate.yml name because tests/perf/render-gate.mjs and
+# tests/integration/inline-editing.pw.mjs cite it by path.
+#
+# ── Why two jobs ────────────────────────────────────────────────────────────
+# Every step in both classes launches Electron and leaks it on exit, and
+# whatever ran SECOND on a shared runner was badly degraded: problems-last-hop
+# took 3.2s first but 23s after the perf gates, and — with the order reversed —
+# render-gate.mjs hit "layout never started within 120s" on a book it lays out
+# in seconds. Ordering only picked the victim; a trailing
+# `pkill -f 'out/main/main.js'` was tried as a cheaper fix and was not enough.
+#
+# Measured over the run history of this workflow: 0 failures in 27 runs before
+# the drives shared this runner, 8 in 30 after (26.7%) — of which 2 were the
+# perf gate losing to drive residue and 1 was a runner-infrastructure failure
+# with every step green. Separate runners remove the contention entirely, which
+# is the only class of failure a CI change can honestly remove; a drive that
+# genuinely fails still fails, and should.
+#
+# The two jobs duplicate ~35s of setup rather than passing an artifact between
+# them. Measured on a green run, the whole build chain (checkout, cached bun
+# install, lib build, SPA + electron-vite build, xvfb, electron binary
+# download) is 35s, which is less than uploading and downloading node_modules
+# plus the two build trees would cost. Because the jobs run in parallel, wall
+# clock went DOWN — ~3m04s serial before, ~2m10s now — for one extra runner
+# (~4.3 runner-minutes instead of ~3).
+#
+# ── Behaviour drives ────────────────────────────────────────────────────────
+# packages/desktop/tests/integration/*.pw.mjs launch the real Electron app and
+# assert real behaviour. Until they were gated, they ran in NO workflow, while
+# two shipped user-facing bugs slipped past 2117 desktop + 1845 CLI unit tests
+# in one cycle — both were caught only by driving the app. Five of the eight
+# drives are gated here; the other three are excluded on evidence, not
+# oversight:
+#
+#   gated (each measured green over repeated local runs):
+#     problems-last-hop            ~2-7s   marker diagnostics + click-to-source
+#     editor-toggle-loads-module   ~5s     edit toggle, autosave delay, Ctrl+S
+#     panel-reopen-on-failed-open  ~2-4s   never-stranded after a failed open
+#     problems-panel               ~7s     diagnostics panel + click-through
+#     editor-opens-with-content    ~40s    book opened straight into Edit mode:
+#                                          editor mounts with the first chapter,
+#                                          a viewer click loads that block's
+#                                          source, a TOC click moves BOTH panes,
+#                                          and the TOC collapses on the active
+#                                          branch. Each check was observed red
+#                                          against 0.10.2 before its fix; the
+#                                          checks record rather than abort, so
+#                                          one run reports every defect present.
+#     editor-dropdown-sync         ~3s     outline (Contents tab) click must
+#                                          move the EDITOR across chapters,
+#                                          not just the preview — the two
+#                                          panes used to desync on a
+#                                          cross-chapter jump. Adapted to
+#                                          accept out/main/main.js via the
+#                                          isMainJs pattern problems-last-hop
+#                                          already uses; packaged mode still
+#                                          works for run-ui.mjs / `test:ui`.
+#
+#   problems-panel was excluded when this gate first landed, for a stale
+#   assertion rather than flake: it asserted sev-error for a missing image, but
+#   a missing IMAGE is deliberately a warning — the asset planner writes a
+#   magenta placeholder so the build still yields a book
+#   (checks/source/local-refs.ts). The product was right, the assertion was
+#   stale, and it is fixed. Now gated.
+#
+#   inline-editing stays excluded, but for a NEW and narrower reason. Its
+#   stale selector (summary[aria-label="Edit or read"], renamed to "Edit, read
+#   or focus" by f01d64b in 0.10.1) is fixed and it is 16/16 on a real display
+#   — but under xvfb it is deterministically 15/16: check 4, "Shift+F10 opens
+#   the context menu (keyboard path)", times out at 10s. Confirmed on two
+#   consecutive CI runs of the same commit. The keyboard context-menu key is
+#   not delivered under this xvfb setup; the other 15 checks pass. Fixing that
+#   check's key path (or proving the key reaches the window) is what unblocks
+#   the most valuable drive we have — it is the one that caught the 0.10.1
+#   inline-edit regression.
+#
+#   excluded — needs an electron-builder AppImage, which this job does not
+#   build (passes 3/3 against a locally packaged 0.10.1 AppImage, so it is
+#   healthy — just expensive here):
+#     electron-driver        hardcodes executablePath; ~zero marginal coverage
+#                            anyway, since every gated drive already proves the
+#                            SPA renders before asserting anything.
+#
+# Note the two CDP drives (editor-toggle, panel-reopen) leak their Electron
+# process on exit and pick CDP ports at random from narrow ranges, so
+# back-to-back LOCAL reruns eventually collide and fail with "CDP endpoint
+# never appeared". That is a rerun artifact, not drive flake: one run per fresh
+# environment — which is what CI gives each job — measured 16/16 green. Kill
+# strays between local reruns.
+#
+# ── Render-speed gates ──────────────────────────────────────────────────────
 # Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
 # preview iframe (opacity:0 / opaque cover) makes Chromium render-throttle it
 # to ~1fps, so viewer layout crawls at ~1 page/sec instead of 10-30+.
@@ -22,6 +116,7 @@ on:
       - "packages/cli/src/assets/preview/**"
       - "packages/cli/src/lib/markdown/**"
       - "packages/desktop/tests/perf/**"
+      - "packages/desktop/tests/integration/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
 
@@ -30,6 +125,47 @@ env:
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
 jobs:
+  behaviour:
+    name: App behaviour (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build lib
+        run: bun run build
+
+      - name: Build desktop (SPA + electron main)
+        working-directory: packages/desktop
+        run: |
+          npm run build
+          npm run electron:build
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # One xvfb-run per drive. The two CDP drives fall back to wrapping
+      # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
+      # DISPLAY, so that fallback stays dormant and every drive launches the
+      # same way. problems-last-hop and editor-dropdown-sync drive Playwright's
+      # _electron, which has no such fallback and need the wrapper.
+      - name: Drive the built app (behaviour)
+        working-directory: packages/desktop
+        run: |
+          xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/app-lifecycle-log.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
+          xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
+          xvfb-run -a node tests/integration/problems-panel.pw.mjs
+          xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
+          xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
+
   render-perf:
     name: Packaged-app render speed (xvfb)
     runs-on: ubuntu-latest
@@ -46,6 +182,9 @@ jobs:
       - name: Build lib
         run: bun run build
 
+      # Both gates below launch `electron out/main/main.js`, and that main
+      # serves the SPA from build/handler.js — so both halves of the desktop
+      # build are required; neither gate can run against less.
       - name: Build desktop (SPA + electron main)
         working-directory: packages/desktop
         run: |

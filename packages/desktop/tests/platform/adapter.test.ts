@@ -513,9 +513,8 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
 });
 
 test("WebAdapter.startPreview renders natively regardless of the manifest's (ignored) engine field", async () => {
-  // Paged.js has been removed (native-only-migration-plan.md Phase 6) — the
-  // native viewer bundle is what renders every project on the browser/PWA
-  // target now, whatever the manifest's `engine:` field says.
+  // The viewer bundle renders every project on the browser/PWA target,
+  // whatever the manifest's (ignored) `engine:` field says.
   const root = makeFsaTree();
   root.addFile("manifest.yaml", "title: Legacy Book\nengine: paged\n");
   // @ts-expect-error test global

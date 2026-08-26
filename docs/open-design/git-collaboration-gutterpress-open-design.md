@@ -6,8 +6,7 @@
 `main` at [`a7e2059`](https://github.com/nexu-io/open-design/commit/a7e205939d441d29d64e616d6f5ec89c53bb711a).
 
 > **Revision note (2026-07-28).** The shared-asset section was rewritten: the
-> `source.assets` staging pipeline it described was removed from Gutterpress (see
-> [`docs/reviews/asset-pipeline-deep-analysis-2026-07-27.md`](../reviews/asset-pipeline-deep-analysis-2026-07-27.md)),
+> `source.assets` staging pipeline it described was removed from Gutterpress,
 > and shared design now composes by reference. The Git model itself is
 > unchanged.
 
@@ -125,8 +124,8 @@ shared/themes/publisher/theme.css → url("../../fonts/Publisher.woff2")
                                   → embedded as a data URI in the book
 ```
 
-Fonts always embed. Images under about 512 KB embed; larger ones are copied
-beside `book.html`. There is no asset list, no basename flattening, and no
+Fonts always embed. Images are copied beside `book.html` under a
+content-addressed name. There is no asset list, no basename flattening, and no
 collision rule to remember — to shadow a shared decision, list the book's own
 stylesheet later and let the cascade settle it.
 
@@ -255,7 +254,6 @@ but Git collaboration uses the existing architecture.
 
 - [Gutterpress enclosing repository detection](../../packages/cli/src/lib/project-source.ts)
 - [Gutterpress version-history provider](../../packages/cli/src/lib/source-provider.ts)
-- [Gutterpress npm plugin vendoring](../../.reviews/adr/0007-npm-plugin-vendoring.md)
 - [Gutterpress CSS/font/image inlining](../../packages/cli/src/lib/asset-inline.ts)
 - [Gutterpress preview file watching](../../packages/cli/src/preview/file-watcher.ts)
 - [Open Design direct-folder import](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/import-export-routes.ts)

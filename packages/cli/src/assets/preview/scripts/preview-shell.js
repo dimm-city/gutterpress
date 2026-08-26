@@ -288,11 +288,9 @@
     armPendingSwap();
   }
 
-  // Incremental chapter splice used to live here (spliceChapter): it needed
-  // Paged.js's `.pagedjs_page` DOM to find a chapter's live page range and
-  // graft a freshly-paginated replacement into it. Paged.js has been removed
-  // (native-only-migration-plan.md Phase 6). A native in-place splice was
-  // also tried and removed (2026-08-08 review), and the standing reason is
+  // Incremental chapter splice used to live here (spliceChapter): it grafted
+  // a freshly-paginated replacement into a chapter's live page range. It was
+  // tried and removed (2026-08-08 review), and the standing reason is
   // PERFORMANCE, not soundness: measured end-to-end (file write -> change
   // visible, 5 samples, 34pp field guide) the plain full reload (`swap`,
   // below) is 509ms avg vs the incremental splice's 998ms avg. Every

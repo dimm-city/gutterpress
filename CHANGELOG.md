@@ -5,6 +5,128 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-08-25
+
+### Added
+
+- **The three Chromium print bugs that print a blank wall now warn you first**
+  (#149, #150, #152). All three are documented in
+  [`docs/known-limitations.md`](docs/known-limitations.md), and all three fail
+  the same way: valid CSS, no error, and nothing on the paper. You now hear
+  about each one before you ship.
+  - A **gradient in `@page { background }`** paints nothing at all — a solid
+    colour in the same place paints the whole sheet. The warning says so and
+    points at the two spots where the same gradient does work (`html`, or a
+    margin box), so it moves you somewhere that prints instead of just
+    stopping you.
+  - **Margin boxes** (`@top-center`, `@bottom-right`, …) drop far more than
+    the `transform`/`box-shadow` we already warned about: `opacity`,
+    `outline`, `filter`, `mix-blend-mode`, `backdrop-filter`, `clip-path` and
+    `perspective` are all discarded too, while `text-shadow`, `border-radius`,
+    background gradients, borders and padding on the same box are honoured.
+    The rule is what the property paints — anything that paints outside the
+    box, or makes it a stacking context, is dropped. The preview drops exactly
+    the same list, so it keeps agreeing with the PDF, and `filter` in a margin
+    box now says it is dropped rather than repeating the "this rasterizes your
+    text" advice that applies to page content.
+  - **An image referenced only from inside an `@page` rule is never painted** —
+    the sheet prints with its background colour alone. Gutterpress now fixes
+    this one for you (see below); the build diagnostic
+    `engine.page-background.unreferenced` stays, for the shapes the fix cannot
+    reach. It runs at build time rather than as a CSS check because only the
+    built document knows what decides it: which references to the image exist,
+    and of what kind.
+
+  Only #152 got a workaround, and it has an expiry test that fails the day
+  Chromium fixes the bug. For #149 and #150 Gutterpress reports the gap and
+  names the fix; when Chromium ships those, the checks come out.
+
+### Fixed
+
+- **The preview no longer gets stuck on "Rendering…".** Opening a book could
+  leave the spinner up for good — the book behind it laid out and ready, the
+  page count stuck at 0, the Problems panel never re-checking, and nothing you
+  could do to clear any of it short of reopening the folder. The app started
+  listening for the "finished laying out" signal a moment too late and missed
+  it, and that signal is never sent twice. It now listens from the moment the
+  preview begins loading.
+- **The editor comes up with your book in it.** Opening a book while the
+  workspace was already in Edit mode left the editor pane on
+  "Loading editor…" forever: the open path filled the editor's buffer but
+  never imported the editor itself. Because nothing was mounted, clicking a
+  heading in the table of contents appeared to move only the preview — the
+  same bug wearing a second face. Both are fixed by loading the editor
+  wherever a file is loaded for it.
+- **Clicking a paragraph in the preview now opens it in the editor.** A single
+  click on any block that came from your Markdown loads that chapter, if it is
+  not already open, and scrolls to the line — without stealing the cursor, so
+  selecting and copying text out of the preview still works. Scrolling the
+  preview still leaves the editor where it is.
+- **The table of contents can be collapsed again.** A section containing the
+  heading you were reading could not be collapsed: its "Collapse" arrow did
+  nothing, however many times it was clicked. Your own expand and collapse
+  choices now win, and the automatic reveal only applies to sections you have
+  not touched.
+
+- **A cancelled render no longer strands you under the spinner.** If the
+  preview gave up on a layout, the little "Updating preview…" pill went away
+  but the full-page spinner stayed, over a book that was finished and readable.
+  The two ways of cancelling now do the same thing.
+
+- **A throttled update now says so, and names the part that was throttled.**
+  GitHub limits how often an app may ask for release information, and when that
+  limit was reached the app reported only "Update check failed" — the same words
+  it uses for a genuine fault. It now tells you the operation is temporarily
+  limited and to try later, and it says which one: an update whose check
+  succeeded and whose *download* was then throttled no longer blames the check.
+  The raw cause of a failed check, download, or install is also written to a
+  log you can read: the start screen's Logs tab lists it as **Gutterpress
+  app.log**, beside your per-book logs. It now also records every launch and
+  close, so the entry is there to find from the first run — not only after
+  something has already gone wrong.
+
+- **The contents list no longer lies to a screen reader.** It announced itself
+  as a tree and promised keyboard navigation it never implemented, with the
+  state attached to a row that never receives focus. It is now an ordinary
+  nested list, which is what it behaves like.
+
+- **The desktop app and the `gutterpress` command now agree about your book.**
+  They were measuring the page differently — by fifteen pixels — and both ways
+  the difference ran in the direction that hid problems from you. The desktop
+  would happily build and hand you a PDF for a book the command line refuses to
+  build, because content that overflows the page looked like it fitted. And it
+  stayed quiet about images printing below the resolution you asked for: on one
+  real 289-page book the command line reported twenty-one, the desktop
+  thirteen — the eight it swallowed were the full-page chapter plates, the
+  largest art in the book. Both now report the same thing, because the page is
+  measured as the sheet rather than the sheet minus whatever the window happens
+  to draw around it. The PDFs themselves were always identical and still are.
+
+- **`@page { background: url(…) }` now prints.** Chromium fetches an image
+  referenced only from inside an `@page` rule and then paints nothing — no
+  error, a perfectly valid PDF of blank paper (#152). Every image your
+  stylesheets reference is now staged and declared with a
+  `<link rel="preload" as="image">` in the built document, which is the second
+  reference Chromium needs. You write nothing; the `@page` background you
+  already have starts printing. This covers the `--paper: url()` +
+  `var(--paper)` form the design system uses, and one image shared by the page
+  box and every margin box needs one preload between them.
+
+  Two supporting changes come with it:
+  - **CSS images are always copied, under a content-addressed name.** The old
+    "images under 512 KB are embedded as `data:` URIs" rule is gone — images
+    are files now, whatever they weigh. The name matters as much as the
+    copying: a CSS image's URL can no longer be the same string as a prose
+    image's, and it needs to be, because an `<img>` naming the same URL sends
+    the background blank again — on its own, preload or no preload. One file
+    used both ways is now written twice, under two names.
+  - **`engine.page-background.unreferenced` no longer treats an `<img>` as
+    proof of safety.** Measured, an element reference is not weak evidence
+    that a background will paint — it is evidence that it will not. The check
+    now protects on a preload nothing else names, or a CSS rule outside
+    `@page`, and its message no longer suggests adding a `<link>` to a
+    `<head>` you cannot edit.
+
 ## [0.10.1] - 2026-08-24
 
 ### Added

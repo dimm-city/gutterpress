@@ -114,14 +114,11 @@ async function extractAssets(): Promise<string> {
 // The OS tmp reaper, lifecycle shutdown cleanup, or external cleanup can remove
 // the per-process temp dir out from under us; in that case we must re-extract.
 //
-// This MUST be an asset shipped on both the native and paged legs (ideally one
-// that outlives Paged.js entirely). `vendor/paged.polyfill.js` — the previous
-// sentinel — is Paged.js-only: once the
-// polyfill is finally deleted, a sentinel that still names it would never exist
-// on disk again, so `existsSync` below would be false forever and every call to
-// `getAssetsDir()` would re-extract from scratch. The native engine's viewer
-// bundle is embedded unconditionally on every build, so it is safe to depend on
-// past Paged.js removal.
+// This MUST be an asset embedded unconditionally on every build. A sentinel
+// naming an asset that some builds omit would never exist on disk for those
+// builds, so `existsSync` below would be false forever and every call to
+// `getAssetsDir()` would re-extract from scratch. The engine's viewer bundle
+// always ships.
 const SENTINEL_ASSET = "engine/gutterpress-viewer.js";
 
 export async function getAssetsDir(): Promise<string> {

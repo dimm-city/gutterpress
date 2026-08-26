@@ -37,12 +37,12 @@ export interface ServerState {
    * Files the inlined CSS references but could not embed, as
    * `book.html`-relative URL path → absolute source path.
    *
-   * `asset-inline.ts` embeds fonts and images up to
-   * `IMAGE_INLINE_MAX_BYTES`; anything larger keeps its project-relative path
-   * (if it lives in the book) or becomes `assets/<contentHash><ext>` (if it
-   * does not — e.g. art referenced from a repo-root shared stylesheet, the
-   * normative multi-book layout). Either way the inliner returns a COPY PLAN,
-   * which the build executes into its output dir.
+   * `asset-inline.ts` embeds fonts; every image becomes
+   * `assets/<contentHash><ext>`, wherever it lives — in the book, or in a
+   * repo-root shared stylesheet's art folder (the normative multi-book
+   * layout). The inliner returns a COPY PLAN, which the build executes into
+   * its output dir. Content-addressing is what keeps a CSS image's URL
+   * distinct from a prose image's; see `inlineOne`.
    *
    * The preview serves the project in place and has no output dir, so a
    * rewritten `assets/<hash>` URL had nothing behind it and shared art

@@ -2,8 +2,8 @@
 
 <p class="rh-probe">RUNNING-ELEMENT-SENTINEL</p>
 
-This fixture exercises the Paged.js features flagged in issue #46 as suspect on
-non-Chromium engines. Each feature is probed by the cross-browser audit script.
+This fixture exercises the CSS Paged Media / GCPM features flagged in issue #46.
+Each feature is probed by the audit script.
 
 ## String Sets
 
@@ -15,7 +15,7 @@ prints it on every page of this chapter.
 ## Named Page
 
 This page uses `@page probe-named` (assigned via the `.page-probe-named` class
-emitted by markdown-it-paged), which has a distinctive margin-top so the audit
+emitted by the marker plugin), which has a distinctive margin-top so the audit
 can measure whether the named-page rule applied.
 
 @page probe-named

@@ -29,8 +29,7 @@
      * Called when the quiet pill (synced/offline/syncing) is clicked (§5.2).
      * Receives the project's operation-log path (or null if none yet) so the
      * parent can open ProjectActivityView — the writer-facing version-history
-     * + operation-log surface (M37: this comment previously named
-     * OperationLogDialog, a separate modal used only by the recovery flows).
+     * + operation-log surface.
      */
     onDetails,
     onSyncState,

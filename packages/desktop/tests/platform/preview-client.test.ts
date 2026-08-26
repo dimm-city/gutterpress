@@ -24,6 +24,8 @@
  * that's what it has access to in the real app).
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Window } from "happy-dom";
 import { PreviewClient } from "../../src/lib/preview-client";
 
@@ -256,5 +258,57 @@ describe("PreviewClient context-menu bridge (protocol v4)", () => {
     expect(received[0]).toEqual({ name: "contextMenuRequested", detail });
 
     c.detach();
+  });
+});
+
+/**
+ * The frame must be attached at MOUNT, not on the iframe's `load` event.
+ *
+ * `PreviewClient`'s M31 guard drops every message until `attach()` has named a
+ * window — with no replay. Gating that on the outer iframe's `load` left a real
+ * window in which the host discarded the frame's own lifecycle events: `load`
+ * waits for the preview shell's whole subtree (the book iframe and all its
+ * subresources), while the book paginates on its own DOMContentLoaded and posts
+ * `ready` / `renderingComplete` immediately. Instrumented on a fast dev machine,
+ * `ready` landed 17ms BEFORE attach (dropped) and `renderingComplete` only 49ms
+ * after it — a 66ms margin that a loaded CI runner routinely lost, and when it
+ * did the author was left with a permanent "Rendering…" scrim over a finished
+ * book, a page count stuck at 0, and a Problems panel that never re-linted
+ * (`editor-opens-with-content.pw.mjs`, ~15% of runs). preview-shell.js latches
+ * the identical race one hop down via `__GUTTERPRESS_RENDERED__`; this hop had
+ * nothing, so the fix is to remove the gate rather than add a second latch:
+ * `contentWindow` is the frame's WindowProxy, created with the element and
+ * stable across every navigation of it, so it can be bound before the frame has
+ * loaded anything.
+ *
+ * Source-text pins, per this repo's convention for component wiring (see
+ * welcome-landing-tabs.test.ts / settings-connections.test.ts): bun resolves
+ * `.svelte` imports as assets, so a mount-lifecycle ordering cannot be observed
+ * from a unit test. The behavioural gate is
+ * `tests/integration/editor-opens-with-content.pw.mjs`.
+ */
+describe("PreviewFrame attaches the client before the frame can post (0.10.2 flake)", () => {
+  const previewFrame = readFileSync(
+    join(import.meta.dir, "../../src/lib/components/PreviewFrame.svelte"),
+    "utf8",
+  );
+
+  test("attach() is not deferred to a 'load' listener", () => {
+    expect(previewFrame).not.toMatch(/addEventListener\(\s*["']load["']/);
+  });
+
+  test("attach() names the frame's WindowProxy straight from the mount body", () => {
+    const mountBody = previewFrame.slice(previewFrame.indexOf("onMount("));
+    expect(mountBody).toMatch(/c\.attach\(frame\.contentWindow\)/);
+  });
+
+  test("the origin is still pinned (or the client locked down) BEFORE attach", () => {
+    // `onClientReady` is where +page.svelte calls setExpectedOrigin()/lockDown().
+    // Attaching ahead of it would arm the source check against an unpinned
+    // origin and hand a URL-preview frame the bridge M31 exists to deny it.
+    const pin = previewFrame.indexOf("onClientReady?.(c)");
+    const attach = previewFrame.indexOf("c.attach(");
+    expect(pin).toBeGreaterThan(-1);
+    expect(attach).toBeGreaterThan(pin);
   });
 });

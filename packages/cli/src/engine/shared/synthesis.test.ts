@@ -81,7 +81,7 @@ describe("planRectoBlanks", () => {
   });
 });
 
-describe("pageCounterValues — front-matter -> body folio restart (MIGRATION.md gap #1)", () => {
+describe("pageCounterValues — front-matter -> body folio restart", () => {
   test("no restart declared: identity, 1..N", () => {
     expect(pageCounterValues([], 5)).toEqual([1, 2, 3, 4, 5]);
   });

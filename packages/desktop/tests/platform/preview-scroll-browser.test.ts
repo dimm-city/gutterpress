@@ -20,6 +20,17 @@ if (!css) throw new Error("LoadingOverlay.svelte has no style block");
 const chromium = await resolveChromiumExecutable();
 const browserTest = chromium ? test : test.skip;
 
+// Launch Chromium HERE, at module scope, which bun does not apply a per-test
+// timeout to. The test below budgets 30s, and puppeteer's own launch() budget
+// is also 30s — so a cold start on a loaded runner had to fit inside the same
+// 30s as the hit-testing this test actually measures, with no headroom by
+// construction. That is what timed out at 30000.27ms in CI (~1 run in 9); the
+// `Target closed` protocol errors were teardown aftermath, not the cause.
+// Bumping the test timeout was tried once (680ff80) and set the very 30s that
+// collides with launch(). getBrowser() below returns this same pooled promise,
+// already resolved, so the test body pays nothing for the launch.
+if (chromium) await getBrowser(60_000);
+
 afterAll(async () => {
   await closeBrowser();
 });
@@ -68,7 +79,13 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
       spinnerBox.y + spinnerBox.height / 2,
     );
     await page.mouse.wheel({ deltaY: 320 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Wait for the scroll to propagate, not for a fixed 100ms. Under CI load
+    // that sleep expired before the wheel reached the iframe and the assertion
+    // read scrollY === 0 — the exact "Expected: > 0, Received: 0" this test
+    // failed with. Polling the condition is also FASTER in the common case,
+    // and a wheel that genuinely does not pass through still fails here, with
+    // a timeout naming this wait.
+    await frame.waitForFunction(() => scrollY > 0, { timeout: 10_000 });
     expect(await frame.evaluate(() => scrollY)).toBeGreaterThan(0);
 
     await page.evaluate(() => {

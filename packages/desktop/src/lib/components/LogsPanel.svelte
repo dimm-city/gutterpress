@@ -84,10 +84,10 @@
 
 <div class="logs-panel">
   <p class="logs-lede">
-    These are Gutterpress's diagnostic logs — what the app did while syncing,
-    saving versions, and repairing. When something needs investigating, copy a
-    log and paste it into your message. Logs never contain your sign-in
-    details.
+    These are Gutterpress's diagnostic logs — what the app did while checking
+    for updates, syncing, saving versions, and repairing. When something needs
+    investigating, copy a log and paste it into your message. Logs never
+    contain your sign-in details.
   </p>
 
   <div class="logs-toolbar">

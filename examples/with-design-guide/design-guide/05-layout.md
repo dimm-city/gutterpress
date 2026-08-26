@@ -8,16 +8,16 @@
 
 ## Two-Column Text
 
-The `.two-column` class divides a container into two equal columns with a hairline column rule. Best for glossaries, reference lists, FAQ sections, and any content with short entries.
+The `.gp-columns-2` class divides a container into two equal columns with a hairline column rule. Best for glossaries, reference lists, FAQ sections, and any content with short entries.
 
 ```markdown
-@section .two-column
+@section .gp-columns-2
 Column content flows left to right automatically.
 Add `@column-break` to force content to the right column.
 @end-section
 ```
 
-@section .two-column
+@section .gp-columns-2
 
 **Column flow** — text runs from the bottom of the left column to the top of the right column automatically, based on the available column height.
 
@@ -33,9 +33,9 @@ Add `@column-break` to force content to the right column.
 
 ## Three-Column Text
 
-`.three-column` follows the same rules as two-column but divides the content into three narrower columns. Use for very short entries (index items, skill lists) where each entry is two lines or fewer.
+`.gp-columns-3` follows the same rules as two-column but divides the content into three narrower columns. Use for very short entries (index items, skill lists) where each entry is two lines or fewer.
 
-@section .three-column
+@section .gp-columns-3
 
 Alpha · first entry in a longer list.
 
@@ -151,8 +151,8 @@ Content that must not split across a page break.
 <table class="token-table">
 <thead><tr><th>Class / Syntax</th><th>Applied via</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td>.two-column</td><td>@section .two-column</td><td>Two equal CSS columns with column rule</td></tr>
-<tr><td>.three-column</td><td>@section .three-column</td><td>Three narrow columns for dense lists</td></tr>
+<tr><td>.gp-columns-2</td><td>@section .gp-columns-2</td><td>Two equal CSS columns with column rule</td></tr>
+<tr><td>.gp-columns-3</td><td>@section .gp-columns-3</td><td>Three narrow columns for dense lists</td></tr>
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
 <tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>

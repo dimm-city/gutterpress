@@ -61,6 +61,43 @@ export interface AssembleBookHtmlOptions {
    * relocate or lose during staging.
    */
   projectCss?: string;
+  /**
+   * SHIM — spec gap #152. Output-relative hrefs of the images the project's
+   * stylesheets staged (`inlineStyles`'s copy plan, verbatim), each emitted as
+   * one `<link rel="preload" as="image">`.
+   *
+   * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
+   * print path CDP drives never waits for a pending resource — so the sheet
+   * comes back with its background colour alone, no error, a valid PDF of
+   * blank paper (docs/known-limitations.md §3; mechanism in
+   * PR #187's `docs/analysis/why-page-background-drops.md`).
+   *
+   * What the preload buys is that the fetch STARTS during document load
+   * instead of during the print. That is not a timing guarantee: a response
+   * slow enough still loses (measured — held 1500 ms server-side, the preload
+   * row drops too). On the PDF path the asset is a local file staged beside
+   * `book.html`, so there is no server to be slow; a published `--format html`
+   * bundle read over a slow network can still lose the race.
+   *
+   * A second ELEMENT reference is not an alternative. Any `[src]` naming the
+   * URL drops the page box (measured 12/12, with or without a preload, in
+   * either document order) — which is why `asset-inline.ts` content-addresses
+   * every CSS image so no element can name one.
+   *
+   * WHAT PROVES IT IS STILL NEEDED: the expiry canary,
+   * `engine/compiler/page-background-chromium-bug.canary.test.ts`. The day it
+   * goes red, Chromium has fixed the bug — delete this option, the `.map()`
+   * that feeds it in `markdown/index.ts`, and the canary.
+   *
+   * The copy plan is the source, NOT a scan of the assembled CSS: `pluginCss`
+   * never passes through `inlineStyles`, so a `url()` inside it is never
+   * staged and a scan would emit a `<link>` to a file that does not exist.
+   * The plan is already deduped (keyed by destination), already excludes fonts
+   * (inlined) and remote urls (left alone), and already covers the
+   * `--paper: url()` + `var(--paper)` shape, because `walkDecls` sees custom
+   * properties like any other declaration.
+   */
+  preloadImages?: string[];
   title?: string;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
@@ -181,12 +218,17 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 
+  // SHIM — spec gap #152; see `preloadImages` above for why and when to delete.
+  const preloadTags = (opts.preloadImages ?? [])
+    .map((href) => `\n  <link rel="preload" as="image" href="${href}">`)
+    .join("");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${title}</title>${preloadTags}
   <style data-project-css>\n${inlineCss}\n</style>
 </head>
 <body>

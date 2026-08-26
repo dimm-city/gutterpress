@@ -38,27 +38,72 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
+      # THE RELEASE GATE PINS CHROMIUM. ci.yml deliberately does NOT — PR CI
+      # tracks whatever stable Chrome the runner image ships, because it should
+      # see what users see. This job is different: it decides whether an
+      # artifact ships, so it has to be reproducible. Re-dispatching the same
+      # release must exercise the same renderer.
+      #
+      # THE 151 INCIDENT (engine/shared/cdp.ts, above REQUIRED_MILESTONE) is the
+      # concrete reason: a Chromium milestone changed Paged Media behaviour with
+      # NO error, and every cross-reference in the document silently vanished.
+      # Pinning turns that class of change into a reviewable diff on one line
+      # instead of a surprise in a shipped PDF.
+      #
+      # BUMPING IT: pick a version from Chrome for Testing's
+      # known-good-versions-with-downloads.json; it must be >= the engine floor
+      # (REQUIRED_MILESTONE, currently 148). Then re-run `bun run spikes` and
+      # treat every changed measurement as a finding — the same bar cdp.ts sets
+      # for moving the floor itself. release.yml is workflow_dispatch-only, so
+      # no PR run will catch a bad bump for you; dispatch a prerelease first.
+      # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
+      # page-background-chromium-bug.canary.test.ts — the expiry trigger that
+      # goes red the day Chromium fixes the @page background bug so we delete
+      # the workaround instead of entrenching it. ci.yml has installed this
+      # since the canary landed; release.yml did not, so the release gate ran
+      # those suites as silent skips while reporting green.
+      #
+      # Caught by ci-preconditions.test.ts on its first release dispatch — the
+      # guard exists because a skipped removal trigger and a passing one look
+      # identical in CI output. Do not remove this step without removing that
+      # guard's reason for existing.
+      - name: Install PDF tooling (Ghostscript, qpdf)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghostscript qpdf
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
 
-      - name: Configure Puppeteer to use system Chrome
-        run: |
-          echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+      # NO Chromium pin here, and NO PUPPETEER_EXECUTABLE_PATH — the engine
+      # resolves the runner image's google-chrome-stable, exactly as ci.yml
+      # does. #194 pinned Chrome for Testing and wired PUPPETEER_EXECUTABLE_PATH
+      # to it; that made the download real for the first time and immediately
+      # broke every render test. See the note above this job for the evidence
+      # and what a working pin would have to prove before landing again.
 
-      # The desktop suite imports gutterpress by name (resolves to its
-      # built dist/), so build the package before running all-package tests.
       - name: Build package dist
         run: bun run build
         working-directory: packages/cli
 
+      # No GUTTERPRESS_CHROMIUM_ARGS here, to match ci.yml exactly: this job
+      # resolves the same runner-image google-chrome-stable ci.yml does (see
+      # the note above), which needs no sandbox flag — ci.yml has launched it,
+      # flag-free, on every PR. --no-sandbox was added in c4be60e for a
+      # DIFFERENT binary: #194's Chrome-for-Testing pin, which ships no SUID
+      # sandbox helper and aborted with "FATAL: No usable sandbox!" under this
+      # runner's AppArmor policy. cc3e188 reverted that pin but kept the flag,
+      # terming it "independent" of the pin — which its own introducing commit
+      # contradicts ("the runner image's google-chrome-stable... launches
+      # fine"). It was a leftover, not a second requirement.
+      #
+      # If a future pin (the 151 incident behind #194 is real, per cc3e188) is
+      # reintroduced: Chrome for Testing will need this flag again — that is
+      # what c4be60e documented. Until then, don't set it speculatively; add
+      # it back only alongside a pin that has proven, via a prerelease
+      # dispatch, that it needs it.
       - name: Run tests
         run: bun --filter '*' test
 

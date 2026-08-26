@@ -53,6 +53,11 @@ interface PreviewEventEditorSync {
   /** Invalidate replies issued against a preview frame/render being replaced. */
   invalidatePending: () => void;
   updateActiveOutline: (line: number) => void;
+  /**
+   * Bring one source line into an ALREADY-OPEN editor. The host decides
+   * whether an editor is open at all — a click never opens the pane.
+   */
+  revealEditorLine: (chapter: string | null, line: number) => void;
 }
 
 export interface PreviewEventDeps {
@@ -128,12 +133,23 @@ export class PreviewEventController {
         break;
       case "renderingCancelled":
         this.deps.setPreviewUpdating(false);
+        // A cancel says this render will not complete, and `renderingComplete`
+        // is the only other thing that clears the BLOCKING scrim — so leaving
+        // `rendering` set strands the author under a permanent "Rendering…"
+        // overlay waiting on an event that is never coming. The overlay's own
+        // Cancel button (`handleCancelRender`) already clears both flags; this
+        // is the same decision arriving from the frame instead of the mouse.
+        this.deps.setRendering(false);
+        this.deps.setRenderCompleteOverlay(false);
         break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
         break;
       case "sourceLineChanged":
         this.onSourceLineChanged(e.detail);
+        break;
+      case "elementActivated":
+        this.onElementActivated(e.detail);
         break;
       case "pageChanged":
         this.onPageChanged(e.detail);
@@ -165,12 +181,9 @@ export class PreviewEventController {
     // and unnecessary settings writes.
     if (!hotReload) {
       const client = d.client();
-      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
-      // native is the only engine. The rest of the old iframe-styles.ts sheet
-      // targeted `.pagedjs_*` classes the native viewer's DOM never has (it
-      // uses `.gp-*`, styled by decorate.ts + viewer.css); the preview
-      // background is the one rule the native viewer needs injected here (it
-      // is the author's preview-background setting, not engine chrome).
+      // The viewer styles its own chrome (decorate.ts + viewer.css). The
+      // preview background is the one rule it needs injected here, because it
+      // is the author's preview-background setting, not engine chrome.
       client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));
       const { page: restorePage } = d.consumePendingRestore();
       const zoom = d.zoom();
@@ -213,6 +226,22 @@ export class PreviewEventController {
     const line = detail.sourceLine;
     if (typeof line !== "number") return;
     this.deps.editorSync.updateActiveOutline(line);
+  }
+
+  /**
+   * The author clicked a source-mapped block in the book. Bring that block's
+   * source into the editor and scroll to it.
+   *
+   * This is a CLICK, not scrolling: `sourceLineChanged` above stays chrome-only
+   * precisely because a scroll-driven editor jump is a feedback loop, but a
+   * deliberate click carries the author's intent to work on that block. The
+   * host's `revealEditorLine` is a no-op unless the editor pane is already
+   * open, so clicking around a book in viewer mode still opens nothing.
+   */
+  private onElementActivated(detail: PreviewEvent["detail"]): void {
+    const line = detail.sourceLine;
+    if (typeof line !== "number") return;
+    this.deps.editorSync.revealEditorLine(detail.chapter ?? null, line);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {

@@ -18,9 +18,8 @@ import { build } from "./build.ts";
  * element resolve against the PAGE rather than against its own prose.
  *
  * Measured in the shipped PDF, not in a fixture with a hand-written height:
- * a fixture height is exactly the assumption that let this regress silently
- * when Paged.js (whose `.pagedjs_page_content > div { height: inherit }`
- * used to supply the box) was deleted.
+ * a fixture height is exactly the assumption that would let this regress
+ * silently, because a hand-written height hides the missing publication.
  *
  * Three page contexts, deliberately: the default page, a named page with
  * taller vertical margins, and a named page whose bottom margin is ZERO. A

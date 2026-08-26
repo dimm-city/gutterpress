@@ -96,7 +96,7 @@ them via environment variables).
 ## Architecture
 
 Everything lives in the lib (`packages/cli/src/lib/publish/`) and is consumed
-by two thin front-ends, mirroring the remote-auth subsystem (ADR 0006):
+by two thin front-ends, mirroring the remote-auth subsystem (CLAUDE.md §7):
 
 ```
 lib/publish/

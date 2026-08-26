@@ -1,7 +1,7 @@
-/* Cross-browser feature probe stylesheet (issue #46).
+/* Feature probe stylesheet (issue #46).
  *
- * Each rule exercises one Paged.js feature flagged as suspect outside
- * Chromium. The audit script (audit-probe.mjs) measures the rendered DOM, so
+ * Each rule exercises one CSS Paged Media / GCPM feature the viewer must
+ * support. The audit script (audit-probe.mjs) measures the rendered DOM, so
  * values here are intentionally distinctive / easy to assert on.
  */
 

@@ -19,15 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
       # The PDF/X tests self-skip when their external tool is absent
       # (ghostscript.integration.test.ts uses `ghostscript ? test : test.skip`),
       # so without these the suite reports green while never exercising real
       # PDF/X color conversion at all.
+      #
+      # Ghostscript has a SECOND dependent, and it is the one with no second
+      # chance: page-background-chromium-bug.canary.test.ts, the expiry trigger
+      # for the `@page { background: url() }` preload shim (RECOMMENDATION.md
+      # §6). It needs Chromium AND Ghostscript, and self-skips on either. A
+      # skipped canary is a green CI that has stopped watching for the day
+      # Chromium fixes #152 — the shim then entrenches silently, which is the
+      # exact failure §7 risk 10 names. So this job must always leave SOME
+      # Chromium and SOME Ghostscript resolvable. Removing either tool entirely
+      # means deleting that test and its shim in the same change.
+      #
+      # That sentence used to end "(which of the two Chromes it resolves does
+      # not matter — both track stable)". There is now exactly one: the runner
+      # image's, at /usr/bin/google-chrome-stable. See the note above the
+      # Puppeteer step below for why the second one went away.
       - name: Install PDF tooling (Ghostscript, qpdf)
         run: |
           sudo apt-get update
@@ -39,6 +49,25 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # NO `browser-actions/setup-chrome` step, on purpose — do not re-add one.
+      # It used to sit directly after `checkout`, downloading ~150MB of Chrome
+      # for Testing to /opt/hostedtoolcache/setup-chrome/..., which nothing then
+      # used: this step pins PUPPETEER_EXECUTABLE_PATH to the runner IMAGE's
+      # Chrome (/usr/bin/google-chrome-stable), and BOTH resolvers check that
+      # env var before any other candidate (lib/chromium.ts's SYSTEM_PATHS and
+      # engine/shared/cdp.ts's CANDIDATES). setup-chrome's binary is named
+      # `chrome`, so it was not reachable via the PATH probe either — that runs
+      # only once every fixed path misses. Run 32812569951 shows both halves:
+      # "Google Chrome for Testing 152.0.7977.54" installed, then
+      # `PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable` on every
+      # step after it, the parity gate and the canary included.
+      #
+      # Deleted rather than adopted: `chrome-version: stable` pins nothing, so
+      # the action bought no reproducibility the runner image doesn't already
+      # give — it only made the version LOOK controlled. If a SPECIFIC Chromium
+      # is ever needed (e.g. to hold the engine's REQUIRED_MILESTONE floor,
+      # cdp.ts:67), add it back with an EXACT version and delete this override —
+      # one or the other, never both, or the pin is a no-op again.
       - name: Configure Puppeteer to use system Chrome
         run: |
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
@@ -73,6 +102,21 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      # Gate on knip's actionable categories only (files, dependencies,
+      # unlisted, binaries) — see knip.jsonc for why exports/types findings
+      # are excluded (hand-traced false positives, advisory-only, not gated).
+      # Runs the root `knip` script so CI and local `bun run knip` agree, and
+      # sits before the build steps below so a real finding fails fast.
+      #
+      # That script runs `svelte-kit sync` first because knip loads the
+      # desktop's two vite configs, which extend `.svelte-kit/tsconfig.json` —
+      # generated, gitignored, and absent on a fresh checkout. It lived in the
+      # script rather than here so a contributor's `bun run knip` sees what CI
+      # sees; on a dev machine the file usually already exists, so a CI-only
+      # fix would have left local passing by accident.
+      - name: Check for unused files/dependencies (knip)
+        run: bun run knip
 
       - name: Build CLI npm bundle
         working-directory: packages/cli
@@ -111,17 +155,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
 
+      # No `setup-chrome` step here either — same reason as the `test` job above:
+      # this override wins over anything that action installs, so the download
+      # was pure cost. Read that comment before adding one back.
       - name: Configure Puppeteer to use system Chrome
         run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
@@ -134,8 +176,8 @@ jobs:
         working-directory: packages/cli
 
       # Keep this explicit even though the full desktop suite also runs it. If
-      # the suite wiring changes, CI must still protect active-frame identity,
-      # page-count-changing splices, and standalone Paged.js page metadata.
+      # the suite wiring changes, CI must still protect active-frame identity
+      # and page-count-changing swaps.
       - name: Run instant-preview splice contract
         run: node tests/preview-shell-regression.test.mjs
         working-directory: packages/desktop

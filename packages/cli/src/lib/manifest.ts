@@ -323,12 +323,11 @@ function resolveWithPreset(
     );
   }
 
-  // Pagination engine (native-only-migration-plan.md Phase 6): Paged.js has
-  // been removed — the native engine is the only engine. `engine:`/`--engine`
-  // still parse (so an old manifest/CLI invocation doesn't hard-fail) but are
-  // now a no-op: every build resolves to "native" regardless of the value
-  // requested, and an explicit "paged" gets a one-line warning instead of
-  // silently changing behavior.
+  // Pagination engine: the native engine is the only engine. `engine:`/
+  // `--engine` still parse (so an old manifest/CLI invocation doesn't
+  // hard-fail) but are now a no-op: every build resolves to "native"
+  // regardless of the value requested, and an explicit "paged" gets a one-line
+  // warning instead of silently changing behavior.
   const requestedEngine = c.engine ?? m.engine ?? "native";
   if (requestedEngine !== "paged" && requestedEngine !== "native") {
     throw new UsageError(`Unknown engine "${String(requestedEngine)}". Expected: paged | native`);
@@ -336,14 +335,14 @@ function resolveWithPreset(
   if (requestedEngine === "paged") {
     warnOnce(
       "engine-paged-removed",
-      "[gutterpress] Paged.js has been removed; the native engine is the " +
-        "only engine. \"engine: paged\" is ignored — building natively."
+      "[gutterpress] The native engine is the only engine. " +
+        "\"engine: paged\" is ignored — building natively."
     );
   }
   if ((m.engineStyles?.paged?.length ?? 0) > 0) {
     warnOnce(
       "engine-styles-paged-removed",
-      "[gutterpress] engineStyles.paged is ignored — Paged.js has been removed."
+      "[gutterpress] engineStyles.paged is ignored — the native engine is the only engine."
     );
   }
   const engine = "native" as const;

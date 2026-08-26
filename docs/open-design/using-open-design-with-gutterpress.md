@@ -107,7 +107,7 @@ http://localhost:3579/
 ```
 
 Open that URL in an Open Design Browser tab. The preview uses Gutterpress's real
-Markdown, CSS, and Paged.js pipeline, so it is the visual authority while
+Markdown, CSS, and pagination pipeline, so it is the visual authority while
 editing. Wait for pagination to complete and confirm page-critical work with a
 normal Gutterpress build before final delivery.
 
@@ -231,11 +231,10 @@ shared/themes/publisher/theme.css
   └── url("../../fonts/Publisher.woff2")   → embedded in the book
 ```
 
-Fonts are always embedded as data URIs. Images under about 512 KB are embedded;
-larger ones are copied into the generated output tree. An HTML build is a bundle:
+Fonts are always embedded as data URIs. Images are copied into the generated
+output tree under a content-addressed name. An HTML build is a bundle:
 besides `book.html`, it includes navigation scripts, `index.html`, a fingerprint,
-copied assets, and, when Chromium is unavailable at build time, the Paged.js
-runtime fallback.
+copied assets, and the viewer bundle that paginates the book in the browser.
 
 There is no asset list, no flattening, and no collision rule. To shadow a shared decision, list the book's own stylesheet later — the cascade does the rest.
 
@@ -378,5 +377,4 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 - [Gutterpress styling and themes](../../examples/gutterpress-user-guide/04-styling-theming.md)
 - [Gutterpress plugins](../../examples/gutterpress-user-guide/05-plugins.md)
 - [Gutterpress companion design guides](../design-guides.md)
-- [Gutterpress compatibility plan for filesystem design tools](./gutterpress-open-design-implementation-plan.md)
 - [Open Design](https://github.com/nexu-io/open-design)
