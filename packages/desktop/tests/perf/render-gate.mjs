@@ -119,7 +119,15 @@ let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
-  try { process.kill(-child.pid, "SIGTERM"); } catch {}
+  // SIGKILL, not SIGTERM: Electron does not reliably die on SIGTERM — Chromium
+  // begins a graceful shutdown that outlives this script, so the app survives the
+  // run and keeps competing for the runner. #207 fixed the four integration
+  // drives; these two perf drives shared the same line and were missed. Measured
+  // here: a PASSING rerender-gate run left exactly one live Electron behind, and
+  // this job runs render-gate then rerender-latency-gate back to back, so the
+  // second inherits the first's leak — the starved-renderer signature that shows
+  // up as "initial layout did not finish within 180s".
+  try { process.kill(-child.pid, "SIGKILL"); } catch {}
   // throwaway HOME created by this script via mkdtemp — safe to remove
   try { rmSync(fakeHome, { recursive: true, force: true }); } catch {}
 }
