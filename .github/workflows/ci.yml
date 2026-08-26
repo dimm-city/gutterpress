@@ -108,6 +108,13 @@ jobs:
       # are excluded (hand-traced false positives, advisory-only, not gated).
       # Runs the root `knip` script so CI and local `bun run knip` agree, and
       # sits before the build steps below so a real finding fails fast.
+      #
+      # That script runs `svelte-kit sync` first because knip loads the
+      # desktop's two vite configs, which extend `.svelte-kit/tsconfig.json` —
+      # generated, gitignored, and absent on a fresh checkout. It lived in the
+      # script rather than here so a contributor's `bun run knip` sees what CI
+      # sees; on a dev machine the file usually already exists, so a CI-only
+      # fix would have left local passing by accident.
       - name: Check for unused files/dependencies (knip)
         run: bun run knip
 
