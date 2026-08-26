@@ -79,9 +79,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   it uses for a genuine fault. It now tells you the operation is temporarily
   limited and to try later, and it says which one: an update whose check
   succeeded and whose *download* was then throttled no longer blames the check.
-  The raw cause of any update failure is also written to a log you can read: the
-  start screen's Logs tab lists it as **Gutterpress app.log**, beside your
-  per-book logs.
+  The raw cause is also written to a log you can read: once a check, download,
+  or install has actually failed, the start screen's Logs tab lists it as
+  **Gutterpress app.log**, beside your per-book logs. (It only appears after a
+  failure — an uneventful update check writes nothing there.)
 
 - **The contents list no longer lies to a screen reader.** It announced itself
   as a tree and promised keyboard navigation it never implemented, with the
