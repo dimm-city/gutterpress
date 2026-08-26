@@ -161,6 +161,13 @@ resolve the categorization questions future work will hit):
   another engine": a fallback that also corrects Chromium behaviour stays, on
   its Chromium merits, with its comment rewritten to say so.
 
+- **Published-HTML is not exempt. Ratified 2026-08-26.** Chromium-only
+  governs the viewer's published-HTML surface too, even though that surface
+  is permanent tooling (above): `clearLeadingForcedBreaks()`
+  (`packages/cli/src/engine/viewer/fragment.ts`), a proven Chromium no-op
+  kept only to fix a WebKit-only page-count divergence in published
+  `book.html`, was removed rather than kept as a cross-browser accommodation.
+
 - **Chrome wins once it ships.** When Chrome implements a Paged Media
   feature, we drop our shim and match Chrome's behavior even where it is
   imperfect — print output IS Chrome's output, and preview↔PDF divergence

@@ -52,6 +52,15 @@ name: Gutterpress desktop app gates
 #                                          against 0.10.2 before its fix; the
 #                                          checks record rather than abort, so
 #                                          one run reports every defect present.
+#     editor-dropdown-sync         ~3s     outline (Contents tab) click must
+#                                          move the EDITOR across chapters,
+#                                          not just the preview — the two
+#                                          panes used to desync on a
+#                                          cross-chapter jump. Adapted to
+#                                          accept out/main/main.js via the
+#                                          isMainJs pattern problems-last-hop
+#                                          already uses; packaged mode still
+#                                          works for run-ui.mjs / `test:ui`.
 #
 #   problems-panel was excluded when this gate first landed, for a stale
 #   assertion rather than flake: it asserted sev-error for a missing image, but
@@ -71,19 +80,12 @@ name: Gutterpress desktop app gates
 #   the most valuable drive we have — it is the one that caught the 0.10.1
 #   inline-edit regression.
 #
-#   excluded — need an electron-builder AppImage, which this job does not build
-#   (both pass 3/3 against a locally packaged 0.10.1 AppImage, so they are
+#   excluded — needs an electron-builder AppImage, which this job does not
+#   build (passes 3/3 against a locally packaged 0.10.1 AppImage, so it is
 #   healthy — just expensive here):
 #     electron-driver        hardcodes executablePath; ~zero marginal coverage
 #                            anyway, since every gated drive already proves the
 #                            SPA renders before asserting anything.
-#     editor-dropdown-sync   hardcodes executablePath; DOES have unique
-#                            coverage (outline<->editor sync). Teaching it the
-#                            `isMainJs ? require_("electron") : target` pattern
-#                            the gated drives already use would let it join that
-#                            job for ~5s instead of a multi-minute packaging
-#                            step plus a network dependency on the AppImage
-#                            tooling download.
 #
 # Note the two CDP drives (editor-toggle, panel-reopen) leak their Electron
 # process on exit and pick CDP ports at random from narrow ranges, so
@@ -151,8 +153,8 @@ jobs:
       # One xvfb-run per drive. The two CDP drives fall back to wrapping
       # themselves in xvfb-run when DISPLAY is unset; wrapping them here sets
       # DISPLAY, so that fallback stays dormant and every drive launches the
-      # same way. problems-last-hop drives Playwright's _electron, which has no
-      # such fallback and needs the wrapper.
+      # same way. problems-last-hop and editor-dropdown-sync drive Playwright's
+      # _electron, which has no such fallback and need the wrapper.
       - name: Drive the built app (behaviour)
         working-directory: packages/desktop
         run: |
@@ -161,6 +163,7 @@ jobs:
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
           xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
+          xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
 
   render-perf:
     name: Packaged-app render speed (xvfb)

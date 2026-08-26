@@ -1,10 +1,14 @@
-# Remaining work — 0.10.0 native-engine migration
+# Remaining work — native rendering engine tracker
 
 **Living document.** Update it when a decision is made or an item lands; do not
-let it drift into a historical record. Spans two repos: `gutterpress`
-(this one) and `dc-op-manual` (DC design guide + field guide).
+let it drift into a historical record. The 0.10.0 native-engine migration
+(Paged.js removal) is complete and its planning docs are gone from the repo
+(`chore: eradicate Paged.js from the repo`, 2026-08-25); this document now
+tracks ratified engine/tooling decisions, open verification/cleanup/
+engineering work, and known upstream Chromium gaps. Spans two repos:
+`gutterpress` (this one) and `dc-op-manual` (DC design guide + field guide).
 
-Last updated 2026-08-13.
+Last updated 2026-08-26.
 
 ---
 
@@ -29,63 +33,92 @@ Last updated 2026-08-13.
 
 - [x] **Missing art**: `images/chapter-02/cybersurgeon.png`,
       `images/chapter-03/etherlock.png` (3 markdown refs, 2 files) intentionally
-      render as visible placeholders until the real art lands.
+      render as visible placeholders until the real art lands. Mechanism
+      confirmed at `packages/cli/src/lib/missing-asset-placeholder.ts` (its
+      header names this exact dc-op-manual scenario); the specific file paths
+      live in dc-op-manual and are unverified (external to this repo).
 
 ---
 
 ## Open — actionable now
 
 ### Verification (highest value — this is the debt that caused the 0.10.0 defects)
-- [x] **Owner sign-off on the gallery baseline**: the focused 44-page gallery
+- [ ] **Owner sign-off on the gallery baseline**: the focused 44-page gallery
       manifest and portable 3.7MB baseline were approved on 2026-08-13 after
       review of the final PDF (`sha256 4c16dedcfd6d9b65bfb31c7c4fb820962a210c932caf44acd550aeb56872b73b`).
       The promoted baseline passes the text, raster, and semantic/paint gates.
-- [x] **Invariant gates**: page-edge plate paint, populated multicol fragments,
+      **Unverified (external to this repo)**: no gallery manifest, baseline
+      PDF, or matching sha256 exists anywhere in this repo's tree (re-checked
+      2026-08-26).
+- [ ] **Invariant gates**: page-edge plate paint, populated multicol fragments,
       skill tab/body glue, final-fragment border/notch geometry, marker leaks
       with an explicit code-specimen exemption, and the one intentional
       image-only page are checked alongside text/raster. A static policy test
       also keeps the Field Guide's default split selector aligned with the
       decoration selector; the gallery alone only exercises `.allow-split`.
-- [x] **`book-diff.sh` contract**: the committed gallery is the fast default;
+      **Unverified (external to this repo)**: the gallery, `.allow-split`,
+      and the Field Guide test suite this describes do not exist in this repo.
+- [ ] **`book-diff.sh` contract**: the committed gallery is the fast default;
       full books are explicit local modes under `.book-baseline/`, so the stale
       local 292-page field-guide baseline cannot masquerade as the release gate.
+      **Unverified (external to this repo)**: no `book-diff.sh` or
+      `.book-baseline/` exists in this repo's tree.
 - [x] **Desktop problems panel**: real Electron E2E proves malformed marker
       file/line navigation and an exported `engine.multicol.dead-column`
-      finding through the Problems panel.
+      finding through the Problems panel. Confirmed at
+      `packages/desktop/tests/integration/problems-last-hop.pw.mjs` (launches
+      the packaged app via Playwright's `_electron`).
 
 ### Cleanup (mechanical)
 - [x] Stale `.two-column` vocabulary in non-built files (`docs/`,
       `.archive/`, `.backup/`, `README.md`) and the design guide's own markdown
       reference updated to the core vocabulary; distinct `.two-column-list`
-      and `.two-column-grid` component names were preserved.
+      and `.two-column-grid` component names were preserved. Confirmed clean
+      in `README.md`/`CLAUDE.md` today; the design guide itself has since
+      moved to dc-op-manual and its current state is unverified from here.
 - [x] Core documents `.gp-columns-2/3`, `{.class}` marker spelling, and valid
-      bare `@section` authoring in `CLAUDE.md` §6 and the user guide.
+      bare `@section` authoring in `CLAUDE.md` §6 and the user guide. Confirmed
+      at `CLAUDE.md` §6 and `examples/gutterpress-user-guide/02-writing-content.md`.
 - [x] Duplicate marker warnings suppressed on a pre-validated PDF build without
-      hiding warnings when no prevalidation result exists.
-- [x] Dead `data-break-inside="avoid"` removed from skill-card wrappers; CSS is
-      the authoritative card break policy.
+      hiding warnings when no prevalidation result exists. Confirmed by
+      `packages/cli/src/lib/build-runner.warnings.test.ts`.
+- [ ] Dead `data-break-inside="avoid"` removed from skill-card wrappers; CSS is
+      the authoritative card break policy. **Unverified (external to this
+      repo)**: skill-card markup lives in dc-op-manual; the attribute's
+      absence from this repo is not proof of that removal.
 - [x] Failsafe tests clean their repository and isolated backup fixtures.
+      Superseded, not regressed: the `failsafe.ts` subsystem this covered was
+      itself deleted in `f5370db` per the convergent-sync decision above.
 - [x] Stale tracked `.claude/worktrees/` copy and plugin hot-reload snapshot
-      removed (recoverable from git).
+      removed (recoverable from git). Confirmed: zero files tracked under
+      `.claude/worktrees/` today, and `.gitignore` blanket-ignores `.claude/`.
 
 ### Engineering
-- [x] **Split card corner notch**: fragmentable cards use final-slice decoration;
+- [ ] **Split card corner notch**: fragmentable cards use final-slice decoration;
       explicit `.allow-split` cards and the Field Guide's default-splitting
       specialty cards share that rule, while `.no-split` remains atomic. Gallery
       pages 29–30 and real Field Guide pages 49–50 were inspected; final slices
       have their bottom rule/notch and non-final slices remain open.
-- [x] **Outcome ladder contract**: exactly five canonical ranges are required;
+      **Unverified (external to this repo)**: `.allow-split`/`.no-split` and
+      the Field Guide pages described do not exist anywhere in this repo.
+- [ ] **Outcome ladder contract**: exactly five canonical ranges are required;
       malformed counts/ranges throw instead of recycling `hit`. Emphasized GFM
       range cells are normalized without weakening the mechanical comparison.
-- [x] **Outcome labels reconciled**: GFM uses canonical labels; `@outcome`
+      **Unverified (external to this repo)**: no `@outcome` marker or
+      outcome-ladder logic exists anywhere in this repo's source.
+- [ ] **Outcome labels reconciled**: GFM uses canonical labels; `@outcome`
       retains author-supplied display labels over the same fixed five tiers.
+      **Unverified (external to this repo)**: same as above — `@outcome` is
+      not implemented in this repo.
 - [x] **Placeholder PNG path**: missing images now point to generated `.png`
       assets; real CSS contexts are rewritten without mutating code/script
-      specimens.
+      specimens. Confirmed at `packages/cli/src/lib/missing-asset-placeholder.ts`.
 - [x] **#151 — authoritative build-time DOM check**: `engine.layer.trapped`
       inspects computed live ancestors. The fast CSS-source lint remains with
-      an explicit limited-scope message.
-- [x] **Audit categories B/C/E reconciled** against current source and the
+      an explicit limited-scope message. Confirmed at
+      `packages/cli/src/engine/compiler/build.ts` and its
+      `build.layer-trapped.test.ts`.
+- [ ] **Audit categories B/C/E reconciled** against current source and the
       rendered gallery. Earlier panel/column/dead-rule findings have landed;
       fresh built-DOM counts are recorded in the audit. The two live
       `.two-column-list` instances are component-internal, both obsolete
@@ -93,6 +126,9 @@ Last updated 2026-08-13.
       matches, and the credits/intro/chapter-opener pseudo suppression only
       matches sections inside explicit panel-policy scopes. The one inert
       `filter:none` reset on `.dc-card-grid` was removed.
+      **Unverified (external to this repo)**: the audit's own targets
+      (`dc-components.css`, `page.css`, `fg-overrides.css`, `dg-overrides.css`)
+      all now live in dc-op-manual, not here.
 
 ---
 
@@ -101,7 +137,8 @@ Last updated 2026-08-13.
 Labelled `upstream` and written up for authors in
 [`docs/known-limitations.md`](./known-limitations.md). All three fail
 **silently**; each entry carries a workaround and a removal trigger. No shims —
-"Chrome wins once it ships."
+"Chrome wins once it ships." Re-verified empirically 2026-08-24 by
+differential testing against Chrome 151.0.7922.75; all three remain open.
 
 - [ ] **#149** a gradient in `@page { background }` paints nothing — linear,
       radial and repeating alike; a solid colour in the same place paints the
@@ -117,7 +154,11 @@ Labelled `upstream` and written up for authors in
       measuring. The build now preloads every staged CSS image; the canary
       `page-background-chromium-bug.canary.test.ts` is the removal trigger
 - [ ] A maintainer with a Google account should file all three against
-      Chromium; our issues stay open as the citable reference and re-test trigger
+      Chromium; our issues stay open as the citable reference and re-test
+      trigger. Still open as of 2026-08-26: `tools/file-upstream-chromium-bugs.mjs`
+      (added 2026-08-24) fills the tracker wizard, but the human sign-in/
+      reCAPTCHA/submit step hasn't run yet — no crbug links exist in
+      `known-limitations.md`.
 
 ---
 

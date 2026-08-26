@@ -530,7 +530,14 @@ const parentName = await evalJs(`(() => {
   return li.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? null;
 })()`);
 if (!parentName) fail("CONTROL: no expandable TOC row in this book");
-await sleep(800);
+// Wait for the actual condition the fixed 800ms sleep used to approximate: if
+// the row above was just expanded, its nested <ul> needs a Svelte flush before
+// a child exists to query. Polling proceeds the instant it's ready and still
+// survives a flush slower than 800ms under CI load, instead of guessing.
+await poll(
+  `!!document.querySelector('.toc-list .toc-item[aria-expanded]')?.closest('li')?.querySelector(':scope > ul.nested > li > .toc-row > .toc-item')`,
+  10000,
+);
 const childName = await evalJs(`(() => {
   const li = document.querySelector('.toc-list .toc-item[aria-expanded]')?.closest('li');
   const child = li?.querySelector(':scope > ul.nested > li > .toc-row > .toc-item');
@@ -539,7 +546,6 @@ const childName = await evalJs(`(() => {
   return child.querySelector('.toc-text')?.textContent ?? null;
 })()`);
 if (!childName) fail("CONTROL: expandable TOC row rendered no children to select");
-await sleep(2500);
 
 const readParent = () => evalJs(`(() => {
   const li = [...document.querySelectorAll('.toc-list li')]
@@ -547,6 +553,17 @@ const readParent = () => evalJs(`(() => {
   const btn = li?.querySelector(':scope > .toc-row > .toc-item');
   return li ? { exp: btn?.getAttribute('aria-expanded'), kids: !!li.querySelector(':scope > ul.nested') } : null;
 })()`);
+// Poll predicate for the parent's aria-expanded state, reused for both "must
+// be open" waits below — mirrors exactly what readParent() samples afterward,
+// so the wait and the assertion can never drift apart.
+const parentExpandedIs = (state) => `[...document.querySelectorAll('.toc-list li')]
+  .find(l => (l.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? '') === ${JSON.stringify(parentName)})
+  ?.querySelector(':scope > .toc-row > .toc-item')?.getAttribute('aria-expanded') === ${JSON.stringify(state)}`;
+// Selecting the child sets `activeOutlineIndex` synchronously (jumpToOutline in
+// +page.svelte), but the parent's aria-expanded still needs a Svelte flush to
+// reflect it — poll for that instead of the fixed 2500ms this used to sleep,
+// which was only ever a guess at how long the flush takes.
+await poll(parentExpandedIs("true"), 10000);
 const parentBefore = await readParent();
 if (parentBefore?.exp !== "true") {
   fail(`CONTROL: selecting "${childName}" did not leave "${parentName}" revealed (got ${JSON.stringify(parentBefore)})`);
@@ -557,7 +574,16 @@ await evalJs(`(() => {
   li.querySelector(':scope > .toc-row > .toc-twisty').click();
   return true;
 })()`);
-await sleep(1000);
+// Poll the EXACT predicate the check below asserts (collapsed AND no nested
+// list), rather than sleeping a fixed 1000ms and hoping the click had landed.
+await poll(
+  `(() => {
+     const li = [...document.querySelectorAll('.toc-list li')]
+       .find(l => (l.querySelector(':scope > .toc-row > .toc-item > .toc-text')?.textContent ?? '') === ${JSON.stringify(parentName)});
+     return !!li && li.querySelector(':scope > .toc-row > .toc-item')?.getAttribute('aria-expanded') === 'false' && !li.querySelector(':scope > ul.nested');
+   })()`,
+  10000,
+);
 const parentAfter = await readParent();
 check(
   parentAfter?.exp === "false" && !parentAfter?.kids,
@@ -571,7 +597,7 @@ await evalJs(`(() => {
   li.querySelector(':scope > .toc-row > .toc-twisty').click();
   return true;
 })()`);
-await sleep(800);
+await poll(parentExpandedIs("true"), 10000);
 check((await readParent())?.exp === "true", `re-expanding "${parentName}" after a manual collapse must still work`);
 
 // ── verdict ──────────────────────────────────────────────────────────────────

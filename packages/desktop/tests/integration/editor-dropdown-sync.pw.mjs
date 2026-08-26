@@ -11,7 +11,9 @@
  * The chapter UI moved from a toolbar dropdown (.chapter-item) to the left
  * panel's Contents tab (.toc-item) — this test follows the current surface.
  *
- * This drives the packaged Electron desktop end-to-end via Playwright:
+ * This drives the Electron desktop end-to-end via Playwright, either a
+ * packaged executable or the unpacked `out/main/main.js` the CI behaviour job
+ * builds:
  *   - launches the app against a fresh userData seeded to auto-open the
  *     multi-chapter fixture with the left panel on the Contents tab,
  *   - opens the editor (auto-selects the first chapter file),
@@ -21,7 +23,7 @@
  *   - asserts the editor's active file and document switched to that chapter.
  *
  * Usage:
- *   node tests/integration/editor-dropdown-sync.pw.mjs <packaged-exe-path> [fixture-dir]
+ *   node tests/integration/editor-dropdown-sync.pw.mjs <packaged-exe-or-out/main/main.js> [fixture-dir]
  *
  * Exit 0 on pass, 1 on fail.
  */
@@ -29,6 +31,7 @@
 import { _electron as electron } from "playwright-core";
 import { waitForAppWindow } from "./app-window.mjs";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -37,10 +40,20 @@ function log(msg) { console.log(`[etest] ${msg}`); }
 function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const [, , exeArg, fixtureArg] = process.argv;
-if (!exeArg) fail("usage: editor-dropdown-sync.pw.mjs <packaged-exe-path> [fixture-dir]");
-const exePath = resolve(exeArg);
-if (!existsSync(exePath)) fail(`packaged exe not found at ${exePath}`);
+const desktopDir = resolve(__dirname, "..", "..");
+const require_ = createRequire(join(desktopDir, "package.json"));
+const [, , targetArg, fixtureArg] = process.argv;
+if (!targetArg) fail("usage: editor-dropdown-sync.pw.mjs <packaged-exe-or-out/main/main.js> [fixture-dir]");
+const target = resolve(targetArg);
+if (!existsSync(target)) fail(`desktop target not found at ${target}`);
+// Accepts EITHER a packaged executable OR the unpacked `out/main/main.js` the
+// CI behaviour job builds — same `isMainJs ? require_("electron") : target`
+// pattern problems-last-hop.pw.mjs already uses, so this drive's unique
+// outline<->editor sync coverage can run in that job instead of needing its
+// own AppImage packaging step. Packaged-binary mode keeps working unchanged
+// for run-ui.mjs / `bun run test:ui`.
+const isMainJs = target.endsWith(".js");
+const executablePath = isMainJs ? require_("electron") : target;
 
 // Fixture defaults to the co-located one; overridable for callers that run the
 // test from a different working directory.
@@ -78,11 +91,16 @@ writeFileSync(
   JSON.stringify({ preview: { paneMode: "edit" } }),
 );
 
-log(`launching ${exePath}`);
+log(`launching ${target}`);
 const electronApp = await electron.launch({
-  executablePath: exePath,
-  args: [`--user-data-dir=${userDataDir}`, "--no-sandbox"],
+  executablePath,
+  args: [
+    ...(isMainJs ? [target] : []),
+    `--user-data-dir=${userDataDir}`,
+    "--no-sandbox",
+  ],
   env: { ...process.env, ELECTRON_DISABLE_GPU: "1" },
+  timeout: 90_000,
 });
 
 let exitCode = 0;
