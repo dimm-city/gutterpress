@@ -88,19 +88,23 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
-      # Chrome for Testing ships no sandbox helper, and this runner's AppArmor
-      # blocks unprivileged user namespaces — so the PINNED binary aborts with
-      # "No usable sandbox!" where the runner image's google-chrome-stable
-      # (which ci.yml uses) launches fine. That difference only became visible
-      # when #194 made the pin actually take effect.
+      # No GUTTERPRESS_CHROMIUM_ARGS here, to match ci.yml exactly: this job
+      # resolves the same runner-image google-chrome-stable ci.yml does (see
+      # the note above), which needs no sandbox flag — ci.yml has launched it,
+      # flag-free, on every PR. --no-sandbox was added in c4be60e for a
+      # DIFFERENT binary: #194's Chrome-for-Testing pin, which ships no SUID
+      # sandbox helper and aborted with "FATAL: No usable sandbox!" under this
+      # runner's AppArmor policy. cc3e188 reverted that pin but kept the flag,
+      # terming it "independent" of the pin — which its own introducing commit
+      # contradicts ("the runner image's google-chrome-stable... launches
+      # fine"). It was a leftover, not a second requirement.
       #
-      # browser-pool.ts reads these flags from GUTTERPRESS_CHROMIUM_ARGS and
-      # its own comment names this exact case ("containers/CI"). cdp.ts's
-      # launcher already passes --no-sandbox; the pool did not, because nothing
-      # set the variable in any workflow.
+      # If a future pin (the 151 incident behind #194 is real, per cc3e188) is
+      # reintroduced: Chrome for Testing will need this flag again — that is
+      # what c4be60e documented. Until then, don't set it speculatively; add
+      # it back only alongside a pin that has proven, via a prerelease
+      # dispatch, that it needs it.
       - name: Run tests
-        env:
-          GUTTERPRESS_CHROMIUM_ARGS: "--no-sandbox --disable-dev-shm-usage"
         run: bun --filter '*' test
 
       - name: Check release distribution tooling and metadata
