@@ -179,4 +179,11 @@ forked runtime, and turn cases 4 and 5 green.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `00806d8c..2aa10f43^`, three batches): 3 CONFIRMED
+  findings — the vendored-integrity gate had no CI invocation or sabotage self-test
+  (AP-20/G-12); no completeness walk or upstream baseline (the delete-entry-then-edit
+  bypass was reproduced, then closed); and the fork applied only half the code-block
+  path's wrapping (md-block now host-applied, PATCHES.md corrected). Fixed in
+  `2aa10f43`. Verdict: **approve**, 0 confirmed remaining, 2 advisories.
+- **Gate**: PASS — all 12 commands exit 0 (editor 126/0 + 51/0 across four Chromium
+  suites; vendored integrity 26 hashes/33 files; desktop 2132/0; cli 1810/0).

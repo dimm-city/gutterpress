@@ -206,3 +206,36 @@
   "checkpointSummary": "All 8 D5 mandatory cases exercised against the exact pinned runtime in real Chromium: 1/1b/2/3/6/7/8 PASS, case 4 (and consequently 5) FAIL — no generic custom-block hook. Verdict FORK, ratified: minimal CustomBlockRendering seam on the paragraph/unhandledBlock arms, executed as SFE-P1b2."
 }
 ```
+
+### SFE-P1b2 — Minimal internal fork: `renderCustomBlock` seam
+
+```json
+{
+  "status": "complete",
+  "baseSha": "00806d8c",
+  "headSha": "2aa10f43",
+  "history": [
+    "1df7ce37 chore(p1): vendor minimal vscode markdown editor fork",
+    "f5df9dff test(p1): prove renderCustomBlock — D5 suite fully green on the fork",
+    "2aa10f43 fix(p1): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: verify-vendored was a required integrity gate with no CI path and no sabotage self-test (script wired as check:vendored in CI; 20-assertion self-test added)",
+    "R1: verify-vendored lacked a completeness walk and an upstream baseline for the patched files (git ls-files completeness pass + upstreamBaseline pre-patch hashes added; delete-entry-then-edit bypass reproduced and closed)",
+    "R1: the fork applied only half the code-block path's wrapping — md-block class now added by the fork itself; PATCHES.md hunks corrected to quote the full expressions"
+  ],
+  "advisories": [
+    "No test yet exercises the host-applies-md-block contract with a provider that omits the class (regression path already closed by the checksum pin)",
+    "verify-vendored's scripts/ allowlist and git-tracked-only scope are the remaining narrow holes in the completeness claim"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck / editor 126:0 / test:browser 51:0 (4 suites) / verify-vendored self-test 20 ok / check:vendored 26 hashes + 33 files accounted / purity / architecture / generated-files / knip / desktop 2132:0 / cli 1810:0 — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["D5 suite fully green against the fork — cases 4/5 PASS via renderCustomBlock with real per-character segments (option a)"],
+  "deletionLedgerUpdates": ["Fork carries its own deletion trigger: remove packages/vscode-markdown-editor when upstream ships an equivalent generic block-render hook (PATCHES.md)"],
+  "checkpointSummary": "The ratified FORK executed: published artifact vendored with checksum+completeness integrity gates in CI, one generic CustomBlockRendering seam patched in (4 documented hunks/file), segments wired and proven — caret entry and drag precision now match the keyboard baseline on the paragraph probe."
+}
+```
