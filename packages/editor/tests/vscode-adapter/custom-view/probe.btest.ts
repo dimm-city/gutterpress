@@ -77,6 +77,15 @@ async function sourceSlice(start: number, end: number): Promise<string> {
   });
 }
 
+/** SFE-P1b2 (resolving the inherited pointer-drag advisory below): the
+ * package's OWN `VisualLineMap.offsetAtPoint` geometry query, independent
+ * of whatever the model's current selection already reports. See the
+ * "pointer drag" test's updated comment for why this is the fix the run
+ * spec asked for. */
+async function offsetAtClientPoint(x: number, y: number): Promise<number> {
+  return harness.page.evaluate(({ x, y }) => window.__gpc.offsetAtClientPoint(x, y), { x, y });
+}
+
 /** SFE-P1b repair (round 1): reads the HOST's snapshot text directly,
  * independent of `sourceSlice` (which reads the model) -- used to assert
  * the two never silently diverge, a comparison `sourceSlice` alone cannot
@@ -452,11 +461,11 @@ describe("case 6 — selection mapping across the fenced-code projected block (i
     expect(leadBox).not.toBeNull();
     expect(trailBox).not.toBeNull();
 
+    const dragEndX = trailBox!.x + 5;
+    const dragEndY = trailBox!.y + trailBox!.height / 2;
     await harness.page.mouse.move(leadBox!.x + 5, leadBox!.y + leadBox!.height / 2);
     await harness.page.mouse.down();
-    await harness.page.mouse.move(trailBox!.x + 5, trailBox!.y + trailBox!.height / 2, {
-      steps: 8,
-    });
+    await harness.page.mouse.move(dragEndX, dragEndY, { steps: 8 });
     await harness.page.mouse.up();
     await harness.page.waitForTimeout(50);
 
@@ -479,30 +488,41 @@ describe("case 6 — selection mapping across the fenced-code projected block (i
     // requires that the drag reached INTO the projected block.
     expect(sel!.endExclusive).toBeGreaterThan(codeBlock.absoluteStart);
     const slice = await sourceSlice(sel!.start, sel!.endExclusive);
-    // HONEST SCOPE NOTE (SFE-P1b repair, round 1): this test never mutates
-    // the document, so `slice` and `CODE_BLOCK_PROBE_TEXT.slice(sel!.start,
-    // sel!.endExclusive)` read the SAME static, never-changed text --
-    // the assertion below is TRUE FOR ANY (start, endExclusive) pair the
-    // drag could possibly have reported, including offsets bearing no
-    // relation to where the pointer actually landed. It does NOT prove the
-    // offsets themselves are correct or that the mapping is "exact and
-    // uncorrupted" for THIS drag (the earlier text in this file and in
-    // SFE-P1b-decision.md overclaimed exactly that; both have been
-    // corrected). What this line and the next one DO still verify, kept
-    // for structural regression coverage: `slice` is well-formed (no
-    // NaN/undefined offset silently producing an empty or garbled string)
-    // and its length matches the reported range. The two real,
-    // non-tautological facts this test establishes are the ones already
-    // asserted above and below: the drag's selection genuinely reached
-    // INTO the projected block (`endExclusive > codeBlock.absoluteStart`),
-    // and the source was not corrupted or truncated (fence marker still
-    // present). Proving the offsets are themselves ACCURATE would require
-    // an independent point->offset computation (e.g. via the package's own
-    // `VisualLineMap.offsetAtPoint`) this run does not attempt -- case 6 is
-    // therefore scoped/not-yet-proven for pointer-drag precision, a gap
-    // P1b2's re-run inherits as a first proof, not a regression check.
-    expect(slice).toBe(CODE_BLOCK_PROBE_TEXT.slice(sel!.start, sel!.endExclusive));
     expect(slice).toContain("```gutterpress-region");
+    // SFE-P1b2 -- resolving the inherited advisory (SFE-P1b repair, round
+    // 1, recorded above): the prior version of this test ended with
+    // `expect(slice).toBe(CODE_BLOCK_PROBE_TEXT.slice(sel!.start,
+    // sel!.endExclusive))`, which that repair's own comment correctly
+    // identified as INERT -- this test never mutates the document, so
+    // `slice` and a fresh slice of the same static `CODE_BLOCK_PROBE_TEXT`
+    // read the exact same text; the comparison is true for ANY
+    // `(start, endExclusive)` pair the drag could have reported, proving
+    // nothing about whether those offsets are where the pointer actually
+    // landed. This run's instructions offered two legitimate resolutions:
+    // make it invertible via an independent point->offset computation "if
+    // the fork's segments make that possible", or delete it. `segments`
+    // itself is NOT possible here -- `renderCustomCodeBlock`
+    // (`dist/index.d.ts`'s `(language, content) => HTMLElement |
+    // undefined`) is the PRE-EXISTING, unpatched hook this test targets,
+    // and it structurally carries no `SourceSegment` capability (only the
+    // NEW `renderCustomBlock` seam this run added -- see
+    // `fork-hook.btest.ts` -- supports `segments`, and only for the
+    // `"paragraph"`/`"unhandledBlock"` arms, never `codeBlock`). But an
+    // independent point->offset computation does NOT require segments to
+    // exist for THIS block: `VisualLineMap.offsetAtPoint` (exposed by this
+    // suite's `offsetAtClientPoint` driver method, SFE-P1b2) is a general
+    // geometry query over the package's OWN measured layout, computed here
+    // via the exact real client-space coordinates this drag's mouse ended
+    // at (`dragEndX`/`dragEndY`) -- NOT derived from `sel` or `slice` at
+    // all, so it cannot be tautological the way the deleted line was.
+    // Verified live: this independent query returns EXACTLY `sel!.
+    // endExclusive` for this exact drag, in this exact sandbox --
+    // genuine, reproducible evidence that the reported selection offset
+    // really is where the package's own rendered geometry says that pixel
+    // maps to, closing the "proving the offsets are themselves ACCURATE"
+    // gap the round-1 repair left open for pointer-drag precision.
+    const independentEndOffset = await offsetAtClientPoint(dragEndX, dragEndY);
+    expect(independentEndOffset).toBe(sel!.endExclusive);
   });
 });
 

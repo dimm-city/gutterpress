@@ -531,3 +531,215 @@ plus this record) — the full run-spec gate (`bun install
 --frozen-lockfile`, root `bun run typecheck`, `bun run
 check:architecture`, `bun run knip`, `check:browser-purity`) is the
 integrator's responsibility once all three lanes have landed.
+
+## SFE-P1b2 fork-suite results
+
+> Written by SFE-P1b2 Lane B per
+> `docs/plans/source-first-editor/runs/SFE-P1b2.md`. Lane A vendored
+> `packages/vscode-markdown-editor` (the internal fork committed and
+> installed as `@dimm-city/vscode-markdown-editor`) and patched in the
+> `renderCustomBlock` seam this section's evidence exercises — see
+> `packages/vscode-markdown-editor/PATCHES.md` for the exact hunks. This
+> section repeats the D5 suite (above) against that patched runtime and
+> records cases 4, 5, and 6 for the probes this record's original run
+> (SFE-P1b) found FAILing or scoped.
+
+### Cases 4 and 5 — now PASS against the fork
+
+Both probes named in the original FAIL rows above (the `@page splash`
+paragraph marker and a standalone `<div>plain html block</div>`
+unhandled-block probe) now get real custom inactive rendering, and case 5's
+full two-state mechanics (activate → byte-exact edit → deactivate with zero
+drift) are proven directly on the paragraph probe, not merely by analogy to
+the fenced-code hook as the original record's case 5 section had to settle
+for.
+
+Evidence: `packages/editor/tests/vscode-adapter/custom-view/fork-hook.btest.ts`
+(new file, SFE-P1b2 Lane B; wired into `packages/editor/package.json`'s
+`test:browser` script as a fourth `&& bun test <file>` segment):
+
+| # | Case | Result | `describe` block |
+|---|---|---|---|
+| 4 | Positive: paragraph probe gets the chip; heading/list/codeBlock in the same document keep their own default rendering | **PASS** | `"case 4 — renderCustomBlock fires for the paragraph probe, and NOT for a heading/list/codeBlock in the same document"` |
+| 4 | Positive: standalone unhandled-block probe gets the chip | **PASS** | `"case 4 — renderCustomBlock fires for the <div> unhandled-block probe"` |
+| 4 | Hook called with exact node kind + exact `sourceText` slice (cross-checked against an independently-sliced `[absoluteStart, absoluteStart+length)` read of the static fixture) | **PASS** | `"case 4 — the hook is called with the exact node kind and the exact sourceText slice"` |
+| 4 | Negative: never consulted for the block's OWN active render (other inactive blocks may legitimately be re-consulted on the same re-render — checked honestly, not assumed) | **PASS** | `"case 4 — never consulted for the ACTIVE render of the block itself"` |
+| 4 | Fallback: `undefined` → byte-identical DOM to a no-hook control mount (`outerHTML` equality) | **PASS** | `"case 4 — fallback: returning undefined falls through to the exact default view"` |
+| 5 | Bare-dom fallback (no `segments`): entry lands at `absoluteStart`; typing PREPENDS onto the marker line, byte-exact, version+1; leaving restores the chip with zero further drift | **PASS** | `"case 5 — bare-dom fallback (no segments): entry lands at absoluteStart; typing PREPENDS onto the marker line, safely (unlike the fence-corruption hazard)"` |
+| 5 | Segmented chip: entry lands INSIDE at the exact expected offset (not merely "in range"); interior edit is byte-exact at that offset; leaving restores the chip with zero further drift | **PASS** | `"case 5 — segmented chip: entry lands INSIDE at the exact expected offset; interior edit is byte-exact; leaving restores the chip with zero drift"` |
+
+A real, empirical, non-obvious finding surfaced while building this suite,
+worth recording alongside the pass results: **a `renderCustomBlock`
+provider must add `"md-block"` to its own returned `dom` itself.** Unlike
+the pre-existing `renderCustomCodeBlock` path (whose own hardcoded view
+class adds `"md-block"`/`"md-code-block"` to the element it's handed —
+`dist/index.js:4325`/`4334`), the fork's new `"paragraph"`/`"unhandledBlock"`
+arms mount the returned `dom` completely unmodified via the shared `T` base
+view-node class, which adds no class at all. Confirmed by grepping the
+whole patched `dist/index.js`: `"md-block"` is added at exactly those two
+pre-existing call sites and nowhere else — every other hardcoded block view
+supplies its own `"md-block …"` string at construction time. Without it,
+`.md-document > .md-block` DOM queries silently skip the block, AND —
+more materially — the measured layout that keyboard/pointer navigation
+depends on treats the block as absent (observed live: a chip missing this
+class was skipped entirely by `ArrowDown`, landing straight on the next
+block instead of entering the chip at all). This is recorded in
+`support/entry.ts`'s provider as a load-bearing comment, not just here,
+since any future production `renderCustomBlock` provider (Gutterpress's own
+projection layer included, in a later run) will need to do the same thing.
+
+### Segments decision — option (a): real per-character `segments` ARE wired
+
+Per the run specification's "Constraint decision required" section, this
+run made an explicit, evidenced choice rather than defaulting to the
+bare-`dom` pin: **`support/entry.ts`'s test-only provider wires real,
+per-character `segments` for the `@page splash` paragraph probe** (its
+`"segmented-text"` mode — one real DOM `Text` node per character, each
+reported as its own length-1 `SourceSegment`, contiguously tiling the whole
+node span with no gaps for `Zs()` to backfill). This was attempted, proven
+to work, and is now covered by passing contract tests — not deferred.
+
+Evidence, `fork-hook.btest.ts`, `describe("segments decision — caret-entry
+and drag precision now match the keyboard baseline (option (a): segments
+ARE wired)")`:
+
+- **Caret-entry precision.** Four independent fresh-mount clicks at four
+  distinct character positions inside the segmented chip (`"@page splash"`,
+  characters 0, 1, 6, 11) each land the caret at a distinct, EXACTLY
+  predicted offset (`absoluteStart + charIndex + 1`, reproducibly stable
+  across repeated runs — verified live, not asserted from the patch alone).
+  This is the material contrast with the bare-dom fallback (case 5 above):
+  entry no longer collapses to `absoluteStart` for every click — it lands
+  wherever the pointer actually was, character-accurate.
+- **Cross-checked by a second, independent mechanism.** Every expected
+  offset above is also verified against `EditorView.measuredLayout
+  .visualLineMap.get().offsetAtPoint(...)` (exposed by this run's new
+  `offsetAtClientPoint` driver method) at the exact same client-space
+  point — a wholly separate code path from the selection the click itself
+  produced, and it agrees exactly, every time.
+- **Drag precision now matches the keyboard baseline.** A real pointer
+  drag from character index 1 to character index 10 inside the segmented
+  chip selects EXACTLY `[absoluteStart+2, absoluteStart+11)` — not merely
+  "reached into the block" (the qualifier the original fenced-code drag
+  test needed), but the PRECISE expected range, independently predicted via
+  `String.indexOf` against the static fixture and independently
+  cross-checked via `offsetAtClientPoint` at both drag endpoints. This is
+  the "drag precision matches the keyboard-navigation baseline" proof the
+  run specification's segments-decision option (a) requires.
+- **Interior edits are byte-exact at the clicked offset**, not a prepend
+  (case 5's segmented-chip test above): typing after clicking mid-`"splash"`
+  produces `"@page sXplash"`, an interior insertion — materially different
+  from, and strictly better than, the bare-dom fallback's forced prepend.
+
+The bare-dom (no-`segments`) mode is not abandoned — it is deliberately
+KEPT and exercised as its own explicit, still-legitimate mode (case 4's
+`"label"`/`"plain-text"` probes and case 5's first test above), reachable
+via `CustomBlockMountOptions.mode`, per the seam's own contract
+(`segments` is optional). Its constraints (entry at `absoluteStart`,
+typing prepends) are pinned as explicit, passing assertions in case 5's
+bare-dom test, not left as an unstated default.
+
+### Case 6 (re-run) — first proof on the paragraph probe, with the hook active
+
+The original case 6 section above scoped its result to the
+` ```gutterpress-region ` fenced-code probe only, noting explicitly: "none
+of the three legs was additionally exercised against the `@page splash`
+paragraph probe, so P1b2's re-run against that probe is a FIRST proof, not
+a regression check." That re-run is now done, in
+`fork-hook.btest.ts`, with the fork's `renderCustomBlock` hook ACTIVE
+(segmented mode, so the block is genuinely custom-painted, not merely
+inactive-by-default):
+
+| Leg | Result | `describe` block |
+|---|---|---|
+| Full-document keyboard selection (`Ctrl+Home` / `Shift+Ctrl+End`) across the custom-rendered probe; copy-slice equality against the model | **PASS** | `"case 6 (re-run, first proof) — full-document keyboard selection across the active paragraph probe"` |
+| `Shift+ArrowDown` crossing, stepped one keystroke at a time, anchor stable / active monotonic, reaching past the probe's exact range | **PASS** | `"case 6 (re-run, first proof) — Shift+ArrowDown crossing the active paragraph probe"` |
+| Pointer-drag precision | **PASS, and now EXACT (not merely "reached into")** — see the segments-decision drag result above, which is this leg's paragraph-probe proof | — |
+
+All three legs are green on the paragraph probe. Unlike the original
+case 6 (fenced-code probe, no `segments` available for that hook), the
+drag leg here achieves EXACT offset precision because `segments` are wired
+for this probe — closing the "drag precision" gap that record's case 6
+section left open, for this probe.
+
+### The inherited advisory — inert pointer-drag assertion, resolved
+
+`probe.btest.ts`'s `"case 6 — selection mapping across the fenced-code
+projected block"` describe block's pointer-drag test ended with a
+tautological assertion (`SFE-P1b` repair round 1 had already flagged it as
+proving nothing: `slice` and a fresh slice of the same static,
+never-mutated `CODE_BLOCK_PROBE_TEXT` read the identical text regardless of
+what offsets the drag actually reported). This run's instructions offered
+two legitimate resolutions: make it invertible via an independent
+point→offset computation "if the fork's segments make that possible", or
+delete it.
+
+**Resolution: neither literally — invertible, but not via `segments`.**
+`segments` genuinely is NOT possible for that specific test's target block:
+it targets `renderCustomCodeBlock`
+(`(language: string, content: string) => HTMLElement | undefined`), the
+PRE-EXISTING, unpatched hook — structurally incapable of carrying
+`SourceSegment`s (only the NEW `renderCustomBlock` seam this run added
+supports `segments`, and only for the `"paragraph"`/`"unhandledBlock"`
+arms, never `codeBlock`). But an independent point→offset computation does
+NOT require `segments` to exist for the target block: `VisualLineMap
+.offsetAtPoint` is a general geometry query over the package's own measured
+layout, unrelated to whether any per-character source mapping was ever
+supplied. The tautological line was replaced with:
+
+```ts
+const independentEndOffset = await offsetAtClientPoint(dragEndX, dragEndY);
+expect(independentEndOffset).toBe(sel!.endExclusive);
+```
+
+computed from the exact real client-space coordinates the drag's mouse
+ended at — a value derived from NEITHER `sel` nor `slice`, so it cannot be
+tautological the way the deleted line was. Verified live, reproducibly
+(3 consecutive full-file runs, `probe.btest.ts`, 10/10 pass each time):
+this independent query returns EXACTLY `sel!.endExclusive` for this exact
+drag, in this exact sandbox — genuine, non-vacuous evidence that the
+reported selection offset really is where the package's own rendered
+geometry says that pixel maps to. The two weaker, still-valid assertions
+this test already made (`endExclusive > codeBlock.absoluteStart`: the drag
+genuinely reached into the block; the slice still contains the fence
+marker: no corruption) are unchanged. `offsetAtClientPoint` was added to
+`support/entry.ts`'s driver by this run specifically to make this fix
+possible, and is reused (via `segmentCharacterCenter`-driven clicks) as the
+primary precision-proof mechanism throughout the segments-decision section
+above.
+
+### Updated verdict
+
+**The D5 suite is now fully green against the fork.** Every one of D5's 8
+mandatory compatibility cases passes against the patched, vendored
+`@dimm-city/vscode-markdown-editor` runtime: cases 1/1b/2/3/6/7/8 as
+already recorded above (re-run unmodified against the fork by SFE-P1b2's
+Lane A per the run spec's "No-hook compatibility" requirement), and cases
+4 and 5 — previously FAIL for the run's specified probes — now PASS, with
+the segments decision resolved as option (a) (real per-character segments
+wired, proven, not deferred) and case 6 given its first proof on the
+paragraph probe. `SFE-P1b.md`'s "FORK" verdict (ratified by the integrator,
+above) is fully discharged: the fork exists, is minimal (PATCHES.md: seven
+hunks total — four behavioral, in `dist/index.js`, plus three
+type-only/documentation hunks in `dist/index.d.ts` — no reformatting of
+upstream code, zero Gutterpress vocabulary), and the seam it adds closes
+every gap the original D5 exploration found.
+
+**Commands run** (all from `packages/editor/`, all exit codes as observed
+by SFE-P1b2 Lane B):
+
+| Command | Exit | Notes |
+|---|---|---|
+| `bun run typecheck` | 0 | `tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json` — zero errors across every file this lane touched. |
+| `bun run test` | 0 | 126 pass / 0 fail across 11 files (non-browser suite; unaffected by this lane's changes). |
+| `bun test ./tests/vscode-adapter/custom-view/probe.btest.ts` | 0 | 10 pass / 0 fail / 88 `expect()` calls (up from 87 — the resolved pointer-drag assertion). Re-run 3 times for flake-checking: 10/10 green every run. |
+| `bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts` | 0 | 12 pass / 0 fail / 126 `expect()` calls. Re-run 3 times for flake-checking: 12/12 green every run. |
+| `bun run test:browser` | 0 | All four suites in sequence (`browser.cases.btest.ts` 15/15, `input-a11y.btest.ts` 14/14, `probe.btest.ts` 10/10, `fork-hook.btest.ts` 12/12) — 51/51 total. Re-run twice: stable both times. |
+
+Per this run's write-ownership boundary, this lane's targeted verification
+is scoped to `packages/editor` (`typecheck`, `test`, `test:browser`); the
+full run-spec gate (`bun install --frozen-lockfile`,
+`node packages/vscode-markdown-editor/scripts/verify-vendored.mjs`,
+`bun run check:architecture`, `bun run knip`, root-level
+`check:browser-purity`) is the integrator's responsibility once all lanes
+have landed.

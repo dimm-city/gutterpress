@@ -5,7 +5,9 @@ import {
   OffsetRange,
   StringValue,
   type BlockAstNode,
+  type CustomBlockRendering,
   type EditorViewOptions,
+  type SourceSegment,
 } from "@dimm-city/vscode-markdown-editor";
 import { stringEditToSourceEdit } from "../../../../src/vscode-adapter/index.ts";
 import { MemoryDocumentHost } from "../../../../src/core/index.ts";
@@ -57,6 +59,42 @@ export interface CustomViewMountOptions {
    * is NEVER invoked for a paragraph-shaped probe.
    */
   readonly customCodeBlockChipLabel?: string;
+  /**
+   * SFE-P1b2 Lane B — wires `BlockViewOptions.renderCustomBlock`, the
+   * gp-fork seam patched into this vendored fork
+   * (`packages/vscode-markdown-editor/PATCHES.md` hunks 1–6) for the
+   * `"paragraph"`/`"unhandledBlock"` arms of the view-factory switch. See
+   * `../fork-hook.btest.ts`.
+   */
+  readonly customBlock?: CustomBlockMountOptions;
+}
+
+/** How `renderCustomBlock`'s test-only provider paints a matched block. */
+export type CustomBlockChipMode = "label" | "plain-text" | "segmented-text";
+
+export interface CustomBlockMountOptions {
+  /** Label text for `"label"` mode (`${label}:${node.kind}`); also stamped
+   * as `data-gpc-label` on every mode's chip so a test can identify which
+   * provider call produced a given DOM element. */
+  readonly label: string;
+  readonly mode: CustomBlockChipMode;
+  /**
+   * `renderCustomBlock` is consulted by the fork for EVERY inactive
+   * `"paragraph"`/`"unhandledBlock"` node in the mounted document — every
+   * call is recorded via `customBlockHookCalls()` regardless of this set.
+   * A chip is returned (replacing the block's default rendering) only for
+   * nodes whose reconstructed `sourceText` CONTAINS one of these literal
+   * substrings (not exact equality — `sourceText` is the node's FULL
+   * source span, PATCHES.md hunk 3: for a paragraph that includes its own
+   * trailing blank-line glue, e.g. `"@page splash\n\n"`, not just the
+   * marker line a fixture author writes); every other paragraph/
+   * unhandledBlock in the same document falls through to `undefined` (the
+   * package's unpatched default rendering), so ordinary blocks are
+   * provably unaffected by mounting this option. Pass an empty array to
+   * exercise the "hook consulted on every call, always declines" fallback
+   * path.
+   */
+  readonly chipFor: readonly string[];
 }
 
 interface DirectMountState {
@@ -66,6 +104,7 @@ interface DirectMountState {
   readonly controller: EditorController;
   known: { text: string; version: number };
   readonly codeBlockCalls: Array<{ language: string; content: string }>;
+  readonly blockHookCalls: Array<{ kind: string; sourceText: string }>;
   submittingOwnEdit: boolean;
   lastOverlay: HTMLElement | undefined;
 }
@@ -73,6 +112,11 @@ interface DirectMountState {
 export interface CodeBlockHookCall {
   readonly language: string;
   readonly content: string;
+}
+
+export interface CustomBlockHookCall {
+  readonly kind: string;
+  readonly sourceText: string;
 }
 
 export interface SelectionOffsets {
@@ -112,6 +156,41 @@ export interface CustomViewDriver {
   blockInfo(index: number): BlockInfo;
 
   codeBlockHookCalls(): readonly CodeBlockHookCall[];
+
+  /** Every `renderCustomBlock` invocation recorded so far, in call order
+   * (SFE-P1b2 — the gp-fork seam's own hook, distinct from
+   * `codeBlockHookCalls` above). */
+  customBlockHookCalls(): readonly CustomBlockHookCall[];
+  /** `outerHTML` of the block at `index`'s own mounted DOM element — used
+   * to prove `renderCustomBlock` returning `undefined` produces the
+   * package's byte-identical default rendering (DOM equality against a
+   * control mount with no hook at all), and to inspect a mounted chip's
+   * own markup. */
+  blockOuterHTML(index: number): string;
+  /**
+   * Independent point → source-offset computation via the package's OWN
+   * public `VisualLineMap.offsetAtPoint` geometry query
+   * (`EditorView.measuredLayout.visualLineMap`), rather than reading back
+   * whatever the model's current selection already reports. `clientX`/
+   * `clientY` are real page/client-space coordinates — the same space
+   * Playwright's `page.mouse` API and `Element.getBoundingClientRect()`
+   * use — converted into the editor's local measurement space via
+   * `EditorView.coordinateSpace.capture()` before querying the line map.
+   * SFE-P1b2 — the fix `probe.btest.ts`'s previously inert pointer-drag
+   * assertion needed: a real, non-tautological cross-check of a reported
+   * selection offset against the model's own rendered geometry.
+   */
+  offsetAtClientPoint(clientX: number, clientY: number): number;
+  /**
+   * Real client-space `{x, y}` center of the `charIndex`-th per-character
+   * Text node inside a `"segmented-text"`-mode chip at block `index`
+   * (SFE-P1b2 segments-decision probe) — via `Range.getBoundingClientRect()`
+   * on that exact DOM node, so a test can drive a REAL pointer click/drag
+   * at a precise, independently-known target character rather than
+   * guessing a fraction of the whole block's (often much wider) bounding
+   * box.
+   */
+  segmentCharacterCenter(index: number, charIndex: number): { x: number; y: number };
 
   /** Forces (or un-forces) `forcedMarkerVisibleBlocks` for the block at
    * `index` -- the one real "force this block active" seam the package
@@ -197,18 +276,88 @@ function mount(text: string, options: CustomViewMountOptions = {}): void {
   let known = host.getSnapshot();
 
   const codeBlockCalls: Array<{ language: string; content: string }> = [];
-  const viewOptions: EditorViewOptions | undefined = options.customCodeBlockChipLabel
-    ? {
-        renderCustomCodeBlock: (language: string, content: string): HTMLElement => {
-          codeBlockCalls.push({ language, content });
-          const chip = document.createElement("div");
-          chip.className = "gpc-custom-chip";
-          chip.dataset["language"] = language;
-          chip.textContent = `${options.customCodeBlockChipLabel}:${language}`;
-          return chip;
-        },
+  const blockHookCalls: Array<{ kind: string; sourceText: string }> = [];
+
+  // SFE-P1b2 Lane B — the gp-fork `renderCustomBlock` seam's test-only
+  // provider. Built once per mount so its closure captures THIS mount's
+  // own `blockHookCalls` array and `options.customBlock` (never a stale
+  // one from a prior mount()).
+  const customBlockOptions = options.customBlock;
+  const renderCustomBlock:
+    | ((node: BlockAstNode, sourceText: string) => CustomBlockRendering | undefined)
+    | undefined = customBlockOptions
+    ? (node, sourceText) => {
+        blockHookCalls.push({ kind: node.kind, sourceText });
+        if (!customBlockOptions.chipFor.some((needle) => sourceText.includes(needle))) return undefined;
+
+        const dom = document.createElement("div");
+        dom.dataset["kind"] = node.kind;
+        dom.dataset["gpcLabel"] = customBlockOptions.label;
+        // SFE-P1b2 empirical finding: unlike the PRE-EXISTING
+        // `renderCustomCodeBlock` path (whose own hardcoded view class
+        // adds "md-block"/"md-code-block" to the returned element itself
+        // — dist/index.js:4325/4334), the fork's NEW `renderCustomBlock`
+        // arms (PATCHES.md hunks 3–4) mount the returned `dom` completely
+        // unmodified via the shared `T` base view-node class, which does
+        // NOT add any class. Every hardcoded block view in this package
+        // supplies its OWN "md-block ..." string at construction time
+        // (confirmed: "md-block" is added at exactly those two call sites
+        // and nowhere else in dist/index.js) — so a `renderCustomBlock`
+        // PROVIDER is responsible for including "md-block" itself. Without
+        // it, `.md-document > .md-block` selectors (this harness's own
+        // `blockElements()`, and any real consumer's DOM queries) silently
+        // skip the block, AND the measured layout that keyboard/pointer
+        // navigation depends on treats it as absent (verified live: a
+        // chip missing this class was skipped entirely by ArrowDown
+        // navigation, landing straight on the NEXT block instead).
+        if (customBlockOptions.mode === "label") {
+          dom.className = "md-block gpc-custom-chip gpc-custom-chip-label";
+          dom.textContent = `${customBlockOptions.label}:${node.kind}`;
+          return { dom };
+        }
+        if (customBlockOptions.mode === "plain-text") {
+          // Bare-dom fallback: the WHOLE node's text in ONE text node, no
+          // `segments` — the seam's documented fallback behavior (caret
+          // entry lands at the block's absoluteStart; PATCHES.md hunk 3).
+          dom.className = "md-block gpc-custom-chip gpc-custom-chip-plain";
+          dom.textContent = sourceText;
+          return { dom };
+        }
+        // "segmented-text": the SFE-P1b2 segments-decision probe — one
+        // REAL DOM Text node per character, each reported as its own
+        // length-1 SourceSegment, contiguously tiling the node's whole
+        // source span (no gaps for Zs() to backfill with zero-length
+        // anchors) per the SourceSegment contract in
+        // packages/vscode-markdown-editor/dist/index.d.ts.
+        dom.className = "md-block gpc-custom-chip gpc-custom-chip-segmented";
+        const segments: SourceSegment[] = [];
+        for (let i = 0; i < sourceText.length; i++) {
+          const charNode = document.createTextNode(sourceText[i] ?? "");
+          dom.appendChild(charNode);
+          segments.push({ dom: charNode, start: i, length: 1 });
+        }
+        return { dom, segments };
       }
     : undefined;
+
+  const viewOptions: EditorViewOptions | undefined =
+    options.customCodeBlockChipLabel || renderCustomBlock
+      ? {
+          ...(options.customCodeBlockChipLabel
+            ? {
+                renderCustomCodeBlock: (language: string, content: string): HTMLElement => {
+                  codeBlockCalls.push({ language, content });
+                  const chip = document.createElement("div");
+                  chip.className = "gpc-custom-chip";
+                  chip.dataset["language"] = language;
+                  chip.textContent = `${options.customCodeBlockChipLabel}:${language}`;
+                  return chip;
+                },
+              }
+            : {}),
+          ...(renderCustomBlock ? { renderCustomBlock } : {}),
+        }
+      : undefined;
 
   const model = new EditorModel();
   model.replaceSourceText(new StringValue(known.text));
@@ -224,6 +373,7 @@ function mount(text: string, options: CustomViewMountOptions = {}): void {
     controller,
     known,
     codeBlockCalls,
+    blockHookCalls,
     submittingOwnEdit: false,
     lastOverlay: undefined,
   };
@@ -307,6 +457,30 @@ window.__gpc = {
   },
 
   codeBlockHookCalls: () => requireState().codeBlockCalls.slice(),
+
+  customBlockHookCalls: () => requireState().blockHookCalls.slice(),
+  blockOuterHTML(index: number): string {
+    const el = blockElements()[index];
+    if (!el) throw new Error(`gpc harness: no DOM block at index ${index}`);
+    return el.outerHTML;
+  },
+  offsetAtClientPoint(clientX: number, clientY: number): number {
+    const s = requireState();
+    const local = s.view.coordinateSpace.capture().toLocalPoint({ x: clientX, y: clientY });
+    return s.view.measuredLayout.visualLineMap.get().offsetAtPoint(local);
+  },
+  segmentCharacterCenter(index: number, charIndex: number): { x: number; y: number } {
+    const el = blockElements()[index];
+    if (!el) throw new Error(`gpc harness: no DOM block at index ${index}`);
+    const charNode = el.childNodes[charIndex];
+    if (!charNode) {
+      throw new Error(`gpc harness: block ${index} has no segment text node at charIndex ${charIndex}`);
+    }
+    const range = document.createRange();
+    range.selectNodeContents(charNode);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  },
 
   forceBlockMarkersVisible(index: number, visible: boolean): void {
     const s = requireState();
