@@ -6,6 +6,12 @@ node_modules
 out
 dist
 *.tgz
+# Root-level SvelteKit sync output (`svelte-kit sync` regenerates this from the
+# root workspace tsconfig probe). Explicit because none of the patterns above
+# match it: `out`/`dist` are unrelated names, and packages/desktop/.gitignore's
+# own `.svelte-kit` entry only covers that package's directory, not this root
+# one — which is why 7 files under it were tracked (see tools/check-generated-files.mjs).
+/.svelte-kit
 
 # temporary test files
 .tmp/
