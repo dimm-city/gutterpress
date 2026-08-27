@@ -27,3 +27,15 @@ export type {
 } from "./lib/markdown/renderer";
 
 export { MARKER_CSS } from "./lib/markdown/markers.js";
+
+export { createEditorProjection, PROJECTION_SCHEMA_VERSION } from "./lib/markdown/editor-projection";
+export type {
+  GutterpressProjection,
+  ProjectedBlock,
+  ProjectedBlockKind,
+  ProjectionEditMode,
+  GeneratedView,
+  ProjectionDiagnostic,
+  ProjectionDiagnosticCategory,
+  CreateEditorProjectionOptions,
+} from "./lib/markdown/editor-projection";
