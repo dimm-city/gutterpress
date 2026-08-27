@@ -91,6 +91,16 @@ block-edit protocol is `"block-edit"` ("Edit this block"), which calls
 > helper module. This section closes that gap so P4b has search-proof
 > identifiers for the whole context-menu source-mutation surface, not just
 > the fact that it bypasses `beginBlockEdit`/`endBlockEdit` (§1.4).
+>
+> **Repair round 2 correction:** round 1's `getContextTargetAt` row claimed
+> `ContextMenuController` calls it to resolve the pointer target. That was
+> false — verified by `grep -rn "getContextTargetAt" packages/desktop/src`,
+> which finds the method definition and doc-comment mentions only, no call
+> site. The table row and the paragraph below it were corrected to state the
+> host-side wrapper is TEST-ONLY (no production caller) and that
+> `ContextMenuController` actually reads the payload from
+> `contextMenuRequested`'s `detail`, built by the book document's own
+> in-document `api.getContextTargetAt()` call.
 
 The context-menu path reaches the preview through its OWN command/event pair
 — neither is `beginBlockEdit`/`endBlockEdit` — and its source mutations run
@@ -98,18 +108,36 @@ through a dedicated pure-helper module neither table above named:
 
 | Identifier | Kind | Produced (implemented/dispatched) | Consumed (called/listened) |
 |---|---|---|---|
-| `getContextTargetAt` | command (host → book) | `previewAPI.getContextTargetAt` (`packages/cli/src/assets/preview/scripts/preview-interface.js:1092`) | `PreviewClient.getContextTargetAt()` (`packages/desktop/src/lib/preview-client.ts:325-326`); called by `ContextMenuController` to resolve what is under the pointer before building menu items |
+| `getContextTargetAt` | command (host → book) | `previewAPI.getContextTargetAt` (`packages/cli/src/assets/preview/scripts/preview-interface.js:1092`) | `PreviewClient.getContextTargetAt()` (`packages/desktop/src/lib/preview-client.ts:325-326`) has **no production caller** — `grep -rn "getContextTargetAt" packages/desktop/src` returns only the method definition, three doc-comment mentions (`preview-client.ts:84,96,108`), and two other doc comments (`commit-engine.ts:129`, `context-menu-controller.svelte.ts:147`); `ContextMenuController` never calls it. Per §2's classification scheme this wrapper is **TEST-ONLY**: exercised by `packages/desktop/tests/platform/preview-client.test.ts:174-207` and by the non-CI-gated `packages/desktop/tests/integration/editor-opens-with-content.pw.mjs:421` (via `window.__ask`), and nowhere else. |
 | `contextMenuRequested` | event (book → host) | Dispatched from `preview-interface.js:1394` (mouse) and `:1454` (keyboard), sharing one payload builder; relayed by `preview-bridge.js:82-83` (`window.addEventListener('contextMenuRequested', ...)` → `post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail })`) | `ContextMenuController.handleEvent()` case `"contextMenuRequested"` (`context-menu-controller.svelte.ts:206`); typed in `PreviewEvent["name"]` (`preview-client.ts:15`), `detail` shape documented at `preview-client.ts:44-64` (carries `image.source`/`link.source`/`selection` as `InlineSourceToken`(s) — the mutation payload) |
 
-Both cross the same book→bridge→shell→host relay path §1.2 describes for the
-block-edit events; they are simply a different command/event pair on it.
-**They are read/target-resolution messages, not mutations themselves**, and
-may survive past P4 as part of the read-only context menu D8 keeps
-(navigation, selection/copy, open link/image, source reveal) — do not delete
-either merely because this section names it; the deletion-ledger's
-`Preview mutation protocol messages` baseline (`deletion-ledger.md:20`)
-deliberately does not count them (see the note added there in this repair
-round) for the same reason.
+`ContextMenuController` obtains its target payload from `contextMenuRequested`'s
+`detail`, not by calling the host-side `getContextTargetAt` command. That
+`detail` is assembled entirely inside the book document: `preview-interface.js`
+calls its OWN in-document `api.getContextTargetAt(...)` at lines 1388 (mouse
+path) and 1449 (keyboard path) — a same-document function call, not a
+`gutterpress:cmd` round trip — and passes the resulting payload straight into
+the event it dispatches. So the book-side implementation
+(`previewAPI.getContextTargetAt`) is live and load-bearing; the host-side
+command wrapper (`PreviewClient.getContextTargetAt()` /
+`this.call("getContextTargetAt", [point])`) is not reachable from any feature
+path today. **Consequence for P4b:** `PreviewClient.getContextTargetAt()` is a
+deletion candidate in its own right, independent of whether the read-only
+context menu survives past P4 — its removal would need to update or drop only
+the two test files named above, not any production caller.
+
+Both identifiers cross the same book→bridge→shell→host relay path §1.2
+describes for the block-edit events; they are simply a different command/event
+pair on it. **They are read/target-resolution messages, not mutations
+themselves**, and `contextMenuRequested` (and the book-side
+`getContextTargetAt` it depends on) may survive past P4 as part of the
+read-only context menu D8 keeps (navigation, selection/copy, open link/image,
+source reveal) — do not delete it merely because this section names it; the
+deletion-ledger's `Preview mutation protocol messages` baseline
+(`deletion-ledger.md:20`) deliberately does not count them (see the note added
+there in this repair round) for the same reason. The host-side
+`PreviewClient.getContextTargetAt()` wrapper is a separate matter (see above)
+and is not protected by this paragraph.
 
 `packages/desktop/src/lib/editor/context-menu-actions.ts` is the pure
 source-token helper module every context-menu source mutation runs through —
