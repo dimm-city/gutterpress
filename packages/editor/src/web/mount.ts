@@ -1,36 +1,63 @@
 import {
-  diagnosticForEditRejection,
-  type Diagnostic,
-  type DocumentSnapshot,
-  type EditorDocumentHost,
-} from "../core/index.ts";
-import { computeMinimalEdit } from "./diff.ts";
+  createVscodeEditorAdapter,
+  type VscodeEditorAdapter,
+} from "../vscode-adapter/index.ts";
+import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
+import {
+  FORK_DEFAULT_THEME_CSS,
+  FORK_EDITOR_BASE_CSS,
+  FORK_THEME_CLASS_NAME,
+} from "./fork-editor-css.ts";
 
 /**
- * SFE-P1a Lane B — framework-free web mount shell.
+ * SFE-P2a Lane A — the adapter-backed web mount shell.
  *
- * Lane B's charter, per the master plan's Lane B appendix for this run: add
- * a minimal mount/dispose API with no Svelte, Electron, VS Code, or Node
- * dependency; add memory-host integration tests; do not implement
- * Gutterpress projections yet. This file is the ENTIRE production surface:
- * `mountEditor()` renders a host's current snapshot into an editor surface
- * it owns, wires `host.subscribe` so external replacements re-render,
- * translates user input into `SourceEdit`s applied through
- * `host.applyEdit`, and surfaces rejections as `Diagnostic`s.
+ * P1a's `mountEditor` rendered a plain `<textarea>` (see this run's report
+ * for the full rationale of why that shell existed and what replaces it).
+ * This run's job, per its own DETAILS: swap that shell's internals for the
+ * REAL `@vscode/markdown-editor` fork surface — `createVscodeEditorAdapter`
+ * (`../vscode-adapter/index.ts`, proven against a real browser by P1b's
+ * `tests/vscode-adapter/browser.cases.btest.ts` and its siblings, ALL of
+ * which stay unmodified and green per this run's "Behavior that must remain
+ * unchanged") — while keeping `mountEditor`'s and `EditorMount`'s PUBLIC
+ * SHAPE byte-compatible: same signature, same return shape, same diagnostic
+ * surfacing, same idempotent/late-notification-proof dispose semantics, same
+ * remount cleanliness.
  *
- * Deliberately thin: the run spec's behavior table (Lane B row) only
- * requires that `mount()` return a handle, `dispose()` release listeners
- * with no leaks on remount, and no Svelte/Electron/vscode/node import
- * appear anywhere in this closure. A plain `<textarea>` satisfies that row
- * without pulling in the real rich surface, which arrives in P1b via
- * `@vscode/markdown-editor` — so this shell is kept small enough that
- * swapping its internals for that surface in P1b should not need to change
- * `mountEditor`'s or `EditorMount`'s public shape. The surface is a single
- * `<textarea>`, there is no toolbar, no formatting, no Gutterpress
- * projection (D6/P2b), and no undo/redo beyond whatever the host and the
- * browser's native textarea history already provide. `mountEditor` and
- * `EditorMount` are the only exports later runs may depend on; everything
- * else here is a private implementation detail.
+ * What THIS module adds beyond a bare call to `createVscodeEditorAdapter`
+ * (the reason `mountEditor` is not simply an alias for it): the fork ships
+ * as bare TS/CSS source with no runtime CSS-injection of its own (P1b's own
+ * case 7 proved this — the harness/test entries inject `editor.css` +
+ * `themes/default.css` themselves, via a `<link>`-tag page shell for the
+ * Node-side harness and a client-side `injectCustomStyle` call for the
+ * a11y suite's EXTRA sheet). A real host (desktop's rich-editor shell, a
+ * VS Code webview) has no equivalent page shell to lean on, so
+ * `mountEditor` — the one surface every host mounts through — is the
+ * correct, single place to own that responsibility, once: inject the
+ * fork's own chrome CSS (`fork-editor-css.ts`, a byte-for-byte, mechanically
+ * escaped copy of the fork's `editor.css` + `themes/default.css` — see that
+ * file's header for exactly what is and is not included and why), apply its
+ * default theme's class name so that CSS actually takes effect, wire
+ * `options.onDiagnostic`/`options.readonly` through to the adapter, and
+ * return the same `EditorMount` shape.
+ *
+ * CSS injection is scoped to `container.ownerDocument` (an isolated
+ * document/iframe/webview gets its OWN copy, never the host page's) and
+ * done freshly PER MOUNT — a plain `<style>` element created before the
+ * adapter/view is constructed (so the view's first layout pass already sees
+ * the real chrome CSS, not a flash of unstyled content) and removed on
+ * `dispose()`. The run spec named a refcounted-per-document alternative
+ * (share one `<style>` element across every mount in the same document);
+ * per-mount was chosen instead as the smaller design (plan: "prefer the
+ * smallest design that fully satisfies the specification") — it needs no
+ * shared registry, no refcount bookkeeping, and no cross-mount coupling
+ * ("did some OTHER mount already inject this document's CSS, and did IT
+ * get disposed first"); dispose stays trivially symmetric with mount. Its
+ * cost is duplicated CSS payload (today ~60KB of text) per additional
+ * simultaneous mount in the SAME document — currently never more than two
+ * in this run's own browser suite (mount.btest.ts) or the fork's own P1b
+ * a11y case 7c precedent. If a later run mounts many editors per document
+ * routinely, revisit toward the refcounted form; nothing here forecloses it.
  */
 
 /** Options accepted by `mountEditor`. */
@@ -40,42 +67,65 @@ export interface EditorMountOptions {
    * readonly, or invalid-range) — see `diagnosticForEditRejection` in
    * `../core/diagnostics.ts`, the single place that reason -> category
    * pairing is defined. `mountEditor` never throws on a rejection; this is
-   * the only channel a caller has for observing one.
+   * the only channel a caller has for observing one. Threaded straight
+   * through to `createVscodeEditorAdapter`'s own `onDiagnostic`.
    */
   readonly onDiagnostic?: (diagnostic: Diagnostic) => void;
+
+  /**
+   * Mounts the editor in readonly mode. `EditorDocumentHost` (D3/D7)
+   * deliberately exposes no queryable "is this host readonly" flag — see
+   * `VscodeEditorAdapterOptions.readonly`'s own doc comment
+   * (`../vscode-adapter/adapter.ts`) for why only the CALLER that
+   * constructed `host` can know this, so it is threaded through here rather
+   * than guessed. Threaded straight through to the adapter, which
+   * proactively sets the model's readonly mode (verified live in
+   * `tests/vscode-adapter/input-a11y/input-a11y.btest.ts`'s bonus case: a
+   * readonly-mounted editor "ignores typed input entirely — no edit is
+   * ever attempted", not merely "attempts and gets rejected"). Defaults to
+   * `false`.
+   */
+  readonly readonly?: boolean;
+
+  /**
+   * An additional stylesheet, appended to `container.ownerDocument` AFTER
+   * the fork's own base + default-theme CSS (so it wins equal-specificity
+   * ties against the default theme), scoped and disposed exactly like the
+   * base CSS. Preserves the P1b case-7 "custom CSS reaches computed styles"
+   * capability (`tests/vscode-adapter/input-a11y/input-a11y.btest.ts`) for
+   * callers that go through `mountEditor` instead of the raw adapter —
+   * this run's own `tests/web/mount.btest.ts` proves it end-to-end.
+   */
+  readonly extraCss?: string;
 }
 
 /** Handle returned by `mountEditor`. */
 export interface EditorMount {
   /**
-   * Removes the mount's DOM (the surface element it appended to
-   * `container`) and its `host.subscribe` listener. Idempotent — calling
-   * `dispose()` more than once is a no-op, not a throw. After `dispose()`,
-   * any notification the host later delivers on the same subscription is
-   * impossible (the subscription itself is gone) and, defensively, is also
-   * ignored by the mount's own listener body should it ever run anyway.
-   * This follows from G-02 (pr158-lessons.md): the editor owns its
-   * semantic content DOM and nothing else may reparent, clone, or write
-   * into it — so, symmetrically, once this mount has released that DOM via
-   * `dispose()`, it must not resurrect it or fire diagnostics as if it
-   * were still the live editor.
+   * Tears down the mounted adapter (view, controller, both its internal
+   * subscriptions) and removes every `<style>` element this mount injected
+   * (base fork CSS, and `extraCss` if supplied). Idempotent — calling
+   * `dispose()` more than once is a no-op, not a throw, matching P1a's own
+   * `EditorMount.dispose()` contract and `VscodeEditorAdapter.dispose()`'s.
    */
   dispose(): void;
 }
 
 /**
- * Mounts a minimal source-edit-backed editor surface into `container`.
+ * Mounts a real `@vscode/markdown-editor` fork surface into `container`,
+ * backed by `host`.
  *
  * `container` must be a real, attached-or-detached DOM `Element` with a
  * non-null `ownerDocument` (true of every `Element` a real browser or
- * webview ever hands out) — `mountEditor` creates its surface via
- * `container.ownerDocument.createElement(...)` rather than the `document`
- * global, so the mount works correctly inside an iframe or a document other
- * than the host page's own (a later run's presentation host, D7/G-03, is
- * expected to mount into an isolated document).
+ * webview ever hands out) — `mountEditor` creates its `<style>` elements via
+ * `container.ownerDocument`, not the `document` global, so CSS injection
+ * works correctly inside an iframe or a document other than the host page's
+ * own (D7/G-03's later presentation host).
  *
- * Mounting is synchronous: `mountEditor` renders the host's CURRENT
- * snapshot (`host.getSnapshot()`) into the surface before returning.
+ * Mounting is synchronous: the underlying model holds the host's CURRENT
+ * snapshot (`host.getSnapshot()`) before this function returns, matching
+ * D2's "opening ... changes zero bytes" — see `createVscodeEditorAdapter`'s
+ * own doc comment for the exact mechanism.
  */
 export function mountEditor(
   container: Element,
@@ -87,89 +137,52 @@ export function mountEditor(
     // Not a rejection this run's D3/D14 diagnostic taxonomy covers (it is a
     // caller-usage error, not a document/edit-lifecycle event) — every real
     // Element has an ownerDocument, so reaching this is a broken caller, and
-    // failing loudly here is more honest than silently no-oping.
+    // failing loudly here is more honest than silently no-oping (matches
+    // P1a's own guard, unchanged).
     throw new Error("mountEditor: container has no ownerDocument");
   }
 
-  const surface = doc.createElement("textarea");
-  // The shell's only styling hook for now (D7/G-03 presentation context is
-  // a later run's concern) — a stable selector lets a future host wrapper
-  // (P3a's thin Svelte shell) find and style the surface without reaching
-  // into this module's internals.
-  surface.classList.add("gp-editor-surface");
-
-  // The text/version this mount currently believes is authoritative — kept
-  // in sync by `render()`, called both after our own accepted edits and on
-  // every `host.subscribe` notification (D2: "External changes replace or
-  // patch the authoritative snapshot, then update mounted views"). Every
-  // `SourceEdit` this mount submits is diffed and versioned against this
-  // value, never against a value read fresh from `host.getSnapshot()` at
-  // submit time — so a host that changed underneath this mount without
-  // going through `subscribe` (impossible for a spec-compliant host, but
-  // not something this module assumes) would surface as a rejected,
-  // diagnosed edit rather than a silently wrong one.
-  let known: DocumentSnapshot = host.getSnapshot();
-  surface.value = known.text;
-
-  let disposed = false;
-
-  function render(snapshot: DocumentSnapshot): void {
-    known = snapshot;
-    // Avoid clobbering the surface (and any in-progress IME composition or
-    // caret position a real browser would have) when the incoming snapshot
-    // already matches what's on screen — true after every self-originated
-    // accepted edit, since we computed `newText` from the surface's own
-    // current value.
-    if (surface.value !== snapshot.text) {
-      surface.value = snapshot.text;
-    }
+  const styleHost = doc.head ?? doc.documentElement;
+  if (!styleHost) {
+    // Symmetric with the ownerDocument guard above: every real HTML document
+    // has at least a document element, so reaching this is also a broken
+    // caller/host, not a D14 diagnostic case.
+    throw new Error(
+      "mountEditor: container's ownerDocument has no <head> or document element to attach editor CSS to",
+    );
   }
 
-  function handleInput(): void {
-    if (disposed) return;
-    const newText = surface.value;
-    if (newText === known.text) return; // no-op input notification; nothing to submit
-    const edit = computeMinimalEdit(known.text, newText, known.version);
-    const result = host.applyEdit(edit);
-    // `host.applyEdit` notifies subscribers synchronously (see the
-    // `host.subscribe` callback below). If a subscriber reacts by calling
-    // `dispose()` on THIS mount — a realistic pattern when a host wrapper
-    // treats a rejected edit as a signal to tear down and remount — this
-    // mount is now disposed even though we are still on the stack from the
-    // `applyEdit` call above. `dispose()`'s own contract says a disposed
-    // mount must not resurrect DOM or fire diagnostics after the caller has
-    // moved on, so re-check here before touching the (possibly detached)
-    // surface or invoking `onDiagnostic`.
-    if (disposed) return;
-    if (result.ok) {
-      render(result.snapshot);
-      return;
-    }
-    // Rejected: D3 — "A stale or invalid edit changes nothing and returns
-    // the current snapshot." `result.snapshot` IS that current, unchanged
-    // snapshot, so re-rendering it resyncs the surface to the truth rather
-    // than leaving the user's rejected keystroke sitting on screen looking
-    // accepted (G-01: exact source is the only writable authority).
-    render(result.snapshot);
-    options.onDiagnostic?.(diagnosticForEditRejection(result.reason));
+  // Injected BEFORE the adapter/view is constructed, so the view's first
+  // layout pass already sees the real chrome CSS rather than a flash of
+  // unstyled content.
+  const baseStyleEl = doc.createElement("style");
+  baseStyleEl.setAttribute("data-gp-editor-css", "fork-base");
+  baseStyleEl.textContent = `${FORK_EDITOR_BASE_CSS}\n${FORK_DEFAULT_THEME_CSS}`;
+  styleHost.appendChild(baseStyleEl);
+
+  let extraStyleEl: Element | undefined;
+  if (options.extraCss !== undefined) {
+    extraStyleEl = doc.createElement("style");
+    extraStyleEl.setAttribute("data-gp-editor-css", "extra");
+    extraStyleEl.textContent = options.extraCss;
+    styleHost.appendChild(extraStyleEl);
   }
 
-  surface.addEventListener("input", handleInput);
-
-  const unsubscribe = host.subscribe((snapshot) => {
-    if (disposed) return;
-    render(snapshot);
+  const adapter: VscodeEditorAdapter = createVscodeEditorAdapter(container, host, {
+    onDiagnostic: options.onDiagnostic,
+    readonly: options.readonly,
+    viewOptions: { classNames: [FORK_THEME_CLASS_NAME] },
   });
 
-  container.appendChild(surface);
+  let disposed = false;
 
   return {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      unsubscribe();
-      surface.removeEventListener("input", handleInput);
-      surface.remove();
+      adapter.dispose();
+      baseStyleEl.remove();
+      extraStyleEl?.remove();
     },
   };
 }
