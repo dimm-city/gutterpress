@@ -9,7 +9,13 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    // @dimm-city/gutterpress-editor ships raw .ts source (no build step yet —
+    // see its package.json exports comment); its internal imports carry .ts
+    // extensions, so consumers' svelte-check needs this flag. Both other
+    // consumers (packages/editor itself, packages/vscode-extension) already
+    // set it.
+    "allowImportingTsExtensions": true
   },
   "exclude": [
     "node_modules/**",

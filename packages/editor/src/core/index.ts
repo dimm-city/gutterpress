@@ -11,3 +11,5 @@ export * from "./apply-edit.ts";
 export * from "./validate.ts";
 export * from "./hosts.ts";
 export * from "./memory-host.ts";
+export * from "./contract-tests.ts";
+export * from "./commands.ts";
