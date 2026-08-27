@@ -147,4 +147,14 @@ proves host portability from day one.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `ebe2c24f..42189c13^`, four batches): 8 CONFIRMED
+  findings — an applyEdit TOCTOU via accessor-backed edit objects; a disposed-mount
+  re-entrancy hole; unproven dispose/class/invalid-range assertions; fabricated doc
+  quotations in comments; a vacuous provider disposal test; a vacuously-passing,
+  .svelte-blind purity checker; a dead CLI flag; and missing CI invocation of the new
+  packages' gates (AP-20). All fixed in `42189c13` with sabotage verification.
+  Verdict: **approve**, 0 confirmed remaining, 3 advisories (recorded in
+  acceptance.md).
+- **Gate**: PASS — all 13 commands exit 0 (both editor programs typecheck; editor
+  118/0; extension 22/0; architecture/generated/knip green; desktop 2132/0;
+  cli 1810/0).

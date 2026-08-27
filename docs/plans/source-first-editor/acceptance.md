@@ -13,7 +13,7 @@
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
-| AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Pending |
+| AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a: applyEdit contract tests incl. TOCTOU-hardened accessor case, seeded 500-case property test, validator negatives; P3 host integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
 | AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Pending |
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Pending |
@@ -117,5 +117,53 @@
   "acceptanceUpdates": ["AC-02 enforced in CI", "AC-19 evidenced for P0b"],
   "deletionLedgerUpdates": ["Tracked generated files: 7 → 0 (root .svelte-kit/ untracked; check-generated-files gate prevents recurrence)"],
   "checkpointSummary": "Guardrails installed and CI-wired: generated-file hygiene, ProseMirror ban, route ratchet (104), D4 import direction with future-package activation, knip exemptions audited by removal-testing and annotated with deletion phases. Review ran 2 repair rounds to approve."
+}
+```
+
+### SFE-P1a — Shared editor contracts and package skeletons
+
+```json
+{
+  "status": "complete",
+  "baseSha": "ebe2c24f42e34a2b4d21df3fca8964355a99209c",
+  "headSha": "42189c13 (fix round 1)",
+  "history": [
+    "c3a2405c feat(p1): create shared editor core package",
+    "db2f68ea feat(p1): add framework-free web mount shell",
+    "da7b1b59 feat(p1): scaffold VS Code extension host",
+    "42189c13 fix(p1): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: applyEdit TOCTOU — edit fields re-read after validation, exploitable via accessor-backed objects (fixed: single destructure + regression test)",
+    "R1: disposed mount could fire diagnostics/write detached DOM on re-entrant host notification (fixed: post-applyEdit disposed re-check + race test)",
+    "R1: dispose listener-release, surface class, and invalid-range assertions unproven (fixed + sabotage-verified)",
+    "R1: fabricated spec/plan quotations in comments across Lane B/C files (all swept and corrected against the real docs)",
+    "R1: vacuous onDidDispose registration and disposal test in the extension provider (deleted pending real per-resolve state)",
+    "R1: browser-purity checker passed vacuously on zero files and ignored .svelte (fail-closed + extensions + self-tests added)",
+    "R1: dead --package-root flag with false justification (deleted)",
+    "R1: new packages' typecheck/test/purity gates never ran in CI (AP-20) (wired into the build job)"
+  ],
+  "advisories": [
+    "provider.test.ts header cites a D12 bullet the suite does not exercise",
+    "dom-stub.ts attributes a stub-vs-dependency instruction to lane instructions with no locatable source",
+    "browser-purity self-test runs twice in CI (dedicated step + bun test auto-discovery)"
+  ],
+  "gate": {
+    "commands": [
+      "bun install --frozen-lockfile — exit 0",
+      "bun run typecheck — exit 0 (4 workspace packages)",
+      "packages/editor typecheck (both programs) / test (118 pass, 0 fail) / purity (11 files clean) / purity self-test (19 ok) — all exit 0",
+      "packages/vscode-extension typecheck / test (22 pass, 0 fail) — exit 0",
+      "check:architecture — exit 0 (Rule 4 scans both new packages)",
+      "check:generated-files — exit 0 (1120 tracked files)",
+      "knip — exit 0",
+      "packages/desktop test — exit 0 (2132 pass, 1 skip, 0 fail)",
+      "packages/cli test — exit 0 (1810 pass, 60 skip, 0 fail)"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-05 evidenced for P1"],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "packages/editor core (D3 contract, D14 diagnostics, hardened validators, memory host) and web mount shell live with 118 tests; packages/vscode-extension skeleton registers the optional gutterpress.markdownEditor provider importing the shared protocol. P1b dependency @vscode/markdown-editor@0.0.2-84 verified present on the npm registry."
 }
 ```
