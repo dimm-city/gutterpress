@@ -488,3 +488,21 @@ here rather than a package-specific one.
 | Dependencies (workspace, prod, summed) | 41 | §4.7 |
 | Tracked generated files | 7 (all a stray root-level `.svelte-kit/`, pre-existing at baseline SHA) | §4.4 |
 | Total lockfile package count | 909 | §4.8 |
+
+## Addendum — release-management deviations resolved (2026-08-27, post-P1a)
+
+Both deviations recorded in §1 are now resolved or narrowed:
+
+- **`v0.10.2` final tag: RESOLVED.** `origin/main` advanced to `5ec25e5a`
+  (`chore: bump version to 0.10.2`) and the `v0.10.2` tag points at it. Net diff
+  `ea7b60d5..5ec25e5a` is only the two `package.json` version bumps (the
+  intermediate engine-bundle refresh commits reproduced identical bytes).
+  The work branch merged `origin/main` at `c0966b55`; all fitness checks and
+  typecheck stayed green.
+- **`origin/release/0.11.0`: EXISTS, but points at `ea7b60d5`** — the pre-bump
+  merge commit, 5 commits behind post-release `main` (`5ec25e5a`). The plan's
+  equality precondition (`release/0.11.0` == post-release `main`) is therefore
+  still not literally satisfied; release management should fast-forward
+  `release/0.11.0` to `5ec25e5a`. Not blocking: the work branch contains
+  `origin/main`, so the eventual merge into `release/0.11.0` carries the release
+  commits either way.
