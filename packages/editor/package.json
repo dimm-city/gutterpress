@@ -12,6 +12,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json",
     "test": "bun test",
+    "test:browser": "bun test ./tests/vscode-adapter/browser.cases.btest.ts",
     "check:browser-purity": "node scripts/check-browser-purity.mjs"
   },
   "engines": {

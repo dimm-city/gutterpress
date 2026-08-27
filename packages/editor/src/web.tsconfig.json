@@ -29,12 +29,33 @@
   //   2. Add a `"typecheck:web": "tsc --noEmit -p src/web.tsconfig.json"`
   //      script to packages/editor/package.json, run by CI/gate commands
   //      alongside the existing `typecheck` script.
+  //
+  // SFE-P1b addendum (Lane A of that run owns web.tsconfig.json's "include"
+  // and package.json's scripts/devDeps ONLY — root tsconfig.json is a "root
+  // file" explicitly outside that lane's write ownership, exactly as it was
+  // outside P1a Lane B's above): the SAME integrator step is needed again,
+  // this time for `src/vscode-adapter/**` (the sole `@vscode/markdown-editor`
+  // adapter, D5) and its test directories, which also genuinely need DOM
+  // types (`Element`, `HTMLElement`, ...) — `EditorView.element: HTMLElement`
+  // and this adapter's own `container: Element` parameter, matching
+  // `web/mount.ts`'s own convention. Verified live (SFE-P1b): everything in
+  // `src/vscode-adapter/**` compiles cleanly under the ROOT DOM-free program
+  // TOO except the single explicit `Element` parameter annotation in
+  // adapter.ts (skipLibCheck lets code that only IMPORTS or structurally
+  // USES `@vscode/markdown-editor`'s HTMLElement-returning members pass
+  // without the DOM lib, as long as no local annotation names an
+  // unresolvable ambient DOM type) — so until the fix below lands,
+  // `tsc --noEmit -p tsconfig.json` fails with exactly one
+  // `TS2304: Cannot find name 'Element'` at `src/vscode-adapter/adapter.ts`'s
+  // `container: Element` parameter. Add, to packages/editor/tsconfig.json's
+  // existing `"exclude": ["src/web", "tests/web"]`:
+  //   "src/vscode-adapter", "tests/vscode-adapter", "tests/browser-harness"
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   // Paths are relative to THIS file's directory (packages/editor/src/).
-  "include": ["web", "../tests/web"],
+  "include": ["web", "../tests/web", "vscode-adapter", "../tests/vscode-adapter", "../tests/browser-harness"],
   // Explicit empty "exclude" mirrors
   // packages/cli/src/engine/browser.tsconfig.json's own override: nothing to
   // cancel out today (../tsconfig.json declares no "exclude"), but this
