@@ -49,6 +49,14 @@
       ],
       "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"]
     },
+    "packages/editor": {
+      // check-browser-purity.test.mjs is the sabotage self-test for the purity
+      // checker, invoked via `node` (package script convention mirrors root
+      // tools/*.test.mjs) — never imported, so knip needs it named. Added in
+      // SFE-P1a; the ./web export surface is declared in package.json exports.
+      "entry": ["scripts/*.mjs", "tests/**/*.test.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,mjs}"]
+    },
     "packages/desktop": {
       "entry": [
         // PWA-only; no in-repo importer by design (CLAUDE.md §8). P5a deletes

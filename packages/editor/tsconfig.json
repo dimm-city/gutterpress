@@ -48,5 +48,8 @@
   // is a brand-new package with no other layer that would otherwise catch
   // a type error in a test file, and the run's gate gives `typecheck` and
   // `test` separate, equally-load-bearing commands.
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  // The DOM-aware web program (src/web.tsconfig.json) owns these; see the
+  // "lib" comment above for why they are excluded from the DOM-free core.
+  "exclude": ["src/web", "tests/web"]
 }

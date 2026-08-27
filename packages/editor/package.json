@@ -1,15 +1,16 @@
 {
   "name": "@dimm-city/gutterpress-editor",
   "version": "0.11.0-experimental.0",
-  "description": "Framework-free, browser-safe source-edit contracts and shared editor core for Gutterpress (Experimental — SFE-P1a). See docs/plans/source-first-editor-enterprise-refactor.md.",
+  "description": "Framework-free, browser-safe source-edit contracts and shared editor core for Gutterpress (Experimental \u2014 SFE-P1a). See docs/plans/source-first-editor-enterprise-refactor.md.",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./core": "./src/core/index.ts"
+    "./core": "./src/core/index.ts",
+    "./web": "./src/web/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json",
     "test": "bun test",
     "check:browser-purity": "node scripts/check-browser-purity.mjs"
   },

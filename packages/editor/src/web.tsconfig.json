@@ -1,0 +1,45 @@
+{
+  // Isolated typecheck program for packages/editor's browser-side web mount
+  // shell (SFE-P1a Lane B: src/web/**, tests/web/**). packages/editor's main
+  // tsconfig.json (../tsconfig.json — Lane A ownership) is deliberately
+  // DOM-free ("lib": ["ES2023"] only, no "DOM") specifically so a stray
+  // `window`/`document`/`HTMLElement` reference from src/core is a COMPILE
+  // ERROR there, per that file's own comment:
+  //
+  //   "src/web/** ... WILL need DOM / webview-host types. Do NOT widen this
+  //   program's "lib" to satisfy them ... Instead, follow that exact repo
+  //   precedent: give DOM-needing code its OWN nested tsconfig (lib:
+  //   ["ES2023", "DOM"], extending this file) and exclude that directory
+  //   from this program, mirroring
+  //   packages/cli/src/engine/browser.tsconfig.json +
+  //   packages/cli/tsconfig.json's "exclude"."
+  //
+  // This file is that nested config. TypeScript's `lib` option is
+  // program-global, not scoped per file, so src/web/** — which genuinely
+  // needs `Element`/`Document`/`HTMLTextAreaElement` — gets its own isolated
+  // program here instead of leaking DOM globals into every core file the
+  // way widening ../tsconfig.json would.
+  //
+  // Integrator action required (Lane A owns tsconfig.json/package.json, so
+  // Lane B cannot make these edits itself — see this run's report):
+  //   1. Add `"exclude": ["src/web"]` to packages/editor/tsconfig.json,
+  //      mirroring packages/cli/tsconfig.json's own "exclude" of its
+  //      browser-side directories, so the core (DOM-free) program does not
+  //      also typecheck src/web/** without the DOM lib.
+  //   2. Add a `"typecheck:web": "tsc --noEmit -p src/web.tsconfig.json"`
+  //      script to packages/editor/package.json, run by CI/gate commands
+  //      alongside the existing `typecheck` script.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  // Paths are relative to THIS file's directory (packages/editor/src/).
+  "include": ["web", "../tests/web"],
+  // Explicit empty "exclude" mirrors
+  // packages/cli/src/engine/browser.tsconfig.json's own override: nothing to
+  // cancel out today (../tsconfig.json declares no "exclude"), but this
+  // keeps the two nested-DOM-program configs in the repo identically
+  // shaped, and protects this program if a future "exclude" is ever added
+  // to the parent for unrelated reasons.
+  "exclude": []
+}
