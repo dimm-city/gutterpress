@@ -10,7 +10,7 @@
 | ID | Acceptance criterion | Owning phase | Required evidence | Final status |
 |---|---|---:|---|---|
 | AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.11.0` absent, work branch == `origin/main`) |
-| AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Pending |
+| AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Pending |
@@ -27,7 +27,7 @@
 | AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Pending |
 | AC-17 | Composition roots reduced | P6 | Responsibility review and module tests | Pending |
 | AC-18 | Public compatibility preserved | All | CLI/API/build/preview/publish gates | Pending |
-| AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Pending |
+| AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Evidenced for P0b (generated-file + architecture checks wired into the CI build job, each with a self-test proving pass and fail paths; P6 additions pending) |
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending |
 | AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Pending |
 | AC-22 | Documentation complete | P7 | Doc link and example lint | Pending |
@@ -75,5 +75,47 @@
   "acceptanceUpdates": ["AC-01 evidenced"],
   "deletionLedgerUpdates": ["Baseline column filled: 104 routes, 12 IPC registrations, 5 preview-mutation messages, 30 Platform/HostServices methods, LOC/dep/generated-file counts"],
   "checkpointSummary": "Baseline recorded and reproducible; mutation and platform/transport inventories complete with P4/P5 search-proof identifier lists; two previously uncovered mutation behaviors pinned with sabotage-proven tests; review ran 2 repair rounds to approve."
+}
+```
+
+### SFE-P0b — Hygiene and architecture fitness functions
+
+```json
+{
+  "status": "complete",
+  "baseSha": "0951195669ab9082cb90409b9c05f3c9bf2077b9",
+  "headSha": "b61045f7987ca1cc6699456519d281be8e2951a9",
+  "history": [
+    "9fc63b02 chore(p0): remove tracked generated output",
+    "a2f6a58c test(p0): enforce architecture boundaries",
+    "be415fc5 chore(p0): ratchet dead-code checks",
+    "5f009542 chore(p0): wire hygiene and architecture checks into CI",
+    "f3b99141 fix(p0): address review findings (round 1)",
+    "b61045f7 fix(p0): address review findings (round 2)"
+  ],
+  "confirmedFindings": [
+    "R1: guardrails.md described the wiring as 'not yet wired' and carried wrong assertion/tool counts (fixed against the committed code)",
+    "R1: check-generated-files.test.mjs lacked sabotage fixtures for the build/ and out/ patterns (added; all 5 patterns now have proven fail paths)",
+    "R1: knip exemption audit used existence checks instead of removal tests (redone by scratch-config removal testing; 4 truly inert entries removed, ungated output proven byte-identical)",
+    "R1: check-architecture Rules 1/3 could PASS after scanning zero files (scanned-target counts + AP-21 liveness FAIL added, with self-tests)",
+    "R2 (repair-introduced): guardrails.md recorded a false removal-test measurement for the desktop tests/** knip entry (re-measured: gated exit 1, 16 unused files — row reclassified Load-bearing)"
+  ],
+  "advisories": [],
+  "gate": {
+    "commands": [
+      "bun run typecheck — exit 0",
+      "node tools/check-generated-files.test.mjs — exit 0",
+      "node tools/check-architecture.test.mjs — exit 0",
+      "bun run check:generated-files — exit 0 (1083 tracked files, none generated)",
+      "bun run check:architecture — exit 0 (routes 104==baseline; 338 cli + 282 desktop files scanned; future packages skipped)",
+      "bun run knip — exit 0",
+      "cd packages/desktop && bun run test — exit 0 (2132 pass, 1 skip, 0 fail)",
+      "cd packages/cli && bun run test — exit 0 (1810 pass, 60 skip, 0 fail)"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-02 enforced in CI", "AC-19 evidenced for P0b"],
+  "deletionLedgerUpdates": ["Tracked generated files: 7 → 0 (root .svelte-kit/ untracked; check-generated-files gate prevents recurrence)"],
+  "checkpointSummary": "Guardrails installed and CI-wired: generated-file hygiene, ProseMirror ban, route ratchet (104), D4 import direction with future-package activation, knip exemptions audited by removal-testing and annotated with deletion phases. Review ran 2 repair rounds to approve."
 }
 ```

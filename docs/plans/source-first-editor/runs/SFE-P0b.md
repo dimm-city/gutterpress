@@ -107,4 +107,17 @@ each with a deliberate-failure (sabotage) self-test proving it can fail.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `09511956..b61045f7^^`, four batches): 4 CONFIRMED
+  findings — guardrails.md described wiring as pending and carried wrong counts;
+  no sabotage fixtures for the `build/`/`out/` patterns; knip audit measured by
+  existence instead of removal-testing (redo found 4 truly inert entries, removed
+  with byte-identical ungated output proof); check-architecture Rules 1/3 could
+  PASS on zero scanned files (liveness FAIL + scanned counts added). Fixed in
+  `f3b99141`.
+- **Round 2** (re-review): 1 repair-introduced CONFIRMED finding — a false
+  removal-test measurement recorded for the desktop `tests/**` knip entry
+  (re-measured: gated exit 1 with 16 unused files; row reclassified Load-bearing).
+  Fixed in `b61045f7`. Verdict: **approve**, 0 confirmed remaining, 0 advisories.
+- **Gate**: PASS — all 8 commands exit 0 (typecheck; both self-tests; both live
+  checks; knip; desktop 2132 pass/0 fail; cli 1810 pass/0 fail).
+
