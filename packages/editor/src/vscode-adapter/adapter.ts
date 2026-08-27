@@ -37,7 +37,13 @@ import { stringEditToSourceEdit } from "./convert.ts";
  *     (`onWillApplySourceEdit` is a notification, not a request for
  *     permission), so the revert is deliberately deferred to a microtask
  *     (see the long comment on `submittingOwnEdit` below) so it runs AFTER
- *     that in-flight application has finished, not concurrently with it;
+ *     that in-flight application has finished, not concurrently with it.
+ *     The revert re-reads `host.getSnapshot()` AT THAT MOMENT rather than
+ *     replaying the snapshot captured when the rejection happened, so an
+ *     authoritative external replacement that lands during the rejection
+ *     window — including one the host fires synchronously from inside the
+ *     `applyEdit` call that produced the rejection — always wins over the
+ *     stale rejection snapshot instead of being silently reverted;
  *   - every snapshot the host announces through `subscribe` THAT THIS
  *     ADAPTER DID NOT ITSELF JUST SUBMIT (an external replacement, or any
  *     other actor's accepted edit against the same host) replaces the
@@ -155,7 +161,11 @@ export function createVscodeEditorAdapter(
   const controller = new EditorController(model, view);
 
   // True for the exact synchronous duration of an `host.applyEdit(...)`
-  // call THIS adapter makes from inside `onWillApplySourceEdit` below.
+  // call THIS adapter makes from inside `onWillApplySourceEdit` below, and
+  // paired with `pendingOwnEditEcho` — the PREDICTED (version, text) the
+  // host's own accepted-edit echo notification carries, computed from
+  // `sourceEdit` before submitting it.
+  //
   // `MemoryDocumentHost.applyEdit` (and any spec-compliant D3 host) invokes
   // every `subscribe` listener SYNCHRONOUSLY, from inside `applyEdit`,
   // before `applyEdit` itself returns to us — so by the time our OWN
@@ -165,11 +175,25 @@ export function createVscodeEditorAdapter(
   // itself). Comparing the incoming snapshot against `known` at that point
   // would therefore misclassify our own accepted edit as an "external"
   // change and call `model.replaceSourceText` redundantly, racing the
-  // model's own in-flight application of the same edit. This flag is the
-  // unambiguous signal the snapshot comparison cannot be: "this
-  // notification is a synchronous side effect of the edit we are, right
-  // now, in the middle of submitting."
+  // model's own in-flight application of the same edit.
+  //
+  // `submittingOwnEdit` alone is NOT that signal — it means "we are inside
+  // our own `applyEdit` call", not "this specific notification is an echo
+  // of that call". A host may legitimately fire an UNRELATED notification
+  // synchronously from inside the same `applyEdit` invocation (e.g. it
+  // discovers and applies an external replacement — a concurrent file
+  // change — while deciding our edit is now stale, before returning the
+  // rejection). Dropping that notification outright would silently lose
+  // it: there is no revert-microtask on the accept path to pick it back
+  // up, and even on the reject path it left the view briefly showing
+  // stale content across the rejection window. So the predicate below
+  // matches the PREDICTED echo exactly (version and text); anything else
+  // arriving during the window is treated as a genuine external
+  // notification and deferred to a microtask (never applied synchronously
+  // here, for the same in-flight-splice race reason the rejection revert
+  // below defers).
   let submittingOwnEdit = false;
+  let pendingOwnEditEcho: { readonly version: number; readonly text: string } | null = null;
 
   const willApplyDisposable = model.onWillApplySourceEdit((event) => {
     if (disposed) return;
@@ -177,11 +201,16 @@ export function createVscodeEditorAdapter(
     const sourceEdit = stringEditToSourceEdit(known.text, event.edit, known.version);
 
     submittingOwnEdit = true;
+    pendingOwnEditEcho = {
+      version: known.version + 1,
+      text: known.text.slice(0, sourceEdit.from) + sourceEdit.insert + known.text.slice(sourceEdit.to),
+    };
     let result: ReturnType<EditorDocumentHost["applyEdit"]>;
     try {
       result = host.applyEdit(sourceEdit);
     } finally {
       submittingOwnEdit = false;
+      pendingOwnEditEcho = null;
     }
 
     if (result.ok) {
@@ -204,19 +233,53 @@ export function createVscodeEditorAdapter(
     // application finish first, so this adapter's `replaceSourceText`
     // deterministically wins and is the one observable outcome — exercised
     // by tests/vscode-adapter/browser.cases.btest.ts's rejection-path case.
-    const rejectedSnapshot = result.snapshot;
+    //
+    // The revert reads the host FRESH (`host.getSnapshot()`) at the moment
+    // it actually runs, rather than replaying the snapshot captured back
+    // when the rejection happened: any authoritative change that landed in
+    // the meantime — including an external replacement the host fired
+    // SYNCHRONOUSLY inside this very `applyEdit` call, which the guard
+    // above deliberately does not apply synchronously (deferring it to its
+    // own microtask instead) — must win over a now-stale rejection
+    // snapshot. Replaying a captured snapshot here would silently revert
+    // that newer state and drop it from `known`; reading fresh cannot.
     const reason = result.reason;
     queueMicrotask(() => {
       if (disposed) return;
-      known = rejectedSnapshot;
-      model.replaceSourceText(new StringValue(rejectedSnapshot.text));
+      known = host.getSnapshot();
+      model.replaceSourceText(new StringValue(known.text));
       options.onDiagnostic?.(diagnosticForEditRejection(reason));
     });
   });
 
   const unsubscribeHost = host.subscribe((snapshot) => {
     if (disposed) return;
-    if (submittingOwnEdit) return; // see the comment on the flag's declaration above.
+    if (submittingOwnEdit) {
+      const echo = pendingOwnEditEcho;
+      if (echo !== null && snapshot.version === echo.version && snapshot.text === echo.text) {
+        // The synchronous notification `host.applyEdit` fires, from inside
+        // the call above, for the edit we are RIGHT NOW submitting — not a
+        // distinct external event. `known` is set directly in the
+        // `onWillApplySourceEdit` handler once `applyEdit` returns (the
+        // `result.ok` branch above), and the model applies its own copy of
+        // `event.edit` immediately after that handler returns, so no
+        // action is needed here.
+        return;
+      }
+      // A distinct, genuinely external notification arrived synchronously
+      // while our own edit is still in flight. Applying it synchronously
+      // here would race the model's own pending in-flight application of
+      // `event.edit` (see the long comment on the rejection revert above)
+      // — defer to a microtask and re-read the host fresh there, same
+      // pattern as the rejection revert, so whichever change is
+      // authoritative by the time it runs wins.
+      queueMicrotask(() => {
+        if (disposed) return;
+        known = host.getSnapshot();
+        model.replaceSourceText(new StringValue(known.text));
+      });
+      return;
+    }
     known = snapshot;
     // `replaceSourceText` does NOT go through `onWillApplySourceEdit` (it
     // is not a "model-owned" edit — see the file header and case-2's

@@ -86,9 +86,22 @@ confirmed via `package.json`'s `files` list and a live directory listing;
 all behavioral citations below are against the bundled, sourcemapped
 `dist/index.js`):
 
+> **Correction (SFE-P1b repair, round 1):** the original text of item 1
+> below claimed `renderCustomCodeBlock` was "the ONLY hook the package
+> exposes for custom INACTIVE block rendering." That is false. A second one
+> exists — `BlockViewOptions.renderMath` (`dist/index.d.ts:250`) — and is
+> catalogued as item 1b, added below without renumbering the rest of this
+> list. It does not change the FORK verdict (below) because it is keyed to
+> the `mathBlock`/inline-math AST kinds, not generic — but its
+> `MathRendering.segments` mechanism is exactly the missing piece the
+> "Fork proposal" section's original signature left out, and that section
+> has been revised accordingly. See "Commands run" for how this correction
+> was verified.
+
 1. **`BlockViewOptions.renderCustomCodeBlock`** (`dist/index.d.ts:218`) —
-   `(language: string, content: string) => HTMLElement | undefined`. The
-   ONLY hook the package exposes for custom INACTIVE block rendering.
+   `(language: string, content: string) => HTMLElement | undefined`. One of
+   TWO hooks the package exposes for custom INACTIVE block rendering (see
+   1b) — the only one keyed to fenced code blocks specifically.
    Invocation is gated in `dist/index.js:4290`:
    `!l && !e.showMarkup && i.language && i.closeFence &&
    t?.renderCustomCodeBlock` — `i` is the AST node being viewed; `i.language`
@@ -104,6 +117,45 @@ all behavioral citations below are against the bundled, sourcemapped
    while the SAME instrumented hook, mounted against a real
    ` ```gutterpress-region ` fence in the companion "known-hook baseline"
    test, is called exactly once.
+1b. **`BlockViewOptions.renderMath`** (`dist/index.d.ts:250`) — `(request:
+   MathRenderRequest) => MathRendering | undefined`, where `MathRendering`
+   (`dist/index.d.ts:2378-2383`) is `{ dom: HTMLElement; segments: readonly
+   MathSourceSegment[] }` and `MathSourceSegment`
+   (`dist/index.d.ts:2404-2411`) is `{ dom: Node; start: number; length:
+   number }`. The SECOND inactive-form render hook the package exposes —
+   missed by this record's original pass, which searched for a hook
+   returning a bare `HTMLElement` and did not separately catalog the
+   math-node surface. Its own doc comment
+   (`dist/index.d.ts:238-245`) is explicit about what `segments` buys the
+   caller: "let parts of the rendered math (e.g. individual identifier
+   glyphs) map back to source ranges so the caret can land inside them."
+   Confirmed live in `dist/index.js` (not just typed): both math view
+   classes (block math at `dist/index.js:4474`, inline math at
+   `dist/index.js:4580`) call `t?.renderMath?.(...)` and, when it returns a
+   result, pass `c.segments`/`r.segments` straight into a shared helper,
+   `Zs(node, segments, nodeLength)` (`dist/index.js:4438-4446`): it filters
+   segments to valid, in-range spans, sorts them by `start`, and builds an
+   ordered list of view leaves that TILE the node's full length — a
+   zero-length text-node leaf for each gap the renderer did not map, and a
+   real leaf wrapping the renderer's own `dom` for each reported segment.
+   This is precisely the per-character source-mapping data structure a
+   caret/selection/hit-test needs, and it is generic (`Zs` is not
+   math-specific code — it is reused verbatim for both math view kinds).
+   **Why this does not change the FORK verdict:** `renderMath` is invoked
+   only from the two hardcoded math view classes
+   (`dist/index.js:4474`/`4580`), gated on the AST already having been
+   recognized as `mathBlock`/inline-math by the parser — there is no path
+   that reaches it for a `ParagraphAstNode` or `UnhandledBlockAstNode`, so
+   it is exactly as unreachable for this run's probes as item 1's hook, for
+   the same structural reason. It remains true that no GENERIC hook exists
+   today. **Why it matters anyway:** the `Zs()` tiling helper it feeds is
+   itself generic, already proven, and already shipping for two block
+   kinds — see "Fork proposal" below, revised to model the seam's return
+   shape on `MathRendering`/`MathSourceSegment` rather than a bare
+   `HTMLElement`, specifically so the fork's patch can reuse `Zs()` for the
+   `"paragraph"`/`"unhandledBlock"` arms instead of leaving case 5's
+   caret-entry-at-start and case 6's drag-imprecision findings as
+   permanent, pinned limitations.
 2. **Paragraph rendering has no options-based customization point at all.**
    `dist/index.js:3795-3796`: `case "paragraph": return new fe(n, "p",
    "md-block md-paragraph", e, we(t));` — the view class `fe`
@@ -266,8 +318,15 @@ zero-drift deactivation — for the one block kind that already has it.
 **Question:** do selections crossing the projected block map to correct
 source offsets, with coherent caret enter/exit?
 
-**Answer: PASS, scoped to the one real custom-rendering hook, with one
-recorded material constraint on pointer precision (not correctness).**
+**Answer: PASS, scoped to the one real custom-rendering hook — fully proven
+for the two keyboard legs, and (correction, SFE-P1b repair round 1)
+scoped-not-yet-proven for the pointer-drag leg's offset PRECISION, since the
+drag leg's own assertion cannot distinguish a correct offset pair from an
+arbitrary in-range one (see item 3 below). Also scoped to the
+` ```gutterpress-region ` fence probe only, per the caveat already recorded
+at the end of this section — none of the three legs was additionally
+exercised against the `@page splash` paragraph probe, so P1b2's re-run
+against that probe is a FIRST proof, not a regression check.**
 `probe.btest.ts` exercises this from three angles, per the run spec's "drive
 a selection from before the probe block to after it (`page.keyboard`
 shift+arrows and pointer drag)":
@@ -299,37 +358,75 @@ shift+arrows and pointer drag)":
    block does not reliably reach as far as the equivalent keyboard
    navigation does, for the same underlying reason recorded in case 5: the
    custom HTML carries no per-character layout data for the drag to
-   hit-test against once the pointer is over it. **This did not corrupt
-   the mapping** — the resulting `[start, endExclusive)`, wherever it
-   landed, is asserted to be an EXACT character-for-character match against
-   `CODE_BLOCK_PROBE_TEXT.slice(start, endExclusive)` (not merely
-   "contains" — full equality), and it demonstrably reached INTO the
-   block (`endExclusive > codeBlock.absoluteStart`). Per this run's
+   hit-test against once the pointer is over it.
+   **Correction (SFE-P1b repair, round 1):** the original text of this
+   item claimed the resulting mapping was proven "an EXACT
+   character-for-character match against the real source (not merely
+   'contains' — full equality)" and that "the mapping that DID result was
+   exact and uncorrupted every time this was run." Both statements
+   overclaimed what the test evidence supports. The document under test is
+   never edited by this test, so `slice` and
+   `CODE_BLOCK_PROBE_TEXT.slice(start, endExclusive)` read the SAME static
+   text — the equality assertion is true for ANY `(start, endExclusive)`
+   pair the drag could have reported, including one bearing no relation to
+   where the pointer actually landed; it cannot distinguish a correct
+   mapping from an arbitrary in-range one. What lines 445-463 of
+   `probe.btest.ts` actually establish, and what remains true and
+   meaningful: **the drag's selection genuinely reached INTO the projected
+   block** (`endExclusive > codeBlock.absoluteStart`, `start <=
+   codeBlock.absoluteStart`), and **the source was not mutated or
+   corrupted** (the resulting slice is well-formed and still contains the
+   real fence marker, not a truncated or garbled read). Per this run's
    adversarial instruction ("a hook that technically renders HTML but
-   breaks selection mapping... does NOT make a case PASS") — this
-   constraint is a precision limitation, not a correctness break: the
-   mapping that DID result was exact and uncorrupted every time this was
-   run (3 consecutive full-file runs, 10/10 tests green each time — see
-   "Commands run"). It is recorded as a fork-scope consideration, not a
-   disqualifier.
+   breaks selection mapping... does NOT make a case PASS") those two facts
+   are sufficient for a scoped PASS on reachability/non-corruption; they do
+   NOT establish offset PRECISION, which is left an open question — this
+   is recorded as a fork-scope consideration for P1b2 to close (either by
+   proving precision via an independent point→offset computation, e.g. the
+   package's own `VisualLineMap.offsetAtPoint`, or by explicitly continuing
+   to scope it out with a stated reason), not a disqualifier for this run's
+   FORK verdict.
 
 ## Fork proposal
 
-The precise, generic, zero-Gutterpress-syntax seam a minimal fork must add,
-modeled directly on the existing `renderCustomCodeBlock` precedent so its
-risk profile is no worse than a pattern the package already ships and this
-run already proved correct for byte-locality and selection mapping:
+**Revised (SFE-P1b repair, round 1).** The original proposal below returned
+a bare `HTMLElement`, deferring the caret-entry/drag-precision constraint as
+permanent and out of scope. That was written before this record's own
+catalog (item 1b above) was corrected to include `renderMath` — the
+package's OTHER inactive-render hook, whose `MathRendering`/
+`MathSourceSegment` return shape is precisely a source-segment-mapping
+contract, feeding a generic tiling helper (`Zs()`, `dist/index.js:4438-4446`)
+already shipping for both math view kinds. The seam below is now modeled on
+that shape so the fork can reuse the same helper for the `"paragraph"`/
+`"unhandledBlock"` arms, rather than inheriting a limitation the package's
+own code already shows how to avoid:
 
 ```ts
-// BlockViewOptions, parallel to the existing:
-//   readonly renderCustomCodeBlock?: (language: string, content: string) => HTMLElement | undefined;
-readonly renderCustomBlock?: (node: BlockAstNode, sourceText: string) => HTMLElement | undefined;
+// BlockViewOptions, parallel to the existing renderCustomCodeBlock AND
+// renderMath — same shape as MathRendering/MathSourceSegment
+// (dist/index.d.ts:2378-2411), generalized past the math-node kind:
+readonly renderCustomBlock?: (node: BlockAstNode, sourceText: string) => CustomBlockRendering | undefined;
+
+interface CustomBlockRendering {
+  readonly dom: HTMLElement;
+  /** Source-mapped spans within `dom` (need not tile the whole node) —
+   * same contract as MathSourceSegment; the fork's patched paragraph/
+   * unhandledBlock view classes pass this straight into the existing
+   * Zs() tiling helper, exactly as the math views already do. */
+  readonly segments?: readonly SourceSegment[];
+}
+
+interface SourceSegment {
+  readonly dom: Node;
+  readonly start: number;
+  readonly length: number;
+}
 ```
 
-- Gated identically to `renderCustomCodeBlock` today: only consulted while
-  `!e.showMarkup` (block inactive); returning `undefined` falls back to the
-  block's existing hardcoded view, byte-for-byte compatible with today's
-  behavior for every existing caller.
+- Gated identically to `renderCustomCodeBlock`/`renderMath` today: only
+  consulted while `!e.showMarkup` (block inactive); returning `undefined`
+  falls back to the block's existing hardcoded view, byte-for-byte
+  compatible with today's behavior for every existing caller.
 - Applied at minimum to the `"paragraph"` and `"unhandledBlock"` arms of the
   view-node factory switch (`dist/index.js`'s `Y` function,
   `dist/index.js:3795-3810`), i.e. exactly the two arms this run's spikes
@@ -343,18 +440,30 @@ readonly renderCustomBlock?: (node: BlockAstNode, sourceText: string) => HTMLEle
   real, editable source text. A parallel `renderCustomBlock` hook only needs
   to cover the INACTIVE side; the two-state transition itself (case 5's
   proven mechanics) comes for free from the existing `showMarkup` gate.
-- Carries zero Gutterpress-specific vocabulary — `node`/`sourceText` are
-  generic, package-native types (`BlockAstNode`, `string`), matching D5's
-  "generic seams only" and "avoid unrelated formatting or refactoring of
-  upstream code."
-- Inherits the one real constraint this run surfaced: content the fork's
-  hook paints has no per-character layout data, so caret entry from
-  outside will land at the block's start offset, and mouse-drag precision
-  once inside will be reduced. Any fork run should write this as an
-  explicit contract test rather than rediscovering it, and should record
-  whether an optional richer contract (e.g. exposing per-character rects
-  from the custom content back to the package) is worth the added surface
-  — a decision out of scope for this run.
+- Carries zero Gutterpress-specific vocabulary — `node`/`sourceText`/
+  `CustomBlockRendering`/`SourceSegment` are generic, package-shaped types
+  (the last two are a direct rename of `MathRendering`/`MathSourceSegment`
+  to a non-math-specific name), matching D5's "generic seams only" and
+  "avoid unrelated formatting or refactoring of upstream code."
+- **`segments` is OPTIONAL, not mandatory, in the returned shape** — a
+  caller (Gutterpress's own adapter/projection layer included) that has no
+  per-character mapping to offer may omit it and fall back to exactly the
+  bare-`HTMLElement` behavior the original proposal described: caret entry
+  from outside lands at the block's start offset, and drag precision once
+  inside is reduced (case 5/6's findings, still valid and still worth an
+  explicit contract test as a fallback-mode pin). What changed is that this
+  is now a CHOICE the caller makes per block, evidenced by a pattern the
+  package already ships, not an inherent limitation of the seam itself.
+- **Not resolved by this repair pass, and explicitly left for SFE-P1b2 to
+  decide with evidence, not by default:** whether Lane B of the fork run
+  actually wires `segments` through for Gutterpress's own custom blocks (it
+  requires the projection layer to report per-character source-mapped DOM
+  nodes for whatever it paints, which no run before P2b's projection work
+  has designed yet) or defers that wiring while still shipping the
+  `segments`-shaped seam so a later run can add it without another fork
+  patch. Either choice is legitimate; recording the limitation as
+  structurally inherent to the seam — as the original proposal did — is
+  not, now that `renderMath` proves otherwise.
 
 ## Caveats and out-of-scope findings
 
@@ -400,6 +509,21 @@ observed by Lane C.
 | `bun run test` | 0 | Full non-browser suite (`bun test`, which excludes `*.btest.ts`): 126 pass / 0 fail across 11 files — confirms this lane introduced no regression to the existing core/web/vscode-adapter unit suites. |
 | `bun run test:browser` | 0 | Lane A's own script (`bun test ./tests/vscode-adapter/browser.cases.btest.ts`): 13 pass / 0 fail — re-verified independently by Lane C as the source for cases 1/1b/2/3's PASS rows above. |
 | `bun test ./tests/vscode-adapter/input-a11y/input-a11y.btest.ts` | 0 | Lane B's file, run directly (not via a package script, since no script wires it yet): 14 pass / 0 fail — source for cases 7/8's PASS rows above. Read-only: no file in this directory was modified. |
+
+**SFE-P1b repair, round 1 — correction verification (Case 4 catalog /
+`renderMath`):** re-grepped the exact installed
+`@vscode/markdown-editor@0.0.2-84` runtime directly (not re-derived from
+this record's own prior text): `grep -n "renderMath\|MathRendering\|MathSourceSegment" dist/index.d.ts`
+confirms `renderMath` at line 250, `MathRendering` at 2378-2383,
+`MathSourceSegment` at 2404-2411, exactly as cited above; `grep -n "renderMath\|\.segments\b" dist/index.js`
+confirms both math view classes (block math ~line 4474, inline math ~line
+4580) call `t?.renderMath?.(...)` and pass the result's `.segments` into a
+shared helper `Zs()` defined at `dist/index.js:4438-4446`, which filters,
+sorts, and tiles the segments across the node's full length with synthetic
+zero-length gap leaves — read in full and summarized accurately in item 1b
+above. `grep -rn "renderMath\|MathRender\|segments"` against both
+`SFE-P1b-decision.md` (pre-correction) and `SFE-P1b2.md` returned zero
+matches, confirming the omission this finding reported.
 
 Per this run's own instructions, targeted verification is scoped to the
 files this lane touched (`packages/editor/tests/vscode-adapter/custom-view/**`

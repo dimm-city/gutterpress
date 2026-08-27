@@ -249,6 +249,56 @@ describe("rejection path — stale edit reverts the model and fires EDITOR_STALE
   });
 });
 
+describe("rejection path — external replacement lands during the rejection window (repair)", () => {
+  for (const mode of ["sync", "microtask"] as const) {
+    const description =
+      mode === "sync"
+        ? "host fires replaceExternal SYNCHRONOUSLY inside applyEdit, before returning the rejection"
+        : "host fires replaceExternal via queueMicrotask scheduled during applyEdit (the desktop file-watcher ordering)";
+
+    test(`${description} — the view converges on the host's post-external text, and the next keystroke is accepted`, async () => {
+      const selector = await mount("hello", {
+        rejectThenExternal: { mode, externalText: "external text" },
+      });
+      await requireDocumentText(selector);
+
+      await harness.page.click(selector);
+      await harness.page.keyboard.press("End");
+      await harness.page.keyboard.type("X");
+      await harness.page.waitForTimeout(150);
+
+      // The rendered text converges on the host's post-external state, not
+      // on the stale snapshot captured at the moment the rejection fired —
+      // this is what the deferred revert's fresh `host.getSnapshot()` read
+      // (adapter.ts) proves, for both the synchronous and the microtask
+      // ordering of the external replacement.
+      expect(await hostText()).toBe("external text");
+      expect(await requireDocumentText(selector)).toBe("external text");
+      expect(await hostVersion()).toBe(1);
+
+      const diagnosticsAfterFirst = await harness.page.evaluate(() => window.__gp.diagnostics());
+      expect(diagnosticsAfterFirst).toHaveLength(1);
+      expect(diagnosticsAfterFirst[0]?.category).toBe("EDITOR_STALE_EDIT");
+
+      // The rejected keystroke is not merely lost from the view — the NEXT
+      // keystroke must be ACCEPTED, not itself rejected as stale, proving
+      // the adapter's own `known.version` resynced to the host's real
+      // current version rather than staying pinned to the rejection-time
+      // snapshot.
+      await harness.page.click(selector);
+      await harness.page.keyboard.press("End");
+      await harness.page.keyboard.type("!");
+      await harness.page.waitForTimeout(150);
+
+      expect(await hostText()).toBe("external text!");
+      expect(await requireDocumentText(selector)).toBe("external text!");
+      // No second diagnostic: the follow-up keystroke was accepted, not
+      // rejected.
+      expect(await harness.page.evaluate(() => window.__gp.diagnostics())).toHaveLength(1);
+    });
+  }
+});
+
 describe("bonus — readonly host initializes the model in readonly mode", () => {
   test("a readonly-mounted editor ignores typed input entirely (no edit is ever attempted)", async () => {
     const selector = await mount("hello", { readonly: true });

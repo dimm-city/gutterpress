@@ -77,6 +77,17 @@ async function sourceSlice(start: number, end: number): Promise<string> {
   });
 }
 
+/** SFE-P1b repair (round 1): reads the HOST's snapshot text directly,
+ * independent of `sourceSlice` (which reads the model) -- used to assert
+ * the two never silently diverge, a comparison `sourceSlice` alone cannot
+ * make. See `support/entry.ts`'s `hostSourceSlice` doc comment. */
+async function hostSourceSlice(start: number, end: number): Promise<string> {
+  return harness.page.evaluate(({ start, end }) => window.__gpc.hostSourceSlice(start, end), {
+    start,
+    end,
+  });
+}
+
 async function hostText(): Promise<string> {
   return harness.page.evaluate(() => window.__gpc.getHostText());
 }
@@ -331,6 +342,15 @@ describe("case 5 — the ONE working two-state transition: renderCustomCodeBlock
       originalHostText.slice(0, bodyLine1End) + "X" + originalHostText.slice(bodyLine1End);
     expect(editedHostText).toBe(expectedEditedText);
     expect(await hostVersion()).toBe(1);
+    // Real cross-check, not a tautology: the MODEL's own source (what a
+    // "copy" reads) and the HOST's accepted snapshot (what got persisted)
+    // must agree at the exact edited range, now that an edit actually
+    // happened -- this is the comparison that would catch this file's
+    // test-only model/host wiring silently diverging (SFE-P1b repair,
+    // round 1).
+    expect(await sourceSlice(bodyLine1End, bodyLine1End + 1)).toBe(
+      await hostSourceSlice(bodyLine1End, bodyLine1End + 1),
+    );
 
     // Deactivate: move the caret back out to the leading block.
     await harness.page.click(`${selector} .md-document > .md-block:nth-child(1)`);
@@ -456,12 +476,31 @@ describe("case 6 — selection mapping across the fenced-code projected block (i
     // model's per-character layout data the drag needs to map a pixel
     // position back to a source offset once inside it. The assertion below
     // is therefore intentionally weaker than the keyboard tests: it only
-    // requires that the drag reached INTO the projected block, and that
-    // wherever it landed, the resulting [start, endExclusive) is an EXACT,
-    // uncorrupted, character-for-character match against the real source --
-    // i.e. selection mapping stayed coherent even if imprecise.
+    // requires that the drag reached INTO the projected block.
     expect(sel!.endExclusive).toBeGreaterThan(codeBlock.absoluteStart);
     const slice = await sourceSlice(sel!.start, sel!.endExclusive);
+    // HONEST SCOPE NOTE (SFE-P1b repair, round 1): this test never mutates
+    // the document, so `slice` and `CODE_BLOCK_PROBE_TEXT.slice(sel!.start,
+    // sel!.endExclusive)` read the SAME static, never-changed text --
+    // the assertion below is TRUE FOR ANY (start, endExclusive) pair the
+    // drag could possibly have reported, including offsets bearing no
+    // relation to where the pointer actually landed. It does NOT prove the
+    // offsets themselves are correct or that the mapping is "exact and
+    // uncorrupted" for THIS drag (the earlier text in this file and in
+    // SFE-P1b-decision.md overclaimed exactly that; both have been
+    // corrected). What this line and the next one DO still verify, kept
+    // for structural regression coverage: `slice` is well-formed (no
+    // NaN/undefined offset silently producing an empty or garbled string)
+    // and its length matches the reported range. The two real,
+    // non-tautological facts this test establishes are the ones already
+    // asserted above and below: the drag's selection genuinely reached
+    // INTO the projected block (`endExclusive > codeBlock.absoluteStart`),
+    // and the source was not corrupted or truncated (fence marker still
+    // present). Proving the offsets are themselves ACCURATE would require
+    // an independent point->offset computation (e.g. via the package's own
+    // `VisualLineMap.offsetAtPoint`) this run does not attempt -- case 6 is
+    // therefore scoped/not-yet-proven for pointer-drag precision, a gap
+    // P1b2's re-run inherits as a first proof, not a regression check.
     expect(slice).toBe(CODE_BLOCK_PROBE_TEXT.slice(sel!.start, sel!.endExclusive));
     expect(slice).toContain("```gutterpress-region");
   });

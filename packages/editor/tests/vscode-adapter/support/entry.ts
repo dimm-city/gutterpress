@@ -1,7 +1,7 @@
 import { createVscodeEditorAdapter, type VscodeEditorAdapter } from "../../../src/vscode-adapter/index.ts";
 import { MemoryDocumentHost } from "../../../src/core/index.ts";
 import type { Diagnostic, EditorDocumentHost, SourceEdit } from "../../../src/core/index.ts";
-import { withFixedRejection } from "./rejecting-host.ts";
+import { withFixedRejection, withRejectOnceThenExternalChange } from "./rejecting-host.ts";
 import { withCallCounting, type CallCountingHost } from "./counting-host.ts";
 
 /**
@@ -26,6 +26,13 @@ export interface MountOptions {
   /** When set, the mounted host's `applyEdit` ALWAYS rejects with this
    * reason (see `rejecting-host.ts`) — used by the rejection-path case. */
   readonly rejectReason?: "stale" | "readonly" | "invalid-range";
+  /** When set, the mounted host rejects exactly its first `applyEdit` call
+   * as stale and also fires a genuine `replaceExternal` during the
+   * rejection window, in the given ordering (see
+   * `withRejectOnceThenExternalChange` in `rejecting-host.ts`) — used by
+   * the rejection-window-external-change repair case. Mutually exclusive
+   * with `rejectReason`. */
+  readonly rejectThenExternal?: { readonly mode: "sync" | "microtask"; readonly externalText: string };
 }
 
 export interface GutterpressHarnessDriver {
@@ -61,9 +68,15 @@ function mount(initialText: string, options: MountOptions = {}): void {
   document.getElementById(CONTAINER_ID)?.remove();
   collectedDiagnostics = [];
 
-  const baseHost: EditorDocumentHost = options.rejectReason
-    ? withFixedRejection(options.rejectReason, { text: initialText, version: 0 })
-    : new MemoryDocumentHost({ text: initialText, version: 0 });
+  const baseHost: EditorDocumentHost = options.rejectThenExternal
+    ? withRejectOnceThenExternalChange(
+        options.rejectThenExternal.mode,
+        { text: initialText, version: 0 },
+        options.rejectThenExternal.externalText,
+      )
+    : options.rejectReason
+      ? withFixedRejection(options.rejectReason, { text: initialText, version: 0 })
+      : new MemoryDocumentHost({ text: initialText, version: 0 });
   host = withCallCounting(baseHost);
 
   const container = document.createElement("div");

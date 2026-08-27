@@ -320,46 +320,42 @@ describe("case 8 — clipboard", () => {
       await harness.page.keyboard.press("Shift+ArrowRight");
     }
 
-    let copyPasteWorked = false;
-    let observedError: string | undefined;
-    try {
-      await harness.page.keyboard.press("Control+c");
-      await harness.page.waitForTimeout(50);
-      await harness.page.keyboard.press("End");
-      await harness.page.keyboard.type(" ");
-      await harness.page.keyboard.press("Control+v");
-      await harness.page.waitForTimeout(100);
-
-      const text = await hostText("clip-rt");
-      copyPasteWorked = text === "clipboard round trip source clipboard";
-      if (!copyPasteWorked) {
-        observedError = `unexpected host text after Ctrl+C/Ctrl+V round-trip: ${JSON.stringify(text)}`;
-      }
-    } catch (error) {
-      observedError = error instanceof Error ? error.message : String(error);
+    if (!permissionsGranted) {
+      // SFE-P1b repair (round 1): the ONLY condition allowed to bypass the
+      // real behavioral assertion below is a PROVEN-unsupported environment
+      // — the clipboard permission grant itself failed, checked here via an
+      // explicitly asserted capability probe, not inferred after the fact
+      // from whatever the keyboard sequence happened to produce. This
+      // branch is loud (a real assertion on the probe's own failure, plus a
+      // logged reason), not a silent skip (AP-20) and not the always-true
+      // disjunction this replaced (`copyPasteWorked || observedError !==
+      // undefined`, which every code path set one side of, so it could
+      // never fail regardless of what Ctrl+C/Ctrl+V actually did).
+      expect(permissionsGranted, "capability probe: grantPermissions failed").toBe(false);
+      console.log(
+        "case 8 real-clipboard round-trip: NOT exercisable in this environment " +
+          `— grantPermissions failed: ${permissionsError}. ` +
+          "The previous test (page.keyboard.insertText) remains this run's proven insertion case.",
+      );
+      await dispose("clip-rt");
+      return;
     }
 
-    if (copyPasteWorked) {
-      console.log(
-        `case 8 real-clipboard round-trip: PASS (grantPermissions ok=${permissionsGranted}, ` +
-          "Ctrl+C then Ctrl+V reproduced the copied text byte-exact).",
-      );
-    } else {
-      // Honest partial (run spec: "if the real-clipboard path is not
-      // exercisable in headless, record precisely why and keep the
-      // insertText path as the proven case"). This branch documents the
-      // exact observed reason rather than silently skipping; the previous
-      // test (`page.keyboard.insertText`) is this run's PROVEN insertion
-      // case regardless of this outcome.
-      console.log(
-        "case 8 real-clipboard round-trip: NOT exercisable as PASS in this environment. " +
-          `grantPermissions ok=${permissionsGranted}` +
-          (permissionsError ? ` grantPermissions error=${permissionsError}` : "") +
-          (observedError ? ` observed=${observedError}` : ""),
-      );
-    }
+    await harness.page.keyboard.press("Control+c");
+    await harness.page.waitForTimeout(50);
+    await harness.page.keyboard.press("End");
+    await harness.page.keyboard.type(" ");
+    await harness.page.keyboard.press("Control+v");
+    await harness.page.waitForTimeout(100);
 
-    expect(copyPasteWorked || observedError !== undefined).toBe(true);
+    // Real, unconditional behavioral assertion: with the capability probe
+    // above having proven this environment supports clipboard access, a
+    // regression in the package's clipboard strategy now fails this test.
+    expect(await hostText("clip-rt")).toBe("clipboard round trip source clipboard");
+    console.log(
+      "case 8 real-clipboard round-trip: PASS (grantPermissions ok=true, " +
+        "Ctrl+C then Ctrl+V reproduced the copied text byte-exact).",
+    );
 
     await dispose("clip-rt");
   });

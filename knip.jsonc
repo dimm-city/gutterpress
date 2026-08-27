@@ -54,7 +54,16 @@
       // checker, invoked via `node` (package script convention mirrors root
       // tools/*.test.mjs) — never imported, so knip needs it named. Added in
       // SFE-P1a; the ./web export surface is declared in package.json exports.
-      "entry": ["scripts/*.mjs", "tests/**/*.test.ts"],
+      //
+      // `.btest.ts` (SFE-P1b): the real-Chromium suite suffix, deliberately
+      // outside Bun's default `*.test.ts` glob so `bun run test` stays fast
+      // and hermetic — run only by `bun run test:browser`, and never
+      // imported by anything else in the tree. Without this entry knip's
+      // script parser only resolves the FIRST command in test:browser's
+      // `&&` chain, so every *.btest.ts and its support/ tree reads as dead
+      // code. Name the suffix explicitly here rather than relying on that
+      // parsing accident.
+      "entry": ["scripts/*.mjs", "tests/**/*.test.ts", "tests/**/*.btest.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,mjs}"]
     },
     "packages/desktop": {

@@ -132,11 +132,23 @@ export interface CustomViewDriver {
   overlayChipInOverlayContainer(): boolean;
 
   selectionOffsets(): SelectionOffsets | undefined;
-  /** `sourceText.substring([start, endExclusive))` against the CURRENT host
-   * text -- what a real "copy" would read, since (per the package's own
+  /** `model.sourceText`'s `[start, endExclusive)` substring -- what a real
+   * "copy" would read, since (per the package's own
    * `EditorController._discardNativeSelection` doc) "copy/cut read the
-   * model," not the browser's native DOM selection. */
+   * model," not the browser's native DOM selection. Reads the MODEL, not
+   * the host, matching that claim literally (SFE-P1b repair, round 1: an
+   * earlier version of this method read `host.getSnapshot().text` instead
+   * -- a real "copy" never goes through the host -- so it could not have
+   * caught model/host divergence; see `hostSourceSlice` below for a
+   * comparison that can). */
   sourceSlice(start: number, endExclusive: number): string;
+  /** `host.getSnapshot().text`'s `[start, endExclusive)` substring -- the
+   * authoritative D3 snapshot, independent of whatever the model's own
+   * `sourceText` currently holds. Exists so a test can assert
+   * `sourceSlice(...) === hostSourceSlice(...)` as a REAL cross-check (it
+   * would fail if this file's `onWillApplySourceEdit`/`subscribe` wiring
+   * ever let the two diverge), rather than comparing a value to itself. */
+  hostSourceSlice(start: number, endExclusive: number): string;
 }
 
 declare global {
@@ -345,6 +357,8 @@ window.__gpc = {
     };
   },
   sourceSlice: (start: number, endExclusive: number): string =>
+    requireState().model.sourceText.get().value.slice(start, endExclusive),
+  hostSourceSlice: (start: number, endExclusive: number): string =>
     requireState().host.getSnapshot().text.slice(start, endExclusive),
 };
 window.__gpcReady = true;

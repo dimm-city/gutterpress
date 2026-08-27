@@ -153,6 +153,22 @@ jobs:
         working-directory: packages/editor
         run: bun run test
 
+      # SFE-P1b repair (G-12/AP-20): test:browser was a required run gate
+      # with no CI invocation path, so the 37 real-Chromium assertions
+      # backing every D5 case's PASS row in SFE-P1b-decision.md ran zero
+      # times in CI. `packages/editor/tests/browser-harness/browser.ts`'s
+      # launch fallback tries PLAYWRIGHT_BROWSERS_PATH, then this env var,
+      # then a fixed system-Chrome path list — never `playwright install` —
+      # so pointing it at the runner image's preinstalled Chrome (the same
+      # binary the `test`/`desktop-test` jobs already use for Puppeteer) is
+      # enough; no browser download step is added.
+      - name: Configure browser harness to use system Chrome
+        run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+
+      - name: Run browser tests (packages/editor)
+        working-directory: packages/editor
+        run: bun run test:browser
+
       # packages/vscode-extension (@dimm-city/gutterpress-vscode, SFE-P1a):
       # same AP-20 rationale as packages/editor above — a package having
       # `typecheck`/`test` scripts proves nothing if CI never runs them.
