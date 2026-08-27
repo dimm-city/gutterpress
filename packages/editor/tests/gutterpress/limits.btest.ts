@@ -48,22 +48,18 @@ import { createEditorProjection } from "gutterpress/render";
  * every call, always declines" fallback path), falling through to the
  * fork's own default (non-chip) rendering for the whole document.
  *
- * INTEGRATOR ITEM found while wiring this test (not fixed here — out of
- * this lane's write ownership, `packages/editor/src/gutterpress/**` is
- * Lane B's): `match.ts`'s `projectionNeedsRefresh` (consulted by
- * `provider.ts`'s `isStale` gate, in turn wired unconditionally into
- * `mount.ts`'s `mountGutterpressEditor`) currently compares ONLY
- * `projection.sourceVersion !== currentVersion` — it does not check
- * `projection.limited`. As shipped today, mounting a `limited: true`
- * projection through the REAL `mountGutterpressEditor` would still attempt
- * to match/render chips for every block that DID make it under the cap
- * (only the version check gates rendering, and a freshly-built limited
- * projection's `sourceVersion` matches the live document). The run spec
- * anticipated exactly this ("if their staleness path keys on sourceVersion
- * only, note the integration item rather than editing their code") — this
- * comment is that note. The fix is small: `mountGutterpressEditor`'s
- * internal `isStale` (`mount.ts`) or `projectionNeedsRefresh` itself should
- * also return `true` whenever `options.projection.limited` is `true`.
+ * VERIFIED (not an open item — SFE-P2b repair round 1: a prior committed
+ * version of this comment claimed `match.ts`'s `projectionNeedsRefresh`
+ * checked only `sourceVersion` and needed an integrator fix; that was false
+ * even at the commit that added this file — `git show d1842754` (Lane B,
+ * landed BEFORE this file's own commit) already has
+ * `return projection.limited === true || projection.sourceVersion !==
+ * currentVersion;`. `projectionNeedsRefresh` (consulted by `provider.ts`'s
+ * `isStale` gate, wired unconditionally into `mount.ts`'s
+ * `mountGutterpressEditor`) folds D13's `limited` flag into staleness
+ * exactly as G-11 requires — this file's own "sanity"/"fail-closed" cases
+ * below exercise it end to end, and `provider.test.ts` and
+ * `gutterpress.btest.ts` cover it directly.
  *
  * AP-21: every case asserts real liveness (`requireBlockCount`, a nonzero
  * `customBlockHookCalls().length`) before any behavioral assertion — a

@@ -158,6 +158,20 @@ jobs:
         working-directory: packages/editor
         run: bun run check:browser-purity
 
+      # SFE-P2b repair (G-12/AP-20 shape): packages/editor now depends on
+      # "gutterpress": "workspace:*" and four files resolve `gutterpress/render`
+      # (src/gutterpress/{match,mount,plan,provider}.ts type-only;
+      # tests/gutterpress/provider.test.ts, tests/gutterpress/limits.btest.ts,
+      # and tests/gutterpress/support/entry.ts as value imports). That subpath
+      # maps only to packages/cli's gitignored dist/render.{js,d.ts} — build it
+      # here, same prerequisite and command the desktop-test/type-check jobs
+      # already document for their own gutterpress-by-name consumers, so every
+      # job that resolves gutterpress/render builds it first instead of
+      # depending on a stale dist/ left over from a previous step.
+      - name: Build package dist (packages/editor resolves gutterpress/render)
+        working-directory: packages/cli
+        run: bun run build:library
+
       - name: Run TypeScript compiler (packages/editor)
         working-directory: packages/editor
         run: bun run typecheck

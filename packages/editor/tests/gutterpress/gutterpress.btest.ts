@@ -45,6 +45,22 @@ afterAll(async () => {
 // single-line block convention).
 // ---------------------------------------------------------------------------
 
+/**
+ * SFE-P2b Lane B repair round 1 (D13/AP-21): a document-order sequence of
+ * `@page` markers whose NAME is unique per index -- unlike a repeated bare
+ * "@page-break" line (the prior version of this fixture), no two of these
+ * collide under `match.ts`'s fail-closed ambiguous-duplicate rule, so an
+ * over-cap fixture's "zero chips" result below is caused ONLY by
+ * `limited: true`, never by unrelated ambiguity suppression too --
+ * `limited` stays the one isolated variable between the control and the
+ * over-cap case.
+ */
+function pageMarkerSource(count: number): string {
+  const lines: string[] = [];
+  for (let i = 0; i < count; i++) lines.push(`@page p${i}`);
+  return lines.join("\n\n") + "\n";
+}
+
 const CHAPTER_LABEL = "C.01";
 const GENERATED_CHAPTER_OPENER_HTML = `<div class="chapter-opener" data-chapter-label="${CHAPTER_LABEL}">${CHAPTER_LABEL}</div>\n`;
 
@@ -364,12 +380,22 @@ describe("stale projection at mount time", () => {
 // ---------------------------------------------------------------------------
 
 describe("D13: a limited: true projection renders no chips, even at a matching sourceVersion", () => {
-  test("10,001 @page-break markers produce a limited projection; mounting it (sourceVersion still matches the host) shows zero chips and needsRefresh() is true", async () => {
-    const bigSource = "@page-break\n".repeat(10_001);
+  test("control: a SMALL, NOT-limited projection built from the same generator renders a real chip per block -- proves the over-cap case's zero chips below is not a vacuous/broken hook", async () => {
+    const smallSource = pageMarkerSource(5);
+    await mount(smallSource);
+    await requireCounts(5, 5);
+    expect(await needsRefresh()).toBe(false);
+  });
+
+  test("10,001 uniquely-named @page markers (one past MAX_PROJECTED_BLOCKS) produce a limited projection; mounting it (sourceVersion still matches the host) shows real block coverage but zero chips, and needsRefresh() is true", async () => {
+    const bigSource = pageMarkerSource(10_001);
     await mount(bigSource);
+    // AP-21 liveness: the mount really rendered the full oversized document
+    // (not a silent bail-out) before the fail-closed chip-count assertion
+    // below is meaningful.
+    await requireCounts(10_001, 0);
     expect(await needsRefresh()).toBe(true);
-    expect(await chipCount()).toBe(0);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("harness liveness", () => {

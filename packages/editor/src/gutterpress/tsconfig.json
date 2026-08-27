@@ -13,22 +13,17 @@
   // one program covers the whole directory, matching web.tsconfig.json's
   // own scope.
   //
-  // INTEGRATOR ACTION REQUIRED (this lane cannot make these edits itself —
-  // packages/editor/tsconfig.json and package.json's typecheck SCRIPT wiring
-  // for the *root* program are outside SFE-P2b Lane B's write ownership;
-  // package.json's script text was updated by this lane, but the file it
-  // points at -- ../../tsconfig.json's own "exclude" -- was not):
-  //   Add "src/gutterpress", "tests/gutterpress" to
-  //   packages/editor/tsconfig.json's "exclude" array (alongside the
-  //   existing "src/web", "tests/web", "src/vscode-adapter",
-  //   "tests/vscode-adapter", "tests/browser-harness" entries), so the root
-  //   DOM-free program does not ALSO try to typecheck this directory. Until
-  //   that lands, `tsc --noEmit -p ../../tsconfig.json` (the "typecheck"
-  //   script's first command) fails on files here — see this run's report
-  //   for the exact, reproduced error and why it is expected, not a defect
-  //   in this lane's code (mirrors the identical situation P1a Lane B and
-  //   P1b Lane A each already hit and left for integrator action, per
-  //   ../web.tsconfig.json's own header).
+  // SHIPPED ARRANGEMENT (verified, SFE-P2b repair round 1 — a prior
+  // committed comment here claimed this was still pending integrator action;
+  // it was not, and had already landed in the SAME run): the root DOM-free
+  // program (../../tsconfig.json) excludes both "src/gutterpress" and
+  // "tests/gutterpress" (alongside "src/web", "tests/web",
+  // "src/vscode-adapter", "tests/vscode-adapter", "tests/browser-harness"),
+  // so it never tries to typecheck this directory — THIS program is the one
+  // that owns src/gutterpress + tests/gutterpress, exactly as
+  // ../web.tsconfig.json owns src/web + tests/web. `bun run typecheck`
+  // (which runs all three programs in sequence — see package.json's script)
+  // exits 0.
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"]

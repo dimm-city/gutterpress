@@ -126,9 +126,12 @@ fail closed.
 > Use `cd <pkg> && bun run <script>` — never `bun --cwd`.
 
 - `bun install --frozen-lockfile`
+- `cd packages/cli && bun run build` (render purity gate runs inside; must
+  precede `bun run typecheck` below — `packages/editor` resolves
+  `gutterpress/render` to `packages/cli`'s gitignored `dist/`, which does not
+  exist on a fresh checkout until this step runs)
 - `bun run typecheck`
 - `cd packages/cli && bun run test`
-- `cd packages/cli && bun run build` (render purity gate runs inside)
 - `cd packages/editor && bun run test`
 - `cd packages/editor && bun run test:browser`
 - `cd packages/desktop && bun run test && bun run check`

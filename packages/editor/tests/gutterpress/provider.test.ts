@@ -120,28 +120,66 @@ describe("matchProjectedBlock — exact-range match, not fuzzy", () => {
     expect(matchProjectedBlock(index, exactSlice)?.block).toBe(rawHtml);
   });
 
-  test("two blocks with byte-identical exact text resolve to a block with the same (correct) kind and content -- a harmless collision, not a bug (see match.ts's header)", () => {
-    // Hand-built: two bare "@page-break" lines, blank-line separated.
-    const source = "@page-break\n\n@page-break\n";
-    const blockA: ProjectedBlock = { id: "a", kind: "page-break", from: 0, to: 12, editMode: "structured" };
-    const blockB: ProjectedBlock = { id: "b", kind: "page-break", from: 13, to: 25, editMode: "structured" };
-    expect(source.slice(blockA.from, blockA.to)).toBe("@page-break\n");
-    expect(source.slice(blockB.from, blockB.to)).toBe("@page-break\n");
+  test("two blocks with byte-identical exact text but DIFFERENT chip content fail closed -- neither block's chip is ever painted on the other's call (SFE-P2b repair round 1: replaces a prior test that hand-built two attribute-less blocks and could not have caught this)", () => {
+    // Two chapters, each opening with an identically-worded "@page splash" --
+    // an entirely ordinary book shape. markers.js derives `class`/
+    // `data-chapter-label` from the ENCLOSING @chapter frame, not from the
+    // @page line's own text, so these two blocks' viewAttributes/generated
+    // previews differ even though their trimmed source is byte-identical.
+    const source =
+      [
+        "@chapter A",
+        "",
+        "@page splash",
+        "",
+        "Body one.",
+        "",
+        "@chapter B",
+        "",
+        "@page splash",
+        "",
+        "Body two.",
+      ].join("\n") + "\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(2);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(source.slice(pages[1]!.from, pages[1]!.to)).toBe("@page splash\n");
+    // The premise this test is guarding against: same trimmed text, but the
+    // real pipeline attaches DIFFERENT chapter labels to each occurrence.
+    expect(pages[0]!.viewAttributes?.["data-chapter-label"]).toBe("A");
+    expect(pages[1]!.viewAttributes?.["data-chapter-label"]).toBe("B");
 
-    const projection: GutterpressProjection = {
-      schemaVersion: 1,
-      sourceVersion: 1,
-      blocks: [blockA, blockB],
-      generated: [],
-      diagnostics: [],
-    };
     const index = buildBlockIndex(projection, source);
-    const match = matchProjectedBlock(index, "@page-break\n\n");
-    expect(match?.block.kind).toBe("page-break");
-    // Whichever physical occurrence was stored, the rendered chip content
-    // would be identical either way (same kind, same absent viewAttributes)
-    // -- confirmed structurally rather than asserting a specific `id`.
-    expect(match?.block.viewAttributes).toBeUndefined();
+    // Fail closed: an ambiguous key matches NEITHER occurrence -- painting
+    // block A's or block B's chip on the wrong call would be wrong content,
+    // which G-05 treats as worse than no chip at all.
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+    expect(matchProjectedBlock(index, "@page splash\n\n")).toBeUndefined();
+  });
+
+  test("a blockquoted duplicate of a real marker line makes that key unmatchable everywhere -- the refused occurrence never steals the real block's chip", () => {
+    // The real block ("@page splash" at the top level) is legitimately
+    // projected; the blockquoted repeat is refused by editor-projection.ts
+    // (`markerLineLooksAuthored` fails: the line starts with ">", not "@").
+    // The fork still calls renderCustomBlock for the refused occurrence with
+    // a sourceText that trim-equals the real block's own key.
+    const source = "@page splash\n\n> @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    // Fails closed even for a call carrying the REAL block's own exact
+    // range's text -- the key is ambiguous document-wide, not per-call, so
+    // there is no way to tell the two calls apart from text alone.
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
   });
 });
 

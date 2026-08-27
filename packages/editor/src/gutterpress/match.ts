@@ -58,25 +58,60 @@
  * range-anchored content verification of an ALREADY-KNOWN range, not
  * open-ended text inference — the distinction G-05 draws.
  *
- * Two projected blocks can share an identical `.trimEnd()` key only when
- * their exact authored bytes are identical (e.g. two bare `@page-break`
- * lines with nothing else on them) — the `Map` below resolves that with
- * last-write-wins, which is harmless: `viewAttributes`/`kind` are derived
- * from parsing that SAME text, so two blocks with identical trimmed source
- * necessarily produce byte-identical chip content regardless of which one a
- * given call is "really" answering. Anything that goes on to matter (caret
- * placement inside an ACTIVE block, the accepted source edit itself) is
- * handled entirely by the fork's own `absoluteStart`-based machinery, never
- * by this module — see `provider.ts`'s header for why this chip-selection
- * layer never needs to be exactly right about WHICH physical occurrence
- * matched, only about how to paint it.
+ * AMBIGUOUS COLLISION (SFE-P2b repair round 1 — this section replaces a
+ * prior "harmless collision" claim that was false and is preserved here as
+ * a record of why): two projected blocks CAN share an identical
+ * `.trimEnd()` key while producing DIFFERENT chip content. Concretely,
+ * `markers.js`'s `openPage` derives `class`/`data-chapter-label` from the
+ * ENCLOSING `@chapter` frame, not from the `@page` line's own text — so two
+ * `@page splash` lines under two different chapters trim-equal each other
+ * but carry different `viewAttributes` and anchor different
+ * `GeneratedView`s (proven live: mounting
+ * `"@chapter A\n\n@page splash\n\nBody one.\n\n@chapter B\n\n@page
+ * splash\n\nBody two.\n"` through the real production
+ * `mountGutterpressEditor` painted chapter B's `data-chapter-label` and
+ * generated chapter-opener onto BOTH `@page splash` chips; chapter A's own
+ * opener was never rendered anywhere). A second, distinct collision source:
+ * `editor-projection.ts` can REFUSE to project a construct whose resolved
+ * range does not reproduce a "@" marker line (e.g. a marker line nested
+ * inside a blockquote — `markerLineLooksAuthored` fails because the line
+ * starts with `>`, not `@`) — that refused occurrence has NO entry in
+ * `projection.blocks`, but the fork still calls `renderCustomBlock` for it
+ * with a `sourceText` that, after `.trimEnd()`, is identical to the
+ * legitimate block's own key (proven live: `"@page splash\n\n> @page
+ * splash\n\nTail.\n"` mounts a full structured chip, complete with
+ * per-character segments and badges, on the BLOCKQUOTED occurrence the
+ * projection deliberately declined).
+ *
+ * Both are the SAME underlying failure: a bare text key cannot tell two
+ * physically DIFFERENT source occurrences apart, and last-write-wins (or
+ * any other single-winner rule) paints one occurrence's chip onto the
+ * other's call. G-05 requires failing closed here, not guessing — so
+ * `buildBlockIndex` below treats any key reachable from more than one
+ * physical location in `source` as AMBIGUOUS and excludes it from
+ * `bySourceText` entirely (no chip renders for ANY occurrence of that key;
+ * the block falls through to the fork's own default rendering, exactly
+ * like an unmatched call). Two independent sources feed that exclusion:
+ *
+ *   1. Two-or-more `ProjectedBlock`s in `projection.blocks` sharing a key
+ *      (the `@chapter A`/`@chapter B` case above).
+ *   2. A key that is also reachable from a chunk of `source` OTHER than the
+ *      owning block's own range, once each line's leading blockquote
+ *      marker(s) are stripped (the nested-`@page splash` case above) — see
+ *      {@link scanDequotedChunks}.
+ *
+ * Neither degrades correctness elsewhere: caret placement inside an ACTIVE
+ * block and the accepted source edit itself are handled entirely by the
+ * fork's own `absoluteStart`-based machinery, never by this module (see
+ * `provider.ts`'s header) — dropping an ambiguous key only ever removes an
+ * INACTIVE chip, never a writable range.
  */
 import type { GeneratedView, GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 
 /** Prebuilt O(1) lookup structures for one `GutterpressProjection` snapshot. */
 export interface BlockIndex {
   readonly projection: GutterpressProjection;
-  /** `.trimEnd()`d exact-slice text -> the `ProjectedBlock` it names. See this module's header for why last-write-wins on a duplicate key is safe. */
+  /** `.trimEnd()`d exact-slice text -> the `ProjectedBlock` it names. A key reachable from more than one physical source location is deliberately ABSENT here (fail-closed) — see this module's header, "AMBIGUOUS COLLISION". */
   readonly bySourceText: ReadonlyMap<string, ProjectedBlock>;
   /** A `ProjectedBlock.to` offset -> every `GeneratedView` anchored there (D6: `GeneratedView.anchor` is always some block's own `to`, by construction — see `editor-projection.ts`'s header). */
   readonly generatedByAnchor: ReadonlyMap<number, readonly GeneratedView[]>;
@@ -94,14 +129,72 @@ function blockKey(source: string, block: ProjectedBlock): string {
   return source.slice(block.from, block.to).trimEnd();
 }
 
+/** One or more leading blockquote markers (`>`, optionally nested, each with an optional following space/tab) at the start of a line. */
+const BLOCKQUOTE_PREFIX_RE = /^[ \t]*(?:>[ \t]?)+/;
+
+/** True when `[aFrom, aTo)` and `[bFrom, bTo)` share at least one character position — used to tell "this chunk IS the block's own occurrence" apart from "this chunk is a DIFFERENT physical occurrence with the same de-quoted text" despite the two ranges not being byte-identical (see the header's boundary-convention note on trailing glue). */
+function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
+  return aFrom < bTo && bFrom < aTo;
+}
+
+/**
+ * Splits `source` into maximal runs of non-blank lines (chunks separated by
+ * one or more blank lines — the same grouping a blank-line-delimited marker
+ * line sits in), and for each chunk strips every line's leading blockquote
+ * marker(s) before joining and `.trimEnd()`-ing it. This is the exact
+ * transform a blockquote-nested marker line's `sourceText` has already
+ * undergone by the time it reaches `renderCustomBlock` (see this module's
+ * header, "AMBIGUOUS COLLISION" — verified live against the real fork).
+ *
+ * Used only to DETECT collisions (never to attribute a match): a chunk here
+ * that de-quotes to a real block's key, but does not overlap that block's
+ * own `[from, to)`, proves the SAME text is reachable from a second,
+ * non-projected physical location — the key is unsafe to match on at all.
+ */
+function scanDequotedChunks(source: string): Array<{ readonly from: number; readonly to: number; readonly key: string }> {
+  const BLANK_RUN_RE = /\n[ \t]*(?:\n[ \t]*)+/g;
+  const chunks: Array<{ from: number; to: number; key: string }> = [];
+
+  const pushChunk = (from: number, to: number): void => {
+    if (to <= from) return;
+    const key = source
+      .slice(from, to)
+      .split(/\r\n?|\n/)
+      .map((line) => line.replace(BLOCKQUOTE_PREFIX_RE, ""))
+      .join("\n")
+      .trimEnd();
+    if (key.length > 0) chunks.push({ from, to, key });
+  };
+
+  let chunkStart = 0;
+  let m: RegExpExecArray | null;
+  BLANK_RUN_RE.lastIndex = 0;
+  while ((m = BLANK_RUN_RE.exec(source))) {
+    pushChunk(chunkStart, m.index);
+    chunkStart = m.index + m[0].length;
+  }
+  pushChunk(chunkStart, source.length);
+
+  return chunks;
+}
+
 /**
  * Builds the lookup structures for `projection` against the exact `source`
  * text it was built from. Call once per projection (typically at
  * `createGutterpressBlockProvider` construction time); `matchProjectedBlock`
  * below is the O(1) per-call query against the result.
+ *
+ * G-05 fail-closed: a key reachable from more than one physical location in
+ * `source` (whether two real `ProjectedBlock`s, or one real block plus a
+ * refused/non-projected occurrence elsewhere — see the header's "AMBIGUOUS
+ * COLLISION") is excluded from `bySourceText` entirely. No chip renders for
+ * any occurrence of an ambiguous key; every call for it falls through to
+ * `undefined`, same as an ordinary unmatched call.
  */
 export function buildBlockIndex(projection: GutterpressProjection, source: string): BlockIndex {
   const bySourceText = new Map<string, ProjectedBlock>();
+  const ambiguousKeys = new Set<string>();
+
   for (const block of projection.blocks) {
     const key = blockKey(source, block);
     // Defensive only: `editor-projection.ts`'s own invariants (a marker
@@ -111,7 +204,30 @@ export function buildBlockIndex(projection: GutterpressProjection, source: strin
     // target (every blank-only sourceText would collide on it), so it is
     // excluded rather than trusted.
     if (key.length === 0) continue;
+    if (ambiguousKeys.has(key) || bySourceText.has(key)) {
+      // Two (or more) real projected blocks share this key — neither can be
+      // safely attributed (see header). Drop it for good: a later block
+      // with this same key must not resurrect it.
+      ambiguousKeys.add(key);
+      bySourceText.delete(key);
+      continue;
+    }
     bySourceText.set(key, block);
+  }
+
+  // Second collision source: a key that ALSO turns up, once blockquote
+  // prefixes are stripped, in some OTHER chunk of `source` that is not this
+  // block's own occurrence — e.g. the same marker line repeated inside a
+  // blockquote, which `editor-projection.ts` deliberately refused to
+  // project (see header). That refused occurrence has no `ProjectedBlock`
+  // of its own, so the loop above never sees it; this pass is what catches
+  // it.
+  for (const chunk of scanDequotedChunks(source)) {
+    const owner = bySourceText.get(chunk.key);
+    if (!owner) continue; // not a live key (never projected, or already ambiguous) — nothing to protect
+    if (rangesOverlap(chunk.from, chunk.to, owner.from, owner.to)) continue; // this chunk IS the block's own occurrence
+    ambiguousKeys.add(chunk.key);
+    bySourceText.delete(chunk.key);
   }
 
   const generatedByAnchor = new Map<number, GeneratedView[]>();
