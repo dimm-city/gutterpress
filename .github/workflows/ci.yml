@@ -115,6 +115,21 @@ jobs:
       # script rather than here so a contributor's `bun run knip` sees what CI
       # sees; on a dev machine the file usually already exists, so a CI-only
       # fix would have left local passing by accident.
+      # Self-tests first (a gate must prove it can fail — see
+      # docs/plans/source-first-editor/guardrails.md), then the live checks:
+      # same self-test-then-gate pattern as the renderer-purity pair below.
+      - name: Check generated-file hygiene self-test
+        run: node tools/check-generated-files.test.mjs
+
+      - name: Check generated-file hygiene (no tracked build output)
+        run: bun run check:generated-files
+
+      - name: Check architecture boundaries self-test
+        run: node tools/check-architecture.test.mjs
+
+      - name: Check architecture boundaries (plan D4/D10 + ProseMirror ban)
+        run: bun run check:architecture
+
       - name: Check for unused files/dependencies (knip)
         run: bun run knip
 
