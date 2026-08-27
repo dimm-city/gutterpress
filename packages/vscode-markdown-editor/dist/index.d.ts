@@ -291,7 +291,14 @@ export declare interface BlockViewOptions {
  * non-math-specific name — not a new shape.
  */
 export declare interface CustomBlockRendering {
-    /** Host element to mount (the rendered block output). */
+    /**
+     * Host element to mount (the rendered block output). The host adds the
+     * `md-block` class to this element itself (mirroring
+     * {@link BlockViewOptions.renderCustomCodeBlock}'s call site, which does
+     * the same for its own plain-`dom` result) — every `.md-block`-scoped
+     * editor style depends on it, so providers do not need to set it
+     * themselves, and setting it anyway is harmless (idempotent).
+     */
     readonly dom: HTMLElement;
     /**
      * Source-mapped spans within {@link dom} (need not tile the whole node).

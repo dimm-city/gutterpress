@@ -293,23 +293,19 @@ function mount(text: string, options: CustomViewMountOptions = {}): void {
         const dom = document.createElement("div");
         dom.dataset["kind"] = node.kind;
         dom.dataset["gpcLabel"] = customBlockOptions.label;
-        // SFE-P1b2 empirical finding: unlike the PRE-EXISTING
-        // `renderCustomCodeBlock` path (whose own hardcoded view class
-        // adds "md-block"/"md-code-block" to the returned element itself
-        // — dist/index.js:4325/4334), the fork's NEW `renderCustomBlock`
-        // arms (PATCHES.md hunks 3–4) mount the returned `dom` completely
-        // unmodified via the shared `T` base view-node class, which does
-        // NOT add any class. Every hardcoded block view in this package
-        // supplies its OWN "md-block ..." string at construction time
-        // (confirmed: "md-block" is added at exactly those two call sites
-        // and nowhere else in dist/index.js) — so a `renderCustomBlock`
-        // PROVIDER is responsible for including "md-block" itself. Without
-        // it, `.md-document > .md-block` selectors (this harness's own
-        // `blockElements()`, and any real consumer's DOM queries) silently
-        // skip the block, AND the measured layout that keyboard/pointer
-        // navigation depends on treats it as absent (verified live: a
-        // chip missing this class was skipped entirely by ArrowDown
-        // navigation, landing straight on the NEXT block instead).
+        // SFE-P1b2 repair round 1: the fork's `renderCustomBlock` arms
+        // (PATCHES.md hunks 3–4) now call `gpR.dom.classList.add("md-block")`
+        // themselves, mirroring the PRE-EXISTING `renderCustomCodeBlock`
+        // path's own `classList.add("md-block", "md-code-block")` call
+        // (dist/index.js — search that literal string) — the HOST applies
+        // the class, matching CustomBlockRendering.dom's published doc
+        // comment in dist/index.d.ts. Setting it again here is therefore
+        // redundant (classList.add is idempotent) but kept: it documents,
+        // at the call site, exactly which class this test's own
+        // `.md-document > .md-block` queries (`blockElements()`) and
+        // keyboard/pointer navigation's measured layout depend on, and it
+        // keeps this fixture correct for a real production provider that
+        // predates or bypasses the host's now-guaranteed class application.
         if (customBlockOptions.mode === "label") {
           dom.className = "md-block gpc-custom-chip gpc-custom-chip-label";
           dom.textContent = `${customBlockOptions.label}:${node.kind}`;

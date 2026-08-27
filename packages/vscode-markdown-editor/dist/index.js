@@ -3799,8 +3799,16 @@ function Y(n, e, t) {
        * through to the unchanged upstream construction. */
       if (!n.showMarkup && e?.renderCustomBlock) {
         const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
-        if (gpR)
+        if (gpR) {
+          /* gp-fork: renderCustomBlock — mirror the renderCustomCodeBlock
+           * call site's `d.classList.add("md-block", "md-code-block")`
+           * (search this file for that exact string): the HOST applies the
+           * block-level class, not the provider, exactly as it does for the
+           * plain-dom custom-code-block case. Idempotent — harmless if the
+           * provider's dom already carries it. See PATCHES.md Hunk 3. */
+          gpR.dom.classList.add("md-block");
           return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
       }
       return new fe(n, "p", "md-block md-paragraph", e, we(t));
     }
@@ -3820,8 +3828,13 @@ function Y(n, e, t) {
        * fallback contract as the paragraph arm above. */
       if (!n.showMarkup && e?.renderCustomBlock) {
         const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
-        if (gpR)
+        if (gpR) {
+          /* gp-fork: renderCustomBlock — same host-applies-the-class mirror
+           * as the paragraph arm above; see its comment and PATCHES.md
+           * Hunk 3. */
+          gpR.dom.classList.add("md-block");
           return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
       }
       const s = n.ast.htmlComment;
       return s ? new Ln(n, s, e, N(t, Ln)) : new Sn(n, e, N(t, Sn));

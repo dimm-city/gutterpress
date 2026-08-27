@@ -130,6 +130,19 @@ jobs:
       - name: Check architecture boundaries (plan D4/D10 + ProseMirror ban)
         run: bun run check:architecture
 
+      # SFE-P1b2 repair (G-12/AP-20): verify-vendored.mjs (the checksum +
+      # completeness gate proving packages/vscode-markdown-editor/dist/ is
+      # either byte-identical to the published tarball or exactly the
+      # reviewed gp-fork patch state — see that package's PATCHES.md) had no
+      # CI invocation path and no committed self-test, despite PATCHES.md
+      # and SFE-P1b2.md's "Security and trust" section both claiming it ran.
+      # Same self-test-then-gate order as the generated-files pair above.
+      - name: Check vendored fork integrity self-test
+        run: node packages/vscode-markdown-editor/scripts/verify-vendored.test.mjs
+
+      - name: Check vendored fork integrity (renderCustomBlock patch)
+        run: bun run check:vendored
+
       # packages/editor (@dimm-city/gutterpress-editor, SFE-P1a): self-test
       # first (a gate must prove it can fail), then the live D4 browser-purity
       # gate, then the package's own typecheck/test — none of these ran in CI

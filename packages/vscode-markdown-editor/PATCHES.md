@@ -6,10 +6,20 @@ specified by `docs/plans/source-first-editor/runs/SFE-P1b.md` and ratified in
 `@vscode/markdown-editor@0.0.2-84` artifact. Every hunk below is additive
 (no reformatting, no renaming, no unrelated edits) and marked in the source
 with `/* gp-fork: renderCustomBlock */`. Only two files are touched:
-`dist/index.js` and `dist/index.d.ts`. `scripts/verify-vendored.mjs` proves
-these are the only files that differ from the published tarball, and proves
-their current content matches exactly the post-patch hashes recorded below
-(no drift since this document was written).
+`dist/index.js` and `dist/index.d.ts`. `scripts/verify-vendored.mjs` checks
+two independent things: (1) every OTHER vendored file — everything in
+`checksums.json`'s `unpatched` map — still byte-matches the hash recorded at
+vendor time from the published tarball, AND every git-tracked file in this
+package outside a small gutterpress-authored allowlist (`package.json`,
+`NOTICE`, `PATCHES.md`, `checksums.json`, `.gitignore`, `scripts/`) is
+accounted for as a key in `unpatched` or `patched` — a file added on disk,
+or a manifest entry silently removed, fails the check rather than passing
+unnoticed; (2) `dist/index.js` and `dist/index.d.ts` match the exact
+post-patch hashes in `checksums.json`'s `patched` map (no drift since this
+document was written). The pre-patch value of those same two files — so the
+two-file diff this document describes can be confirmed against the published
+tarball without refetching it — is recorded in `checksums.json`'s
+`upstreamBaseline` map.
 
 All line numbers below are from the patched `dist/index.js` /
 `dist/index.d.ts` in THIS package. The run specification's "Recorded facts"
@@ -156,8 +166,16 @@ After:
        * through to the unchanged upstream construction. */
       if (!n.showMarkup && e?.renderCustomBlock) {
         const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
-        if (gpR)
+        if (gpR) {
+          /* gp-fork: renderCustomBlock — mirror the renderCustomCodeBlock
+           * call site's `d.classList.add("md-block", "md-code-block")`
+           * (search this file for that exact string): the HOST applies the
+           * block-level class, not the provider, exactly as it does for the
+           * plain-dom custom-code-block case. Idempotent — harmless if the
+           * provider's dom already carries it. See PATCHES.md Hunk 3. */
+          gpR.dom.classList.add("md-block");
           return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
       }
       return new fe(n, "p", "md-block md-paragraph", e, we(t));
     }
@@ -190,17 +208,26 @@ Design notes:
   full source span exactly" — applies structurally to every `AstNode`, via
   the same `length`-sum invariant), so reusing `Es` needed zero new code and
   zero new assumptions.
-- **Plain-`dom` wrapping.** `new T(n, gpR.dom, D)` — `T` is the SAME base
-  view-node class every block/inline view (including `CodeBlockViewNode`,
-  minified `tn`) already extends; its constructor is exactly `(viewData,
-  domElement, childrenArray)` and is what registers `dom` in the
-  DOM→ViewNode lookup tables (`pn`/`pt`) that selection/hit-testing/click
-  handling walk. This IS "the same wrapper machinery the existing
-  renderCustomCodeBlock path uses for the plain-dom, no-segments case":
-  `tn`'s own constructor does the equivalent thing internally when its
-  custom-code-block branch fires (`m = d; g = D; ...; super(e, m, g)` — `D`
-  is the same shared empty-array constant used here). No new view-node
-  class was created.
+- **Plain-`dom` wrapping.** `gpR.dom.classList.add("md-block"); new T(n,
+  gpR.dom, D)` mirrors BOTH halves of what `tn`'s (`CodeBlockViewNode`)
+  constructor does internally when its own custom-code-block branch fires:
+  `d.classList.add("md-block", "md-code-block"), m = d, g = D` — the class
+  application AND the plain wrap, not the wrap alone. (Only the generic
+  `"md-block"` class is applied here, not `"md-code-block"`, since this arm
+  covers `paragraph`/`unhandledBlock`, not code blocks; every
+  `.md-block`-scoped editor style this needs to satisfy — see
+  `src/view/editor.css`'s `.md-list li>.md-block` /
+  `.md-task-list-item>.md-block` rules — keys off that shared class alone.)
+  `T` is the SAME base view-node class every block/inline view (including
+  `CodeBlockViewNode`) already extends; its constructor is exactly
+  `(viewData, domElement, childrenArray)` and is what registers `dom` in
+  the DOM→ViewNode lookup tables (`pn`/`pt`) that selection/hit-testing/
+  click handling walk. `D` is the same shared empty-array constant `tn`
+  uses for `g`. No new view-node class was created, and no engine-private
+  extension was added: the class application is prescribed by the upstream
+  call site being mirrored, not invented — see `CustomBlockRendering.dom`'s
+  doc comment in `dist/index.d.ts` for the published contract this now
+  matches.
 - **`segments` wiring.** `Zs(n.ast, gpR.segments, n.ast.length)` reuses
   `Zs()` UNMODIFIED — the exact function the two `renderMath` call sites use
   (`Zs(i, c.segments, i.length)` for the math-block view, `Zs(e.ast,
@@ -242,8 +269,13 @@ After:
        * fallback contract as the paragraph arm above. */
       if (!n.showMarkup && e?.renderCustomBlock) {
         const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
-        if (gpR)
+        if (gpR) {
+          /* gp-fork: renderCustomBlock — same host-applies-the-class mirror
+           * as the paragraph arm above; see its comment and PATCHES.md
+           * Hunk 3. */
+          gpR.dom.classList.add("md-block");
           return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
       }
       const s = n.ast.htmlComment;
       return s ? new Ln(n, s, e, N(t, Ln)) : new Sn(n, e, N(t, Sn));
@@ -310,7 +342,14 @@ untouched — no re-sort was attempted).
  * non-math-specific name — not a new shape.
  */
 export declare interface CustomBlockRendering {
-    /** Host element to mount (the rendered block output). */
+    /**
+     * Host element to mount (the rendered block output). The host adds the
+     * `md-block` class to this element itself (mirroring
+     * {@link BlockViewOptions.renderCustomCodeBlock}'s call site, which does
+     * the same for its own plain-`dom` result) — every `.md-block`-scoped
+     * editor style depends on it, so providers do not need to set it
+     * themselves, and setting it anyway is harmless (idempotent).
+     */
     readonly dom: HTMLElement;
     /**
      * Source-mapped spans within {@link dom} (need not tile the whole node).
