@@ -17,33 +17,33 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    wrapGeometry: () => wrapGeometry,
-    waitForLayoutReady: () => waitForLayoutReady,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    stripMetrics: () => stripMetrics,
-    strideOf: () => strideOf,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    spreadModeSupported: () => spreadModeSupported,
-    runPageBox: () => runPageBox,
-    rowStrideOf: () => rowStrideOf,
-    pageRangeOf: () => pageRangeOf,
-    pageOf: () => pageOf,
-    measure: () => measure,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    loadStyleSources: () => loadStyleSources,
-    injectViewerCss: () => injectViewerCss,
-    injectBreakMapping: () => injectBreakMapping,
-    fragmentDocument: () => fragmentDocument,
-    contentEdgeRect: () => contentEdgeRect,
-    compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
-    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    columnReserve: () => columnReserve,
-    collectCssText: () => collectCssText,
-    buildStrips: () => buildStrips,
-    blankPageIndices: () => blankPageIndices,
+    PX_PER_PT: () => PX_PER_PT,
     applySpreadMode: () => applySpreadMode,
-    PX_PER_PT: () => PX_PER_PT
+    blankPageIndices: () => blankPageIndices,
+    buildStrips: () => buildStrips,
+    collectCssText: () => collectCssText,
+    columnReserve: () => columnReserve,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
+    compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
+    contentEdgeRect: () => contentEdgeRect,
+    fragmentDocument: () => fragmentDocument,
+    injectBreakMapping: () => injectBreakMapping,
+    injectViewerCss: () => injectViewerCss,
+    loadStyleSources: () => loadStyleSources,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    measure: () => measure,
+    pageOf: () => pageOf,
+    pageRangeOf: () => pageRangeOf,
+    rowStrideOf: () => rowStrideOf,
+    runPageBox: () => runPageBox,
+    spreadModeSupported: () => spreadModeSupported,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    strideOf: () => strideOf,
+    stripMetrics: () => stripMetrics,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    waitForLayoutReady: () => waitForLayoutReady,
+    wrapGeometry: () => wrapGeometry
   });
 
   // src/engine/viewer/viewer.css
@@ -286,16 +286,16 @@
   // src/engine/shared/gcpm-extract.ts
   var exports_gcpm_extract = {};
   __export(exports_gcpm_extract, {
-    toPt: () => toPt,
-    splitTopLevel: () => splitTopLevel,
-    resolvePage: () => resolvePage,
-    parseSize: () => parseSize,
-    parseMargin: () => parseMargin,
-    parseDeclarations: () => parseDeclarations,
-    mediaPrintBodies: () => mediaPrintBodies,
-    extract: () => extract,
+    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
     PAGE_SIZES: () => PAGE_SIZES,
-    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES
+    extract: () => extract,
+    mediaPrintBodies: () => mediaPrintBodies,
+    parseDeclarations: () => parseDeclarations,
+    parseMargin: () => parseMargin,
+    parseSize: () => parseSize,
+    resolvePage: () => resolvePage,
+    splitTopLevel: () => splitTopLevel,
+    toPt: () => toPt
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -1793,13 +1793,13 @@
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
-    unquote: () => unquote,
-    resolveUrlArg: () => resolveUrlArg,
-    parseContent: () => parseContent,
-    needsMeasurement: () => needsMeasurement,
-    formatCounter: () => formatCounter,
+    evaluate: () => evaluate,
     evaluateContent: () => evaluateContent,
-    evaluate: () => evaluate
+    formatCounter: () => formatCounter,
+    needsMeasurement: () => needsMeasurement,
+    parseContent: () => parseContent,
+    resolveUrlArg: () => resolveUrlArg,
+    unquote: () => unquote
   });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {
