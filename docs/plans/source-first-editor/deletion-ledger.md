@@ -6,18 +6,23 @@
 
 ## Baseline counts (recorded by P0a)
 
-_To be filled by run SFE-P0a from the recorded `origin/main` baseline._
+Filled by run SFE-P0a from the recorded `origin/main` baseline SHA
+`ea7b60d50340b75b9c58666e5063bcbbbb666576`. Full commands, outputs, and
+cross-references live in `docs/plans/source-first-editor/baseline.md` §4–§6;
+only the Baseline column is filled here per this run's write ownership —
+Current/Delta are left as em-dashes for the deletion runs that will measure
+against them.
 
 | Metric | Baseline | Current | Delta |
 |---|---:|---:|---:|
-| Desktop HTTP routes (`+server.ts`) | — | — | — |
-| IPC handlers (`ipcMain.handle`) | — | — | — |
-| Preview mutation protocol messages | — | — | — |
-| `Platform`/`HostServices` methods | — | — | — |
-| Production LOC (workspace `src/`) | — | — | — |
-| Test LOC | — | — | — |
-| Dependencies (workspace, prod) | — | — | — |
-| Tracked generated files | — | — | — |
+| Desktop HTTP routes (`+server.ts`) | 104 | — | — |
+| IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
+| Preview mutation protocol messages | 5 (2 commands + 3 events; mutation-inventory.md §1) | — | — |
+| `Platform`/`HostServices` methods | 30 (9 `PlatformAdapter` + 21 `HostServices`, combined with one override; platform-inventory.md §1–§2) | — | — |
+| Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
+| Test LOC | 316 files / 76,861 lines (at baseline SHA; see baseline.md §4.6) | — | — |
+| Dependencies (workspace, prod) | 41 (summed across packages: cli 28, desktop 13, open-design-plugin 0; see baseline.md §4.7) | — | — |
+| Tracked generated files | 7 (stray root-level `.svelte-kit/`, pre-existing at baseline SHA; see baseline.md §4.4) | — | — |
 
 ## Planned deletions
 
