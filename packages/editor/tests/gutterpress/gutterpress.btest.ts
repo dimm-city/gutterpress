@@ -223,6 +223,22 @@ describe("ambiguous collision refusals: a duplicate occurrence never paints a ch
     await mount("@page splash\r\n\r\n> @page splash\r\n\r\nTail.\r\n");
     await requireCounts(3, 0);
   });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with TRAILING WHITESPACE renders zero chips", async () => {
+    // One character away from round 2's own passing fixture: match.ts's line
+    // index and matchProjectedBlock's key normalized trailing whitespace
+    // differently, so this shape painted a full structured chip live before
+    // this fix.
+    await mount("@page splash\n\n> @page splash   \n\nTail.\n");
+    await requireCounts(3, 0);
+  });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with RESIDUAL INDENTATION renders zero chips", async () => {
+    // CONTAINER_PREFIX_RE consumed at most one space/tab after '>', leaving
+    // residual leading indentation that never equaled the owning block's key.
+    await mount("@page splash\n\n>   @page splash\n\nTail.\n");
+    await requireCounts(3, 0);
+  });
 });
 
 // ---------------------------------------------------------------------------

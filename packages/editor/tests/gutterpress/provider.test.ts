@@ -247,6 +247,73 @@ describe("matchProjectedBlock — exact-range match, not fuzzy", () => {
     expect(matchProjectedBlock(index, "@page splash\r\n")).toBeUndefined();
     expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
   });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with TRAILING WHITESPACE also makes the key unmatchable -- round 2's SourceLine.text was never trimEnd()'d, so \"@page splash   \" (three trailing spaces) never equaled the owning block's plain \"@page splash\" key", () => {
+    // One character away from round 2's own passing fixture: ONE extra
+    // trailing space on the blockquoted line. Verified live against the real
+    // fork (SFE-P2b repair round 3 finding): this shape painted a full
+    // structured chip on the blockquoted occurrence the projection declined
+    // to project, because match.ts's own line index and matchProjectedBlock's
+    // key normalized trailing whitespace differently.
+    const source = "@page splash\n\n> @page splash   \n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with RESIDUAL INDENTATION also makes the key unmatchable -- CONTAINER_PREFIX_RE consumed at most one space/tab after '>', so \"  @page splash\" (two spaces left after stripping \"> \") never equaled the owning block's key either", () => {
+    // Two extra spaces between '>' and the marker sigil, past the single
+    // separator CommonMark itself treats as the blockquote marker's own.
+    // Verified live (SFE-P2b repair round 3 finding): same wrong-chip outcome
+    // as the trailing-whitespace case above, from the opposite side of the
+    // asymmetry (leading residual indentation instead of trailing glue).
+    const source = "@page splash\n\n>   @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 3: property-style sweep -- every combination of a container prefix and surrounding whitespace around a duplicate marker line makes the key unmatchable, not just the two fixtures reported live", () => {
+    // Rather than enumerating one fixture per reported shape (the pattern
+    // the repair report was flagged for in rounds 1 and 2), this sweeps a
+    // cross product of container prefixes x whitespace variants so the
+    // header's claim of generality is backed by more than the reported
+    // shapes themselves.
+    const containerPrefixes = [">", "> ", ">  ", ">   ", "- ", "-  ", "* ", "1. ", "2) "];
+    const trailingWhitespace = ["", " ", "  ", "   "];
+
+    for (const prefix of containerPrefixes) {
+      for (const trailing of trailingWhitespace) {
+        const source = `@page splash\n\n${prefix}@page splash${trailing}\n\nTail.\n`;
+        const projection = createEditorProjection(source, { sourceVersion: 1 });
+        const pages = projection.blocks.filter((b) => b.kind === "page");
+        // Liveness (AP-21): the real block must still be there, or this case
+        // is testing nothing.
+        expect(pages).toHaveLength(1);
+
+        const index = buildBlockIndex(projection, source);
+        expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+      }
+    }
+  });
 });
 
 describe("projectionNeedsRefresh (G-11)", () => {

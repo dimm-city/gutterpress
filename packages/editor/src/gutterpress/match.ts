@@ -124,6 +124,42 @@
  * {@link CONTAINER_PREFIX_RE} strips one layer at a time) rather than only
  * blockquote.
  *
+ * NORMALIZATION ASYMMETRY (SFE-P2b repair round 3 — closes the class round 2
+ * left open, not a new fixture list): round 2's line index compared each
+ * physical line's container-STRIPPED text against a block's key, but the two
+ * sides normalized WHITESPACE differently, so two variants one character away
+ * from round 2's own fixtures still failed open, verified live:
+ *
+ *   - TRAILING WHITESPACE: `matchProjectedBlock` keys on `sourceText.trimEnd()`,
+ *     but round 2's `SourceLine.text` was never trimmed — `"> @page splash   "`
+ *     (three trailing spaces) stripped to `"@page splash   "`, never equal to
+ *     the owning block's `"@page splash"` key. Fixed by trimming
+ *     {@link SourceLine}'s own `text` field the same way, once, at the point
+ *     it is computed (see that interface's doc comment) — and, for
+ *     consistency, trimming each split `keyLines` entry in
+ *     {@link hasOtherPhysicalOccurrence} the same way.
+ *   - RESIDUAL INDENTATION: {@link CONTAINER_PREFIX_RE} consumed at most ONE
+ *     `[ \t]` after `>`, so `">   @page splash"` (two spaces past the one
+ *     CommonMark itself treats as the marker's own separator) stripped to
+ *     `"  @page splash"` and stopped there — still not equal to the key.
+ *     Fixed by widening the blockquote alternative to `>[ \t]*` (see that
+ *     constant's doc comment).
+ *
+ * Both fixes are one-directional tightenings: they can only make two texts
+ * that previously compared UNEQUAL (on whitespace alone) compare EQUAL now,
+ * never the reverse — so they can only exclude MORE ambiguous keys, never
+ * accidentally un-exclude one that round 2 correctly caught.
+ * `editor-projection.test.ts`'s enumeration tests and
+ * `gutterpress.btest.ts`'s existing round-2 cases stay green under this
+ * change (asserted, not assumed) precisely because neither depends on
+ * trailing whitespace or multi-space container separators.
+ *
+ * This is still a heuristic detector over container syntax, not a formal
+ * proof that every possible whitespace/container permutation is covered —
+ * see `provider.test.ts`'s property-style case in this same suite, which
+ * exercises a cross product of container prefixes and surrounding whitespace
+ * rather than one fixture per reported shape.
+ *
  * WHY THIS STAYS A BUILD-TIME KEY EXCLUSION AND NOT A PER-CALL SEQUENCE
  * CURSOR: the round-2 finding this section responds to suggested tracking a
  * document-order cursor over `projection.blocks` instead, matching each
@@ -190,7 +226,16 @@ function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): 
 
 /**
  * One layer of leading container marker at the start of a line: a
- * blockquote marker (`>`, optionally followed by one space/tab) or a
+ * blockquote marker (`>`, followed by ANY amount of space/tab — CommonMark
+ * itself only ever treats at most one following space/tab as the marker's
+ * OWN separator, but this detector is intentionally more permissive than the
+ * spec here: SFE-P2b repair round 3 found `">   @page splash"` (two extra
+ * spaces past the single separator CommonMark consumes) still reached this
+ * module as a live "residual indentation" duplicate — `stripContainerPrefixes`
+ * stopped after removing only `"> "`, leaving `"  @page splash"` !=
+ * the owning block's key. Consuming every leading space/tab after `>` closes
+ * that gap; it can only ever make MORE lines strip down to a marker-shaped
+ * key, never fewer, so it cannot introduce a false non-match) or a
  * list-item marker (an unordered bullet `-`/`*`/`+`, or an ordinal `N.`/
  * `N)`, each requiring at least one following space/tab, matching
  * CommonMark's own list-marker grammar closely enough for this detection
@@ -198,7 +243,7 @@ function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): 
  * nested containers (`> - text`, `> > text`, a list item inside a
  * blockquote, ...) fully unwrap to their authored-looking content.
  */
-const CONTAINER_PREFIX_RE = /^[ \t]*(?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/;
+const CONTAINER_PREFIX_RE = /^[ \t]*(?:>[ \t]*|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/;
 
 /** Strips every leading container-marker layer from one line's raw text (no line terminator included). A line with no such marker is returned unchanged. */
 function stripContainerPrefixes(line: string): string {
@@ -210,7 +255,24 @@ function stripContainerPrefixes(line: string): string {
   }
 }
 
-/** One physical line of `source`: its exact char range (`to` excludes the line terminator, if any) and its container-stripped text. */
+/**
+ * One physical line of `source`: its exact char range (`to` excludes the
+ * line terminator, if any) and its container-stripped, TRAILING-WHITESPACE-
+ * TRIMMED text.
+ *
+ * The `.trimEnd()` (SFE-P2b repair round 3) matches {@link matchProjectedBlock}'s
+ * own `sourceText.trimEnd()` key normalization: a live "trailing whitespace"
+ * duplicate (`"> @page splash   "`, three trailing spaces the fork's own
+ * paragraph node absorbs into ITS text but that
+ * `matchProjectedBlock`/{@link blockKey} would trim away) previously left
+ * `text` as `"@page splash   "` — never equal to the owning block's own
+ * `.trimEnd()`d key — so {@link hasOtherPhysicalOccurrence} silently missed
+ * it. Trimming here, once, at the same point `text` is computed, keeps every
+ * line/key comparison in this module normalized the SAME way. This can only
+ * ever make two texts compare EQUAL that previously compared unequal on
+ * trailing whitespace alone, never the reverse — the fail-closed guard can
+ * only get more conservative, not less.
+ */
 interface SourceLine {
   readonly from: number;
   readonly to: number;
@@ -228,10 +290,14 @@ function computeSourceLines(source: string): SourceLine[] {
   let m: RegExpExecArray | null;
   while ((m = LINE_TERMINATOR_RE.exec(source))) {
     const raw = source.slice(lineStart, m.index);
-    lines.push({ from: lineStart, to: m.index, text: stripContainerPrefixes(raw) });
+    lines.push({ from: lineStart, to: m.index, text: stripContainerPrefixes(raw).trimEnd() });
     lineStart = m.index + m[0].length;
   }
-  lines.push({ from: lineStart, to: source.length, text: stripContainerPrefixes(source.slice(lineStart)) });
+  lines.push({
+    from: lineStart,
+    to: source.length,
+    text: stripContainerPrefixes(source.slice(lineStart)).trimEnd(),
+  });
   return lines;
 }
 
@@ -272,7 +338,16 @@ function hasOtherPhysicalOccurrence(
   lines: readonly SourceLine[],
   singleLineIndex: ReadonlyMap<string, readonly number[]>,
 ): boolean {
-  const keyLines = key.split(/\r\n?|\n/);
+  // Each split line is `.trimEnd()`d too (SFE-P2b repair round 3), matching
+  // `SourceLine.text`'s own normalization above — both sides of every
+  // comparison below go through the exact same trailing-whitespace rule, so
+  // a duplicate that differs from the owning block's key only in trailing
+  // whitespace on some line still resolves as the SAME text. `key` itself
+  // (from `blockKey`) is already `.trimEnd()`d at its very end, so this is a
+  // no-op for the common single-line case; it only changes anything for a
+  // multi-line key's INTERNAL lines, where it is strictly more conservative
+  // (more things treated as candidate duplicates), never less.
+  const keyLines = key.split(/\r\n?|\n/).map((line) => line.trimEnd());
   const firstLineCandidates = singleLineIndex.get(keyLines[0]!);
   if (!firstLineCandidates) return false;
 
