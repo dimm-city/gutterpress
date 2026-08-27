@@ -139,4 +139,18 @@ fail closed.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Rounds 1-3** (adversarial review of `065d55f0..6bf082d1`, three batches): the
+  headline cluster was match.ts failing OPEN on projection-refused markers — each
+  round's fix closed the reported shapes and the re-review found the next member of
+  the class, until round 3's whole-document line-indexed container-prefix detector
+  closed the class itself (the reviewer-proposed consuming-cursor alternative was
+  rejected with live Chromium evidence that it breaks chip restoration on
+  deactivation — recorded in the module header). Also fixed: CI ordering (editor
+  gates before the cli dist existed), an uninvoked limits suite, a wrong-block chip
+  on duplicate marker text, a vacuous fail-closed proof, and two false comments.
+  Verdict: **approve**, 0 confirmed remaining, 4 advisories (P2c inputs).
+- **Gate**: PASS — all 13 commands exit 0 (editor 3028/0 + 90/0 across 7 browser
+  suites; cli 1860/0; desktop 2260/0; all fitness checks green).
+- **Continuity note**: a container restart killed the lanes stage mid-run; Lane C's
+  completed result was recovered from the workflow journal and Lane B's on-disk
+  work was verified directly by the integrator against the full gate before commit.

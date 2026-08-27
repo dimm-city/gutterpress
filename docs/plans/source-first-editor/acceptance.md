@@ -15,8 +15,8 @@
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Evidenced for standard Markdown (SFE-P2a: independent-bound oracle sabotage-proven against a widened-edit implementation, seeded randomized trials incl. refusal liveness; P3 integrations pending) |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
-| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Pending |
-| AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Pending |
+| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Evidenced for core markers/raw-html/generated views (SFE-P2b: exact-range projection + 12-fixture malformed matrix + D13 caps; plugin-region mapping remains P2c) |
+| AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Evidenced (SFE-P2b: GeneratedView has no from/to at the type level + runtime absence checks + provider never creates segments for generated content; browser proof of read-only in-chip preview) |
 | AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | Pending |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | Pending |
 | AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | Pending |
@@ -307,5 +307,43 @@
   "acceptanceUpdates": ["AC-03 and AC-04 evidenced for standard Markdown"],
   "deletionLedgerUpdates": ["diff.ts + DOM stub + racy-host superseded and deleted (-377 LOC)"],
   "checkpointSummary": "The rich editor is real for standard Markdown: the mount runs the fork surface with embedded CSS, twelve formatting commands emit minimal source edits with byte-exact toggle inverses, ten desktop toolbar actions share the implementation, and the corpora that prove it were themselves hardened until they could fail. Review ran the full three repair rounds and approved."
+}
+```
+
+### SFE-P2b — Sparse Gutterpress projection
+
+```json
+{
+  "status": "complete",
+  "baseSha": "065d55f0",
+  "headSha": "6bf082d1",
+  "history": [
+    "8fd16e91 feat(p2): browser-safe sparse editor projection",
+    "7243a9bc feat(p2): gutterpress projection consumer layer + feat(p2): enforce D13 projection caps",
+    "de549260 / 3ec2d36f / 6bf082d1 fix(p2): address review findings (rounds 1-3)"
+  ],
+  "confirmedFindings": [
+    "R1: CI ran editor gates before packages/cli/dist existed (build:library step added + gate order fixed)",
+    "R1: limits.btest.ts invoked by nothing (wired into test:browser — now 7 suites)",
+    "R1: match.ts wrong-block chip on duplicate marker text (last-write-wins replaced by fail-closed ambiguous-key drop)",
+    "R1-R3: match.ts failed OPEN on projection-refused markers across three successive shapes (blockquote, no-blank-separator/list-item/CRLF, then the general class) — converged on a whole-document line-indexed container-prefix-stripping ambiguity detector; the reviewer-suggested consuming-cursor design was rejected with live browser evidence that it breaks chip-restore-on-deactivation, documented in the module header",
+    "R1: the D13 fail-closed browser proof was vacuous (fixture matched nothing regardless of limited — replaced with matched control + over-cap isolation)",
+    "R1: two committed comments asserted nonexistent integrator work/defects (corrected)"
+  ],
+  "advisories": [
+    "Over-suppression: a marker line quoted inside a fenced code block or HTML block kills the real top-level marker's chip (fail-closed direction, P2c input)",
+    "The ambiguity guard is a text heuristic that must track the fork's container semantics (projection-evidence alternative recorded for P2c consideration)",
+    "The 4-space indented-code duplicate is protected by the fork's behavior, not the guard",
+    "A pre-existing markers.js nesting quirk surfaced during verification (out of scope, recorded)"
+  ],
+  "gate": {
+    "commands": [
+      "install / cli build (render purity) / typecheck / cli 1860:0 / editor 3028:0 unit + 90:0 browser (7 suites) / purity / desktop 2260:0 + svelte-check 842 files / architecture / generated-files / vendored / knip — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-07 evidenced for core markers", "AC-08 evidenced"],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "The editor understands Gutterpress: exact-range projections from the real pipeline's own evidence (declaration-line spans, G-05-clean), marker chips with per-character segments, inert raw-html, read-only generated previews, fail-closed caps and ambiguity handling — with the review driving the matcher from fail-open to fail-closed across three adversarial rounds. Includes recovery from a mid-run container restart: Lane C's completed work was recovered from the journal, Lane B's was verified directly against every gate. P2c (plugin transform-origin) is next."
 }
 ```
