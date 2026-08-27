@@ -40,6 +40,7 @@
     "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
+    "@dimm-city/gutterpress-editor": "workspace:*",
     "gutterpress": "workspace:*",
     "@lezer/highlight": "^1.2.3",
     "electron-updater": "^6.6.2",

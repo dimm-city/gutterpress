@@ -368,7 +368,17 @@ export function applyImage(
 // (CLAUDE.md §5/§6) and have no helper here; a project plugin that wants a
 // picker entry should contribute its own toolbar item, not extend this one.
 
-/** Which layout skeleton `applyLayoutBlock` inserts. */
+/** Which layout skeleton `applyLayoutBlock` inserts.
+ *
+ *  Mirrors `LayoutBlockKind` in `@dimm-city/gutterpress-editor/core`'s
+ *  `commands.ts` (SFE-P1c) member-for-member. Declared locally rather than
+ *  imported: importing it today trips two pre-existing gaps outside this
+ *  lane's write ownership — `commands.ts` is not yet re-exported through
+ *  `packages/editor/src/core/index.ts` (Lane B's one-line addition), and
+ *  `packages/editor`'s `.ts`-extension import style fails desktop's
+ *  `tsconfig.json` (`allowImportingTsExtensions` is not enabled there).
+ *  See the SFE-P1c lane report for both integrator items; this alias
+ *  should become a re-export of the shared type once they land. */
 export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break" | "spread";
 
 /** `@chapter` + a nested `@page`, with the title placeholder selected so
