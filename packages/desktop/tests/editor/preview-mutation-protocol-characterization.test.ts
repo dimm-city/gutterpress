@@ -153,11 +153,29 @@ describe("preview-shell.js host-command relay", () => {
     expect(h.getFocusCalls()).toBe(0);
   });
 
-  test("a beginBlockEdit relay with no active iframe never throws (defensive: focus is wrapped, not load-bearing for delivery)", () => {
+  test("the beginBlockEdit focus special case is keyed on the command name every time, not a one-shot latch", () => {
+    // Repair round 1 rename: this test previously claimed (in its title) to
+    // cover "no active iframe" / a defensive wrapper. It does neither — it
+    // never removes or nulls the active iframe (`loadShell()` always
+    // installs `#gutterpress-active`), and the scenario it names is in fact
+    // unreachable: preview-shell.js:27 does `if (!active) return;` before
+    // the `message` listener is even installed, so with no active iframe
+    // there is no relay and nothing to focus. What this test actually
+    // verifies — and all it verifies — is the title above: two
+    // `beginBlockEdit` relays in a row each still focus exactly once.
+    //
+    // The `try { active.focus(); } catch (_f) {}` defensive wrapper this
+    // test's old title claimed to cover remains genuinely unpinned: with
+    // `active.contentWindow.postMessage(...)` (the forward) always running
+    // BEFORE `active.focus()` in preview-shell.js's relay branch, and an
+    // outer `try { ... } catch (_) {}` already wrapping the whole listener,
+    // no black-box assertion on `forwarded`/`getFocusCalls()` can
+    // distinguish this inner wrapper's presence from its absence — removing
+    // it (verified locally, not committed) changes no observable outcome
+    // this harness can see. Pinning it would need a white-box check (e.g.
+    // asserting the exact source text of the wrapper) rather than a
+    // behavioral one, which is out of scope for this file.
     const h = loadShell();
-    // Two beginBlockEdit relays in a row still each focus exactly once —
-    // the special case is keyed on the command name every time, not a
-    // one-shot latch.
     h.fromHost({ type: "gutterpress:cmd", id: 4, cmd: "beginBlockEdit", args: [{}] });
     h.fromHost({ type: "gutterpress:cmd", id: 5, cmd: "beginBlockEdit", args: [{}] });
     expect(h.getFocusCalls()).toBe(2);

@@ -122,13 +122,26 @@ proves host portability from day one.
 
 ## Gate
 
+> Never use `bun --cwd <pkg> run <script>` for any gate command below. On
+> Bun 1.3.x that form prints the `bun run` usage banner and EXITS 0 without
+> running the script at all — a gate reading only the exit code would report
+> green having run nothing (verified on this tree with bun 1.3.11: both
+> `bun --cwd packages/open-design-plugin run test` and
+> `bun --cwd packages/desktop run test` exit 0 and print the usage banner,
+> not test output). Use `cd packages/<pkg> && bun run <script>` or
+> `bun --filter <pkg> run <script>` instead — see the identical NOTE at
+> `.github/workflows/ci.yml` (added after this exact defect made the
+> desktop-build and type-check CI steps silent no-ops). A gate command that
+> produces no test or typecheck output is a failed gate, not a pass —
+> record the actual test/type-check counts, not just the exit code.
+
 - `bun install --frozen-lockfile` (integrator refreshes lockfile first)
 - `bun run typecheck`
-- `bun --cwd packages/editor run typecheck`
-- `bun --cwd packages/editor run test`
-- `bun --cwd packages/editor run check:browser-purity`
-- `bun --cwd packages/vscode-extension run typecheck`
-- `bun --cwd packages/vscode-extension run test`
+- `cd packages/editor && bun run typecheck`
+- `cd packages/editor && bun run test`
+- `cd packages/editor && bun run check:browser-purity`
+- `cd packages/vscode-extension && bun run typecheck`
+- `cd packages/vscode-extension && bun run test`
 - `bun run check:architecture`
 - `bun run test` (workspace — proves no regression elsewhere)
 

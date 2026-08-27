@@ -11,12 +11,22 @@ import type { PreviewEvent, SourceRange } from "$lib/preview-client";
  * `renderingComplete`-while-open behavior exhaustively (see
  * docs/plans/source-first-editor/mutation-inventory.md for the full coverage
  * map). This file adds ONLY the behavior that file does not already cover: the
- * `requestId` race guards inside `show()` — two of its three checkpoints
- * (immediately after `readChapterSource()` resolves, and immediately after
- * `client.beginBlockEdit()` resolves) have no existing pin. The third
- * checkpoint (immediately after `endActive()`) IS already pinned by
- * `inline-edit-controller.test.ts`'s "chaining from the menu does not walk past
- * the guard" test.
+ * `requestId` race guards inside `show()` — ALL THREE of its checkpoints
+ * (immediately after `await this.endActive(true)`, immediately after
+ * `readChapterSource()` resolves, and immediately after
+ * `client.beginBlockEdit()` resolves).
+ *
+ * Repair round 1 correction: this file previously claimed (here and in
+ * mutation-inventory.md §4.2 item 1) that the FIRST checkpoint was already
+ * pinned by `inline-edit-controller.test.ts`'s "chaining from the menu does
+ * not walk past the guard" test. That was false: that test pins the
+ * *pendingRender* re-check at the SECOND checkpoint (its final assertion is
+ * on `toastInfoCalls`, the pendingRender message), not the `requestId`
+ * comparison at the first checkpoint — and because both of its `show()`
+ * calls are awaited sequentially, `this.requestId` can never diverge from
+ * the local `requestId` there, so the first checkpoint's own condition never
+ * even gets exercised false. All three checkpoints below are pinned for the
+ * first time in this file.
  *
  * These guards are exactly the kind of "what happens when two asynchronous
  * host round-trips overlap" invariant the P4 deletion run needs pinned before
@@ -25,6 +35,11 @@ import type { PreviewEvent, SourceRange } from "$lib/preview-client";
  * first (docs/plans/source-first-editor-enterprise-refactor.md P4b "Required
  * search proofs"). A regression here would silently let a slow double-click
  * followed by a fast one clobber the fast one's edit state.
+ *
+ * G-12 deliberate-failure proof: each test below was re-run once with its
+ * corresponding guard line commented out in `inline-edit-controller.svelte.ts`
+ * and confirmed to fail; see mutation-inventory.md §4.2 for the recorded
+ * commands and results.
  */
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
@@ -210,4 +225,81 @@ test("a show() whose readChapterSource resolves AFTER a newer show() already ope
   expect(beginCalls).toEqual([{ chapter: "b.md" }]);
   expect(ctrl.open).toBe(true);
   expect(capturedChapter(ctrl)).toBe("b.md");
+});
+
+test("a show() whose endActive(true) resolves AFTER a newer request has already superseded it never re-reads or reopens its own edit", async () => {
+  // Checkpoint 1 in show(): `if (requestId !== this.requestId) return;`
+  // immediately after `await this.endActive(true)` (line 229-230). Reachable
+  // when an edit is already open (`this.open === true`, so `show()` awaits
+  // `endActive(true)` before doing anything else) and ending that edit takes
+  // long enough for a still-newer request to have already superseded this
+  // one by the time it resolves.
+  //
+  // A newer request is simulated by advancing `requestId` directly rather
+  // than driving a full third `show()` call through its own read/begin round
+  // trip: a real third call would ALSO see `this.open === true` while this
+  // one is parked inside `endActive`, and would itself race to end the same
+  // edit — a second, independent hazard the two tests above already cover
+  // for the later checkpoints. Isolating checkpoint 1 this way keeps this
+  // test a characterization of the guard alone, not of that separate race.
+  const beginCalls: Array<{ chapter: string }> = [];
+  const readCalls: string[] = [];
+  let releaseEnd: ((result: { ended: boolean; text: string | null }) => void) | null = null;
+  const client: InlineEditClient = {
+    on: () => () => {},
+    beginBlockEdit: async (spec) => {
+      beginCalls.push({ chapter: spec.chapter });
+      return { ok: true };
+    },
+    endBlockEdit: () =>
+      new Promise((resolve) => {
+        releaseEnd = resolve;
+      }),
+  };
+  const commitEngine = new FakeCommitEngine();
+  const ctrl = new InlineEditController({
+    client: () => client,
+    currentDir: () => "/proj",
+    // "a.md" resolves synchronously through the live buffer (no readFile
+    // round trip needed to open it); "b.md" would need the async readFile
+    // path below, which checkpoint 1 must prevent from ever being reached.
+    openContent: (path) => (path === "/proj/a.md" ? "AAA\n" : null),
+    readFile: async (path) => {
+      readCalls.push(path);
+      return "BBB\n";
+    },
+    commitEngine: commitEngine as unknown as CommitEngine,
+    focusPreview: () => {},
+    toastError: () => {},
+    toastInfo: () => {},
+  });
+
+  // A opens normally. `this.open` starts false, so this call never touches
+  // `endActive`/`endBlockEdit` at all.
+  await ctrl.show({ chapter: "a.md", range: [0, 1] });
+  expect(ctrl.open).toBe(true);
+  expect(beginCalls).toEqual([{ chapter: "a.md" }]);
+
+  // B starts: `this.open` is true, so `show()` awaits `endActive(true)`,
+  // which calls `endBlockEdit` and parks on the promise above.
+  const showB = ctrl.show({ chapter: "b.md", range: [0, 1] });
+  await flush();
+  expect(releaseEnd).not.toBeNull(); // B is now parked inside endActive()
+
+  // A still-newer request completes while B waits.
+  (ctrl as unknown as { requestId: number }).requestId = 999;
+
+  // Release B's endActive with a result that WOULD commit if B's show()
+  // reached that far.
+  releaseEnd!({ ended: true, text: "AAA\n" });
+  await showB;
+
+  // Checkpoint 1 must fire before `readChapterSource("b.md")` is ever
+  // called — proven by there being no read for it at all, not merely by
+  // `beginBlockEdit` never being called for it (the LATER checkpoint, at
+  // line 241, would independently catch that regardless of checkpoint 1,
+  // since nothing between the two checkpoints changes `this.requestId`
+  // again — only an absent read call is specific to checkpoint 1 firing).
+  expect(readCalls).toEqual([]);
+  expect(beginCalls).toEqual([{ chapter: "a.md" }]);
 });

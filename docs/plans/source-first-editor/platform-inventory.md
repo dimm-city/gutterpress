@@ -543,20 +543,32 @@ before D10's server-deletion step (P5d) can proceed. A proposed grouping
 (the run that actually schedules P5c1–c4 owns the final split; this is a
 starting proposal, not a binding decision):
 
-- **P5c1 — fs, dialog, shell, log** (39 routes, 10+5+2+2 = wait: use route
-  counts from §6: `fs`10 + `dialog`5 + `shell`2 + `log`2 = 19 routes; 54
-  call sites: 20+14+15+5).
-- **P5c2 — app, sync, recovery, style, manifest, project, doctor, status**
-  (16+2+3+1+2+1+1+1 = 27 routes; 36+3+5+3+4+3+0 = 54 call sites, `doctor()`
-  top-level call not namespaced).
+- **P5c1 — fs, dialog, shell, log** (route counts from §6: `fs`10 +
+  `dialog`5 + `shell`2 + `log`2 = 19 routes; 54 call sites: 20+14+15+5).
+- **P5c2 — app, sync, recovery, style, manifest, project, doctor, status,
+  lint** (16+2+3+1+2+1+1+1+2 = 29 routes; 36+3+5+3+4+3+0+0+4 = 58 call
+  sites, `doctor()` top-level call not namespaced and `status` having no
+  `api.ts` wrapper at all — see the reconciliation note below). `lint`
+  belongs in this app-services cluster rather than getting its own group:
+  `checkCss` is the one capability CLAUDE.md §8 calls out as routed through
+  `getPlatform().checkCss(...)` for CodeMirror's lint-source contract, so
+  its P5c migration needs that adapter seam, not just a route rewrite —
+  flagging it here so the run that executes P5c2 does not miss the wrinkle.
 - **P5c3 — theme, plugin, tpl, snip, project styling** (11+6+4+4 = 25 routes;
   13+10+4+5 = 32 call sites).
 - **P5c4 — remote, vcs, publish, updater, media** (13+4+7+3+4 = 31 routes;
   18+8+11+5+9 = 51 call sites).
 
-(19+27+25+31 = 102, plus `/api/status` and `/api/fs/copy-file` which have no
-`api.ts` wrapper — both already counted inside the `fs`/top-level route totals
-in §6 — brings the total back to 104.)
+Reconciliation: 19+29+25+31 = 104 — every route from §6 is assigned to
+exactly one group, with no add-back. `/api/status` and `/api/fs/copy-file`
+have no `api.ts` wrapper (0 call sites each, per §11's table omitting
+`status` entirely and the `doctor`-style zero note) but are NOT additional
+routes on top of the 104: `status` is already the 1 route counted inside
+P5c2's own `status` namespace, and `fs/copy-file` is already one of the 10
+`fs` routes counted inside P5c1 — both were already inside their namespace
+totals before this reconciliation, never added a second time. Call-site
+total across all four groups: 54+58+32+51 = 195, matching the sum of every
+row in §11's table (36+20+18+15+14+13+11+10+9+8+5+5+5+5+4+4+4+3+3+3+0 = 195).
 
 ---
 

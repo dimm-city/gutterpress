@@ -84,6 +84,67 @@ block-edit protocol is `"block-edit"` ("Edit this block"), which calls
 `beginBlockEdit`/`endBlockEdit` like the double-click path
 (`context-menu-controller.svelte.ts:693-702`).
 
+### 1.5 Context-menu protocol identifiers and source-mutation helpers
+
+> Added in repair round 1: §1.1–§1.4 as originally written omitted the
+> context-menu path's own protocol identifiers and its dedicated mutation
+> helper module. This section closes that gap so P4b has search-proof
+> identifiers for the whole context-menu source-mutation surface, not just
+> the fact that it bypasses `beginBlockEdit`/`endBlockEdit` (§1.4).
+
+The context-menu path reaches the preview through its OWN command/event pair
+— neither is `beginBlockEdit`/`endBlockEdit` — and its source mutations run
+through a dedicated pure-helper module neither table above named:
+
+| Identifier | Kind | Produced (implemented/dispatched) | Consumed (called/listened) |
+|---|---|---|---|
+| `getContextTargetAt` | command (host → book) | `previewAPI.getContextTargetAt` (`packages/cli/src/assets/preview/scripts/preview-interface.js:1092`) | `PreviewClient.getContextTargetAt()` (`packages/desktop/src/lib/preview-client.ts:325-326`); called by `ContextMenuController` to resolve what is under the pointer before building menu items |
+| `contextMenuRequested` | event (book → host) | Dispatched from `preview-interface.js:1394` (mouse) and `:1454` (keyboard), sharing one payload builder; relayed by `preview-bridge.js:82-83` (`window.addEventListener('contextMenuRequested', ...)` → `post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail })`) | `ContextMenuController.handleEvent()` case `"contextMenuRequested"` (`context-menu-controller.svelte.ts:206`); typed in `PreviewEvent["name"]` (`preview-client.ts:15`), `detail` shape documented at `preview-client.ts:44-64` (carries `image.source`/`link.source`/`selection` as `InlineSourceToken`(s) — the mutation payload) |
+
+Both cross the same book→bridge→shell→host relay path §1.2 describes for the
+block-edit events; they are simply a different command/event pair on it.
+**They are read/target-resolution messages, not mutations themselves**, and
+may survive past P4 as part of the read-only context menu D8 keeps
+(navigation, selection/copy, open link/image, source reveal) — do not delete
+either merely because this section names it; the deletion-ledger's
+`Preview mutation protocol messages` baseline (`deletion-ledger.md:20`)
+deliberately does not count them (see the note added there in this repair
+round) for the same reason.
+
+`packages/desktop/src/lib/editor/context-menu-actions.ts` is the pure
+source-token helper module every context-menu source mutation runs through —
+this IS the deletion ledger's P4b row "Preview image/link rewrite scanners |
+Context-menu source mutations | Shared editor commands | P4b |
+command/scanner search." Its full export surface, all consumed at
+`context-menu-controller.svelte.ts` (its only production consumer — confirmed
+by `grep -rn "context-menu-actions" packages/desktop/src`, which returns only
+that file's import block at lines 27-36 and its own header-comment mention):
+
+| Export | Consumer call site(s) in `context-menu-controller.svelte.ts` |
+|---|---|
+| `findImageToken` | line 443 |
+| `findImageWrapper` | line 449 |
+| `resolveLinkToken` | line 557 |
+| `rewriteImageToken` | line 511 |
+| `rewriteLinkToken` | line 574 |
+| `makeLinkToken` | line 823 |
+| `spliceToken` | lines 514, 540, 579, 801, 819 |
+| `LinkResolution` (type) | import only, line 33 |
+| `ImageTokenMatch` / `LinkTokenMatch` (exported types) | not imported by name outside `context-menu-actions.ts` itself — consumed structurally through the functions above, which return/accept them |
+
+**Explicitly NOT a P4b deletion target — SHARED-AND-SURVIVING:**
+`packages/desktop/src/lib/editor/image-classes.ts` is imported by
+`context-menu-controller.svelte.ts` alongside the helpers above (its own
+import block, separate from `context-menu-actions.ts`'s), but it is not part
+of the context-menu-only surface: it is also consumed by
+`EditorToolbar.svelte:32`, `ImagePropertiesDialog.svelte:12`,
+`toolbar-actions.ts:27`, and `+page.svelte:40` — rich-editor toolbar/dialog
+surfaces that have nothing to do with the preview's context menu and are not
+scheduled for deletion. A P4b executor must not delete or move
+`image-classes.ts` merely because `context-menu-controller.svelte.ts` also
+imports it; only the context-menu-only helpers in `context-menu-actions.ts`
+above are this run's P4b target.
+
 ## 2. Production callers of `InlineEditController` and `CommitEngine`
 
 | Symbol | Caller | file:line | Classification |
@@ -209,15 +270,40 @@ delete, and both are now pinned by new characterization tests:
    three checkpoints of the form `if (requestId !== this.requestId) return;`
    (`inline-edit-controller.svelte.ts:230`, `241`, `277`) that discard a
    stale, still-in-flight `show()` call once a newer one has superseded it.
-   Only the FIRST checkpoint (immediately after `await this.endActive(true)`)
-   was already pinned, by `inline-edit-controller.test.ts`'s "chaining from
-   the menu does not walk past the guard" test. The second (immediately
-   after `readChapterSource()`) and third (immediately after
-   `client.beginBlockEdit()`) checkpoints had zero coverage. Pinned in
+
+   **Repair round 1 correction:** this item and the test file's own header
+   previously claimed the FIRST checkpoint (line 230, immediately after
+   `await this.endActive(true)`) was already pinned by
+   `inline-edit-controller.test.ts`'s "chaining from the menu does not walk
+   past the guard" test. That claim was false on inspection: that test's
+   final assertion is on `toastInfoCalls` (the *pendingRender* re-check
+   message at the SECOND checkpoint, lines 235-238), not the `requestId`
+   comparison at line 230, and because both of its `show()` calls are
+   awaited sequentially, `this.requestId` never diverges from the local
+   `requestId` there — the line-230 condition is never even exercised
+   false by that test. **All three checkpoints had zero coverage before
+   this run.** All three are now pinned in
    `packages/desktop/tests/editor/inline-edit-controller-characterization.test.ts`
-   with two tests, each proving a slow, superseded request's late resolution
-   cannot reopen, recapture, or otherwise disturb a faster request that
-   already completed.
+   with three tests, each proving a slow, superseded request's late
+   resolution cannot re-read its chapter, reopen, recapture, or otherwise
+   disturb a faster request that already completed.
+
+   **G-12 deliberate-failure proof** (each guard line commented out one at a
+   time in `inline-edit-controller.svelte.ts`, the corresponding test run
+   in isolation, then the line restored byte-for-byte):
+
+   | Checkpoint | Line | Guard removed → | Command | Result |
+   |---|---:|---|---|---|
+   | 1st (after `endActive(true)`) | 230 | test 3 fails | `bun test tests/editor/inline-edit-controller-characterization.test.ts` | `readCalls` becomes `["/proj/b.md"]` instead of `[]` — 1 fail, 2 pass |
+   | 2nd (after `readChapterSource()`) | 241 | test 2 fails | same | `beginCalls` gains an `"a.md"` entry — 1 fail, 2 pass |
+   | 3rd (after `beginBlockEdit()`) | 277 | test 1 fails | same | `capturedChapter(ctrl)` becomes `"a.md"` instead of `"b.md"` — 1 fail, 2 pass |
+
+   Each sabotage affected only its own test; the other two tests kept
+   passing, confirming the three tests pin three independent conditions
+   rather than one shared side effect. All three lines were confirmed
+   restored identical to the pre-sabotage file (`diff` against a saved copy
+   showed no difference) before this run's final gate was run.
+
 2. **`preview-shell.js`'s host-command relay and its `beginBlockEdit`-only
    focus special case.** `preview-shell.js:29-42`'s message listener forwards
    every `gutterpress:cmd` message from the host down to the active book
@@ -228,12 +314,34 @@ delete, and both are now pinned by new characterization tests:
    `beginBlockEdit`"). Neither the generic relay nor this special case had
    any existing test anywhere in the repo (confirmed by grep: zero hits for
    `gutterpress:cmd` in `preview-shell-regression.test.mjs`). Pinned in
-   `packages/desktop/tests/editor/preview-mutation-protocol-characterization.test.ts`
-   with four tests: generic forwarding without a focus call, the
+   `packages/desktop/tests/editor/preview-mutation-protocol-characterization.test.ts`,
+   which has four tests: generic forwarding without a focus call, the
    `beginBlockEdit` case forwarding AND focusing exactly once, `endBlockEdit`
-   forwarding without focusing (contrast case), and that the special case is
+   forwarding without focusing (contrast case), and the special case being
    keyed on the command name every time (two `beginBlockEdit` relays produce
-   two focus calls), not a one-shot latch.
+   two focus calls) rather than a one-shot latch.
+
+   **Repair round 1 correction:** the fourth test's title previously claimed
+   "a beginBlockEdit relay with no active iframe never throws (defensive:
+   focus is wrapped, not load-bearing for delivery)". Its body never removes
+   or nulls the active iframe, and that scenario is in fact unreachable —
+   `preview-shell.js:27`'s `if (!active) return;` runs before the `message`
+   listener is even installed, so with no active iframe there is no relay
+   and nothing to focus. The title was corrected to describe what the test
+   actually verifies (the keyed-on-command-name behavior above). A follow-up
+   attempt to add a genuinely sabotage-provable test for the
+   `try { active.focus(); } catch (_f) {}` defensive wrapper it wrongly
+   claimed to cover was tried and abandoned: `active.contentWindow.postMessage(...)`
+   (the forward) always runs BEFORE `active.focus()` in the relay branch,
+   and an outer `try { ... } catch (_) {}` already wraps the whole listener
+   (`preview-shell.js:32-75`), so no assertion on `forwarded`/
+   `getFocusCalls()` can distinguish the inner wrapper's presence from its
+   absence — verified locally by removing both the inner wrapper and
+   converting the outer catch to a rethrow (not committed): the existing
+   assertions still passed unchanged either way. That inner wrapper remains
+   genuinely unpinned by this file; pinning it would need a white-box
+   source-text check, which is out of scope here. This is recorded rather
+   than silently left as another unproven coverage claim.
 
 Everything else this run's candidate list named — "InlineEditController
 lifecycle (begin/end, generation counter increments, stale-generation
@@ -246,9 +354,14 @@ were written for those.
 ## 5. New files this run added (write ownership)
 
 - `packages/desktop/tests/editor/inline-edit-controller-characterization.test.ts`
-  — 2 tests, both new coverage (§4.2 item 1).
+  — 3 tests, all new coverage (§4.2 item 1; a third test and its G-12
+  deliberate-failure proof were added in repair round 1 after the original 2
+  were found to leave the first `requestId` checkpoint unpinned).
 - `packages/desktop/tests/editor/preview-mutation-protocol-characterization.test.ts`
-  — 4 tests, all new coverage (§4.2 item 2).
+  — 4 tests, all new coverage (§4.2 item 2; the fourth test's title was
+  corrected in repair round 1 to match what it verifies — see §4.2 item 2's
+  correction note for why a genuinely sabotage-provable replacement test for
+  the defensive wrapper it wrongly claimed to cover was not addable).
 
 Both files are additive only — no existing test file was read for the
 purpose of modification, and none was changed.
@@ -257,12 +370,12 @@ purpose of modification, and none was changed.
 
 | Command | Exit code | Notes |
 |---|---:|---|
-| `bun test tests/editor/inline-edit-controller-characterization.test.ts tests/editor/preview-mutation-protocol-characterization.test.ts` (from `packages/desktop`) | 0 | 6 pass, 0 fail, 19 `expect()` calls |
-| `bun test --isolate tests/editor` (from `packages/desktop`) | 0 | 533 pass, 0 fail, across 26 files (includes the 2 new files above) |
-| `bun run test` (from `packages/desktop`; runs `svelte-kit sync` + the three `.mjs` preview regression scripts + `bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media`) | 0 | 2131 pass, 1 skip, 0 fail, across 142 files |
-| `bun run test` (from `packages/cli`) | 0 | 1810 pass, 60 skip, 0 fail, across 151 files |
+| `bun test tests/editor/inline-edit-controller-characterization.test.ts tests/editor/preview-mutation-protocol-characterization.test.ts` (from `packages/desktop`) | 0 | 7 pass, 0 fail, 24 `expect()` calls (repair round 1: was 6 pass / 19 `expect()` before the checkpoint-1 test was added — net +1 test, the fourth `preview-mutation-protocol-characterization.test.ts` test was retitled in place, not added) |
+| `bun test --isolate tests/editor` (from `packages/desktop`) | 0 | 534 pass, 0 fail, across 26 files (repair round 1: was 533; net +1, includes the 2 files above) |
+| `bun run test` (from `packages/desktop`; runs `svelte-kit sync` + the three `.mjs` preview regression scripts + `bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media`) | 0 | 2132 pass, 1 skip, 0 fail, across 142 files (repair round 1: was 2131) |
+| `bun run test` (from `packages/cli`) | 0 | 1810 pass, 60 skip, 0 fail, across 151 files (unchanged — Lane B made no `packages/cli` changes in this repair round) |
 | `bun run typecheck` (repo root; `bun --filter '*' typecheck`) | 0 | both `gutterpress` and `@dimm-city/gutterpress-desktop` typecheck scripts pass (desktop's covers `electron/tsconfig.json` only — see §6.1) |
-| `svelte-check` against a scratch tsconfig extending `packages/desktop/.svelte-kit/tsconfig.json` and explicitly including the two new test files plus `inline-edit-controller.svelte.ts`, `commit-engine.ts`, `preview-client.ts` | 0 | 849 files, 0 errors, 0 warnings |
+| `svelte-check` against a scratch tsconfig extending `packages/desktop/.svelte-kit/tsconfig.json` and explicitly including the two new test files plus `inline-edit-controller.svelte.ts`, `commit-engine.ts`, `preview-client.ts` | 0 | 849 files, 0 errors, 0 warnings (run before repair round 1; not re-run for the repair since `bun run typecheck` above and the full `bun run test` desktop run already re-verify these same files after the round-1 edits and both stayed green) |
 
 ### 6.1 Why a scratch tsconfig was needed
 

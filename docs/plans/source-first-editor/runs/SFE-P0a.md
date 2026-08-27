@@ -94,9 +94,24 @@ so every later deletion can prove its inventoried callers moved or disappeared.
 
 ## Gate
 
+> Never use `bun --cwd <pkg> run <script>` for any gate command below. On
+> Bun 1.3.x that form prints the `bun run` usage banner and EXITS 0 without
+> running the script at all — a gate reading only the exit code would report
+> green having run nothing (verified on this tree with bun 1.3.11: both
+> `bun --cwd packages/open-design-plugin run test` and
+> `bun --cwd packages/desktop run test` exit 0 and print the usage banner,
+> not test output — the exact defect `.github/workflows/ci.yml` already
+> carries a NOTE about). Use `cd packages/<pkg> && bun run <script>` instead.
+> This run's own recorded evidence (mutation-inventory.md §6) already used
+> the robust form (`bun run test` executed from inside each package), so no
+> past evidence here is invalidated — only this section's literal command
+> text was wrong. A gate command that produces no test or typecheck output
+> is a failed gate, not a pass — record the actual test/type-check counts,
+> not just the exit code.
+
 - `bun run typecheck`
-- `bun --cwd packages/desktop run test`
-- `bun --cwd packages/cli run test`
+- `cd packages/desktop && bun run test`
+- `cd packages/cli && bun run test`
 
 ## Review log
 
