@@ -183,10 +183,45 @@
  * P2c maps real project-plugin regions; this run only proves the fail-closed
  * path (the lane's stated boundary).
  *
- * D13 caps (block-count / payload-size limits) are explicitly OUT OF SCOPE
- * for this module — the run's lane table assigns cap enforcement + its
- * boundary tests to a later pass; this module's own contract is unbounded
- * evidence-driven projection, not enforcement.
+ * D13 CAPS (SFE-P2b Lane C addition — `editor-projection-limits.test.ts`):
+ * enforced in a small, clearly-marked section below ("── D13 resource caps
+ * ──"), grafted onto Lane A's walk above WITHOUT restructuring it. Three
+ * independent caps, all fail-closed, all NEVER throw, all leave every block
+ * already emitted untouched:
+ *
+ *   1. BLOCK-COUNT cap (`MAX_PROJECTED_BLOCKS`, 10,000): once `blocks.length`
+ *      would exceed the cap, the walk STOPS immediately (`break`, not
+ *      `continue`) — one `EDITOR_PROJECTION_LIMIT` diagnostic is appended and
+ *      the top-level `limited: true` flag is set. `limited` is this module's
+ *      "the rest of the document has no block coverage at all" signal — a
+ *      consumer should treat it exactly like a stale projection (G-11's
+ *      existing convention) and fall through to plain/default rendering for
+ *      the WHOLE document, not attempt partial chip rendering up to the cap.
+ *   2. PER-PAYLOAD cap (`MAX_INACTIVE_HTML_BYTES`, 1 MiB): any single
+ *      `ProjectedBlock.inactiveHtml` or `GeneratedView.html` this module is
+ *      about to emit is measured in UTF-8 BYTES via `TextEncoder` (D13 says
+ *      "measure... browser-safe" — `TextEncoder` is available in every
+ *      target this module ships to: Node, Bun, and the browser; `Buffer` is
+ *      not). Over the cap, the payload is replaced with a small fixed
+ *      placeholder string plus a diagnostic — the block/view itself is still
+ *      emitted (unlike cap 1, this does NOT set `limited`: the block's own
+ *      range/kind is still valid and fully covered, only its rendered-HTML
+ *      preview shrinks to a placeholder).
+ *   3. AGGREGATE cap (`MAX_AGGREGATE_HTML_BYTES`, 8 MiB): a running UTF-8-byte
+ *      total across every kept (non-placeholder) `inactiveHtml`/`.html` value
+ *      this call emits. The first payload that would push the running total
+ *      over the cap — and every one after it — becomes a placeholder too;
+ *      exactly ONE aggregate diagnostic is appended, at the moment the total
+ *      first tips over (not once per subsequent payload). A payload already
+ *      placeholdered by cap 2 contributes nothing to this running total (its
+ *      real bytes were never emitted).
+ *
+ * `limited` is intentionally NOT set by caps 2/3 — see cap 1's paragraph
+ * above. `refusalReason` is spec'd on `ProjectedBlock` for a "future refused-
+ * but-still-anchored block shape... unused by this run" (Lane A's own
+ * comment on that field, preserved) — the payload caps do not repurpose it;
+ * they go through the existing `diagnostics` channel like every other
+ * refusal in this module, so a consumer has exactly one place to look.
  */
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
@@ -255,8 +290,12 @@ export interface GeneratedView {
  * `packages/editor` imports FROM `gutterpress/render`, never the reverse).
  * Extend this union additively if a later run needs another D14-aligned
  * category from this module; do not repurpose an existing value.
+ *
+ * `"EDITOR_PROJECTION_LIMIT"` (SFE-P2b Lane C, D13) — a resource cap fired:
+ * the block-count cap, a per-payload HTML size cap, or the aggregate HTML
+ * size cap. See "── D13 resource caps ──" below for which.
  */
-export type ProjectionDiagnosticCategory = "EDITOR_UNSUPPORTED_PROJECTION";
+export type ProjectionDiagnosticCategory = "EDITOR_UNSUPPORTED_PROJECTION" | "EDITOR_PROJECTION_LIMIT";
 
 /** A typed refusal: this module could not honestly attribute a range (or recognize a token), so it produced no block instead of guessing (G-05, G-06). */
 export interface ProjectionDiagnostic {
@@ -265,13 +304,32 @@ export interface ProjectionDiagnostic {
   readonly reason: string;
 }
 
-/** D6's top-level projection shape, verbatim. */
+/**
+ * D6's top-level projection shape, plus one SFE-P2b Lane C (D13) addition:
+ * `limited`.
+ */
 export interface GutterpressProjection {
   readonly schemaVersion: 1;
   readonly sourceVersion: number;
   readonly blocks: readonly ProjectedBlock[];
   readonly generated: readonly GeneratedView[];
   readonly diagnostics: readonly ProjectionDiagnostic[];
+  /**
+   * D13 — present and `true` ONLY when the block-count cap
+   * (`MAX_PROJECTED_BLOCKS`) stopped the walk before every block in `source`
+   * could be projected; omitted (never `false`) otherwise, matching this
+   * module's other optional-field convention (`ProjectedBlock.inactiveHtml`,
+   * `.viewAttributes`). A consumer MUST treat `limited: true` as
+   * stale-equivalent (G-11's existing convention): fall through to default
+   * (non-projected) rendering for the whole document rather than paint chips
+   * for the 10,000 blocks that DID get covered — the document is only
+   * PARTIALLY represented, and pretending otherwise would silently hide
+   * every block past the cap. The per-payload and aggregate HTML caps do NOT
+   * set this flag — a block whose `inactiveHtml`/`.html` was replaced with a
+   * placeholder still has a fully valid range and kind; only its rendered
+   * preview shrank.
+   */
+  readonly limited?: true;
 }
 
 export interface CreateEditorProjectionOptions {
@@ -378,6 +436,100 @@ function markerLineLooksAuthored(source: string, from: number, to: number): bool
   return /^[ \t]*@/.test(source.slice(from, to));
 }
 
+// ── D13 resource caps (SFE-P2b Lane C addition — see module header "D13
+// CAPS") ──────────────────────────────────────────────────────────────────
+// Grafted onto Lane A's single-pass walk below without restructuring it:
+// every cap is checked at the exact point a value would otherwise be
+// emitted, and every cap fails closed (placeholder/stop), never throws.
+
+/** D13 — block-count cap. Boundary-exact: 10,000 blocks project cleanly, the 10,001st trips this cap (see `editor-projection-limits.test.ts`). */
+export const MAX_PROJECTED_BLOCKS = 10_000;
+
+/** D13 — per-payload cap, in UTF-8 bytes (1 MiB). Applies to any single `ProjectedBlock.inactiveHtml` or `GeneratedView.html` this module emits. */
+export const MAX_INACTIVE_HTML_BYTES = 1024 * 1024;
+
+/** D13 — aggregate cap, in UTF-8 bytes (8 MiB), across every kept (non-placeholder) HTML payload this call emits. */
+export const MAX_AGGREGATE_HTML_BYTES = 8 * 1024 * 1024;
+
+/** Fixed, tiny, safe replacement for an HTML payload that tripped either the per-payload or the aggregate cap. Never derived from the oversized content itself — nothing about the omitted bytes is echoed back. Exported (not just an internal constant) so tests assert exact equality instead of a loose substring match. */
+export const HTML_PAYLOAD_PLACEHOLDER =
+  '<div class="gp-projection-omitted" aria-hidden="true">Content omitted (over the Gutterpress editor size limit) — edit in source mode.</div>';
+
+// Reused across every payload this call measures — a module-scope encoder
+// carries no per-call state, so one instance is correct and avoids
+// reallocating it per payload (`TextEncoder` is browser-safe: no
+// `node:buffer`/`Buffer`, per D13's own "measure... browser-safe").
+const textEncoder = new TextEncoder();
+
+/** D13's byte convention: UTF-8 byte length via `TextEncoder` (browser-safe), NOT `string.length` (UTF-16 code units) and NOT a Node `Buffer`. */
+function utf8ByteLength(html: string): number {
+  return textEncoder.encode(html).length;
+}
+
+/** Mutable running total for the aggregate cap — threaded through one `createEditorProjection` call only, never module-level state (a thrown/concurrent render must not leak a count into the next call). */
+interface AggregateHtmlBudget {
+  bytesEmitted: number;
+  capDiagnosticEmitted: boolean;
+}
+
+/**
+ * Applies the per-payload cap, then the aggregate cap, to one HTML payload
+ * this module is about to emit (`inactiveHtml` or a `GeneratedView.html`).
+ * Returns `html` unchanged when both caps are clear (and records its bytes
+ * against `budget`); otherwise appends exactly one diagnostic for whichever
+ * cap fired and returns {@link HTML_PAYLOAD_PLACEHOLDER}. Never throws, never
+ * sets `limited` (see module header — only the block-count cap does).
+ */
+function capHtmlPayload(
+  html: string,
+  diagnostics: ProjectionDiagnostic[],
+  budget: AggregateHtmlBudget,
+): string {
+  const bytes = utf8ByteLength(html);
+
+  if (bytes > MAX_INACTIVE_HTML_BYTES) {
+    diagnostics.push({
+      category: "EDITOR_PROJECTION_LIMIT",
+      reason: `An HTML payload is ${bytes} bytes, over the ${MAX_INACTIVE_HTML_BYTES}-byte (1 MiB) per-payload cap (D13); replaced with a safe placeholder. Edit this content in source mode.`,
+    });
+    return HTML_PAYLOAD_PLACEHOLDER;
+  }
+
+  if (budget.bytesEmitted + bytes > MAX_AGGREGATE_HTML_BYTES) {
+    if (!budget.capDiagnosticEmitted) {
+      budget.capDiagnosticEmitted = true;
+      diagnostics.push({
+        category: "EDITOR_PROJECTION_LIMIT",
+        reason: `Aggregate generated/plugin HTML exceeded the ${MAX_AGGREGATE_HTML_BYTES}-byte (8 MiB) cap (D13); this and every later HTML payload in this document are replaced with a safe placeholder. Edit this content in source mode.`,
+      });
+    }
+    return HTML_PAYLOAD_PLACEHOLDER;
+  }
+
+  budget.bytesEmitted += bytes;
+  return html;
+}
+
+/**
+ * D13 block-count cap check — called immediately before every `blocks.push`
+ * site. Returns `true` once the cap has already been reached, appending
+ * exactly ONE `EDITOR_PROJECTION_LIMIT` diagnostic the first time (never
+ * again — the caller `break`s its walk on the first `true`, per "STOP
+ * projecting further blocks", so this can only fire once per call anyway;
+ * the guard is defense-in-depth, not load-bearing).
+ */
+function blockCapReached(
+  blocks: readonly ProjectedBlock[],
+  diagnostics: ProjectionDiagnostic[],
+): boolean {
+  if (blocks.length < MAX_PROJECTED_BLOCKS) return false;
+  diagnostics.push({
+    category: "EDITOR_PROJECTION_LIMIT",
+    reason: `Projection stopped at the ${MAX_PROJECTED_BLOCKS}-block cap (D13); ${MAX_PROJECTED_BLOCKS} blocks were projected and the rest of this document has no block coverage. Edit in source mode.`,
+  });
+  return true;
+}
+
 /**
  * Build the Gutterpress sparse editor projection for `source` (D6).
  *
@@ -399,6 +551,11 @@ export function createEditorProjection(
   const generated: GeneratedView[] = [];
   const diagnostics: ProjectionDiagnostic[] = [];
 
+  // D13 — per-call cap state (see "── D13 resource caps ──" above). Never
+  // module-level: scoped fresh to this one createEditorProjection call.
+  let limited = false;
+  const htmlBudget: AggregateHtmlBudget = { bytesEmitted: 0, capDiagnosticEmitted: false };
+
   // The `to` of the most recently projected block — a generated view with
   // no range of its own anchors here (see header "GENERATED VIEWS").
   let lastBlockEnd = 0;
@@ -409,13 +566,22 @@ export function createEditorProjection(
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
       if (parsed) {
         const [from, to] = charRangeForLines(starts, source, parsed[0], parsed[1]);
+        // D13 block-count cap: checked here, not just in the marker-family
+        // branch below — a huge raw-HTML-heavy document must stop exactly
+        // the same way a marker-heavy one does.
+        if (blockCapReached(blocks, diagnostics)) {
+          limited = true;
+          break;
+        }
         blocks.push({
           id: `raw-html:${from}:${to}`,
           kind: "raw-html",
           from,
           to,
           editMode: "source",
-          inactiveHtml: token.content,
+          // D13 per-payload / aggregate caps (never affects `from`/`to` —
+          // only the rendered-preview string).
+          inactiveHtml: capHtmlPayload(token.content, diagnostics, htmlBudget),
         });
         lastBlockEnd = to;
         continue;
@@ -425,7 +591,9 @@ export function createEditorProjection(
         generated.push({
           id: `generated:chapter-opener:${lastBlockEnd}`,
           anchor: lastBlockEnd,
-          html: token.content,
+          // D13 per-payload / aggregate caps — a GeneratedView carries no
+          // range to protect either way (G-04), only its `html` shrinks.
+          html: capHtmlPayload(token.content, diagnostics, htmlBudget),
         });
         continue;
       }
@@ -475,6 +643,13 @@ export function createEditorProjection(
         continue;
       }
 
+      // D13 block-count cap: "STOP projecting further blocks" — break the
+      // WHOLE walk, not just this push, once the cap is already reached.
+      if (blockCapReached(blocks, diagnostics)) {
+        limited = true;
+        break;
+      }
+
       blocks.push({
         id: `${kind}:${from}:${to}`,
         kind,
@@ -521,5 +696,8 @@ export function createEditorProjection(
     blocks,
     generated,
     diagnostics,
+    // D13 — omit the key entirely when not limited (optional-field
+    // convention, not `limited: false`; see the field's own doc comment).
+    ...(limited ? { limited: true as const } : {}),
   };
 }
