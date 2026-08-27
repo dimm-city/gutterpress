@@ -189,6 +189,43 @@ describe("mounted structure", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Ambiguous-collision refusals (SFE-P2b repair round 2) -- a container-nested
+// duplicate of a real marker line must never steal, or share, the real
+// block's chip. `match.ts`'s header documents why the correct outcome is
+// ZERO chips (fail closed for the whole ambiguous key), not one chip
+// correctly attributed to the real occurrence: the alternative (a
+// document-order matching cursor) was tried and discarded after live
+// verification showed it regresses the "two-state" reactivation proof
+// above -- see that header's "WHY THIS STAYS A BUILD-TIME KEY EXCLUSION"
+// section for the full evidence trail.
+// ---------------------------------------------------------------------------
+
+describe("ambiguous collision refusals: a duplicate occurrence never paints a chip on either location", () => {
+  test("a blockquoted duplicate glued directly under the real marker line, with NO blank separator, renders zero chips", async () => {
+    // Round 1's blank-run chunk scan missed this shape: the real line and
+    // the quoted line shared one blank-run chunk, so the chunk's own key
+    // (the two lines joined) never equaled either line's key alone.
+    await mount("@page splash\n> @page splash\n\nTail.\n");
+    await requireCounts(3, 0);
+  });
+
+  test("a duplicate marker line inside a LIST ITEM renders zero chips", async () => {
+    // Round 1 only stripped blockquote '>' markers, never list bullets --
+    // this shape sailed straight through undetected.
+    await mount("@page splash\n\n- item\n- @page splash\n\nTail.\n");
+    await requireCounts(3, 0);
+  });
+
+  test("a CRLF document with a blockquoted duplicate renders zero chips", async () => {
+    // Round 1's blank-run regex only matched bare LF; \r\n\r\n never
+    // matched it, so a CRLF document became one inert chunk and the
+    // ambiguity check never ran.
+    await mount("@page splash\r\n\r\n> @page splash\r\n\r\nTail.\r\n");
+    await requireCounts(3, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Generated view -- in-chip preview, read-only, no focus, exact HTML
 // ---------------------------------------------------------------------------
 

@@ -58,53 +58,107 @@
  * range-anchored content verification of an ALREADY-KNOWN range, not
  * open-ended text inference — the distinction G-05 draws.
  *
- * AMBIGUOUS COLLISION (SFE-P2b repair round 1 — this section replaces a
- * prior "harmless collision" claim that was false and is preserved here as
- * a record of why): two projected blocks CAN share an identical
- * `.trimEnd()` key while producing DIFFERENT chip content. Concretely,
- * `markers.js`'s `openPage` derives `class`/`data-chapter-label` from the
- * ENCLOSING `@chapter` frame, not from the `@page` line's own text — so two
- * `@page splash` lines under two different chapters trim-equal each other
- * but carry different `viewAttributes` and anchor different
- * `GeneratedView`s (proven live: mounting
- * `"@chapter A\n\n@page splash\n\nBody one.\n\n@chapter B\n\n@page
- * splash\n\nBody two.\n"` through the real production
- * `mountGutterpressEditor` painted chapter B's `data-chapter-label` and
- * generated chapter-opener onto BOTH `@page splash` chips; chapter A's own
- * opener was never rendered anywhere). A second, distinct collision source:
- * `editor-projection.ts` can REFUSE to project a construct whose resolved
- * range does not reproduce a "@" marker line (e.g. a marker line nested
- * inside a blockquote — `markerLineLooksAuthored` fails because the line
- * starts with `>`, not `@`) — that refused occurrence has NO entry in
- * `projection.blocks`, but the fork still calls `renderCustomBlock` for it
- * with a `sourceText` that, after `.trimEnd()`, is identical to the
- * legitimate block's own key (proven live: `"@page splash\n\n> @page
- * splash\n\nTail.\n"` mounts a full structured chip, complete with
- * per-character segments and badges, on the BLOCKQUOTED occurrence the
- * projection deliberately declined).
- *
- * Both are the SAME underlying failure: a bare text key cannot tell two
- * physically DIFFERENT source occurrences apart, and last-write-wins (or
- * any other single-winner rule) paints one occurrence's chip onto the
- * other's call. G-05 requires failing closed here, not guessing — so
- * `buildBlockIndex` below treats any key reachable from more than one
- * physical location in `source` as AMBIGUOUS and excludes it from
- * `bySourceText` entirely (no chip renders for ANY occurrence of that key;
- * the block falls through to the fork's own default rendering, exactly
- * like an unmatched call). Two independent sources feed that exclusion:
+ * AMBIGUOUS COLLISION (SFE-P2b repair round 2 — this section replaces the
+ * round-1 text, which closed only the one reported fixture and left every
+ * other container syntax, and CRLF documents, still failing open; see git
+ * history for the round-1 wording this supersedes): two DIFFERENT physical
+ * locations in `source` can hand the fork the SAME `.trimEnd()`-normalized
+ * text for two DIFFERENT calls. G-05 requires failing closed whenever a key
+ * cannot be safely attributed to exactly one location — so `buildBlockIndex`
+ * below excludes any such key from `bySourceText` entirely (no chip renders
+ * for ANY occurrence of that key; every call for it falls through to
+ * `undefined`, same as an ordinary unmatched call). Two independent sources
+ * feed that exclusion:
  *
  *   1. Two-or-more `ProjectedBlock`s in `projection.blocks` sharing a key
- *      (the `@chapter A`/`@chapter B` case above).
- *   2. A key that is also reachable from a chunk of `source` OTHER than the
- *      owning block's own range, once each line's leading blockquote
- *      marker(s) are stripped (the nested-`@page splash` case above) — see
- *      {@link scanDequotedChunks}.
+ *      (e.g. two chapters that both open `@page splash` — `markers.js`'s
+ *      `openPage` derives `class`/`data-chapter-label` from the ENCLOSING
+ *      `@chapter` frame, not from the `@page` line's own text, so the two
+ *      blocks' `viewAttributes`/generated previews differ even though their
+ *      trimmed source is byte-identical; painting either one's chip on the
+ *      other's call would be wrong content, which G-05 treats as worse than
+ *      no chip at all).
+ *   2. A key that is ALSO reachable, once each line's leading container
+ *      marker(s) are stripped, from some OTHER physical location in
+ *      `source` that is not the owning block's own range — e.g. the same
+ *      marker line repeated inside a blockquote or a list item, which
+ *      `editor-projection.ts` deliberately refused to project (its own
+ *      `markerLineLooksAuthored` check requires the line to start with
+ *      `@`, not `>`/`-`/an ordinal). That refused occurrence has NO entry
+ *      in `projection.blocks`, but the fork still calls `renderCustomBlock`
+ *      for it with a `sourceText` that, after `.trimEnd()`, is identical to
+ *      the legitimate block's own key — see {@link hasOtherPhysicalOccurrence}.
  *
- * Neither degrades correctness elsewhere: caret placement inside an ACTIVE
- * block and the accepted source edit itself are handled entirely by the
- * fork's own `absoluteStart`-based machinery, never by this module (see
- * `provider.ts`'s header) — dropping an ambiguous key only ever removes an
- * INACTIVE chip, never a writable range.
+ * WHY SOURCE 2's DETECTION IS A WHOLE-DOCUMENT LINE INDEX, NOT A BLANK-LINE
+ * CHUNK SCAN (round-1's approach, replaced here): round 1 split `source` on
+ * blank-line runs, stripped only a `>` prefix per line, and compared each
+ * WHOLE CHUNK's key against a block's key. Three ways that missed real
+ * refused occurrences, each verified live against the production
+ * `mountGutterpressEditor` (a temporary instrumented btest driving it in
+ * real Chromium — written, run, deleted; this file's own change is what
+ * remains):
+ *
+ *   - A refused occurrence with NO blank line separating it from the real
+ *     block (`"@page splash\n> @page splash\n\nTail.\n"`) shares round-1's
+ *     blank-line CHUNK with the real block, so the chunk's key becomes the
+ *     two lines joined ("@page splash\n@page splash") — never equal to
+ *     either line's OWN key alone, so the whole-chunk comparison silently
+ *     passed it through.
+ *   - A refused occurrence under a LIST item (`"- @page splash"`) was never
+ *     stripped at all — round 1 only stripped `>` markers, not list bullets
+ *     or ordinals.
+ *   - A CRLF document's blank-run regex only matched a bare `\n\n`, never
+ *     `\r\n\r\n`, so the entire source became ONE chunk and the check was
+ *     inert.
+ *
+ * The fix below drops "chunk by blank lines, compare whole chunks" for
+ * "index EVERY physical line in the document by its container-stripped
+ * text, independent of blank-line boundaries" ({@link computeSourceLines},
+ * {@link stripContainerPrefixes}, both CRLF-aware via a terminator regex
+ * that matches `\r\n`, `\r`, or `\n`) — a block's key is checked against
+ * every OTHER line (or, for a multi-line key such as a raw-html block,
+ * every other WINDOW of consecutive lines) in the whole document, so it no
+ * longer matters whether a blank line happens to separate the refused
+ * occurrence from anything else, and it generalizes to any container
+ * marker (blockquote, bullet list, ordered list, or nested combinations —
+ * {@link CONTAINER_PREFIX_RE} strips one layer at a time) rather than only
+ * blockquote.
+ *
+ * WHY THIS STAYS A BUILD-TIME KEY EXCLUSION AND NOT A PER-CALL SEQUENCE
+ * CURSOR: the round-2 finding this section responds to suggested tracking a
+ * document-order cursor over `projection.blocks` instead, matching each
+ * live call against "the cursor's own next block" and advancing only on an
+ * exact hit — which would indeed make a nested/refused occurrence
+ * unmatchable without needing to detect it at all. That was tried and
+ * discarded after live verification (the same instrumented-btest method
+ * referenced above) showed it regresses existing, approved behavior:
+ * `renderCustomBlock` is called again, for a single already-matched block,
+ * OUT OF the original document order, whenever a user activates then
+ * deactivates that one block with no source edit in between (confirmed by
+ * logging every call across a real mount → activate → deactivate cycle —
+ * the deactivate step produced a fresh call carrying the SAME sourceText as
+ * the block's very first call, after three unrelated blocks' calls had
+ * already been logged in between). The projection stays fresh across that
+ * whole cycle (G-11 staleness is keyed to the document's edit VERSION, and
+ * merely activating/deactivating a block is not an edit), so this is not a
+ * rare corner case — it is exactly what `gutterpress.btest.ts`'s "two-state:
+ * activation, deactivation restores the chip with zero drift" suite already
+ * exercises and asserts on. A one-shot consuming cursor cannot re-match
+ * that later, out-of-sequence call: the cursor would already have advanced
+ * past that block's position, silently un-painting the chip for every block
+ * a user has ever activated once. The STATELESS map lookup this file keeps
+ * (`bySourceText`) has no such failure mode — a real, unambiguous key
+ * always resolves to its one owning block, however many times and in
+ * whatever order it is asked, because attribution is decided once, at
+ * `buildBlockIndex` time, from the document's text alone, never from call
+ * order. Generalizing WHAT counts as ambiguous (source 2 above) closes the
+ * reported gap without touching that call-order-independent guarantee.
+ *
+ * Neither exclusion degrades correctness elsewhere: caret placement inside
+ * an ACTIVE block and the accepted source edit itself are handled entirely
+ * by the fork's own `absoluteStart`-based machinery, never by this module
+ * (see `provider.ts`'s header) — dropping an ambiguous key only ever
+ * removes an INACTIVE chip, never a writable range.
  */
 import type { GeneratedView, GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 
@@ -129,53 +183,122 @@ function blockKey(source: string, block: ProjectedBlock): string {
   return source.slice(block.from, block.to).trimEnd();
 }
 
-/** One or more leading blockquote markers (`>`, optionally nested, each with an optional following space/tab) at the start of a line. */
-const BLOCKQUOTE_PREFIX_RE = /^[ \t]*(?:>[ \t]?)+/;
-
-/** True when `[aFrom, aTo)` and `[bFrom, bTo)` share at least one character position — used to tell "this chunk IS the block's own occurrence" apart from "this chunk is a DIFFERENT physical occurrence with the same de-quoted text" despite the two ranges not being byte-identical (see the header's boundary-convention note on trailing glue). */
+/** True when `[aFrom, aTo)` and `[bFrom, bTo)` share at least one character position — used to tell "this line/window IS the block's own occurrence" apart from "this is a DIFFERENT physical occurrence with the same container-stripped text" despite the two ranges not being byte-identical (see the header's boundary-convention note on trailing glue). */
 function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
   return aFrom < bTo && bFrom < aTo;
 }
 
 /**
- * Splits `source` into maximal runs of non-blank lines (chunks separated by
- * one or more blank lines — the same grouping a blank-line-delimited marker
- * line sits in), and for each chunk strips every line's leading blockquote
- * marker(s) before joining and `.trimEnd()`-ing it. This is the exact
- * transform a blockquote-nested marker line's `sourceText` has already
- * undergone by the time it reaches `renderCustomBlock` (see this module's
- * header, "AMBIGUOUS COLLISION" — verified live against the real fork).
- *
- * Used only to DETECT collisions (never to attribute a match): a chunk here
- * that de-quotes to a real block's key, but does not overlap that block's
- * own `[from, to)`, proves the SAME text is reachable from a second,
- * non-projected physical location — the key is unsafe to match on at all.
+ * One layer of leading container marker at the start of a line: a
+ * blockquote marker (`>`, optionally followed by one space/tab) or a
+ * list-item marker (an unordered bullet `-`/`*`/`+`, or an ordinal `N.`/
+ * `N)`, each requiring at least one following space/tab, matching
+ * CommonMark's own list-marker grammar closely enough for this detection
+ * purpose). {@link stripContainerPrefixes} applies this repeatedly so
+ * nested containers (`> - text`, `> > text`, a list item inside a
+ * blockquote, ...) fully unwrap to their authored-looking content.
  */
-function scanDequotedChunks(source: string): Array<{ readonly from: number; readonly to: number; readonly key: string }> {
-  const BLANK_RUN_RE = /\n[ \t]*(?:\n[ \t]*)+/g;
-  const chunks: Array<{ from: number; to: number; key: string }> = [];
+const CONTAINER_PREFIX_RE = /^[ \t]*(?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/;
 
-  const pushChunk = (from: number, to: number): void => {
-    if (to <= from) return;
-    const key = source
-      .slice(from, to)
-      .split(/\r\n?|\n/)
-      .map((line) => line.replace(BLOCKQUOTE_PREFIX_RE, ""))
-      .join("\n")
-      .trimEnd();
-    if (key.length > 0) chunks.push({ from, to, key });
-  };
-
-  let chunkStart = 0;
-  let m: RegExpExecArray | null;
-  BLANK_RUN_RE.lastIndex = 0;
-  while ((m = BLANK_RUN_RE.exec(source))) {
-    pushChunk(chunkStart, m.index);
-    chunkStart = m.index + m[0].length;
+/** Strips every leading container-marker layer from one line's raw text (no line terminator included). A line with no such marker is returned unchanged. */
+function stripContainerPrefixes(line: string): string {
+  let text = line;
+  for (;;) {
+    const next = text.replace(CONTAINER_PREFIX_RE, "");
+    if (next === text) return text;
+    text = next;
   }
-  pushChunk(chunkStart, source.length);
+}
 
-  return chunks;
+/** One physical line of `source`: its exact char range (`to` excludes the line terminator, if any) and its container-stripped text. */
+interface SourceLine {
+  readonly from: number;
+  readonly to: number;
+  readonly text: string;
+}
+
+/** Matches a line terminator of any style — `\r\n`, bare `\r`, or bare `\n` — so line splitting is CRLF-safe (round-1's blank-run regex was not; see the header). */
+const LINE_TERMINATOR_RE = /\r\n|\r|\n/g;
+
+/** Splits `source` into every physical line (always at least one, even for an empty string), independent of blank-line boundaries. */
+function computeSourceLines(source: string): SourceLine[] {
+  const lines: SourceLine[] = [];
+  LINE_TERMINATOR_RE.lastIndex = 0;
+  let lineStart = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LINE_TERMINATOR_RE.exec(source))) {
+    const raw = source.slice(lineStart, m.index);
+    lines.push({ from: lineStart, to: m.index, text: stripContainerPrefixes(raw) });
+    lineStart = m.index + m[0].length;
+  }
+  lines.push({ from: lineStart, to: source.length, text: stripContainerPrefixes(source.slice(lineStart)) });
+  return lines;
+}
+
+/** Groups line INDICES (into the parallel `lines` array) by their container-stripped text, for O(1) average lookup of "which lines, anywhere in the document, read as exactly this text once any container markers are stripped". Blank-text lines are excluded — never a meaningful match target. */
+function buildSingleLineIndex(lines: readonly SourceLine[]): Map<string, number[]> {
+  const index = new Map<string, number[]>();
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i]!.text;
+    if (text.length === 0) continue;
+    const existing = index.get(text);
+    if (existing) existing.push(i);
+    else index.set(text, [i]);
+  }
+  return index;
+}
+
+/**
+ * True when `key` (a `ProjectedBlock`'s own `.trimEnd()`d exact text, owned
+ * by the range `[ownerFrom, ownerTo)`) is ALSO reachable, once container
+ * markers are stripped, from some line or run of lines elsewhere in the
+ * document — i.e. a second physical occurrence editor-projection.ts either
+ * refused to project (a marker line nested in a blockquote/list) or that is
+ * simply unrelated authored content that happens to read the same once
+ * de-quoted/de-bulleted. Either way the key cannot be safely attributed to
+ * `key`'s own block alone (see the header's "AMBIGUOUS COLLISION").
+ *
+ * Single-line keys (the common case — every marker-family block per
+ * `markers.js`'s own one-line-per-marker convention) resolve via one O(1)
+ * average map lookup. A multi-line key (a raw-html block spanning several
+ * source lines) falls back to a window scan anchored at candidate lines
+ * matching the key's OWN first line — bounded by how many lines happen to
+ * read the same as that first line, not by the document's total length.
+ */
+function hasOtherPhysicalOccurrence(
+  key: string,
+  ownerFrom: number,
+  ownerTo: number,
+  lines: readonly SourceLine[],
+  singleLineIndex: ReadonlyMap<string, readonly number[]>,
+): boolean {
+  const keyLines = key.split(/\r\n?|\n/);
+  const firstLineCandidates = singleLineIndex.get(keyLines[0]!);
+  if (!firstLineCandidates) return false;
+
+  if (keyLines.length === 1) {
+    for (const i of firstLineCandidates) {
+      const line = lines[i]!;
+      if (!rangesOverlap(line.from, line.to, ownerFrom, ownerTo)) return true;
+    }
+    return false;
+  }
+
+  for (const i of firstLineCandidates) {
+    if (i + keyLines.length > lines.length) continue;
+    let windowMatches = true;
+    for (let j = 1; j < keyLines.length; j++) {
+      if (lines[i + j]!.text !== keyLines[j]) {
+        windowMatches = false;
+        break;
+      }
+    }
+    if (!windowMatches) continue;
+    const windowFrom = lines[i]!.from;
+    const windowTo = lines[i + keyLines.length - 1]!.to;
+    if (!rangesOverlap(windowFrom, windowTo, ownerFrom, ownerTo)) return true;
+  }
+  return false;
 }
 
 /**
@@ -186,10 +309,11 @@ function scanDequotedChunks(source: string): Array<{ readonly from: number; read
  *
  * G-05 fail-closed: a key reachable from more than one physical location in
  * `source` (whether two real `ProjectedBlock`s, or one real block plus a
- * refused/non-projected occurrence elsewhere — see the header's "AMBIGUOUS
- * COLLISION") is excluded from `bySourceText` entirely. No chip renders for
- * any occurrence of an ambiguous key; every call for it falls through to
- * `undefined`, same as an ordinary unmatched call.
+ * refused/non-projected occurrence — or simply unrelated authored text —
+ * elsewhere, see the header's "AMBIGUOUS COLLISION") is excluded from
+ * `bySourceText` entirely. No chip renders for any occurrence of an
+ * ambiguous key; every call for it falls through to `undefined`, same as an
+ * ordinary unmatched call.
  */
 export function buildBlockIndex(projection: GutterpressProjection, source: string): BlockIndex {
   const bySourceText = new Map<string, ProjectedBlock>();
@@ -215,19 +339,20 @@ export function buildBlockIndex(projection: GutterpressProjection, source: strin
     bySourceText.set(key, block);
   }
 
-  // Second collision source: a key that ALSO turns up, once blockquote
-  // prefixes are stripped, in some OTHER chunk of `source` that is not this
-  // block's own occurrence — e.g. the same marker line repeated inside a
-  // blockquote, which `editor-projection.ts` deliberately refused to
-  // project (see header). That refused occurrence has no `ProjectedBlock`
-  // of its own, so the loop above never sees it; this pass is what catches
-  // it.
-  for (const chunk of scanDequotedChunks(source)) {
-    const owner = bySourceText.get(chunk.key);
-    if (!owner) continue; // not a live key (never projected, or already ambiguous) — nothing to protect
-    if (rangesOverlap(chunk.from, chunk.to, owner.from, owner.to)) continue; // this chunk IS the block's own occurrence
-    ambiguousKeys.add(chunk.key);
-    bySourceText.delete(chunk.key);
+  // Second collision source: a key that ALSO turns up, once container
+  // markers are stripped, in some OTHER line or line-run of `source` that
+  // is not this block's own occurrence (see header). Only the keys that
+  // survived the loop above are worth checking — an already-ambiguous or
+  // never-live key has nothing left to protect.
+  if (bySourceText.size > 0) {
+    const lines = computeSourceLines(source);
+    const singleLineIndex = buildSingleLineIndex(lines);
+    for (const [key, block] of bySourceText) {
+      if (hasOtherPhysicalOccurrence(key, block.from, block.to, lines, singleLineIndex)) {
+        ambiguousKeys.add(key);
+        bySourceText.delete(key);
+      }
+    }
   }
 
   const generatedByAnchor = new Map<number, GeneratedView[]>();
@@ -244,6 +369,12 @@ export function buildBlockIndex(projection: GutterpressProjection, source: strin
  * The live per-call query: does `sourceText` (as handed to the fork's
  * `renderCustomBlock` for one node) correspond to a block `index` knows
  * about? Returns `undefined` — never a guess — when it does not.
+ *
+ * Stateless and idempotent by design (see the header's "WHY THIS STAYS A
+ * BUILD-TIME KEY EXCLUSION" note): the same `sourceText` always resolves
+ * the same way, however many times and in whatever order the fork asks,
+ * because attribution was decided once, at `buildBlockIndex` time, from the
+ * document's text alone.
  */
 export function matchProjectedBlock(index: BlockIndex, sourceText: string): BlockMatch | undefined {
   const key = sourceText.trimEnd();

@@ -181,6 +181,72 @@ describe("matchProjectedBlock — exact-range match, not fuzzy", () => {
     // there is no way to tell the two calls apart from text alone.
     expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
   });
+
+  test("SFE-P2b repair round 2: a blockquoted duplicate with NO blank line separating it from the real marker also makes the key unmatchable -- round 1's blank-run chunk scan missed this because the real line and the quoted line shared one chunk", () => {
+    // Same shape as the previous test, but with the quoted repeat glued
+    // directly under the real marker line (no blank separator). Round 1's
+    // `scanDequotedChunks` grouped both lines into ONE chunk (blank runs are
+    // the only chunk boundary it recognized), so the chunk's own key became
+    // the two lines joined -- never equal to either line's own key alone --
+    // and the collision went undetected. Verified live against the real
+    // fork (SFE-P2b repair round 2 finding): this shape painted a full
+    // structured chip on the blockquoted occurrence the projection
+    // declined to project.
+    const source = "@page splash\n> @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 2: a duplicate marker line inside a LIST ITEM also makes the key unmatchable -- round 1 only stripped blockquote '>' markers, never list bullets", () => {
+    // The real block ("@page splash" at the top level) is legitimately
+    // projected; the second list item's text reads the same once the "- "
+    // bullet is stripped. Round 1's BLOCKQUOTE_PREFIX_RE never recognized
+    // list markers at all, so this shape sailed straight through undetected
+    // -- verified live (SFE-P2b repair round 2 finding): a full structured
+    // chip painted on the list item.
+    const source = "@page splash\n\n- item\n- @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 2: a CRLF document with a blockquoted duplicate also makes the key unmatchable -- round 1's blank-run regex only matched bare LF, so a CRLF document became one inert chunk", () => {
+    // Same shape as the very first blockquote test in this suite, but every
+    // line terminator is \r\n. Round 1's `BLANK_RUN_RE` required a bare
+    // `\n\n` with nothing but [ \t] in between; `\r\n\r\n` never matched it,
+    // so the whole CRLF source became a single chunk and the second-pass
+    // check never ran at all.
+    const source = "@page splash\r\n\r\n> @page splash\r\n\r\nTail.\r\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\r\n");
+
+    const index = buildBlockIndex(projection, source);
+    // `.trimEnd()` strips \r along with \n, so the fork's own CRLF
+    // sourceText and a plain-LF probe string normalize to the same key.
+    expect(matchProjectedBlock(index, "@page splash\r\n")).toBeUndefined();
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
 });
 
 describe("projectionNeedsRefresh (G-11)", () => {
