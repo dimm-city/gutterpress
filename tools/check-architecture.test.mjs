@@ -87,6 +87,32 @@ withFixture((root) => {
   check("clean fixture exits 0", run(root).status, 0);
 });
 
+// AP-21/AP-20: a PASS must come with printed scanned-target counts, and the
+// clean fixture's counts must be nonzero — proving the printed numbers are
+// real target counts, not a hardcoded placeholder that would print the same
+// text regardless of what was actually scanned.
+withFixture((root) => {
+  scaffoldClean(root);
+  const r = run(root);
+  const rule1 = r.stdout.match(
+    /RULE 1 \[prosemirror-ban\]: PASS — scanned (\d+) package\.json file\(s\) \(bun\.lock: (found|absent)\), (\d+) code file\(s\)/,
+  );
+  check("rule 1 prints a scanned package.json count", Boolean(rule1), true);
+  check("rule 1's package.json count is nonzero on the clean fixture", rule1 && Number(rule1[1]) > 0, true);
+  check("rule 1's code file count is nonzero on the clean fixture", rule1 && Number(rule1[3]) > 0, true);
+
+  const rule3 = r.stdout.match(
+    /RULE 3 \[d4-import-direction\]: PASS — scanned (\d+) packages\/cli\/src file\(s\), (\d+) packages\/desktop\/\{src,electron\} file\(s\)/,
+  );
+  check("rule 3 prints scanned cli/desktop file counts", Boolean(rule3), true);
+  check("rule 3's packages/cli/src count is nonzero on the clean fixture", rule3 && Number(rule3[1]) > 0, true);
+  check(
+    "rule 3's packages/desktop/{src,electron} count is nonzero on the clean fixture",
+    rule3 && Number(rule3[2]) > 0,
+    true,
+  );
+});
+
 withFixture((root) => {
   scaffoldClean(root);
   writeFileSync(
@@ -197,6 +223,58 @@ withFixture((root) => {
     'import { readFile } from "node:fs/promises";\nimport { local } from "./lib/desktop";\nexport const hi = () => { readFile; local; };\n',
   );
   check("relative import to a same-package file named like a sibling package still exits 0", run(root).status, 0);
+});
+
+// AP-21 liveness FAIL (not merely WARN): if a required D4 scan target has
+// zero scannable files, the rule was never actually exercised, so a clean
+// exit would be indistinguishable from a real pass — this is exactly the
+// shape a future P1a/P6 package move could produce by accident.
+withFixture((root) => {
+  // packages/cli is entirely absent — only packages/desktop exists.
+  mkdirSync(join(root, "tools"), { recursive: true });
+  mkdirSync(join(root, "packages", "desktop", "src", "routes", "api", "status"), { recursive: true });
+  mkdirSync(join(root, "packages", "desktop", "electron"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "desktop", "package.json"),
+    JSON.stringify({ name: "@dimm-city/gutterpress-desktop", dependencies: { svelte: "^5.0.0" } }, null, 2),
+  );
+  writeFileSync(
+    join(root, "packages", "desktop", "src", "routes", "api", "status", "+server.ts"),
+    'export function GET() { return new Response("ok"); }\n',
+  );
+  writeFileSync(
+    join(root, "packages", "desktop", "electron", "main.ts"),
+    'import { app } from "electron";\nexport const start = () => { app; };\n',
+  );
+  writeFileSync(
+    join(root, "tools", "architecture-baseline.json"),
+    JSON.stringify({ desktopHttpRoutes: 1 }, null, 2),
+  );
+  const r = run(root);
+  check("packages/cli entirely absent fails the gate (D4 liveness, AP-21), not a silent pass", r.status, 1);
+  check("liveness failure names packages/cli/src", r.stderr.includes("packages/cli/src"), true);
+  check("rule 3 summary reports the liveness FAIL, not PASS", r.stdout.includes("RULE 3 [d4-import-direction]: FAIL (liveness)"), true);
+});
+
+withFixture((root) => {
+  // packages/cli exists normally; packages/desktop exists but has zero
+  // scannable src/electron files (no routes, no code) — the other half of
+  // the D4 boundary going empty.
+  mkdirSync(join(root, "tools"), { recursive: true });
+  mkdirSync(join(root, "packages", "cli", "src"), { recursive: true });
+  mkdirSync(join(root, "packages", "desktop"), { recursive: true });
+  writeFileSync(join(root, "packages", "cli", "src", "index.ts"), "export const x = 1;\n");
+  writeFileSync(
+    join(root, "packages", "desktop", "package.json"),
+    JSON.stringify({ name: "@dimm-city/gutterpress-desktop" }, null, 2),
+  );
+  writeFileSync(
+    join(root, "tools", "architecture-baseline.json"),
+    JSON.stringify({ desktopHttpRoutes: 0 }, null, 2),
+  );
+  const r = run(root);
+  check("packages/desktop with zero src/electron files fails the gate (D4 liveness, AP-21)", r.status, 1);
+  check("liveness failure names packages/desktop/{src,electron}", r.stderr.includes("packages/desktop/{src,electron}"), true);
 });
 
 // --- Rule 4: future-package rules --------------------------------------------

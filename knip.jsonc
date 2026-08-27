@@ -26,7 +26,6 @@
       "entry": [
         "src/cli.ts",
         "src/index.ts",
-        "src/api/index.ts",
         "src/render.ts",
         // Browser-side engine bundles: the sole `Bun.build` entrypoints
         // invoked by scripts/build-engine-bundles.mjs (see that script's
@@ -42,9 +41,6 @@
         "scripts/*.mjs",
         "src/**/*.test.ts",
         "tests/**/*.test.ts",
-        // Run by CI via `playwright test -c tests/compat/playwright.config.ts`
-        // (.github/workflows/preview-smoke.yml).
-        "tests/compat/*.pw.ts",
         // Check modules are self-registering roots (registerCheck side effect,
         // loaded via checks/register-builtins). Their `export default check` is
         // the per-module test seam (see checks/pdf/structured-check-result.test.ts
@@ -55,12 +51,10 @@
     },
     "packages/desktop": {
       "entry": [
-        "src/routes/**/+*.{ts,svelte}",
         // PWA-only; no in-repo importer by design (CLAUDE.md §8). P5a deletes
         // this entry along with WebAdapter/web-fs/web-store (plan D10;
         // platform-inventory.md §13/§14).
         "src/service-worker.{ts,js}",
-        "tools/*.mjs",
         "tests/**/*.{ts,js,mjs}",
         // Compile-time type assertion gates: never imported, but type-checked by
         // `svelte-check` (they live under src/, inside its tsconfig scope).

@@ -202,8 +202,10 @@ function checkProsemirrorBan(root) {
   const DEP_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
   const pkgFiles = [join(root, "package.json"), ...listWorkspacePackageDirs(root).map((d) => join(d, "package.json"))];
+  let pkgFilesRead = 0;
   for (const pkgFile of pkgFiles) {
     if (!existsSync(pkgFile)) continue;
+    pkgFilesRead++;
     let json;
     try {
       json = JSON.parse(readFileSync(pkgFile, "utf8"));
@@ -223,7 +225,8 @@ function checkProsemirrorBan(root) {
   }
 
   const lockFile = join(root, "bun.lock");
-  if (existsSync(lockFile)) {
+  const bunLockFound = existsSync(lockFile);
+  if (bunLockFound) {
     const text = readFileSync(lockFile, "utf8");
     // bun.lock package entries look like `  "name": ["name@version", ...],`.
     // Matching the quoted key directly followed by `: [` targets resolved
@@ -235,9 +238,12 @@ function checkProsemirrorBan(root) {
     }
   }
 
+  let codeFilesScanned = 0;
   for (const pkgDir of listWorkspacePackageDirs(root)) {
     for (const sub of ["src", "electron"]) {
-      for (const file of listCodeFiles(join(pkgDir, sub))) {
+      const files = listCodeFiles(join(pkgDir, sub));
+      codeFilesScanned += files.length;
+      for (const file of files) {
         for (const { specifier, line } of extractSpecifiers(file)) {
           if (PM_FAMILY_RE.test(specifier)) {
             violations.push({ kind: "import", file, line, detail: `specifier "${specifier}"` });
@@ -247,7 +253,7 @@ function checkProsemirrorBan(root) {
     }
   }
 
-  return violations;
+  return { violations, pkgFilesRead, bunLockFound, codeFilesScanned };
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +293,8 @@ function checkImportDirection(root) {
   const cliSrcDir = join(root, "packages", "cli", "src");
   const desktopPkgDir = join(root, "packages", "desktop");
 
-  for (const file of listCodeFiles(cliSrcDir)) {
+  const cliFiles = listCodeFiles(cliSrcDir);
+  for (const file of cliFiles) {
     for (const { specifier, line } of extractSpecifiers(file)) {
       if (isBareOrSubpath(specifier, "@dimm-city/gutterpress-desktop")) {
         violations.push({
@@ -310,8 +317,11 @@ function checkImportDirection(root) {
     }
   }
 
+  let desktopFilesScanned = 0;
   for (const sub of ["src", "electron"]) {
-    for (const file of listCodeFiles(join(desktopPkgDir, sub))) {
+    const files = listCodeFiles(join(desktopPkgDir, sub));
+    desktopFilesScanned += files.length;
+    for (const file of files) {
       for (const { specifier, line } of extractSpecifiers(file)) {
         if (!specifier.startsWith(".")) continue;
         const resolved = resolveRelativeSpecifier(specifier, file);
@@ -326,7 +336,7 @@ function checkImportDirection(root) {
     }
   }
 
-  return violations;
+  return { violations, cliFilesScanned: cliFiles.length, desktopFilesScanned };
 }
 
 // ---------------------------------------------------------------------------
@@ -412,8 +422,11 @@ function main() {
 
   // Rule 1
   const r1 = checkProsemirrorBan(root);
-  summary.push(r1.length > 0 ? "RULE 1 [prosemirror-ban]: FAIL" : "RULE 1 [prosemirror-ban]: PASS");
-  if (r1.length > 0) hasFail = true;
+  const r1HasViolations = r1.violations.length > 0;
+  summary.push(
+    `RULE 1 [prosemirror-ban]: ${r1HasViolations ? "FAIL" : "PASS"} — scanned ${r1.pkgFilesRead} package.json file(s) (bun.lock: ${r1.bunLockFound ? "found" : "absent"}), ${r1.codeFilesScanned} code file(s)`,
+  );
+  if (r1HasViolations) hasFail = true;
 
   // Rule 2
   const r2 = checkRouteRatchet(root);
@@ -430,8 +443,18 @@ function main() {
 
   // Rule 3
   const r3 = checkImportDirection(root);
-  summary.push(r3.length > 0 ? "RULE 3 [d4-import-direction]: FAIL" : "RULE 3 [d4-import-direction]: PASS");
-  if (r3.length > 0) hasFail = true;
+  const r3HasViolations = r3.violations.length > 0;
+  // AP-21: a scan of zero files on either side of the D4 boundary is not a
+  // clean pass — it means the rule was never actually exercised (exactly
+  // what a future P1a/P6 package move could do to packages/cli/src or
+  // packages/desktop/src without CI noticing). Report it as a real FAIL,
+  // not a silent PASS, distinct from an ordinary violation FAIL.
+  const r3Liveness = r3.cliFilesScanned === 0 || r3.desktopFilesScanned === 0;
+  const r3Status = r3HasViolations ? "FAIL" : r3Liveness ? "FAIL (liveness)" : "PASS";
+  summary.push(
+    `RULE 3 [d4-import-direction]: ${r3Status} — scanned ${r3.cliFilesScanned} packages/cli/src file(s), ${r3.desktopFilesScanned} packages/desktop/{src,electron} file(s)`,
+  );
+  if (r3HasViolations || r3Liveness) hasFail = true;
 
   // Rule 4
   const r4 = checkFuturePackages(root);
@@ -443,12 +466,12 @@ function main() {
   console.log("check-architecture: rule summary");
   for (const line of summary) console.log(`  ${line}`);
 
-  if (r1.length > 0) {
+  if (r1HasViolations) {
     console.error(
       "\ncheck-architecture: FAIL — ProseMirror-family dependency or import found. " +
         "Plan and lane rules forbid prosemirror/tiptap/milkdown (no ProseMirror, Tiptap, or Milkdown runtime).",
     );
-    for (const v of r1) {
+    for (const v of r1.violations) {
       console.error(`  ${v.kind}: ${v.file}${v.line ? `:${v.line}` : ""} — ${v.detail}`);
     }
   }
@@ -472,10 +495,30 @@ function main() {
     );
   }
 
-  if (r3.length > 0) {
+  if (r3HasViolations) {
     console.error("\ncheck-architecture: FAIL — D4 import-direction violation(s) found.");
-    for (const v of r3) {
+    for (const v of r3.violations) {
       console.error(`  ${v.file}:${v.line} — ${v.detail}`);
+    }
+  }
+
+  if (r3Liveness) {
+    console.error(
+      "\ncheck-architecture: FAIL — D4 import-direction liveness check failed (AP-21): an empty/vacuous " +
+        "scan must never read as a silent pass. A required scan target has zero scannable source files, " +
+        "which means the D4 rule was never actually exercised this run.",
+    );
+    if (r3.cliFilesScanned === 0) {
+      console.error(
+        "  packages/cli/src has zero scannable source files (missing or empty) — the cli-imports-desktop " +
+          "half of D4 cannot be enforced against an empty target.",
+      );
+    }
+    if (r3.desktopFilesScanned === 0) {
+      console.error(
+        "  packages/desktop/{src,electron} has zero scannable source files (missing or empty) — the " +
+          "desktop-imports-cli half of D4 cannot be enforced against an empty target.",
+      );
     }
   }
 

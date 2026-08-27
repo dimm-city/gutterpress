@@ -8,7 +8,9 @@
 //   - PASS on a clean fixture (no generated paths tracked);
 //   - FAIL (exit 1) — the sabotage/deliberate-failure proof (lesson G-12) —
 //     when a generated-looking file is deliberately `git add`ed and
-//     committed into the fixture;
+//     committed into the fixture, for EACH of the 5 patterns
+//     tools/check-generated-files.mjs declares (.svelte-kit/, build/, out/,
+//     .tsbuildinfo, packages/*/dist/);
 //   - the failure output names the offending path;
 //   - no false positive on a fixture that merely has "build"/"out"/"dist"
 //     as a substring, not a full path segment;
@@ -132,6 +134,41 @@ try {
   );
 } finally {
   rmSync(tsbuildDir, { recursive: true, force: true });
+}
+
+// Case 4b (sabotage): a tracked file under a directory literally named
+// `build/` fails — the desktop adapter-node / electron-vite output shape
+// (CLAUDE.md §8) this pattern exists to catch.
+const buildDir = mkdtempSync(join(tmpdir(), "check-generated-build-"));
+try {
+  initFixtureRepo(buildDir);
+  mkdirSync(join(buildDir, "packages", "desktop", "build"), { recursive: true });
+  writeFileSync(join(buildDir, "packages", "desktop", "build", "app.js"), "// built output\n");
+  commitAll(buildDir, "sabotage: track packages/desktop/build output");
+  const r = run(buildDir);
+  check("tracked build/ file exits 1", r.status, 1);
+  check(
+    "failure output names the offending build/ path",
+    r.stderr.includes("packages/desktop/build/app.js"),
+    true,
+  );
+} finally {
+  rmSync(buildDir, { recursive: true, force: true });
+}
+
+// Case 4c (sabotage): a tracked file under a root-level directory literally
+// named `out/` fails — bun build --compile / electron-builder output shape.
+const outDir = mkdtempSync(join(tmpdir(), "check-generated-out-"));
+try {
+  initFixtureRepo(outDir);
+  mkdirSync(join(outDir, "out"), { recursive: true });
+  writeFileSync(join(outDir, "out", "main.js"), "// built output\n");
+  commitAll(outDir, "sabotage: track out/ output");
+  const r = run(outDir);
+  check("tracked out/ file exits 1", r.status, 1);
+  check("failure output names the offending out/ path", r.stderr.includes("out/main.js"), true);
+} finally {
+  rmSync(outDir, { recursive: true, force: true });
 }
 
 // Case 5 (no false positive): "build"/"out"/"dist" as filename SUBSTRINGS
