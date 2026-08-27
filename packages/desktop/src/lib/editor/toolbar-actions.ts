@@ -82,7 +82,7 @@
  *     `"Title\n---\n\nbody"`, H2 pressed on a line `commandState` already
  *     reports as level 2) used to PREPEND a fresh `"## "` ATX prefix onto
  *     the existing text/underline pair, leaving the `"---"` underline
- *     behind untouched (`"## Title\n---\n\nbody"`, caret 4). A setext
+ *     behind untouched (`"## Title\n---\n\nbody"`, caret 3). A setext
  *     heading IS a heading, so the same-level rule correctly flips the
  *     target to `"none"` and `computeSetHeading` collapses the whole
  *     text+underline pair into the bare text line, exactly like an ATX

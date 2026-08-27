@@ -366,7 +366,7 @@ test("applyHeading: a setext heading toggled at its own level collapses the text
   // Intentional divergence: the pre-mapping code only ever stripped/added an
   // ATX "#" prefix and never recognized a setext pair at all, so pressing H2
   // here would have PREPENDED "## " onto "Title" and left the "---"
-  // underline behind untouched ("## Title\n---\n\nbody", caret 4). A setext
+  // underline behind untouched ("## Title\n---\n\nbody", caret 3). A setext
   // heading IS a heading — commandState reports this line as level 2, so
   // the same-level toggle correctly turns it off by collapsing the text and
   // underline lines into the bare text line, same as an ATX same-level
