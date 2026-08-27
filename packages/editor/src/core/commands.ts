@@ -1,103 +1,127 @@
 /**
- * `EditorCommand` — the shared source-edit command vocabulary (SFE-P1c, Lane C).
+ * `EditorCommand` — the shared source-edit command vocabulary.
  *
  * D1/D2/D3: a command is a request to make an explicit, named change to
  * SOURCE — never a request to touch a rendered/derived view. Nothing here
- * describes HOW a command is applied (that stays surface-specific — desktop
- * applies these as CodeMirror 6 transactions today; a future VS Code host
- * would apply them as `WorkspaceEdit`s) — this module only names WHAT a
- * command is, so every surface that edits Gutterpress source agrees on the
- * same vocabulary (pr158-lessons.md §8.7 "Shared authoring commands": "The
- * desktop toolbar, rich web UI, source editor, and VS Code commands consume
- * the same vocabulary. Surface-specific code decides only presentation and
- * command routing."; AP-18 "Build similar authoring logic twice" — one
- * vocabulary, thin per-surface adapters).
+ * describes HOW a command is applied (that stays surface-specific:
+ * `packages/editor/src/web/standard/` implements every member below as a
+ * pure `(snapshot, selection) -> edit` function; desktop's
+ * `toolbar-actions.ts` maps its CodeMirror actions onto that surface where
+ * the semantics line up byte-for-byte, and applies the returned
+ * `SourceEdit` as a CodeMirror 6 transaction) — this module only names WHAT
+ * a command is, so every surface that edits Gutterpress source agrees on
+ * the same vocabulary (pr158-lessons.md §8.7 "Shared authoring commands":
+ * "The desktop toolbar, rich web UI, source editor, and VS Code commands
+ * consume the same vocabulary. Surface-specific code decides only
+ * presentation and command routing."; AP-18 "Build similar authoring logic
+ * twice" — one vocabulary, thin per-surface adapters).
  *
- * This is a TYPE-ONLY relocation (this run's "Allowed behavior changes"):
- * every member below is a mechanical extraction of an existing, already-
- * shipped desktop editor action — see the per-member doc comment for the
- * exact `packages/desktop/src/lib/editor/toolbar-actions.ts` function it
- * names. The union is deliberately NOT exhaustive of `EditorToolbar.svelte`'s
- * `ToolbarAction` type: `"save"`, `"snippet"`, and `"focus-mode"` are toolbar
- * actions with no corresponding `apply*` source-transformation function in
- * toolbar-actions.ts (save persists, snippet inserts host-supplied
- * arbitrary text via a separate flow, focus-mode toggles UI chrome) — they
- * are not source-edit commands and are intentionally excluded (plan
- * abstraction rubric: "the smallest command union covering EXISTING desktop
- * toolbar/source actions — no speculative members").
+ * SFE-P2a supersedes P1c's union with this run's OWN full extent — the run
+ * spec's "Command list" section, verbatim: "the union's full extent this
+ * run — nothing more." P1c's union (`toggle-strikethrough`,
+ * `toggle-bullet-list`/`toggle-ordered-list`, `insert-hr`,
+ * `insert-page-break`, `insert-layout-block`, a `1|2|3|4`-only
+ * `set-heading`, and an attribute-rich `insert-image`) was itself a
+ * mechanical, not-yet-consumed extraction (see its own prior header,
+ * preserved in history) — `EditorCommand` had ZERO production importers
+ * before this run (only the co-located `LayoutBlockKind`/`HeadingLevel`
+ * names were separately re-used), so reshaping it to exactly this run's 12
+ * members changes no caller. `insert-page-break` and `insert-layout-block`
+ * are Gutterpress layout/marker commands — explicitly OUT of scope this run
+ * ("NO layout/marker/plugin commands (P2b+)"); desktop's own
+ * `applyPageBreak`/`applyLayoutBlock` keep working unchanged, just not
+ * routed through this vocabulary yet. `LayoutBlockKind` itself survives
+ * below, unchanged in shape, because desktop's "Insert layout block"
+ * picker (`toolbar-actions.ts`, `EditorToolbar.svelte`) still imports it —
+ * it was never part of `EditorCommand`'s discriminated union, only a
+ * neighboring standalone type.
  *
  * `packages/editor` stays framework-free (D4): nothing here imports
- * `@codemirror/*`, Svelte, or any desktop type. `toolbar-actions.ts`
- * continues to own the actual `EditorView` transactions; this module only
- * gives the request shape a name so it can be reused outside desktop.
+ * `@codemirror/*`, Svelte, or any desktop type.
  */
 
 /**
- * Heading levels the shared vocabulary supports today. Mirrors
- * `applyHeading(view: EditorView, level: 1 | 2 | 3 | 4)` in
- * toolbar-actions.ts EXACTLY — desktop's toolbar has no H5/H6 command, so
- * this type does not invent one (no speculative members).
+ * ATX heading levels `set-heading` supports. Widened from P1c's `1 | 2 | 3
+ * | 4` (desktop's toolbar UI offers only H1-H4) to the run spec's full
+ * `1-6` — the WIDER range is a pure superset, so it changes nothing for
+ * desktop's existing H1-H4 callers.
  */
-export type HeadingLevel = 1 | 2 | 3 | 4;
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 /**
- * Which layout skeleton `insert-layout-block` inserts. Mirrors
- * toolbar-actions.ts's own `LayoutBlockKind` (driving `applyLayoutBlock`)
- * member-for-member, including `"page-break"` — toolbar-actions.ts's
- * `applyLayoutBlock` dispatches that member to the SAME `applyPageBreak`
- * implementation `insert-page-break` below names; the type still lists it
- * because it is a real, existing member of the source `LayoutBlockKind`
- * union, not an invented one.
+ * `set-heading`'s level argument — a specific ATX level, or `"none"` to
+ * strip an existing heading down to a plain paragraph line (run spec:
+ * "level none strips").
+ */
+export type SetHeadingLevel = HeadingLevel | "none";
+
+/** `toggle-list`'s marker family (run spec: "toggle-list
+ *  bullet/ordered/task"). Replaces P1c's two separate
+ *  `toggle-bullet-list`/`toggle-ordered-list` members with ONE parameterized
+ *  member, matching the run spec's own naming exactly. */
+export type ListVariant = "bullet" | "ordered" | "task";
+
+/**
+ * Which layout skeleton `applyLayoutBlock` inserts (desktop
+ * `toolbar-actions.ts`'s "Insert layout block" picker) — UNRELATED to
+ * `EditorCommand` (layout/marker commands are P2b+ scope; see this file's
+ * header), kept here only because it was already declared alongside
+ * `EditorCommand` and desktop imports it from this module today
+ * (`import type { LayoutBlockKind } from "@dimm-city/gutterpress-editor/core"`).
+ * Unchanged from P1c.
  */
 export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break" | "spread";
 
 /**
- * The image attributes an `insert-image` command carries. Mirrors
- * `applyImage`'s parameter shape in toolbar-actions.ts one-for-one (that
- * function takes these as discrete positional parameters today; this
- * object shape is the command-vocabulary equivalent a future caller sends
- * across a process/webview boundary, where discrete positional parameters
- * are not an option).
- */
-export interface ImageCommandValue {
-  readonly src: string;
-  readonly alt: string;
-  readonly width?: string;
-  readonly position?: string;
-  readonly size?: string;
-  readonly shape?: boolean;
-}
-
-/**
- * The shared source-edit command union (D1 vocabulary). Each member's doc
- * comment names the exact toolbar-actions.ts function it replaces/names.
+ * The shared source-edit command union — exactly the run spec's "Command
+ * list" section, nothing more. Each member's doc comment cites that
+ * section and, where one exists, the desktop `toolbar-actions.ts` function
+ * its semantics were checked against.
  */
 export type EditorCommand =
-  /** Replaces: `applyBold` — toggle a `**…**` wrap around the selection. */
+  /** Toggle a `**…**` wrap (or `__…__`, whichever spelling is present) —
+   *  checked against desktop's `applyBold` (marker `"**"` matches; mapped). */
   | { readonly kind: "toggle-bold" }
-  /** Replaces: `applyItalic` — toggle a `_…_` wrap around the selection. */
+  /** Toggle a `*…*` wrap (or `_…_`, whichever spelling is present). Desktop's
+   *  `applyItalic` uses `"_"` as ITS canonical spelling — a genuine
+   *  divergence from this command's spec-mandated canonical `"*"`, so
+   *  desktop's toolbar mapping leaves `applyItalic` UNMAPPED (documented in
+   *  `toolbar-actions.ts`) rather than changing desktop's canonical output. */
   | { readonly kind: "toggle-italic" }
-  /** Replaces: `applyStrikethrough` — toggle a `~~…~~` wrap around the selection. */
-  | { readonly kind: "toggle-strikethrough" }
-  /** Replaces: `applyInlineCode` — toggle a `` `…` `` wrap around the selection. */
+  /** Toggle a `~~…~~` wrap — checked against desktop's `applyStrikethrough`
+   *  (marker matches; mapped). */
+  | { readonly kind: "toggle-strike" }
+  /** Toggle a `` `…` `` wrap — checked against desktop's `applyInlineCode`
+   *  (marker matches; mapped). */
   | { readonly kind: "toggle-inline-code" }
-  /** Replaces: `applyLink` — insert/wrap a `[text](url)` link. */
-  | { readonly kind: "insert-link" }
-  /** Replaces: `applyBlockquote` — toggle a `> ` prefix on the selected lines. */
+  /** Set (or, for `"none"`, strip) the current line's ATX heading level —
+   *  checked against desktop's `applyHeading(view, level)` for levels 1-4
+   *  (mapped; desktop decides "none" vs a level via its own current-level
+   *  detection, then delegates the actual rewrite here). */
+  | { readonly kind: "set-heading"; readonly level: SetHeadingLevel }
+  /** Toggle a `"> "` prefix on every selected line — checked against
+   *  desktop's `applyBlockquote` (mapped). */
   | { readonly kind: "toggle-blockquote" }
-  /** Replaces: `applyUnorderedList` — toggle a `- ` prefix on the selected lines. */
-  | { readonly kind: "toggle-bullet-list" }
-  /** Replaces: `applyOrderedList` — toggle a numbered-list prefix on the selected lines. */
-  | { readonly kind: "toggle-ordered-list" }
-  /** Replaces: `applyHeading(view, level)` — set/toggle an ATX heading on the current line. */
-  | { readonly kind: "set-heading"; readonly level: HeadingLevel }
-  /** Replaces: `applyHr` — insert a `---` horizontal rule after the current line. */
-  | { readonly kind: "insert-hr" }
-  /** Replaces: `applyPageBreak` — insert the `@page-break` marker after the current line. */
-  | { readonly kind: "insert-page-break" }
-  /** Replaces: `applyTable(view, cols)` — insert a `cols`-wide Markdown table skeleton. */
-  | { readonly kind: "insert-table"; readonly columns: number }
-  /** Replaces: `applyImage(view, src, alt, width?, position?, size?, shape?)` — insert an image. */
-  | { readonly kind: "insert-image"; readonly value: ImageCommandValue }
-  /** Replaces: `applyLayoutBlock(view, kind)` — insert a Gutterpress layout marker skeleton. */
-  | { readonly kind: "insert-layout-block"; readonly block: LayoutBlockKind };
+  /** Toggle a bullet/ordered/task marker per selected line — bullet checked
+   *  against desktop's `applyUnorderedList` (mapped) and ordered against
+   *  `applyOrderedList` (mapped); task has no desktop analog. */
+  | { readonly kind: "toggle-list"; readonly variant: ListVariant }
+  /** Insert (or wrap the selection as the text of) a `[text](href)` link —
+   *  checked against desktop's `applyLink` (mapped). */
+  | { readonly kind: "insert-link"; readonly href: string; readonly text?: string }
+  /** Insert (or wrap the selection as the alt text of) an `![alt](src)`
+   *  image. Desktop's `applyImage` additionally supports width/position/
+   *  size/shape attributes this minimal `{src, alt?}` shape does not carry
+   *  — a genuine capability gap, so desktop's mapping leaves `applyImage`
+   *  UNMAPPED (documented in `toolbar-actions.ts`). */
+  | { readonly kind: "insert-image"; readonly src: string; readonly alt?: string }
+  /** Fence the selection as a ` ```lang ` code block, or unfence it when the
+   *  selection is exactly one fenced block. No desktop analog. */
+  | { readonly kind: "toggle-code-block"; readonly lang?: string }
+  /** Insert a `---` horizontal rule on its own line at the caret's line
+   *  boundary — checked against desktop's `applyHr` (mapped). */
+  | { readonly kind: "insert-horizontal-rule" }
+  /** Insert a `rows` x `cols` Markdown table skeleton at the caret's line
+   *  boundary — checked against desktop's `applyTable(view, cols)` with
+   *  `rows: 1` (mapped). */
+  | { readonly kind: "insert-table"; readonly rows: number; readonly cols: number };
