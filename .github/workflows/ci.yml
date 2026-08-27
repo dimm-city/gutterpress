@@ -130,6 +130,40 @@ jobs:
       - name: Check architecture boundaries (plan D4/D10 + ProseMirror ban)
         run: bun run check:architecture
 
+      # packages/editor (@dimm-city/gutterpress-editor, SFE-P1a): self-test
+      # first (a gate must prove it can fail), then the live D4 browser-purity
+      # gate, then the package's own typecheck/test — none of these ran in CI
+      # before this step existed (AP-20: a gate that exists but is never
+      # invoked is the same as no gate at all). NOTE: never `bun --cwd
+      # <pkg> run <script>` — see the NOTE at the type-check job below;
+      # `working-directory` + `bun run <script>` is the only form Bun 1.3.x
+      # actually executes.
+      - name: Check editor browser-purity self-test
+        run: node packages/editor/scripts/check-browser-purity.test.mjs
+
+      - name: Check editor browser-purity (D4)
+        working-directory: packages/editor
+        run: bun run check:browser-purity
+
+      - name: Run TypeScript compiler (packages/editor)
+        working-directory: packages/editor
+        run: bun run typecheck
+
+      - name: Run tests (packages/editor)
+        working-directory: packages/editor
+        run: bun run test
+
+      # packages/vscode-extension (@dimm-city/gutterpress-vscode, SFE-P1a):
+      # same AP-20 rationale as packages/editor above — a package having
+      # `typecheck`/`test` scripts proves nothing if CI never runs them.
+      - name: Run TypeScript compiler (packages/vscode-extension)
+        working-directory: packages/vscode-extension
+        run: bun run typecheck
+
+      - name: Run tests (packages/vscode-extension)
+        working-directory: packages/vscode-extension
+        run: bun run test
+
       - name: Check for unused files/dependencies (knip)
         run: bun run knip
 

@@ -174,6 +174,29 @@ withTempSrc((_root, src) => {
   check("bare quoted node:v8 string exits 1", run(src).status, 1);
 });
 
+// Case 18 (AP-21 / G-12 liveness): an empty src/ directory — zero
+// scannable files — must fail closed, never print "OK" on a gate that
+// scanned nothing. `withTempSrc` already creates an empty `src/` and never
+// writes into it here, so this exercises exactly that shape.
+withTempSrc((_root, src) => {
+  const result = run(src);
+  check("empty src directory exits non-zero (not a silent pass)", result.status !== 0, true);
+});
+
+// Case 19 (AP-21 / G-12): a src/ whose ONLY file is a ".svelte" component
+// containing a forbidden svelte import must still be caught — proves
+// SCAN_EXT actually includes ".svelte" rather than silently reporting
+// "scanned 0 file(s)" while sitting next to real, unscanned Svelte source
+// (the single most likely way Svelte would actually enter this package).
+withTempSrc((_root, src) => {
+  mkdirSync(join(src, "only-svelte"));
+  writeFileSync(
+    join(src, "only-svelte", "Comp.svelte"),
+    "<script>\n  import { onMount } from 'svelte';\n  onMount(() => {});\n</script>\n",
+  );
+  check("svelte-only src/ (.svelte file with a svelte import) exits 1", run(src).status, 1);
+});
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);
   process.exit(1);

@@ -35,15 +35,27 @@ export function applyEdit(
   edit: SourceEdit,
   options?: ApplyEditOptions,
 ): ApplyEditResult {
+  // Read every field exactly once, up front. `edit` and `snapshot` are not
+  // trusted to be plain data — a hostile or merely buggy caller can back
+  // `from`/`to`/`insert`/`expectedVersion`/`text`/`version` with accessors
+  // that return different values on each read (the same TOCTOU threat
+  // validate.ts's own header names as its reason for rejecting accessors).
+  // Validating and then re-reading via `edit.from`/`edit.to` would let such
+  // an object pass validation against one pair of values and splice against
+  // another. Binding every field to a local here closes that gap: every
+  // check below and the splice itself observe the same snapshot of values.
+  const { from, to, insert, expectedVersion } = edit;
+  const { text: currentText, version: currentVersion } = snapshot;
+
   if (options?.readonly) {
     return { ok: false, reason: "readonly", snapshot };
   }
 
-  if (edit.expectedVersion !== snapshot.version) {
+  if (expectedVersion !== currentVersion) {
     return { ok: false, reason: "stale", snapshot };
   }
 
-  if (!isValidRange(edit.from, edit.to, snapshot.text.length)) {
+  if (!isValidRange(from, to, currentText.length)) {
     return { ok: false, reason: "invalid-range", snapshot };
   }
 
@@ -52,11 +64,11 @@ export function applyEdit(
   // mark is neither special-cased nor rejected — it behaves exactly as
   // plain JavaScript string slicing at these offsets would (D1: offsets are
   // JS/VS Code UTF-16 code-unit offsets).
-  const text = snapshot.text.slice(0, edit.from) + edit.insert + snapshot.text.slice(edit.to);
+  const text = currentText.slice(0, from) + insert + currentText.slice(to);
 
   return {
     ok: true,
-    snapshot: { text, version: snapshot.version + 1 },
+    snapshot: { text, version: currentVersion + 1 },
   };
 }
 

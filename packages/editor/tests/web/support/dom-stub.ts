@@ -10,8 +10,10 @@
  * `packages/desktop/package.json`, so present in the hoisted root
  * `node_modules`), but this package's own `package.json` does not declare
  * it, this run's write ownership does not include `packages/editor/package.json`
- * (Lane A/integrator-owned), and the run spec is explicit: "do NOT add
- * dependencies." So: a stub, not a real DOM.
+ * (Lane A/integrator-owned), and the master plan's lane rules forbid a lane
+ * introducing a dependency not named in the run specification ("No lane may
+ * create a framework, compatibility path, public feature, or dependency not
+ * named in the run specification"). So: a stub, not a real DOM.
  *
  * This file implements ONLY the handful of members
  * `packages/editor/src/web/mount.ts` actually touches on `Element`/

@@ -30,9 +30,10 @@ import type * as vscode from "vscode";
  * webview HTML below runs no script, loads no local or remote resource, and
  * sets a restrictive CSP with a per-render nonce. This module itself (the
  * PROVIDER, running in the extension host, not the webview) is the only
- * place Node APIs (`node:crypto`) are used — exactly the D9 split between
- * "host owns Node/file/workspace access" and "webview owns... no
- * filesystem or Node access".
+ * place Node APIs (`node:crypto`) are used — exactly the D9 split between a
+ * host that owns `TextDocument`/`WorkspaceEdit`/file and workspace access,
+ * and a webview that owns only editor model/view/controller state and has
+ * "no filesystem or Node access".
  */
 export function createGutterpressMarkdownEditorProvider(
   _context: vscode.ExtensionContext,
@@ -48,13 +49,12 @@ export function createGutterpressMarkdownEditorProvider(
         localResourceRoots: [],
       };
       webviewPanel.webview.html = renderPlaceholderHtml(document.getText());
-      // No per-resolve state is created above (no timers, no watchers, no
-      // subscriptions) — this hook exists so disposal is exercised and
-      // proven safe (SFE-P1a behavior table: "disposal does not throw")
-      // rather than merely assumed safe by the absence of cleanup code.
-      webviewPanel.onDidDispose(() => {
-        /* nothing to release yet */
-      });
+      // This run creates no per-resolve state (no timers, no watchers, no
+      // subscriptions), so there is nothing to release on disposal yet —
+      // no `onDidDispose` registration here. Real per-resolve state (the
+      // shared web mount from `packages/editor/src/web`) arrives in a
+      // later run (P1b onward); that is where disposal cleanup — and a
+      // test that can actually fail if it is missing — belongs.
     },
   };
 }

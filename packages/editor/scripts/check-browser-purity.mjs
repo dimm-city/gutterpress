@@ -37,16 +37,17 @@
 // this package the way CLAUDE.md §8 does for the desktop SPA's Node-target
 // lib import.
 //
-// Usage:  node scripts/check-browser-purity.mjs [srcDir] [--package-root <dir>]
+// Usage:  node scripts/check-browser-purity.mjs [srcDir]
 //   srcDir defaults to <packageRoot>/src, where packageRoot is the directory
-//   containing this scripts/ dir (i.e. packages/editor).
-//   --package-root overrides the boundary used for the relative-escape
-//   check (rule 6); defaults to dirname(srcDir). Only the self-test
-//   (check-browser-purity.test.mjs) needs to pass it explicitly, so it can
-//   point both at disposable temp directories shaped like a real package.
+//   containing this scripts/ dir (i.e. packages/editor). The boundary used
+//   for the relative-escape check (rule 6) is always dirname(srcDir) — the
+//   self-test (check-browser-purity.test.mjs) shapes its temp fixtures as
+//   <root>/src so that default matches production usage; there is no flag
+//   to override it.
 //
 // Exit codes: 0 clean, 1 a forbidden specifier was found, 2 internal/usage
-// error (e.g. srcDir does not exist or is not a directory).
+// error (srcDir does not exist, is not a directory, or contains zero
+// scannable files).
 //
 // Dependency-free (Node built-ins only) by design, matching this package's
 // own zero-runtime-dependency contract.
@@ -73,7 +74,13 @@ const SPECIFIER_PATTERNS = [
   /require\s*\(\s*["']([^"']+)["']\s*\)/g,
 ];
 
-const SCAN_EXT = new Set([".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs"]);
+// Includes ".svelte" and ".jsx" even though this run's own src/ never
+// contains either — rule #2 above forbids Svelte from entering this
+// package at all, and a Svelte import is most likely to actually arrive
+// inside a ".svelte" file, not a ".ts" one. Omitting it would make the
+// single most likely Svelte entry point invisible to this scan (mirrors
+// tools/check-architecture.mjs's CODE_EXT, which scans both).
+const SCAN_EXT = new Set([".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs", ".svelte", ".jsx"]);
 
 function scriptsDir() {
   return dirname(fileURLToPath(import.meta.url));
@@ -151,27 +158,9 @@ function findViolations(filePath, text, packageRoot) {
   return violations;
 }
 
-function parseArgs(argv) {
-  let packageRoot;
-  const positional = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--package-root") {
-      packageRoot = argv[i + 1];
-      i++;
-    } else if (arg.startsWith("--package-root=")) {
-      packageRoot = arg.slice("--package-root=".length);
-    } else {
-      positional.push(arg);
-    }
-  }
-  return { packageRoot, positional };
-}
-
 function main() {
-  const { packageRoot: packageRootArg, positional } = parseArgs(process.argv.slice(2));
-  const srcDir = positional[0] ?? join(dirname(scriptsDir()), "src");
-  const packageRoot = packageRootArg ?? dirname(srcDir);
+  const srcDir = process.argv[2] ?? join(dirname(scriptsDir()), "src");
+  const packageRoot = dirname(srcDir);
 
   if (!existsSync(srcDir)) {
     console.error(`check-browser-purity: ERROR — src dir not found: ${srcDir}`);
@@ -184,6 +173,20 @@ function main() {
 
   const files = [];
   walk(srcDir, files);
+
+  if (files.length === 0) {
+    // AP-21 / G-12: a gate that scans nothing and reports success is
+    // indistinguishable from a gate that never ran. This package's src/ is
+    // never legitimately empty, so zero scannable files means the path is
+    // wrong, an extension was renamed, or the directory was emptied out
+    // from under this gate — any of which must fail loudly, not print "OK".
+    console.error(
+      `check-browser-purity: FAIL — no scannable file(s) found under ${srcDir} ` +
+        `(looked for: ${[...SCAN_EXT].join(", ")}). Zero targets is a fixture ` +
+        "error, not a pass (AP-21).",
+    );
+    process.exit(2);
+  }
 
   const allViolations = [];
   for (const file of files) {

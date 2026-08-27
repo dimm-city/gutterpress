@@ -9,18 +9,23 @@ import { computeMinimalEdit } from "./diff.ts";
 /**
  * SFE-P1a Lane B — framework-free web mount shell.
  *
- * "Add a minimal mount/dispose API with no Svelte, Electron, VS Code, or
- * Node dependency. Add memory-host integration tests. Do not implement
- * Gutterpress projections yet" (run spec, Lane B). This file is the ENTIRE
- * production surface: `mountEditor()` renders a host's current snapshot
- * into an editor surface it owns, wires `host.subscribe` so external
- * replacements re-render, translates user input into `SourceEdit`s applied
- * through `host.applyEdit`, and surfaces rejections as `Diagnostic`s.
+ * Lane B's charter, per the master plan's Lane B appendix for this run: add
+ * a minimal mount/dispose API with no Svelte, Electron, VS Code, or Node
+ * dependency; add memory-host integration tests; do not implement
+ * Gutterpress projections yet. This file is the ENTIRE production surface:
+ * `mountEditor()` renders a host's current snapshot into an editor surface
+ * it owns, wires `host.subscribe` so external replacements re-render,
+ * translates user input into `SourceEdit`s applied through
+ * `host.applyEdit`, and surfaces rejections as `Diagnostic`s.
  *
- * Deliberately thin (run spec: "for this run a plain `<textarea>` ... is
- * ACCEPTABLE and preferred — the real rich surface arrives in P1b via
- * `@vscode/markdown-editor`; keep this shell so thin that replacing its
- * internals in P1b changes no public API"): the surface is a single
+ * Deliberately thin: the run spec's behavior table (Lane B row) only
+ * requires that `mount()` return a handle, `dispose()` release listeners
+ * with no leaks on remount, and no Svelte/Electron/vscode/node import
+ * appear anywhere in this closure. A plain `<textarea>` satisfies that row
+ * without pulling in the real rich surface, which arrives in P1b via
+ * `@vscode/markdown-editor` — so this shell is kept small enough that
+ * swapping its internals for that surface in P1b should not need to change
+ * `mountEditor`'s or `EditorMount`'s public shape. The surface is a single
  * `<textarea>`, there is no toolbar, no formatting, no Gutterpress
  * projection (D6/P2b), and no undo/redo beyond whatever the host and the
  * browser's native textarea history already provide. `mountEditor` and
@@ -48,10 +53,12 @@ export interface EditorMount {
    * `dispose()` more than once is a no-op, not a throw. After `dispose()`,
    * any notification the host later delivers on the same subscription is
    * impossible (the subscription itself is gone) and, defensively, is also
-   * ignored by the mount's own listener body should it ever run anyway
-   * (G-02: "the mount owns its subtree, nothing else touches it" — a
-   * disposed mount must not resurrect DOM or fire diagnostics after the
-   * caller has moved on).
+   * ignored by the mount's own listener body should it ever run anyway.
+   * This follows from G-02 (pr158-lessons.md): the editor owns its
+   * semantic content DOM and nothing else may reparent, clone, or write
+   * into it — so, symmetrically, once this mount has released that DOM via
+   * `dispose()`, it must not resurrect it or fire diagnostics as if it
+   * were still the live editor.
    */
   dispose(): void;
 }
@@ -124,6 +131,16 @@ export function mountEditor(
     if (newText === known.text) return; // no-op input notification; nothing to submit
     const edit = computeMinimalEdit(known.text, newText, known.version);
     const result = host.applyEdit(edit);
+    // `host.applyEdit` notifies subscribers synchronously (see the
+    // `host.subscribe` callback below). If a subscriber reacts by calling
+    // `dispose()` on THIS mount — a realistic pattern when a host wrapper
+    // treats a rejected edit as a signal to tear down and remount — this
+    // mount is now disposed even though we are still on the stack from the
+    // `applyEdit` call above. `dispose()`'s own contract says a disposed
+    // mount must not resurrect DOM or fire diagnostics after the caller has
+    // moved on, so re-check here before touching the (possibly detached)
+    // surface or invoking `onDiagnostic`.
+    if (disposed) return;
     if (result.ok) {
       render(result.snapshot);
       return;

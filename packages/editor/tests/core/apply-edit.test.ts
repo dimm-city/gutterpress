@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyEdit } from "../../src/core/apply-edit.ts";
-import type { DocumentSnapshot } from "../../src/core/contracts.ts";
+import type { DocumentSnapshot, SourceEdit } from "../../src/core/contracts.ts";
 
 function snap(text: string, version: number): DocumentSnapshot {
   return { text, version };
@@ -161,6 +161,58 @@ describe("applyEdit — readonly host", () => {
     );
     const withoutOption = applyEdit(before, { from: 0, to: 1, insert: "X", expectedVersion: 0 });
     expect(withFalse).toEqual(withoutOption);
+  });
+});
+
+describe("applyEdit — accessor-backed edit is read exactly once (TOCTOU hardening)", () => {
+  test("splice uses the SAME from/to/insert observed during validation, not a later read", () => {
+    // Reproduces the exact defect: a hostile (or merely buggy) `edit` object
+    // whose `from`/`to` accessors return 0/0 on a first read and 3/8 on a
+    // second read. Re-reading `edit.from`/`edit.to` after validating them
+    // let the earlier implementation validate against [0,0) and then splice
+    // against [3,8), deleting and duplicating bytes far outside the
+    // declared empty range and producing "012YY0123456789" from
+    // "0123456789". Binding every field to a local exactly once closes
+    // that gap.
+    const before = snap("0123456789", 0);
+    let fromReads = 0;
+    let toReads = 0;
+    let insertReads = 0;
+    let expectedVersionReads = 0;
+    const hostileEdit = {
+      get from() {
+        fromReads++;
+        return fromReads === 1 ? 0 : 3;
+      },
+      get to() {
+        toReads++;
+        return toReads === 1 ? 0 : 8;
+      },
+      get insert() {
+        insertReads++;
+        return insertReads === 1 ? "YY" : "HOSTILE";
+      },
+      get expectedVersion() {
+        expectedVersionReads++;
+        return 0;
+      },
+    } as unknown as SourceEdit;
+
+    const result = applyEdit(before, hostileEdit);
+
+    // Each field must be read exactly once: a second read is exactly the
+    // TOCTOU gap this test guards against.
+    expect(fromReads).toBe(1);
+    expect(toReads).toBe(1);
+    expect(insertReads).toBe(1);
+    expect(expectedVersionReads).toBe(1);
+
+    // With from/to/insert bound to their single observed values (0, 0,
+    // "YY"), this is a pure insert of "YY" at offset 0 — never the
+    // "012YY0123456789" result produced when validation and splice
+    // observed different offsets.
+    expect(result).toEqual({ ok: true, snapshot: { text: "YY0123456789", version: 1 } });
+    expect(before).toEqual({ text: "0123456789", version: 0 });
   });
 });
 

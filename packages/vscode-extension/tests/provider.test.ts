@@ -1,6 +1,9 @@
-// Unit tests for src/provider.ts (SFE-P1a behavior table: "resolveCustomTextEditor
-// sets webview html containing the document text ... and a CSP meta tag
-// with nonce").
+// Unit tests for src/provider.ts. The run spec's behavior table does not
+// itemize webview HTML content — this suite exercises the CSP/nonce and
+// document-text requirements that D12 ("Webview/iframe content uses a
+// restrictive CSP" / "The host supplies the first effective base URI")
+// and D9 ("Webview owns:... no filesystem or Node access") place on this
+// provider's `resolveCustomTextEditor` implementation.
 //
 // provider.ts imports "vscode" as `import type * as vscode` ONLY (erased at
 // compile time — see its header), so this suite needs NO
@@ -63,16 +66,22 @@ function fakeDocument(text: string): vscode.TextDocument {
   return { getText: () => text } as unknown as vscode.TextDocument;
 }
 
-/** Minimal fake WebviewPanel — records what the provider assigns/registers. */
+/**
+ * Minimal fake WebviewPanel — records what the provider assigns/registers.
+ * `resolveCustomTextEditor` (src/provider.ts) creates no per-resolve state
+ * this run, so it registers no `onDidDispose` listener; this fake therefore
+ * stubs only what it actually calls (`webview.options`, `webview.html`).
+ * Disposal cleanup — and a fake capable of exercising it — belongs to the
+ * later run that gives this provider per-resolve state to release (the
+ * shared web mount from `packages/editor/src/web`).
+ */
 function fakeWebviewPanel(): {
   panel: vscode.WebviewPanel;
   getHtml: () => string;
   getOptions: () => unknown;
-  fireDispose: () => void;
 } {
   let html = "";
   let options: unknown;
-  let disposeListener: (() => void) | undefined;
   const panel = {
     webview: {
       set options(value: unknown) {
@@ -88,16 +97,11 @@ function fakeWebviewPanel(): {
         return html;
       },
     },
-    onDidDispose: (listener: () => void) => {
-      disposeListener = listener;
-      return { dispose: () => {} };
-    },
   } as unknown as vscode.WebviewPanel;
   return {
     panel,
     getHtml: () => html,
     getOptions: () => options,
-    fireDispose: () => disposeListener?.(),
   };
 }
 
@@ -127,10 +131,9 @@ describe("createGutterpressMarkdownEditorProvider — resolveCustomTextEditor", 
     expect(getOptions()).toEqual({ enableScripts: false, localResourceRoots: [] });
   });
 
-  test("resolving does not throw, and firing the registered onDidDispose listener does not throw", () => {
+  test("resolving does not throw", () => {
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext);
-    const { panel, fireDispose } = fakeWebviewPanel();
+    const { panel } = fakeWebviewPanel();
     expect(() => provider.resolveCustomTextEditor(fakeDocument("content"), panel, fakeToken)).not.toThrow();
-    expect(() => fireDispose()).not.toThrow();
   });
 });

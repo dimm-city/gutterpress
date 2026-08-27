@@ -2,9 +2,11 @@ import type { ApplyEditResult, EditorDocumentHost, SourceEdit } from "../../../s
 
 /**
  * Test-only `EditorDocumentHost` decorator that deterministically
- * reproduces "external replacement between read and submit" (the run spec's
- * phrasing for the stale-edit row) in a single-threaded test, with no
- * timers and no real concurrency.
+ * reproduces the run spec's "Stale edit (`expectedVersion` mismatch)"
+ * behavior-table row — an external replacement landing between the mount's
+ * read of the current version and its submission of an edit against that
+ * version — in a single-threaded test, with no timers and no real
+ * concurrency.
  *
  * Why this is needed rather than just calling `host.replaceExternal(...)`
  * directly from a test: `mountEditor` subscribes to the host and resyncs

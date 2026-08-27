@@ -1,9 +1,8 @@
-// Manifest regression test (SFE-P1a review dimension: "a manifest
-// regression test per the spec's review dimension"). Parses package.json
-// directly — no vscode host, no mocking — so a future edit that silently
-// widens this custom editor's reach (e.g. flipping `priority` to
-// "default", broadening the selector, or renaming the viewType) fails a
-// fast, host-free test instead of depending on a human re-reading the JSON.
+// Manifest regression test. Parses package.json directly — no vscode host,
+// no mocking — so a future edit that silently widens this custom editor's
+// reach (e.g. flipping `priority` to "default", broadening the selector, or
+// renaming the viewType) fails a fast, host-free test instead of depending
+// on a human re-reading the JSON.
 //
 // D9: "Register an optional custom text editor ... Do not make it the
 // default for all Markdown." `priority: "option"` is the actual mechanism

@@ -14,7 +14,10 @@ import { withFixedRejection } from "./support/rejecting-host.ts";
  * every "Test owner: B" row of docs/plans/source-first-editor/runs/SFE-P1a.md's
  * behavior table.
  *
- * "Every test asserts liveness (target exists) before behavior" (run spec):
+ * Every test asserts liveness (target exists) before behavior — this
+ * follows AP-21 in pr158-lessons.md ("Empty result sets count as success" /
+ * "Liveness assertions precede behavioral assertions. Zero targets is a
+ * fixture error or explicit not-applicable result, never a silent pass").
  * `requireTextarea` below both asserts (via `expect`) that the mounted
  * surface exists AND narrows it for TypeScript, so every test's behavioral
  * assertions are provably reached only after confirming their target is
@@ -36,6 +39,10 @@ describe("mountEditor — initial render", () => {
 
     const surface = requireTextarea(container);
     expect(surface.value).toBe("hello world");
+    // The stable styling hook a future host wrapper (P3a's thin Svelte
+    // shell) is documented to find the surface by — asserted here so a
+    // regression that drops the class is caught, not just documented.
+    expect(surface.classList.contains("gp-editor-surface")).toBe(true);
   });
 
   test("mounts exactly one surface element into the container", () => {
@@ -138,6 +145,12 @@ describe("mountEditor — rejected edits surface as diagnostics, never throw", (
 
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.category).toBe("EDITOR_INVALID_RANGE");
+    // Matches the stale and readonly tests above: a rejection must leave
+    // the host's source untouched and resync the surface to the host's
+    // truth, never leave the user's rejected keystroke sitting on screen
+    // looking accepted (G-01).
+    expect(host.getSnapshot()).toEqual({ text: "abc", version: 0 });
+    expect(surface.value).toBe("abc");
   });
 
   test("mountEditor works with no onDiagnostic supplied: a rejection still does not throw", () => {
@@ -172,17 +185,23 @@ describe("mountEditor — external replacement", () => {
 });
 
 describe("mountEditor — dispose / remount", () => {
-  test("dispose unsubscribes from the host and removes the mounted surface", () => {
+  test("dispose unsubscribes from the host, releases the DOM listener, and removes the mounted surface", () => {
     const realHost = new MemoryDocumentHost({ text: "x", version: 0 });
     const host = withSubscriberCounting(realHost);
     const container = createTestContainer();
     const mount = mountEditor(container as unknown as Element, host);
-    requireTextarea(container); // liveness before behavior
+    const surface = requireTextarea(container); // liveness before behavior
     expect(host.activeSubscriberCount()).toBe(1);
+    // The mount registers exactly one "input" listener on the surface.
+    expect(surface.listenerCount()).toBe(1);
 
     mount.dispose();
 
     expect(host.activeSubscriberCount()).toBe(0);
+    // dispose() must release the DOM listener, not just detach the element
+    // — otherwise a caller that keeps a reference to `surface` (or a DOM
+    // that recycles detached nodes) would still be driving `handleInput`.
+    expect(surface.listenerCount()).toBe(0);
     expect(container.children).toHaveLength(0);
   });
 
@@ -200,20 +219,25 @@ describe("mountEditor — dispose / remount", () => {
     expect(container.children).toHaveLength(0);
   });
 
-  test("remounting after dispose works: a fresh mount on the same host functions normally", () => {
+  test("remounting after dispose works: a fresh mount on the same host functions normally, with no leaked listener on the old surface", () => {
     const realHost = new MemoryDocumentHost({ text: "x", version: 0 });
     const host = withSubscriberCounting(realHost);
     const container = createTestContainer();
 
     const firstMount = mountEditor(container as unknown as Element, host);
-    requireTextarea(container);
+    const firstSurface = requireTextarea(container);
+    expect(firstSurface.listenerCount()).toBe(1);
     firstMount.dispose();
     expect(container.children).toHaveLength(0);
+    // No leak on remount (behavior table, Lane B row): the first surface's
+    // listener must be gone, not just detached from the container.
+    expect(firstSurface.listenerCount()).toBe(0);
 
     const secondMount = mountEditor(container as unknown as Element, host);
     expect(host.activeSubscriberCount()).toBe(1);
     const surface = requireTextarea(container);
     expect(surface.value).toBe("x");
+    expect(surface.listenerCount()).toBe(1);
 
     surface.value = "xy";
     surface.fireEvent("input");
@@ -221,6 +245,7 @@ describe("mountEditor — dispose / remount", () => {
 
     secondMount.dispose();
     expect(host.activeSubscriberCount()).toBe(0);
+    expect(surface.listenerCount()).toBe(0);
   });
 
   test("a late host notification after dispose is ignored: no throw, no DOM resurrection", () => {
@@ -263,5 +288,43 @@ describe("mountEditor — dispose / remount", () => {
 
     mountB.dispose();
     expect(host.activeSubscriberCount()).toBe(0);
+  });
+
+  test("a re-entrant host notification that disposes the mount during applyEdit does not resurrect DOM or fire diagnostics", () => {
+    // Reproduces the disposed-mount-still-fires-diagnostics defect: a host
+    // can notify subscribers SYNCHRONOUSLY from inside `applyEdit` (see
+    // wrapWithOneTimeInterleavedReplacement's doc comment). If one of those
+    // subscribers reacts by disposing THIS mount — a realistic desktop
+    // pattern under D7 file/mode switching — `handleInput` is still on the
+    // stack when `host.applyEdit` returns. The mount must not resurrect the
+    // (now-detached) surface or invoke `onDiagnostic` once it is disposed.
+    const realHost = new MemoryDocumentHost({ text: "hello", version: 0 });
+    const host = wrapWithOneTimeInterleavedReplacement(realHost, "concurrent change");
+    const diagnostics: Diagnostic[] = [];
+    const container = createTestContainer();
+    const mount = mountEditor(container as unknown as Element, host, {
+      onDiagnostic: (d) => diagnostics.push(d),
+    });
+    const surface = requireTextarea(container); // liveness before behavior
+
+    // A second, independent subscriber on the REAL host — simulating
+    // another actor (e.g. a host wrapper reacting to the interleaved
+    // external replacement) that tears this mount down mid-notification,
+    // before the mount's own `applyEdit` call has returned.
+    realHost.subscribe(() => mount.dispose());
+
+    surface.value = "hello there";
+
+    expect(() => surface.fireEvent("input")).not.toThrow();
+
+    // The interleaved replacement landed and the mount's edit is now stale
+    // relative to it — same underlying mechanics as the "stale edit"
+    // test above.
+    expect(realHost.getSnapshot()).toEqual({ text: "concurrent change", version: 1 });
+    // But THIS mount was disposed re-entrantly before that rejection was
+    // observed, so it must behave as already-torn-down: no diagnostic, no
+    // DOM resurrection.
+    expect(diagnostics).toHaveLength(0);
+    expect(container.children).toHaveLength(0);
   });
 });

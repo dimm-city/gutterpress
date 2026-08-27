@@ -77,7 +77,7 @@ describe("activate — gutterpress.markdownEditor registration (D9)", () => {
   });
 });
 
-describe("disposal (SFE-P1a behavior table: 'disposal does not throw')", () => {
+describe("disposal", () => {
   test("disposing the pushed registration does not throw, and reaches the underlying dispose", () => {
     const context = fakeContext();
     activate(context);
