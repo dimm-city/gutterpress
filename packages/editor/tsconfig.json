@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    // packages/editor is framework-free and browser-safe end-to-end (D4:
+    // "no Svelte, Electron, vscode, node:fs, or desktop imports"). This
+    // program covers src/ and tests/ — currently just src/core (pure
+    // protocol/contract/validator code) plus its bun:test suite, both of
+    // which must stay DOM-free as well as Node-free (SFE-P1a: "no
+    // DOM-dependent code in core"). "lib" is therefore ES2023 ONLY — no
+    // "DOM" — deliberately, so a stray reference to `window`/`document`/
+    // `HTMLElement` from src/core is a COMPILE ERROR here, not just a
+    // convention someone has to remember.
+    //
+    // src/web/** (the browser mount shell, added alongside this run by a
+    // parallel lane) and a future src/vscode-adapter/** WILL need DOM /
+    // webview-host types. Do NOT widen this program's "lib" to satisfy
+    // them — that would leak DOM globals into every core file the way
+    // adding DOM here would (the same class of problem
+    // packages/cli/tsconfig.json's comment documents for its own Node-vs-
+    // browser split). Instead, follow that exact repo precedent: give
+    // DOM-needing code its OWN nested tsconfig (lib: ["ES2023", "DOM"],
+    // extending this file) and exclude that directory from this program,
+    // mirroring packages/cli/src/engine/browser.tsconfig.json +
+    // packages/cli/tsconfig.json's "exclude". That keeps core's DOM-free
+    // guarantee a compiler fact instead of a comment nobody enforces.
+    "lib": ["ES2023"],
+    "target": "ES2023",
+    "module": "Preserve",
+    "moduleDetection": "force",
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  // Unlike packages/cli's tsconfig (which excludes its tests/ dir), this
+  // package's tests/core/** IS part of the strict typecheck program: this
+  // is a brand-new package with no other layer that would otherwise catch
+  // a type error in a test file, and the run's gate gives `typecheck` and
+  // `test` separate, equally-load-bearing commands.
+  "include": ["src", "tests"]
+}
