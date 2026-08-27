@@ -1,0 +1,46 @@
+{
+  "name": "@dimm-city/gutterpress-vscode",
+  "version": "0.11.0-experimental.0",
+  "description": "Gutterpress rich-editing custom text editor for VS Code (Experimental — SFE-P1a skeleton). See docs/plans/source-first-editor-enterprise-refactor.md.",
+  "private": true,
+  "type": "commonjs",
+  "publisher": "dimm-city",
+  "displayName": "Gutterpress",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:gutterpress.markdownEditor"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "gutterpress.markdownEditor",
+        "displayName": "Gutterpress Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@dimm-city/gutterpress-editor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.134.0",
+    "typescript": "^5"
+  }
+}
