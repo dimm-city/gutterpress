@@ -105,4 +105,13 @@ commands (P2b+).
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Rounds 1-3** (adversarial review of `d6c3a2b5..fbc2862a`, two batches): 8+
+  CONFIRMED findings across three repair rounds — three genuine data-loss bugs
+  (destructive unfencing, setext absorbing thematic breaks, italic destroying
+  bold), a non-inverse ordered-list toggle, a non-identical toolbar mapping with
+  false header claims, a tautological locality oracle, dead refusal branches,
+  and a false supersession claim. All fixed with sabotage-verified regressions
+  (`d0edefc3`, `828c9fde`, `fbc2862a`). Verdict: **approve**, 0 confirmed
+  remaining. The run hit the 3-round bound exactly — within policy.
+- **Gate**: PASS — all 12 commands exit 0 (editor 3003/0 + 65/0 browser;
+  desktop 2260/0; cli 1810/0; all fitness checks green).

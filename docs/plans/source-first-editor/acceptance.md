@@ -11,8 +11,8 @@
 |---|---|---:|---|---|
 | AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.11.0` absent, work branch == `origin/main`) |
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) |
-| AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
-| AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
+| AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Evidenced for standard Markdown (SFE-P2a: 19-fixture corpus + P1b browser cases, toggle-pair byte-identity; real-book gates remain P3) |
+| AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Evidenced for standard Markdown (SFE-P2a: independent-bound oracle sabotage-proven against a widened-edit implementation, seeded randomized trials incl. refusal liveness; P3 integrations pending) |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
 | AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Pending |
@@ -271,5 +271,41 @@
   "acceptanceUpdates": ["AC-05 further evidenced (shared contract suite green on both hosts)"],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "The authoritative source lifecycle is now a pure, exhaustively-pinned state machine (72 transition tests); DesktopDocumentHost passes the same contract suite as the memory host plus 13 desktop-specific cases; EditorBuffer is a thin reactive shell with its public API byte-identical and all 27 pre-existing pinned test files green; the shared EditorCommand union and the first desktop->editor dependency edge are in place. Checkpoint A group (P0-P1c) complete."
+}
+```
+
+### SFE-P2a — Standard Markdown rich editor
+
+```json
+{
+  "status": "complete",
+  "baseSha": "d6c3a2b5",
+  "headSha": "fbc2862a",
+  "history": [
+    "cfebcef7 feat(p2): back the editor mount with the fork surface",
+    "b81b8f06 feat(p2): shared formatting-command layer as pure source transforms",
+    "51f3998a test(p2): byte-identity, locality, and randomized corpora",
+    "d0edefc3 / 828c9fde / fbc2862a fix(p2): address review findings (rounds 1-3)"
+  ],
+  "confirmedFindings": [
+    "R1: toggle-code-block unfencing could DELETE authored content (closing-fence line-boundary detection rewritten; unclosed fences fall through non-destructively)",
+    "R1: set-heading absorbed a thematic break after a list item/blockquote as a setext underline (opensOtherBlock guard)",
+    "R1: toggle-italic destroyed **bold**/__bold__ markers (contiguous marker-run parity detection, applied identically to edit and commandState)",
+    "R1: ordered-list toggle pair destroyed the author's numbering (recoverable double-stack pattern; byte-exact inverse restored)",
+    "R1: desktop toolbar mapping was not behavior-identical (caret math + per-line minimal dispatch restored; false header claims rewritten; divergences pinned by new tests)",
+    "R1: the locality corpus's oracle was the host's own splice — tautological (independent per-command-family bound added, sabotage-proven at ~1468 failing assertions against a widened implementation)",
+    "R1: the corpus never exercised a single refusal (refusal-liveness test asserts both named reasons fire under the fixed seed)",
+    "R1: a moved-assertion supersession claim was false for the re-entrant-dispose case (self-disposing-host regression added)"
+  ],
+  "advisories": [],
+  "gate": {
+    "commands": [
+      "install / typecheck / editor 3003:0 unit + 65:0 browser (5 suites) / desktop 2260:0 + svelte-check 841 files + lint / cli 1810:0 / architecture / generated-files / vendored / knip — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-03 and AC-04 evidenced for standard Markdown"],
+  "deletionLedgerUpdates": ["diff.ts + DOM stub + racy-host superseded and deleted (-377 LOC)"],
+  "checkpointSummary": "The rich editor is real for standard Markdown: the mount runs the fork surface with embedded CSS, twelve formatting commands emit minimal source edits with byte-exact toggle inverses, ten desktop toolbar actions share the implementation, and the corpora that prove it were themselves hardened until they could fail. Review ran the full three repair rounds and approved."
 }
 ```
