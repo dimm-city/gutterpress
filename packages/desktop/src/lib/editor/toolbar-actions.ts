@@ -78,6 +78,16 @@
  *     command recognizes `__` as bold's documented alternate spelling (run
  *     spec "Toggle semantics": remove whichever spelling is present) and
  *     correctly toggles it off (`"x"`).
+ *   - `applyHeading` on a SETEXT heading, same-level toggle (e.g.
+ *     `"Title\n---\n\nbody"`, H2 pressed on a line `commandState` already
+ *     reports as level 2) used to PREPEND a fresh `"## "` ATX prefix onto
+ *     the existing text/underline pair, leaving the `"---"` underline
+ *     behind untouched (`"## Title\n---\n\nbody"`, caret 4). A setext
+ *     heading IS a heading, so the same-level rule correctly flips the
+ *     target to `"none"` and `computeSetHeading` collapses the whole
+ *     text+underline pair into the bare text line, exactly like an ATX
+ *     same-level toggle-off does (`"Title\n\nbody"`, caret 0) — this is the
+ *     underline getting cleaned up alongside the prefix, not data loss.
  *
  * Two actions are deliberately LEFT UNMAPPED entirely, with the divergence
  * recorded here rather than silently accepted (run spec: "if any pinned

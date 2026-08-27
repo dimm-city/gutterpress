@@ -64,8 +64,14 @@ import { mountEditor } from "../../src/web/mount.ts";
  * |                                                                                | on its own `disposed` flag; `mountEditor` adds no additional subscription of its own to leak)      |
  * | "dispose on one mount does not affect a second, independent mount"          | ROUND-1 CORRECTION: this was WRONGLY claimed superseded by P1b a11y case 7c — 7c mounts on two    |
  * |                                                                                | DIFFERENT hosts and never disposes ONE while asserting the other, and predates this run's own      |
- * |                                                                                | per-mount `<style>` injection entirely. Reproduced directly in mount.btest.ts's "dispose isolation |
- * |                                                                                | between two independent LIVE mounts sharing one document" — a real assertion, not a reused one.    |
+ * |                                                                                | per-mount `<style>` injection entirely. Reproduced in TWO pieces in mount.btest.ts, since the old   |
+ * |                                                                                | case asserted both DOM/style isolation AND shared-host subscriber isolation in one test: "dispose   |
+ * |                                                                                | isolation between two independent LIVE mounts on SEPARATE hosts" covers the former (round-1); ROUND- |
+ * |                                                                                | 2 CORRECTION — round-1 left the latter half unproven (its test used two SEPARATE hosts, so the       |
+ * |                                                                                | old `activeSubscriberCount()` 2 -> 1 assertion and "B still reachable via `replaceExternal`" had NO  |
+ * |                                                                                | coverage despite this row's prior "reproduced directly" claim); now closed by "dispose isolation     |
+ * |                                                                                | between two independent LIVE mounts SHARING one host", which mounts both onto the SAME host object   |
+ * |                                                                                | and proves the dropped subscriber-count + reachability assertions directly.                          |
  * | "a re-entrant host notification that disposes the mount during applyEdit ..."| ROUND-1 CORRECTION: this was WRONGLY claimed superseded by P1b's rejection-path tests — those       |
  * |                                                                                | exercise a re-entrant NOTIFICATION (`replaceExternal` firing mid-`applyEdit`), never a re-entrant   |
  * |                                                                                | DISPOSE, and `tests/web/support/racy-host.ts` (the only helper that could interleave at that seam)  |

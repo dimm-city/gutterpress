@@ -96,8 +96,11 @@ async function editorElementCount(selector: string): Promise<number> {
   );
 }
 
-async function mountSecond(text: string): Promise<string> {
-  await harness.page.evaluate((text) => window.__gpMount.mountSecond(text), text);
+async function mountSecond(text: string, options?: { shareHost?: boolean }): Promise<string> {
+  await harness.page.evaluate(
+    ({ text, options }) => window.__gpMount.mountSecond(text, options),
+    { text, options },
+  );
   return harness.page.evaluate(() => window.__gpMount.secondContainerSelector);
 }
 
@@ -107,6 +110,12 @@ async function disposeSecond(): Promise<void> {
 
 async function secondHostText(): Promise<string> {
   return harness.page.evaluate(() => window.__gpMount.getSecondHostText());
+}
+
+/** Active subscriber count on the PRIMARY host (`mount()`'s host) —
+ * SFE-P2a round-2 repair, see `support/entry.ts`'s `activeSubscriberCount`. */
+async function activeSubscriberCount(): Promise<number> {
+  return harness.page.evaluate(() => window.__gpMount.activeSubscriberCount());
 }
 
 describe("mount renders host text via the fork (liveness)", () => {
@@ -325,7 +334,19 @@ describe("a re-entrant host notification that disposes the mount during applyEdi
   });
 });
 
-describe("dispose isolation between two independent LIVE mounts sharing one document (SFE-P2a round-1 repair)", () => {
+describe("dispose isolation between two independent LIVE mounts on SEPARATE hosts (SFE-P2a round-1 repair)", () => {
+  // ROUND-2 CORRECTION: this describe's original title read "...sharing one
+  // document", which this case's own body does NOT prove — mount() and
+  // mountSecond() (no options) each construct their OWN, independent
+  // MemoryDocumentHost, so what this case actually demonstrates is DOM and
+  // injected-<style> isolation between two mounts that happen to share one
+  // browser page, not host/subscriber isolation on a SHARED document/host.
+  // The shared-HOST half of the original P1a "dispose on one mount does not
+  // affect a second, independent mount" case — subscriber-count isolation,
+  // and B staying reachable via `replaceExternal` and its own keystroke
+  // after A disposes — was NOT covered here despite mount.test.ts's table
+  // row claiming this test as a direct reproduction. See the next describe
+  // block below, which closes that gap.
   test("disposing one mount leaves the other's DOM, injected <style>, and host completely intact", async () => {
     const selectorA = await mount("first mount");
     await requireDocumentText(selectorA);
@@ -356,6 +377,63 @@ describe("dispose isolation between two independent LIVE mounts sharing one docu
     await disposeSecond();
     expect(await editorElementCount(selectorB)).toBe(0);
     expect(await injectedStyleElementCount()).toBe(0);
+  });
+});
+
+describe("dispose isolation between two independent LIVE mounts SHARING one host (SFE-P2a round-2 repair)", () => {
+  // Closes the gap the ROUND-2 CORRECTION comment above names: the P1a
+  // "dispose on one mount does not affect a second, independent mount on
+  // the SAME host" case (git show d6c3a2b5:packages/editor/tests/web/
+  // mount.test.ts:268) asserted subscriber-count isolation (2 -> 1 on A's
+  // dispose) AND that B stayed reachable via `host.replaceExternal(...)`
+  // afterward. `support/entry.ts`'s `mountSecond(text, { shareHost: true })`
+  // mounts B onto the EXACT SAME host object `mount()` constructed for A,
+  // wrapped in `withSubscriberCounting` so `activeSubscriberCount()` proves
+  // it directly against the real fork surface -- not a reused/superseded
+  // proof, a fresh assertion of the dropped behavior.
+  test("disposing one mount unsubscribes only that mount -- the other stays live and reachable on the shared host", async () => {
+    const selectorA = await mount("shared doc");
+    await requireDocumentText(selectorA);
+    // shareHost: true mounts B onto the SAME host object A is using
+    // (support/entry.ts) -- the initial-text argument below is ignored,
+    // mirroring MountOptions.keepHost's own "initial text is ignored"
+    // convention, since the shared host already holds A's "shared doc" text.
+    const selectorB = await mountSecond("ignored", { shareHost: true });
+    await requireDocumentText(selectorB);
+
+    expect(await activeSubscriberCount()).toBe(2);
+
+    await dispose(); // disposes ONLY mount A, on the shared host
+
+    // A's own subscription is gone -- but B's is still active. This is the
+    // exact P1a assertion the round-1 repair dropped: disposing one mount
+    // on a host shared with another live mount unsubscribes exactly that
+    // one mount, never every subscriber of the shared host.
+    expect(await activeSubscriberCount()).toBe(1);
+    expect(await editorElementCount(selectorA)).toBe(0);
+    expect(await editorElementCount(selectorB)).toBe(1);
+
+    // B is still live: an external replacement on the shared host still
+    // reaches B's rendered surface.
+    await harness.page.evaluate(() =>
+      window.__gpMount.replaceExternal("changed via shared host"),
+    );
+    await harness.page.waitForTimeout(100);
+    expect(await requireDocumentText(selectorB)).toBe("changed via shared host");
+
+    // B's own keystroke still reaches the shared host too -- not just
+    // external replacement.
+    const callsBeforeBKeystroke = await applyEditCallCount();
+    await harness.page.click(selectorB);
+    await harness.page.keyboard.press("End");
+    await harness.page.keyboard.type("!");
+    await harness.page.waitForTimeout(50);
+    expect(await applyEditCallCount()).toBe(callsBeforeBKeystroke + 1);
+    expect(await hostText()).toBe("changed via shared host!");
+    expect(await requireDocumentText(selectorB)).toBe("changed via shared host!");
+
+    await disposeSecond();
+    expect(await activeSubscriberCount()).toBe(0);
   });
 });
 
