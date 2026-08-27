@@ -9,7 +9,7 @@
 
 | ID | Acceptance criterion | Owning phase | Required evidence | Final status |
 |---|---|---:|---|---|
-| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Pending |
+| AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.11.0` absent, work branch == `origin/main`) |
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Pending |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
@@ -37,3 +37,43 @@
 ## Run results
 
 <!-- Structured run results are appended below, newest last. -->
+
+### SFE-P0a — Execution baseline verification and record
+
+```json
+{
+  "status": "complete",
+  "baseSha": "764613ec090892080e54f2aeaaceb92b12f3ca3e",
+  "headSha": "63d9d5da3a1df0813ddbac61dd2dc8022cfab298",
+  "history": [
+    "1a22bcbd test(p0): characterize editor mutation paths",
+    "2cda6b87 docs(p0): inventory platform and transport boundaries",
+    "5a53aa4e docs(p0): record post-release execution baseline",
+    "17929629 fix(p0): address review findings (round 1)",
+    "63d9d5da fix(p0): address review findings (round 2)"
+  ],
+  "confirmedFindings": [
+    "R1: false coverage claim — show()'s first requestId checkpoint was unpinned (fixed: third characterization test + sabotage proof for all three)",
+    "R1: mutation inventory omitted context-menu-actions.ts and context-menu protocol identifiers (fixed: §1.5 added; image-classes.ts classified SHARED-AND-SURVIVING)",
+    "R1: platform-inventory §11 dropped the lint namespace and double-counted in reconciliation (fixed: 19+29+25+31 = 104 exact)",
+    "R1: misleading 'no active iframe' test title (fixed: renamed; unprovable try/catch coverage documented honestly instead of claimed)",
+    "R1: run-spec gates used `bun --cwd <pkg> run <script>`, which exits 0 without running anything on Bun 1.3.x (fixed: `cd <pkg> && bun run` + warning note in SFE-P0a/SFE-P1a specs)",
+    "R2 (repair-introduced): §1.5 claimed ContextMenuController calls getContextTargetAt — the host-side wrapper has zero production callers (fixed: reclassified TEST-ONLY, P4b deletion candidate)"
+  ],
+  "advisories": [
+    "Cited test range preview-client.test.ts:174-207 slightly undershoots the second test's end (citation precision only)"
+  ],
+  "gate": {
+    "commands": [
+      "bun run typecheck — exit 0",
+      "cd packages/desktop && bun run test — exit 0 (2132 pass, 1 skip, 0 fail, 5983 expect(), 142 files)",
+      "cd packages/cli && bun run test — exit 0 (1810 pass, 60 skip, 0 fail, 5075 expect(), 151 files)",
+      "git diff --stat ea7b60d5..HEAD -- <production paths + manifests + bun.lock> — empty (byte-identical to baseline)"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-01 evidenced"],
+  "deletionLedgerUpdates": ["Baseline column filled: 104 routes, 12 IPC registrations, 5 preview-mutation messages, 30 Platform/HostServices methods, LOC/dep/generated-file counts"],
+  "checkpointSummary": "Baseline recorded and reproducible; mutation and platform/transport inventories complete with P4/P5 search-proof identifier lists; two previously uncovered mutation behaviors pinned with sabotage-proven tests; review ran 2 repair rounds to approve."
+}
+```

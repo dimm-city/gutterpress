@@ -115,4 +115,16 @@ so every later deletion can prove its inventoried callers moved or disappeared.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `764613ec..5a53aa4e`, two batches: plan/inventory
+  docs and characterization tests): 5 CONFIRMED findings — a false coverage claim in
+  mutation-inventory §4.2, missing context-menu identifiers in the mutation inventory,
+  a dropped `lint` namespace plus double-counted reconciliation in platform-inventory
+  §11, a misleading test title, and gate commands using the silently-no-op
+  `bun --cwd <pkg> run <script>` form. All fixed in `17929629`, each fix with a
+  sabotage/reproduction proof.
+- **Round 2** (re-review): 1 repair-introduced CONFIRMED finding — §1.5 wrongly
+  claimed a production caller for `PreviewClient.getContextTargetAt()`; reclassified
+  TEST-ONLY with grep proof. Fixed in `63d9d5da`. Verdict: **approve**, 0 confirmed
+  remaining, 1 advisory (citation line-range precision).
+- **Gate**: PASS — typecheck exit 0; desktop 2132 pass/0 fail; cli 1810 pass/0 fail;
+  production paths byte-identical to baseline `ea7b60d5`.
