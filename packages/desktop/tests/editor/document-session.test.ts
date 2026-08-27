@@ -87,12 +87,19 @@ describe("open", () => {
     ["dirty", openDirty],
     ["saving", openSaving],
     ["error", openErrorDirty],
-  ] as const)("resets to clean from phase=%s (file switch)", (_label, make) => {
+  ] as const)("switches identity to clean from phase=%s (file switch), version never rewinds to 0", (_label, make) => {
     const s = make();
+    const versionBefore = s.snapshot.version;
     s.open("/book/b.md", "b text", 7);
     expect(s.phase).toBe("clean");
     expect(s.documentId).toBe("/book/b.md");
-    expect(s.snapshot).toEqual({ text: "b text", version: 0 });
+    expect(s.snapshot.text).toBe("b text");
+    // CONFIRMED review regression (SFE-P1c round 1): version used to reset
+    // to exactly 0 on every open() call, so a SourceEdit captured against
+    // the PRIOR document's version could validate against this new one
+    // too, whenever both happened to reset to the same value. Version must
+    // only ever climb on a reused session instance.
+    expect(s.snapshot.version).toBeGreaterThan(versionBefore);
     expect(s.diskBaseline).toEqual({ text: "b text", stamp: 7 });
     expect(s.externalChange).toBeNull();
     expect(s.isSaving).toBe(false);
@@ -128,11 +135,15 @@ describe("openFailed", () => {
     ["dirty", openDirty],
     ["saving", openSaving],
     ["error", openErrorDirty],
-  ] as const)("resets to error from phase=%s (file switch onto a failing load)", (_label, make) => {
+  ] as const)("switches identity to error from phase=%s (file switch onto a failing load), version never rewinds to 0", (_label, make) => {
     const s = make();
+    const versionBefore = s.snapshot.version;
     s.openFailed("/book/missing.md");
     expect(s.phase).toBe("error");
-    expect(s.snapshot).toEqual({ text: "", version: 0 });
+    expect(s.snapshot.text).toBe("");
+    // See the sibling "open" test.each above for the CONFIRMED regression
+    // this pins: version must never rewind to 0 on a reused instance.
+    expect(s.snapshot.version).toBeGreaterThan(versionBefore);
     expect(s.externalChange).toBeNull();
     expect(s.isSaving).toBe(false);
   });
@@ -163,12 +174,96 @@ describe("restore", () => {
     ["dirty", openDirty],
     ["saving", openSaving],
     ["error", openErrorDirty],
-  ] as const)("resets version to 0 and clears external state from phase=%s", (_label, make) => {
+  ] as const)("switches identity, never rewinding version to 0, and clears external state from phase=%s", (_label, make) => {
     const s = make();
+    const versionBefore = s.snapshot.version;
     s.restore("/book/b.md", "recovered", { text: "recovered", stamp: 5 });
-    expect(s.snapshot).toEqual({ text: "recovered", version: 0 });
+    expect(s.snapshot.text).toBe("recovered");
+    // See the "open" test.each above for the CONFIRMED regression this
+    // pins: version must never rewind to 0 on a reused instance.
+    expect(s.snapshot.version).toBeGreaterThan(versionBefore);
     expect(s.externalChange).toBeNull();
     expect(s.isSaving).toBe(false);
+  });
+});
+
+// ── beginRestore() / finishRestore() (two-phase restore, SFE-P1c round 1) ──
+//
+// `EditorBuffer.restoreContent` establishes identity SYNCHRONOUSLY via
+// beginRestore before its async disk-baseline read, then completes with
+// finishRestore once the read resolves — see buffer-state.svelte.ts's
+// header for the CONFIRMED cross-file-write regression this closes.
+// `restore()` above is exactly `beginRestore` + `finishRestore` composed in
+// one call (proven directly below), so its own tests already cover the
+// combined-result shape; these tests cover the INTERMEDIATE state between
+// the two calls, which `restore()` alone can never expose.
+
+describe("beginRestore / finishRestore", () => {
+  test("restore() is exactly beginRestore() followed by finishRestore()", () => {
+    const viaRestore = new DocumentSession();
+    viaRestore.restore("/book/a.md", "recovered", { text: "disk text", stamp: 3 });
+
+    const viaTwoPhase = new DocumentSession();
+    viaTwoPhase.beginRestore("/book/a.md", "recovered");
+    const outcome = viaTwoPhase.finishRestore({ text: "disk text", stamp: 3 });
+
+    expect(viaTwoPhase.snapshot).toEqual(viaRestore.snapshot);
+    expect(viaTwoPhase.diskBaseline).toEqual(viaRestore.diskBaseline);
+    expect(viaTwoPhase.phase).toBe(viaRestore.phase);
+    expect(outcome).toEqual({ phase: "dirty", scheduleSave: true });
+  });
+
+  test("beginRestore alone establishes the new identity+text immediately, phase dirty, baseline provisionally empty", () => {
+    const s = new DocumentSession();
+    s.beginRestore("/book/a.md", "recovered text");
+
+    expect(s.documentId).toBe("/book/a.md");
+    expect(s.snapshot.text).toBe("recovered text");
+    expect(s.phase).toBe("dirty");
+    expect(s.hasPendingSave).toBe(true);
+    // The real disk baseline is not known yet — provisionally empty, not
+    // whatever a PRIOR document (if any) left behind, so a save attempted
+    // in this window never compares against a stale, unrelated baseline.
+    expect(s.diskBaseline).toEqual({ text: "", stamp: undefined });
+  });
+
+  test("beginRestore establishes identity+text atomically even mid-flight on a reused, dirty session (no cross-document mismatch window)", () => {
+    // CONFIRMED review regression (SFE-P1c round 1): the host used to write
+    // its own identity/text fields directly, ahead of the session, so a
+    // caller reading "current identity" and "current text" between those
+    // two writes could see one document's identity paired with another
+    // document's text. beginRestore makes that pairing atomic: identity
+    // and text change together, synchronously, in one call.
+    const s = openDirty(); // "/book/chapter.md", text = "original + edit"
+    const versionBefore = s.snapshot.version;
+
+    s.beginRestore("/book/other.md", "other recovered");
+
+    expect(s.documentId).toBe("/book/other.md");
+    expect(s.snapshot.text).toBe("other recovered");
+    expect(s.snapshot.version).toBeGreaterThan(versionBefore);
+    expect(s.phase).toBe("dirty");
+  });
+
+  test("finishRestore supplies the real baseline and recomputes phase: clean when recovered text matches disk", () => {
+    const s = new DocumentSession();
+    s.beginRestore("/book/a.md", "same text");
+    const outcome = s.finishRestore({ text: "same text", stamp: 9 });
+
+    expect(outcome).toEqual({ phase: "clean", scheduleSave: false });
+    expect(s.phase).toBe("clean");
+    expect(s.diskBaseline).toEqual({ text: "same text", stamp: 9 });
+    expect(s.isDirty).toBe(false);
+  });
+
+  test("finishRestore supplies the real baseline and recomputes phase: dirty + schedules a save when recovered text differs from disk", () => {
+    const s = new DocumentSession();
+    s.beginRestore("/book/a.md", "recovered text");
+    const outcome = s.finishRestore({ text: "disk text", stamp: 9 });
+
+    expect(outcome).toEqual({ phase: "dirty", scheduleSave: true });
+    expect(s.diskBaseline).toEqual({ text: "disk text", stamp: 9 });
+    expect(s.isDirty).toBe(true);
   });
 });
 
@@ -583,13 +678,19 @@ describe("reset", () => {
     ["dirty", openDirty],
     ["saving", openSaving],
     ["error", openErrorDirty],
-  ] as const)("clears everything back to the construction defaults from phase=%s", (_label, make) => {
+  ] as const)("clears everything back to the construction defaults from phase=%s, without rewinding version to 0", (_label, make) => {
     const s = make();
+    const versionBefore = s.snapshot.version;
     const outcome = s.reset();
     expect(outcome).toEqual({ phase: "clean" });
     expect(s.phase).toBe("clean");
     expect(s.documentId).toBeNull();
-    expect(s.snapshot).toEqual({ text: "", version: 0 });
+    expect(s.snapshot.text).toBe("");
+    // See the "open" test.each above for the CONFIRMED regression this
+    // pins: closing a document still consumes a version number, so a
+    // later re-open on this same instance can never land back on a value
+    // an in-flight edit against the closed document already captured.
+    expect(s.snapshot.version).toBeGreaterThan(versionBefore);
     expect(s.diskBaseline).toEqual({ text: "", stamp: undefined });
     expect(s.externalChange).toBeNull();
     expect(s.isDirty).toBe(false);

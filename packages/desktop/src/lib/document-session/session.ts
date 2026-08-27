@@ -20,9 +20,11 @@
  *     can decide *how* to schedule (debounce ms, cancellation, coalescing)
  *     without this class knowing timers exist.
  *
- * `EditorBuffer` itself is NOT modified by this run (Lane C wires the
- * delegation in a later run); this module exists standalone so it can be
- * unit-tested exhaustively without the `$state` shim.
+ * `EditorBuffer` (`../editor/buffer-state.svelte.ts`) delegates its phase/
+ * conflict/baseline logic directly to a private instance of this class —
+ * see that file's "Delegation to `DocumentSession`" header section for the
+ * wiring. This module remains standalone and framework-free regardless, so
+ * it stays unit-testable exhaustively without the `$state` shim.
  *
  * ## Vocabulary alignment (D1/D2/D3)
  *
@@ -35,22 +37,25 @@
  * not gated on whether the replacement text is byte-different from what it
  * replaces** (mirroring `applyEdit`'s unconditional `version: currentVersion + 1`
  * and `MemoryDocumentHost.replaceExternal`'s unconditional bump). This file
- * does NOT import from `packages/editor` (that is Lane B's integration seam,
- * per the run spec) — the shapes below are this module's own minimal types,
- * kept structurally compatible by convention.
+ * does NOT import from `packages/editor` — the shapes below are this
+ * module's own minimal types, kept structurally compatible by convention.
  *
  * `EditorBuffer` has no `version` field today (it tracks dirtiness purely by
  * `content !== diskContent` string comparison). Introducing `version` here is
  * this run's contribution toward D2, layered on top of — not replacing — the
- * exact `phase` semantics `buffer-state.test.ts` already pins. Two operations
- * are new-document-identity events rather than in-place edits, so they reset
- * `version` to `0` (matching what constructing a fresh
- * `MemoryDocumentHost(initial)` would do) rather than incrementing it:
+ * exact `phase` semantics `buffer-state.test.ts` already pins. Four operations
+ * are new-document-identity events rather than in-place edits —
  * {@link DocumentSession.open}, {@link DocumentSession.openFailed}, and
  * {@link DocumentSession.restore} (opening/recovering a — possibly different —
  * file into this reused session instance), and {@link DocumentSession.reset}
- * (closing the document entirely). Everything else that changes `text` while
- * a document stays open increments `version` by exactly one.
+ * (closing the document entirely). **Unlike an earlier version of this file,
+ * none of the four reset `version` back to `0`.** `version` is strictly
+ * monotonic for the lifetime of one `DocumentSession` instance, including
+ * across identity changes — see {@link resetDocument}'s header for why a
+ * reset-to-0 was a CONFIRMED review defect (a stale `SourceEdit` captured
+ * against one document could validate against a later, unrelated one that
+ * happened to land on the same reset value). Everything else that changes
+ * `text` while a document stays open increments `version` by exactly one.
  *
  * ## What stays out of this file (by design, per the run spec)
  *
@@ -200,6 +205,18 @@ export class DocumentSession {
   private _documentId: string | null = null;
   private _text = "";
   private _version = 0;
+  /**
+   * `false` only until the FIRST identity-establishing call
+   * (open/openFailed/restore/reset, via {@link resetDocument}) on this
+   * instance. That first call leaves `_version` at its field default (`0`)
+   * — matching what constructing a fresh host is documented to mean for
+   * the shared D3 contract suite (`DocumentHostFactory`: "always version 0
+   * at construction") — and flips this flag so every identity-establishing
+   * call AFTER that increments `_version` instead; see
+   * {@link resetDocument}'s header for why it must never jump back to `0`
+   * once a document has been open.
+   */
+  #everOpened = false;
   private _diskText = "";
   private _diskStamp: unknown = undefined;
   private _externalChange: PendingExternalChange | null = null;
@@ -273,11 +290,38 @@ export class DocumentSession {
     this._version += 1;
   }
 
-  /** A fresh document identity in this reused instance: reset, don't increment (see header). */
+  /**
+   * A new document identity in this (possibly reused) instance — open,
+   * openFailed, restore, or reset. `_version` is STRICTLY MONOTONIC for the
+   * lifetime of one `DocumentSession` instance, INCLUDING across identity
+   * changes: it always increments from wherever it currently is and never
+   * jumps back to `0` once a document has been open.
+   *
+   * Resetting to `0` on every identity change was a CONFIRMED review defect
+   * (SFE-P1c round 1): a `SourceEdit` captured against a version this
+   * instance had already used for a PRIOR document could then validate
+   * against a DIFFERENT, later document that happened to land on that same
+   * reset value — because every re-open reset to exactly `0` regardless of
+   * what had come before. `DesktopDocumentHost.open()` re-identifies a
+   * LIVE, reused host onto a different document (see that file's header),
+   * so the collision was directly reachable there; a fresh
+   * `MemoryDocumentHost` is a fresh OBJECT no stale reference can name, but
+   * rewinding the counter on a REUSED object is not the same safe case.
+   *
+   * The one case that still lands on `0`: {@link #everOpened} is `false`
+   * only before the FIRST identity-establishing call on a freshly
+   * constructed instance, so that call leaves `_version` at its field
+   * default (`0`) — matching what constructing a fresh host is documented
+   * to mean for the shared D3 contract suite.
+   */
   private resetDocument(documentId: string | null, text: string): void {
     this._documentId = documentId;
     this._text = text;
-    this._version = 0;
+    if (this.#everOpened) {
+      this._version += 1;
+    } else {
+      this.#everOpened = true;
+    }
     this._externalChange = null;
     this._savingText = null;
   }
@@ -307,19 +351,64 @@ export class DocumentSession {
   }
 
   /**
-   * A crash-recovery restore (`EditorBuffer.restoreContent`): the recovered
-   * text becomes the live text immediately, while `diskBaseline` is whatever
-   * the host has (by then) actually read from disk for this file — which may
-   * differ from the recovered text, in which case the document opens dirty
-   * and the host should schedule a save.
+   * Phase 1 of a crash-recovery restore (`EditorBuffer.restoreContent`'s
+   * entry point, called BEFORE any host I/O runs): establishes the new
+   * document identity and its recovered text SYNCHRONOUSLY.
+   *
+   * This is what makes a concurrent `flush()`/`performSave()` call
+   * reachable during `restoreContent`'s `await` window operate against a
+   * SINGLE, self-consistent identity+text pair instead of a stale
+   * document's identity paired with a new document's text (or vice versa)
+   * — a CONFIRMED review defect (SFE-P1c round 1): the host used to write
+   * its own `filePath`/`content` fields directly here, ahead of this
+   * class, so a save that ran mid-await could read the NEW file's path
+   * together with the OLD document's `session` text (or the reverse),
+   * letting one open document's bytes silently overwrite a different
+   * file's bytes on disk.
+   *
+   * The disk baseline is not known yet when this is called, so the
+   * document is provisionally reported `dirty` against an EMPTY baseline
+   * (a save is legal — recovered content should reach disk soon) rather
+   * than against the PRIOR document's now-irrelevant baseline. The caller
+   * completes the restore by calling {@link finishRestore} once the real
+   * baseline is known.
    */
-  restore(documentId: string, recoveredText: string, diskBaseline: DiskBaseline): RestoreOutcome {
+  beginRestore(documentId: string, recoveredText: string): void {
     this.resetDocument(documentId, recoveredText);
+    this._diskText = "";
+    this._diskStamp = undefined;
+    this.setPhase("dirty");
+  }
+
+  /**
+   * Phase 2 of a crash-recovery restore: supplies the disk baseline
+   * resolved for the identity opened by {@link beginRestore}, computing the
+   * same final phase/scheduleSave outcome {@link restore} computes in one
+   * shot. The caller must not have switched identity again (via `open`,
+   * `openFailed`, `restore`, `reset`, or another `beginRestore`) between
+   * the two calls — `EditorBuffer`'s `loadGen` generation counter is
+   * exactly the guard that keeps this true (see this class's header,
+   * "what stays out of this file").
+   */
+  finishRestore(diskBaseline: DiskBaseline): RestoreOutcome {
     this._diskText = diskBaseline.text;
     this._diskStamp = diskBaseline.stamp;
     const dirty = this.isDirty;
     this.setPhase(dirty ? "dirty" : "clean");
     return { phase: this._phase, scheduleSave: dirty };
+  }
+
+  /**
+   * A crash-recovery restore in one synchronous call — equivalent to
+   * {@link beginRestore} immediately followed by {@link finishRestore} with
+   * an already-known disk baseline. Kept for callers (and tests) that have
+   * the baseline available up front. `EditorBuffer.restoreContent` uses the
+   * two-phase split above instead, because ITS disk baseline is only known
+   * after an async read — see {@link beginRestore}'s header.
+   */
+  restore(documentId: string, recoveredText: string, diskBaseline: DiskBaseline): RestoreOutcome {
+    this.beginRestore(documentId, recoveredText);
+    return this.finishRestore(diskBaseline);
   }
 
   /** Drop the document entirely (`EditorBuffer.reset`). */

@@ -13,15 +13,9 @@
  *      cover: phase interactions with the wrapped `DocumentSession`,
  *      conflict handling, and open/reset re-identity.
  *
- * ## Coordination note — blocked import
- *
- * `packages/desktop/package.json` does not yet declare a dependency on
- * `@dimm-city/gutterpress-editor` (that edge is Lane C's / the
- * integrator's — see the run specification and this run's lane report).
- * Until `bun install` links it, THIS FILE cannot resolve
- * `@dimm-city/gutterpress-editor` and `bun test` on it fails with
- * "Cannot find module" — expected and recorded in the lane report, not
- * worked around with a relative-path fallback import.
+ * `packages/desktop/package.json` declares a `workspace:*` dependency on
+ * `@dimm-city/gutterpress-editor`, so this file resolves it normally
+ * through the workspace install — no relative-path fallback import needed.
  */
 import { describe, expect, test } from "bun:test";
 import { runDocumentHostContractTests } from "@dimm-city/gutterpress-editor";
@@ -168,27 +162,54 @@ describe("DesktopDocumentHost — desktop-specific phase interactions", () => {
     expect(seen).toEqual([{ text: "changed elsewhere", version: 1 }]);
   });
 
-  test("reset/open re-identity: reset drops the document, open re-establishes a fresh identity at version 0", () => {
+  test("reset/open re-identity: version stays strictly monotonic across reset/open — it never rewinds to a value a stale edit against the prior identity could still match", () => {
+    // CONFIRMED review regression (SFE-P1c round 1): resetDocument used to
+    // reset `_version` to exactly 0 on EVERY open()/reset() call, so any
+    // two documents opened in sequence on a reused host both started at
+    // version 0. An edit captured against the first document's version 0
+    // then silently validated against the second, unrelated document too.
     const host = new DesktopDocumentHost("original", { documentId: "/book/a.md" });
     host.applyEdit({ from: 0, to: 0, insert: "!", expectedVersion: 0 });
     expect(host.documentId).toBe("/book/a.md");
-    expect(host.getSnapshot().version).toBe(1);
+    const versionAfterFirstEdit = host.getSnapshot().version;
+    expect(versionAfterFirstEdit).toBe(1);
 
     const resetOutcome = host.reset();
-    expect(resetOutcome).toEqual({ phase: "clean" });
+    expect(resetOutcome.phase).toBe("clean");
     expect(host.documentId).toBeNull();
-    expect(host.getSnapshot()).toEqual({ text: "", version: 0 });
+    expect(host.getSnapshot().text).toBe("");
+    // Closing a document still consumes a version number — it must never
+    // rewind, so a later re-open cannot land back on a version number an
+    // in-flight edit against the OLD document already captured.
+    expect(host.getSnapshot().version).toBeGreaterThan(versionAfterFirstEdit);
+    const versionAfterReset = host.getSnapshot().version;
 
     const openOutcome = host.open("/book/b.md", "fresh document", 7);
-    expect(openOutcome).toEqual({ phase: "clean" });
+    expect(openOutcome.phase).toBe("clean");
     expect(host.documentId).toBe("/book/b.md");
-    expect(host.getSnapshot()).toEqual({ text: "fresh document", version: 0 });
+    expect(host.getSnapshot().text).toBe("fresh document");
+    // The version counter must keep climbing, never reset to a value
+    // already used by a prior identity on this same (reused) host.
+    expect(host.getSnapshot().version).toBeGreaterThan(versionAfterReset);
     expect(host.diskBaseline).toEqual({ text: "fresh document", stamp: 7 });
 
-    // A stale edit computed against the PRIOR identity's version must not
-    // be honored against the new document — proves open() genuinely
-    // resets, rather than merely relabeling, the version counter.
-    const staleAcrossSwitch = host.applyEdit({ from: 0, to: 0, insert: "x", expectedVersion: 1 });
+    // The exact reproduction from the review finding: every re-open used
+    // to reset version to exactly 0, so an edit captured against version 0
+    // of ANY document silently validated against whichever document
+    // happened to be open next. Confirm that collision is now closed.
+    const collisionAcrossSwitch = host.applyEdit({ from: 0, to: 0, insert: "HACKED", expectedVersion: 0 });
+    expect(collisionAcrossSwitch.ok).toBe(false);
+    if (!collisionAcrossSwitch.ok) expect(collisionAcrossSwitch.reason).toBe("stale");
+    expect(host.getSnapshot().text).toBe("fresh document");
+
+    // A stale edit computed against the PRIOR identity's own real version
+    // must also still be rejected.
+    const staleAcrossSwitch = host.applyEdit({
+      from: 0,
+      to: 0,
+      insert: "x",
+      expectedVersion: versionAfterFirstEdit,
+    });
     expect(staleAcrossSwitch.ok).toBe(false);
     if (!staleAcrossSwitch.ok) expect(staleAcrossSwitch.reason).toBe("stale");
   });
@@ -200,7 +221,33 @@ describe("DesktopDocumentHost — desktop-specific phase interactions", () => {
 
     host.open("/book/other.md", "second", 1);
 
-    expect(seen).toEqual([{ text: "second", version: 0 }]);
+    // Version continues from the host's construction-time open() call
+    // (version 0) rather than resetting back to 0 a second time.
+    expect(seen).toEqual([{ text: "second", version: 1 }]);
+  });
+
+  test("replaceExternal after reset() is a no-op: no document is open, so there is nothing to replace", () => {
+    // CONFIRMED review regression (SFE-P1c round 1): replaceExternal used
+    // to fall through to noteExternalCheck's/edit's own null-documentId
+    // no-op guards, which leave phase "clean" without ever touching
+    // `_diskText` — landing the session in a state where isDirty is true
+    // while phase is "clean", breaking the documented "clean implies not
+    // dirty" invariant.
+    const host = new DesktopDocumentHost("original", { documentId: "/book/a.md" });
+    host.reset();
+    expect(host.documentId).toBeNull();
+
+    const seen: Array<{ text: string; version: number }> = [];
+    host.subscribe((snapshot) => seen.push(snapshot));
+
+    host.replaceExternal("authoritative text");
+
+    expect(host.documentId).toBeNull();
+    expect(host.getSnapshot().text).toBe("");
+    expect(host.phase).toBe("clean");
+    expect(host.isDirty).toBe(false);
+    expect(host.hasPendingSave).toBe(false);
+    expect(seen).toEqual([]);
   });
 
   test("beginSave/completeSave never notify EditorDocumentHost subscribers (text/version untouched by save bookkeeping)", () => {

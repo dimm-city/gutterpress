@@ -229,14 +229,24 @@ export class EditorBuffer {
    * `filePath` and `content` are set together (the recovered text is known
    * synchronously) before the async disk-baseline read, so the parent's
    * `{#key filePath}` remount reads the correct content prop — same rationale
-   * as {@link load}.
+   * as {@link load}. Unlike the old implementation, `filePath`/`content`
+   * are never written directly here: {@link DocumentSession.beginRestore}
+   * establishes the new identity+text SYNCHRONOUSLY inside the session
+   * (the single source of truth for "which document is open"), and
+   * {@link syncFromSession} — the one choke point that writes these runes
+   * — mirrors it immediately, before either `await` below runs. A prior
+   * version of this method wrote the runes directly and called into the
+   * session only after both awaits resolved, so a save that ran mid-await
+   * could read this class's `filePath` rune (already the NEW file) paired
+   * with the session's still-OLD text, or vice versa — a CONFIRMED review
+   * defect (SFE-P1c round 1) that let one document's bytes silently
+   * overwrite a different file's bytes on disk.
    */
   async restoreContent(filePath: string, recovered: string): Promise<void> {
     this.cancelTimers();
     const gen = ++this.loadGen;
-    this.externalChange = null;
-    this.filePath = filePath;
-    this.content = recovered;
+    this.session.beginRestore(filePath, recovered);
+    this.syncFromSession();
     const st = await this.platform.statFile(filePath).catch(() => null);
     if (gen !== this.loadGen) return;
     let diskText: string;
@@ -246,7 +256,7 @@ export class EditorBuffer {
       diskText = "";
     }
     if (gen !== this.loadGen) return;
-    const outcome = this.session.restore(filePath, recovered, {
+    const outcome = this.session.finishRestore({
       text: diskText,
       stamp: st?.mtimeMs ?? 0,
     });
@@ -370,7 +380,16 @@ export class EditorBuffer {
     // A keystroke can land while a write is in flight. Keep flushing snapshots
     // until the live buffer matches disk; the host watchdog remains the final
     // bound during quit.
-    while (this.filePath && this.isDirty) {
+    //
+    // Keyed on `this.session.documentId`, NOT the `filePath` rune: this is
+    // the same "is a document open" fact `performSave`'s own entry guard
+    // (`this.session.beginSave()` returning `null` iff `documentId ===
+    // null`) checks, so this loop and `performSave` can never disagree
+    // about whether there is a document to save — a CONFIRMED review
+    // defect (SFE-P1c round 1) let them read different sources (this rune
+    // vs. the session) during `restoreContent`'s await window, spinning
+    // forever with no progress once `performSave` found nothing to do.
+    while (this.session.documentId && this.isDirty) {
       if (this.saveTimer) {
         clearTimeout(this.saveTimer);
         this.saveTimer = null;

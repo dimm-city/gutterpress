@@ -441,6 +441,158 @@ test("an in-flight external reconcile for file A cannot overwrite newly loaded f
   expect(replaced).toEqual([]);
 });
 
+test("flush() called while restoreContent is parked on its disk read never writes one document's text into a different document's file", async () => {
+  // CONFIRMED review regression (SFE-P1c round 1): restoreContent used to
+  // write its own `filePath`/`content` fields directly, ahead of the
+  // session, and only called into the session AFTER both of its awaits
+  // resolved. A save that STARTED during that window (this test's flush())
+  // read the already-switched `filePath` rune paired with the
+  // still-previous-document session text, and could write one document's
+  // bytes to a different document's file. The differential reproduction
+  // this test pins: `WRITE /book/b.md` ending up with A's edited text.
+  //
+  // b.md's REAL on-disk content is deliberately set to the same text as
+  // a.md's ORIGINAL (pre-edit) content. On the pre-fix code, this makes the
+  // (wrongly A-scoped) save's pre-write conflict check compare A's own
+  // unchanged diskBaseline ("a original") against b.md's real disk content
+  // ("a original") and find them EQUAL — so the conflict check that would
+  // otherwise mask the bug by refusing to write does not fire, and the
+  // corrupting write actually reaches disk. This is what makes the
+  // assertions below fail against the pre-fix code (verified) rather than
+  // passing vacuously.
+  //
+  // Only the FIRST call to statFile("/book/b.md") is gated — the one
+  // restoreContent itself issues as its own first await — so flush()'s own
+  // (later, second) statFile call for the same path proceeds normally,
+  // giving a fully deterministic interleaving to assert against.
+  class BlockFirstBStatPlatform extends MemoryPlatform {
+    private blocked = false;
+    private release: (() => void) | null = null;
+    private gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+
+    async statFile(path: string): ReturnType<MemoryPlatform["statFile"]> {
+      if (path === "/book/b.md" && !this.blocked) {
+        this.blocked = true;
+        await this.gate;
+      }
+      return super.statFile(path);
+    }
+
+    releaseFirstBStat(): void {
+      this.release?.();
+    }
+  }
+
+  const platform = new BlockFirstBStatPlatform({
+    "/book/a.md": "a original",
+    "/book/b.md": "a original",
+  });
+  const events: string[] = [];
+  const buffer = makeBuffer(platform, events);
+
+  await buffer.load("/book/a.md");
+  buffer.edit("a edited");
+  expect(buffer.phase).toBe("dirty");
+
+  // restoreContent's OWN statFile("/book/b.md") call is what blocks here —
+  // by the time this call returns a pending promise, its synchronous
+  // prefix (beginRestore + syncFromSession) has already run, so
+  // buffer.filePath/content are ALREADY "/book/b.md"/"b recovered".
+  const restoreB = buffer.restoreContent("/book/b.md", "b recovered");
+  expect(buffer.filePath).toBe("/book/b.md");
+  expect(buffer.content).toBe("b recovered");
+
+  // A save starts here, WHILE restoreContent is still parked on its own
+  // gated statFile call above.
+  const flushDuringRestore = buffer.flush();
+  await expect(flushDuringRestore).rejects.toThrow(/changed on disk/);
+
+  // The fix: the save that started mid-restore captured "/book/b.md" paired
+  // with "b recovered" (both from the SAME, already-updated session) — so
+  // it correctly detects its placeholder empty baseline conflicts with the
+  // real "a original" already on disk at that path, and refuses to write
+  // rather than guessing. Neither file was corrupted with the wrong
+  // document's bytes: b.md must never receive "a edited".
+  expect(platform.getContent("/book/a.md")).toBe("a original");
+  expect(platform.getContent("/book/b.md")).toBe("a original");
+
+  platform.releaseFirstBStat();
+  await restoreB;
+
+  expect(buffer.filePath).toBe("/book/b.md");
+  expect(buffer.content).toBe("b recovered");
+  expect(platform.getContent("/book/a.md")).toBe("a original");
+  expect(platform.getContent("/book/b.md")).toBe("a original");
+});
+
+test("flush() called on a FRESH buffer while restoreContent is parked on its disk read settles instead of hanging forever", async () => {
+  // CONFIRMED review regression (SFE-P1c round 1): on a freshly constructed
+  // buffer (no document ever loaded), the pre-fix restoreContent wrote the
+  // `filePath` rune directly and left `session.documentId` at `null` until
+  // both of its awaits resolved. A save STARTED in that window read
+  // `this.filePath` (already truthy — the new file) but
+  // `session.beginSave()` returned `null` (no document open yet per the
+  // session), so `performSave` returned immediately having done nothing —
+  // and flush()'s own loop condition (`this.filePath && this.isDirty`) was
+  // still satisfied, so it looped again, and again, forever: every
+  // `doSave()` call resolved as an already-resolved microtask with no
+  // pending I/O to await, starving the event loop rather than busy-looping
+  // visibly. The fix keys identity off `session.documentId` (now
+  // established synchronously by `beginRestore`, before this method's
+  // first `await`) in both `performSave` and `flush`'s loop guard, so they
+  // can never disagree about whether a document is open.
+  class BlockFirstAStatPlatform extends MemoryPlatform {
+    private blocked = false;
+    private release: (() => void) | null = null;
+    private gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+
+    async statFile(path: string): ReturnType<MemoryPlatform["statFile"]> {
+      if (path === "/book/a.md" && !this.blocked) {
+        this.blocked = true;
+        await this.gate;
+      }
+      return super.statFile(path);
+    }
+
+    releaseFirstAStat(): void {
+      this.release?.();
+    }
+  }
+
+  const platform = new BlockFirstAStatPlatform({ "/book/a.md": "a original" });
+  const buffer = makeBuffer(platform); // fresh — load()/restoreContent() never called yet
+
+  const restoreA = buffer.restoreContent("/book/a.md", "a recovered");
+  expect(buffer.filePath).toBe("/book/a.md");
+  expect(buffer.content).toBe("a recovered");
+
+  // flush() must settle (resolve OR reject) within a bounded time even
+  // though restoreContent is still parked on its own gated statFile call —
+  // a hang here would mean this race never settles at all, matching the
+  // reviewed defect (a real Bun.sleep()-based timer is used as the bound,
+  // since the reported hang is event-loop starvation via an unbroken
+  // microtask chain, which a real macrotask timer reveals).
+  let settled = false;
+  const flushDuringRestore = buffer.flush().catch(() => {});
+  void flushDuringRestore.then(() => {
+    settled = true;
+  });
+  for (let attempt = 0; attempt < 40 && !settled; attempt++) {
+    await Bun.sleep(5);
+  }
+  expect(settled).toBe(true);
+
+  platform.releaseFirstAStat();
+  await restoreA;
+  await flushDuringRestore;
+
+  expect(buffer.filePath).toBe("/book/a.md");
+});
+
 test("a failed disk write rejects flush and remains dirty for the close gate", async () => {
   class FailingWritePlatform extends MemoryPlatform {
     async writeFile(): Promise<FileWriteResult> {

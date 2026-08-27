@@ -58,7 +58,7 @@
  *     `DiskBaseline.stamp` is deliberately opaque and never compared by the
  *     session (see session.ts's own header).
  *
- * ## `replaceExternal` — D3: unconditional, version +1 exactly once
+ * ## `replaceExternal` — D3: unconditional, version +1 exactly once, WHILE A DOCUMENT IS OPEN
  *
  * `EditorDocumentHost.replaceExternal`'s contract (hosts.ts) is
  * unconditional: "always applies, even against a readonly document",
@@ -69,7 +69,8 @@
  * folder-change notifications, and (correctly, for THAT purpose) treats a
  * byte-identical or "bare touch" change as a no-op that does not bump
  * version. Adapting the simpler, unconditional D3 primitive on top of that
- * richer machinery therefore takes two steps, not a direct pass-through:
+ * richer machinery therefore takes two steps in EVERY branch that has an
+ * open document to replace, not a direct pass-through:
  *
  *   1. Feed the replacement through `noteExternalCheck` so the disk
  *      baseline converges on the new text/stamp using the session's own
@@ -87,6 +88,21 @@
  * Every branch above bumps the session version by EXACTLY one net increment
  * — never zero, never two — see the inline comments on `replaceExternal`
  * below for the branch-by-branch accounting.
+ *
+ * ONE branch is not covered by that accounting: no document open at all
+ * (`documentId === null`, e.g. right after {@link reset}). D3's "always
+ * applies" guarantee describes replacing an OPEN document's authoritative
+ * text; it presumes an identity to replace onto, which `replaceExternal`'s
+ * own signature (`text` only, no `documentId`) cannot supply on its own. A
+ * CONFIRMED review finding (SFE-P1c round 1) found this branch previously
+ * fell through to `noteExternalCheck`'s own `documentId === null` guard
+ * (`session.ts`), which returns a no-op WITHOUT touching `_diskText` —
+ * followed by the "already-converged no-op" fallback's `session.edit`
+ * call, which ALSO no-ops on the same null-`documentId` check — leaving
+ * the session `phase: "clean"` while `isDirty` was `true` (`_text` had
+ * changed, `_diskText` had not), breaking the load-bearing "clean implies
+ * not dirty" invariant `session.ts` documents. `replaceExternal` now
+ * guards this branch explicitly as a no-op — see below.
  *
  * ## Notification — "did the snapshot actually change?"
  *
@@ -183,6 +199,19 @@ export class DesktopDocumentHost implements EditorDocumentHost {
 
   replaceExternal(text: string): void {
     this.#withSessionMutation(() => {
+      if (this.#session.documentId === null) {
+        // No document is open (e.g. right after reset()) — there is no
+        // identity for this text-only replacement to apply onto, and
+        // replaceExternal's D3 signature carries no documentId of its own
+        // to establish one. Treat this as a no-op rather than falling
+        // through to noteExternalCheck/edit's own null-documentId guards,
+        // which used to leave the session reporting phase "clean" while
+        // isDirty was true — a CONFIRMED review finding (see this file's
+        // header). A caller that wants to adopt externally-supplied text
+        // with no prior identity should call open()/restore() instead,
+        // which take an explicit documentId.
+        return;
+      }
       const stamp = this.#nextDiskStamp();
       const outcome = this.#session.noteExternalCheck({ kind: "changed", diskText: text, diskStamp: stamp });
       if (outcome.conflict) {
@@ -198,11 +227,11 @@ export class DesktopDocumentHost implements EditorDocumentHost {
         // replaceText, by design, as a folder-change-reconciliation
         // optimization. D3's replaceExternal has no such optimization — it
         // is unconditional — so force the version bump explicitly. Because
-        // diskText now already equals `text` (set by the call above in
-        // every branch), this edit's own dirty check always lands
-        // `false`, so phase is always recomputed to "clean" — correct: an
-        // authoritative replacement can never leave the document "dirty"
-        // against itself.
+        // diskText now already equals `text` (set by the call above, in
+        // every branch reachable past the documentId guard above), this
+        // edit's own dirty check always lands `false`, so phase is always
+        // recomputed to "clean" — correct: an authoritative replacement
+        // can never leave the document "dirty" against itself.
         this.#forwardScheduling(this.#session.edit(text));
         return;
       }
