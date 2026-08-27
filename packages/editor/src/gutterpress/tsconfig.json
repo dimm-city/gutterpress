@@ -1,0 +1,39 @@
+{
+  // Isolated DOM-aware typecheck program for src/gutterpress/** +
+  // tests/gutterpress/** (SFE-P2b Lane B), mirroring the EXACT precedent
+  // ../web.tsconfig.json set for src/web/** — see that file's own header
+  // for the full rationale (packages/editor/tsconfig.json, one directory
+  // up, is deliberately DOM-free: "lib": ["ES2023"] only).
+  //
+  // This program exists because `provider.ts`/`render-chip.ts`/`mount.ts`
+  // (this directory) build real chip DOM and, for mount.ts, call
+  // `createVscodeEditorAdapter` (`../vscode-adapter/index.ts`) — both
+  // genuinely need `Document`/`HTMLElement`/`Node` types. `match.ts` and
+  // `plan.ts` do not (see their own headers) but are included here too so
+  // one program covers the whole directory, matching web.tsconfig.json's
+  // own scope.
+  //
+  // INTEGRATOR ACTION REQUIRED (this lane cannot make these edits itself —
+  // packages/editor/tsconfig.json and package.json's typecheck SCRIPT wiring
+  // for the *root* program are outside SFE-P2b Lane B's write ownership;
+  // package.json's script text was updated by this lane, but the file it
+  // points at -- ../../tsconfig.json's own "exclude" -- was not):
+  //   Add "src/gutterpress", "tests/gutterpress" to
+  //   packages/editor/tsconfig.json's "exclude" array (alongside the
+  //   existing "src/web", "tests/web", "src/vscode-adapter",
+  //   "tests/vscode-adapter", "tests/browser-harness" entries), so the root
+  //   DOM-free program does not ALSO try to typecheck this directory. Until
+  //   that lands, `tsc --noEmit -p ../../tsconfig.json` (the "typecheck"
+  //   script's first command) fails on files here — see this run's report
+  //   for the exact, reproduced error and why it is expected, not a defect
+  //   in this lane's code (mirrors the identical situation P1a Lane B and
+  //   P1b Lane A each already hit and left for integrator action, per
+  //   ../web.tsconfig.json's own header).
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  // Paths are relative to THIS file's directory (packages/editor/src/gutterpress/).
+  "include": [".", "../../tests/gutterpress"],
+  "exclude": []
+}

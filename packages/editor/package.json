@@ -8,12 +8,13 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
     "./web": "./src/web/index.ts",
-    "./standard": "./src/web/standard/index.ts"
+    "./standard": "./src/web/standard/index.ts",
+    "./gutterpress": "./src/gutterpress/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json && tsc --noEmit -p src/gutterpress/tsconfig.json",
     "test": "bun test",
-    "test:browser": "bun test ./tests/vscode-adapter/browser.cases.btest.ts && bun test ./tests/vscode-adapter/input-a11y/input-a11y.btest.ts && bun test ./tests/vscode-adapter/custom-view/probe.btest.ts && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts && bun test ./tests/web/mount.btest.ts",
+    "test:browser": "bun test ./tests/vscode-adapter/browser.cases.btest.ts && bun test ./tests/vscode-adapter/input-a11y/input-a11y.btest.ts && bun test ./tests/vscode-adapter/custom-view/probe.btest.ts && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts && bun test ./tests/web/mount.btest.ts && bun test ./tests/gutterpress/gutterpress.btest.ts",
     "check:browser-purity": "node scripts/check-browser-purity.mjs"
   },
   "engines": {
@@ -25,6 +26,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@dimm-city/vscode-markdown-editor": "workspace:*"
+    "@dimm-city/vscode-markdown-editor": "workspace:*",
+    "gutterpress": "workspace:*"
   }
 }

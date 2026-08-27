@@ -51,5 +51,5 @@
   "include": ["src", "tests"],
   // The DOM-aware web program (src/web.tsconfig.json) owns these; see the
   // "lib" comment above for why they are excluded from the DOM-free core.
-  "exclude": ["src/web", "tests/web", "src/vscode-adapter", "tests/vscode-adapter", "tests/browser-harness"]
+  "exclude": ["src/web", "tests/web", "src/vscode-adapter", "tests/vscode-adapter", "tests/browser-harness", "src/gutterpress", "tests/gutterpress"]
 }
