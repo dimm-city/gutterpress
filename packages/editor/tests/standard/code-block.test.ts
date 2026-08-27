@@ -78,6 +78,60 @@ describe("toggle-code-block — unfence (toggle-OFF)", () => {
   });
 });
 
+describe("toggle-code-block — trailing-newline / unclosed-fence regressions", () => {
+  test("a fence with an ordinary trailing newline unfences without dropping the closing fence", () => {
+    const text = "```\na\n```\n";
+    const result = applyCommand(
+      { text, version: 0 },
+      { start: 0, endExclusive: text.length },
+      { kind: "toggle-code-block" },
+    );
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit, { allowSharedBoundary: true });
+    expect(after).toBe("a\n");
+    // No orphan fence delimiter left behind anywhere in the result.
+    expect(after.includes("```")).toBe(false);
+  });
+
+  test("a fenced block preceded by other content, trailing newline included in the selection", () => {
+    const text = 'intro\n```\na\n```\n';
+    const start = text.indexOf("```");
+    const result = applyCommand({ text, version: 0 }, { start, endExclusive: text.length }, { kind: "toggle-code-block" });
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit, { allowSharedBoundary: true });
+    expect(after).toBe("intro\na\n");
+    expect(after.includes("```")).toBe(false);
+  });
+
+  test("an UNCLOSED fence never unfences — falls through to a non-destructive fence-ON, losing nothing", () => {
+    const text = "```\na\nb";
+    const result = applyCommand(
+      { text, version: 0 },
+      { start: 0, endExclusive: text.length },
+      { kind: "toggle-code-block" },
+    );
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit, { allowSharedBoundary: true });
+    // Every authored line survives somewhere in the result — nothing (in
+    // particular the unclosed fence's last line, "b") is silently dropped.
+    expect(after).toContain("a");
+    expect(after).toContain("b");
+    expect(result.edit.insert.startsWith("```\n")).toBe(true);
+  });
+
+  test("commandState.active is false for an unclosed fence (never advertises the destructive toggle)", () => {
+    const text = "```\na\nb";
+    const state = commandState({ text, version: 0 }, { start: 0, endExclusive: text.length });
+    expect(state["toggle-code-block"].active).toBe(false);
+  });
+
+  test("commandState.active is true, and matches the actual unfence, for the trailing-newline shape", () => {
+    const text = "```\na\n```\n";
+    const state = commandState({ text, version: 0 }, { start: 0, endExclusive: text.length });
+    expect(state["toggle-code-block"].active).toBe(true);
+  });
+});
+
 describe("toggle-code-block — idempotence and commandState", () => {
   test("idempotence: fence then unfence restores the original bytes", () => {
     const original = "const x = 1;\nconst y = 2;";

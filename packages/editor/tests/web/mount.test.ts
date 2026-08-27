@@ -37,7 +37,13 @@ import { mountEditor } from "../../src/web/mount.ts";
  *
  * | Old test (tests/web/mount.test.ts, P1a)                                    | New location / equivalence                                                                      |
  * |------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
- * | "renders the host's current snapshot text into the surface"                 | mount.btest.ts "mount renders host text via the fork" (liveness: `.md-document` present)          |
+ * | "renders the host's current snapshot text into the surface"                 | mount.btest.ts "mount renders host text via the fork" (liveness: `.md-document` present). ROUND-1  |
+ * |                                                                                | CORRECTION: the old test additionally asserted P1a's own `.gp-editor-surface` class (a hook         |
+ * |                                                                                | `mount.ts` added to its `<textarea>` shell so a future host wrapper could find/style it — see        |
+ * |                                                                                | `db2f68ea`'s `mount.ts`). That class is DROPPED, not renamed: nothing in this tree adds it anymore,  |
+ * |                                                                                | and mount.ts authors no purpose-built replacement hook of its own — the real fork's `.md-editor`     |
+ * |                                                                                | (used throughout mount.btest.ts, e.g. the theme-class case) is the closest equivalent stable         |
+ * |                                                                                | selector, but it belongs to `@vscode/markdown-editor`'s own vocabulary, not a Gutterpress class.     |
  * | "mounts exactly one surface element into the container"                     | mount.btest.ts "mount renders host text via the fork" (asserts exactly one `.md-editor` mounted)  |
  * | "typed input is submitted as a SourceEdit ... and applies"                  | mount.btest.ts "typing updates host through the adapter path"                                     |
  * | "a no-op input notification ... does not submit an edit"                    | Superseded by P1b case 1b (no-edit byte identity) — same adapter, same guarantee, already green   |
@@ -56,9 +62,17 @@ import { mountEditor } from "../../src/web/mount.ts";
  * |                                                                                | duplicate applyEdit call from a leaked pre-dispose wiring)                                          |
  * | "a late host notification after dispose is ignored ..."                     | Superseded by P1b's adapter dispose semantics (the adapter's own `host.subscribe` listener guards  |
  * |                                                                                | on its own `disposed` flag; `mountEditor` adds no additional subscription of its own to leak)      |
- * | "dispose on one mount does not affect a second, independent mount"          | Superseded by P1b a11y case 7c (two independent fork instances on one page never cross-contaminate)|
- * | "a re-entrant host notification that disposes the mount during applyEdit ..."| Superseded by P1b's adapter rejection-path tests, which already exercise synchronous re-entrant    |
- * |                                                                                | host notifications arriving mid-`applyEdit`; `mountEditor` introduces no new re-entrancy surface   |
+ * | "dispose on one mount does not affect a second, independent mount"          | ROUND-1 CORRECTION: this was WRONGLY claimed superseded by P1b a11y case 7c — 7c mounts on two    |
+ * |                                                                                | DIFFERENT hosts and never disposes ONE while asserting the other, and predates this run's own      |
+ * |                                                                                | per-mount `<style>` injection entirely. Reproduced directly in mount.btest.ts's "dispose isolation |
+ * |                                                                                | between two independent LIVE mounts sharing one document" — a real assertion, not a reused one.    |
+ * | "a re-entrant host notification that disposes the mount during applyEdit ..."| ROUND-1 CORRECTION: this was WRONGLY claimed superseded by P1b's rejection-path tests — those       |
+ * |                                                                                | exercise a re-entrant NOTIFICATION (`replaceExternal` firing mid-`applyEdit`), never a re-entrant   |
+ * |                                                                                | DISPOSE, and `tests/web/support/racy-host.ts` (the only helper that could interleave at that seam)  |
+ * |                                                                                | was deleted with zero remaining references — the assertion was DROPPED, not superseded, and had NO  |
+ * |                                                                                | coverage until this correction. Reproduced directly in mount.btest.ts's "a re-entrant host           |
+ * |                                                                                | notification that disposes the mount during applyEdit" case, via a new dedicated host wrapper        |
+ * |                                                                                | (`tests/web/support/self-disposing-host.ts`) against the real fork surface.                          |
  *
  * `diff.test.ts` (P1a's direct unit coverage of `computeMinimalEdit`) is
  * DELETED alongside `src/web/diff.ts` itself — see `src/web/index.ts`'s

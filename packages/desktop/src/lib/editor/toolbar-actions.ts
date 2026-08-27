@@ -20,15 +20,69 @@
  * `applyOrderedList`, `applyHr`, `applyTable`, and `applyLink` below now
  * COMPUTE their edit by calling `applyCommand` and dispatch the returned
  * `SourceEdit` as this file's own CodeMirror transaction — same public
- * signature, byte-identical output (every case this run's pinned tests
- * exercise was checked by hand against `applyCommand`'s output before
- * mapping; see each function's own comment for the specific shared command
- * it now delegates to).
+ * signature.
  *
- * Two actions are deliberately LEFT UNMAPPED, with the divergence recorded
- * here rather than silently accepted (run spec: "if any pinned behavior
- * differs from your command semantics ... leave that action unmapped with
- * a documented divergence note"):
+ * This is NOT byte-identical output for every possible input (an earlier
+ * version of this comment claimed "byte-identical output" / "strict
+ * behavioral superset" — false; a round-1 repair caught the gap and this
+ * paragraph replaces that claim with the actual, measured list). Every case
+ * this run's PINNED tests exercise matches — that is what "mapped" means
+ * here — but pinned tests do not cover every input, and for a handful of
+ * INPUTS OUTSIDE the pinned set the shared command's answer differs from
+ * this file's pre-mapping standalone logic. Two kinds of difference:
+ *
+ * FIXED this round (were unintended regressions, now restored to parity —
+ * see the referenced functions for how):
+ *   - `applyHeading`'s caret placement for a DIFFERENT-level rewrite (e.g.
+ *     H2 -> H3 on `"## Old heading"`) used to land the caret INSIDE the new
+ *     `"###"` run instead of after it, because `computeSetHeading`'s edit is
+ *     a MINIMAL diff (D3) whose `insert` length is not the full prefix
+ *     length. Fixed by computing the caret from the target level's own
+ *     known prefix length instead of `edit.insert.length`.
+ *   - `applyBlockquote`/`applyUnorderedList`/`applyOrderedList` used to
+ *     leave the selection in a different place than before mapping (e.g.
+ *     `"a\nb\nc"` with `[0,3)` selected, blockquote-toggled, used to leave
+ *     `[0,7]` instead of the pre-mapping `[2,7]`) because dispatching ONE
+ *     combined whole-span replacement maps a selection contained inside it
+ *     differently than N narrow per-line changes do. Fixed by re-splitting
+ *     the shared command's edit into minimal per-line changes
+ *     (`minimalLineChange`), restoring the original per-line dispatch shape.
+ *
+ * INTENTIONAL, still-standing divergences (the shared command's answer is
+ * MORE correct than this file's old standalone regex logic, and is kept —
+ * restoring the old behavior would be a regression, not a fix; each is
+ * pinned by a test in `tests/editor/toolbar-actions.test.ts` asserting the
+ * CURRENT, shared-command answer):
+ *   - `applyHeading` on a line with MORE than 6 leading `#` (e.g.
+ *     `"####### seven"`, level 2) used to silently strip the whole
+ *     (invalid) run and replace it with a clean `"## "` prefix
+ *     (`"## seven"`). 7+ `#` is not a valid ATX heading under CommonMark;
+ *     the shared command correctly leaves it untouched as plain text and
+ *     PREPENDS the new prefix (`"## ####### seven"`) rather than guessing
+ *     that the invalid run was meant as a heading marker.
+ *   - `applyUnorderedList` on an ALREADY-task-marked line (e.g.
+ *     `"- [ ] task"`) used to strip the leading `"- "` as if it were a
+ *     plain bullet, corrupting the line into `"[ ] task"` with no marker at
+ *     all. The shared command distinguishes task items from bullets and
+ *     prepends a fresh bullet marker instead (`"- - [ ] task"` — visually
+ *     odd, but the original task marker survives).
+ *   - `applyUnorderedList` on an INDENTED bullet (e.g. `"  - item"`) used to
+ *     prepend `"- "` before the existing indentation regardless
+ *     (`"-   - item"`, doubled and misplaced); this file's own toggle
+ *     detection never looked past column 0. The shared command preserves
+ *     indentation and correctly toggles the existing marker off
+ *     (`"  item"`).
+ *   - `applyBold` on text already wrapped in `__..._` (e.g. `"__x__"`) used
+ *     to treat `__` as unrelated to bold (this file only ever checked for
+ *     `"**"`) and WRAP inside it (`"__**x**__"`). The shared `toggle-bold`
+ *     command recognizes `__` as bold's documented alternate spelling (run
+ *     spec "Toggle semantics": remove whichever spelling is present) and
+ *     correctly toggles it off (`"x"`).
+ *
+ * Two actions are deliberately LEFT UNMAPPED entirely, with the divergence
+ * recorded here rather than silently accepted (run spec: "if any pinned
+ * behavior differs from your command semantics ... leave that action
+ * unmapped with a documented divergence note"):
  *   - `applyItalic` — this file's own canonical italic spelling is `_..._`
  *     (pinned: "applyItalic: wraps selection with underscores"). The shared
  *     `toggle-italic` command's spec-mandated canonical spelling is `*...*`
@@ -124,18 +178,82 @@ function applyWrapCommand(view: EditorView, command: EditorCommand, canonicalLen
   view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection });
 }
 
-/** Dispatches a multi-line block toggle (`toggle-blockquote`/
- *  `toggle-list`) with no explicit selection override — CodeMirror maps
- *  the existing selection through the change by default, matching every
- *  pinned test for these actions (none of which assert a resulting
- *  selection, only resulting text). */
+/**
+ * Narrows a "line `lineFrom` currently reads `oldText`, should become
+ * `newText`" change to the smallest range that still produces the
+ * identical result, by trimming any common leading/trailing substring —
+ * the same idea as the shared editor package's `line-utils.ts`
+ * `minimalReplacement` (not imported: that module is a PRIVATE
+ * implementation file of `src/web/standard/`, not part of the package's
+ * `"./standard"` export surface), reimplemented locally because
+ * `applyBlockLevelCommand` below needs it PER LINE, not for the one
+ * combined multi-line edit `applyCommand` already returns.
+ */
+function minimalLineChange(
+  lineFrom: number,
+  oldText: string,
+  newText: string,
+): { from: number; to: number; insert: string } {
+  const maxPrefix = Math.min(oldText.length, newText.length);
+  let prefix = 0;
+  while (prefix < maxPrefix && oldText[prefix] === newText[prefix]) prefix++;
+
+  const maxSuffix = Math.min(oldText.length - prefix, newText.length - prefix);
+  let suffix = 0;
+  while (suffix < maxSuffix && oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]) {
+    suffix++;
+  }
+
+  return {
+    from: lineFrom + prefix,
+    to: lineFrom + oldText.length - suffix,
+    insert: newText.slice(prefix, newText.length - suffix),
+  };
+}
+
+/**
+ * Dispatches a multi-line block toggle (`toggle-blockquote`/
+ * `toggle-list`) as N PER-LINE MINIMAL changes — this file's own
+ * pre-mapping convention for these three actions (a zero-width marker
+ * insertion at each line's own start on toggle-ON, a narrow marker removal
+ * on toggle-OFF) — rather than the ONE combined whole-span replacement
+ * `applyCommand` computes, so CodeMirror's default "map the existing
+ * selection through the dispatched changes" keeps producing the SAME
+ * mapped selection it always did. A change that REPLACES each line's
+ * entire text (even with per-line boundaries) still maps a selection
+ * CONTAINED INSIDE that wide replacement differently than a narrow,
+ * prefix-only insertion/deletion does (CodeMirror's position mapping snaps
+ * an interior position to one edge of a wholesale replacement) — this was
+ * a real, unintended selection-placement divergence the mapping introduced
+ * (measured: "a\nb\nc" with [0,3) selected, blockquote-toggled, used to
+ * leave the selection at [2,7]; a whole-line-replacement dispatch left it
+ * at [0,7] instead — `minimalLineChange` per line is what restores [2,7]).
+ *
+ * Re-splitting `edit.insert` per line is safe: it is
+ * `lines.map(transform).join("\n")` and never touches the newlines BETWEEN
+ * touched lines (see `blockquote.ts`/`list.ts`'s own header comments), so
+ * pairing each `"\n"`-split piece back with its ORIGINAL line reproduces
+ * the exact same resulting text as the one combined edit, byte-for-byte —
+ * holds for `toggle-list ordered`'s contiguous-neighbor extension too,
+ * since `edit.from`/`edit.to` already span the FULL (possibly extended)
+ * block either way.
+ */
 function applyBlockLevelCommand(view: EditorView, command: EditorCommand): void {
   const { from, to } = mainSel(view);
   const text = view.state.doc.toString();
   const result = applyCommand({ text, version: 0 }, { start: from, endExclusive: to }, command);
   if ("refused" in result) return;
   const { edit } = result;
-  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert } });
+
+  const startLine = view.state.doc.lineAt(edit.from).number;
+  const endLine = view.state.doc.lineAt(edit.to).number;
+  const insertedLines = edit.insert.split("\n");
+  const changes = [];
+  for (let n = startLine; n <= endLine; n++) {
+    const l = view.state.doc.line(n);
+    changes.push(minimalLineChange(l.from, l.text, insertedLines[n - startLine] ?? ""));
+  }
+  view.dispatch({ changes });
 }
 
 /** Dispatches an insert-only command (`insert-horizontal-rule`/
@@ -328,9 +446,25 @@ export function applyHeading(view: EditorView, level: 1 | 2 | 3 | 4): void {
   const result = applyCommand(snapshot, selection, { kind: "set-heading", level: targetLevel });
   if ("refused" in result) return;
   const { edit } = result;
+
+  // Caret lands at the END of the rewritten heading prefix — NOT at
+  // `edit.from + edit.insert.length`. `computeSetHeading`'s edit is a
+  // MINIMAL diff (D3): rewriting "## " to "### " is a single "#" INSERTED
+  // between the existing "##" and the trailing space, not a full-prefix
+  // replacement, so `edit.from + edit.insert.length` lands INSIDE the new
+  // "###" run (before the space) instead of after the whole prefix — a
+  // caret regression from this file's pre-mapping behavior, which always
+  // placed the caret at `line.from + prefix.length`. `view.state.doc`
+  // still reflects the PRE-dispatch document here, and `lineAt(edit.from)`
+  // always resolves to the heading's own resulting line — whether the
+  // caret was originally on a setext text line or its underline — because
+  // `computeSetHeading` never touches any OTHER line (run spec: "ONLY the
+  // targeted heading's lines change").
+  const lineStart = view.state.doc.lineAt(edit.from).from;
+  const targetPrefixLength = targetLevel === "none" ? 0 : targetLevel + 1; // "#".repeat(n) + " "
   view.dispatch({
     changes: { from: edit.from, to: edit.to, insert: edit.insert },
-    selection: EditorSelection.cursor(edit.from + edit.insert.length),
+    selection: EditorSelection.cursor(lineStart + targetPrefixLength),
   });
 }
 

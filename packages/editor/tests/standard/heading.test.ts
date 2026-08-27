@@ -117,6 +117,28 @@ describe("set-heading — setext", () => {
     expect(after).toBe("### Title\nBody text unaffected");
   });
 
+  test("a `---` after a list item is a thematic break, NOT a setext underline — it survives untouched", () => {
+    const text = "- a\n---";
+    const snapshot = { text, version: 0 };
+    const result = applyCommand(snapshot, { start: 0, endExclusive: 0 }, { kind: "set-heading", level: 2 });
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit);
+    expect(after).toBe("## - a\n---");
+    // Only the caret's own line (the list item) changed; the thematic
+    // break's own bytes are untouched.
+    expect(after.endsWith("\n---")).toBe(true);
+  });
+
+  test("a `---` after a blockquote is a thematic break, NOT a setext underline — it survives untouched", () => {
+    const text = "> q\n---";
+    const snapshot = { text, version: 0 };
+    const result = applyCommand(snapshot, { start: 0, endExclusive: 0 }, { kind: "set-heading", level: 2 });
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit);
+    expect(after).toBe("## > q\n---");
+    expect(after.endsWith("\n---")).toBe(true);
+  });
+
   test("an underline-shaped line directly under an ATX heading is NOT treated as setext", () => {
     // "## Title" followed by "---" is a heading then a thematic break /
     // table-ish line, not a setext pair (the line above is already ATX).

@@ -111,9 +111,24 @@ export function insertionPointAfterLine(text: string, offset: number): number {
  * Ranges are LINE-aligned (`start` is the opening fence line's start,
  * `end` is one past the closing fence line's end, or `text.length` for an
  * unclosed fence) so a range boundary is never inside a line.
+ *
+ * `closed` records whether a closing fence was actually found; `closeLine*`
+ * (present only when `closed`) is the closing fence LINE's own `[start,
+ * end)` — distinct from `end` above, which is one-PAST that line (through
+ * its trailing newline). `code-block.ts`'s exact-fence match needs the
+ * closing line's own boundary, not the range's, to tell a real closing fence
+ * from a same-offset coincidence (see that module's `exactFenceMatch`).
  */
-export function fencedCodeBlockRanges(text: string): Array<{ start: number; end: number }> {
-  const ranges: Array<{ start: number; end: number }> = [];
+export interface FencedBlockRange {
+  readonly start: number;
+  readonly end: number;
+  readonly closed: boolean;
+  readonly closeLineStart?: number;
+  readonly closeLineEnd?: number;
+}
+
+export function fencedCodeBlockRanges(text: string): FencedBlockRange[] {
+  const ranges: FencedBlockRange[] = [];
   const openFence = /^ {0,3}(`{3,}|~{3,})/;
 
   let offset = 0;
@@ -135,7 +150,13 @@ export function fencedCodeBlockRanges(text: string): Array<{ start: number; end:
           // (i.e. the fence is the last line in the document), so `end`
           // never reports a position past the document's own length.
           const end = Math.min(candidate.end + 1, text.length);
-          ranges.push({ start: line.start, end });
+          ranges.push({
+            start: line.start,
+            end,
+            closed: true,
+            closeLineStart: candidate.start,
+            closeLineEnd: candidate.end,
+          });
           offset = candidate.end + 1;
           closed = true;
           break;
@@ -146,7 +167,7 @@ export function fencedCodeBlockRanges(text: string): Array<{ start: number; end:
       if (closed) continue;
 
       // Unclosed: runs to end-of-document.
-      ranges.push({ start: line.start, end: text.length });
+      ranges.push({ start: line.start, end: text.length, closed: false });
       break;
     }
     if (line.end >= text.length) break;

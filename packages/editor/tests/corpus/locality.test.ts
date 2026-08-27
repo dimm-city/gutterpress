@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { MemoryDocumentHost } from "../../src/core/memory-host.ts";
 import { DIAGNOSTIC_CATEGORIES } from "../../src/core/diagnostics.ts";
-import { applyOnFreshHost, CORPUS_COMMAND_CASES, spliceIndependently } from "./support/command-harness.ts";
+import {
+  applyOnFreshHost,
+  computeAgainstHost,
+  CORPUS_COMMAND_CASES,
+  spliceIndependently,
+} from "./support/command-harness.ts";
+import { assertEditWithinIndependentBound, selectionVariants } from "./support/independent-bound.ts";
 import { FIXTURE_NAMES, FIXTURES } from "./fixtures.ts";
 
 /**
@@ -71,5 +78,63 @@ describe("locality corpus liveness (AP-21)", () => {
     const total = acceptedCount + refusedCount;
     expect(total).toBeGreaterThan(0);
     expect(acceptedCount).toBeGreaterThan(total / 2);
+  });
+});
+
+/**
+ * SFE-P2a round-1 repair — the two gaps the finding named in the describe
+ * block above:
+ *
+ *   1. "the 'independent splice' oracle IS the host's own splice
+ *      expression" — `spliceIndependently`/`expect(actual).toBe(expected)`
+ *      above proves only `A === A`; it can never fail for ANY edit,
+ *      however wide. `assertEditWithinIndependentBound` (a hand-written,
+ *      NOT-imported-from-the-implementation line scanner — see its own
+ *      header) is a genuine upper bound the current implementation could
+ *      actually violate.
+ *   2. "every case uses a whole-document selection" — `selectionVariants`
+ *      exercises caret-only (both document edges and mid-document),
+ *      line-interior, and cross-line selections too, not only
+ *      `[0, text.length)`.
+ *
+ * Sabotage-proof (G-12): widening every returned edit to `{from: 0, to:
+ * text.length, insert: <the accepted edit's own resulting document>}` —
+ * the exact sabotage the original finding demonstrated defeats the
+ * splice-tautology check — was run locally against this new describe
+ * block and fails the majority of its assertions immediately (every EXACT
+ * bound below rejects it outright on any fixture with more than one
+ * line); it is not committed here, per pr158-lessons.md §11.2 ("the
+ * sabotage may be performed locally and documented; it does not need to
+ * remain committed").
+ */
+describe("edit locality against an INDEPENDENT upper bound, across varied selection shapes", () => {
+  let variantAcceptedCount = 0;
+  let variantRefusedCount = 0;
+
+  for (const fixtureName of FIXTURE_NAMES) {
+    const original = FIXTURES[fixtureName]!;
+    for (const commandCase of CORPUS_COMMAND_CASES) {
+      for (const { label, selection } of selectionVariants(original)) {
+        test(`${fixtureName} / ${commandCase.label} / ${label} — edit fits its command's independent bound`, () => {
+          const host = new MemoryDocumentHost({ text: original, version: 0 });
+          const result = computeAgainstHost(host, selection, commandCase.command);
+
+          if ("refused" in result) {
+            expect(DIAGNOSTIC_CATEGORIES).toContain(result.refused.category);
+            expect(host.getSnapshot().text).toBe(original);
+            variantRefusedCount++;
+            return;
+          }
+          variantAcceptedCount++;
+          assertEditWithinIndependentBound(commandCase.command, original, selection, result.edit);
+        });
+      }
+    }
+  }
+
+  test("liveness (AP-21): this variant sweep was not universally refused either", () => {
+    const total = variantAcceptedCount + variantRefusedCount;
+    expect(total).toBeGreaterThan(0);
+    expect(variantAcceptedCount).toBeGreaterThan(0);
   });
 });

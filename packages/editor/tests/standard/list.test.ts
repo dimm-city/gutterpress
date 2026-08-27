@@ -149,6 +149,48 @@ describe("toggle-list — ordered", () => {
     const back = applyViaHost(on, { start: 0, endExclusive: 0 }, { kind: "toggle-list", variant: "ordered" });
     expect(back).toBe(original);
   });
+
+  test("byte-exact round trip when a whole-document toggle mixes a plain paragraph with an ALREADY-numbered list", () => {
+    // Regression: a whole-document selection spanning a paragraph, a blank
+    // line, and a pre-existing numbered list used to let toggle-ON CONSUME
+    // and renumber the pre-existing "1./2./3." markers as part of turning
+    // the whole selection into one flat sequence — a subsequent toggle-OFF
+    // then had no way to tell "was numbered before this call" from "this
+    // call just numbered it", so it stripped both uniformly and permanently
+    // lost the original numbering.
+    const original = "Intro paragraph.\n\n1. first\n2. second\n3. third\n";
+    const on = applyViaHost(
+      original,
+      { start: 0, endExclusive: original.length },
+      { kind: "toggle-list", variant: "ordered" },
+    );
+    // The pre-existing numbered lines are still recoverable byte-for-byte
+    // (double-stacked under a fresh marker, not renumbered/consumed).
+    expect(on).toContain("1. first");
+    expect(on).toContain("2. second");
+    expect(on).toContain("3. third");
+
+    const back = applyViaHost(on, { start: 0, endExclusive: on.length }, { kind: "toggle-list", variant: "ordered" });
+    expect(back).toBe(original);
+  });
+
+  test("a pre-existing numbered neighbor absorbed via extension is still renumbered cleanly (unchanged from before)", () => {
+    // The OTHER half of the same fix: a marker reached ONLY through
+    // `contiguousOrderedBlock`'s extension (never inside the caller's own
+    // selection) must still be consumed and renumbered, not double-stacked
+    // — this is the pre-existing "touched contiguous list" behavior above,
+    // re-asserted here so the round-trip fix cannot silently regress it.
+    const text = "1. existing\nnew item";
+    const start = text.indexOf("new item");
+    const result = applyCommand(
+      { text, version: 0 },
+      { start, endExclusive: start + "new item".length },
+      { kind: "toggle-list", variant: "ordered" },
+    );
+    if ("refused" in result) throw new Error("unexpected refusal");
+    const after = assertLocalEdit(text, result.edit, { allowSharedBoundary: true });
+    expect(after).toBe("1. existing\n2. new item");
+  });
 });
 
 describe("toggle-list — task", () => {

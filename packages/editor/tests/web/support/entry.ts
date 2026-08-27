@@ -3,6 +3,7 @@ import { MemoryDocumentHost } from "../../../src/core/index.ts";
 import type { Diagnostic, EditorDocumentHost } from "../../../src/core/index.ts";
 import { withFixedRejection } from "./rejecting-host.ts";
 import { withCallCounting, type CallCountingHost } from "./counting-host.ts";
+import { withDisposeOnFirstNotify } from "./self-disposing-host.ts";
 
 /**
  * SFE-P2a Lane A — the browser-side scenario driver
@@ -40,6 +41,11 @@ export interface MountOptions {
    * created) on the very first `mount()` call, since there is no previous
    * host to reuse yet. */
   readonly keepHost?: boolean;
+  /** When true, the host's synchronous success notification (fired from
+   * INSIDE `applyEdit`, before it returns — see `self-disposing-host.ts`)
+   * disposes this mount the FIRST time it fires, re-entrantly. Mutually
+   * exclusive with `rejectReason`/`keepHost`. */
+  readonly disposeOnFirstNotify?: boolean;
 }
 
 export interface GutterpressMountHarnessDriver {
@@ -61,6 +67,23 @@ export interface GutterpressMountHarnessDriver {
    * the adapter/view itself owns. */
   injectedStyleElementCount(): number;
   readonly containerSelector: string;
+
+  /**
+   * A SECOND, fully independent `mountEditor` instance (own container, own
+   * host) alongside whatever `mount()`/`dispose()` above are doing — never
+   * touched by `mount()`'s "dispose any previous instance first" behavior.
+   * Exists ONLY to prove dispose isolation between two LIVE mounts sharing
+   * one document (the P1a "dispose on one mount does not affect a second,
+   * independent mount" case, whose replacement — case 7c in
+   * `input-a11y.btest.ts` — mounts on two DIFFERENT hosts but never disposes
+   * one while asserting the other, and predates this run's own per-mount
+   * `<style>` injection entirely; see `mount.btest.ts`'s header for the
+   * correction).
+   */
+  mountSecond(initialText: string): string;
+  disposeSecond(): void;
+  getSecondHostText(): string;
+  readonly secondContainerSelector: string;
 }
 
 declare global {
@@ -92,9 +115,17 @@ function mount(initialText: string, options: MountOptions = {}): string {
   collectedDiagnostics = [];
 
   if (!options.keepHost || !host) {
-    const baseHost: EditorDocumentHost = options.rejectReason
+    let baseHost: EditorDocumentHost = options.rejectReason
       ? withFixedRejection(options.rejectReason, { text: initialText, version: 0 })
       : new MemoryDocumentHost({ text: initialText, version: 0 });
+    if (options.disposeOnFirstNotify) {
+      // `mountHandle` is reassigned just below, AFTER this host is
+      // constructed and handed to `mountEditor` — but the re-entrant
+      // dispose only ever fires from a LATER, real keystroke (this
+      // scenario's whole point), by which time `mountHandle` already holds
+      // the live instance this closure needs to tear down.
+      baseHost = withDisposeOnFirstNotify(baseHost, () => mountHandle?.dispose());
+    }
     host = withCallCounting(baseHost);
   }
 
@@ -116,6 +147,33 @@ function requireHost(): CallCountingHost {
   return host;
 }
 
+// ── A second, fully independent mount — never touched by mount()/dispose()
+// above — for the dispose-ISOLATION case (two live mounts sharing one
+// document; disposing one must not affect the other's DOM, styles, or
+// host). Deliberately its own separate container/host/handle, not folded
+// into the primary A-side state above.
+const CONTAINER_ID_B = "gp-mount-container-b";
+let mountHandleB: EditorMount | undefined;
+let hostB: EditorDocumentHost | undefined;
+
+function mountSecond(initialText: string): string {
+  mountHandleB?.dispose();
+  document.getElementById(CONTAINER_ID_B)?.remove();
+
+  hostB = new MemoryDocumentHost({ text: initialText, version: 0 });
+  const container = document.createElement("div");
+  container.id = CONTAINER_ID_B;
+  document.body.appendChild(container);
+  mountHandleB = mountEditor(container, hostB, {});
+
+  return `#${CONTAINER_ID_B}`;
+}
+
+function requireHostB(): EditorDocumentHost {
+  if (!hostB) throw new Error("gp mount harness: mountSecond() has not been called yet");
+  return hostB;
+}
+
 window.__gpMount = {
   mount,
   dispose(): void {
@@ -129,5 +187,12 @@ window.__gpMount = {
   injectedStyleElementCount: () =>
     document.querySelectorAll("style[data-gp-editor-css]").length,
   containerSelector: `#${CONTAINER_ID}`,
+
+  mountSecond,
+  disposeSecond(): void {
+    mountHandleB?.dispose();
+  },
+  getSecondHostText: () => requireHostB().getSnapshot().text,
+  secondContainerSelector: `#${CONTAINER_ID_B}`,
 };
 window.__gpReady = true;

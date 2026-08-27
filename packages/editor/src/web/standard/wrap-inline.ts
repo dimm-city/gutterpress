@@ -41,6 +41,69 @@ export const STRIKE_SPEC: WrapSpec = { canonical: "~~", spellings: ["~~"] };
 export const INLINE_CODE_SPEC: WrapSpec = { canonical: "`", spellings: ["`"] };
 
 /**
+ * `*`/`_` are single-character, REPEATABLE emphasis markers: a run of TWO of
+ * either is a completely different, longer marker (`**`/`__`, this module's
+ * own `BOLD_SPEC` canonical/alt spellings) — not two overlapping matches of
+ * the one-character spelling. Detecting only the ONE marker character
+ * immediately outside a selection cannot tell "wrapped by `*`" from
+ * "wrapped by `**`, and this is just its outer half" apart; see
+ * `matchesSpelling`'s use of this below.
+ */
+function isEmphasisChar(marker: string): boolean {
+  return marker === "*" || marker === "_";
+}
+
+/** Count of consecutive `char` characters in `text`, starting at `boundary`
+ *  and moving in `direction` (`-1`: scan backward from `boundary - 1`,
+ *  toward document start; `1`: scan forward from `boundary`, toward
+ *  document end). Used only for the emphasis-run parity check below. */
+function runLength(text: string, boundary: number, direction: -1 | 1, char: string): number {
+  let count = 0;
+  let i = direction === -1 ? boundary - 1 : boundary;
+  while (i >= 0 && i < text.length && text[i] === char) {
+    count++;
+    i += direction;
+  }
+  return count;
+}
+
+/**
+ * Whether `marker` (length `len`) sits immediately outside `[start,
+ * endExclusive)` on BOTH sides — the shared "is this spelling the wrap
+ * here" check `wrapInline` and `isWrapped` both need, kept in exactly one
+ * place so they can never disagree (see `isWrapped`'s own doc comment).
+ *
+ * For a repeatable single-character spelling (`*`/`_`), matching just the
+ * one adjacent character is not enough: a run of `*`/`_` touching the
+ * selection may be longer than one, and Markdown groups a same-character
+ * run into COMPLETE `**`/`__`-style PAIRS from the outside in, with at most
+ * one single character left over closest to the content. An EVEN-length run
+ * (2, 4, ...) has nothing left over — the boundary belongs entirely to the
+ * longer marker family (`**`/`__`, a DIFFERENT command's canonical
+ * spelling), never to this one-character spelling. An ODD-length run (1, 3,
+ * ...) leaves exactly the innermost character for this spelling, with the
+ * rest forming complete pairs untouched by this match. Without this check,
+ * `toggle-italic` misread `**bold**`'s outer `*` half (a run of 2, entirely
+ * bold's) as its own `*` wrap and toggled it OFF, destroying the author's
+ * bold (see this function's callers' regression tests). `***x***`
+ * (bold+italic together, a run of 3) still toggles italic correctly: the
+ * innermost `*` is a legitimate 1-length leftover, so it matches, and
+ * stripping it leaves the complete `**` pair (bold) untouched.
+ */
+function matchesSpelling(text: string, start: number, endExclusive: number, marker: string): boolean {
+  const len = marker.length;
+  const before = text.slice(Math.max(0, start - len), start);
+  const after = text.slice(endExclusive, Math.min(text.length, endExclusive + len));
+  if (before !== marker || after !== marker) return false;
+  if (isEmphasisChar(marker)) {
+    const beforeRun = runLength(text, start, -1, marker);
+    const afterRun = runLength(text, endExclusive, 1, marker);
+    if (beforeRun % 2 === 0 || afterRun % 2 === 0) return false;
+  }
+  return true;
+}
+
+/**
  * Computes the wrap/unwrap edit for `[start, endExclusive)` under `spec`.
  *
  * Caret-only convention (run spec: "caret-only (empty selection): insert
@@ -61,10 +124,13 @@ export const INLINE_CODE_SPEC: WrapSpec = { canonical: "`", spellings: ["`"] };
  *
  * One loop over `spec.spellings` handles both toggle directions and both
  * selection shapes: for each candidate spelling, check whether it
- * immediately precedes `start` AND immediately follows `endExclusive`. The
- * FIRST matching spelling wins (canonical checked first, so `**text**`
- * toggles off as `**`, never accidentally treated as some other spelling).
- * No match at all falls through to toggle-ON with the canonical spelling.
+ * immediately precedes `start` AND immediately follows `endExclusive` (via
+ * `matchesSpelling`, which also rejects a single-character spelling that is
+ * really the outer half of a LONGER same-character marker — see its own doc
+ * comment). The FIRST matching spelling wins (canonical checked first, so
+ * `**text**` toggles off as `**`, never accidentally treated as some other
+ * spelling). No match at all falls through to toggle-ON with the canonical
+ * spelling.
  */
 export function wrapInline(
   text: string,
@@ -73,10 +139,8 @@ export function wrapInline(
   spec: WrapSpec,
 ): ComputedEdit {
   for (const marker of spec.spellings) {
-    const len = marker.length;
-    const before = text.slice(Math.max(0, start - len), start);
-    const after = text.slice(endExclusive, Math.min(text.length, endExclusive + len));
-    if (before === marker && after === marker) {
+    if (matchesSpelling(text, start, endExclusive, marker)) {
+      const len = marker.length;
       return { from: start - len, to: endExclusive + len, insert: text.slice(start, endExclusive) };
     }
   }
@@ -98,14 +162,11 @@ export function wrapInline(
  * confirm the marker pair is a semantically valid emphasis span (e.g. it
  * cannot distinguish `**bold**` from a `**` that is part of unrelated
  * surrounding punctuation). This is deliberately the SAME detection
- * `wrapInline` uses, so `commandState(...).active` and what `wrapInline`
- * will actually do next never disagree.
+ * `wrapInline` uses (`matchesSpelling`, shared verbatim — including its
+ * longer-run rejection for `*`/`_`, so `**bold**` never reports
+ * `toggle-italic` as active either), so `commandState(...).active` and what
+ * `wrapInline` will actually do next never disagree.
  */
 export function isWrapped(text: string, start: number, endExclusive: number, spec: WrapSpec): boolean {
-  return spec.spellings.some((marker) => {
-    const len = marker.length;
-    const before = text.slice(Math.max(0, start - len), start);
-    const after = text.slice(endExclusive, Math.min(text.length, endExclusive + len));
-    return before === marker && after === marker;
-  });
+  return spec.spellings.some((marker) => matchesSpelling(text, start, endExclusive, marker));
 }

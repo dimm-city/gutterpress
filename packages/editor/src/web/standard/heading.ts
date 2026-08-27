@@ -35,6 +35,32 @@ export type SetHeadingLevel = HeadingLevel | "none";
 const ATX_RE = /^(#{1,6}) /;
 const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
 
+// A setext underline candidate (`---`/`===`) is only a HEADING underline
+// when the line above is an ordinary paragraph line. CommonMark gives the
+// SAME `---`/`===` shape a different meaning when the line above already
+// opens a different block: a list item or blockquote continues (with the
+// underline read as its OWN content or a thematic break, never absorbed
+// into a setext pair), a fenced code block's delimiter is never a setext
+// candidate, and an indented-code line's content is literal text, not a
+// heading. Verified against this repo's own markdown-it: "- a\n---" renders
+// `<ul><li>a</li></ul><hr>`, and "> q\n---" renders
+// `<blockquote>...</blockquote><hr>` — in both cases `---` is a thematic
+// break, not a setext underline, so `set-heading` must never treat it as
+// one (see this module's `setextPair`).
+const LIST_ITEM_RE = /^ {0,3}([*+-]|\d{1,9}[.)])(\s|$)/;
+const BLOCKQUOTE_RE = /^ {0,3}>/;
+const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const INDENTED_CODE_RE = /^(?: {4}|\t)/;
+
+function opensOtherBlock(lineText: string): boolean {
+  return (
+    LIST_ITEM_RE.test(lineText) ||
+    BLOCKQUOTE_RE.test(lineText) ||
+    FENCE_LINE_RE.test(lineText) ||
+    INDENTED_CODE_RE.test(lineText)
+  );
+}
+
 /** A refusal reason distinct from `Diagnostic` itself (kept here, not in
  *  `core/diagnostics.ts`'s D14 taxonomy, which names PROTOCOL/host failure
  *  categories, not per-command semantic refusals — see `apply-command.ts`
@@ -49,14 +75,22 @@ function setextPair(text: string, line: LineInfo): { textLine: LineInfo; underli
     const prev = lineBefore(text, line.start);
     // A setext underline needs a non-blank text line immediately above it —
     // an underline directly at document start, or after a blank line, is
-    // (per CommonMark) a thematic break / empty match, not a heading.
-    if (prev && prev.text.trim().length > 0 && !ATX_RE.test(prev.text)) {
+    // (per CommonMark) a thematic break / empty match, not a heading. It
+    // also needs that line to be an ORDINARY paragraph line, not one that
+    // already opens a different block (see `opensOtherBlock` above).
+    if (prev && prev.text.trim().length > 0 && !ATX_RE.test(prev.text) && !opensOtherBlock(prev.text)) {
       return { textLine: prev, underlineLine: line };
     }
     return undefined;
   }
   const next = lineAfter(text, line.end);
-  if (next && SETEXT_UNDERLINE_RE.test(next.text) && line.text.trim().length > 0 && !ATX_RE.test(line.text)) {
+  if (
+    next &&
+    SETEXT_UNDERLINE_RE.test(next.text) &&
+    line.text.trim().length > 0 &&
+    !ATX_RE.test(line.text) &&
+    !opensOtherBlock(line.text)
+  ) {
     return { textLine: line, underlineLine: next };
   }
   return undefined;

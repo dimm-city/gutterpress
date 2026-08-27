@@ -126,6 +126,46 @@ export const FIXTURES: Readonly<Record<string, string>> = {
 
   /** The zero-byte case: an empty document must round-trip as `""`. */
   "empty document": "",
+
+  // ── SFE-P2a repair-round additions: ordered list + fenced code coverage ─
+
+  /**
+   * A plain ordered list (SFE-P2a round-1 repair: the corpus previously had
+   * ZERO ordered-list fixtures, so `toggle-list ordered`'s destructive
+   * mixed-selection round-trip bug went unexercised by every command x
+   * fixture cross-product — see `list.ts`'s `toggleOrdered` doc comment).
+   */
+  "ordered list": "1. first\n2. second\n3. third\n",
+
+  /**
+   * An ordered list mixed with a plain paragraph, separated by a blank
+   * line — the specific shape that used to make a whole-document
+   * `toggle-list ordered` toggle-ON/toggle-OFF pair destructive (see
+   * `list.ts`'s `toggleOrdered` doc comment for the full mechanism).
+   */
+  "ordered list mixed with a paragraph": "Intro paragraph.\n\n1. first\n2. second\n3. third\n",
+
+  /**
+   * A fenced code block followed by other content (SFE-P2a round-1 repair:
+   * the corpus previously had ZERO fenced-code fixtures, so `set-heading`'s
+   * ONLY refusal case went completely unexercised in the randomized corpus
+   * — see randomized.test.ts's own header). Uses a TILDE fence rather than
+   * backticks deliberately: `toggle-code-block`'s own toggle-ON always
+   * wraps with a NEW backtick fence (`code-block.ts`'s `FENCE` constant),
+   * and this fixture is itself exercised generically against every corpus
+   * command including `toggle-code-block` — a backtick-fenced INNER block
+   * would collide with that outer wrap, since the deliberately-simple
+   * fence scanner (`line-utils.ts`'s `fencedCodeBlockRanges`, "not a
+   * general-purpose Markdown parser") is not nesting-aware and would find
+   * the inner block's own closing line first. A tilde fence sidesteps this:
+   * the scanner's closing-fence regex is character-specific, so it skips
+   * straight past the inner `~~~` lines to the true outer `` ` `` close.
+   * The trailing prose keeps the whole document from being recognized as
+   * "exactly one fenced block" (`code-block.ts`'s `exactFenceMatch`), so a
+   * generic toggle-code-block round trip still starts from a clean
+   * toggle-ON, matching every other fixture in this corpus.
+   */
+  "fenced code block": "~~~\nconst x = 1;\n~~~\n\nMore text after the block.\n",
 };
 
 /** Fixture names, stable insertion order — every consumer iterates this. */

@@ -356,6 +356,33 @@ export function randomSelectionPair(rand: () => number, textLength: number): Ran
   };
 }
 
+/**
+ * Like `randomSelectionPair`, but with probability `outOfRangeChance`
+ * deliberately returns a pair that normalizes to an OUT-OF-RANGE
+ * `CommandSelection` (`endExclusive` beyond `textLength`) instead of a
+ * clamped, always-valid one.
+ *
+ * G-12/AP-21: `applyCommand`'s `invalidSelection` refusal path (D14's
+ * `EDITOR_INVALID_RANGE` category) was otherwise NEVER reached by this
+ * corpus — `randomSelectionPair` clamps both offsets to `[0, textLength]`
+ * by construction, so every selection it produces is valid and the
+ * refusal-path assertions in `randomized.test.ts` (the `DIAGNOSTIC_
+ * CATEGORIES` membership check, the "a REFUSED command still changed the
+ * document" check) never executed. A gate that can only ever see one
+ * outcome is not proving anything about the other.
+ */
+export function randomSelectionPairMaybeOutOfRange(
+  rand: () => number,
+  textLength: number,
+  outOfRangeChance = 0.15,
+): RandomSelectionPair {
+  if (rand() < outOfRangeChance) {
+    const overshoot = 1 + Math.floor(rand() * 50);
+    return { anchor: 0, head: textLength + overshoot };
+  }
+  return randomSelectionPair(rand, textLength);
+}
+
 /** Sorts a directional `{anchor, head}` pair into an ordered `CommandSelection`. */
 export function normalizeSelection(pair: RandomSelectionPair): CommandSelection {
   return {

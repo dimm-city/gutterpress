@@ -96,6 +96,19 @@ async function editorElementCount(selector: string): Promise<number> {
   );
 }
 
+async function mountSecond(text: string): Promise<string> {
+  await harness.page.evaluate((text) => window.__gpMount.mountSecond(text), text);
+  return harness.page.evaluate(() => window.__gpMount.secondContainerSelector);
+}
+
+async function disposeSecond(): Promise<void> {
+  await harness.page.evaluate(() => window.__gpMount.disposeSecond());
+}
+
+async function secondHostText(): Promise<string> {
+  return harness.page.evaluate(() => window.__gpMount.getSecondHostText());
+}
+
 describe("mount renders host text via the fork (liveness)", () => {
   test("mounts exactly one .md-editor with the host's current snapshot text", async () => {
     const selector = await mount("hello world");
@@ -277,6 +290,72 @@ describe("dispose then remount on the same host", () => {
     // once by the live one) and produced callsAfterFirst + 2.
     expect(await applyEditCallCount()).toBe(callsAfterFirst + 1);
     expect(await hostText()).toBe("helloAB");
+  });
+});
+
+describe("a re-entrant host notification that disposes the mount during applyEdit (SFE-P2a round-1 repair)", () => {
+  test("does not resurrect DOM or fire a diagnostic, and leaves the mount cleanly disposed", async () => {
+    const selector = await mount("hello", { disposeOnFirstNotify: true });
+    await requireDocumentText(selector);
+    expect(await editorElementCount(selector)).toBe(1);
+
+    // A real keystroke drives the mount's own `host.applyEdit(edit)` call.
+    // `MemoryDocumentHost.applyEdit` notifies subscribers SYNCHRONOUSLY on
+    // success, before it returns — and this mount's host wrapper
+    // (`self-disposing-host.ts`) disposes the mount from inside that very
+    // notification, re-entrantly, before the keystroke's own `applyEdit`
+    // call has unwound.
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("End");
+    await harness.page.keyboard.type("X");
+    await harness.page.waitForTimeout(100);
+
+    // No DOM resurrection: the editor stays removed, not re-rendered by
+    // whatever code ran after the re-entrant dispose.
+    expect(await editorElementCount(selector)).toBe(0);
+    expect(await injectedStyleElementCount()).toBe(0);
+    // No diagnostic: this is a clean re-entrant dispose, not an error path.
+    expect(await harness.page.evaluate(() => window.__gpMount.diagnostics())).toEqual([]);
+
+    // The mount is left genuinely disposed — a further dispose() call is
+    // still safely idempotent (mirrors the "dispose is idempotent" case
+    // above, but starting from a RE-ENTRANT disposal, not a caller-driven
+    // one).
+    await expect(dispose()).resolves.toBeUndefined();
+  });
+});
+
+describe("dispose isolation between two independent LIVE mounts sharing one document (SFE-P2a round-1 repair)", () => {
+  test("disposing one mount leaves the other's DOM, injected <style>, and host completely intact", async () => {
+    const selectorA = await mount("first mount");
+    await requireDocumentText(selectorA);
+    const selectorB = await mountSecond("second mount");
+    await requireDocumentText(selectorB);
+
+    expect(await editorElementCount(selectorA)).toBe(1);
+    expect(await editorElementCount(selectorB)).toBe(1);
+    const stylesWithBoth = await injectedStyleElementCount();
+    // Each live mount injects its own <style> elements — with two mounts up,
+    // the count reflects both (this run's own NEW per-mount CSS injection;
+    // the P1a-era table's superseded-by claim covered adapter-level listener
+    // isolation only, not this).
+    expect(stylesWithBoth).toBeGreaterThan(0);
+
+    await dispose(); // disposes ONLY mount A
+
+    // A's DOM and styles are gone...
+    expect(await editorElementCount(selectorA)).toBe(0);
+    // ...but B's editor, styles, and host are completely untouched.
+    expect(await editorElementCount(selectorB)).toBe(1);
+    expect(await requireDocumentText(selectorB)).toBe("second mount");
+    expect(await secondHostText()).toBe("second mount");
+    const stylesWithOnlyB = await injectedStyleElementCount();
+    expect(stylesWithOnlyB).toBeGreaterThan(0);
+    expect(stylesWithOnlyB).toBeLessThan(stylesWithBoth);
+
+    await disposeSecond();
+    expect(await editorElementCount(selectorB)).toBe(0);
+    expect(await injectedStyleElementCount()).toBe(0);
   });
 });
 

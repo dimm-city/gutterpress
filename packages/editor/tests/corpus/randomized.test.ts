@@ -8,7 +8,7 @@ import {
   mulberry32,
   normalizeSelection,
   randomCommand,
-  randomSelectionPair,
+  randomSelectionPairMaybeOutOfRange,
   type CommandSelection,
 } from "./support/command-harness.ts";
 import { FIXTURE_NAMES, FIXTURES } from "./fixtures.ts";
@@ -25,10 +25,24 @@ import { FIXTURE_NAMES, FIXTURES } from "./fixtures.ts";
  *
  * REBASED (SFE-P2a Lane C2-reconcile) onto Lane B's real, committed-in-tree
  * `applyCommand` contract — see support/command-harness.ts's header. The
- * "both orders" selection generation still happens (`randomSelectionPair`),
- * then is normalized into the real ordered `CommandSelection` shape
- * (`normalizeSelection`) before it ever reaches `applyCommand`, exactly as a
- * real drag-selection UI would.
+ * "both orders" selection generation still happens
+ * (`randomSelectionPairMaybeOutOfRange`), then is normalized into the real
+ * ordered `CommandSelection` shape (`normalizeSelection`) before it ever
+ * reaches `applyCommand`, exactly as a real drag-selection UI would.
+ *
+ * SFE-P2a round-1 repair (G-12/AP-21): a PLAIN `randomSelectionPair` clamps
+ * both offsets to `[0, textLength]` by construction, so `applyCommand`'s
+ * `invalidSelection` refusal path could never fire from this corpus — the
+ * refusal-path assertions below (DIAGNOSTIC_CATEGORIES membership, "a
+ * REFUSED command still changed the document") were dead code that always
+ * passed vacuously. `randomSelectionPairMaybeOutOfRange` deliberately
+ * produces an out-of-range selection some of the time so those assertions
+ * have something to actually prove. Separately, the fenced-code fixture
+ * added to `fixtures.ts` this same round gives `set-heading`'s OWN named
+ * refusal case (a caret inside a fenced code block) real, if occasional,
+ * reach through this randomized selection space too — see the "liveness"
+ * describe block below, which fails the run if EITHER refusal path never
+ * actually fired.
  *
  * `SEED` is a fixed constant, never derived from wall-clock time,
  * `Math.random`, or any other non-deterministic source (SFE-P1a's binding
@@ -68,7 +82,7 @@ function runIterations(seed: number): IterationRecord[] {
   for (let i = 0; i < ITERATIONS; i++) {
     const fixtureName = FIXTURE_NAMES[Math.floor(rand() * FIXTURE_NAMES.length)]!;
     const text = FIXTURES[fixtureName]!;
-    const selection = normalizeSelection(randomSelectionPair(rand, text.length));
+    const selection = normalizeSelection(randomSelectionPairMaybeOutOfRange(rand, text.length));
     const command = randomCommand(rand);
     const host = new MemoryDocumentHost({ text, version: 0 });
 
@@ -130,7 +144,16 @@ function runIterations(seed: number): IterationRecord[] {
             `fixture=${fixtureName} command=${JSON.stringify(command)}`,
         );
       }
-      records.push({ fixtureName, selection, command, outcome: `refused:${result.refused.category}` });
+      // `safeAction` distinguishes the two DIFFERENT refusal reasons
+      // `applyCommand` can produce (both share the same `category`) — see
+      // the "liveness" describe block below, which needs to tell them apart
+      // to prove BOTH paths actually fired, not just one of them twice.
+      records.push({
+        fixtureName,
+        selection,
+        command,
+        outcome: `refused:${result.refused.category}:${result.refused.safeAction ?? ""}`,
+      });
     }
   }
 
@@ -162,5 +185,25 @@ describe("seeded randomized command corpus (SFE-P2a DETAILS (4))", () => {
     const second = runIterations(SEED);
     expect(transcriptHash(second)).toBe(transcriptHash(first));
     expect(second).toEqual(first);
+  });
+
+  test("BOTH of applyCommand's refusal paths actually fired (G-12: a gate must prove it can fail)", () => {
+    // Before this round's fix, `applyCommand` had exactly two refusal
+    // paths — `invalidSelection` and `set-heading` inside a fenced code
+    // block — and NEITHER was reachable from this corpus: every selection
+    // was clamped valid by construction, and no fixture contained a fence.
+    // These assertions are the sabotage-proof counterpart to the "at least
+    // half accepted" liveness check above: an all-refused run is a broken
+    // generator, but so is a run that NEVER refuses, or refuses only ONE of
+    // the two named reasons — a regression that silently disabled either
+    // refusal path would leave every OTHER assertion in this file green.
+    const records = runIterations(SEED);
+    const refused = records.filter((r) => r.outcome.startsWith("refused"));
+    expect(refused.length).toBeGreaterThan(0);
+
+    const outOfRangeRefusals = refused.filter((r) => r.outcome.endsWith(":Reload and reapply"));
+    const fencedCodeRefusals = refused.filter((r) => r.outcome.endsWith(":Move outside the code block"));
+    expect(outOfRangeRefusals.length).toBeGreaterThan(0);
+    expect(fencedCodeRefusals.length).toBeGreaterThan(0);
   });
 });
