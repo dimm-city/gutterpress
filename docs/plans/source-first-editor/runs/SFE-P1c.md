@@ -123,4 +123,14 @@ byte-for-byte.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `85874a9a..95034a8b^`, three batches): 4 CONFIRMED
+  findings — the document-identity dual-source cluster (cross-file write corruption,
+  flush() hang, version-0 collision; all reproduced, then fixed with sabotage-verified
+  regressions), a duplicate LayoutBlockKind with a false blocker comment, a
+  replaceExternal-after-reset invariant break, and comment/code drift. Fixed in
+  `95034a8b`. Repair updated three test files where the pinned behavior itself was
+  the defect (reset-to-0 versions) — re-reviewed and approved. Verdict: **approve**,
+  0 confirmed remaining, 2 advisories.
+- **Gate**: PASS — all 12 commands exit 0 (editor 160/0 + 51/0 browser; desktop
+  2252/0, svelte-check 829 files/0 errors, lint clean; cli 1810/0; all fitness
+  checks green).

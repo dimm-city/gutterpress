@@ -13,7 +13,7 @@
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) |
 | AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Pending |
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Pending |
-| AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a: applyEdit contract tests incl. TOCTOU-hardened accessor case, seeded 500-case property test, validator negatives; P3 host integrations pending) |
+| AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
 | AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Pending |
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Pending |
@@ -237,5 +237,39 @@
   "acceptanceUpdates": ["D5 suite fully green against the fork — cases 4/5 PASS via renderCustomBlock with real per-character segments (option a)"],
   "deletionLedgerUpdates": ["Fork carries its own deletion trigger: remove packages/vscode-markdown-editor when upstream ships an equivalent generic block-render hook (PATCHES.md)"],
   "checkpointSummary": "The ratified FORK executed: published artifact vendored with checksum+completeness integrity gates in CI, one generic CustomBlockRendering seam patched in (4 documented hunks/file), segments wired and proven — caret entry and drag precision now match the keyboard baseline on the paragraph probe."
+}
+```
+
+### SFE-P1c — Pure document session and desktop host adapter
+
+```json
+{
+  "status": "complete",
+  "baseSha": "85874a9a",
+  "headSha": "95034a8b",
+  "history": [
+    "d338ea15 refactor(p1): extract pure document-session state machine",
+    "4895af7b feat(p1): desktop document host proven by the shared contract suite + refactor(p1): thin EditorBuffer onto the document session",
+    "95034a8b fix(p1): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: two sources of truth for document identity — cross-file write on restoreContent, a flush() hang (pre-fix repro required a process kill), and the version-0 collision across file switches (fixed: two-phase beginRestore/finishRestore, documentId-keyed flush guard, strictly monotonic versions; all sabotage-verified)",
+    "R1: duplicate LayoutBlockKind with a false blocker comment (single shared definition now)",
+    "R1: replaceExternal after reset() broke the clean-implies-not-dirty invariant (explicit no-document guard + regression)",
+    "R1: shipped comments asserted a pre-integration state the merged code contradicts (rewritten)"
+  ],
+  "advisories": [
+    "commands.ts provenance comment now circular after the LayoutBlockKind extraction (low, comment-only)",
+    "an edit() before the first open() can reuse version 1 across the first identity boundary (residual tail, documented; unreachable through EditorBuffer's real flow)"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck / editor 160:0 + 51:0 browser / desktop 2252:0 + svelte-check 829 files 0 errors + lint / cli 1810:0 / architecture / generated-files / vendored / knip — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-05 further evidenced (shared contract suite green on both hosts)"],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "The authoritative source lifecycle is now a pure, exhaustively-pinned state machine (72 transition tests); DesktopDocumentHost passes the same contract suite as the memory host plus 13 desktop-specific cases; EditorBuffer is a thin reactive shell with its public API byte-identical and all 27 pre-existing pinned test files green; the shared EditorCommand union and the first desktop->editor dependency edge are in place. Checkpoint A group (P0-P1c) complete."
 }
 ```
