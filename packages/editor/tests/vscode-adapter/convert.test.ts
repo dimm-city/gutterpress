@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { StringEdit, StringReplacement, OffsetRange } from "@vscode/markdown-editor";
+import { StringEdit, StringReplacement, OffsetRange } from "@dimm-city/vscode-markdown-editor";
 import { stringEditToSourceEdit } from "../../src/vscode-adapter/convert.ts";
 
 /**

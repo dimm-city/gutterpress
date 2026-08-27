@@ -229,6 +229,55 @@ try {
   rmSync(missingParent, { recursive: true, force: true });
 }
 
+// Allowlist cases: packages/vscode-markdown-editor/dist/ is the ONE tracked
+// dist that is vendored source, not build output (its own checksum gate
+// enforces byte identity — see the ALLOWLIST_PREFIXES comment in the checker).
+// Prove the exemption admits exactly that prefix and nothing else: the same
+// fixture tracks the exempt path AND a sibling package's dist, and only the
+// sibling is reported.
+const allowDir = mkdtempSync(join(tmpdir(), "check-generated-allowlist-"));
+try {
+  initFixtureRepo(allowDir);
+  mkdirSync(join(allowDir, "packages", "vscode-markdown-editor", "dist"), { recursive: true });
+  writeFileSync(
+    join(allowDir, "packages", "vscode-markdown-editor", "dist", "index.js"),
+    "// vendored upstream artifact\n",
+  );
+  mkdirSync(join(allowDir, "packages", "cli", "dist"), { recursive: true });
+  writeFileSync(join(allowDir, "packages", "cli", "dist", "index.js"), "// built output\n");
+  commitAll(allowDir, "vendored fork dist + sabotage sibling dist");
+  const r = run(allowDir);
+  check("allowlisted fork dist does not pass the whole check vacuously", r.status, 1);
+  check(
+    "sibling packages/cli/dist is still reported",
+    r.stderr.includes("packages/cli/dist/index.js"),
+    true,
+  );
+  check(
+    "allowlisted packages/vscode-markdown-editor/dist is NOT reported",
+    r.stderr.includes("packages/vscode-markdown-editor/dist/index.js"),
+    false,
+  );
+} finally {
+  rmSync(allowDir, { recursive: true, force: true });
+}
+
+// And alone, the allowlisted path is a clean pass.
+const allowOnlyDir = mkdtempSync(join(tmpdir(), "check-generated-allowonly-"));
+try {
+  initFixtureRepo(allowOnlyDir);
+  mkdirSync(join(allowOnlyDir, "packages", "vscode-markdown-editor", "dist"), { recursive: true });
+  writeFileSync(
+    join(allowOnlyDir, "packages", "vscode-markdown-editor", "dist", "index.js"),
+    "// vendored upstream artifact\n",
+  );
+  commitAll(allowOnlyDir, "vendored fork dist only");
+  const r = run(allowOnlyDir);
+  check("allowlisted fork dist alone exits 0", r.status, 0);
+} finally {
+  rmSync(allowOnlyDir, { recursive: true, force: true });
+}
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);
   process.exit(1);

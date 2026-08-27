@@ -4,7 +4,7 @@ import {
   EditorView,
   StringValue,
   type EditorViewOptions,
-} from "@vscode/markdown-editor";
+} from "@dimm-city/vscode-markdown-editor";
 import {
   diagnosticForEditRejection,
   type Diagnostic,
@@ -18,7 +18,7 @@ import { stringEditToSourceEdit } from "./convert.ts";
  * application code outside `packages/editor/src/vscode-adapter/` may import
  * package internals"). Everything the rest of the codebase is allowed to
  * depend on is exported from this directory's `index.ts`; nothing outside
- * this directory may `import ... from "@vscode/markdown-editor"`.
+ * this directory may `import ... from "@dimm-city/vscode-markdown-editor"` (the vendored fork of @vscode/markdown-editor).
  *
  * `createVscodeEditorAdapter` wires the package's `EditorModel` /
  * `EditorView` / `EditorController` triad to a D3 `EditorDocumentHost`:

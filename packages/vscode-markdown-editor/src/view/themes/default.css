@@ -1,0 +1,244 @@
+/*
+ * Default ("plain") markdown theme.
+ *
+ * The editor's original typography, extracted out of the functional base and
+ * scoped under `.md-theme-default`. Apply it via the editor `classNames`
+ * option:
+ *
+ *     new EditorView(model, { classNames: ['md-theme-default'] });
+ *
+ * Every selector is scoped under the theme class, so importing this file
+ * never affects the global page or any editor that did not opt in.
+ */
+
+.md-editor.md-theme-default {
+    color-scheme: light;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    max-width: 800px;
+}
+
+.md-theme-default .md-heading {
+    margin: 0.5em 0 0.25em;
+}
+
+.md-theme-default .md-paragraph {
+    margin: 0.5em 0;
+}
+
+.md-theme-default .md-code-block {
+    background: #f4f4f4;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 0.5em 0;
+}
+
+.md-theme-default .md-code-block code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 14px;
+}
+
+/* Syntax-highlight token colours (VS Code light theme palette). */
+.md-theme-default .md-code-block .tok-keyword {
+    color: #0000ff;
+}
+
+.md-theme-default .md-code-block .tok-string {
+    color: #a31515;
+}
+
+.md-theme-default .md-code-block .tok-comment {
+    color: #008000;
+}
+
+.md-theme-default .md-code-block .tok-number {
+    color: #098658;
+}
+
+.md-theme-default .md-code-block .tok-regexp {
+    color: #811f3f;
+}
+
+.md-theme-default .md-code-block .tok-type {
+    color: #267f99;
+}
+
+.md-theme-default .md-code-block .tok-annotation {
+    color: #267f99;
+}
+
+.md-theme-default .md-code-block .tok-tag {
+    color: #800000;
+}
+
+.md-theme-default .md-code-block .tok-attribute {
+    color: #e50000;
+}
+
+.md-theme-default .md-code-block .tok-delimiter {
+    color: #000000;
+}
+
+.md-theme-default .md-math-block {
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 0.5em 0;
+}
+
+.md-theme-default .md-math-block code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 14px;
+}
+
+.md-theme-default .md-inline-math {
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.md-theme-default .md-inline-math .katex {
+    line-height: 1;
+}
+
+.md-theme-default .md-thematic-break {
+    border: none;
+    border-top: 2px solid #e0e0e0;
+    margin: 1em 0;
+}
+
+.md-theme-default .md-blockquote {
+    border-left: 4px solid #ddd;
+    margin: 0.5em 0;
+    padding: 0 0 0 16px;
+    /* The left padding the `>` gutter hangs in (matches padding-left). */
+    --md-blockquote-pad: 16px;
+    color: #666;
+}
+
+.md-theme-default .md-list {
+    margin: 0.5em 0;
+    padding-left: 24px;
+    /* The per-level indentation step the list gutter fills (matches padding-left). */
+    --md-list-indent-step: 24px;
+}
+
+.md-theme-default .md-table-wrapper {
+    /* Block spacing lives on the wrapper (the scroll/BFC box) so it collapses
+       with siblings as before; the inner table has no margin of its own. */
+    margin: 0.5em 0;
+}
+
+.md-theme-default .md-table {
+    border-collapse: collapse;
+    width: auto;
+}
+
+.md-theme-default .md-table th,
+.md-theme-default .md-table td {
+    border: 1px solid #ddd;
+    padding: 6px 12px;
+    text-align: left;
+}
+
+.md-theme-default .md-table th {
+    background: #f4f4f4;
+    font-weight: 600;
+}
+
+/* Header reserves extra vertical space when inactive; reclaimed when active
+   to host the delimiter row, keeping the table height constant. */
+.md-theme-default .md-table tr:first-child td {
+    padding-top: 11px;
+    padding-bottom: 11px;
+}
+
+.md-theme-default .md-table.md-block-active tr:first-child td {
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.md-theme-default .md-table tbody tr:nth-child(even) {
+    background: #fafafa;
+}
+
+/* Delimiter row (`| --- | --- |`) is edit-time source: borderless, compact. */
+.md-theme-default .md-table-delimiter-row td {
+    border: 0;
+    padding: 0 12px;
+    background: transparent;
+}
+
+/*
+ * Active table: the source `|` pipes ARE the outline. Drop the HTML cell
+ * borders (kept as transparent so the 1px box geometry — and thus the table's
+ * height and first-text X — is unchanged) and clear the header/zebra fills so
+ * the table reads as plain source.
+ */
+.md-theme-default .md-table.md-block-active td {
+    border-color: transparent;
+}
+
+.md-theme-default .md-table.md-block-active tr:first-child td {
+    background: transparent;
+}
+
+.md-theme-default .md-table.md-block-active tbody tr:nth-child(even) td {
+    background: transparent;
+}
+
+/*
+ * Shift each cell's leading pipe onto its left gridline (where the border was)
+ * and the last cell's closing pipe onto the right gridline. `position:
+ * relative` moves only the painted glyph by the cell's horizontal padding;
+ * siblings and the glue's reserved width are untouched, so active/inactive
+ * height and first-text X stay pixel-identical. The delimiter row's single
+ * `tableDelimiter` marker is shifted the same way to line its leading pipe up.
+ */
+.md-theme-default .md-table.md-block-active td>.md-glue-tableCellGlue:first-child,
+.md-theme-default .md-table.md-block-active .md-table-delimiter-row td>.md-marker-tableDelimiter {
+    position: relative;
+    left: -12px;
+}
+
+/*
+ * The last cell's closing `|` floats right after the (left-aligned) cell text,
+ * so on its own it would be ragged between rows of differing width. Pin it to
+ * the column's right gridline (the cell's border edge, 12px past the content
+ * box) so the right outline is a straight line. Absolute removes it from flow,
+ * but it is the trailing node so no text shifts; the leading pipe still fixes
+ * first-text X and the row stays one line tall, keeping the compare invariants.
+ * `top: auto` keeps the pipe on the content line (the shared editor.css rule
+ * also takes trailing glue out of flow); the previous `top: 0` floated it to
+ * the cell's top edge, misaligning it with the leading pipes on wrapping rows.
+ */
+.md-theme-default .md-table.md-block-active td:last-child {
+    position: relative;
+}
+
+.md-theme-default .md-table.md-block-active td:last-child>.md-glue-tableCellGlue:last-child {
+    position: absolute;
+    right: 0;
+    top: auto;
+}
+
+/*
+ * The delimiter row's last cell carries its closing `|` as a separate
+ * `tableDelimiterClose` marker; pin it to the same right gridline as the body
+ * rows' closing pipe so the last column's outline stays straight.
+ */
+.md-theme-default .md-table.md-block-active .md-table-delimiter-row td:last-child>.md-marker-tableDelimiterClose {
+    position: absolute;
+    right: 0;
+    top: auto;
+}
+
+.md-theme-default code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.9em;
+}
+
+.md-theme-default :not(pre)>code {
+    background: #f0f0f0;
+    padding: 2px 4px;
+    border-radius: 3px;
+}

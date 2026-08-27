@@ -15,7 +15,15 @@
       // packages/open-design-plugin is a Claude plugin (SKILL.md + evals) whose
       // test-fixtures are data trees referenced by string from manifest.yaml
       // files, not by imports — not part of the dead-code surface.
-      "ignore": ["packages/open-design-plugin/**"],
+      "ignore": [
+        "packages/open-design-plugin/**",
+        // packages/vscode-markdown-editor is a vendored third-party artifact
+        // (see its NOTICE/PATCHES.md): byte-pinned by scripts/verify-vendored.mjs
+        // checksums, manifest mirrored from upstream verbatim (D5). Knip's
+        // dead-code/dependency analysis is the wrong instrument for it — same
+        // treatment as node_modules content. SFE-P1b2.
+        "packages/vscode-markdown-editor/**"
+      ],
       // pdftoppm is an external PDF tool invoked via execCapture by
       // tools/page-background-mechanism.mjs and tools/page-background-repro.mjs —
       // the same documented qpdf/gs/pdf* external-tools exemption as CLAUDE.md's
@@ -93,6 +101,6 @@
         "tools/**/*.mjs",
         "tests/**/*.{ts,js,mjs}"
       ]
-    }
+    },
   }
 }

@@ -1,4 +1,4 @@
-import type { StringEdit } from "@vscode/markdown-editor";
+import type { StringEdit } from "@dimm-city/vscode-markdown-editor";
 import type { SourceEdit } from "../core/index.ts";
 
 /**

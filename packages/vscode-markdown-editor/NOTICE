@@ -1,0 +1,72 @@
+This package, @dimm-city/vscode-markdown-editor, is an internal Gutterpress
+fork of @vscode/markdown-editor@0.0.2-84, published by Microsoft Corporation
+under the MIT License. The upstream package declares "license": "MIT" in its
+own package.json; the published npm tarball ships no separate LICENSE file,
+so the MIT license text below is reproduced from the standard MIT template
+with Microsoft's copyright notice, as the tarball's own declared license.
+
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) Microsoft Corporation.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+------------------------------------------------------------------------------
+
+Provenance
+----------
+
+Upstream package:    @vscode/markdown-editor
+Upstream version:    0.0.2-84
+Upstream source:     microsoft/vscode-packages, directory
+                      vscode-team-tools/packages/markdown-editor
+Upstream commit:     b5fd5cda44376c118dd383f8c03ac4f6a06c648e (package.json
+                      "gitHead" field, as published)
+Vendored from:       https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-84.tgz
+Tarball integrity:   sha512-CD/FrfJTNnc3nVrdE6oVjHP+e12/4Ie84eaxSOSLkf7QhktkLhdrYFHz+tJ45jn9wGARMl41Bz0emnUSru80OA==
+                      (verified against the registry's recorded
+                      dist.integrity for this exact version at vendor time;
+                      also cross-checked by sha1 against dist.shasum)
+
+This fork was vendored from the PUBLISHED, BUNDLED NPM ARTIFACT
+(dist/index.js, dist/index.d.ts, and the other dist/ and src/*.css files
+listed in package.json's "files" array), not from the upstream TypeScript
+source tree. The upstream source repository
+(github.com/microsoft/vscode-packages, directory
+vscode-team-tools/packages/markdown-editor) was not reachable from the
+execution environment that produced this fork (cross-owner repository
+attach was unavailable), and the npm tarball itself ships only the built
+dist/ output plus a handful of CSS files under src/ — no TypeScript source.
+
+This is recorded as a deliberate, documented deviation from the ideal of
+forking from source, with an explicit follow-up: regenerate this fork from
+the upstream TypeScript source once the source repository is reachable, or
+upstream the renderCustomBlock seam itself as a pull request against
+microsoft/vscode-packages so this fork becomes unnecessary. See
+docs/plans/source-first-editor/runs/SFE-P1b.md ("Provenance constraint") and
+PATCHES.md ("Upstreaming / removal trigger") for the full record. This fork
+is designed for deletion per CLAUDE.md's design-for-deletion rule: it exists
+only to carry one missing generic extension seam and should be removed the
+moment upstream provides an equivalent, or Chrome/VS Code make it moot.
+
+Everything under dist/ and src/ in this package is Microsoft's published,
+MIT-licensed work, byte-identical to the published tarball except for the
+minimal, clearly marked ("/* gp-fork: renderCustomBlock */") additive patch
+documented in PATCHES.md. No Gutterpress-specific syntax, vocabulary, or
+branding has been introduced into the fork itself.

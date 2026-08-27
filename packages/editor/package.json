@@ -24,6 +24,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@vscode/markdown-editor": "0.0.2-84"
+    "@dimm-city/vscode-markdown-editor": "workspace:*"
   }
 }

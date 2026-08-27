@@ -55,9 +55,9 @@ export interface HarnessCssAssets {
  * required").
  */
 export async function loadMarkdownEditorCssAssets(): Promise<HarnessCssAssets> {
-  const editorCssPath = fileURLToPath(import.meta.resolve("@vscode/markdown-editor/editor.css"));
+  const editorCssPath = fileURLToPath(import.meta.resolve("@dimm-city/vscode-markdown-editor/editor.css"));
   const defaultThemeCssPath = fileURLToPath(
-    import.meta.resolve("@vscode/markdown-editor/themes/default.css"),
+    import.meta.resolve("@dimm-city/vscode-markdown-editor/themes/default.css"),
   );
 
   // editorCssPath = "<pkgRoot>/src/view/editor.css" -- three `dirname`

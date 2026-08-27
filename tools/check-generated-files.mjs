@@ -67,6 +67,15 @@ const PATTERNS = [
   { name: "packages/*/dist/", regex: /^packages\/[^/]+\/dist\// },
 ];
 
+// The ONE tracked dist/ that is not build output: packages/vscode-markdown-editor
+// vendors the published @vscode/markdown-editor artifact (upstream ships no TS
+// source), so its dist/ is hand-vendored, non-regenerable source whose byte
+// identity is enforced by its own checksum gate
+// (packages/vscode-markdown-editor/scripts/verify-vendored.mjs) — a stricter
+// guarantee than untracking. Exact-prefix allowlist, never a pattern, so every
+// other packages/*/dist/ still fails rule 5. See PATCHES.md in that package.
+const ALLOWLIST_PREFIXES = ["packages/vscode-markdown-editor/dist/"];
+
 function repoRoot() {
   // tools/ lives at the repo root.
   return dirname(dirname(fileURLToPath(import.meta.url)));
@@ -97,6 +106,7 @@ function listTrackedFiles(root) {
 }
 
 function findViolation(path) {
+  if (ALLOWLIST_PREFIXES.some((prefix) => path.startsWith(prefix))) return null;
   for (const pattern of PATTERNS) {
     if (pattern.regex.test(path)) return pattern.name;
   }

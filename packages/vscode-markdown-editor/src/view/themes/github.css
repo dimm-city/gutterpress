@@ -1,0 +1,306 @@
+/*
+ * GitHub markdown theme.
+ *
+ * A faithful port of the GitHub markdown (light) typography used by the VS
+ * Code markdown preview (`bierner.markdown-preview-github-styles`), scoped
+ * under `.github-markdown-theme`. Apply it via the editor `classNames`
+ * option:
+ *
+ *     new EditorView(model, { classNames: ['github-markdown-theme'] });
+ *
+ * Colors are GitHub Primer "light" values. Every selector is scoped under
+ * the theme class, so this file overrides nothing globally and only styles
+ * an editor that opted in.
+ */
+
+.md-editor.github-markdown-theme {
+    color-scheme: light;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans',
+        Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    font-size: 16px;
+    line-height: 1.5;
+    color: #1f2328;
+    word-wrap: break-word;
+}
+
+.github-markdown-theme .md-heading {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.github-markdown-theme h1.md-heading {
+    font-size: 2em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid #d1d9e0b3;
+}
+
+.github-markdown-theme h2.md-heading {
+    font-size: 1.5em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid #d1d9e0b3;
+}
+
+.github-markdown-theme h3.md-heading {
+    font-size: 1.25em;
+}
+
+.github-markdown-theme h4.md-heading {
+    font-size: 1em;
+}
+
+.github-markdown-theme h5.md-heading {
+    font-size: 0.875em;
+}
+
+.github-markdown-theme h6.md-heading {
+    font-size: 0.85em;
+    color: #59636e;
+}
+
+.github-markdown-theme .md-paragraph {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.github-markdown-theme .md-blockquote {
+    margin: 0 0 16px 0;
+    padding: 0 1em;
+    /* Matches padding-left; `em` is safe because shared marker geometry inherits font size. */
+    --md-blockquote-pad: 1em;
+    color: #59636e;
+    border-left: 0.25em solid #d1d9e0;
+}
+
+.github-markdown-theme .md-list {
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding-left: 2em;
+    /* The per-level indentation step the list gutter fills (matches padding-left). */
+    --md-list-indent-step: 2em;
+}
+
+.github-markdown-theme .md-thematic-break {
+    height: 0.25em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: #d1d9e0;
+    border: 0;
+}
+
+.github-markdown-theme a {
+    color: #0969da;
+    text-decoration: none;
+}
+
+/* GitHub uses a 600 weight for bold, not the browser default 700. */
+.github-markdown-theme strong {
+    font-weight: 600;
+}
+
+/* Inline code. */
+.github-markdown-theme :not(pre)>code {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+        'Liberation Mono', monospace;
+    font-size: 85%;
+    padding: 0.2em 0.4em;
+    margin: 0;
+    background-color: #818b981f;
+    border-radius: 6px;
+    white-space: break-spaces;
+}
+
+/* Fenced code block. */
+.github-markdown-theme .md-code-block {
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 6px;
+}
+
+.github-markdown-theme .md-code-block code {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+        'Liberation Mono', monospace;
+    padding: 0;
+    background-color: transparent;
+    border-radius: 0;
+}
+
+/* Syntax highlighting tokens (GitHub light / Primer palette). */
+.github-markdown-theme .md-code-block .tok-keyword {
+    color: #cf222e;
+}
+
+.github-markdown-theme .md-code-block .tok-string {
+    color: #0a3069;
+}
+
+.github-markdown-theme .md-code-block .tok-comment {
+    color: #6e7781;
+}
+
+.github-markdown-theme .md-code-block .tok-number {
+    color: #0550ae;
+}
+
+.github-markdown-theme .md-code-block .tok-regexp {
+    color: #0a3069;
+}
+
+.github-markdown-theme .md-code-block .tok-type {
+    color: #953800;
+}
+
+.github-markdown-theme .md-code-block .tok-annotation {
+    color: #953800;
+}
+
+.github-markdown-theme .md-code-block .tok-tag {
+    color: #116329;
+}
+
+.github-markdown-theme .md-code-block .tok-attribute {
+    color: #0550ae;
+}
+
+.github-markdown-theme .md-code-block .tok-delimiter {
+    color: #24292f;
+}
+
+/*
+ * Display math has no container styling on GitHub / the VS Code preview
+ * (KaTeX renders it inline-centered). Keep only the block spacing; the
+ * horizontal scroll comes from the base stylesheet.
+ */
+.github-markdown-theme .md-math-block {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+/*
+ * KaTeX renders inline math at 1.21em with its own (larger) line-height, which
+ * would inflate the surrounding line box and make the line taller when the math
+ * is rendered (inactive) than when its source markers are shown (active).
+ * Collapse the KaTeX line-height so the rendered math fits the text line and the
+ * paragraph height stays identical active vs inactive.
+ */
+.github-markdown-theme .md-inline-math .katex {
+    line-height: 1;
+}
+
+.github-markdown-theme .md-table-wrapper {
+    /* Block spacing lives on the wrapper (the scroll/BFC box) so it collapses
+       with siblings as before; the inner table has no margin of its own. */
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.github-markdown-theme .md-table {
+    border-collapse: collapse;
+    width: auto;
+}
+
+.github-markdown-theme .md-table th,
+.github-markdown-theme .md-table td {
+    padding: 6px 13px;
+    border: 1px solid #d1d9e0;
+    text-align: left;
+}
+
+/*
+ * The editor renders every cell as <td> in a flat <table> of <tr> (no
+ * <thead>/<tbody>/<th>). Row order is: header, delimiter row, body rows. The
+ * header is the first row; GitHub zebra-stripes every other body row, which —
+ * counting the delimiter row at position 2 — are the even-positioned rows
+ * other than the delimiter row itself.
+ */
+.github-markdown-theme .md-table tr:first-child td {
+    font-weight: 600;
+    padding-top: 11px;
+    padding-bottom: 11px;
+}
+
+/* Active: reclaim the header's extra spacing to host the delimiter row. */
+.github-markdown-theme .md-table.md-block-active tr:first-child td {
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.github-markdown-theme .md-table tr:nth-child(even):not(.md-table-delimiter-row) {
+    background-color: #f6f8fa;
+}
+
+/*
+ * The delimiter row (`| --- | --- |`) is editor source shown only while
+ * editing; render it borderless with no vertical padding so it occupies just
+ * the compact 10px reclaimed from the header.
+ */
+.github-markdown-theme .md-table-delimiter-row td {
+    border: 0;
+    padding: 0 13px;
+    background: transparent;
+}
+
+/*
+ * Active table: the source `|` pipes ARE the outline. Drop the HTML cell
+ * borders (kept as transparent so the 1px box geometry — and thus the table's
+ * height and first-text X — is unchanged) and clear the zebra fill so the
+ * table reads as plain source.
+ */
+.github-markdown-theme .md-table.md-block-active td {
+    border-color: transparent;
+}
+
+.github-markdown-theme .md-table.md-block-active tr:nth-child(even):not(.md-table-delimiter-row) td {
+    background-color: transparent;
+}
+
+/*
+ * Shift each cell's leading pipe onto its left gridline (where the border was)
+ * and the last cell's closing pipe onto the right gridline. `position:
+ * relative` moves only the painted glyph by the cell's horizontal padding;
+ * siblings and the glue's reserved width are untouched, so active/inactive
+ * height and first-text X stay pixel-identical. The delimiter row's single
+ * `tableDelimiter` marker is shifted the same way to line its leading pipe up.
+ */
+.github-markdown-theme .md-table.md-block-active td>.md-glue-tableCellGlue:first-child,
+.github-markdown-theme .md-table.md-block-active .md-table-delimiter-row td>.md-marker-tableDelimiter {
+    position: relative;
+    left: -13px;
+}
+
+/*
+ * The last cell's closing `|` floats right after the (left-aligned) cell text,
+ * so on its own it would be ragged between rows of differing width. Pin it to
+ * the column's right gridline (the cell's border edge, 13px past the content
+ * box) so the right outline is a straight line. Absolute removes it from flow,
+ * but it is the trailing node so no text shifts; the leading pipe still fixes
+ * first-text X and the row stays one line tall, keeping the compare invariants.
+ * `top: auto` keeps the pipe on the content line (the shared editor.css rule
+ * also takes trailing glue out of flow); the previous `top: 0` floated it to
+ * the cell's top edge, misaligning it with the leading pipes on wrapping rows.
+ */
+.github-markdown-theme .md-table.md-block-active td:last-child {
+    position: relative;
+}
+
+.github-markdown-theme .md-table.md-block-active td:last-child>.md-glue-tableCellGlue:last-child {
+    position: absolute;
+    right: 0;
+    top: auto;
+}
+
+/*
+ * The delimiter row's last cell carries its closing `|` as a separate
+ * `tableDelimiterClose` marker; pin it to the same right gridline as the body
+ * rows' closing pipe so the last column's outline stays straight.
+ */
+.github-markdown-theme .md-table.md-block-active .md-table-delimiter-row td:last-child>.md-marker-tableDelimiterClose {
+    position: absolute;
+    right: 0;
+    top: auto;
+}

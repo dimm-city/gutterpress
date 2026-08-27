@@ -6,7 +6,7 @@ import {
   StringValue,
   type BlockAstNode,
   type EditorViewOptions,
-} from "@vscode/markdown-editor";
+} from "@dimm-city/vscode-markdown-editor";
 import { stringEditToSourceEdit } from "../../../../src/vscode-adapter/index.ts";
 import { MemoryDocumentHost } from "../../../../src/core/index.ts";
 
