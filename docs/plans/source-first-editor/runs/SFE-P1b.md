@@ -148,4 +148,14 @@ re-plan of the fork run, per the plan's bounded-run rule.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Round 1** (adversarial review of `a8a93c0c..5cc16061^`, four batches): 6 CONFIRMED
+  findings — knip gate failure on .btest.ts files; a stale-snapshot rejection-revert
+  replay plus an over-broad echo guard in the adapter (both real G-11/D2 bugs, fixed
+  with new race tests); missing CI invocation for test:browser (AP-20); an incomplete
+  hook catalog in the decision record (renderMath found — the fork seam was upgraded
+  to the segments-capable shape as a result); a tautological clipboard assertion; and
+  a partially tautological drag proof with a doc/behavior mismatch. Fixed in
+  `5cc16061`. Verdict: **approve**, 0 confirmed remaining, 2 advisories.
+- **Gate**: PASS — all 11 commands exit 0 (editor 126/0 unit + 39/0 real-Chromium
+  browser; desktop 2132/0; cli 1810/0; all fitness checks green).
+- **Decision**: FORK, ratified — see `SFE-P1b-decision.md`; executed as SFE-P1b2.

@@ -167,3 +167,42 @@
   "checkpointSummary": "packages/editor core (D3 contract, D14 diagnostics, hardened validators, memory host) and web mount shell live with 118 tests; packages/vscode-extension skeleton registers the optional gutterpress.markdownEditor provider importing the shared protocol. P1b dependency @vscode/markdown-editor@0.0.2-84 verified present on the npm registry."
 }
 ```
+
+### SFE-P1b — `@vscode/markdown-editor` compatibility and fork gate
+
+```json
+{
+  "status": "complete",
+  "baseSha": "a8a93c0c",
+  "headSha": "5cc16061",
+  "history": [
+    "171c961f chore(p1): exact-pin @vscode/markdown-editor 0.0.2-84",
+    "3cfe67c3 docs(p1): specify run SFE-P1b",
+    "70f5c0f8 feat(p1): adapt vscode markdown editor",
+    "12707d22 docs(p1): record package adoption decision — FORK",
+    "f3d12e01 docs(p1): specify run SFE-P1b2",
+    "5cc16061 fix(p1): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: knip gate failed on .btest.ts-reachable files (entry added)",
+    "R1: deferred rejection revert replayed a stale captured snapshot; echo guard could drop genuine external notifications in the submission window (adapter fixed: fresh host read at revert; predicted-echo-only guard; new race tests)",
+    "R1: test:browser had no CI invocation path (harness gained a system-Chrome fallback tier; CI step wired)",
+    "R1: decision record omitted renderMath as a second inactive-render hook (catalog corrected; fork seam upgraded to the CustomBlockRendering{dom,segments?} shape mirroring MathRendering)",
+    "R1: real-clipboard assertion was a tautology (replaced with an unconditional behavioral assertion behind an asserted capability probe)",
+    "R1: pointer-drag proof partially tautological + sourceSlice doc mismatch (fixed slice source; overclaims withdrawn from the decision record; drag-precision scoped as open for P1b2)"
+  ],
+  "advisories": [
+    "Case 6 pointer-drag assertion remains inert (honestly labeled; P1b2 must make it invertible or delete it)",
+    "New CI browser-test step is correct by construction but has not yet executed on a real GitHub runner"
+  ],
+  "gate": {
+    "commands": [
+      "bun install --frozen-lockfile / typecheck (root + editor) / editor test 126:0 / test:browser 39:0 (3 suites) / purity / architecture / generated-files / knip / desktop 2132:0 / cli 1810:0 — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "All 8 D5 mandatory cases exercised against the exact pinned runtime in real Chromium: 1/1b/2/3/6/7/8 PASS, case 4 (and consequently 5) FAIL — no generic custom-block hook. Verdict FORK, ratified: minimal CustomBlockRendering seam on the paragraph/unhandledBlock arms, executed as SFE-P1b2."
+}
+```
