@@ -5,6 +5,34 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-08-29
+
+### Fixed
+
+- **`gutterpress lint` was checking fewer stylesheets than the app's Problems
+  panel.** If your book set `engineStyles.native`, the command skipped that
+  sheet — the one loaded last, so the one whose rules win. On the Dimm City
+  field guide it checked 7 of 8 stylesheets and reported 34 risky print
+  properties where the panel reported 35; the finding it hid was a
+  `background-blend-mode` on the whole-sheet page background, the most
+  expensive thing in that book to print. Both surfaces now read the same list.
+
+### Changed
+
+- **`isolation` no longer reports as a rasterization risk.** It doesn't
+  rasterize anything — it creates a stacking context, which is what the
+  page-containment warning already told you, with the actual consequence
+  spelled out. One accurate warning instead of one accurate and one wrong.
+
+- **Core marker names are documented as reserved.** `@chapter`, `@spread`,
+  `@page`, `@section`, `@continue`, `@page-break`, `@column-break` and
+  `@end-section` belong to Gutterpress. A plugin marker sharing one of those
+  names never runs, because core claims the line before plugins are consulted
+  — silently, which cost a real book a page-split it had authored. Give plugin
+  markers a branded name (`@skill-continue`) and the collision can't happen.
+  Documented in the plugin guide and at the reservation itself; no behaviour
+  change.
+
 ## [0.10.3] - 2026-08-29
 
 ### Fixed

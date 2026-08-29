@@ -186,6 +186,17 @@ These run automatically before any user plugins and do not need to be declared i
 
 > The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead — a named block like `::: callout-note ... :::` becomes `@section .callout-note ... @end-section`.
 
+> **Core marker names are reserved — give yours a branded name.** These eight
+> belong to core: `@chapter`, `@spread`, `@page`, `@section`, `@continue`,
+> `@page-break`, `@column-break`, `@end-section`. Core claims those lines
+> while parsing blocks, which happens *before* your plugin is consulted, so a
+> plugin marker sharing one of these names **never runs and never warns** —
+> your handler is simply skipped and core's own meaning applies. This has
+> happened in a real book: a plugin defined `@continue` to split a card across
+> a page, and every use produced a confusing core warning while the intended
+> split silently never happened. Prefix yours (`@skill-continue`,
+> `@dc-sidebar`) and the collision cannot occur.
+
 ## Bundled Optional Plugins
 
 These four are **not** loaded by default, but they ship inside the binary —

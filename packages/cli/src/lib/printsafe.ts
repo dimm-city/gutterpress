@@ -46,7 +46,10 @@ const riskyProperties = new Set([
   "backdrop-filter",
   "mix-blend-mode",
   "background-blend-mode",
-  "isolation",
+  // NOT `isolation`: it establishes a stacking context, it does not rasterize.
+  // createsStackingContext() below already models it correctly and
+  // page-containment reports the real consequence, so listing it here also
+  // produced a second, wrong warning for the same declaration.
   "animation",
   "animation-name",
   "transition",

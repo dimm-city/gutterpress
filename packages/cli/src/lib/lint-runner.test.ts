@@ -180,3 +180,38 @@ test("filesLinted counts what was actually inspected", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("engineStyles.native is linted too — the sheet that ships is the sheet that's checked", async () => {
+  // `gutterpress lint` and the desktop Problems panel (validate) must agree
+  // about which stylesheets a project uses. They did not: lint discarded
+  // resolveConfig()'s return and passed the RAW `manifest.styles` to
+  // resolveActiveStyles, while manifest.ts's resolveWithPreset is the only
+  // place `engineStyles.native` is appended to that list. So the native
+  // furniture sheet — loaded last at render time, and therefore the one whose
+  // rules WIN the cascade in the shipped PDF — was invisible to lint.
+  //
+  // Measured on the field guide before this fix: lint "Linting 7 CSS file(s)
+  // / 34 risky print properties", validate 8 files / 35 findings. The one
+  // hidden finding was native-furniture.css's `background-blend-mode` inside
+  // `@page` — the whole-sheet background, the single most severe
+  // rasterization risk in that book. A linter that reports a cleaner result
+  // than the panel beside it is worse than no linter.
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-enginestyles-"));
+  try {
+    await mkdir(join(dir, "css"), { recursive: true });
+    await writeFile(join(dir, "css", "base.css"), "body { color: black; }\n", "utf8");
+    await writeFile(join(dir, "css", "furniture.css"), "@page { background-blend-mode: multiply; }\n", "utf8");
+    await writeFile(
+      join(dir, "manifest.yaml"),
+      "title: Engine Styles\nstyles:\n  - css/base.css\nengineStyles:\n  native:\n    - css/furniture.css\n",
+      "utf8",
+    );
+
+    const { runLint } = await import("./lint-runner");
+    const result = await runLint({ manifest: dir });
+
+    expect(result.filesLinted).toBe(2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

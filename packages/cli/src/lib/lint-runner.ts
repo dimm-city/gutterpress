@@ -21,8 +21,13 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest, {
     explicit: opts.manifest !== undefined,
   });
-  // resolveConfig still runs so manifest loading/validation behaves consistently.
-  resolveConfig({}, manifest);
+  // Use the RESOLVED config, not the raw manifest: resolveWithPreset
+  // (manifest.ts) is the only place `engineStyles.native` is appended to the
+  // style list, and that sheet loads LAST at render time, so its rules win the
+  // cascade in the shipped PDF. Discarding this return linted 7 of the field
+  // guide's 8 sheets and hid its most severe finding — see the
+  // engineStyles.native test in lint-runner.test.ts.
+  const resolved = resolveConfig({}, manifest);
 
   let files: string[];
   if (opts.files) {
@@ -31,8 +36,9 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     files = await glob([opts.files], { nodir: true, ignore: ["**/*.min.css"] });
   } else {
     // THE canonical "which stylesheet(s) does this project use?" resolver —
-    // the SAME one the renderer/editor use (style-resolver.ts), so
-    // `gutterpress lint` checks exactly the stylesheet(s) that ship.
+    // the SAME one the renderer/editor use (style-resolver.ts), fed the SAME
+    // resolved style list, so `gutterpress lint` checks exactly the
+    // stylesheet(s) that ship — engine-conditional furniture included.
     //
     // This used to be its own third fallback chain (2026-07-28 duplication
     // audit): when the manifest had no `styles:`, it globbed `.build/**/*.css`
@@ -43,7 +49,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     // exclude node_modules/.git/dist. resolveActiveStyles's own fallback
     // (styles/book.css, else the first discovered project .css, else `[]`)
     // replaces all of that.
-    const relStyles = await resolveActiveStyles(manifestDir, manifest.styles);
+    const relStyles = await resolveActiveStyles(manifestDir, resolved.styles);
     files = relStyles
       .map((rel) => resolve(manifestDir, rel))
       .filter((f) => !f.endsWith(".min.css"));
