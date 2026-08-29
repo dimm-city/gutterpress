@@ -163,10 +163,28 @@ resolve the categorization questions future work will hit):
 
 - **Published-HTML is not exempt. Ratified 2026-08-26.** Chromium-only
   governs the viewer's published-HTML surface too, even though that surface
-  is permanent tooling (above): `clearLeadingForcedBreaks()`
-  (`packages/cli/src/engine/viewer/fragment.ts`), a proven Chromium no-op
-  kept only to fix a WebKit-only page-count divergence in published
-  `book.html`, was removed rather than kept as a cross-browser accommodation.
+  is permanent tooling (above).
+
+  **Its original example was wrong, and is preserved here as the cautionary
+  case.** `clearLeadingForcedBreaks()`
+  (`packages/cli/src/engine/viewer/fragment.ts`) was removed under this ruling
+  as "a proven Chromium no-op kept only to fix a WebKit-only page-count
+  divergence." It was neither. It is load-bearing IN CHROMIUM: it keeps
+  `applySpreadMode`'s `.gp-wrap-spacer` from being discarded by CSS-break-3
+  forced-break combining, and without it every page's content renders one
+  spread slot left of its own sheet. That regression shipped in 0.10.2 and
+  was restored in the fix that added this paragraph.
+
+  Two rules of this section were skipped in reaching that removal, and both
+  would have caught it:
+  - The care note above — "a fallback that also corrects Chromium behaviour
+    stays, on its Chromium merits." The WebKit symptom was real but
+    incidental; nobody checked whether Chromium also depended on it.
+  - Evidence must observe the surface the change affects. The removal cited a
+    green `native-parity-gate`, which compares single-mode pagination against
+    print and never executes spread mode — an honest green, and irrelevant.
+    Before citing a gate as removal evidence, confirm the gate runs the code
+    path being removed.
 
 - **Chrome wins once it ships.** When Chrome implements a Paged Media
   feature, we drop our shim and match Chrome's behavior even where it is

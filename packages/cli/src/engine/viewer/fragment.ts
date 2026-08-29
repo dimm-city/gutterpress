@@ -213,9 +213,10 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  *
  * Processed in document order, remeasuring between insertions: an insertion
  * shifts every later break site, and a site that already lands at the top of
- * its column (the strip's own leading break, or the second half of a
- * wrapper/inner-heading pair that both carry the same forced break) needs no
- * spacer, which is what dedupes those pairs without extra bookkeeping.
+ * its column (the strip's own leading break — see `clearLeadingForcedBreaks`
+ * — or the second half of a wrapper/inner-heading pair that both carry the
+ * same forced break) needs no spacer, which is what dedupes those pairs
+ * without extra bookkeeping.
  */
 export function synthesizeColumnBreaks(model: GcpmModel): void {
   const sites: Array<{ el: Element; prop: string }> = [];
@@ -249,6 +250,14 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
   );
   for (const { el, prop } of sites) {
+    // `buildStrips()` already ran `clearLeadingForcedBreaks()`, which sets
+    // this exact inline style on a break-before element sitting on the
+    // strip's leading in-flow chain — a forced break there is spec-ignorable
+    // (CSS Fragmentation Module Level 3), and Chromium/WebKit already ignore
+    // it. Honour the same call here instead of re-deriving it from geometry,
+    // which a chapter opener with a non-zero margin-top would get wrong (see
+    // `clearLeadingForcedBreaks`'s own doc comment).
+    if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
     // A forced page break is only valid between sibling boxes in the same
@@ -312,7 +321,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
  * nothing propagates), the outermost chain ancestor with a preceding
  * sibling when it doesn't, or null when the chain reaches the strip with no
  * preceding sibling anywhere: that is the strip's leading edge, where a
- * forced break is spec-ignorable.
+ * forced break is spec-ignorable (`clearLeadingForcedBreaks`'s call).
  *
  * The walk is deliberately conservative — it only steps up while the chain
  * is a plain in-flow first-child chain, since that is the only shape §3.1
@@ -488,6 +497,56 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
   const trailing = carry();
   if (trailing.length) pushRun(runs, undefined, trailing);
   return runs;
+}
+
+const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
+
+/**
+ * Neutralize a forced `break-before` sitting on the LEADING in-flow chain of a
+ * strip (the strip's first child, its first child, …).
+ *
+ * THIS IS A CHROMIUM REQUIREMENT — spread mode is broken without it. Read that
+ * before deleting this again: it was removed once (a2da1e1, 0.10.2) as a
+ * "WebKit-only accommodation" and shipped a regression that put every page's
+ * content one spread slot left of its own sheet, with page 1 rendering on bare
+ * stage with no `@page` background at all.
+ *
+ * Why it is load-bearing in Chromium. `applySpreadMode()` inserts a
+ * `.gp-wrap-spacer` (`break-after: column`) as a strip's FIRST child to push a
+ * recto-starting run into the right-hand slot. That spacer's break then shares
+ * a class-A boundary with the leading element's own `break-before` — and every
+ * real book has one, because core's `MARKER_CSS` gives every page
+ * `.page { break-before: page }`. Per CSS-break-3 §3.2 forced-break combining
+ * the strongest value on a boundary wins, `page` outranks `column`, and screen
+ * multicol has no page context for a `page` break to act on — so Chromium
+ * discards the combined break outright and the spacer occupies no slot. The
+ * sheet layer (`decorate.ts`, `slot = i + wrapGeometry().shift`) computes
+ * placement arithmetically and assumes the spacer worked, so content flows at
+ * shift 0 while paper is drawn at shift 1: every page lands on its
+ * predecessor's sheet. Clearing the leading break first is what keeps the
+ * spacer's `break-after` intact.
+ *
+ * Two consumers, only one of them our code. `synthesizeColumnBreaks()` reads
+ * the inline marker to skip spacer-insertion, and that read genuinely IS
+ * redundant — `propagatedBreakTarget()` re-derives the same skip. That is what
+ * made the removal look safe. The second consumer is Chromium's own layout
+ * engine, reading the neutralized computed style at the boundary
+ * `applySpreadMode()` creates LATER, after fragmentation; no amount of tracing
+ * our callers reveals it. So do not "simplify" this by deleting the writer and
+ * keeping the derivation — the persistent inline style IS the effect.
+ *
+ * The WebKit page-count divergence the original comment described was real but
+ * incidental: this is not a cross-browser accommodation and the Chromium-only
+ * ruling does not reach it (see CLAUDE.md — "a fallback that also corrects
+ * Chromium behaviour stays, on its Chromium merits").
+ *
+ * Guarded by `spread-leading-break.test.ts`, which fails without this.
+ */
+function clearLeadingForcedBreaks(strip: HTMLElement) {
+  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+    const cs = getComputedStyle(el);
+    if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+  }
 }
 
 /**
@@ -850,6 +909,10 @@ export function buildStrips(
       offset: 0,
     });
   }
+  // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
+  // that inside the loop above would force one synchronous style recalc per
+  // strip right after that strip's own DOM writes.
+  for (const s of strips) clearLeadingForcedBreaks(s.el);
   return strips;
 }
 
