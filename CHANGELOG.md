@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-08-29
+
+### Fixed
+
+- **Your pages sit on their own paper again in two-page view.** In 0.10.2 every
+  page's content was drawn one slot to the left of the sheet it belonged to, so
+  the first page landed beside its own paper instead of on it — appearing on the
+  left of the opening spread, on bare grey, with none of the page background a
+  book's design puts behind it. Every page after it was off by one the same way.
+  Two-page view now puts page one alone on the right, where a book opens, and
+  every page back on its own sheet. Single-page view was never affected, and no
+  PDF ever was: this was only how the preview arranged what it drew, so nothing
+  you have exported or published needs redoing.
+
 ## [0.10.2] - 2026-08-25
 
 ### Added
