@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Problems panel (#28) end-to-end check, driven over raw CDP (launch pattern
- * copied from tests/perf/render-gate.mjs: xvfb when headless, throwaway HOME,
+ * xvfb when headless, throwaway HOME,
  * --remote-debugging-port).
  *
  * What it verifies against the BUILT app (out/main/main.js or a packaged exe):
@@ -81,7 +81,7 @@ const manifest = readFileSync(manifestPath, "utf8");
 writeFileSync(manifestPath, manifest.replace(/^(styles:.*\n(?:  - .*\n)*)/m, "$1  - extra.css\n"));
 log(`seeded fixture: ${bookDir}`);
 
-// ── 2. launch the built app (render-gate.mjs pattern) ───────────────────────
+// ── 2. launch the built app ─────────────────────────────────────────────────
 const target = exeArg ? resolve(exeArg) : join(desktopDir, "out", "main", "main.js");
 if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run electron:build\` first`);
 const isMainJs = target.endsWith(".js");
