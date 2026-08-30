@@ -129,3 +129,102 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS,
 );
+
+// A PSEUDO-ELEMENT's overflow is invisible to a border-box scan: pass 1 walks
+// `document.querySelectorAll("*")` and reads `getBoundingClientRect()`, and
+// `::before`/`::after` are in neither. Their overflow still reaches the
+// document and still triggers shrink-to-fit, so the audit has to see it.
+//
+// Not hypothetical — this class is the field guide's own bug, found the
+// expensive way. `.dc-spray::before` is a decorative skewed tab pinned at
+// `right: -8px; width: 14px`. It escaped its shell, Chromium's print widened
+// the layout past the page content box by ONE CSS pixel (696 -> 697, read as a
+// vector rect out of the PDF), that pixel re-broke a line, a paragraph set in
+// 3 lines instead of 4, and the book printed two pages shorter than the
+// preview, with this audit silent throughout.
+//
+// HONEST LIMIT, verified by rebuilding that book with its fix reverted: this
+// audit does NOT catch that particular instance. What it fixes is the
+// structural blindness — a pseudo-element's overflow was invisible at ANY
+// magnitude, because pass 1 walks `querySelectorAll("*")` and reads border
+// boxes. The field guide's own instance is 1 CSS px, which is inside the +1px
+// tolerance every element check needs so sub-pixel rounding does not flag
+// noise in every book.
+//
+// A document-level check (`documentElement.scrollWidth` vs the page area) WAS
+// built and then REMOVED, because it is the trigger Chromium actually reacts
+// to but cannot tell a real offender from a legitimate one: a full-bleed plate
+// on `@page full { margin: 0 }` is sheet-wide by design, so the document
+// overflows the ordinary page area by ~120px in any book that has one. It
+// fired identically on the field guide with its bug fixed and with it present.
+// A diagnostic that cries wolf on correct books is worse than one that misses
+// a 1px case, so it is not shipped. Catching that case needs per-page
+// document-overflow accounting, not a single global read.
+const pseudoEscaping = doc(
+  `.spray { position: relative; width: 200px; height: 40px; background: #cde; }
+   .spray::before { content: ""; position: absolute; top: 0; right: -600px;
+                    width: 100px; height: 40px; background: #ecc; }
+   .sealed { position: relative; width: 200px; height: 40px; overflow-x: clip; }
+   .sealed::before { content: ""; position: absolute; top: 0; right: -600px;
+                     width: 100px; height: 40px; background: #cec; }`,
+  `<div class="spray pseudo-art">tab escapes</div>
+   <div class="sealed pseudo-sealed">tab contained</div>`,
+);
+
+testIf(
+  "a pseudo-element's escaping overflow is a width offender (border-box scans cannot see it)",
+  async () => {
+    const err = await buildFixture("pseudo", pseudoEscaping).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).not.toBeNull();
+    const msg = err!.message;
+    expect(msg).toContain("wider than the page content box");
+    // The element carrying the pseudo is the actionable target — the author
+    // cannot select a pseudo-element in a fix.
+    expect(msg).toContain("pseudo-art");
+    // …and one sealed by a clipping ancestor stays silent, same as every other
+    // contained case above: shrink-to-fit only reacts to overflow that ESCAPES.
+    expect(msg).not.toContain("pseudo-sealed");
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);
+
+// A margin-0 named page must not raise the bar for pages that HAVE margins.
+//
+// `findWidthOffenders` compared every element against the widest page context
+// in the document. One `@page full { margin: 0 }` — the ordinary way to author
+// a full-bleed art plate — therefore lifted the limit from the content box to
+// the whole sheet for EVERY page, and over-wide content on ordinary pages went
+// unreported. That is what hid the field guide's 696 -> 697px overflow: the
+// book declares such a page, so its real limit was the 828px sheet and the
+// offense sat 131px under the bar.
+//
+// The plate itself is legitimate — it is full-sheet ON ITS OWN full-sheet page.
+// So the limit has to be resolved per element, from the page that element
+// actually lands on, not from the widest page in the book.
+const perPageLimit = doc(
+  `@page full { margin: 0; }
+   .plate { page: full; width: 384px; height: 60px; background: #cce; }
+   .toowide { width: 370px; height: 40px; background: #ecc; }`,
+  `<div class="plate legit-plate">full sheet on its own zero-margin page</div>
+   <div class="toowide default-page-art">over-wide on an ordinary page</div>`,
+);
+
+testIf(
+  "a margin-0 named page does not raise the width limit for ordinary pages",
+  async () => {
+    const err = await buildFixture("perpage", perPageLimit).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).not.toBeNull();
+    const msg = err!.message;
+    // 370px is past the 336px content box of the DEFAULT page it sits on...
+    expect(msg).toContain("default-page-art");
+    // ...while the plate is exactly its own page's 384px sheet and is fine.
+    expect(msg).not.toContain("legit-plate");
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);

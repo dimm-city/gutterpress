@@ -241,14 +241,23 @@ testIf(
 );
 
 testIf(
-  "an avoid block deferred only by a trailing margin matches print fragmentation",
+  "an avoid block deferred by a trailing margin lands on the SAME page the PDF puts it on",
   async () => {
+    // This replaces a test that asserted the OPPOSITE and never printed
+    // anything. It encoded `compensateTrailingMarginsBeforeAvoids`'s premise —
+    // "Print pagination discards that margin at the fragmentainer edge" — and
+    // that premise is false. Measured with page.pdf({preferCSSPageSize:true})
+    // on this very fixture: print puts #fit-prev on PDF p1 and #fit-block on
+    // p2, 8 pages total. Chromium print KEEPS the trailing margin and defers
+    // the avoid block, so the shim's "correction" was the divergence.
+    //
+    // The test therefore asserts against print rather than against a belief:
+    // print IS the contract (the PDF is the product), so the viewer's page
+    // deltas must equal the PDF's.
     const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".avoid-margin-"));
     try {
-      await fsp.copyFile(
-        path.join(FIXTURES_DIR, "avoid-trailing-margin.html"),
-        path.join(dir, "avoid-trailing-margin.html"),
-      );
+      const fixture = path.join(FIXTURES_DIR, "avoid-trailing-margin.html");
+      await fsp.copyFile(fixture, path.join(dir, "avoid-trailing-margin.html"));
       await fsp.copyFile(
         await getAssetPath("engine/gutterpress-viewer.js"),
         path.join(dir, "gutterpress-viewer.js"),
@@ -256,6 +265,26 @@ testIf(
       const { url, close } = await serveDir(dir, "avoid-trailing-margin.html");
       try {
         const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+
+        // ── PRINT: the same markup with the viewer script removed, so this is
+        // Chromium's own paged-media fragmenter and nothing else.
+        const printPage = await browser.newPage();
+        let printPages: number;
+        try {
+          const raw = await fsp.readFile(fixture, "utf8");
+          await printPage.setContent(
+            raw.replace('<script src="gutterpress-viewer.js"></script>', ""),
+            { waitUntil: "networkidle0" },
+          );
+          const pdf = await printPage.pdf({ preferCSSPageSize: true });
+          // Page count is enough to catch the shim: it removes exactly the
+          // pages the deferred avoid blocks would have started.
+          printPages = (Buffer.from(pdf).toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+        } finally {
+          await printPage.close();
+        }
+
+        // ── VIEWER: the same fixture through the engine.
         const page = await browser.newPage();
         try {
           await page.goto(url, { waitUntil: "networkidle0" });
@@ -264,38 +293,21 @@ testIf(
             const api = (window as any).Gutterpress;
             const byId = (id: string) => document.querySelector<HTMLElement>(`#${id}`)!;
             return {
+              total: api.totalPages,
               fit: [api.pageOf(byId("fit-prev")), api.pageOf(byId("fit-block"))],
               second: [api.pageOf(byId("second-prev")), api.pageOf(byId("second-block"))],
               tall: [api.pageOf(byId("tall-prev")), api.pageOf(byId("tall-block"))],
-              fitMarker: byId("fit-prev").dataset.gpTrailingMargin,
-              secondMarker: byId("second-prev").dataset.gpTrailingMargin,
-              tallMarker: byId("tall-prev").dataset.gpTrailingMargin,
-              ordinaryMarker: byId("ordinary-prev").dataset.gpTrailingMargin,
             };
           });
-          expect(result.fit[1]).toBe(result.fit[0]);
-          expect(result.second[1]).toBe(result.second[0]);
-          expect(result.tall[1]).toBe(result.tall[0]! + 1);
-          expect(result.fitMarker).toBe("compensated");
-          expect(result.secondMarker).toBe("compensated");
-          expect(result.tallMarker).toBeUndefined();
-          expect(result.ordinaryMarker).toBeUndefined();
 
-          const refreshed = await page.evaluate(() => {
-            const prev = document.querySelector<HTMLElement>("#fit-prev")!;
-            document.querySelector<HTMLElement>("#fit-block")!.style.height = "150px";
-            (window as any).Gutterpress.refresh();
-            return {
-              marker: prev.dataset.gpTrailingMargin,
-              inlineMargin: prev.style.marginBlockEnd,
-              computedMargin: getComputedStyle(prev).marginBlockEnd,
-            };
-          });
-          expect(refreshed).toEqual({
-            marker: undefined,
-            inlineMargin: "",
-            computedMargin: "40px",
-          });
+          // The whole point: the viewer paginates this fixture the way the PDF does.
+          expect(result.total).toBe(printPages);
+          // …and the avoid block is DEFERRED, exactly as print defers it. A
+          // trailing margin is not discarded at a fragmentainer edge.
+          expect(result.fit[1]).toBe(result.fit[0]! + 1);
+          expect(result.second[1]).toBe(result.second[0]! + 1);
+          // The too-tall case never depended on the margin and is unchanged.
+          expect(result.tall[1]).toBe(result.tall[0]! + 1);
         } finally {
           await page.close();
         }

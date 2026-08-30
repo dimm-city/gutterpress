@@ -206,3 +206,25 @@ test("checkCss does not flag the properties a margin box honours", () => {
   } }`;
   expect(checkCss(css).filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
 });
+
+// `isolation` was in BOTH riskyProps (generic "can force rasterization") and
+// createsStackingContext (correctly modelled as `isolation: isolate` making a
+// stacking context) — the same file contradicting itself about one property.
+// isolation does not rasterize anything; it only establishes a stacking
+// context, which is exactly what page-containment already reports, with the
+// consequence spelled out. Two warnings for one declaration, one of them
+// wrong, trains authors to discount both.
+test("isolation is reported as a stacking context, never as a rasterization risk", () => {
+  const w = checkCss(`.card { isolation: isolate; }`);
+  expect(w.filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
+});
+
+test("removing isolation from riskyProps keeps the page-containment signal intact", () => {
+  // The accurate half must survive the subtraction: on a page wrapper, the
+  // stacking-context consequence is still reported (and is the ONLY warning).
+  const w = checkCss(`.page { isolation: isolate; }`);
+  expect(w.filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
+  const containment = w.filter((x) => x.rule === rulePageContainment);
+  expect(containment).toHaveLength(1);
+  expect(containment[0]!.message).toContain("stacking context");
+});

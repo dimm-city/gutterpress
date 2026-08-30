@@ -115,6 +115,17 @@ on:
       - "packages/cli/src/preview/**"
       - "packages/cli/src/assets/preview/**"
       - "packages/cli/src/lib/markdown/**"
+      # The viewer engine and the bundle built from it. These decide what the
+      # desktop app actually paints, so a change here can break the app while
+      # every filter above stays untouched — which is exactly what happened:
+      # a2da1e1 shipped a spread-mode regression in 0.10.2 (every page's
+      # content drawn one slot off its own sheet, page 1 on bare stage with no
+      # @page background), and neither that commit nor its fix (7b8c79cb) ever
+      # triggered these gates. Do not remove: the desktop app's own gates must
+      # run when the desktop app's renderer changes.
+      - "packages/cli/src/engine/viewer/**"
+      - "packages/cli/src/assets/engine/**"
+      - "packages/desktop/static/engine/**"
       - "packages/desktop/tests/perf/**"
       - "packages/desktop/tests/integration/**"
       - ".github/workflows/render-perf-gate.yml"
