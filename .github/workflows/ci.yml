@@ -186,9 +186,10 @@ jobs:
         run: bun run test
         working-directory: packages/desktop
 
-      - name: Run desktop lint
-        run: bun run lint
-        working-directory: packages/desktop
+      # "Run desktop lint" (eslint + check-app-tokens) was removed from CI
+      # 2026-08-30: zero failures in its entire lifetime, for a recurring
+      # per-PR cost. `bun run lint` remains available in packages/desktop for
+      # local/on-demand use; re-add a gate only with a recorded catch.
 
   type-check:
     name: Type Check

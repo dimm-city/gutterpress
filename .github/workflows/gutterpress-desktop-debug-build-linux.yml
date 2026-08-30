@@ -8,19 +8,10 @@ name: Gutterpress desktop debug build (Linux AppImage)
 # Two ways to start one:
 #
 #   - Actions -> this workflow -> "Run workflow" -> pick the branch -> Run.
-#   - Push a tag named `build-appimage-<anything>` at the commit you want
-#     built: `git tag build-appimage-plugin-fixes && git push origin --tags`.
-#     The tag exists to start a build and nothing else — delete it whenever.
 #   - Put `[appimage]` in a commit message. That push builds; every other
-#     push skips in a second without starting a runner.
-#
-# Neither extra path is a convenience. Dispatching a workflow requires
-# `actions: write`, and an automation account that can push perfectly well
-# may not have it — leaving the build reachable only by a human at a button.
-# The tag and the marker both need nothing beyond the push rights that got
-# the commit there, and some environments allow branch pushes while refusing
-# tag refs, which is why there are two. Same job whichever starts it; the
-# pushed commit is what gets built.
+#     push skips in a second without starting a runner. (A `build-appimage-*`
+#     tag trigger also existed; removed 2026-08-30 with zero lifetime uses —
+#     the marker covered every real case.)
 #
 # When it finishes, download the artifact from the run's summary page and
 # `chmod +x` the AppImage before running it.
@@ -28,8 +19,6 @@ name: Gutterpress desktop debug build (Linux AppImage)
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "build-appimage-*"
     branches:
       - "**"
 
