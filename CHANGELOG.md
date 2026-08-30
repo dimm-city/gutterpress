@@ -5,9 +5,29 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.10.4] - 2026-08-29
+## [0.10.4] - 2026-08-30
 
 ### Fixed
+
+- **Two-page view and the PDF agree about how long your book is.** The preview
+  could report one page fewer than the PDF: where a block that must not be
+  split sat just past the bottom of a page, the preview pulled it back up onto
+  that page while the PDF moved it down to the next one. The preview now does
+  what the PDF does. On the Dimm City field guide that closes the gap exactly —
+  both now say 295 pages where the preview used to say 294.
+
+- **The build now warns about a decoration that pushes your page too wide.** If
+  something styled onto an element — a tab, a flourish, anything drawn with
+  `::before` or `::after` — sticks out past the page, Chromium quietly shrinks
+  the *entire* book to make it fit, and every measurement in it prints smaller
+  than you asked for. The check that exists to catch that could not see
+  decorations at all. It can now.
+
+- **…and a full-bleed page no longer hides over-wide content everywhere else.**
+  That same check compared every element against the widest page in the book,
+  so one edge-to-edge art page raised the bar for all of them and let genuinely
+  over-wide content through on ordinary pages. Each element is now measured
+  against the page it actually sits on.
 
 - **`gutterpress lint` was checking fewer stylesheets than the app's Problems
   panel.** If your book set `engineStyles.native`, the command skipped that
