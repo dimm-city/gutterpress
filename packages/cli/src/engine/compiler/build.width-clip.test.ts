@@ -129,3 +129,59 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS,
 );
+
+// A PSEUDO-ELEMENT's overflow is invisible to a border-box scan: pass 1 walks
+// `document.querySelectorAll("*")` and reads `getBoundingClientRect()`, and
+// `::before`/`::after` are in neither. Their overflow still reaches the
+// document and still triggers shrink-to-fit, so the audit has to see it.
+//
+// Not hypothetical — this class is the field guide's own bug, found the
+// expensive way. `.dc-spray::before` is a decorative skewed tab pinned at
+// `right: -8px; width: 14px`. It escaped its shell, Chromium's print widened
+// the layout past the page content box by ONE CSS pixel (696 -> 697, read as a
+// vector rect out of the PDF), that pixel re-broke a line, a paragraph set in
+// 3 lines instead of 4, and the book printed two pages shorter than the
+// preview, with this audit silent throughout.
+//
+// HONEST LIMIT, verified by rebuilding that book with its fix reverted: this
+// pass does NOT catch that particular instance, and cannot. The field guide
+// declares `@page full { margin: 0 }` for its full-bleed art, and
+// `findWidthOffenders` compares every element against the WIDEST page context
+// in the document — a documented, deliberate approximation — so one margin-0
+// named page raises the limit from the 696px content box to the 828px sheet
+// for every page. A 697px overflow is then 131px under the bar. What this pass
+// fixes is the structural blindness: a pseudo-element's overflow was invisible
+// at ANY magnitude because pass 1 walks `querySelectorAll("*")` and reads
+// border boxes. Closing the remaining half means per-element page-context
+// limits instead of one document-wide maximum, which is a larger change than
+// this one and is not attempted here.
+const pseudoEscaping = doc(
+  `.spray { position: relative; width: 200px; height: 40px; background: #cde; }
+   .spray::before { content: ""; position: absolute; top: 0; right: -600px;
+                    width: 100px; height: 40px; background: #ecc; }
+   .sealed { position: relative; width: 200px; height: 40px; overflow-x: clip; }
+   .sealed::before { content: ""; position: absolute; top: 0; right: -600px;
+                     width: 100px; height: 40px; background: #cec; }`,
+  `<div class="spray pseudo-art">tab escapes</div>
+   <div class="sealed pseudo-sealed">tab contained</div>`,
+);
+
+testIf(
+  "a pseudo-element's escaping overflow is a width offender (border-box scans cannot see it)",
+  async () => {
+    const err = await buildFixture("pseudo", pseudoEscaping).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err).not.toBeNull();
+    const msg = err!.message;
+    expect(msg).toContain("wider than the page content box");
+    // The element carrying the pseudo is the actionable target — the author
+    // cannot select a pseudo-element in a fix.
+    expect(msg).toContain("pseudo-art");
+    // …and one sealed by a clipping ancestor stays silent, same as every other
+    // contained case above: shrink-to-fit only reacts to overflow that ESCAPES.
+    expect(msg).not.toContain("pseudo-sealed");
+  },
+  RENDER_TEST_TIMEOUT_MS,
+);

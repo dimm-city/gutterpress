@@ -1572,6 +1572,7 @@ async function findWidthOffenders(
         // response.
         const clipEdges = ${CLIP_EDGES_JS};
         const out = [];
+        const boxEls = [];
         for (const el of document.querySelectorAll("*")) {
           const r = el.getBoundingClientRect();
           const right = Math.max(r.right, r.left + r.width);
@@ -1589,7 +1590,59 @@ async function findWidthOffenders(
           }
           if (!deepest) continue;
           out.push({ desc: desc(el), px: Math.max(r.width, right), left: r.left });
+          boxEls.push(el);
           if (out.length >= 20) break;
+        }
+
+        // pass 1b -- SCROLLABLE overflow, which the border-box walk above
+        // cannot see. querySelectorAll("*") returns elements and
+        // getBoundingClientRect() measures their border boxes, so a
+        // ::before / ::after that sticks out is invisible to it -- while its
+        // overflow still reaches the document and still shrinks the book.
+        // scrollWidth DOES account for pseudo-elements, so it is the one
+        // cheap read that closes the gap.
+        //
+        // MEASURED, the field guide: .dc-spray::before is a decorative skewed
+        // tab at right:-8px, width:14px. It escaped its shell (scrollWidth 394
+        // vs clientWidth 384), Chromium's print widened the layout 696 -> 697
+        // CSS px, that one pixel re-broke a line, and the book printed TWO
+        // PAGES shorter than the preview -- with this audit silent throughout.
+        // page-templates.css had already recorded the gap: "this book still
+        // has one the audit does not catch".
+        //
+        // Same escape rule as above: overflow a clipping ancestor contains
+        // never reaches the document, so it is not a trigger. The element
+        // CARRYING the pseudo is what gets named -- an author cannot select a
+        // pseudo-element to fix it.
+        const scrollCands = [];
+        for (const el of document.querySelectorAll("*")) {
+          const over = el.scrollWidth - el.clientWidth;
+          // clientWidth is 0 on inline/replaced boxes, where scrollWidth
+          // carries no overflow information -- skip rather than guess.
+          if (el.clientWidth <= 0 || over <= 1) continue;
+          // An element that clips its OWN horizontal overflow contains it, so
+          // nothing reaches the document. Read the computed value, not the
+          // declaration: per CSS Overflow 3 an axis set to visible beside a
+          // non-visible one computes to auto, and that really does clip --
+          // while overflow-y: clip leaves x genuinely visible.
+          if (getComputedStyle(el).overflowX !== "visible") continue;
+          const r = el.getBoundingClientRect();
+          const right = r.left + el.scrollWidth;
+          if (right <= LIMIT) continue;
+          if (Math.min(right, clipEdges(el).edges.right) <= LIMIT) continue;
+          scrollCands.push({ el, right, left: r.left });
+        }
+        // Scroll overflow propagates UP: an offender's ancestors all report it
+        // too (html, body, the page wrapper...). Name only the innermost box
+        // of each chain -- the one the author can actually act on.
+        for (const c of scrollCands) {
+          if (out.length >= 20) break;
+          if (scrollCands.some((o) => o !== c && c.el.contains(o.el))) continue;
+          // The border-box pass already named a descendant, so this element's
+          // scroll overflow is that box's, reported one level too high.
+          if (boxEls.some((b) => c.el.contains(b))) continue;
+          if (out.some((o) => o.desc === desc(c.el))) continue;
+          out.push({ desc: desc(c.el), px: c.right, left: c.left });
         }
         return JSON.stringify(out);
       })()`),
