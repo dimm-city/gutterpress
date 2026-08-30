@@ -669,8 +669,7 @@ export function makeOverflowFragmentable(strips: StripInfo[]): void {
     }
   }
   for (const { el, x, y } of todo) {
-    // Authored inline state is saved for refresh restoration, exactly as
-    // `compensateTrailingMarginsBeforeAvoids` saves margins — priority
+    // Authored inline state is saved for refresh restoration — priority
     // included, or an author's `overflow-x: auto !important` comes back
     // without its priority after a refresh.
     el.dataset.gpOverflow = "clipped";
@@ -697,110 +696,6 @@ function restoreScrollContainers(doc: Document = document): void {
     delete el.dataset.gpOverflowY;
     delete el.dataset.gpOverflowXPriority;
     delete el.dataset.gpOverflowYPriority;
-  }
-}
-
-/**
- * Match page-fragmentation's trailing-margin discard for an atomic block.
- *
- * Chromium versions disagree in multicol when a `break-inside: avoid*` block
- * would fit at the bottom of the previous column only if its preceding
- * sibling's trailing margin were discarded. Print pagination discards that
- * margin at the fragmentainer edge. Some multicol builds count it first and
- * defer the whole atomic block, adding a preview-only page.
- *
- * Correct only the demonstrated boundary: the avoid block is already at the
- * very top of the immediately following column, and its border-box fits the
- * previous column with the margin removed but not with it present. Runtimes
- * that already place the block on the previous column never match and are not
- * changed. Authored inline state is saved for refresh restoration.
- */
-export function compensateTrailingMarginsBeforeAvoids(
-  model: GcpmModel,
-  strips: StripInfo[],
-): number {
-  const candidates = new Set<HTMLElement>();
-  for (const decl of model.breaks) {
-    if (decl.prop !== "break-inside" || !/^avoid(?:-|$)/.test(decl.value.trim())) continue;
-    let els: Element[];
-    try {
-      els = Array.from(document.querySelectorAll(decl.selector));
-    } catch {
-      continue;
-    }
-    for (const el of els) {
-      if (el instanceof HTMLElement && el.closest(".gp-strip")) candidates.add(el);
-    }
-  }
-
-  let compensated = 0;
-  const orderedCandidates = Array.from(candidates).sort((a, b) =>
-    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
-  );
-  for (const el of orderedCandidates) {
-    if (!/^avoid(?:-|$)/.test(getComputedStyle(el).breakInside)) continue;
-    const prev = el.previousElementSibling as HTMLElement | null;
-    const stripEl = el.closest<HTMLElement>(".gp-strip");
-    const strip = strips.find((item) => item.el === stripEl);
-    if (!prev || !stripEl || !strip) continue;
-
-    const rects = Array.from(el.getClientRects());
-    const prevRects = Array.from(prev.getClientRects());
-    if (rects.length !== 1 || !prevRects.length) continue;
-    const rect = rects[0]!;
-    const prevRect = prevRects.at(-1)!;
-    const stripRect = stripEl.getBoundingClientRect();
-    const { stride } = stripMetrics(stripEl);
-    // Rects are zoom-scaled, stride is not — see cssZoomOf.
-    const zoom = cssZoomOf(stripEl);
-    const colOf = (r: DOMRect) => Math.floor(((r.left - stripRect.left) / zoom + 1) / stride);
-    const currentCol = colOf(rect);
-    if (currentCol !== colOf(prevRect) + 1) continue;
-    if (Math.abs(rect.top - stripRect.top) / zoom > 0.5) continue;
-
-    // marginEnd comes from getComputedStyle and is already unscaled; every
-    // rect-derived length here must be divided to match it (see cssZoomOf).
-    const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
-    if (marginEnd <= 0.5) continue;
-    const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top) / zoom;
-    const height = rect.height / zoom;
-    if (height > remaining + 0.5) continue;
-    if (height + marginEnd <= remaining + 0.5) continue;
-
-    prev.dataset.gpTrailingMargin = "compensated";
-    prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
-    prev.dataset.gpTrailingMarginPriority = prev.style.getPropertyPriority("margin-block-end");
-    prev.style.setProperty("margin-block-end", "0px");
-    compensated++;
-  }
-  return compensated;
-}
-
-function restoreTrailingMargins(doc: Document = document): void {
-  for (const el of Array.from(
-    doc.querySelectorAll<HTMLElement>('[data-gp-trailing-margin="compensated"]'),
-  )) restoreTrailingMargin(el);
-}
-
-function restoreTrailingMargin(el: HTMLElement): void {
-  const value = el.dataset.gpTrailingMarginValue ?? "";
-  const priority = el.dataset.gpTrailingMarginPriority ?? "";
-  if (value) el.style.setProperty("margin-block-end", value, priority);
-  else el.style.removeProperty("margin-block-end");
-  delete el.dataset.gpTrailingMargin;
-  delete el.dataset.gpTrailingMarginValue;
-  delete el.dataset.gpTrailingMarginPriority;
-}
-
-/** Drop a speculative correction if a later layout pass still deferred it. */
-function restoreIneffectiveTrailingMargins(strips: StripInfo[]): void {
-  for (const prev of Array.from(
-    document.querySelectorAll<HTMLElement>('[data-gp-trailing-margin="compensated"]'),
-  )) {
-    const target = prev.nextElementSibling;
-    if (!target || pageOf(target, strips) !== pageRangeOf(prev, strips)[1]) {
-      restoreTrailingMargin(prev);
-    }
   }
 }
 
@@ -1569,7 +1464,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   await layoutReady;
   makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
-  compensateTrailingMarginsBeforeAvoids(model, strips);
   synthesizeColumnBreaks(model);
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
@@ -1578,7 +1472,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     opts.compensateHeaders === false
       ? { tables: 0, passes: 0, warnings: [] }
       : compensateRepeatedHeaders(strips);
-  restoreIneffectiveTrailingMargins(strips);
   const { totalPages } = measure(strips);
   const api: GutterpressViewerApi = {
     model,
@@ -1600,7 +1493,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     // there is no separate "cheap" path to keep.
     relayout: () => {
       restoreFullHeightPageRoots();
-      restoreTrailingMargins();
       restoreScrollContainers();
       unwrapStrips(strips);
       for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
@@ -1610,7 +1502,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       strips.push(...rebuilt);
       makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
-      compensateTrailingMarginsBeforeAvoids(model, strips);
       synthesizeColumnBreaks(model);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);
@@ -1618,7 +1509,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
         api.warnings = [
           ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
         ];
-      restoreIneffectiveTrailingMargins(strips);
       const r = measure(strips);
       api.totalPages = r.totalPages;
       api.blankPageIndices = blankPageIndices(strips);
