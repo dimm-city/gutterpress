@@ -619,7 +619,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       2 * (tier2.geometry.bleed + tier2.geometry.slug),
       sheetViewport,
     );
-    const describe = (list: Array<{ desc: string; px: number; left?: number }>) =>
+    const describe = (list: Array<{ desc: string; px: number; left?: number; limit?: number }>) =>
       list
         .map((o) => {
           // The one-line fix depends on which edge the box is offending: a
@@ -630,7 +630,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             o.left !== undefined && o.left < -1
               ? "keep it inside the page content box"
               : "give it an explicit width";
-          return `  ${o.desc} — ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box (${fix})`;
+          // Each offender is measured against ITS OWN page's content box, so
+          // report that — the document-wide maximum would read as "828px >
+          // 828px" for anything on a narrower page.
+          const lim = o.limit ?? widthOffenders.limitPx;
+          return `  ${o.desc} — ${Math.round(o.px)}px > ${Math.round(lim)}px content box (${fix})`;
         })
         .join("\n");
     if (widthOffenders.boxes.length) {
@@ -1515,7 +1519,7 @@ async function findWidthOffenders(
   restoreViewport: Record<string, unknown>,
 ): Promise<{
   limitPx: number;
-  boxes: Array<{ desc: string; px: number; left: number }>;
+  boxes: Array<{ desc: string; px: number; left: number; limit?: number }>;
   intrinsics: Array<{ desc: string; px: number }>;
 }> {
   const contexts = [
@@ -1537,25 +1541,72 @@ async function findWidthOffenders(
       .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--flush-"))
       .map((n) => resolvePage(model, { name: n })),
   ];
-  const maxContentPt =
-    Math.max(
-      ...contexts.map((c) => c.geometry.width - c.geometry.margin.left - c.geometry.margin.right),
-    ) + bleedSlugExtensionPt;
-  const limitPx = (maxContentPt * 96) / 72;
+  // Each page context gets its OWN limit, and elements are compared against
+  // the page they actually land on.
+  //
+  // This used to be one document-wide `Math.max`, which meant a single
+  // `@page full { margin: 0 }` — the ordinary way to author a full-bleed art
+  // plate — lifted the bar to the whole sheet for EVERY page, so over-wide
+  // content on ordinary margined pages went unreported. That is precisely
+  // what hid the field guide's 696 -> 697px overflow (its real limit became
+  // the 828px sheet, leaving the offense 131px under the bar) for the four
+  // months it took to find it the expensive way. The plate is legitimate ON
+  // ITS OWN page; the point is that its page's width is not every page's
+  // width.
+  const contentPxOf = (c: (typeof contexts)[number]) =>
+    (((c.geometry.width - c.geometry.margin.left - c.geometry.margin.right) +
+      bleedSlugExtensionPt) *
+      96) /
+    72;
+  const defaultLimitPx = contentPxOf(contexts[0]!);
+  // name -> limit, for the per-element resolution done in-page below.
+  const namedLimits: Record<string, number> = {};
+  model.pageNames
+    .filter((n) => !n.startsWith("gp-") || n.startsWith("gp--flush-"))
+    .forEach((n) => {
+      namedLimits[n] = contentPxOf(resolvePage(model, { name: n }));
+    });
+  // Layout width has to match the page being measured, or a `width: 100%` box
+  // laid out at the widest page would be flagged against a narrower one's
+  // limit — a false positive on ordinary book CSS. So scan once per DISTINCT
+  // width (usually one, two with a full-bleed page), each at its own viewport,
+  // and in each pass consider only the elements whose page resolves to it.
+  const widths = [...new Set([defaultLimitPx, ...Object.values(namedLimits)])].sort(
+    (a, b) => a - b,
+  );
+  // Reported limit stays the widest, so an author reading the error sees the
+  // most permissive bound rather than a number that looks arbitrarily small.
+  const limitPx = Math.max(...widths);
   await page.evaluate(`Promise.allSettled(
     [...document.images].map((i) => i.decode().catch(() => {}))
   )`);
   try {
-    // pass 1 — laid-out box overflow at the real content width
-    await page.send("Emulation.setDeviceMetricsOverride", {
-      width: Math.ceil(limitPx),
-      height: 1080,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-    const boxes: Array<{ desc: string; px: number; left: number }> = JSON.parse(
+    const boxes: Array<{ desc: string; px: number; left: number; limit?: number }> = [];
+    for (const widthPx of widths) {
+      // pass 1 — laid-out box overflow at THIS page context's content width
+      await page.send("Emulation.setDeviceMetricsOverride", {
+        width: Math.ceil(widthPx),
+        height: 1080,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      boxes.push(...(JSON.parse(
       await page.evaluate<string>(`(() => {
-        const LIMIT = ${limitPx} + 1;
+        const LIMIT = ${widthPx} + 1;
+        const NAMED = ${JSON.stringify(namedLimits)};
+        const DEFAULT_LIMIT = ${defaultLimitPx};
+        // The page an element lands on: the nearest ancestor with a non-auto
+        // page property, else the default page. Chromium reports the computed
+        // value on the assigned element only -- descendants read "auto" -- so
+        // this walk is what turns it into the USED value.
+        const limitOf = (el) => {
+          for (let e = el; e; e = e.parentElement) {
+            const n = getComputedStyle(e).page;
+            if (n && n !== "auto") return NAMED[n] ?? DEFAULT_LIMIT;
+          }
+          return DEFAULT_LIMIT;
+        };
+        const mine = (el) => Math.abs(limitOf(el) - ${widthPx}) < 0.5;
         const desc = ${DESC_JS};
         // Shrink-to-fit only reacts to overflow that ESCAPES: a clipping or
         // scrolling ancestor contains its subtree's overflow, so the
@@ -1574,6 +1625,7 @@ async function findWidthOffenders(
         const out = [];
         const boxEls = [];
         for (const el of document.querySelectorAll("*")) {
+          if (!mine(el)) continue;
           const r = el.getBoundingClientRect();
           const right = Math.max(r.right, r.left + r.width);
           // Flag right-edge overflow (fixed-width blocks, negative-margin
@@ -1589,7 +1641,7 @@ async function findWidthOffenders(
             if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
           }
           if (!deepest) continue;
-          out.push({ desc: desc(el), px: Math.max(r.width, right), left: r.left });
+          out.push({ desc: desc(el), px: Math.max(r.width, right), left: r.left, limit: limitOf(el) });
           boxEls.push(el);
           if (out.length >= 20) break;
         }
@@ -1616,10 +1668,20 @@ async function findWidthOffenders(
         // pseudo-element to fix it.
         const scrollCands = [];
         for (const el of document.querySelectorAll("*")) {
+          if (!mine(el)) continue;
           const over = el.scrollWidth - el.clientWidth;
           // clientWidth is 0 on inline/replaced boxes, where scrollWidth
           // carries no overflow information -- skip rather than guess.
           if (el.clientWidth <= 0 || over <= 1) continue;
+          // A descendant assigned to a DIFFERENT page is not overflowing this
+          // element's page -- it is laid out against its own, wider one. The
+          // full-bleed art plate is the standard case: it is legitimately
+          // sheet-wide on its own zero-margin page, and its wrapper on the
+          // ordinary page must not be blamed for containing it.
+          if ([...el.querySelectorAll("*")].some((d) => {
+            const n = getComputedStyle(d).page;
+            return n && n !== "auto" && Math.abs((NAMED[n] ?? DEFAULT_LIMIT) - limitOf(el)) >= 0.5;
+          })) continue;
           // An element that clips its OWN horizontal overflow contains it, so
           // nothing reaches the document. Read the computed value, not the
           // declaration: per CSS Overflow 3 an axis set to visible beside a
@@ -1642,11 +1704,12 @@ async function findWidthOffenders(
           // scroll overflow is that box's, reported one level too high.
           if (boxEls.some((b) => c.el.contains(b))) continue;
           if (out.some((o) => o.desc === desc(c.el))) continue;
-          out.push({ desc: desc(c.el), px: c.right, left: c.left });
+          out.push({ desc: desc(c.el), px: c.right, left: c.left, limit: limitOf(c.el) });
         }
         return JSON.stringify(out);
       })()`),
-    );
+    ) as Array<{ desc: string; px: number; left: number; limit?: number }>));
+    }
     // pass 2 — replaced elements whose width computes to auto with an
     // over-wide intrinsic (Typed OM shows the pre-layout "auto")
     const replaced: Array<{ desc: string; px: number }> = JSON.parse(
