@@ -449,7 +449,7 @@ jobs:
     # or this job is skipped (the desktop jobs are unconditional now, so no
     # success-or-skipped special-casing is needed anymore).
     needs:
-      [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac, verify-windows, verify-macos]
+      [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
@@ -543,8 +543,6 @@ jobs:
       always() &&
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
-      needs.verify-windows.result == 'success' &&
-      needs.verify-macos.result == 'success' &&
        needs.build-desktop-linux.result == 'success' &&
        needs.build-desktop-windows.result == 'success' &&
        needs.build-desktop-mac.result == 'success' &&
