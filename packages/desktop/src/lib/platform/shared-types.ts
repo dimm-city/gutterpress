@@ -360,6 +360,26 @@ export interface RemoteConnection {
   label?: string;
 }
 
+// ── Google Drive publish connect (#221) ────────────────────────────────────
+//
+// Mirrors the lib's connect-google.ts shapes — defined locally (§8 / ADR
+// 0004) so the SPA never value-imports the lib. Parallel to DeviceCodeInfo/
+// RemoteConnection above, but Google's loopback+PKCE flow has no user code to
+// display — only the auth URL the browser was (or should be) sent to.
+
+/** Returned by `connectGoogleStart` — the URL the system browser was opened
+ *  to, so the UI can offer "open the sign-in page again" if it didn't. */
+export interface GoogleConnectStartResult {
+  authUrl: string;
+}
+
+/** Redacted result of `connectGoogleWait` — never carries a token. */
+export interface GoogleConnectResult {
+  connected: boolean;
+  /** The connected Google account's email, when Google returned one. */
+  email?: string;
+}
+
 /** One repository the user can open from GitHub. */
 export interface RemoteRepository {
   owner: string;
@@ -513,7 +533,7 @@ export interface ConnectGenericHostArgs {
 /** Redacted stored-connection entry — never carries tokens. */
 export interface HostConnectionInfo {
   host: string;
-  kind: "github-oauth" | "token";
+  kind: "github-oauth" | "token" | "google-oauth";
   username?: string;
   label?: string;
   createdAt: number;
@@ -551,6 +571,13 @@ export interface PublishProviderCard {
   tokenUrl?: string;
   /** Author-facing hint for the connect UI. */
   hint?: string;
+  /**
+   * How the credential is acquired (#221). Absent/"token" (every provider
+   * before this field existed): the author pastes an API key. "oauth": no
+   * key to paste — the UI swaps the paste-a-key form for a "Connect …"
+   * button driving `connectGoogleStart`/`Wait`/`Cancel` (see HostServices).
+   */
+  connectKind?: "token" | "oauth";
   /** Redacted — a usable credential exists (env var or stored key) for the
    *  effective selected account. */
   connected: boolean;
@@ -567,6 +594,26 @@ export interface PublishProviderCard {
    * credential`), or "" for the default credential. Empty when unset.
    */
   selectedAccount: string;
+  /**
+   * Present when the provider has a notion of "existing places to publish
+   * into" that the UI can let the author pick or create (#221, gdrive: Drive
+   * folders) — `label` is the author-facing noun ("Folder"); `canCreate`
+   * says whether `api.publish.createDestination` is implemented for it.
+   * Absent for providers with no such concept.
+   */
+  destinations?: {
+    label: string;
+    canCreate: boolean;
+  };
+}
+
+/** One existing place a provider can publish into (#221) — a Drive folder
+ *  for gdrive. Mirrors the lib's `PublishProduct` (used for both listings and
+ *  update-flow products; the picker only cares about id/title/url). */
+export interface PublishDestination {
+  id: string;
+  title: string;
+  url?: string;
 }
 
 /** A saved publishing credential, redacted (no token) — for the picker. */

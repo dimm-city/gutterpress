@@ -51,6 +51,8 @@ import type {
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -63,6 +65,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
@@ -98,6 +101,8 @@ export type {
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -109,6 +114,7 @@ export type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
@@ -399,6 +405,25 @@ export interface HostServices {
   connectGitHubWait(): Promise<RemoteConnection>;
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
+
+  // ── Google Drive publish connect (#221, docs/gdrive-publish-plan.md D10) ──
+  // Same two-phase shape as the GitHub trio above, mirrored deliberately (the
+  // recorded alternative — a route trio on the publish hooks bridge — was
+  // passed over so the app keeps ONE pattern for interactive OAuth connects).
+  // There is no user code to display: `connectGoogleStart` resolves with the
+  // auth URL the browser was (or should be) sent to, for a "didn't open?
+  // click here" fallback link. The WebAdapter stubs reject with a friendly,
+  // desktop-only message (the dormant-PWA convention).
+
+  /** Begin the Google Drive OAuth connect flow; resolves with the auth URL to
+   *  offer as a fallback link. An optional `account` label connects a NAMED
+   *  credential (mirrors the publish token-paste flow's account label). */
+  connectGoogleStart(account?: string): Promise<GoogleConnectStartResult>;
+  /** Await user approval of the in-flight connect (the credential is stored
+   *  by the host — the renderer only ever sees this redacted result). */
+  connectGoogleWait(): Promise<GoogleConnectResult>;
+  /** Cancel an in-flight connect attempt (user closed the dialog). */
+  connectGoogleCancel(): Promise<{ ok: boolean }>;
 
   /** Download ("clone") a repository into a new local project folder. */
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
