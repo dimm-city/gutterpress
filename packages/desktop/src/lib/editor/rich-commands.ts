@@ -509,11 +509,15 @@ export function blockIndexAtOffset(text: string, offset: number): number | undef
  * and ordinary `@name ...` prose (an @mention), as markers (SFE-P3ab review
  * round 1, CONFIRMED). One consequence of the narrower vocabulary: a
  * project-plugin's own OPENING marker (e.g. `@sidebar`) is outside this
- * module's known vocabulary and is therefore NOT specially protected here —
- * only its `@end-*` closer is (see this file's tests for the exact
- * behavior). Fenced code (``` / ~~~) is always ONE indivisible block
- * regardless of its contents, including any blank lines or `@word` lines
- * inside it — see {@link splitIntoBlocks}. */
+ * module's known vocabulary, so `isMarker`/`markerKind` never flag it —
+ * `splitIntoBlocks` keeps treating it as ordinary content, exactly as before.
+ * `moveBlock` protects it anyway, by STRUCTURAL PAIRING rather than
+ * vocabulary: {@link pluginRegionOpenerIndices} — see that function's header
+ * (SFE-P3ab review round 2, CONFIRMED: the opener was unprotected while its
+ * `@end-*` closer was, so one swap could evict a plugin region's entire body
+ * and leave an empty opener/closer pair). Fenced code (``` / ~~~) is always
+ * ONE indivisible block regardless of its contents, including any blank
+ * lines or `@word` lines inside it — see {@link splitIntoBlocks}. */
 export interface SourceBlock {
   readonly from: number;
   readonly to: number;
@@ -566,7 +570,11 @@ const NEUTRAL_MARKER_KINDS = new Set(["page-break", "column-break"]);
  * (`parseMarkerLine`'s `nearestKind`): a rich-mode block boundary only
  * needs to know "is this DEFINITELY a marker line", not "did the author
  * mistype one" — an unrecognized `@word` is ordinary content, not its own
- * movable structural unit.
+ * movable structural unit for splitting purposes. `moveBlock` still protects
+ * a genuine plugin OPENER by pairing it with its recognized `@end-<name>`
+ * closer ({@link pluginRegionOpenerIndices}) rather than by widening this
+ * function's vocabulary — widening it here would misclassify ordinary
+ * `@mention` prose again (the exact SFE-P3ab round 1 regression).
  */
 function markerKindOf(trimmed: string): string | null {
   if (!trimmed.startsWith("@")) return null;
@@ -580,9 +588,80 @@ function markerKindOf(trimmed: string): string | null {
 /** True for a `SourceBlock` {@link moveBlock} must never swap across or
  *  relocate — every recognized marker kind except the two proven scope-
  *  neutral ones ({@link NEUTRAL_MARKER_KINDS}). Ordinary content blocks and
- *  fenced-code blocks are never boundaries. */
-function isBoundaryBlock(block: SourceBlock): boolean {
-  return block.isMarker && !NEUTRAL_MARKER_KINDS.has(block.markerKind ?? "");
+ *  fenced-code blocks are never boundaries UNLESS `pluginOpeners` says
+ *  otherwise (a paired plugin-region opener — see
+ *  {@link pluginRegionOpenerIndices}). */
+function isBoundaryBlockAt(
+  blocks: readonly SourceBlock[],
+  index: number,
+  pluginOpeners: ReadonlySet<number>,
+): boolean {
+  const block = blocks[index]!;
+  return (block.isMarker && !NEUTRAL_MARKER_KINDS.has(block.markerKind ?? "")) || pluginOpeners.has(index);
+}
+
+/** The head token ("sidebar", "end-sidebar", "sarah", ...) of `trimmed`'s
+ *  leading `@`-word, with NO vocabulary filter — unlike {@link markerKindOf}
+ *  this returns a value for ANY `@word`, recognized or not. Used only by
+ *  {@link pluginRegionOpenerIndices} to test whether a candidate block's
+ *  first line names the same region a recognized `@end-<name>` closer is
+ *  closing; never used to decide `isMarker`/`markerKind` — that stays
+ *  {@link markerKindOf}'s job so ordinary `@mention` prose is unaffected. */
+function atHeadOf(trimmed: string): string | null {
+  if (!trimmed.startsWith("@")) return null;
+  const head = trimmed.split(/[ \t]/, 1)[0]!.slice(1);
+  return head || null;
+}
+
+/** `text.slice(block.from, block.to)`'s FIRST physical line, trimmed — the
+ *  only part of a (possibly multi-line) block {@link pluginRegionOpenerIndices}
+ *  inspects, since an opener's own `@name` line is always a block's first
+ *  line whether or not a blank line separates it from the block's own body
+ *  (`"@sidebar\nBody."` with no blank line still opens with `"@sidebar"`). */
+function firstLineTrimmedOf(text: string, block: SourceBlock): string {
+  const slice = text.slice(block.from, block.to);
+  const nl = slice.indexOf("\n");
+  return (nl === -1 ? slice : slice.slice(0, nl)).trim();
+}
+
+/**
+ * Indices, into `blocks`, of blocks that OPEN a plugin region and must be
+ * treated as a `moveBlock` boundary even though {@link markerKindOf} does
+ * not recognize their head — a project plugin's own opening marker (CLAUDE.md
+ * §6's own examples, `@sidebar`/`@callout`) is outside Gutterpress's core
+ * vocabulary, so {@link splitIntoBlocks} correctly leaves it `isMarker:
+ * false` (unchanged). Left unprotected there, one swap could evict an entire
+ * plugin region's body and leave an empty opener/closer pair (SFE-P3ab
+ * review round 2, CONFIRMED — the asymmetry: the closer was already a
+ * protected boundary while its opener was not).
+ *
+ * This is STRUCTURAL evidence, not a vocabulary guess: for every recognized
+ * `@end-<name>` closer block already in `blocks`, the NEAREST PRECEDING
+ * block whose first line is headed `@<name>` ({@link atHeadOf}) is its
+ * opener and is paired to it. A plain `@word` line with no matching
+ * `@end-word` anywhere in the document — an ordinary prose `@mention`, e.g.
+ * `@sarah please review` — pairs with nothing and stays ordinary, movable
+ * content, exactly as SFE-P3ab round 1 fixed. Already-recognized openers
+ * (`@section`, ...) are skipped here (`candidate.isMarker` true) since
+ * {@link isBoundaryBlockAt}'s own `isMarker` check already protects them.
+ */
+function pluginRegionOpenerIndices(text: string, blocks: readonly SourceBlock[]): ReadonlySet<number> {
+  const openers = new Set<number>();
+  for (let closerIndex = 0; closerIndex < blocks.length; closerIndex++) {
+    const closer = blocks[closerIndex]!;
+    if (!closer.isMarker || closer.markerKind === null) continue;
+    if (!closer.markerKind.startsWith("end-")) continue;
+    const name = closer.markerKind.slice("end-".length);
+    for (let i = closerIndex - 1; i >= 0; i--) {
+      const candidate = blocks[i]!;
+      if (candidate.isMarker) continue;
+      if (atHeadOf(firstLineTrimmedOf(text, candidate)) === name) {
+        openers.add(i);
+        break;
+      }
+    }
+  }
+  return openers;
 }
 
 const FENCE_OPEN_RE = /^(`{3,}|~{3,})/;
@@ -737,11 +816,15 @@ export type BlockMoveResult =
  * cross the start/end of the document (moving the first block up, or the
  * last block down — a single-block document always refuses both
  * directions, its only block has no neighbor either way); or EITHER block
- * in the swap is a scope-affecting marker ({@link isBoundaryBlock} —
+ * in the swap is a scope-affecting marker or a paired plugin-region opener
+ * ({@link isBoundaryBlockAt} / {@link pluginRegionOpenerIndices} —
  * SFE-P3ab review round 1, CONFIRMED: swapping a block across
  * `@section`/`@end-section`, or across any other non-neutral marker, moved
- * content into or out of that marker's scope). `page-break`/`column-break`
- * markers stay freely movable past ordinary content — they open no scope.
+ * content into or out of that marker's scope; round 2, CONFIRMED: the same
+ * corruption via a project plugin's unrecognized opener, e.g. `@sidebar`,
+ * paired with its recognized `@end-sidebar` closer). `page-break`/
+ * `column-break` markers stay freely movable past ordinary content — they
+ * open no scope.
  */
 export function moveBlock(text: string, blockIndex: number, direction: "up" | "down"): BlockMoveResult {
   const blocks = splitIntoBlocks(text);
@@ -757,7 +840,8 @@ export function moveBlock(text: string, blockIndex: number, direction: "up" | "d
     : [blockIndex, neighborIndex];
   const first = blocks[firstIdx]!;
   const second = blocks[secondIdx]!;
-  if (isBoundaryBlock(first) || isBoundaryBlock(second)) {
+  const pluginOpeners = pluginRegionOpenerIndices(text, blocks);
+  if (isBoundaryBlockAt(blocks, firstIdx, pluginOpeners) || isBoundaryBlockAt(blocks, secondIdx, pluginOpeners)) {
     return { refused: true, reason: "boundary" };
   }
   const gap = text.slice(first.to, second.from);

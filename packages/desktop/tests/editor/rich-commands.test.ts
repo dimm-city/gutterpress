@@ -559,15 +559,16 @@ describe("splitIntoBlocks", () => {
     expect(blocks.every((b) => b.isMarker)).toBe(true);
   });
 
-  test("plugin regions: only the generic `@end-*` closer is recognized as a marker — a plugin's own OPENING marker (e.g. @sidebar) is outside Gutterpress's core vocabulary and is ordinary content to this heuristic (markerKindOf's header)", () => {
-    const text = "@sidebar\nSidebar content.\n@end-sidebar";
+  test("plugin regions: only the generic `@end-*` closer is recognized as a marker for splitIntoBlocks — a plugin's own OPENING marker (e.g. @sidebar) is outside Gutterpress's core vocabulary and is `isMarker: false` here (markerKindOf's header); moveBlock still protects it separately by structural pairing — see the moveBlock describe block below, and this repo's own blank-line-separated authoring style (examples/gutterpress-user-guide/00-cover.md)", () => {
+    const text = "@sidebar\n\nSidebar content.\n\n@end-sidebar";
     const blocks = splitIntoBlocks(text);
-    // "@sidebar" is not a KNOWN_MARKER_KINDS/"end-*" head, so it merges with
-    // the following prose line into one ordinary text block; "@end-sidebar"
-    // matches the generic "end-*" convention and is its own marker block.
-    expect(blockTexts(text, blocks)).toEqual(["@sidebar\nSidebar content.", "@end-sidebar"]);
-    expect(blocks.map((b) => b.isMarker)).toEqual([false, true]);
-    expect(blocks[1]!.markerKind).toBe("end-sidebar");
+    // "@sidebar" is not a KNOWN_MARKER_KINDS/"end-*" head, so splitIntoBlocks
+    // leaves it an ordinary (unmarked) text block, standing alone because a
+    // blank line closes it; "@end-sidebar" matches the generic "end-*"
+    // convention and is its own marker block.
+    expect(blockTexts(text, blocks)).toEqual(["@sidebar", "Sidebar content.", "@end-sidebar"]);
+    expect(blocks.map((b) => b.isMarker)).toEqual([false, false, true]);
+    expect(blocks[2]!.markerKind).toBe("end-sidebar");
   });
 
   test("fenced code (```): the whole fence is ONE indivisible block, including a blank line inside it (SFE-P3ab review round 1, CONFIRMED — a prior version tore the fence apart at the blank line)", () => {
@@ -763,12 +764,47 @@ describe("moveBlock", () => {
     expect(moveBlock(text, 0, "down")).toEqual({ refused: true, reason: "last-block" });
   });
 
-  test("plugin regions: the generic @end-* closer is a protected boundary — moving content past it refuses (its own opener, @sidebar, is not in core vocabulary and merges with the content instead — see splitIntoBlocks's tests)", () => {
+  test("plugin regions: a plugin's own OPENING marker is paired with its recognized @end-<name> closer as a boundary too — reachable in this repo's own blank-line-separated authoring style (examples/gutterpress-user-guide/00-cover.md uses exactly this shape) — SFE-P3ab review round 2, CONFIRMED reproduction: the opener was unprotected while its closer was, so one swap could evict the whole region's body and leave an empty @sidebar/@end-sidebar pair", () => {
+    const text = "Intro para.\n\n@sidebar\n\nInside sidebar.\n\n@end-sidebar\n\nAfter.\n";
+    const blocks = splitIntoBlocks(text);
+    // [0] Intro para., [1] @sidebar (isMarker: false — see splitIntoBlocks's
+    // test above), [2] Inside sidebar., [3] @end-sidebar (marker), [4] After.
+    expect(blockTexts(text, blocks)).toEqual([
+      "Intro para.",
+      "@sidebar",
+      "Inside sidebar.",
+      "@end-sidebar",
+      "After.",
+    ]);
+    // Moving "Inside sidebar." up would swap it with "@sidebar", evicting the
+    // region's entire body and leaving an empty opener/closer pair behind.
+    const result = moveBlock(text, 2, "up");
+    expect(result).toEqual({ refused: true, reason: "boundary" });
+  });
+
+  test("plugin regions: the paired opener is refused in the OTHER direction too — moving @sidebar itself down, past its own body, toward the closer", () => {
+    const text = "Intro para.\n\n@sidebar\n\nInside sidebar.\n\n@end-sidebar\n\nAfter.\n";
+    const result = moveBlock(text, 1, "down"); // blockIndex 1 is "@sidebar"
+    expect(result).toEqual({ refused: true, reason: "boundary" });
+  });
+
+  test("plugin regions: an opener glued to its body with no blank line (\"@sidebar\\nSidebar content.\") still refuses — the merged block is itself the paired opener, not just protected by the closer's own boundary status", () => {
     const text = "@sidebar\nSidebar content.\n@end-sidebar";
     const blocks = splitIntoBlocks(text);
     expect(blocks).toHaveLength(2); // ["@sidebar\nSidebar content.", "@end-sidebar"]
     const result = moveBlock(text, 0, "down"); // would push "@end-sidebar" out of position
     expect(result).toEqual({ refused: true, reason: "boundary" });
+  });
+
+  test("plugin regions: an ordinary @mention paragraph with NO matching @end-<name> closer anywhere in the document pairs with nothing and stays freely movable (control case — proves pairing does not regress SFE-P3ab round 1's @mention fix)", () => {
+    const text = "Intro.\n\n@sarah please review this chapter.\n\nOutro.";
+    const result = moveBlock(text, 1, "down"); // swap "@sarah ..." and "Outro."
+    expect("edit" in result).toBe(true);
+    if ("edit" in result) {
+      const { from, to, insert } = result.edit;
+      const rebuilt = text.slice(0, from) + insert + text.slice(to);
+      expect(rebuilt).toBe("Intro.\n\nOutro.\n\n@sarah please review this chapter.");
+    }
   });
 
   test("leading and trailing whitespace outside any block is never touched by a swap", () => {
