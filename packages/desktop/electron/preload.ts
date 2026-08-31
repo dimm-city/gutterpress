@@ -3,6 +3,8 @@ import type {
   UpdaterEventPayload,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -28,8 +30,11 @@ import type {
  * stream or live-BrowserWindow need).
  * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
  * events themselves are a main→renderer push stream.
+ * 5 -> 6 (#221): added connectGoogleStart/connectGoogleWait/connectGoogleCancel
+ * (the Google Drive publish provider's OAuth connect trio, mirroring
+ * connectGitHubStart/Wait/Cancel).
  */
-const DESKTOP_API = 5;
+const DESKTOP_API = 6;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -199,6 +204,17 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubWait"),
   connectGitHubCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("remote:connectGitHubCancel"),
+
+  // ── Google Drive publish connect (#221) — same two-phase shape, no user
+  // code to display (Start resolves with the auth URL instead; Wait resolves
+  // when the user approves in the browser). Tokens never cross this bridge.
+  connectGoogleStart: (account?: string): Promise<GoogleConnectStartResult> =>
+    ipcRenderer.invoke("publish:connectGoogleStart", account),
+  connectGoogleWait: (): Promise<GoogleConnectResult> =>
+    ipcRenderer.invoke("publish:connectGoogleWait"),
+  connectGoogleCancel: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("publish:connectGoogleCancel"),
+
   // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
   // listRepoBooks — migrated to server routes (Phase 2F).
   // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)

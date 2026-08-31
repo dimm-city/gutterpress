@@ -90,6 +90,7 @@ import {
 } from "./export/controller";
 import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
 import { GitHubDeviceFlow } from "./github-device-flow";
+import { GoogleConnectFlow } from "./google-connect-flow";
 import {
   MarkdownFileLaunchQueue,
   isMarkdownFilePath,
@@ -1356,6 +1357,29 @@ secureHandle("remote:connectGitHubWait", () =>
 );
 
 secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel());
+
+// The Google Drive OAuth "one connect at a time" state trio (#221,
+// docs/gdrive-publish-plan.md D10) — same shape as githubDeviceFlow above,
+// electron/google-connect-flow.ts. Opens the auth URL via the app's single
+// http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
+// defined above — the same one `api/shell/open-external` calls); the
+// credential is stored under the "gdrive" host in the same electronTokenStore
+// every publish credential uses.
+const googleConnectFlow = new GoogleConnectFlow({
+  loadLib,
+  tokenStore: electronTokenStore,
+  openExternal: desktopHooksImpl.openExternal,
+});
+
+secureHandle("publish:connectGoogleStart", (_e, account?: string) =>
+  handleRemoteErrors("publish:connectGoogleStart", () => googleConnectFlow.start(account)),
+);
+
+secureHandle("publish:connectGoogleWait", () =>
+  handleRemoteErrors("publish:connectGoogleWait", () => googleConnectFlow.wait()),
+);
+
+secureHandle("publish:connectGoogleCancel", async () => googleConnectFlow.cancel());
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
