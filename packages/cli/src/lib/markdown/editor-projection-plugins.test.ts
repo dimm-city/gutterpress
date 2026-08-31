@@ -475,6 +475,35 @@ describe("shape 1 -- nested/overlapping blocks (a wrapper plugin claims a wide, 
     expect(refusal).toBeDefined();
     expect(refusal!.reason).toMatch(/nested Gutterpress marker|corroborate against source/i);
   });
+
+  test("SFE-P2c repair round 2: a wrapper plugin-region that would nest a raw-html block refuses instead of producing overlapping blocks -- the raw-html block still projects on its own", () => {
+    // The residual shape `pluginRegionLinesLookAuthored`'s `@`-line content
+    // heuristic (the test above) cannot catch: `<div>hi</div>` never starts
+    // with `@`, so a wrapper honestly claiming `token.map` through the end
+    // of the document slipped past that check entirely pre-fix, yielding
+    // BOTH a `plugin-region` covering the whole document AND a nested
+    // `raw-html` block -- `blocks[0].to > blocks[1].from`, violating this
+    // module's own "never overlapping, never nested" invariant.
+    const source = "@@aside Note\n\n<div>hi</div>\n\nTail.\n";
+    const md = createMarkdownRenderer([wrapperAsideMarkerPlugin()]);
+
+    // AP-21 liveness: the wrapper really claims through the end of the
+    // document, and the raw html_block really survives by identity.
+    const tokenTypes = md.parse(source, {}).map((t) => t.type);
+    expect(tokenTypes).toContain("plugin_wrapper_open");
+    expect(tokenTypes).toContain("html_block");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    assertSortedNonOverlapping(projection, source);
+
+    expect(projection.blocks.map((b) => b.kind)).toEqual(["raw-html"]);
+    const rawHtmlBlock = blockOf(projection, "raw-html");
+    expect(source.slice(rawHtmlBlock.from, rawHtmlBlock.to)).toBe("<div>hi</div>\n");
+
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_wrapper_open"));
+    expect(refusal).toBeDefined();
+    expect(refusal!.reason).toMatch(/raw-html/i);
+  });
 });
 
 describe("shape 2 -- container-prefix over-claim (a marker line nested under a blockquote or list item)", () => {

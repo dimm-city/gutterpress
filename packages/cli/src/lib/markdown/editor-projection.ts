@@ -846,6 +846,56 @@ function findMatchingCloseIndex(tokens: readonly Token[], openIndex: number): nu
 }
 
 /**
+ * SFE-P2c repair round 2 — the STRUCTURAL half of the containment guard
+ * (see {@link pluginRegionLinesLookAuthored}'s shape 3 for the content-
+ * heuristic half it complements, not replaces). Shape 3 refuses a
+ * plugin-region whose claimed range's interior TEXT looks like an authored
+ * `@` marker line — but it is a text match, so it says nothing about a
+ * `raw-html` block nested the same way: `<div>…</div>` never starts with
+ * `@`, so a wrapper plugin that honestly claims `token.map` spanning
+ * consumed-and-re-pushed content that happens to include a survivor
+ * `html_block` token slipped past shape 3 entirely, producing nested,
+ * overlapping blocks (the module header's own "never overlapping, never
+ * nested" invariant violated by accident of walk order rather than by
+ * construction — reproduced live pre-fix: a wrapper plugin claiming
+ * `"@@aside Note\n\n<div>hi</div>\n\nTail.\n"` end to end yielded both a
+ * `plugin-region` covering the whole document AND a separate `raw-html`
+ * block nested inside it).
+ *
+ * Walks the token slice strictly BETWEEN a plugin-region's own open/close
+ * pair (`(openIndex, closeIndex)`, both exclusive — `findMatchingCloseIndex`'s
+ * own convention) for any token this same walk would, if it reached that
+ * token directly, independently turn into its OWN `ProjectedBlock`: a
+ * recognized marker-family open or break token, or an `html_block` token —
+ * in both cases gated on the token actually carrying `data-source-range`
+ * evidence of its own, since a token with none never becomes a block either
+ * way and so poses no containment risk. A hit refuses the WIDER,
+ * less-specific plugin-region claim so the narrower, evidence-backed
+ * interior block can project on its own instead — the exact precedent this
+ * module already establishes for the marker-family case (the "shape 1"
+ * fixture in `editor-projection-plugins.test.ts`: a wrapper that would nest
+ * a `@page-break` refuses, and the page-break still projects by itself).
+ * `closeIndex === -1` (an unmatched open — {@link findMatchingCloseIndex}'s
+ * own documented failure mode) is treated as "no interior to scan": this
+ * function never throws and never widens a refusal beyond what the token
+ * stream actually shows.
+ */
+function pluginRegionContainsProjectableBlock(
+  tokens: readonly Token[],
+  openIndex: number,
+  closeIndex: number,
+): boolean {
+  if (closeIndex === -1) return false;
+  for (let i = openIndex + 1; i < closeIndex; i++) {
+    const t = tokens[i]!;
+    const isMarkerFamily = Boolean(OPEN_KIND_BY_TOKEN_TYPE[t.type] ?? BREAK_KIND_BY_TOKEN_TYPE[t.type]);
+    const isRawHtml = t.type === "html_block";
+    if ((isMarkerFamily || isRawHtml) && t.attrGet(SOURCE_RANGE_ATTR)) return true;
+  }
+  return false;
+}
+
+/**
  * SFE-P2c repair round 1 (finding 6 — "inactive plugin view renders the
  * block's authored source, not the plugin's own produced HTML"): the run
  * spec's behavior table requires the inactive view to render "the plugin's
@@ -873,16 +923,23 @@ function findMatchingCloseIndex(tokens: readonly Token[], openIndex: number): nu
  * already falls back to the block's own authored `sourceText` when it is
  * absent — so `undefined` here is fail-closed to EXACTLY today's posture
  * for this one block, never a new failure mode.
+ *
+ * SFE-P2c repair round 2: `closeIndex` is now supplied by the caller
+ * (previously computed here via {@link findMatchingCloseIndex}) — the call
+ * site needs the SAME index first, to run
+ * {@link pluginRegionContainsProjectableBlock}'s structural containment
+ * check before this function ever runs, so it is computed once and reused
+ * rather than walked twice for the same token slice.
  */
 function pluginRegionInactiveHtml(
   md: MarkdownIt,
   tokens: readonly Token[],
   openIndex: number,
+  closeIndex: number,
   env: unknown,
   diagnostics: ProjectionDiagnostic[],
   htmlBudget: AggregateHtmlBudget,
 ): string | undefined {
-  const closeIndex = findMatchingCloseIndex(tokens, openIndex);
   if (closeIndex === -1) return undefined;
   try {
     const html = md.renderer.render(tokens.slice(openIndex, closeIndex + 1), md.options, env);
@@ -1126,6 +1183,27 @@ export function createEditorProjection(
 
       const [from, to] = origin.range;
 
+      // SFE-P2c repair round 2 — structural containment guard (see
+      // `pluginRegionContainsProjectableBlock`'s own doc comment): the
+      // BIDIRECTIONAL half `pluginRegionLinesLookAuthored`'s shape-3 content
+      // heuristic could not cover, because a `raw-html` block's interior
+      // never starts with `@`. Computed once here and reused below for
+      // `pluginRegionInactiveHtml` — `closeIndex` is the same slice either
+      // way. Checked BEFORE the `lastBlockEnd` overlap guard: this is about
+      // this region's OWN interior, not its relationship to prior blocks.
+      const closeIndex = findMatchingCloseIndex(tokens, tokenIndex);
+      if (pluginRegionContainsProjectableBlock(tokens, tokenIndex, closeIndex)) {
+        diagnostics.push({
+          category: "EDITOR_UNSUPPORTED_PROJECTION",
+          reason:
+            `"${token.type}" token's claimed range contains a block this projection would ` +
+            `independently project (a Gutterpress marker, a page/column break, or a raw-html ` +
+            `block with its own source-range evidence) — refusing the wider plugin-region claim ` +
+            `so the contained block can project on its own instead. Edit this content in source mode.`,
+        });
+        continue;
+      }
+
       // SFE-P2c repair round 1 — containment guard, defense in depth
       // alongside `pluginRegionLinesLookAuthored`'s own content-based
       // nested-marker check above: a range starting before the most
@@ -1155,7 +1233,15 @@ export function createEditorProjection(
       // token stream, no matching close, or a plugin renderer rule that
       // threw) omits the key entirely — this module's existing optional-
       // field convention (never present with an `undefined` value).
-      const pluginInactiveHtml = pluginRegionInactiveHtml(md, tokens, tokenIndex, env, diagnostics, htmlBudget);
+      const pluginInactiveHtml = pluginRegionInactiveHtml(
+        md,
+        tokens,
+        tokenIndex,
+        closeIndex,
+        env,
+        diagnostics,
+        htmlBudget,
+      );
       blocks.push({
         id: `plugin-region:${from}:${to}`,
         kind: "plugin-region",

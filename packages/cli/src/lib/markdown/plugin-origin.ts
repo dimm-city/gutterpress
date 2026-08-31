@@ -647,34 +647,56 @@ export function resolvePluginTokenOriginFromSnapshot(
   }
 
   // Shape 2b — COPY, the shape rule 4 actually names ("one source region
-  // producing several output regions"): more than one nesting===1 "open"
-  // token sits in the ADDED run between the two nearest surviving anchors.
-  // This is DISTINCT from shape 2 above: that catches ONE token appearing
-  // TWICE in `after` by object `===` identity — a shape a real plugin
-  // essentially never produces, since every `new state.Token(...)` call
-  // creates a fresh object. This catches the REALISTIC copy shape instead:
-  // two (or more) DIFFERENT sibling output tokens, each its own fresh
-  // object, both claiming the SAME consumed run as their origin (e.g. one
-  // consumed `hr` replaced by a sibling `plugin_a_open/close` PLUS a
-  // sibling `plugin_b_open/close` pair, not one wrapping the other).
+  // producing several output regions"): more than one SIBLING "open" token
+  // — depth 0 relative to the added run itself, i.e. neither wrapping nor
+  // wrapped by the other — sits in the ADDED run between the two nearest
+  // surviving anchors. This is DISTINCT from shape 2 above: that catches ONE
+  // token appearing TWICE in `after` by object `===` identity — a shape a
+  // real plugin essentially never produces, since every `new
+  // state.Token(...)` call creates a fresh object. This catches the
+  // REALISTIC copy shape instead: two (or more) DIFFERENT sibling output
+  // tokens, each its own fresh object, both claiming the SAME consumed run
+  // as their origin (e.g. one consumed `hr` replaced by a sibling
+  // `plugin_a_open/close` PLUS a sibling `plugin_b_open/close` pair, not one
+  // wrapping the other).
+  //
+  // SFE-P2c repair round 2 (finding: this count previously summed EVERY
+  // `nesting === 1` token in the added run regardless of depth — so the
+  // single most idiomatic plugin shape, one output region wrapping a
+  // freshly generated interior (e.g. a callout wrapping a generated
+  // paragraph: `plugin_callout_open`, `paragraph_open`, `inline`,
+  // `paragraph_close`, `plugin_callout_close`), counted as TWO top-level
+  // opens and refused a clean-splice origin that was fully sound — reproduced
+  // live pre-fix against exactly that shape). Depth is now tracked across
+  // the added run and only OPENS AT DEPTH 0 — true siblings, per the
+  // comment above — are counted; an open nested inside a sibling's own
+  // open/close pair is that sibling's interior, not a second claimant.
+  //
   // Every no-evidence token queried from this same added run independently
   // recomputes the SAME two anchors and therefore refuses identically here
   // — no block is ever emitted for ANY of them, so `ProjectedBlock.id`
   // uniqueness and the "never overlapping" invariant both hold by
   // construction, not by accident of which token happened to be queried
   // first.
-  let addedOpenCount = 0;
+  let depth = 0;
+  let addedTopLevelOpenCount = 0;
   for (let i = leftAfterIdx + 1; i < rightAfterIdx; i++) {
-    if (after[i]!.nesting === 1) addedOpenCount++;
+    const nesting = after[i]!.nesting;
+    if (nesting === 1) {
+      if (depth === 0) addedTopLevelOpenCount++;
+      depth++;
+    } else if (nesting === -1) {
+      depth--;
+    }
   }
-  if (addedOpenCount > 1) {
+  if (addedTopLevelOpenCount > 1) {
     return {
       ok: false,
       reason:
-        `Refusing: ${rule} replaced one consumed run with ${addedOpenCount} new top-level ` +
-        `tokens instead of one — a single source region cannot honestly be attributed to ` +
-        `several output regions at once (copy: one source region producing several output ` +
-        `regions). Edit this content in source mode.`,
+        `Refusing: ${rule} replaced one consumed run with ${addedTopLevelOpenCount} new ` +
+        `sibling top-level tokens instead of one — a single source region cannot honestly be ` +
+        `attributed to several output regions at once (copy: one source region producing ` +
+        `several output regions). Edit this content in source mode.`,
     };
   }
 

@@ -429,6 +429,64 @@ describe("refusal matrix — shape 2b: copy, the REALISTIC shape (one consumed r
   });
 });
 
+describe("NOT shape 2b — one output region with a freshly generated interior (the idiomatic wrapper shape) still recovers a clean-splice origin", () => {
+  test("SFE-P2c repair round 2: a real registered plugin rule replacing one consumed hr with ONE wrapper pair around a generated paragraph recovers byte-exact, instead of being miscounted as a two-sibling copy", () => {
+    const source = "A.\n\n---\n\nB.\n";
+    const md = createMarkdownRenderer([
+      {
+        name: "callout-plugin",
+        options: {},
+        plugin: (m: MarkdownIt) =>
+          m.core.ruler.after("layout_transform", "callout_transform", (state) => {
+            const out: typeof state.tokens = [];
+            for (const tok of state.tokens) {
+              if (tok.type === "hr") {
+                out.push(new state.Token("plugin_callout_open", "aside", 1));
+                const paragraphOpen = new state.Token("paragraph_open", "p", 1);
+                const inline = new state.Token("inline", "", 0);
+                inline.content = "Generated body.";
+                inline.children = [];
+                const paragraphClose = new state.Token("paragraph_close", "p", -1);
+                out.push(paragraphOpen, inline, paragraphClose);
+                out.push(new state.Token("plugin_callout_close", "aside", -1));
+                continue;
+              }
+              out.push(tok);
+            }
+            state.tokens = out;
+          }),
+      },
+    ]);
+
+    // AP-21 liveness: prove the transform produced exactly ONE top-level
+    // output region (with a generated interior), not two siblings, before
+    // any origin/projection assertion.
+    const tokenTypes = md.parse(source, {}).map((t) => t.type);
+    expect(tokenTypes).toContain("plugin_callout_open");
+    expect(tokenTypes).toContain("plugin_callout_close");
+    expect(tokenTypes).not.toContain("hr");
+    expect(tokenTypes.filter((t) => t === "plugin_callout_open")).toHaveLength(1);
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+
+    // The defect this fixture reproduces: BEFORE this repair, the depth-
+    // blind count saw TWO nesting===1 opens in the added run
+    // (plugin_callout_open AND the nested paragraph_open) and refused this
+    // as "copy" -- pure recall loss on the single most idiomatic plugin
+    // shape (a wrapper around freshly generated content), on the exact
+    // clean-splice path this run's own test-plan row names. After this
+    // repair, only DEPTH-0 opens count, so this recovers.
+    const block = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(block).toBeDefined();
+    // Byte-exact, per the run spec's test-plan wording -- the consumed
+    // `hr`'s own source line, not the generated interior text.
+    expect(source.slice(block!.from, block!.to)).toBe("---\n");
+    expect(block!.editMode).toBe("source");
+    expect(projection.diagnostics).toHaveLength(0);
+    assertSortedNonOverlapping(projection, source);
+  });
+});
+
 describe("refusal matrix — shape 3: moved tokens (a removed-run member reappears elsewhere)", () => {
   test("a token this module is about to declare 'removed' but which is duplicated elsewhere in the transformed stream refuses as moved", () => {
     const survivorLeft = new Token("paragraph_open", "p", 1);
