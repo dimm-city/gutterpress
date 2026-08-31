@@ -1,7 +1,8 @@
 # Plan: Google Drive publishing (`gdrive` provider)
 
-**Status:** proposed (plan only — no implementation yet)
-**Date:** 2026-08-31
+**Status:** proposed (plan only — no implementation yet); all §8 decisions
+ratified by the product owner 2026-08-31
+**Date:** 2026-08-31 (revised same day — see D7 correction and Appendix A)
 **Goal:** a non-technical author clicks *Publish → Google Drive*, approves
 Gutterpress in their browser once, picks (or names) a Drive folder, and their
 finished PDF — later also the HTML export — lands in that folder. Publishing
@@ -78,11 +79,12 @@ is a **new provider inside it**, not a new subsystem.
   then preflight, then publish. `friendlyPublishError`
   (`src/lib/errors.ts`) maps provider failures to author-friendly copy.
 
-**Relevant repo rules:** no bundlers/`Bun.*` at runtime, self-contained
-binary (§1/§3) — so **no `googleapis` SDK**; Node-native network operations
-via `fetch` (§7 spirit); desktop renderer stays PWA-clean, host work behind
-routes or the narrow adapter seam (§8); every change should reduce or justify
-complexity.
+**Relevant repo rules:** no bundlers/`Bun.*` at runtime and a self-contained
+`bun build --compile` binary (§1/§3) — note this does **not** by itself rule
+out the Google SDKs, which were tested and do compile (Appendix A); Node-native
+network operations via `fetch` (§7 spirit); desktop renderer stays PWA-clean,
+host work behind routes or the narrow adapter seam (§8); every change should
+reduce or justify complexity.
 
 There is currently **zero** Google/Drive code in the repo.
 
@@ -236,11 +238,44 @@ keep working, and Drive keeps version history. The outcome reports
 done from Drive's own Share button. No auto-sharing by default (Q5) — we do
 not change the file's visibility.
 
-### D7 — Plain REST over injected `fetch`; resumable uploads; no SDK, no new deps
+### D7 — Plain REST over injected `fetch`; resumable uploads; no SDK
 
-The `googleapis` npm SDK is large, drags in `google-auth-library`, and is
-exactly the kind of dependency that breaks or bloats `bun build --compile`
-(§1/§3). The provider needs six small REST calls (token refresh, `about.get`,
+> **Correction (2026-08-31).** The first draft of this section claimed the
+> `googleapis` SDK "is exactly the kind of dependency that breaks or bloats
+> `bun build --compile` (§1/§3)". That was **tested and is false for
+> "breaks"**: both `googleapis` and `@googleapis/drive` compile *and* run
+> from a standalone binary in a directory with no `node_modules`, with the
+> token-refresh, `files.list` and resumable-upload code paths all executing
+> to the network layer. Measurements and method: **Appendix A**. The "bloats"
+> half survives only for the full SDK (+29.5 MB, +31%); `@googleapis/drive`
+> costs +644 KB (+0.7%). The decision below is therefore re-argued on
+> grounds that were actually verified, and `@googleapis/drive` is recorded
+> as a legitimate alternative rather than dismissed.
+
+**Decision (ratified): plain `fetch`, no SDK** — for these reasons, none of
+which is the compile claim:
+
+1. **The injection seam.** `PublishDeps.fetch` is how every existing provider
+   is tested (`publish.test.ts` injects a fake fetch; `shopify.ts` is the
+   direct precedent). An SDK routes through gaxios, so provider tests would
+   have to inject a gaxios adapter instead — a second, parallel testing
+   idiom for one provider.
+2. **The shared network policy is fetch-shaped.** `withFetchTimeout` /
+   `FriendlyHttpError` (`lib/fetch-timeout.ts`) give every provider one
+   deadline-and-friendly-error story. SDK calls would need their own timeout
+   and error mapping alongside it.
+3. **Dependency surface.** 76 packages enter the tree for ~6 REST calls, and
+   `electron-builder`'s dep walker carries them into the desktop app too.
+   CLAUDE.md's "reduce complexity unless justified" applies.
+
+**Cost we are accepting:** ~150 lines of hand-written resumable-upload logic
+(chunking, `308` resume, retry) that the SDK would have provided. This is the
+strongest argument for `@googleapis/drive` and it is a real one — if the
+upload code proves troublesome in review, switching to `@googleapis/drive` is
+a contained change behind the provider boundary, and Appendix A shows it
+costs +644 KB.
+
+The provider needs six small REST calls (token refresh, `about.get`,
 `files.list`, folder `files.create`, resumable session start, chunk PUT) —
 plain `fetch` through `PublishDeps.fetch`, wrapped in the existing
 `withFetchTimeout` / `FriendlyHttpError` policy, exactly like `shopify.ts`.
@@ -516,7 +551,9 @@ verification to clear the "unverified app" interstitial. Until then,
 *Testing* mode works for development with two caveats to plan around:
 refresh tokens expire after 7 days and only ~100 test users are allowed.
 Verify current Google policy details at implementation time — they shift.
-Output: ADR 0011 (D3 ruling + registration settings).
+Deliverables beyond the registration itself: **ADR 0011** (the D3 ruling +
+the release-blocking registration settings) and **`PRIVACY.md` published via
+GitHub Pages** (D11) — the consent screen cannot be submitted without it.
 
 **Phase 1 — lib + CLI (PDF golden path).**
 `google-auth.ts`, `google-drive.ts`, `connect-google.ts`,
@@ -559,22 +596,20 @@ phase 3 ≈ 200–300. No new runtime dependencies in any phase.
 
 ---
 
-## 8. Open questions for the product owner
+## 8. Decisions ratified (2026-08-31)
 
-1. **(D3)** Ratify the embedded Google installed-app client id + "secret"
-   ruling (env-overridable, public-by-design). Blocking for phase 1.
-2. **(D1/D5)** Sign off on the `drive.file` trade-off: v1 cannot write into
-   arbitrary pre-existing folders; users move the app-created folder in
-   Drive instead (ids survive moves). Escape hatch = Google Picker, §9.
-3. **(D5)** Default folder name: proposal **"Gutterpress"** (one folder,
-   all books, recognizable origin) over per-book title folders.
-4. **(D8)** HTML export as a single ZIP (proposed) vs a mirrored folder of
-   loose files.
-5. **(D6)** Confirm no auto-sharing: Gutterpress never changes file
-   visibility; sharing stays in Drive's UI. (A "make it link-shareable"
-   toggle could be later work.)
-6. Phase 0 prerequisites: which homepage + privacy-policy URLs to use for
-   the consent screen?
+All seven open questions were put to the product owner and answered; the
+plan above reflects the answers. Recorded here so the reasoning survives:
+
+| # | Decision | Ratified answer |
+|---|----------|-----------------|
+| D3 | Google installed-app client id + "secret" | **Embed as env-overridable defaults.** Public by design per Google's native-app docs; security rests on PKCE + loopback + consent. Needs ADR 0011 amending the GitHub-scoped "no client secrets" note. |
+| D1/D5 | OAuth scope | **`drive.file`.** Accept that v1 cannot write into arbitrary pre-existing folders; users move the app-created folder in Drive (ids survive moves). No restricted-scope verification. |
+| D5 | Default folder | **A single "Gutterpress" folder** at My Drive root — not per-book-title folders. |
+| D8 | HTML export shape | **One ZIP** (`<title>-website.zip`, via `fflate`) — not a mirrored folder of loose files. |
+| D7 | Drive client | **Plain `fetch`, no SDK** — on the injection-seam / network-policy / dep-surface grounds above, *not* the falsified compile claim. `@googleapis/drive` (+644 KB) is the recorded fallback. |
+| D6 | File sharing | **Never change visibility.** Files inherit the folder's permissions; sharing stays in Drive's own UI. An opt-in toggle was considered and declined for v1. |
+| D11 | Consent-screen URLs | **Homepage = the existing GitHub readme; privacy policy = a new `PRIVACY.md` published via GitHub Pages**, covering the `drive.file` scope, local-only token storage, and the absence of any Gutterpress server. |
 
 ## 9. Future work (explicitly out of scope for v1)
 
@@ -588,3 +623,47 @@ phase 3 ≈ 200–300. No new runtime dependencies in any phase.
 - Optional link-sharing toggle (Q5), other cloud-storage providers reusing
   the D9 destination seam (Dropbox, OneDrive), and a
   "recently published" deep link on the project screen.
+
+---
+
+## Appendix A — `bun build --compile` SDK test (evidence for D7)
+
+Run 2026-08-31 on bun 1.3.11, `--target=bun-linux-x64`, against
+`googleapis@176.0.0` and `@googleapis/drive@21.0.0`.
+
+**Method.** Three single-file entrypoints (plain `fetch` baseline; scoped
+SDK; full SDK) each built with `bun build --compile`, then the binary
+**copied to a directory containing no `node_modules`** and executed there —
+the actual §3 self-containment claim. A second pass exercised the real call
+paths (`getAccessToken`, `files.list`, and a `files.create` resumable upload
+with a stream body), classifying each failure as module-resolution vs
+network.
+
+**Results.**
+
+| Variant | Build | Runs standalone | Binary | Δ vs baseline | Deps |
+|---|---|---|---|---|---|
+| plain `fetch` (baseline) | ok | ok | 99,295,761 B | — | 0 |
+| `@googleapis/drive` | ok (136 modules, 27 ms) | ok | 99,955,355 B | **+644 KB (+0.7%)** | 76 pkgs / 23 MB |
+| `googleapis` (full) | ok (1071 modules, 2.0 s) | ok | 130,219,188 B | **+29.5 MB (+31.1%)** | 77 pkgs / 228 MB |
+
+All three call paths in both SDKs failed only with
+`The socket connection was closed unexpectedly` — this sandbox's egress proxy
+blocking `googleapis.com`, i.e. the SDK code ran to completion and handed off
+to the network. **No `Cannot find module`, `MODULE_NOT_FOUND`,
+`createRequire`, or runtime `package.json` read failure occurred in any
+variant.**
+
+**Conclusions.**
+
+1. "The SDK breaks `bun build --compile`" is **false** and must not be
+   repeated as a rationale in this repo.
+2. Full `googleapis` is genuinely heavy (+31% on every platform binary);
+   `@googleapis/drive` is not (+0.7%).
+3. D7 therefore stands on the injection-seam, network-policy and
+   dependency-surface arguments alone.
+
+**Caveat.** This tested import, client construction and call dispatch. It did
+not test a successful end-to-end upload against live Google endpoints (egress
+blocked), so it proves the module graph resolves under `--compile`, not that
+the SDK's upload behaves correctly in production.
