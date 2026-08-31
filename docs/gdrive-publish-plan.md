@@ -540,8 +540,19 @@ security invariant.
 
 ## 7. Phases, deliverables, and tests
 
-**Phase 0 — Google Cloud registration (product owner; start immediately —
-this is the long pole).** Create the Cloud project; enable the Drive API;
+**Phase 0 — Google Cloud registration + the validation spike (start
+immediately — this is the long pole).**
+
+**Prove the design before writing production code.** `scripts/gdrive-spike.mjs`
+is a zero-dependency, throwaway script that runs the whole flow against a real
+Google account and reports PASS/FAIL per assumption (P1–P11, plus three manual
+follow-ups). A *Testing*-mode consent screen is enough — no verification, no
+review queue — so the entire design can be validated in ~30 minutes on day one:
+~10 min of Cloud Console setup, ~20 min running the spike. Anything it fails is
+a design change made before any code depends on it. Delete the script once
+`providers/gdrive.ts` and its tests exist. Evidence already gathered without
+credentials is in **Appendix B**.
+ Create the Cloud project; enable the Drive API;
 configure the OAuth consent screen (external) with app name, logo, homepage
 and privacy-policy URLs (the latter two must exist — flagging as a real
 prerequisite); scopes `drive.file`, `openid`, `email`; create a **Desktop
@@ -667,3 +678,55 @@ variant.**
 not test a successful end-to-end upload against live Google endpoints (egress
 blocked), so it proves the module graph resolves under `--compile`, not that
 the SDK's upload behaves correctly in production.
+
+---
+
+## Appendix B — what is already verified, and what the spike must still prove
+
+### Verified live (2026-08-31, no credentials needed)
+
+`developers.google.com` (the docs site) is egress-blocked from this
+environment, but Google's **API** endpoints are reachable, so these were
+confirmed against Google itself rather than from memory:
+
+From `https://accounts.google.com/.well-known/openid-configuration`:
+
+| Field | Value | What it settles |
+|---|---|---|
+| `authorization_endpoint` | `https://accounts.google.com/o/oauth2/v2/auth` | D2 endpoint correct |
+| `token_endpoint` | `https://oauth2.googleapis.com/token` | D7 fixed-host gate list correct |
+| `revocation_endpoint` | `https://oauth2.googleapis.com/revoke` | D4 disconnect-revoke endpoint correct |
+| `code_challenge_methods_supported` | `["plain", "S256"]` | **PKCE S256 confirmed supported** (D2) |
+| `grant_types_supported` | includes `authorization_code`, `refresh_token` | D2 + D4 grants confirmed |
+| `token_endpoint_auth_methods_supported` | `["client_secret_post", "client_secret_basic"]` — **`none` is ABSENT** | **Corroborates D3**: Google does not advertise public-client (secret-less) token auth, so a Desktop client almost certainly must send `client_secret` even with PKCE. Not yet conclusive — only a real Desktop client id can prove it, which is spike **P2**. |
+| `device_authorization_endpoint` | `https://oauth2.googleapis.com/device/code` | The device flow rejected in D2 does exist, if we ever reverse that call |
+
+Endpoint reachability: `drive/v3/about` → `401` unauthenticated (correct),
+`upload/drive/v3/files?uploadType=resumable` → `401` (exists), token endpoint
+returns a clean `{"error":"invalid_client"}` JSON shape for a bad client —
+useful for the friendly-error mapping.
+
+**Spike plumbing self-tested** (fake credentials, callback driven
+programmatically): the loopback listener binds an OS-assigned port, a
+**tampered `state` is rejected**, a missing `xdg-open` degrades to the printed
+URL instead of crashing, and the run stops exactly at the real-Google
+boundary.
+
+### Still unproven — requires one real run (spike P1–P11)
+
+| Assumption | Proven by |
+|---|---|
+| Google accepts an **un-registered ephemeral loopback port** | P1 |
+| `client_secret` really is required with PKCE (**decides whether ADR 0011 is needed at all**) | P2 |
+| `access_type=offline&prompt=consent` yields a refresh token | P3 |
+| `about.get` returns the email + a usable `storageQuota` for fail-fast | P4 |
+| Find-or-create folder behaves as D5 describes | P5 |
+| `drive.file` really hides the rest of the user's Drive | P6 |
+| Resumable upload + `308`/`Range` resume works as D7 specifies | P7 |
+| `webViewLink` is returned | P8 |
+| **Update-in-place preserves fileId AND link** (the whole D6 promise) | P9 |
+| Refresh grant mints a new access token without re-consent | P10 |
+| Revoke works for disconnect | P11 |
+| **Folder ids survive a user moving the folder** (what makes D1's limit acceptable) | P12 — manual: move it in Drive, re-run with `--folder-id` |
+| Google labels `drive.file` Non-sensitive (no verification) | P13 — manual: read the scope table in the consent-screen setup |
+| Testing-mode refresh tokens expire in ~7 days | P14 — manual: re-run in 8 days |
