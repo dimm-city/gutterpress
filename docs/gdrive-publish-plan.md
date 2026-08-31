@@ -1,7 +1,8 @@
 # Plan: Google Drive publishing (`gdrive` provider)
 
-**Status:** proposed (plan only — no implementation yet); all §8 decisions
-ratified by the product owner 2026-08-31
+**Status:** design **validated against live Google** (spike 11/11 + P13 —
+Appendix B); all §8 decisions ratified by the product owner 2026-08-31.
+No implementation yet — Phase 1 is unblocked.
 **Date:** 2026-08-31 (revised same day — see D7 correction and Appendix A)
 **Goal:** a non-technical author clicks *Publish → Google Drive*, approves
 Gutterpress in their browser once, picks (or names) a Drive folder, and their
@@ -719,21 +720,38 @@ programmatically): the loopback listener binds an OS-assigned port, a
 URL instead of crashing, and the run stops exactly at the real-Google
 boundary.
 
-### Still unproven — requires one real run (spike P1–P11)
+### PROVEN against a real Google account (2026-08-31) — spike run, 11/11
 
-| Assumption | Proven by |
-|---|---|
-| Google accepts an **un-registered ephemeral loopback port** | P1 |
-| `client_secret` really is required with PKCE (**decides whether ADR 0011 is needed at all**) | P2 |
-| `access_type=offline&prompt=consent` yields a refresh token | P3 |
-| `about.get` returns the email + a usable `storageQuota` for fail-fast | P4 |
-| Find-or-create folder behaves as D5 describes | P5 |
-| `drive.file` really hides the rest of the user's Drive | P6 |
-| Resumable upload + `308`/`Range` resume works as D7 specifies | P7 |
-| `webViewLink` is returned | P8 |
-| **Update-in-place preserves fileId AND link** (the whole D6 promise) | P9 |
-| Refresh grant mints a new access token without re-consent | P10 |
-| Revoke works for disconnect | P11 |
-| **Folder ids survive a user moving the folder** (what makes D1's limit acceptable) | P12 — manual: move it in Drive, re-run with `--folder-id` |
-| Google labels `drive.file` Non-sensitive (no verification) | P13 — manual: read the scope table in the consent-screen setup |
-| Testing-mode refresh tokens expire in ~7 days | P14 — manual: re-run in 8 days |
+`scripts/gdrive-spike.mjs` was run end-to-end against a live Google account
+with a real Desktop-app OAuth client. **Every assumption held.** The design in
+§2 is confirmed; nothing below needs re-deriving.
+
+| # | Assumption | Result | Evidence |
+|---|---|---|---|
+| P1 | Google accepts an **un-registered ephemeral loopback port** | **PASS** | port `45517`, never entered in Cloud Console, accepted; `state` matched |
+| P2 | `client_secret` required with PKCE — **decides ADR 0011** | **PASS** | PKCE-only → `invalid_request`; **with secret → 200**. D3 confirmed, **ADR 0011 is justified and required** |
+| P3 | `access_type=offline&prompt=consent` yields a refresh token | **PASS** | refresh token issued (len 103); access token TTL 3599 s ≈ 1 h, as D4 assumes |
+| P4 | `about.get` gives email + usable `storageQuota` | **PASS** | email returned; `limit`/`usage`/free all present → D7's quota fail-fast is implementable |
+| P5 | Find-or-create folder at My Drive root | **PASS** | created, id `1fq156Yx…` |
+| P6 | **`drive.file` hides the rest of the user's Drive** | **PASS** | listing returned **exactly 1 folder** (the app's own) on an account with ~223 GB of Drive content. D1/D5's containment premise holds against a real, populated account |
+| P7 | Resumable upload with `308`/`Range` resume | **PASS** | 900 KiB in 4 chunks, **3× HTTP 308 + `Range` resume** handled |
+| P8 | `webViewLink` returned | **PASS** | `drive.google.com/file/d/…/view` |
+| P9 | **Update-in-place preserves fileId AND link** (all of D6) | **PASS** | id and `webViewLink` both unchanged after re-upload → **shared links stay valid across re-publishes** |
+| P10 | Refresh grant mints a new access token | **PASS** | new token, no re-consent → D4's mint-on-demand model works |
+| P11 | Revoke works, for disconnect | **PASS** | HTTP 200 |
+| P13 | Google classifies `drive.file` as **Non-sensitive** | **PASS** | Cloud Console → Data Access lists `.../auth/drive.file` under **"Your non-sensitive scopes"**; **"Your sensitive scopes: No rows to display"**. User-facing string is exactly *"See, edit, create, and delete only the specific Google Drive files you use with this app"* — **no verification, no CASA assessment, no annual re-audit** |
+
+Consequences for the plan: **D3 stands and ADR 0011 must be written**
+(the secret is required); **D1's no-verification claim is confirmed by
+Google's own console**; **D6's stable-link promise is real**; D4, D5 and D7
+are mechanically validated.
+
+### Still open (both need wall-clock time, neither blocks Phase 1)
+
+| # | Assumption | How |
+|---|---|---|
+| P12 | **Folder ids survive the user moving the folder** — what makes D1's limitation acceptable | Move the `Gutterpress` folder in Drive's UI, then re-run with `--folder-id 1fq156Yx…`. A normal run revokes the token, so this re-consents — expected. |
+| P14 | Testing-mode refresh tokens expire in ~7 days | A normal run **revokes** the refresh token in P11, so it cannot be reused. Do a run with `--keep-token` (skips revoke, saves the token `0600`), then in ~8 days `node scripts/gdrive-spike.mjs --refresh-only`. Delete the saved credential afterwards. |
+
+Neither gates Phase 1: P12 only affects how we word the user-facing guidance,
+and P14 only affects developer convenience before the app is published.

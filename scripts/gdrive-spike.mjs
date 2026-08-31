@@ -24,6 +24,10 @@
  * RUN (machine with a browser):
  *   node scripts/gdrive-spike.mjs                    # full run
  *   node scripts/gdrive-spike.mjs --folder-id <id>   # re-check a moved folder (P12)
+ *   node scripts/gdrive-spike.mjs --keep-token       # skip P11's revoke and SAVE the
+ *                                                    # refresh token, so P14 is possible
+ *   node scripts/gdrive-spike.mjs --refresh-only     # P14: 8 days later, does that
+ *                                                    # saved refresh token still work?
  *
  * RUN (headless / remote / SSH — browser is on a DIFFERENT machine):
  *   node scripts/gdrive-spike.mjs --manual                       # prints the URL
@@ -35,7 +39,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { writeFileSync, readFileSync, statSync, openSync, readSync, closeSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import path from "node:path";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -64,6 +68,27 @@ const jfetch = async (url, init) => {
   return { status: r.status, headers: r.headers, body };
 };
 const authHdr = (t) => ({ Authorization: `Bearer ${t}` });
+
+const TOKEN_FILE = path.join(homedir(), ".gutterpress-spike-refresh.json");
+
+// ── P14 (--refresh-only): does a saved refresh token still work N days later? ──
+// Runs BEFORE any consent — that is the whole point: no re-auth.
+if (process.argv.includes("--refresh-only")) {
+  step("P14  Does a previously saved refresh token still work?  (Testing-mode 7-day expiry)");
+  let saved;
+  try { saved = JSON.parse(readFileSync(TOKEN_FILE, "utf8")); }
+  catch { console.error(`No saved token at ${TOKEN_FILE}. Do a full run with --keep-token first.`); process.exit(2); }
+  const ageDays = ((Date.now() - saved.savedAt) / 86400000).toFixed(1);
+  const r = await jfetch("https://oauth2.googleapis.com/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: saved.refresh_token, client_id: CLIENT_ID, client_secret: CLIENT_SECRET }),
+  });
+  r.status === 200
+    ? pass("P14", `refresh token STILL VALID after ${ageDays} days`, "no weekly re-consent needed during development")
+    : fail("P14", `refresh token DEAD after ${ageDays} days`, `${JSON.stringify(r.body).slice(0, 200)} — plan for periodic re-consent until the app is published`);
+  console.log(`\n  Delete the saved credential when done:  rm ${TOKEN_FILE}`);
+  process.exit(r.status === 200 ? 0 : 1);
+}
 
 // ── P1: obtain an authorization code (loopback, or headless two-step) ────────
 // Three modes:
@@ -322,7 +347,12 @@ if (refreshToken) {
 
 // ── P11: revoke (used by disconnect) ────────────────────────────────────────
 step("P11  Revoke endpoint  (disconnect path)");
-{
+if (process.argv.includes("--keep-token")) {
+  // Revoking kills the refresh token, which would make P14 impossible — so
+  // --keep-token skips it and persists the token for the later 8-day re-check.
+  writeFileSync(TOKEN_FILE, JSON.stringify({ refresh_token: refreshToken, savedAt: Date.now() }), { mode: 0o600 });
+  console.log(`  \x1b[33mSKIP\x1b[0m P11 revoke skipped (--keep-token)\n       refresh token saved 0600 to ${TOKEN_FILE} — this is a REAL credential.\n       Run --refresh-only in ~8 days for P14, then: rm ${TOKEN_FILE}`);
+} else {
   const r = await fetch("https://oauth2.googleapis.com/revoke", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ token: refreshToken ?? accessToken }),
@@ -345,7 +375,8 @@ console.log(`\n\x1b[1mMANUAL follow-ups the script cannot do:\x1b[0m
        this is what makes the drive.file limitation acceptable.
   P13  Confirm the consent screen wording + whether Google flags drive.file as
        Non-sensitive (screenshot from setup step 3).
-  P14  Testing-mode refresh tokens are said to expire after ~7 days. Re-run this
-       script in 8 days WITHOUT re-consenting (reuse the printed refresh token)
-       to see whether that bites during development.`);
+  P14  Testing-mode refresh tokens are said to expire after ~7 days. NOTE: a
+       normal run REVOKES the refresh token in P11, so it cannot be reused.
+       To test this, do a run with --keep-token (skips the revoke and saves the
+       token 0600), then in ~8 days:  node scripts/gdrive-spike.mjs --refresh-only`);
 process.exit(bad.length ? 1 : 0);
