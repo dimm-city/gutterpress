@@ -25,6 +25,10 @@
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
+  // SFE-P3ab, Lane A — the shared rich editor, off by default this run. See
+  // rich-mode.svelte.ts's own header for the mode-selection contract.
+  import { createRichModeController, trackSurfaceMount } from "$lib/editor/rich-mode.svelte";
+  import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
@@ -1124,6 +1128,113 @@
     requestAnimationFrame(tryFocus);
   }
 
+  // ── Rich mode (SFE-P3ab, Lane A) ────────────────────────────────────────
+  // An ADDITIONAL editing surface layered over the SAME EditorBuffer session
+  // MarkdownEditor above already drives — see rich-mode.svelte.ts's header
+  // for the mode-selection / exactly-one-mounted-surface contract this
+  // wiring proves, and desktop-document-host.ts's header for why rich mode
+  // mounts against a `DesktopDocumentHost`, not the buffer directly.
+  const richMode = createRichModeController();
+
+  // Hidden/experimental gate (run spec: "off by default this run"). No new
+  // settings subsystem — a `localStorage` flag flipped by hand, read once on
+  // mount (client-only). With the flag unset (the overwhelming common case)
+  // `richModeAvailable` stays false and nothing below this comment ever
+  // runs: the CodeMirror path loads exactly what it does today.
+  let richModeAvailable = $state(false);
+  onMount(() => {
+    try {
+      richModeAvailable = localStorage.getItem("gp:experimental-rich-editor") === "1";
+    } catch {
+      // Storage unavailable (privacy mode, disabled site data, …) — stay off.
+    }
+  });
+
+  // Mirrors the MarkdownEditor lazy-import pattern immediately above: the
+  // rich editor's chunk (the `@vscode/markdown-editor` fork + its adapter)
+  // is real weight, so it is imported dynamically the first time rich mode
+  // is actually entered, never at page load.
+  let RichEditorComponent = $state<
+    typeof import("$lib/components/RichEditor.svelte")["default"] | null
+  >(null);
+  let richEditorModuleLoading = $state(false);
+  let richEditorModuleFailed = $state(false);
+
+  function loadRichEditorModule() {
+    if (RichEditorComponent || richEditorModuleLoading || richEditorModuleFailed) return;
+    richEditorModuleLoading = true;
+    import("$lib/components/RichEditor.svelte")
+      .then((m) => {
+        RichEditorComponent = m.default;
+      })
+      .catch((e) => {
+        richEditorModuleFailed = true;
+        toast?.error(
+          `Could not open the rich editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        richEditorModuleLoading = false;
+      });
+  }
+
+  function retryRichEditorLoad() {
+    richEditorModuleFailed = false;
+    loadRichEditorModule();
+  }
+
+  // The `EditorDocumentHost` (D3/D7) rich mode mounts against. NOT
+  // live-patched across a file switch or an external replacement — rebuilt
+  // fresh from the buffer's CURRENT content instead (D7: "File switches and
+  // external full replacements are not undoable into the prior file", so a
+  // fresh host/undo-stack is the spec-sanctioned response). `{#key
+  // richDocHost}` below turns each rebuild into a fresh RichEditor
+  // mount/dispose cycle — a real new undo epoch, not a simulated one.
+  //
+  // This also sidesteps a forwarding-loop hazard entirely: because a
+  // snapshot is never pushed back into an already-mounted host from
+  // outside, `subscribe` below can safely assume every snapshot it
+  // observes originated from THIS host's own mounted adapter (a real user
+  // edit), and forwards it straight into the SAME `onEditorChange` call
+  // MarkdownEditor's `onChange` already makes — one implementation of
+  // "a rich-mode edit reached the shared session", not a second copy.
+  let richDocHost = $state<DesktopDocumentHost | null>(null);
+  let richDocHostUnsub: (() => void) | null = null;
+
+  function rebuildRichDocHost(path: string | null, content: string): void {
+    richDocHostUnsub?.();
+    richDocHostUnsub = null;
+    if (!path) {
+      richDocHost = null;
+      return;
+    }
+    const nextHost = new DesktopDocumentHost(content, { documentId: path });
+    richDocHostUnsub = nextHost.subscribe((snapshot) => onEditorChange(snapshot.text));
+    richDocHost = nextHost;
+  }
+
+  function disposeRichDocHost(): void {
+    richDocHostUnsub?.();
+    richDocHostUnsub = null;
+    richDocHost = null;
+  }
+
+  /** The one place rich mode is entered/exited (today: the hidden keyboard
+   * shortcut below; a visible toggle is chrome for another lane to add).
+   * Keeps `richDocHost` in lockstep with `richMode.mode` so it is never
+   * stale while `"rich"` is selected, and never lingers once it is not. */
+  function setRichMode(next: "source" | "rich"): void {
+    if (next === richMode.mode) return;
+    if (next === "rich") {
+      loadRichEditorModule();
+      rebuildRichDocHost(editorFilePath, editorContent);
+    }
+    richMode.switchTo(next);
+    if (next === "source") {
+      disposeRichDocHost();
+    }
+  }
+
   /**
    * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
    * "Insert" button used to dead-end behind a disabled state, telling the author
@@ -1183,6 +1294,14 @@
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
+    // Same choke point covers BOTH a real file switch and a same-file
+    // external replacement landing (acceptExternal's onContentReplaced) —
+    // D7 groups both under "not undoable into the prior file", so rich
+    // mode responds to either the same way: a fresh epoch, fresh host.
+    if (richMode.mode === "rich") {
+      richMode.onFileSwitch();
+      rebuildRichDocHost(path, content);
+    }
   }
 
   function createEditorBuffer(): EditorBuffer {
@@ -2099,6 +2218,21 @@
         e.preventDefault();
         toggleEditor();
       }
+      // Rich mode toggle (SFE-P3ab) — hidden/experimental, inert unless
+      // richModeAvailable was flipped on via the gp:experimental-rich-editor
+      // localStorage flag. Not part of resolveGlobalShortcut's vocabulary
+      // (another lane's file) — checked directly.
+      if (
+        richModeAvailable &&
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.altKey &&
+        e.key.toLowerCase() === "r"
+      ) {
+        e.preventDefault();
+        setRichMode(richMode.mode === "rich" ? "source" : "rich");
+        return;
+      }
       // Cmd/Ctrl+\ toggles the left panel
       if (command === "toggle-left-panel") {
         e.preventDefault();
@@ -2848,19 +2982,60 @@
               }}
               onSave={handleForceSave}
             />
-            {#if MarkdownEditor}
+            {#if richMode.mode === "rich"}
+              <!-- SFE-P3ab, Lane A — rich mode's own DOM subtree. The
+                   wrapper's `use:trackSurfaceMount` and this branch's
+                   exclusivity with the MarkdownEditor branch below TOGETHER
+                   give D7's "exactly one editing surface mounted" invariant
+                   both its structural guarantee (this {#if}/{:else}) and its
+                   asserted one (the controller throws on a violation). -->
+              <div
+                style="display:contents"
+                use:trackSurfaceMount={{ controller: richMode, surface: "rich" }}
+              >
+                {#if !editorFilePath}
+                  <div class="editor-loading" role="status" aria-live="polite">
+                    Select a file from the list to start editing.
+                  </div>
+                {:else if RichEditorComponent && richDocHost}
+                  <!-- Keyed on the host itself: a fresh host means a fresh
+                       mount/dispose cycle — a real new undo epoch, not a
+                       simulated one (see richDocHost's own comment above). -->
+                  {#key richDocHost}
+                    <RichEditorComponent
+                      host={richDocHost}
+                      onDiagnostic={(d) => toast?.error(d.message)}
+                    />
+                  {/key}
+                {:else if richEditorModuleFailed}
+                  <div class="editor-loading" role="alert">
+                    <p>The rich editor failed to load.</p>
+                    <button class="primary app-btn-primary" onclick={retryRichEditorLoad}>Retry</button>
+                  </div>
+                {:else}
+                  <div class="editor-loading" role="status" aria-live="polite">
+                    Loading rich editor…
+                  </div>
+                {/if}
+              </div>
+            {:else if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
                    source file via a synchronous switchFile() handoff. -->
-              <MarkdownEditor
-                bind:this={editorRef}
-                filePath={editorFilePath}
-                content={editorContent}
-                onChange={onEditorChange}
-                onSave={() => void handleForceSave()}
-                onAnchorLine={(line, origin) =>
-                  editorSync.onEditorAnchorLine(line, origin, editorChapter)}
-              />
+              <div
+                style="display:contents"
+                use:trackSurfaceMount={{ controller: richMode, surface: "source" }}
+              >
+                <MarkdownEditor
+                  bind:this={editorRef}
+                  filePath={editorFilePath}
+                  content={editorContent}
+                  onChange={onEditorChange}
+                  onSave={() => void handleForceSave()}
+                  onAnchorLine={(line, origin) =>
+                    editorSync.onEditorAnchorLine(line, origin, editorChapter)}
+                />
+              </div>
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
                 <p>The editor failed to load.</p>
