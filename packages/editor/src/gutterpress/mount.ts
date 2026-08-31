@@ -32,6 +32,7 @@ import { createVscodeEditorAdapter, type VscodeEditorAdapter } from "../vscode-a
 import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
 import { FORK_DEFAULT_THEME_CSS, FORK_EDITOR_BASE_CSS, FORK_THEME_CLASS_NAME } from "../web/fork-editor-css.ts";
 import { projectionNeedsRefresh } from "./match.ts";
+import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
@@ -81,6 +82,22 @@ export function mountGutterpressEditor(
     throw new Error(
       "mountGutterpressEditor: container's ownerDocument has no <head> or document element to attach editor CSS to",
     );
+  }
+
+  // SFE-P2c repair round 1 (finding 5 — "refused plugin regions ship no
+  // 'edit in source' affordance"): forward every diagnostic THIS mount's
+  // own projection carries — a refused plugin-region, an unrecognized
+  // `layout_`-prefixed token, a D13 cap — through `options.onDiagnostic`,
+  // the SAME channel `applyEdit` rejections already use
+  // (`../vscode-adapter/adapter.ts`). See `projection-diagnostics.ts`'s own
+  // header for the full design and `match.ts`'s header ("REFUSED PLUGIN
+  // REGIONS") for why this is a document-level notice, never a per-block
+  // chip. Fired once, synchronously, at mount time — a fresh projection
+  // means a fresh mount (this module's own doc comment on `needsRefresh`),
+  // so there is no later point at which new projection diagnostics could
+  // appear for this same mount.
+  for (const diagnostic of options.projection.diagnostics) {
+    options.onDiagnostic?.(diagnosticForProjection(diagnostic));
   }
 
   const isStale = (): boolean => projectionNeedsRefresh(options.projection, host.getSnapshot().version);

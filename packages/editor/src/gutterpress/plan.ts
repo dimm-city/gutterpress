@@ -54,37 +54,50 @@
  * `tests/gutterpress/plugin-region.btest.ts` (SFE-P2c) proves this live
  * against the real fork, not merely by reading this file.
  *
- * WHAT "THE PLUGIN'S OWN PRODUCED HTML" MEANS IN THIS COMMITTED SHAPE: the
- * run spec asks the inactive view to render "the plugin's OWN produced
- * HTML... inertly." Read against `editor-projection.ts`'s actual output
- * (checked directly, per the run spec's own "(inactiveHtml? viewAttributes?)"
- * prompt — see `editor-projection-plugins.test.ts` and this package's own
- * `provider.test.ts` "plugin-region: buildChipPlan" suite, both asserting
- * this directly): a `plugin-region` block carries `viewAttributes` but
- * NEVER `inactiveHtml` — unlike `raw-html`, which sets `inactiveHtml =
- * token.content`. There is therefore no separate rendered-HTML field for
- * this function to prefer; `sourceText` (the fork's own exact text for the
- * live call, correlated against the block's own proven range by
- * `match.ts`) IS the only "plugin output" available, and it is the block's
- * own AUTHORED SOURCE bytes, not a second, transformed representation.
- * Routing it through the identical non-segmented/inert path raw-html uses
- * is therefore the "honest interim" the run spec asks for, not a
- * workaround — there is nothing else to show. If a future run adds a
- * distinct `inactiveHtml` to `plugin-region` (e.g. the plugin's own
- * rendered fragment, separate from its consumed source), `buildChipPlan`
- * will need an explicit change to prefer it; this run deliberately does
- * not add that speculative field-read ahead of the projection actually
- * producing the value (smallest design that satisfies the current,
- * verified shape).
+ * WHAT "THE PLUGIN'S OWN PRODUCED HTML" MEANS IN THIS COMMITTED SHAPE
+ * (SFE-P2c repair round 1 — supersedes the paragraph this replaces, which
+ * argued `editor-projection.ts` supplied no `inactiveHtml` for
+ * `plugin-region` and therefore "there is nothing else to show." That was a
+ * true observation about the P2c-round-0 shape, used to justify a
+ * DEVIATION from the run spec's own row — "a `plugin-region` renders the
+ * plugin's own HTML inertly" — rather than escalating it. `editor-
+ * projection.ts` now DOES emit `inactiveHtml` for `plugin-region`, rendered
+ * from `md.renderer.render(tokens.slice(openIdx, closeIdx + 1), ...)` — the
+ * SAME renderer/rule set the print path uses (G-03), routed through the
+ * same D13 `capHtmlPayload` every other HTML payload in that module goes
+ * through): `buildChipPlan` below PREFERS `block.inactiveHtml` for the
+ * non-segmented inert preview, falling back to `sourceText` only when the
+ * projection supplies none (a matching close token could not be found, or
+ * the plugin's own renderer rule threw — `editor-projection.ts`'s own
+ * contract there is "never throw, never guess," so `undefined` there means
+ * fail-closed to exactly TODAY's authored-source posture for that one
+ * block, not a new failure mode). `raw-html` is unaffected either way: its
+ * `inactiveHtml` was already set to its own raw bytes, identical to what
+ * `sourceText` would have shown. `render-chip.ts`'s posture is UNCHANGED —
+ * still `.textContent` only, never parsed markup — so the script-payload
+ * inertness proof (`plugin-region.btest.ts`) holds verbatim regardless of
+ * which string is written into it.
  */
 import type { GeneratedView, ProjectedBlock } from "gutterpress/render";
 
 export interface ChipPlan {
   readonly block: ProjectedBlock;
-  /** The exact string the fork handed `renderCustomBlock` for this call — always a superset of `block`'s own slice (see `match.ts`'s header on the trailing-glue boundary difference). */
+  /** The exact string the fork handed `renderCustomBlock` for this call — always a superset of `block`'s own slice (see `match.ts`'s header on the trailing-glue boundary difference). Still the SOLE text used for the segmented (marker-family) path; see `inactivePreviewText` for the non-segmented path. */
   readonly sourceText: string;
-  /** `true` -> per-character `SourceSegment`s over the whole `sourceText` (marker family). `false` -> a single inert-text preview, no segments (raw-html and any other non-"structured" kind). */
+  /** `true` -> per-character `SourceSegment`s over the whole `sourceText` (marker family). `false` -> a single inert-text preview, no segments (raw-html, plugin-region, and any other non-"structured" kind). */
   readonly segmented: boolean;
+  /**
+   * The text `render-chip.ts` writes into the non-segmented inert `<pre>`
+   * preview (SFE-P2c repair round 1 — see this file's own header, "WHAT
+   * 'THE PLUGIN'S OWN PRODUCED HTML' MEANS"). Prefers `block.inactiveHtml`
+   * — the pipeline's own rendered fragment for this block — falling back
+   * to `sourceText` only when the projection supplies none. For
+   * `segmented: true` blocks this is unused (the segmented branch always
+   * reads `sourceText` directly); computed unconditionally anyway so the
+   * type stays simple and the fallback is visible at construction time,
+   * not scattered into the DOM-building module.
+   */
+  readonly inactivePreviewText: string;
   /** Read-only inert HTML text previews anchored at this block's own `to` (D6/AP-13) — rendered, never parsed as live markup; never segmented. */
   readonly generatedPreviews: readonly string[];
 }
@@ -98,6 +111,7 @@ export function buildChipPlan(
     block,
     sourceText,
     segmented: block.editMode === "structured",
+    inactivePreviewText: block.inactiveHtml ?? sourceText,
     generatedPreviews: generatedPreviews.map((view) => view.html),
   };
 }

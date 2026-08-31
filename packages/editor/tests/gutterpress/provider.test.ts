@@ -366,6 +366,12 @@ describe("buildChipPlan", () => {
     const plan = buildChipPlan(rawHtml, [], sourceText);
     expect(plan.segmented).toBe(false);
     expect(plan.sourceText).toBe(sourceText);
+    // SFE-P2c repair round 1: inactivePreviewText prefers block.inactiveHtml
+    // -- raw-html already set that to its own raw bytes, so this is a
+    // no-op switch for this kind (unlike plugin-region, see below).
+    expect(rawHtml.inactiveHtml).toBeDefined();
+    expect(plan.inactivePreviewText).toBe(rawHtml.inactiveHtml!);
+    expect(plan.inactivePreviewText).toBe(sourceText);
   });
 
   test("generated-view in-chip inclusion: the page marker's plan carries the exact generated chapter-opener HTML text", () => {
@@ -529,16 +535,34 @@ describe("plugin-region: buildChipPlan (SFE-P2c)", () => {
     expect(plan.sourceText).toBe(sourceText);
   });
 
-  test("editor-projection.ts's committed shape carries viewAttributes but NEVER inactiveHtml for this kind -- the 'plugin's own produced HTML' this run's chip renders is therefore the block's own consumed AUTHORED SOURCE (sourceText/plan.sourceText), not a separate rendered-HTML field the projection does not provide", () => {
+  test("SFE-P2c repair round 1: editor-projection.ts now carries a real inactiveHtml for this kind -- the plugin's own rendered HTML, not the raw authored marker text -- and buildChipPlan's inactivePreviewText prefers it over sourceText", () => {
     const projection = buildAsideProjection(true);
     const region = blockOf(projection, "plugin-region");
-    expect(region.inactiveHtml).toBeUndefined();
+    // Superseded assertion (was `expect(region.inactiveHtml).toBeUndefined()`
+    // before this repair round -- see this test's own new title): the
+    // projection now supplies a real rendered fragment, distinct from the
+    // raw authored marker line.
+    expect(region.inactiveHtml).toBeDefined();
+    expect(region.inactiveHtml).not.toBe(ASIDE_SOURCE.slice(region.from, region.to));
+    expect(region.inactiveHtml).toContain("aside");
     expect(region.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
 
-    const plan = buildChipPlan(region, [], ASIDE_SOURCE.slice(region.from, region.to));
+    const sourceText = ASIDE_SOURCE.slice(region.from, region.to);
+    const plan = buildChipPlan(region, [], sourceText);
     // AP-06: carried through unchanged, ready for render-chip.ts's inert
     // attribute badge -- never written back to source.
     expect(plan.block.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
+    // sourceText itself is UNCHANGED (still the fork's own exact call
+    // text) -- only the NON-SEGMENTED preview text now prefers the
+    // pipeline's rendered fragment.
+    expect(plan.sourceText).toBe(sourceText);
+    expect(plan.inactivePreviewText).toBe(region.inactiveHtml!);
+    expect(plan.inactivePreviewText).not.toBe(sourceText);
+  });
+
+  test("a refused (no-evidence) plugin-region has no projection block at all, so there is no inactiveHtml to prefer -- unaffected by this repair round", () => {
+    const projection = buildAsideProjection(false);
+    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
   });
 });
 

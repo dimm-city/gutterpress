@@ -209,20 +209,44 @@
  * outcome: there is no `bySourceText` entry a refused call could ever
  * resolve to, by construction.
  *
- * DECISION (this run): no additional "edit in source" affordance is added
- * for a refused region. The run spec explicitly permits this ("never a
- * guessed writable range... the simplest correct answer is: no chip at
- * all"). Painting any chip-shaped UI over a refused span — even an inert,
- * read-only-looking one — risks being mistaken for a writable region,
- * exactly what G-06 warns against; the region's own diagnostic
- * (`projection.diagnostics`, unchanged and already surfaced by
- * `editor-projection.ts`) is the host's existing channel for a broader
- * "why can't I edit this richly" affordance, should a later run choose to
- * surface one — this run does not, keeping the design at its smallest
- * correct shape. `provider.test.ts`'s "plugin-region: matchProjectedBlock"
- * suite and `tests/gutterpress/plugin-region.btest.ts` both prove this
- * live: a refused plugin-region renders no chip and stays a normal,
- * directly-editable block.
+ * DECISION, CORRECTED (SFE-P2c repair round 1 — replaces the round-0 text,
+ * which declined the behavior table's "explicit 'edit in source' affordance"
+ * requirement by citing a run-spec sentence that does not appear anywhere
+ * in `docs/` — grep-verified — and by reading G-06/G-07 as warning AGAINST
+ * the affordance when both guardrails actually REQUIRE one): NO CHIP-shaped
+ * affordance is painted over a refused span, but that is a narrower claim
+ * than round 0 made. G-05's "never a guessed writable range" is about not
+ * fabricating an EDITABLE boundary from weak evidence — it says nothing
+ * about withholding an inert notice. A refused region's whole problem is
+ * that Lane B could not establish even an anchor, let alone a verified
+ * boundary, to paint a chip against — correlating a live `renderCustomBlock`
+ * call back to "the" refused region by TEXT ALONE would be exactly the
+ * fuzzy matching this module's own header (above) forbids for a WRITABLE
+ * range, so `match.ts`/`plan.ts` still add no per-block affordance, and
+ * the "no chip, stays fully editable" behavior `plugin-region.btest.ts`
+ * pins is unchanged.
+ *
+ * The required "edit in source" affordance (G-06: "the safe action
+ * available to the author, normally 'Edit in source mode.'"; G-07:
+ * "Unsupported interiors remain rendered/read-only with an explicit source
+ * action") is instead delivered through the channel already built for
+ * exactly this purpose: `editor-projection.ts`'s own header states its
+ * diagnostic categories "mirror[] D14's naming convention" specifically so
+ * they can flow through `packages/editor`'s existing diagnostic channel.
+ * `mountGutterpressEditor` (`mount.ts`) now forwards every
+ * `projection.diagnostics` entry through `projection-diagnostics.ts`'s
+ * `diagnosticForProjection` into `options.onDiagnostic` at mount time — the
+ * SAME channel `EDITOR_STALE_EDIT`/`EDITOR_READONLY`/`EDITOR_INVALID_RANGE`
+ * already use (`../vscode-adapter/adapter.ts`'s `diagnosticForEditRejection`
+ * call). This is a DOCUMENT-LEVEL notice, not a per-block chip: a host that
+ * surfaces `onDiagnostic` (a banner, a toast, a log) gets an explicit,
+ * rule-named "edit in source" affordance for a refused region without this
+ * package ever guessing a writable range. `provider.test.ts`'s
+ * "plugin-region: matchProjectedBlock" suite and
+ * `tests/gutterpress/plugin-region.btest.ts` still prove no chip is ever
+ * painted on a refused span; `projection-diagnostics.test.ts` and
+ * `mount.ts`'s own forwarding are what prove the affordance itself now
+ * reaches a consumer.
  */
 import type { GeneratedView, GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 

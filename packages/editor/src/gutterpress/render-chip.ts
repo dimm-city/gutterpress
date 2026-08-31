@@ -115,13 +115,17 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
     }
     dom.appendChild(sourceEl);
   } else {
-    // raw-html (or any future non-"structured" kind): the P1b2 bare-dom
-    // fallback — no segments, caret entry lands at the block's own start —
-    // rendered as an inert source preview (see this module's header on
-    // sanitization).
+    // raw-html/plugin-region (or any future non-"structured" kind): the
+    // P1b2 bare-dom fallback — no segments, caret entry lands at the
+    // block's own start — rendered as an inert source preview (see this
+    // module's header on sanitization). `plan.inactivePreviewText` (SFE-P2c
+    // repair round 1 — see `plan.ts`'s own header) prefers the pipeline's
+    // own rendered fragment over the raw authored text when the projection
+    // supplies one; still written via `.textContent` only, so the
+    // script-payload inertness proof is unaffected by WHICH string this is.
     const pre = doc.createElement("pre");
     pre.className = `${CHIP_ROOT_CLASS}__source ${CHIP_ROOT_CLASS}__source--inert`;
-    pre.textContent = plan.sourceText;
+    pre.textContent = plan.inactivePreviewText;
     dom.appendChild(pre);
   }
 

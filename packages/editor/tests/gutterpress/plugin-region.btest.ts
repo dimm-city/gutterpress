@@ -105,6 +105,9 @@ async function hostVersion(): Promise<number> {
 async function scriptRan(): Promise<boolean> {
   return harness.page.evaluate(() => window.__gpPluginScriptRan === true);
 }
+async function diagnosticLog() {
+  return harness.page.evaluate(() => window.__gpGutterpressPlugin.diagnosticLog());
+}
 
 /** AP-21 liveness: the mounted container really has the expected block/chip counts before any behavioral assertion proceeds. */
 async function requireCounts(blocks: number, chips: number): Promise<void> {
@@ -140,12 +143,18 @@ describe("evidence-bearing plugin-region: inactive view", () => {
     expect(chip.className).toContain("gp-block-chip");
     expect(chip.className).toContain("gp-block-chip--plugin-region");
     expect(chip.textContent).toContain("plugin-region");
-    // Exact consumed source, byte-for-byte -- the "plugin's own produced
-    // HTML" this run's projection actually supplies for this kind is its
-    // own AUTHORED SOURCE (see plan.ts's "PLUGIN-REGION (SFE-P2c)" header
-    // section): no inactiveHtml field, so this IS the rendered content.
-    expect(chip.textContent).toContain(ASIDE_LINE);
-    // Safe view attribute carried onto the chip (AP-06).
+    // SFE-P2c repair round 1: the inert preview now shows the PLUGIN'S OWN
+    // rendered HTML (editor-projection.ts's `inactiveHtml`, rendered via
+    // the SAME md.renderer/rule set the print path uses), NOT the raw
+    // authored "@@aside ..." marker line -- see plan.ts's own header,
+    // "WHAT 'THE PLUGIN'S OWN PRODUCED HTML' MEANS", for the corrected
+    // decision record this supersedes.
+    expect(chip.textContent).toContain("<aside");
+    expect(chip.textContent).not.toContain(ASIDE_LINE);
+    // The rendered fragment carries the label attribute's payload too --
+    // proving the RENDERED content, not merely a hardcoded tag name.
+    expect(chip.textContent).toContain(SCRIPT_PAYLOAD);
+    // Safe view attribute carried onto the chip separately (AP-06).
     expect(chip.textContent).toContain(`data-aside-label="${SCRIPT_PAYLOAD}"`);
   });
 });
@@ -208,7 +217,11 @@ describe("two-state: activation, deactivation restores the chip with zero drift"
     await requireCounts(TOTAL_BLOCK_COUNT, 1);
     const restored = await chipInfo(0);
     expect(restored.className).toContain("gp-block-chip");
-    expect(restored.textContent).toContain(ASIDE_LINE);
+    // SFE-P2c repair round 1: the restored INACTIVE chip shows the
+    // plugin's own rendered HTML again (see the "inactive view" describe
+    // block above for the full rationale) -- not the raw marker line.
+    expect(restored.textContent).toContain("<aside");
+    expect(restored.textContent).not.toContain(ASIDE_LINE);
     // Zero drift: still the exact original text/version.
     expect(await hostText()).toBe(originalHostText);
     expect(await hostVersion()).toBe(originalVersion);
@@ -264,6 +277,18 @@ describe("refused plugin-region (no source-range evidence): no chip anywhere, st
     expect(asideClassName).not.toContain("gp-block-chip");
   });
 
+  test("SFE-P2c repair round 1 (finding 5): the refusal's own rule-named diagnostic reaches onDiagnostic -- the document-level 'edit in source' affordance G-06/G-07 require, even though no per-block chip exists", async () => {
+    await mount(FIXTURE_SOURCE, false);
+    await requireCounts(TOTAL_BLOCK_COUNT, 0);
+
+    const log = await diagnosticLog();
+    expect(log.length).toBeGreaterThan(0);
+    const refusal = log.find((d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION");
+    expect(refusal).toBeDefined();
+    expect(refusal!.message).toContain("plugin_aside_open");
+    expect(refusal!.safeAction).toBe("Edit in source mode.");
+  });
+
   test("the refused span stays directly, plainly editable -- a real keystroke reaches the host with no activation step", async () => {
     const selector = await mount(FIXTURE_SOURCE, false);
     await requireCounts(TOTAL_BLOCK_COUNT, 0);
@@ -284,6 +309,14 @@ describe("refused plugin-region (no source-range evidence): no chip anywhere, st
     expect(await hostVersion()).toBe(1);
     expect(await chipCount()).toBe(0);
     expect(await scriptRan()).toBe(false);
+  });
+});
+
+describe("SFE-P2c repair round 1 (finding 5): a cleanly-projected document forwards NO diagnostics", () => {
+  test("the evidence-bearing (fully successful) mount's diagnosticLog stays empty -- the forwarding channel is not a blanket per-mount notice", async () => {
+    await mount(FIXTURE_SOURCE, true);
+    await requireCounts(TOTAL_BLOCK_COUNT, 1);
+    expect(await diagnosticLog()).toEqual([]);
   });
 });
 

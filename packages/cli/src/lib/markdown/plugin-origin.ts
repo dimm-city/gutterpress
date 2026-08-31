@@ -120,15 +120,41 @@
  * and this module cannot itself become a source of the very ambiguity it
  * exists to detect.
  *
+ * PART 1 ADDENDUM (SFE-P2c repair round 1) — the anchors above are the WIDE
+ * FALLBACK ONLY, used when no plugin core-rule name can be identified
+ * between them. Whenever at least one CAN be identified,
+ * {@link registerPluginOriginCapture} brackets the actual plugin rule(s)
+ * TIGHTLY instead — see {@link computeTightPluginRuleBracket}'s own doc
+ * comment for the full design. This closes a confirmed defect the wide
+ * bracket had: Gutterpress's OWN always-on base-pipeline rules that run
+ * strictly between a `.after("layout_transform", …)`-registered plugin rule
+ * and `inline_source_raw_html` — `footnote_tail` (relocates footnote-
+ * definition tokens to the end of `state.tokens`) and `curly_attributes`
+ * (splices out `{.class}` paragraph triples) both do — were previously
+ * captured INSIDE the snapshot pair, so an ordinary footnoted or
+ * `{.attrs}`-bearing document could trip PART 2 shape 1's global
+ * survivor-order check and have that reorder fabricated-attributed to
+ * whichever plugin rule happened to be the only one registered, even though
+ * it never touched the reordered tokens. The ruler's structure is fixed by
+ * the time `registerPluginOriginCapture` first runs for a given `md` (every
+ * plugin registers its own core rule via `applyPlugins`, host-side, before
+ * this module or `createEditorProjection` ever sees `md`), so tightening is
+ * a one-time computation, not a per-parse cost.
+ *
  * ============================================================================
  * PART 2 — DIFF: object identity, then the four rules verbatim
  * ============================================================================
  *
- * Given `before` (right after `layout_transform`) and `after` (right before
- * `inline_source_raw_html`, i.e. the SAME array `editor-projection.ts`
- * itself walks — nothing between this module's own "after" rule and the
- * caller's use of `tokens` reassigns `state.tokens`, only annotates
- * attributes), rule 2 (survivors keep their own evidence) is NOT this
+ * Given `before` and `after` — the two arrays captured at THIS module's own
+ * bracket boundary (wide or, since SFE-P2c repair round 1, tight — see
+ * {@link registerPluginOriginCapture}), used DIRECTLY by
+ * {@link resolvePluginTokenOrigin} rather than substituted with whatever
+ * array the caller happens to hold once `md.parse()` fully completes (that
+ * substitution was the exact bug the repair round closed: under a tight
+ * bracket, base-pipeline rules running AFTER this module's own "after" rule
+ * — `footnote_tail`, `curly_attributes` — DO further mutate `state.tokens`
+ * before the caller ever sees it, so the two arrays are no longer
+ * interchangeable) — rule 2 (survivors keep their own evidence) is NOT this
  * module's concern at all — `editor-projection.ts` already handles every
  * token that carries its own `data-source-range` directly, before this
  * module is ever consulted (see that module's "EVIDENCE-BEARING PLUGIN-
@@ -162,12 +188,28 @@
  *      This is intentionally the most conservative of the six checks: it
  *      trades recall for the only kind of soundness a pure identity diff can
  *      actually prove.
- *   2. MULTIPLE OVERLAPPING SPLICES / COPY — a token (queried, or a
- *      candidate anchor) that appears MORE THAN ONCE in `after` by `===`.
- *      Object identity makes a literal duplicate detectable in O(1) via a
- *      count map; a duplicated token cannot honestly be "the" survivor
- *      anchor for any one local analysis, and a duplicated queried token
- *      cannot honestly originate from one source region.
+ *   2. MULTIPLE OVERLAPPING SPLICES / COPY — TWO checks, both required
+ *      (SFE-P2c repair round 1 added the second): (2a) a token (queried, or
+ *      a candidate anchor) that appears MORE THAN ONCE in `after` by `===`
+ *      — object-identity duplication, detectable in O(1) via a count map; a
+ *      duplicated token cannot honestly be "the" survivor anchor for any
+ *      one local analysis, and a duplicated queried token cannot honestly
+ *      originate from one source region. This shape is close to
+ *      unreachable from a REAL plugin (every `new state.Token(...)` call is
+ *      a fresh object), so it is the shape the run spec's own vocabulary
+ *      names "copy" but a realistic fixture essentially never produces.
+ *      (2b) the shape a real plugin DOES produce: more than one
+ *      nesting===1 "open" token — each its own fresh object — sitting in
+ *      the ADDED run between the SAME two nearest surviving anchors (one
+ *      consumed run replaced by several SIBLING output regions, e.g. one
+ *      `hr` replaced by a `plugin_a_open/close` pair PLUS a
+ *      `plugin_b_open/close` pair, neither wrapping the other). Every
+ *      no-evidence token queried from that same added run independently
+ *      recomputes the identical anchor pair and therefore refuses
+ *      identically, so no block is ever emitted for any of them —
+ *      `ProjectedBlock.id` uniqueness and the "never overlapping" invariant
+ *      hold by construction, not by which sibling happened to be queried
+ *      first.
  *   3. MOVED TOKENS — a `before`-side token this module is about to declare
  *      "removed" (i.e. it lies in the computed removed run) is found to
  *      still be present in `after` (anywhere, by `===`). It was relocated,
@@ -242,6 +284,7 @@
  */
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
+import type { RuleCore } from "markdown-it/lib/parser_core.mjs";
 
 // ── capture: rule names and registration ────────────────────────────────────
 
@@ -311,38 +354,115 @@ function pluginRuleNamesBetweenAnchors(md: MarkdownIt): readonly string[] {
   return names;
 }
 
+interface TightPluginBracket {
+  readonly firstPluginRuleName: string;
+  readonly lastPluginRuleName: string;
+}
+
+/**
+ * SFE-P2c repair round 1 — TIGHTENS the bracket around the actual plugin
+ * rule(s) instead of always using the WIDE `layout_transform`/
+ * `inline_source_raw_html` anchors. Closes a confirmed finding: the wide
+ * bracket also captures Gutterpress's OWN always-on base-pipeline mutators
+ * (`footnote_tail` relocates footnote-definition tokens to the end of
+ * `state.tokens`; `curly_attributes` splices out `{.class}` paragraph
+ * triples) whenever they run between a `.after("layout_transform", …)`-
+ * registered plugin rule and `inline_source_raw_html` — which, per the
+ * empirical probe above, they always do for that registration shape. A
+ * base-pipeline relocation tripped the GLOBAL survivor-order check
+ * (PART 2, shape 1) and had a plugin rule NAME fabricated as the cause via
+ * `describeRule`, even though that rule never touched the reordered tokens.
+ *
+ * SOUND BECAUSE THE RULER IS STATIC BY THE TIME THIS RUNS: project plugins
+ * are always registered via `applyPlugins` BEFORE `createEditorProjection`
+ * (and therefore before `registerPluginOriginCapture`) ever sees `md` (§5/D12
+ * — plugins load host-side); `md.parse()` itself never adds, removes, or
+ * reorders a CORE RULE mid-parse (only tokens). So every plugin core-rule
+ * NAME and POSITION is already fixed in `__rules__` the first time this is
+ * called for a given `md`, and stays fixed for that `md`'s lifetime — this
+ * is a one-time computation, not a per-parse one.
+ *
+ * Scans strictly between the WIDE anchors for every rule name NOT in
+ * {@link KNOWN_NON_PLUGIN_CORE_RULE_NAMES} and returns the FIRST and LAST
+ * such name (both the same name when only one plugin rule is registered —
+ * the common, fully-solved case: `PLUGIN_ORIGIN_BEFORE_RULE`/
+ * `PLUGIN_ORIGIN_AFTER_RULE` land immediately either side of that ONE rule,
+ * excluding `inline`/`footnote_tail`/`curly_attributes`/etc. entirely, no
+ * matter where in the wide span they fall). Returns `null` when NO plugin
+ * rule name is found (a plain/plugin-free `md`, or a `.push()`-registered
+ * plugin whose rule genuinely runs where base-pipeline rules also do,
+ * covered below) — the caller then falls back to the WIDE anchors,
+ * unchanged from before this repair.
+ *
+ * RESIDUAL GAP, RECORDED RATHER THAN HIDDEN (matches this file's own
+ * "HONEST VERDICT" convention): when TWO OR MORE plugin rules are
+ * registered at DIFFERENT positions with a base-pipeline rule genuinely
+ * between them (e.g. one plugin anchored `.after("layout_transform", …)`,
+ * a second `.push()`-registered, landing after `gp_pin_scope_check`), the
+ * tight bracket still necessarily spans both plugins AND every base rule
+ * between them — the same contamination this repair closes for the
+ * single-plugin case can still occur there. This is not a regression: the
+ * bracket is never WIDER than before, only ever equal or narrower, so no
+ * previously-sound recovery becomes unsound; `describeRule`'s "more than
+ * one plugin rule active" branch already declines to name a single rule in
+ * exactly this multi-plugin shape, so no fabricated attribution results
+ * either way.
+ */
+function computeTightPluginRuleBracket(md: MarkdownIt): TightPluginBracket | null {
+  const entries = coreRuleEntries(md);
+  const wideBeforeIdx = entries.findIndex((rule) => rule.name === ORIGIN_ANCHOR_BEFORE);
+  const wideAfterIdx = entries.findIndex((rule) => rule.name === ORIGIN_ANCHOR_AFTER);
+  if (wideBeforeIdx === -1 || wideAfterIdx === -1 || wideAfterIdx <= wideBeforeIdx) return null;
+
+  let firstPluginRuleName: string | null = null;
+  let lastPluginRuleName: string | null = null;
+  for (let i = wideBeforeIdx + 1; i < wideAfterIdx; i++) {
+    const name = entries[i]!.name;
+    if (KNOWN_NON_PLUGIN_CORE_RULE_NAMES.has(name)) continue;
+    firstPluginRuleName ??= name;
+    lastPluginRuleName = name;
+  }
+  if (firstPluginRuleName === null || lastPluginRuleName === null) return null;
+  return { firstPluginRuleName, lastPluginRuleName };
+}
+
 /**
  * Register the before/after snapshot rule pair on `md`, bracketing the
- * region a project plugin's own core rule(s) run in (see header PART 1).
+ * region a project plugin's own core rule(s) run in (see header PART 1 for
+ * the wide anchors, and {@link computeTightPluginRuleBracket}'s own doc
+ * comment for the tightened bracket this function prefers whenever at least
+ * one plugin rule is identifiable).
  *
  * Idempotent (checked via the SAME `__rules__` introspection, not a
  * module-level registry — AP-30, no mutable global state) — safe to call on
  * every `createEditorProjection` invocation even when `md` is reused across
  * many calls (e.g. a host caching one configured instance per project).
  *
- * A no-op, NEVER a throw, when either anchor is absent — a bare `MarkdownIt`
- * with no Gutterpress pipeline applied (several existing P2b/P2c fixtures
- * construct one directly) has neither name, and every downstream origin
- * query then sees "no snapshot available" and refuses, exactly like any
- * other insufficient-evidence case; it does not corrupt or block anything
- * else `md.parse()` does.
+ * A no-op, NEVER a throw, when either WIDE anchor is absent — a bare
+ * `MarkdownIt` with no Gutterpress pipeline applied (several existing
+ * P2b/P2c fixtures construct one directly) has neither name, and every
+ * downstream origin query then sees "no snapshot available" and refuses,
+ * exactly like any other insufficient-evidence case; it does not corrupt or
+ * block anything else `md.parse()` does.
  *
  * The two rules themselves only ever `state.tokens.slice()` (read-only) into
  * `state.env` — never mutate a token or `state.tokens` — so rendered output
  * is provably unaffected (SFE-P2c: "Rendered book/preview/PDF output
- * byte-identical").
+ * byte-identical"), regardless of which anchors they land on.
  */
 export function registerPluginOriginCapture(md: MarkdownIt): void {
   if (coreRuleExists(md, PLUGIN_ORIGIN_BEFORE_RULE)) return;
   if (!coreRuleExists(md, ORIGIN_ANCHOR_BEFORE) || !coreRuleExists(md, ORIGIN_ANCHOR_AFTER)) return;
 
-  md.core.ruler.after(ORIGIN_ANCHOR_BEFORE, PLUGIN_ORIGIN_BEFORE_RULE, (state) => {
+  const tight = computeTightPluginRuleBracket(md);
+
+  const snapshotBefore: RuleCore = (state) => {
     const env = state.env as Record<string, unknown> | null | undefined;
     if (!env || typeof env !== "object") return;
     (env as Record<string, unknown>)[ENV_KEY] = { before: state.tokens.slice() };
-  });
+  };
 
-  md.core.ruler.before(ORIGIN_ANCHOR_AFTER, PLUGIN_ORIGIN_AFTER_RULE, (state) => {
+  const snapshotAfter: RuleCore = (state) => {
     const env = state.env as Record<string, unknown> | null | undefined;
     if (!env || typeof env !== "object") return;
     const bucket = (env as Record<string, unknown>)[ENV_KEY] as { before?: readonly Token[] } | undefined;
@@ -351,7 +471,21 @@ export function registerPluginOriginCapture(md: MarkdownIt): void {
       after: state.tokens.slice(),
       pluginRuleNames: pluginRuleNamesBetweenAnchors(md),
     };
-  });
+  };
+
+  if (tight) {
+    // Tight: bracket ONLY the identified plugin rule(s), excluding every
+    // base-pipeline rule outside that exact span even if it would have
+    // fallen inside the wide bracket.
+    md.core.ruler.before(tight.firstPluginRuleName, PLUGIN_ORIGIN_BEFORE_RULE, snapshotBefore);
+    md.core.ruler.after(tight.lastPluginRuleName, PLUGIN_ORIGIN_AFTER_RULE, snapshotAfter);
+  } else {
+    // Wide fallback: no plugin rule identifiable between the wide anchors
+    // (plain/plugin-free `md`) — unchanged from this module's original
+    // design.
+    md.core.ruler.after(ORIGIN_ANCHOR_BEFORE, PLUGIN_ORIGIN_BEFORE_RULE, snapshotBefore);
+    md.core.ruler.before(ORIGIN_ANCHOR_AFTER, PLUGIN_ORIGIN_AFTER_RULE, snapshotAfter);
+  }
 }
 
 interface PluginOriginSnapshot {
@@ -480,7 +614,8 @@ export function resolvePluginTokenOriginFromSnapshot(
     previousAfterIdx = afterIdx;
   }
 
-  // Shape 2 — COPY / MULTIPLE OVERLAPPING SPLICES: the queried token itself
+  // Shape 2a — COPY / MULTIPLE OVERLAPPING SPLICES (object-identity
+  // duplicate): the queried token itself
   // is duplicated by object identity in `after`.
   if ((afterCount.get(token) ?? 0) > 1) {
     return {
@@ -508,6 +643,38 @@ export function resolvePluginTokenOriginFromSnapshot(
         `an origin search for "${token.type}" (produced by ${rule}) — the entire document ` +
         `was consumed and replaced with no carrier left as a boundary (consume-all). Edit ` +
         `this content in source mode.`,
+    };
+  }
+
+  // Shape 2b — COPY, the shape rule 4 actually names ("one source region
+  // producing several output regions"): more than one nesting===1 "open"
+  // token sits in the ADDED run between the two nearest surviving anchors.
+  // This is DISTINCT from shape 2 above: that catches ONE token appearing
+  // TWICE in `after` by object `===` identity — a shape a real plugin
+  // essentially never produces, since every `new state.Token(...)` call
+  // creates a fresh object. This catches the REALISTIC copy shape instead:
+  // two (or more) DIFFERENT sibling output tokens, each its own fresh
+  // object, both claiming the SAME consumed run as their origin (e.g. one
+  // consumed `hr` replaced by a sibling `plugin_a_open/close` PLUS a
+  // sibling `plugin_b_open/close` pair, not one wrapping the other).
+  // Every no-evidence token queried from this same added run independently
+  // recomputes the SAME two anchors and therefore refuses identically here
+  // — no block is ever emitted for ANY of them, so `ProjectedBlock.id`
+  // uniqueness and the "never overlapping" invariant both hold by
+  // construction, not by accident of which token happened to be queried
+  // first.
+  let addedOpenCount = 0;
+  for (let i = leftAfterIdx + 1; i < rightAfterIdx; i++) {
+    if (after[i]!.nesting === 1) addedOpenCount++;
+  }
+  if (addedOpenCount > 1) {
+    return {
+      ok: false,
+      reason:
+        `Refusing: ${rule} replaced one consumed run with ${addedOpenCount} new top-level ` +
+        `tokens instead of one — a single source region cannot honestly be attributed to ` +
+        `several output regions at once (copy: one source region producing several output ` +
+        `regions). Edit this content in source mode.`,
     };
   }
 
@@ -583,13 +750,34 @@ export function resolvePluginTokenOriginFromSnapshot(
  * (never throws) when no snapshot is available — a `md` that never had
  * {@link registerPluginOriginCapture} run successfully against it (missing
  * anchors), or an `env` that was never threaded through `md.parse()`.
+ *
+ * SFE-P2c repair round 1 — SIGNATURE CHANGE, closing a latent correctness
+ * bug this module's own header PART 2 asserted away rather than proved: the
+ * PREVIOUS signature accepted the CALLER's own `tokenIndex`/`tokens` (always
+ * `editor-projection.ts`'s fully-completed `md.parse()` result) and used
+ * THAT as the "after" side of the diff, discarding `snapshot.after`
+ * entirely. Header PART 2 justified this by claiming "nothing between this
+ * module's own 'after' rule and the caller's use of `tokens` reassigns
+ * `state.tokens`, only annotates attributes" — true ONLY for the WIDE
+ * bracket (the after-anchor sits right before `inline_source_raw_html`,
+ * near the very end of the pipeline). Once `registerPluginOriginCapture`
+ * TIGHTENS the bracket around a single plugin rule (this repair round —
+ * see that function's own doc comment), that claim becomes FALSE: the
+ * caller's `tokens` still reflects the FULL pipeline, including
+ * `footnote_tail`/`curly_attributes` relocations the tight snapshot was
+ * specifically built to exclude, so using the caller's array as "after"
+ * silently reintroduced the exact contamination the tightened bracket was
+ * meant to remove.
+ *
+ * The fix: use `snapshot.after` — the array actually captured at THIS
+ * module's own bracket boundary, tight or wide — as the sole "after" side,
+ * locating `token`'s own position within it by object identity (the same
+ * technique this module uses everywhere else) rather than trusting a
+ * caller-supplied index into a DIFFERENT array. `tokenIndex`/`tokens` are
+ * therefore no longer accepted — keeping them would invite exactly this
+ * mismatch again. Every call site now passes only `(token, env)`.
  */
-export function resolvePluginTokenOrigin(
-  token: Token,
-  tokenIndex: number,
-  tokens: readonly Token[],
-  env: unknown,
-): PluginOriginResult {
+export function resolvePluginTokenOrigin(token: Token, env: unknown): PluginOriginResult {
   const snapshot = readPluginOriginSnapshot(env);
   if (!snapshot) {
     return {
@@ -601,5 +789,22 @@ export function resolvePluginTokenOrigin(
         `Edit this content in source mode.`,
     };
   }
-  return resolvePluginTokenOriginFromSnapshot(token, tokenIndex, tokens, snapshot.before, snapshot.pluginRuleNames);
+  const tokenIndex = snapshot.after.indexOf(token);
+  if (tokenIndex === -1) {
+    return {
+      ok: false,
+      reason:
+        `Refusing: "${token.type}" was not present, by object identity, in the plugin-origin ` +
+        `snapshot captured at this module's own bracket boundary — it may have been created ` +
+        `by a core rule registered outside the bracket this module could establish for this ` +
+        `document (see plugin-origin.ts's own header, PART 1). Edit this content in source mode.`,
+    };
+  }
+  return resolvePluginTokenOriginFromSnapshot(
+    token,
+    tokenIndex,
+    snapshot.after,
+    snapshot.before,
+    snapshot.pluginRuleNames,
+  );
 }

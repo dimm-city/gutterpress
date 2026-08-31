@@ -38,8 +38,29 @@ import {
   PLUGIN_ORIGIN_BEFORE_RULE,
   PLUGIN_ORIGIN_AFTER_RULE,
 } from "./plugin-origin";
-import { createEditorProjection } from "./editor-projection";
+import { createEditorProjection, type GutterpressProjection, type ProjectedBlock } from "./editor-projection";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
+
+/**
+ * Duplicated from `editor-projection-plugins.test.ts` (not exported there —
+ * a small, stable test-only assertion, not production code, so a same-repo
+ * per-file copy is the repo's own established convention rather than a
+ * cross-test-file import). Asserts D6's "ordered, disjoint, never
+ * overlapping" invariant end to end.
+ */
+function assertSortedNonOverlapping(projection: GutterpressProjection, source: string): void {
+  let previous: ProjectedBlock | null = null;
+  for (const block of projection.blocks) {
+    expect(block.from).toBeGreaterThanOrEqual(0);
+    expect(block.from).toBeLessThan(block.to);
+    expect(block.to).toBeLessThanOrEqual(source.length);
+    if (previous) {
+      expect(block.from).toBeGreaterThanOrEqual(previous.from);
+      expect(previous.to).toBeLessThanOrEqual(block.from);
+    }
+    previous = block;
+  }
+}
 
 function ruleNames(md: MarkdownIt): string[] {
   return (md.core.ruler as unknown as { __rules__: Array<{ name: string }> }).__rules__.map(
@@ -114,7 +135,7 @@ describe("empirical core-rule chain probe (documents plugin-origin.ts's header P
     expect(names.indexOf("probe_after_layout_rule")).toBeLessThan(names.indexOf("inline"));
   });
 
-  test("registerPluginOriginCapture's lazy before-marker lands BEFORE an already-registered after(layout_transform) plugin rule, bracketing it correctly", () => {
+  test("registerPluginOriginCapture's TIGHT bracket lands immediately either side of a single after(layout_transform) plugin rule, excluding inline/footnote_tail/curly_attributes entirely (SFE-P2c repair round 1 — replaces the round-0 assertion that pinned the WIDE bracket as the only behavior)", () => {
     const md = createMarkdownRenderer([
       {
         name: "probe-after-layout-plugin",
@@ -125,10 +146,41 @@ describe("empirical core-rule chain probe (documents plugin-origin.ts's header P
     ]);
     registerPluginOriginCapture(md);
     const names = ruleNames(md);
+    // Tight: PLUGIN_ORIGIN_BEFORE_RULE lands immediately before the plugin's
+    // own rule, PLUGIN_ORIGIN_AFTER_RULE immediately after it — both still
+    // strictly before `inline`, so `footnote_tail`/`curly_attributes` (which
+    // only ever run after `inline`) fall OUTSIDE the bracket, closing the
+    // base-pipeline-contamination finding this repair round fixes.
     expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBeGreaterThan(names.indexOf("layout_transform"));
-    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBeLessThan(names.indexOf("probe_after_layout_rule"));
+    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBe(names.indexOf("probe_after_layout_rule") - 1);
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBe(names.indexOf("probe_after_layout_rule") + 1);
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("inline"));
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("footnote_tail"));
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("curly_attributes"));
+  });
+
+  test("registerPluginOriginCapture falls back to the WIDE bracket when no plugin core rule is identifiable between the anchors (a plain md)", () => {
+    const md = createMarkdownRenderer();
+    registerPluginOriginCapture(md);
+    const names = ruleNames(md);
+    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBeGreaterThan(names.indexOf("layout_transform"));
+    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBeLessThan(names.indexOf("inline"));
     expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeGreaterThan(names.indexOf("gp_pin_scope_check"));
     expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBeLessThan(names.indexOf("inline_source_raw_html"));
+  });
+
+  test("a push()-registered plugin rule (landing after gp_pin_scope_check) also gets a TIGHT bracket, not the wide one", () => {
+    const md = createMarkdownRenderer([
+      {
+        name: "probe-push-plugin",
+        options: {},
+        plugin: (m: MarkdownIt) => m.core.ruler.push("probe_push_rule", () => {}),
+      },
+    ]);
+    registerPluginOriginCapture(md);
+    const names = ruleNames(md);
+    expect(names.indexOf(PLUGIN_ORIGIN_BEFORE_RULE)).toBe(names.indexOf("probe_push_rule") - 1);
+    expect(names.indexOf(PLUGIN_ORIGIN_AFTER_RULE)).toBe(names.indexOf("probe_push_rule") + 1);
   });
 
   test("registration is idempotent: calling it twice does not duplicate either bracket rule", () => {
@@ -218,7 +270,7 @@ describe("rule 3 — clean-splice recovery (the required happy path)", () => {
     const openIdx = tokens.findIndex((t) => t.type === "plugin_tip_open");
     expect(openIdx).toBeGreaterThanOrEqual(0);
 
-    const result = resolvePluginTokenOrigin(tokens[openIdx]!, openIdx, tokens, env);
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, env);
     expect(result.ok).toBe(true);
     if (result.ok) {
       // "---" is source line 2 (0-based line 2), a single-line map [2, 3].
@@ -289,6 +341,94 @@ describe("refusal matrix — shape 2: copy (the queried token itself is duplicat
   });
 });
 
+describe("refusal matrix — shape 2b: copy, the REALISTIC shape (one consumed region producing two DIFFERENT sibling output regions)", () => {
+  test("hand-built: two distinct fresh objects both claim the same removed run refuses, naming 'copy', for EITHER sibling queried", () => {
+    const survivorLeft = new Token("paragraph_open", "p", 1);
+    survivorLeft.map = [0, 1];
+    const survivorRight = new Token("paragraph_open", "p", 1);
+    survivorRight.map = [4, 5];
+    const removed = new Token("paragraph_open", "p", 1);
+    removed.map = [2, 3];
+    const openA = new Token("plugin_a_open", "div", 1);
+    const closeA = new Token("plugin_a_close", "div", -1);
+    const openB = new Token("plugin_b_open", "div", 1);
+    const closeB = new Token("plugin_b_close", "div", -1);
+
+    const before = [survivorLeft, removed, survivorRight];
+    const after = [survivorLeft, openA, closeA, openB, closeB, survivorRight];
+    // Liveness proxy: two DIFFERENT objects (not the identity-duplicate
+    // shape 2a already covers), both nesting===1 opens, sitting in the
+    // ADDED run between survivorLeft and survivorRight (index 1..4).
+    expect(openA).not.toBe(openB);
+    expect(after.slice(1, 5).filter((t) => t.nesting === 1)).toHaveLength(2);
+
+    for (const [queried, idx] of [
+      [openA, 1],
+      [openB, 3],
+    ] as const) {
+      const result = resolvePluginTokenOriginFromSnapshot(queried, idx, after, before, ["copy_plugin_rule"]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/copy/i);
+        expect(result.reason).toMatch(/copy_plugin_rule/);
+      }
+    }
+  });
+
+  test("end to end through createEditorProjection: a real registered plugin rule replacing one consumed hr with TWO sibling wrapper pairs refuses for both, yielding zero blocks (not two blocks with duplicate ids and overlapping ranges)", () => {
+    const source = "Intro paragraph.\n\n---\n\nOutro paragraph.\n";
+    const md = createMarkdownRenderer([
+      {
+        name: "copy-plugin",
+        options: {},
+        plugin: (m: MarkdownIt) =>
+          m.core.ruler.after("layout_transform", "copy_plugin_transform", (state) => {
+            const out: typeof state.tokens = [];
+            for (const tok of state.tokens) {
+              if (tok.type === "hr") {
+                out.push(new state.Token("plugin_a_open", "div", 1));
+                out.push(new state.Token("plugin_a_close", "div", -1));
+                out.push(new state.Token("plugin_b_open", "div", 1));
+                out.push(new state.Token("plugin_b_close", "div", -1));
+                continue;
+              }
+              out.push(tok);
+            }
+            state.tokens = out;
+          }),
+      },
+    ]);
+
+    // AP-21 liveness: prove the transform actually produced BOTH sibling
+    // regions before any refusal assertion.
+    const tokenTypes = md.parse(source, {}).map((t) => t.type);
+    expect(tokenTypes).toContain("plugin_a_open");
+    expect(tokenTypes).toContain("plugin_b_open");
+    expect(tokenTypes).not.toContain("hr");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+
+    // The defect this fixture reproduces: BEFORE this repair, both siblings
+    // were accepted with the identical union range, yielding duplicate
+    // `ProjectedBlock.id`s and `blocks[0].to > blocks[1].from`. After this
+    // repair, rule 4's copy shape refuses for both — zero blocks, two
+    // rule-named diagnostics, document stays fully editable.
+    expect(projection.blocks.filter((b) => b.kind === "plugin-region")).toHaveLength(0);
+    const copyRefusals = projection.diagnostics.filter((d) => d.reason.match(/copy/i));
+    expect(copyRefusals).toHaveLength(2);
+    for (const d of copyRefusals) {
+      expect(d.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
+      expect(d.reason).toMatch(/copy_plugin_transform/);
+    }
+
+    // The block ids/overlap invariants the finding's own header (D6) pins:
+    // trivially true here since zero blocks are emitted, but assert the
+    // general-purpose helper anyway so a future regression that DOES start
+    // emitting blocks for this shape is still caught.
+    assertSortedNonOverlapping(projection, source);
+  });
+});
+
 describe("refusal matrix — shape 3: moved tokens (a removed-run member reappears elsewhere)", () => {
   test("a token this module is about to declare 'removed' but which is duplicated elsewhere in the transformed stream refuses as moved", () => {
     const survivorLeft = new Token("paragraph_open", "p", 1);
@@ -344,7 +484,7 @@ describe("refusal matrix — shape 4: consume-all with no carrier", () => {
     const env: Record<string, unknown> = {};
     registerPluginOriginCapture(md);
     const tokens = md.parse(source, env);
-    const result = resolvePluginTokenOrigin(tokens[0]!, 0, tokens, env);
+    const result = resolvePluginTokenOrigin(tokens[0]!, env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toMatch(/consume-all/i);
@@ -425,7 +565,7 @@ describe("refusal matrix — shape 6: partial evidence in the removed run", () =
     registerPluginOriginCapture(md);
     const tokens = md.parse(source, env);
     const openIdx = tokens.findIndex((t) => t.type === "plugin_note_open");
-    const result = resolvePluginTokenOrigin(tokens[openIdx]!, openIdx, tokens, env);
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toMatch(/partial evidence/i);
@@ -501,7 +641,7 @@ describe("rule-name attribution", () => {
     // shape-6 test above; here we assert the SUCCESS path also carries no
     // stray "could not be identified" text, proving attribution isn't
     // fabricated when it isn't needed.
-    const result = resolvePluginTokenOrigin(tokens[openIdx]!, openIdx, tokens, env);
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, env);
     expect(result.ok).toBe(true);
   });
 
@@ -547,7 +687,7 @@ describe("integration fallback — no snapshot available", () => {
   test("resolvePluginTokenOrigin refuses cleanly (never throws) when registerPluginOriginCapture never bracketed this md", () => {
     const bare = new MarkdownIt({ html: true });
     const token = new Token("plugin_unbracketed_open", "div", 1);
-    const result = resolvePluginTokenOrigin(token, 0, [token], {});
+    const result = resolvePluginTokenOrigin(token, {});
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toMatch(/no before\/after plugin-origin snapshot is available/);
@@ -564,7 +704,65 @@ describe("integration fallback — no snapshot available", () => {
     // P2b's original `md.parse(source, {})` call site did before this run.
     const tokens = md.parse("Intro.\n\n---\n\nOutro.\n", {});
     const openIdx = tokens.findIndex((t) => t.type === "plugin_tip_open");
-    const result = resolvePluginTokenOrigin(tokens[openIdx]!, openIdx, tokens, undefined);
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, undefined);
     expect(result.ok).toBe(false);
+  });
+});
+
+// ── PART 7 — base-pipeline mutators do not contaminate origin recovery
+// (SFE-P2c repair round 1) ───────────────────────────────────────────────
+//
+// Reproduces the confirmed finding directly: `footnote_tail` (relocates
+// footnote-definition tokens to the end of `state.tokens`) and
+// `curly_attributes` (splices out a `{.class}` paragraph's own triple) are
+// BOTH always-on, base-pipeline core rules that used to run INSIDE the
+// wide bracket whenever a `.after("layout_transform", …)`-registered
+// plugin was the only plugin rule registered — tripping the global
+// survivor-order check (shape 1) on activity the plugin never caused, and
+// having `describeRule` fabricate that plugin's own name as the culprit.
+// `registerPluginOriginCapture`'s TIGHT bracket (see that function's own
+// doc comment) now excludes both entirely for this common single-plugin
+// shape, since neither rule runs before `inline` in the pipeline order.
+
+describe("footnote_tail does not contaminate origin recovery", () => {
+  test("a footnoted document alongside a clean-splice plugin still recovers a byte-exact plugin-region -- footnote_tail's own relocation runs OUTSIDE the tightened bracket", () => {
+    const source = "Text with a note[^1]\n\n[^1]: The note body.\n\n---\n\nAfter.\n";
+    const md = createMarkdownRenderer([tipMarkerPlugin()]);
+
+    // AP-21 liveness: footnote_tail really relocates the footnote body to
+    // the END of the stream (verified against the render path: the
+    // rendered footnote section appears AFTER "After.", not in its
+    // authored position), and the plugin's own transform really ran.
+    const rendered = md.render(source);
+    expect(rendered.indexOf("footnote-item")).toBeGreaterThan(rendered.indexOf("After."));
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_tip_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    const block = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(block).toBeDefined();
+    // Byte-exact recovery, unchanged by the unrelated footnote relocation.
+    expect(source.slice(block!.from, block!.to)).toBe("---\n");
+    expect(projection.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("curly_attributes does not contaminate origin recovery", () => {
+  test("a {.class}-bearing paragraph (curly_attributes splices its own attribute-line triple out of state.tokens) alongside a clean-splice plugin still recovers a byte-exact plugin-region", () => {
+    const source = "Styled paragraph.\n{.callout}\n\n---\n\nAfter.\n";
+    const md = createMarkdownRenderer([tipMarkerPlugin()]);
+
+    // AP-21 liveness: curly_attributes really merged the attribute line
+    // into the preceding paragraph (one triple, not two, with the class
+    // attached), and the plugin's own transform really ran.
+    const tokens = md.parse(source, {});
+    const styledParagraph = tokens.find((t) => t.type === "paragraph_open");
+    expect(styledParagraph?.attrGet("class")).toBe("callout");
+    expect(tokens.map((t) => t.type)).toContain("plugin_tip_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    const block = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(block).toBeDefined();
+    expect(source.slice(block!.from, block!.to)).toBe("---\n");
+    expect(projection.diagnostics).toHaveLength(0);
   });
 });

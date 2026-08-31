@@ -572,6 +572,65 @@ function markerLineLooksAuthored(source: string, from: number, to: number): bool
 // "PLUGIN-AWARENESS") ───────────────────────────────────────────────────────
 
 /**
+ * SFE-P2c repair round 1 — the plugin-region analogue of
+ * {@link markerLineLooksAuthored}, applied to BOTH the evidence-bearing
+ * (`token.map` set by the plugin itself) and Lane-B-recovered plugin-region
+ * ranges before either is trusted enough to become a `ProjectedBlock`.
+ * `plugin-region` previously had NO corroboration check at all — a claimed
+ * `[fromLine, toLine)` was converted straight to a char range and pushed.
+ * Three distinct over-claim shapes, all reproduced live, are refused here:
+ *
+ *   1. OUT-OF-BOUNDS LINE CLAIM — `toLine` past the number of lines
+ *      {@link buildLineStarts} actually recorded for `source` (e.g. a
+ *      plugin-set `token.map = [0, 99]` on a 5-line document). Left
+ *      unchecked, {@link lineStartOffset} silently CLAMPS `to` to
+ *      `source.length`, over-claiming the rest of the document as this
+ *      one token's own consumed source.
+ *   2. CONTAINER-PREFIX OVER-CLAIM — the range's FIRST physical line begins
+ *      with a leading blockquote/list container marker (`>`, a bullet, an
+ *      ordinal). `token.map`/a Lane-B recovered range is a LINE range, and
+ *      {@link charRangeForLines} widens it to WHOLE physical lines, so a
+ *      plugin marker nested under `> `/`- ` (e.g. `"> @@aside label"`)
+ *      would otherwise silently claim container bytes the plugin's own
+ *      parse never saw — the exact shape P2b's `markerLineLooksAuthored`
+ *      already refuses for the marker family; this generalizes it.
+ *   3. NESTED GUTTERPRESS MARKER — any physical line STRICTLY INSIDE the
+ *      claimed range (i.e. every line after the first) itself looks like
+ *      an authored Gutterpress marker declaration (the same `@` sigil
+ *      check `markerLineLooksAuthored` makes). A wrapper plugin that
+ *      preserves a marker token by identity while claiming a WIDE
+ *      `token.map`/union range around it would otherwise produce nested,
+ *      overlapping blocks — violating this module's own header invariant
+ *      ("blocks[i].to <= blocks[i + 1].from") by accident of token-stream
+ *      walk order rather than by construction.
+ *
+ * Only the FIRST line is checked for container-prefix over-claim (shape 2):
+ * a marker-family block legitimately nested inside its OWN correctly-
+ * projected container is a separate, already-handled case (P2b's own
+ * `markerLineLooksAuthored`), and a plugin-region's interior lines are the
+ * plugin's own consumed content, not something this module can validate
+ * beyond "it is not itself another authored Gutterpress marker" (shape 3).
+ */
+function pluginRegionLinesLookAuthored(
+  source: string,
+  starts: readonly number[],
+  fromLine: number,
+  toLine: number,
+): boolean {
+  if (toLine > starts.length) return false;
+  const firstLineText = source.slice(
+    lineStartOffset(starts, source, fromLine),
+    lineStartOffset(starts, source, fromLine + 1),
+  );
+  if (/^[ \t]*(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])/.test(firstLineText)) return false;
+  for (let line = fromLine + 1; line < toLine; line++) {
+    const lineText = source.slice(lineStartOffset(starts, source, line), lineStartOffset(starts, source, line + 1));
+    if (/^[ \t]*@/.test(lineText)) return false;
+  }
+  return true;
+}
+
+/**
  * Every nesting===1 "open" token type Gutterpress's OWN fixed base pipeline
  * — `createMarkdownRenderer()` with ZERO project plugins: markdown-it core
  * plus the always-on bundled rules (markdown-it-attrs, markdown-it-footnote,
@@ -626,6 +685,18 @@ const BASE_PIPELINE_OPEN_TOKEN_TYPES = new Set<string>([
 ]);
 
 /**
+ * A resolved plugin-region char range, OR a rule-named refusal reason
+ * (SFE-P2c repair round 1 — finding: the rich, rule-named reason
+ * `plugin-origin.ts` computes used to be discarded at the call site and
+ * replaced with one fixed generic string for all six rule-4 shapes; see
+ * {@link resolveMaplessPluginTokenOrigin} and its call site below, which
+ * now use `reason` directly as the projected diagnostic's text).
+ */
+type PluginRegionOrigin =
+  | { readonly ok: true; readonly range: readonly [number, number] }
+  | { readonly ok: false; readonly reason: string };
+
+/**
  * SFE-P2c Lane B INTEGRATION POINT (now wired) — see the run spec's "Origin
  * mechanism" section (docs/plans/source-first-editor/runs/SFE-P2c.md) and
  * `plugin-origin.ts`'s own module header for the full design: rule 3, a
@@ -636,41 +707,50 @@ const BASE_PIPELINE_OPEN_TOKEN_TYPES = new Set<string>([
  *
  * Called ONLY for a trusted, project-plugin-produced, nesting===1 open
  * token that carries NO `data-source-range` evidence of its own (the
- * evidence-bearing case is handled directly at the call site below and
- * never reaches this function) — Lane A's own branch and this function's
- * calling contract are UNCHANGED; only this function's BODY now does real
- * work, delegating entirely to `plugin-origin.ts`'s
- * `resolvePluginTokenOrigin`, which reads the before/after snapshot
- * `registerPluginOriginCapture` stashed on `env` during `md.parse()` (see
- * `createEditorProjection` below, where `env` is now threaded through
- * instead of being a throwaway `{}`).
+ * evidence-bearing case is handled directly at the call site below, and
+ * ALSO now runs through {@link pluginRegionLinesLookAuthored} there before
+ * being trusted). Delegates the recovery itself entirely to
+ * `plugin-origin.ts`'s `resolvePluginTokenOrigin`, which reads the
+ * before/after snapshot `registerPluginOriginCapture` stashed on `env`
+ * during `md.parse()` (see `createEditorProjection` below, where `env` is
+ * threaded through instead of being a throwaway `{}`).
  *
- * `env`/`starts`/`source` are ADDITIVE parameters (Lane B's own
- * extension, per the run spec: "extending it is YOURS to do"): `env` carries
- * the plugin-origin snapshot; `starts`/`source` convert
- * `plugin-origin.ts`'s LINE range (the same `token.map` convention
- * `source-range.ts` and this module's own marker-family branch use) to the
- * CHAR range this function's return type — and the call site below — have
- * always promised, via the SAME `charRangeForLines` helper the `parsed`
- * branch already uses. This function still never throws and still returns
- * `null` (never a guessed range) for every refusal — `plugin-origin.ts`'s
- * richer, rule-named reason strings are this module's business only insofar
- * as the caller's existing generic diagnostic text stays exactly as Lane A
- * left it (see "the calling branch and its refusal-diagnostic shape stay
- * as-is" in the run spec); the rich reasons are asserted directly against
- * `plugin-origin.ts`'s own exported resolver in `plugin-origin.test.ts`.
+ * `env`/`starts`/`source` convert `plugin-origin.ts`'s LINE range (the same
+ * `token.map` convention `source-range.ts` and this module's own
+ * marker-family branch use) to the CHAR range this function's return type
+ * promises, via the SAME `charRangeForLines` helper the `parsed` branch
+ * already uses — but ONLY after {@link pluginRegionLinesLookAuthored}
+ * corroborates it against `source` (SFE-P2c repair round 1: closes a
+ * confirmed finding that neither this branch nor the evidence-bearing one
+ * ever checked a claimed range against source content at all). This
+ * function still never throws and never returns a guessed range for a
+ * refusal — but now returns `plugin-origin.ts`'s OWN rule-named reason
+ * (repair round 1 — previously discarded in favor of one fixed generic
+ * string for all six rule-4 shapes), prefixed with the token type to match
+ * this module's own diagnostic-text convention elsewhere.
  */
 function resolveMaplessPluginTokenOrigin(
   token: Token,
-  tokenIndex: number,
-  tokens: readonly Token[],
   env: unknown,
   starts: readonly number[],
   source: string,
-): readonly [number, number] | null {
-  const result = resolvePluginTokenOrigin(token, tokenIndex, tokens, env);
-  if (!result.ok) return null;
-  return charRangeForLines(starts, source, result.range[0], result.range[1]);
+): PluginRegionOrigin {
+  const result = resolvePluginTokenOrigin(token, env);
+  if (!result.ok) {
+    return { ok: false, reason: `"${token.type}": ${result.reason}` };
+  }
+  const [fromLine, toLine] = result.range;
+  if (!pluginRegionLinesLookAuthored(source, starts, fromLine, toLine)) {
+    return {
+      ok: false,
+      reason:
+        `"${token.type}" token's recovered origin range does not corroborate against source ` +
+        `(a container-prefixed first line, a nested Gutterpress marker line, or an ` +
+        `out-of-bounds line claim) — refusing to project a plugin-region whose evidence ` +
+        `cannot be verified against source. Edit this content in source mode.`,
+    };
+  }
+  return { ok: true, range: charRangeForLines(starts, source, fromLine, toLine) };
 }
 
 // ── D13 resource caps (SFE-P2b Lane C addition — see module header "D13
@@ -745,6 +825,71 @@ function capHtmlPayload(
 
   budget.bytesEmitted += bytes;
   return html;
+}
+
+/**
+ * Finds the index of the CLOSING token matching the `nesting === 1` "open"
+ * token at `openIndex`, by walking forward summing `.nesting` (the same
+ * general technique markdown-it's own renderer/token walkers use for
+ * nested block structure) until the running depth returns to `0`. Returns
+ * `-1` — never throws — if the stream ends before a match is found (a
+ * malformed/truncated token array a buggy plugin could in principle
+ * produce; this module's own contract is "never throw, degrade per-block").
+ */
+function findMatchingCloseIndex(tokens: readonly Token[], openIndex: number): number {
+  let depth = tokens[openIndex]!.nesting;
+  for (let i = openIndex + 1; i < tokens.length; i++) {
+    depth += tokens[i]!.nesting;
+    if (depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * SFE-P2c repair round 1 (finding 6 — "inactive plugin view renders the
+ * block's authored source, not the plugin's own produced HTML"): the run
+ * spec's behavior table requires the inactive view to render "the plugin's
+ * own HTML inertly" — this module previously supplied none for
+ * `plugin-region` at all, so `packages/editor`'s chip fell back to the raw
+ * authored marker text (no different from source mode).
+ *
+ * Renders the token slice `[openIndex, closeIndex]` — this plugin-region's
+ * own open/close pair, INCLUDING its interior — through `md.renderer`, the
+ * SAME renderer object and rule set the render/preview/PDF path uses (G-03
+ * "one pipeline" / "do NOT build a parallel parser config"; the marker
+ * family's `.chapter-opener` `GeneratedView` uses this identical
+ * "re-render, don't hand-roll" posture — see this module's header
+ * "GENERATED VIEWS"). D13's per-payload/aggregate HTML caps apply via the
+ * SAME {@link capHtmlPayload} every other `inactiveHtml`/`GeneratedView.html`
+ * in this module goes through.
+ *
+ * Never throws and never guesses: returns `undefined` — not a placeholder,
+ * not the source text — when the matching close token cannot be found, or
+ * if rendering this specific slice throws (a plugin's own custom renderer
+ * rule is host code this module does not control; this module's contract
+ * is "never throw" for ITS OWN callers, so a plugin renderer exception is
+ * caught rather than propagated). `ProjectedBlock.inactiveHtml` is already
+ * optional, and `packages/editor/src/gutterpress/plan.ts`'s `buildChipPlan`
+ * already falls back to the block's own authored `sourceText` when it is
+ * absent — so `undefined` here is fail-closed to EXACTLY today's posture
+ * for this one block, never a new failure mode.
+ */
+function pluginRegionInactiveHtml(
+  md: MarkdownIt,
+  tokens: readonly Token[],
+  openIndex: number,
+  env: unknown,
+  diagnostics: ProjectionDiagnostic[],
+  htmlBudget: AggregateHtmlBudget,
+): string | undefined {
+  const closeIndex = findMatchingCloseIndex(tokens, openIndex);
+  if (closeIndex === -1) return undefined;
+  try {
+    const html = md.renderer.render(tokens.slice(openIndex, closeIndex + 1), md.options, env);
+    return capHtmlPayload(html, diagnostics, htmlBudget);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -948,16 +1093,50 @@ export function createEditorProjection(
       // EVIDENCE-BEARING case (this lane, A): the plugin preserved its own
       // `token.map`/`token.meta.line`, so `source_range.ts` — which runs
       // LAST, after every custom plugin (renderer.ts) — already stamped
-      // real evidence directly onto THIS token. No origin recovery needed.
-      // NO-EVIDENCE case (Lane B's territory): the integration point.
-      const range = parsed
-        ? charRangeForLines(starts, source, parsed[0], parsed[1])
-        : resolveMaplessPluginTokenOrigin(token, tokenIndex, tokens, env, starts, source);
+      // real evidence directly onto THIS token. No origin RECOVERY needed —
+      // but the claimed range is now corroborated against source before
+      // being trusted (SFE-P2c repair round 1: this branch previously
+      // pushed a plugin-set `token.map` verbatim with no check at all; see
+      // `pluginRegionLinesLookAuthored`'s own doc comment for the three
+      // over-claim shapes this closes). NO-EVIDENCE case (Lane B's
+      // territory): the integration point.
+      const origin: PluginRegionOrigin = parsed
+        ? pluginRegionLinesLookAuthored(source, starts, parsed[0], parsed[1])
+          ? { ok: true, range: charRangeForLines(starts, source, parsed[0], parsed[1]) }
+          : {
+              ok: false,
+              reason:
+                `"${token.type}" token's resolved range does not corroborate against source ` +
+                `(a container-prefixed first line, a nested Gutterpress marker line, or an ` +
+                `out-of-bounds line claim) — refusing to project a plugin-region whose ` +
+                `evidence cannot be verified against source. Edit this content in source mode.`,
+            }
+        : resolveMaplessPluginTokenOrigin(token, env, starts, source);
 
-      if (!range) {
+      if (!origin.ok) {
+        // SFE-P2c repair round 1: this diagnostic's `reason` is now the
+        // RULE-NAMED text `plugin-origin.ts`/`pluginRegionLinesLookAuthored`
+        // computed, not one fixed generic string for every rule-4 shape —
+        // the refusal matrix is now visible at the surface a consumer of
+        // `projection.diagnostics` actually reads, not only inside this
+        // module's own test suite.
+        diagnostics.push({ category: "EDITOR_UNSUPPORTED_PROJECTION", reason: origin.reason });
+        continue;
+      }
+
+      const [from, to] = origin.range;
+
+      // SFE-P2c repair round 1 — containment guard, defense in depth
+      // alongside `pluginRegionLinesLookAuthored`'s own content-based
+      // nested-marker check above: a range starting before the most
+      // recently projected block's own end would overlap or be contained
+      // by it — the same "never overlapping" invariant this module's own
+      // header pins for the whole document, checked here explicitly for
+      // plugin-region rather than relied on by accident of walk order.
+      if (from < lastBlockEnd) {
         diagnostics.push({
           category: "EDITOR_UNSUPPORTED_PROJECTION",
-          reason: `"${token.type}" is a project-plugin-produced token with no source-range evidence of its own and no recoverable transform origin. Edit this content in source mode.`,
+          reason: `"${token.type}" token's resolved range overlaps a block already projected earlier in this document — refusing to project an overlapping plugin-region. Edit this content in source mode.`,
         });
         continue;
       }
@@ -968,7 +1147,15 @@ export function createEditorProjection(
         break;
       }
 
-      const [from, to] = range;
+      // SFE-P2c repair round 1 (finding 6): the plugin's own rendered HTML
+      // for its consumed source, via the SAME renderer/rule set the print
+      // path uses (G-03) — see `pluginRegionInactiveHtml`'s own doc
+      // comment. D13 caps apply via the SAME `capHtmlPayload` every other
+      // HTML payload in this module goes through. `undefined` (matching
+      // token stream, no matching close, or a plugin renderer rule that
+      // threw) omits the key entirely — this module's existing optional-
+      // field convention (never present with an `undefined` value).
+      const pluginInactiveHtml = pluginRegionInactiveHtml(md, tokens, tokenIndex, env, diagnostics, htmlBudget);
       blocks.push({
         id: `plugin-region:${from}:${to}`,
         kind: "plugin-region",
@@ -978,6 +1165,7 @@ export function createEditorProjection(
         // exact range, not a structured command surface — matches
         // `raw-html`'s posture, the closest existing analogue.
         editMode: "source",
+        ...(pluginInactiveHtml !== undefined ? { inactiveHtml: pluginInactiveHtml } : {}),
         viewAttributes: extractViewAttributes(token),
       });
       lastBlockEnd = to;

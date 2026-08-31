@@ -161,6 +161,33 @@ describe("evidence-bearing plugin-region (this lane's own scope, in full)", () =
     expect(block.viewAttributes).not.toHaveProperty("data-source-range");
     expect(block.viewAttributes).not.toHaveProperty("data-chapter-src");
   });
+
+  test("SFE-P2c repair round 1 (finding 6): the block also carries the plugin's own rendered HTML as inactiveHtml, rendered via the SAME md.renderer/rule set the print path uses -- not the raw authored marker text", () => {
+    const source = "@@aside Pull quote here\n";
+    const md = createMarkdownRenderer([asideMarkerPlugin(true)]);
+
+    // AP-21 liveness + independently-computed expected value: render the
+    // SAME open/close token slice through the SAME md.renderer this
+    // module's own production code uses (a second `md.parse()` call on the
+    // SAME md/source is deterministic, so the resulting STRING matches
+    // even though the underlying token OBJECTS differ from the ones
+    // createEditorProjection parses internally).
+    const tokens = md.parse(source, {});
+    const openIdx = tokens.findIndex((t) => t.type === "plugin_aside_open");
+    const closeIdx = tokens.findIndex((t) => t.type === "plugin_aside_close");
+    expect(openIdx).toBeGreaterThanOrEqual(0);
+    expect(closeIdx).toBeGreaterThan(openIdx);
+    const expectedHtml = md.renderer.render(tokens.slice(openIdx, closeIdx + 1), md.options, {});
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    const block = blockOf(projection, "plugin-region");
+    expect(block.inactiveHtml).toBe(expectedHtml);
+    // Meaningfully different from the raw authored marker line -- proving
+    // this is the PLUGIN's rendered output, not the source text
+    // `buildChipPlan` would otherwise fall back to (packages/editor).
+    expect(block.inactiveHtml).toContain("<aside");
+    expect(block.inactiveHtml).not.toBe(source);
+  });
 });
 
 // ── no-evidence: typed refusal, Lane B's integration point ──────────────
@@ -179,7 +206,13 @@ describe("no-evidence plugin token: typed refusal, no block, document stays proj
     const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"));
     expect(refusal).toBeDefined();
     expect(refusal!.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
-    expect(refusal!.reason).toMatch(/no recoverable transform origin/);
+    // SFE-P2c repair round 1 (finding 2): the diagnostic now carries
+    // plugin-origin.ts's OWN rule-named refusal reason end to end — not
+    // one fixed generic string for every rule-4 shape. This document's
+    // shape is "partial evidence" (the consumed paragraph_close never
+    // carries token.map), and the offending core rule is named directly.
+    expect(refusal!.reason).toMatch(/partial evidence/i);
+    expect(refusal!.reason).toMatch(/aside_plugin_transform/);
 
     // Fail-closed, not fail-blocked: the projection itself is still valid
     // and the document remains fully editable as plain markdown (this run's
@@ -347,5 +380,185 @@ describe("the pre-existing layout_-prefixed diagnostic is unaffected by the trus
     expect(projection.diagnostics).toHaveLength(1);
     expect(projection.diagnostics[0]!.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
     expect(projection.diagnostics[0]!.reason).toContain("layout_widget_open");
+  });
+});
+
+// ── SFE-P2c repair round 1 — plugin-region corroboration guard ──────────
+//
+// Reproduces the confirmed finding directly: `plugin-region` previously had
+// NO check at all that a claimed range corroborates against source, on
+// EITHER the evidence-bearing (`token.map` set by the plugin) or the
+// Lane-B-recovered path. Four distinct over-claim shapes, each verified to
+// have produced a wrong (nested/overlapping/over-claiming) block before
+// this repair round, now refuse instead.
+
+/**
+ * Duplicated from `plugin-origin.test.ts` (a small, stable, hr-consuming
+ * clean-splice fixture, not production code -- same repo, per-file test
+ * duplication is this codebase's own established convention, see this
+ * file's `asideMarkerPlugin` header for the identical rationale applied to
+ * this fixture). A real registered markdown-it core rule that consumes an
+ * `hr` and replaces it with a single, map-less `plugin_tip_open/close`
+ * pair -- the Lane-B (origin-recovery) shape, used here to reproduce the
+ * corroboration-guard fixtures for the RECOVERED path.
+ */
+function tipMarkerPlugin(): LoadedPlugin {
+  const plugin = (md: MarkdownIt): void => {
+    md.core.ruler.after("layout_transform", "tip_marker_transform", (state) => {
+      const out: typeof state.tokens = [];
+      for (const tok of state.tokens) {
+        if (tok.type === "hr") {
+          out.push(new state.Token("plugin_tip_open", "aside", 1));
+          out.push(new state.Token("plugin_tip_close", "aside", -1));
+          continue;
+        }
+        out.push(tok);
+      }
+      state.tokens = out;
+    });
+  };
+  return { name: "tip-marker-plugin", plugin, options: {} };
+}
+
+/** Registers `after("layout_transform", …)` and wraps the FIRST `@@aside <label>` paragraph with a SINGLE open token whose `token.map` honestly spans from the marker's own line through to the LAST line any surviving token in the document can prove -- the archetypal "wrapper" plugin (CLAUDE.md §5: "@sidebar or @callout") that preserves everything else by identity. */
+function wrapperAsideMarkerPlugin(): LoadedPlugin {
+  const plugin = (md: MarkdownIt): void => {
+    md.core.ruler.after("layout_transform", "wrapper_aside_transform", (state) => {
+      let endLine = 0;
+      for (const t of state.tokens) {
+        if (Array.isArray(t.map)) endLine = Math.max(endLine, t.map[1]);
+      }
+      const out: typeof state.tokens = [];
+      let wrapped = false;
+      for (let i = 0; i < state.tokens.length; i++) {
+        const tok = state.tokens[i]!;
+        const next = state.tokens[i + 1];
+        const closer = state.tokens[i + 2];
+        const match =
+          !wrapped && tok.type === "paragraph_open" && next?.type === "inline" && closer?.type === "paragraph_close"
+            ? ASIDE_RE.exec(next.content)
+            : null;
+        if (match) {
+          const open = new state.Token("plugin_wrapper_open", "aside", 1);
+          open.attrSet("data-aside-label", match[1]!);
+          open.map = [tok.map![0]!, endLine];
+          out.push(open);
+          i += 2;
+          wrapped = true;
+          continue;
+        }
+        out.push(tok);
+      }
+      if (wrapped) out.push(new state.Token("plugin_wrapper_close", "aside", -1));
+      state.tokens = out;
+    });
+  };
+  return { name: "wrapper-aside-plugin", plugin, options: {} };
+}
+
+describe("shape 1 -- nested/overlapping blocks (a wrapper plugin claims a wide, honestly-computed map around a survivor marker token)", () => {
+  test("a wrapper plugin-region that would nest a @page-break inside its own range refuses instead of producing overlapping blocks; the page-break still projects on its own", () => {
+    const source = "@@aside Note\n\n@page-break\n\nTail.\n";
+    const md = createMarkdownRenderer([wrapperAsideMarkerPlugin()]);
+
+    // AP-21 liveness: the wrapper really claims through the end of the
+    // document, and layout_page_break really survives by identity.
+    const tokenTypes = md.parse(source, {}).map((t) => t.type);
+    expect(tokenTypes).toContain("plugin_wrapper_open");
+    expect(tokenTypes).toContain("layout_page_break");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    assertSortedNonOverlapping(projection, source);
+
+    expect(projection.blocks.map((b) => b.kind)).toEqual(["page-break"]);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_wrapper_open"));
+    expect(refusal).toBeDefined();
+    expect(refusal!.reason).toMatch(/nested Gutterpress marker|corroborate against source/i);
+  });
+});
+
+describe("shape 2 -- container-prefix over-claim (a marker line nested under a blockquote or list item)", () => {
+  test("evidence-bearing path: '> @@aside ...' refuses -- the plugin's own token.map, widened to whole lines, would otherwise claim the blockquote's own '>' byte", () => {
+    const source = "> @@aside Nested label\n";
+    const md = createMarkdownRenderer([asideMarkerPlugin(true)]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_aside_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.blocks).toHaveLength(0);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"));
+    expect(refusal).toBeDefined();
+    expect(refusal!.reason).toMatch(/container-prefixed|corroborate against source/i);
+  });
+
+  test("evidence-bearing path: '- @@aside ...' (a list item) refuses the same way", () => {
+    const source = "- @@aside In a list\n";
+    const md = createMarkdownRenderer([asideMarkerPlugin(true)]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_aside_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.blocks).toHaveLength(0);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"));
+    expect(refusal).toBeDefined();
+  });
+
+  test("Lane-B recovered path: a blockquoted '> ---' refuses the same way -- what P2b refuses for markers, P2c now also refuses for plugin-regions", () => {
+    const source = "> ---\n";
+    const md = createMarkdownRenderer([tipMarkerPlugin()]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_tip_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.blocks).toHaveLength(0);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_tip_open"));
+    expect(refusal).toBeDefined();
+    expect(refusal!.reason).toMatch(/container-prefixed|corroborate against source/i);
+  });
+
+  test("Lane-B recovered path: 'A.\\n\\n> ---\\n\\nB.\\n' (blockquoted mid-document) refuses the same way", () => {
+    const source = "A.\n\n> ---\n\nB.\n";
+    const md = createMarkdownRenderer([tipMarkerPlugin()]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_tip_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.blocks).toHaveLength(0);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_tip_open"));
+    expect(refusal).toBeDefined();
+  });
+});
+
+describe("shape 3 -- uncorroborated plugin-declared map (a plugin sets an out-of-bounds token.map)", () => {
+  test("a plugin that sets open.map = [0, 99] on a 5-line document refuses instead of claiming the whole document as one token's writable range", () => {
+    const source = "A.\n\n---\n\nB.\n";
+    const md = createMarkdownRenderer([
+      {
+        name: "wide-map-plugin",
+        options: {},
+        plugin: (m: MarkdownIt) =>
+          m.core.ruler.after("layout_transform", "wide_map_transform", (state) => {
+            const out: typeof state.tokens = [];
+            for (const tok of state.tokens) {
+              if (tok.type === "hr") {
+                const open = new state.Token("plugin_wide_open", "aside", 1);
+                open.map = [0, 99];
+                out.push(open);
+                out.push(new state.Token("plugin_wide_close", "aside", -1));
+                continue;
+              }
+              out.push(tok);
+            }
+            state.tokens = out;
+          }),
+      },
+    ]);
+
+    // AP-21 liveness: the plugin really set the out-of-bounds map.
+    const tokens = md.parse(source, {});
+    const widened = tokens.find((t) => t.type === "plugin_wide_open");
+    expect(widened?.map).toEqual([0, 99]);
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    expect(projection.blocks).toHaveLength(0);
+    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_wide_open"));
+    expect(refusal).toBeDefined();
+    expect(refusal!.reason).toMatch(/out-of-bounds|corroborate against source/i);
   });
 });

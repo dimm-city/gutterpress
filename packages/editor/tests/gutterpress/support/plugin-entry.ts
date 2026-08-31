@@ -1,5 +1,5 @@
 import { createEditorProjection, createMarkdownRenderer, type GutterpressProjection } from "gutterpress/render";
-import { MemoryDocumentHost } from "../../../src/core/index.ts";
+import { MemoryDocumentHost, type Diagnostic } from "../../../src/core/index.ts";
 import { mountGutterpressEditor, type GutterpressEditorMount } from "../../../src/gutterpress/mount.ts";
 import { asideMarkerPlugin } from "./plugin-fixture.ts";
 
@@ -73,12 +73,23 @@ export interface GutterpressPluginDriver {
   chipInfo(index: number): ChipInfo;
   /** `outerHTML` of the i-th `.gp-block-chip` -- used to inspect a plugin-region chip's inert source preview text directly (proof of textContent-only construction: a literal `<script>` renders escaped). */
   chipOuterHTML(index: number): string;
+
+  /**
+   * SFE-P2c repair round 1 (finding 5) -- every `Diagnostic` forwarded
+   * through `mountGutterpressEditor`'s `onDiagnostic` option since the
+   * most recent `mount()` call, in delivery order. Proves the projection's
+   * own refusal/limit diagnostics (a refused plugin-region's rule-named
+   * reason, in particular) actually reach a real `onDiagnostic` consumer,
+   * not merely that `projection.diagnostics` itself is non-empty.
+   */
+  diagnosticLog(): readonly Diagnostic[];
 }
 
 const CONTAINER_ID = "gp-gutterpress-plugin-mount";
 
 let mountHandle: GutterpressEditorMount | undefined;
 let host: MemoryDocumentHost | undefined;
+let diagnostics: Diagnostic[] = [];
 
 function buildProjection(text: string, keepEvidence: boolean): GutterpressProjection {
   const md = createMarkdownRenderer([asideMarkerPlugin(keepEvidence)]);
@@ -88,6 +99,7 @@ function buildProjection(text: string, keepEvidence: boolean): GutterpressProjec
 function doMount(text: string, keepEvidence: boolean): MountResult {
   mountHandle?.dispose();
   document.getElementById(CONTAINER_ID)?.remove();
+  diagnostics = [];
 
   host = new MemoryDocumentHost({ text, version: 0 });
   const projection = buildProjection(text, keepEvidence);
@@ -96,7 +108,10 @@ function doMount(text: string, keepEvidence: boolean): MountResult {
   container.id = CONTAINER_ID;
   document.body.appendChild(container);
 
-  mountHandle = mountGutterpressEditor(container, host, { projection });
+  mountHandle = mountGutterpressEditor(container, host, {
+    projection,
+    onDiagnostic: (d) => diagnostics.push(d),
+  });
 
   return { containerSelector: `#${CONTAINER_ID}` };
 }
@@ -162,5 +177,7 @@ window.__gpGutterpressPlugin = {
     };
   },
   chipOuterHTML: (index: number) => requireChip(index).outerHTML,
+
+  diagnosticLog: () => diagnostics.slice(),
 };
 window.__gpReady = true;
