@@ -144,4 +144,54 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).not.toContain("$effect(");
     expect(wiz).toContain("onMount(");
   });
+
+  // ── OAuth connect branch (#221 D10) ──────────────────────────────────────
+  test("branches the connect UI on connectKind === oauth instead of a paste-a-key form", () => {
+    expect(wiz).toContain('card.connectKind === "oauth"');
+    expect(wiz).toContain("controller.connectGoogleOAuth(card.id)");
+    expect(wiz).toContain("controller.cancelGoogleOAuth(card.id)");
+    expect(wiz).toContain("controller.reopenGoogleAuthUrl(card.id)");
+    // Busy copy + fallback link, per the task brief's exact wording.
+    expect(wiz).toContain("Waiting for your browser");
+    expect(wiz).toContain("choose your Google account and click Allow");
+    expect(wiz).toContain("Open the sign-in page again");
+    expect(wiz).toContain("Connect Google Drive");
+  });
+  test("the saved-accounts picker and add-another-account flow are unbranched (work the same for oauth)", () => {
+    // onAccountSelect/selectCredential/setPublishAccountDraft sit OUTSIDE the
+    // connectKind branch — they must not be duplicated per branch.
+    const oauthBranchIdx = wiz.indexOf('card.connectKind === "oauth"');
+    const accountSelectIdx = wiz.indexOf("onAccountSelect(card");
+    expect(accountSelectIdx).toBeGreaterThan(-1);
+    expect(accountSelectIdx).toBeLessThan(oauthBranchIdx);
+  });
+  test("on success, reuses the existing Connected row styling and shows the account email", () => {
+    expect(wiz).toContain("card.savedAccounts.find((a) => a.account === card.selectedAccount)");
+    expect(wiz).toContain('class="conn-ok"');
+    expect(wiz).toContain("Connected — reusing your saved key");
+  });
+
+  // ── Folder (destinations) picker (#221 D9) ───────────────────────────────
+  test("renders a provider-neutral folder picker when card.destinations is present", () => {
+    expect(wiz).toContain("card.destinations");
+    expect(wiz).toContain("controller.publishDestinations[card.id]");
+    expect(wiz).toContain("controller.selectDestination(card.id");
+    expect(wiz).toContain("controller.loadDestinations(card.id)");
+  });
+  test("offers an inline New folder… create flow", () => {
+    expect(wiz).toContain("NEW_FOLDER");
+    expect(wiz).toContain("controller.createNewDestination(card.id)");
+    expect(wiz).toContain("controller.setNewDestinationDraft(card.id");
+  });
+  test("the free-text folder config field stays as the no-picker fallback", () => {
+    // card.fields (the data-driven configFields loop, which renders gdrive's
+    // free-text "folder" field) is untouched by the picker addition.
+    expect(wiz).toContain("card.fields as field (field.key)");
+    expect(wiz).toContain("controller.setPublishConfigDraft(card.id, field.key");
+  });
+  test("loading a setup step for a connected provider with destinations refreshes the picker (no $effect)", () => {
+    expect(wiz).toContain("function enterStep(target: number)");
+    expect(wiz).toContain("card?.connected && card.destinations");
+    expect(wiz).toContain("void controller.loadDestinations(card.id)");
+  });
 });

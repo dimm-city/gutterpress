@@ -139,6 +139,32 @@ describe("Connections tab — central credential management", () => {
     expect(conn).not.toContain("$effect(");
     expect(conn).toContain("onMount(");
   });
+
+  // ── OAuth connect branch (#221 D10) ──────────────────────────────────────
+  test("the add-a-key form branches on connectKind === oauth to a Connect button", () => {
+    expect(conn).toContain('selectedProvider?.connectKind === "oauth"');
+    expect(conn).toContain("connectPublishOAuth()");
+    expect(conn).toContain("getPlatform().connectGoogleStart(");
+    expect(conn).toContain("getPlatform().connectGoogleWait()");
+    expect(conn).toContain("cancelPublishOAuth()");
+    expect(conn).toContain("getPlatform().connectGoogleCancel()");
+  });
+  test("an oauth connect needs no open project (unlike the paste-a-key path)", () => {
+    // The oauth branch's Connect button gates on busy/providerId only — no
+    // `!projectDir` in its disabled expression (contrast the token branch's
+    // `pubBusy || !projectDir || !pubProviderId || !pubToken.trim()`).
+    const idx = conn.indexOf("connectPublishOAuth}");
+    const btn = conn.slice(Math.max(0, idx - 250), idx + 50);
+    expect(btn).not.toContain("!projectDir");
+  });
+  test("an in-flight oauth connect is cancelled if the settings panel unmounts", () => {
+    expect(conn).toContain("if (pubOauthInFlight) getPlatform().connectGoogleCancel().catch(() => {});");
+  });
+  test("the stored gdrive entry's default account shows its connected email, not a bare 'default' badge", () => {
+    // accountLabelFor falls back to the credential's `username` (the email,
+    // for an oauth default credential) instead of the literal "default".
+    expect(conn).toMatch(/return e\.username \|\| "default"/);
+  });
 });
 
 describe("Advanced setup consolidated into the Connections tab (owner request 2026-07-22)", () => {
