@@ -1,4 +1,35 @@
-/** Pure source-token helpers for preview context-menu edits. */
+/**
+ * Pure source-token helpers for preview context-menu edits.
+ *
+ * SFE-P3d-parity, Lane D: also the home of the CARET-based counterparts to
+ * this file's original preview-driven finders. `findImageToken`/
+ * `resolveLinkToken` locate an ALREADY-KNOWN token — the preview hands them
+ * the rendered element's own alt/src/href plus an `InlineSourceToken`
+ * (exact literal text + occurrence index) resolved from `data-source-range`
+ * threading. There is no such rendered element in source/rich mode: the
+ * only input available there is a raw caret OFFSET into the live document
+ * text. `findImageTokenAtOffset`/`findLinkTokenAtOffset` below fill that
+ * gap — given `(text, offset)`, they scan for a well-formed inline image/
+ * link token whose span contains `offset`, using the SAME lexical
+ * primitives (`scanBracket`/`scanDestination`/`scanAttrs`) the preview-driven
+ * finders already use to verify a token's shape, so both entry points agree
+ * on what counts as a real token. They additionally DECODE alt/destination
+ * text (there is no rendered DOM to read a plain-text value from) — see
+ * `unescapeMarkdownText`/`decodeDestination`. This decode is an escape-only
+ * reversal (not a full CommonMark inline parse — no caller here needs one):
+ * exact for ordinary author-written images/links, and a value round-trips
+ * unchanged whenever a caller does not edit it, because `rewriteImageToken`/
+ * `rewriteLinkToken` only re-escape a field that actually changed.
+ *
+ * Known limitation, stated rather than silently assumed away (matches this
+ * module's existing posture): this is a lexical scanner, not a CommonMark
+ * inline parser, so it does not reproduce every edge case real nesting
+ * rules forbid (e.g. a link label containing another link). Scanning left
+ * to right and returning the first candidate whose span contains `offset`
+ * means an ambiguous nested case resolves to the OUTERMOST enclosing token,
+ * a defensible default for the caret-driven UI this feeds, not a claim of
+ * full CommonMark fidelity.
+ */
 
 import type { InlineSourceToken } from "$lib/preview-client";
 
@@ -223,14 +254,49 @@ function escapeLabel(value: string): string {
   return escaped;
 }
 
+/** CommonMark's backslash-escapable ASCII punctuation set — shared by
+ *  {@link escapePlainAlt} (encode, writing) and {@link unescapeMarkdownText}
+ *  (decode, reading — SFE-P3d-parity) so the two directions cannot drift
+ *  apart into asymmetric round-tripping. */
+const ESCAPABLE_PUNCTUATION = `!"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~`;
+
 function escapePlainAlt(value: string): string {
-  const punctuation = `!"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~`;
   let escaped = "";
   for (const char of value) {
-    if (punctuation.includes(char)) escaped += "\\";
+    if (ESCAPABLE_PUNCTUATION.includes(char)) escaped += "\\";
     escaped += char;
   }
   return escaped;
+}
+
+/**
+ * The reverse of {@link escapePlainAlt}: `\X` -> `X` for every escapable
+ * punctuation character, everything else passed through unchanged. Used to
+ * turn RAW markdown source (alt text between `![`/`]`, or a bare/angle
+ * destination) into the plain value a dialog/prompt should show — see this
+ * file's header for why source mode needs a decode step the preview-driven
+ * finders never did.
+ */
+function unescapeMarkdownText(raw: string): string {
+  let out = "";
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "\\" && i + 1 < raw.length && ESCAPABLE_PUNCTUATION.includes(raw[i + 1]!)) {
+      out += raw[i + 1];
+      i++;
+    } else {
+      out += raw[i];
+    }
+  }
+  return out;
+}
+
+/** Decodes a raw destination slice (as returned by {@link scanDestination}'s
+ *  own `[start, end)`, i.e. WITHOUT any title) into the plain URL/path a
+ *  dialog/prompt should show: strips a `<...>` wrapper when present, then
+ *  unescapes. The mirror of {@link serializeDestination}'s encode direction. */
+function decodeDestination(raw: string): string {
+  const inner = raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
+  return unescapeMarkdownText(inner);
 }
 
 function serializeDestination(value: string): string {
@@ -291,4 +357,79 @@ export function findImageWrapper(
   return wrapper
     ? { start, end: wrapper.close + 1, imageToken: text.slice(image.start, image.end) }
     : null;
+}
+
+// ── Caret-based finders (SFE-P3d-parity, Lane D) ────────────────────────────
+// See this file's header for why these exist alongside findImageToken/
+// resolveLinkToken rather than reusing them: there is no rendered preview
+// element in source/rich mode, only a raw caret offset into the live text.
+
+/**
+ * Locates the image token (`![alt](src){attrs}`) whose span CONTAINS
+ * `offset` — inclusive of both edges, so a caret sitting exactly at the
+ * token's own start or end still counts as "on" it. `null` when no
+ * well-formed image token's span contains `offset` (including when `offset`
+ * sits on a bare `<img>` — raw HTML has no Markdown token to address, same
+ * as {@link findImageToken}'s own raw-HTML case).
+ */
+export function findImageTokenAtOffset(text: string, offset: number): ImageTokenMatch | null {
+  for (let i = 0; i < text.length - 1; i++) {
+    if (text[i] !== "!" || text[i + 1] !== "[") continue;
+    if (isEscaped(text, i)) continue;
+    const label = scanBracket(text, i + 1);
+    if (!label || text[label.close + 1] !== "(") continue;
+    const destination = scanDestination(text, label.close + 1);
+    if (!destination) continue;
+    const attrs = scanAttrs(text, destination.close + 1);
+    const end = attrs.end;
+    if (offset < i || offset > end) continue;
+    return {
+      start: i,
+      end,
+      alt: unescapeMarkdownText(text.slice(i + 2, label.close)),
+      src: decodeDestination(text.slice(destination.start, destination.end)),
+      tokenRaw: text.slice(i, destination.close + 1),
+      attrsRaw: attrs.raw,
+      altStart: 2,
+      altEnd: label.close - i,
+      destinationStart: destination.start - i,
+      destinationEnd: destination.end - i,
+    };
+  }
+  return null;
+}
+
+/**
+ * Locates the inline link token (`[text](href)`) whose span CONTAINS
+ * `offset` (inclusive of both edges — see {@link findImageTokenAtOffset}).
+ * Skips a `[` immediately preceded by an unescaped `!` (that is an image,
+ * not a link — {@link findImageTokenAtOffset}'s territory). `null` for a
+ * reference-style link (`[text][ref]`/`[text][]`, no `(` immediately after
+ * the label), a "linkified" bare URL (no Markdown link syntax at all), or
+ * genuinely no link here — callers that need to tell those apart for a
+ * disabled-item TOOLTIP (the preview context menu's `linkDisabledReason`)
+ * already have their own resolution path; this caret-driven entry point
+ * only needs "editable, or not" (see this module's header on scope).
+ */
+export function findLinkTokenAtOffset(text: string, offset: number): LinkTokenMatch | null {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "[") continue;
+    if (isEscaped(text, i)) continue;
+    if (i > 0 && text[i - 1] === "!" && !isEscaped(text, i - 1)) continue;
+    const label = scanBracket(text, i);
+    if (!label || text[label.close + 1] !== "(") continue;
+    const destination = scanDestination(text, label.close + 1);
+    if (!destination) continue;
+    const end = destination.close + 1;
+    if (offset < i || offset > end) continue;
+    return {
+      start: i,
+      end,
+      href: decodeDestination(text.slice(destination.start, destination.end)),
+      tokenRaw: text.slice(i, end),
+      destinationStart: destination.start - i,
+      destinationEnd: destination.end - i,
+    };
+  }
+  return null;
 }

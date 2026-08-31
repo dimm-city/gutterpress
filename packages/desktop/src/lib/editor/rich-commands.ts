@@ -90,6 +90,19 @@ import type {
 import { diagnosticForEditRejection } from "@dimm-city/gutterpress-editor/core";
 import { applyCommand, commandState, type CommandSelection } from "@dimm-city/gutterpress-editor/standard";
 import { descriptorForLayoutBlock } from "./toolbar-actions";
+// SFE-P3d-parity, Lane D — the shared pure locate/compute core for the
+// caret-driven image-properties/image-unwrap/link-edit commands below (see
+// caret-token-commands.ts's header for the full division of labor).
+import {
+  computeImagePropertiesEdit,
+  computeLinkEditEdit,
+  locateImageAtCaret,
+  locateImageUnwrapEdit,
+  locateLinkAtCaret,
+  type ImageCaretMatch,
+  type LinkCaretMatch,
+  type LocateResult,
+} from "./caret-token-commands";
 import {
   IMAGE_LAYER_OPTIONS,
   IMAGE_PIN_ALIGNMENT_OPTIONS,
@@ -454,7 +467,108 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
       // caller skips that pre-check, so treated as a safe no-op rather than
       // an error.
       return { kind: "unsupported" };
+    case "image-properties":
+    case "image-unwrap":
+    case "link-edit":
+      // These three DO have real rich-mode replacements —
+      // `applyRichImagePropertiesAtCaret`/`applyRichImageUnwrapAtCaret`/
+      // `applyRichLinkEditAtCaret` below — but they need a dialog callback
+      // (and, for image-properties/link-edit, an `await`) this function's
+      // synchronous `RichToolbarRoute` return shape has no room for, so
+      // `+page.svelte`'s `onAction` calls them directly instead of routing
+      // through here (same pre-check pattern "snippet"/"focus-mode" already
+      // use above, for a different reason). Reachable here only if a caller
+      // skips that pre-check, so treated the same safe no-op way.
+      return { kind: "unsupported" };
   }
+}
+
+// ── Image properties / unwrap / link edit at the caret (SFE-P3d-parity, Lane D) ──
+//
+// The rich-mode counterparts to `toolbar-actions.ts`'s
+// `locateImagePropertiesAtCaret`/`applyImagePropertiesEdit`/
+// `applyImageUnwrapAtCaret`/`locateLinkEditAtCaret`/`applyLinkEditEdit` —
+// same pure locate/compute core (`caret-token-commands.ts`), same D14
+// outcome shape (`RichCommandOutcome`, reused rather than a second type),
+// different write seam (`EditorDocumentHost.applyEdit` instead of
+// `view.dispatch`). `live` here is MANDATORY, not an optional fallback to
+// `documentEndSelection` like every OTHER `applyRich*` function in this
+// file — there is no sensible "locate the image at the document end"
+// reading of these commands (mirrors `handleRichToolbarAction`'s own
+// `NO_LIVE_CARET_DIAGNOSTIC` pre-check in `+page.svelte`).
+//
+// image-properties and link-edit are split into a LOCATE step and an APPLY
+// step for the SAME reason `toolbar-actions.ts`'s equivalents are: the
+// caller (`+page.svelte`) owns the `promptImageProperties`/`promptText`
+// dialog AND the document-identity staleness check
+// (`captureRichSelection`/`isRichSelectionCaptureFresh` — SFE-P3ab review
+// round 1's fix for a captured `richDocHost` reference going stale across
+// an `await`, reused here rather than reinvented) — this file must not
+// swallow either. `expectedVersion` is threaded through explicitly from the
+// caller's OWN captured version (not re-read from `host` at apply time)
+// so a caller that already re-verified freshness via
+// `isRichSelectionCaptureFresh` gets exactly the guard it asked for; D3/D7
+// still make `applyEdit` itself refuse if it does not match.
+
+/**
+ * Locate step for "Image properties…" (rich mode) — resolves the image at
+ * `live`'s caret and seeds an {@link ImagePropertiesValue}, ready for the
+ * caller to hand to `ImagePropertiesDialog`. Reuses `caret-token-commands`'
+ * `ImageCaretMatch`/`LocateResult` shapes directly — this function is a
+ * thin `(host, live)` -> `(text, offset)` adapter, nothing more.
+ */
+export function locateRichImagePropertiesAtCaret(
+  host: EditorDocumentHost,
+  live: LiveSelection,
+): LocateResult<ImageCaretMatch> {
+  return locateImageAtCaret(host.getSnapshot().text, live.from);
+}
+
+/** Apply step for "Image properties…" (rich mode) — computes and applies
+ *  the diff between `located.initial` and `next`
+ *  (`caret-token-commands.ts#computeImagePropertiesEdit`), against
+ *  `expectedVersion` (the caller's own captured, re-verified version — see
+ *  this section's header). Caller is expected to have already validated
+ *  `next` (`validateImageProperties`). */
+export function applyRichImagePropertiesEdit(
+  host: EditorDocumentHost,
+  located: ImageCaretMatch,
+  next: ImagePropertiesValue,
+  expectedVersion: number,
+): RichCommandOutcome {
+  const edit = computeImagePropertiesEdit(located.match, located.initial, next);
+  if (!edit) return { ok: true, snapshot: host.getSnapshot() }; // nothing actually changed
+  return finishEdit(host, { ...edit, expectedVersion });
+}
+
+/** "Unwrap image" (rich mode) — removes an existing image's enclosing link
+ *  wrapper at `live`'s caret, leaving the image itself untouched. No
+ *  dialog, so no staleness window: locate and apply happen back to back
+ *  against the SAME `host.getSnapshot()`, so no split is needed. */
+export function applyRichImageUnwrapAtCaret(host: EditorDocumentHost, live: LiveSelection): RichCommandOutcome {
+  const snapshot = host.getSnapshot();
+  const located = locateImageUnwrapEdit(snapshot.text, live.from);
+  if (!located.ok) return { ok: false, diagnostic: located.diagnostic };
+  return finishEdit(host, { ...located.value, expectedVersion: snapshot.version });
+}
+
+/** Locate step for "Edit link…" (rich mode) — resolves the link at `live`'s
+ *  caret, ready to seed a text prompt with its current target. */
+export function locateRichLinkEditAtCaret(host: EditorDocumentHost, live: LiveSelection): LocateResult<LinkCaretMatch> {
+  return locateLinkAtCaret(host.getSnapshot().text, live.from);
+}
+
+/** Apply step for "Edit link…" (rich mode) — computes and applies the new
+ *  href (`caret-token-commands.ts#computeLinkEditEdit` — `rewriteLinkToken`
+ *  unchanged), against `expectedVersion` (see this section's header). */
+export function applyRichLinkEditEdit(
+  host: EditorDocumentHost,
+  located: LinkCaretMatch,
+  href: string,
+  expectedVersion: number,
+): RichCommandOutcome {
+  const edit = computeLinkEditEdit(located.match, href);
+  return finishEdit(host, { ...edit, expectedVersion });
 }
 
 // ── Block movement (SFE-P3ab, Lane B: now WIRED, via the live caret) ───────

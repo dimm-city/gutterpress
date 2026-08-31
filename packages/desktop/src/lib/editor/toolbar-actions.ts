@@ -113,7 +113,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
-import type { EditorCommand, LayoutBlockKind } from "@dimm-city/gutterpress-editor/core";
+import type { Diagnostic, EditorCommand, LayoutBlockKind } from "@dimm-city/gutterpress-editor/core";
 import { applyCommand, commandState } from "@dimm-city/gutterpress-editor/standard";
 import {
   IMAGE_POSITION_OPTIONS,
@@ -124,7 +124,21 @@ import {
   setShapeClass,
   setSizeClass,
   setWidth,
+  type ImagePropertiesValue,
 } from "./image-classes";
+// SFE-P3d-parity, Lane D — the shared pure locate/compute core for the
+// caret-driven image-properties/image-unwrap/link-edit commands below (see
+// caret-token-commands.ts's header for the full division of labor between
+// it and this file).
+import {
+  computeImagePropertiesEdit,
+  computeLinkEditEdit,
+  locateImageAtCaret,
+  locateImageUnwrapEdit,
+  locateLinkAtCaret,
+  type LocateResult,
+} from "./caret-token-commands";
+import type { ImageTokenMatch, LinkTokenMatch } from "./context-menu-actions";
 
 // ── Helper: single-range accessor ────────────────────────────────────────────
 
@@ -724,6 +738,151 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
 
+// ── Image properties / unwrap / link edit at the caret (SFE-P3d-parity, Lane D) ──
+//
+// Closes the parity-matrix's former `image-properties`/`image-unwrap`/
+// `link-edit` waiver rows: before this run, no command in either surface
+// edited an EXISTING image or link in place — `applyImage` above and
+// `applyLink` only ever INSERT a new one. The ONE path that edited an
+// existing image/link was the preview context menu (soon deleted by P4).
+//
+// Each function below resolves its target from the CURRENT CARET
+// (`mainSel(view).from`) rather than a payload, delegating the entire
+// locate/compute decision to `caret-token-commands.ts`'s pure functions
+// (the same ones `context-menu-controller.svelte.ts`'s "Set properties…"/
+// "Unwrap image"/"Edit link…" logic is built from — see that module's
+// header) — this file only supplies the CodeMirror read/dispatch, matching
+// every other function above's `(view: EditorView, …)` shape.
+//
+// image-properties and link-edit are each split into a LOCATE step and an
+// APPLY step, rather than one function owning an internal
+// `promptImageProperties`/`promptText` await, so `+page.svelte` — which
+// owns both dialogs AND `validateImageProperties` (image-properties only) —
+// can inject validation and re-verify the target between them; the CALLER
+// awaits its own dialog and re-checks staleness itself (mirroring
+// `openRichImageProperties`'s existing shape) rather than this file
+// swallowing that orchestration. image-unwrap has no dialog, so locate and
+// apply happen back to back in one function with no staleness window to
+// guard. Refusals are D14 `Diagnostic`s, never a generic "failed" —
+// `CaretTokenCommandOutcome` mirrors `rich-commands.ts`'s own
+// `RichCommandOutcome` shape so a caller reports both surfaces' refusals
+// identically.
+
+/** The uniform result of a caret-driven token command: `ok:true` covers
+ *  BOTH "applied an edit" and "nothing changed" — callers that need to
+ *  distinguish those can inspect the dispatched transaction themselves;
+ *  every refusal carries a specific D14 `Diagnostic`, never a bare
+ *  boolean. */
+export type CaretTokenCommandOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly diagnostic: Diagnostic };
+
+/**
+ * D14 diagnostic for a caret-token command whose target span changed
+ * underneath it between locating the token and applying the edit — an
+ * intervening dialog (`promptImageProperties`/`promptText`, owned by the
+ * caller) gives real time for an external reload, a file switch, or the
+ * author's own typing to land. CodeMirror's `view.dispatch` has no
+ * staleness check of its own (unlike the rich surface's
+ * `EditorDocumentHost.applyEdit`, which is versioned — see
+ * `rich-commands.ts`'s equivalent functions), so this is the proportionate
+ * replacement: re-verify the EXACT original span text is still there
+ * immediately before dispatching. "Must never guess a range" (this run's
+ * own instruction) is exactly what this check prevents.
+ */
+function staleCaretTokenSpanDiagnostic(): Diagnostic {
+  return {
+    category: "EDITOR_STALE_EDIT",
+    message: "This part of the document changed before the edit could be applied. Try again.",
+  };
+}
+
+/** Locate step for "Image properties…": resolves the image at the caret
+ *  and seeds an {@link ImagePropertiesValue} from its current token, ready
+ *  for the caller to hand to `ImagePropertiesDialog`. `originalSpan` is the
+ *  exact text {@link applyImagePropertiesEdit} re-verifies is still there
+ *  before dispatching. */
+export interface ImagePropertiesAtCaret {
+  readonly match: ImageTokenMatch;
+  readonly initial: ImagePropertiesValue;
+  readonly originalSpan: string;
+}
+
+export function locateImagePropertiesAtCaret(view: EditorView): LocateResult<ImagePropertiesAtCaret> {
+  const { from } = mainSel(view);
+  const text = view.state.doc.toString();
+  const located = locateImageAtCaret(text, from);
+  if (!located.ok) return located;
+  const { match, initial } = located.value;
+  return { ok: true, value: { match, initial, originalSpan: text.slice(match.start, match.end) } };
+}
+
+/** Apply step for "Image properties…": re-verifies `located`'s span, then
+ *  computes and dispatches the diff between `located.initial` and `next`
+ *  (`caret-token-commands.ts#computeImagePropertiesEdit` — the exact same
+ *  diff rule `context-menu-controller.svelte.ts`'s "Set properties…" uses).
+ *  Caller is expected to have already validated `next`
+ *  (`validateImageProperties`). */
+export function applyImagePropertiesEdit(
+  view: EditorView,
+  located: ImagePropertiesAtCaret,
+  next: ImagePropertiesValue,
+): CaretTokenCommandOutcome {
+  if (view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan) {
+    return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
+  }
+  const edit = computeImagePropertiesEdit(located.match, located.initial, next);
+  if (!edit) return { ok: true }; // nothing actually changed
+  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert } });
+  return { ok: true };
+}
+
+/** "Unwrap image" — removes an existing image's enclosing link wrapper at
+ *  the caret, leaving the image itself untouched. No dialog, so no
+ *  intervening staleness window: locate and dispatch happen back to back
+ *  against the SAME live `view`. */
+export function applyImageUnwrapAtCaret(view: EditorView): CaretTokenCommandOutcome {
+  const { from } = mainSel(view);
+  const text = view.state.doc.toString();
+  const located = locateImageUnwrapEdit(text, from);
+  if (!located.ok) return { ok: false, diagnostic: located.diagnostic };
+  const { from: editFrom, to: editTo, insert } = located.value;
+  view.dispatch({ changes: { from: editFrom, to: editTo, insert } });
+  return { ok: true };
+}
+
+/** Locate step for "Edit link…": resolves the link at the caret, ready to
+ *  seed a text prompt with its current target. `originalSpan` is the exact
+ *  text {@link applyLinkEditEdit} re-verifies is still there before
+ *  dispatching. */
+export interface LinkEditAtCaret {
+  readonly match: LinkTokenMatch;
+  readonly initialHref: string;
+  readonly originalSpan: string;
+}
+
+export function locateLinkEditAtCaret(view: EditorView): LocateResult<LinkEditAtCaret> {
+  const { from } = mainSel(view);
+  const text = view.state.doc.toString();
+  const located = locateLinkAtCaret(text, from);
+  if (!located.ok) return located;
+  const { match, initialHref } = located.value;
+  return { ok: true, value: { match, initialHref, originalSpan: text.slice(match.start, match.end) } };
+}
+
+/** Apply step for "Edit link…": re-verifies `located`'s span, then
+ *  computes and dispatches the new href
+ *  (`caret-token-commands.ts#computeLinkEditEdit` — `rewriteLinkToken`
+ *  unchanged). */
+export function applyLinkEditEdit(view: EditorView, located: LinkEditAtCaret, href: string): CaretTokenCommandOutcome {
+  if (view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan) {
+    return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
+  }
+  const edit = computeLinkEditEdit(located.match, href);
+  view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert } });
+  return { ok: true };
+}
+
 // ── Toolbar action vocabulary (SFE-P3ab) ─────────────────────────────────────
 //
 // Declared HERE (a plain `.ts` module) rather than inside `EditorToolbar.svelte`
@@ -755,7 +914,20 @@ export type ToolbarAction =
   | "image"
   | "snippet"
   | "focus-mode"
-  | "layout-block";
+  | "layout-block"
+  // SFE-P3d-parity, Lane D: replacements for the three preview context-menu
+  // actions that edit an EXISTING image/link in place (parity-matrix.md's
+  // former waiver rows `image-properties`/`image-unwrap`/`link-edit`) — as
+  // opposed to "link"/"image" above, which only ever INSERT a NEW one. All
+  // three resolve their target from the CURRENT CARET rather than a
+  // payload; `+page.svelte`'s `onAction` intercepts them before they would
+  // otherwise reach `runToolbarAction`/`handleRichToolbarAction` (the same
+  // interception "snippet"/"focus-mode" already get), so neither this
+  // module's `TOOLBAR_ITEMS` entry below nor `MarkdownEditor.svelte`'s
+  // switch needs a case for the actual edit — only the vocabulary.
+  | "image-properties"
+  | "image-unwrap"
+  | "link-edit";
 
 export type ToolbarPayload =
   | { level: 1 | 2 | 3 | 4 } // heading
@@ -966,6 +1138,45 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     label: "Insert snippet",
     group: "insert",
     desktopOnly: true,
+  },
+  // SFE-P3d-parity, Lane D: replacements for the preview context menu's
+  // "Set properties…"/"Unwrap image"/"Edit link…" — each resolves its
+  // target from the CURRENT CARET (place the cursor on an existing image or
+  // link first) rather than a dialog-collected payload, so — like every
+  // other `kind: "action"` item — no bespoke template branch is needed in
+  // EditorToolbar.svelte; `+page.svelte`'s `onAction` intercepts these
+  // three by name before the generic `runToolbarAction`/
+  // `handleRichToolbarAction` fallback (the same interception
+  // "snippet"/"focus-mode" already get).
+  {
+    id: "image-properties",
+    kind: "action",
+    action: "image-properties",
+    icon: "settings",
+    title: "Edit image properties (place cursor on an existing image)",
+    ariaLabel: "Edit image properties",
+    label: "Image properties…",
+    group: "insert",
+  },
+  {
+    id: "image-unwrap",
+    kind: "action",
+    action: "image-unwrap",
+    icon: "external-link",
+    title: "Remove this image's link wrapper (place cursor on a wrapped image)",
+    ariaLabel: "Unwrap image",
+    label: "Unwrap image",
+    group: "insert",
+  },
+  {
+    id: "link-edit",
+    kind: "action",
+    action: "link-edit",
+    icon: "link-2",
+    title: "Edit this link's target (place cursor on an existing link)",
+    ariaLabel: "Edit link target",
+    label: "Edit link…",
+    group: "insert",
   },
   {
     // Focus mode lives on the EDITOR toolbar (not the main toolbar): it is an

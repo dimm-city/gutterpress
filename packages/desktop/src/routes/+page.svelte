@@ -41,9 +41,29 @@
     applyBlockMove,
     blockIndexAtOffset,
     validateImageProperties,
+    // SFE-P3d-parity, Lane D — rich-mode replacements for the
+    // image-properties/image-unwrap/link-edit parity-matrix waiver rows.
+    locateRichImagePropertiesAtCaret,
+    applyRichImagePropertiesEdit,
+    applyRichImageUnwrapAtCaret,
+    locateRichLinkEditAtCaret,
+    applyRichLinkEditEdit,
     type RichCommandOutcome,
   } from "$lib/editor/rich-commands";
   import { diagnosticForEditRejection, type Diagnostic } from "@dimm-city/gutterpress-editor/core";
+  // SFE-P3d-parity, Lane D — the SOURCE-mode counterparts of the same three
+  // commands, and `findMountedSourceView`, needed to hand them a live
+  // `EditorView` from outside `MarkdownEditor.svelte` — see
+  // `source-editor-access.ts`'s header for why (that component is outside
+  // this lane's write ownership).
+  import { findMountedSourceView } from "$lib/editor/source-editor-access";
+  import {
+    locateImagePropertiesAtCaret,
+    applyImagePropertiesEdit,
+    applyImageUnwrapAtCaret,
+    locateLinkEditAtCaret,
+    applyLinkEditEdit,
+  } from "$lib/editor/toolbar-actions";
   // SFE-P3ab review round 1 (CONFIRMED finding) — the browser-safe render
   // subpath (CLAUDE.md monorepo layout: "browser-safe public subpath:
   // gutterpress/render"), already value-imported client-side by
@@ -986,6 +1006,12 @@
      * Offsets are into THAT FILE, not into the document. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
   } | null>(null);
+  /** The DOM node wrapping the mounted `MarkdownEditor` (SFE-P3d-parity,
+   *  Lane D) — see that binding's own template comment and
+   *  `source-editor-access.ts`'s header for why this reads the live caret
+   *  via CodeMirror's `EditorView.findFromDOM` instead of a new
+   *  `MarkdownEditor.svelte` export. */
+  let sourceEditorHostEl = $state<HTMLDivElement | undefined>(undefined);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
   let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -1524,6 +1550,164 @@
       return;
     }
     reportRichOutcome(applyRichImageInsert(capture.host, value, capture.selection));
+  }
+
+  // ── Caret-driven image/link commands (SFE-P3d-parity, Lane D) ────────────
+  //
+  // Closes the three former parity-matrix waiver rows condition 2 names —
+  // `image-properties`/`image-unwrap`/`link-edit` — by making the shared
+  // computation (`caret-token-commands.ts`, built on the pre-existing,
+  // tested `context-menu-actions.ts`/`image-classes.ts` primitives)
+  // reachable from BOTH editing surfaces via the CURRENT CARET, instead of
+  // only from the preview context menu P4 deletes. The actual per-surface
+  // commands live in `toolbar-actions.ts` (source — takes the live
+  // `EditorView`) and `rich-commands.ts` (rich — takes `richDocHost` +
+  // `live: LiveSelection`); this page's only job is routing to whichever
+  // surface is active, reading what each command needs from it, and
+  // reporting a refusal — the SAME shape `handleRichToolbarAction`/
+  // `editorRef?.runToolbarAction` already have for every other action.
+
+  /**
+   * "Image properties…" — edits an EXISTING image's attrs/src/alt at the
+   * caret, via the SAME `ImagePropertiesDialog` the (soon-deleted) preview
+   * context menu's "Set properties…" uses. Rich mode reuses
+   * `captureRichSelection`/`isRichSelectionCaptureFresh` — the SAME
+   * document-identity staleness guard `openRichImageProperties` above
+   * already relies on for its own `promptImageProperties` await, not a
+   * second mechanism — because `locateRichImagePropertiesAtCaret`'s result
+   * is only safe to apply against the EXACT `richDocHost` it was read from;
+   * source mode's `applyImagePropertiesEdit` re-verifies its own span
+   * directly against the live `view` instead (see its own doc comment for
+   * why the two surfaces' staleness guards differ).
+   */
+  function handleImagePropertiesAtCaret(): void {
+    if (richSurfaceActive) {
+      const capture = captureRichSelection();
+      if (!capture || !capture.selection) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      const located = locateRichImagePropertiesAtCaret(capture.host, capture.selection);
+      if (!located.ok) {
+        showRichDiagnostic(located.diagnostic);
+        return;
+      }
+      void (async () => {
+        const next = await promptImageProperties(located.value.initial);
+        if (next == null) return; // cancelled
+        const error = validateImageProperties(next);
+        if (error) {
+          toast?.error(error);
+          return;
+        }
+        if (!isRichSelectionCaptureFresh(capture)) {
+          showRichDiagnostic(diagnosticForEditRejection("stale"));
+          return;
+        }
+        reportRichOutcome(
+          applyRichImagePropertiesEdit(capture.host, located.value, next, capture.version),
+        );
+      })();
+      return;
+    }
+    void (async () => {
+      const view = await findMountedSourceView(sourceEditorHostEl);
+      if (!view) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      const located = locateImagePropertiesAtCaret(view);
+      if (!located.ok) {
+        showRichDiagnostic(located.diagnostic);
+        return;
+      }
+      const next = await promptImageProperties(located.value.initial);
+      if (next == null) return; // cancelled
+      const error = validateImageProperties(next);
+      if (error) {
+        toast?.error(error);
+        return;
+      }
+      const outcome = applyImagePropertiesEdit(view, located.value, next);
+      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
+    })();
+  }
+
+  /** "Unwrap image" — removes an existing image's enclosing link wrapper at
+   *  the caret, leaving the image itself untouched. No dialog, so no
+   *  intervening staleness window on either surface. */
+  function handleImageUnwrapAtCaret(): void {
+    if (richSurfaceActive) {
+      if (!richDocHost) return;
+      const live = richLiveSelection();
+      if (!live) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      reportRichOutcome(applyRichImageUnwrapAtCaret(richDocHost, live));
+      return;
+    }
+    void (async () => {
+      const view = await findMountedSourceView(sourceEditorHostEl);
+      if (!view) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      const outcome = applyImageUnwrapAtCaret(view);
+      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
+    })();
+  }
+
+  /** "Edit link…" — edits an EXISTING link's target at the caret, via the
+   *  same `promptText` flow the preview context menu's "Edit link…" uses.
+   *  Same staleness-guard split as `handleImagePropertiesAtCaret` above. */
+  function handleLinkEditAtCaret(): void {
+    if (richSurfaceActive) {
+      const capture = captureRichSelection();
+      if (!capture || !capture.selection) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      const located = locateRichLinkEditAtCaret(capture.host, capture.selection);
+      if (!located.ok) {
+        showRichDiagnostic(located.diagnostic);
+        return;
+      }
+      void (async () => {
+        const next = await promptText({
+          title: "Edit link",
+          label: "Web address",
+          initialValue: located.value.initialHref,
+        });
+        if (next == null) return; // cancelled
+        if (!isRichSelectionCaptureFresh(capture)) {
+          showRichDiagnostic(diagnosticForEditRejection("stale"));
+          return;
+        }
+        reportRichOutcome(applyRichLinkEditEdit(capture.host, located.value, next, capture.version));
+      })();
+      return;
+    }
+    void (async () => {
+      const view = await findMountedSourceView(sourceEditorHostEl);
+      if (!view) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+        return;
+      }
+      const located = locateLinkEditAtCaret(view);
+      if (!located.ok) {
+        showRichDiagnostic(located.diagnostic);
+        return;
+      }
+      const next = await promptText({
+        title: "Edit link",
+        label: "Web address",
+        initialValue: located.value.initialHref,
+      });
+      if (next == null) return; // cancelled
+      const outcome = applyLinkEditEdit(view, located.value, next);
+      if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
+    })();
   }
 
   /**
@@ -3371,6 +3555,22 @@
                   togglePreview();
                   return;
                 }
+                // SFE-P3d-parity, Lane D — each handler below branches on
+                // richSurfaceActive itself, so intercepted here BEFORE the
+                // richSurfaceActive/runToolbarAction split below, same as
+                // "snippet"/"focus-mode" above.
+                if (action === "image-properties") {
+                  void handleImagePropertiesAtCaret();
+                  return;
+                }
+                if (action === "image-unwrap") {
+                  void handleImageUnwrapAtCaret();
+                  return;
+                }
+                if (action === "link-edit") {
+                  void handleLinkEditAtCaret();
+                  return;
+                }
                 if (richSurfaceActive) {
                   handleRichToolbarAction(action, payload);
                   return;
@@ -3420,8 +3620,15 @@
             {:else if MarkdownEditor}
               <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
                    EditorView, while EditorFileSession gives it exactly ONE
-                   source file via a synchronous switchFile() handoff. -->
+                   source file via a synchronous switchFile() handoff.
+                   `bind:this={sourceEditorHostEl}` (SFE-P3d-parity, Lane D)
+                   is this wrapper's own DOM node, used ONLY to locate the
+                   mounted CodeMirror view from outside the component via
+                   `source-editor-access.ts`'s `EditorView.findFromDOM` —
+                   see that module's header for why (MarkdownEditor.svelte
+                   is outside this lane's write ownership). -->
               <div
+                bind:this={sourceEditorHostEl}
                 style="display:contents"
                 use:trackSurfaceMount={{ controller: richMode, surface: "source" }}
               >

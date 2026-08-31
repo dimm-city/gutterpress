@@ -1,0 +1,26 @@
+title: "Fixture: Backyard Field Notes"
+authors:
+  - "Gutterpress test fixtures"
+source:
+  files:
+    - 01-introduction.md
+    - 02-field-notes.md
+    - 03-checklist.md
+styles:
+  - styles/book.css
+# SFE-P3d-parity Lane E: this is a genuinely plugin-configuring manifest —
+# `packages/desktop/tests/editor/real-book-plugin-byte-identity.test.ts`
+# loads this exact file with the real `loadManifest` (from `gutterpress`)
+# and asserts this `plugins:` entry parses. The markdown-it plugin function
+# that actually PRODUCES the `@@callout` plugin-region blocks this fixture's
+# chapters exercise is authored directly in
+# `packages/desktop/tests/fixtures/plugin-book/support.ts`
+# (`calloutMarkerPlugin`), not resolved through the vendored npm-install
+# loader (`loadPlugins`/`addNpmPlugin`) — that loader installs real tarballs
+# from the public npm registry into a project's vendored tree and has no
+# lightweight test-fixture mode (see support.ts's own header for the full
+# reasoning). The name below is documentary: it names the plugin this
+# project is configured to use, matching support.ts's own `LoadedPlugin.name`
+# for the evidence-bearing variant.
+plugins:
+  - name: gutterpress-plugin-callout

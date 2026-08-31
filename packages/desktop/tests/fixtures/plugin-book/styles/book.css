@@ -1,0 +1,17 @@
+/* SFE-P3d-parity Lane E fixture — minimal book stylesheet, present only so
+   the manifest's `styles:` entry resolves to a real file (mirrors
+   packages/desktop/tests/integration/fixtures/multichapter's
+   themes/parchment/theme.css). Never loaded by this lane's own tests: the
+   real-book-plugin-*.test.ts files build projections directly against
+   chapter source text and never resolve manifest styles. */
+
+:root {
+  --gp-callout-bg: #f4f1ea;
+  --gp-callout-border: #8a7a5c;
+}
+
+.gp-callout {
+  background: var(--gp-callout-bg);
+  border-left: 3px solid var(--gp-callout-border);
+  padding: 0.75em 1em;
+}
