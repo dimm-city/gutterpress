@@ -4,6 +4,8 @@ import {
   log,
   FileTokenStore,
   connectPublishProvider,
+  connectGoogleDrive,
+  revokeGoogleCredential,
   listPublishProviders,
   publishProviderFor,
   publishConnectionStatus,
@@ -28,12 +30,14 @@ import {
  *   gutterpress publish --list                         # providers + connection status
  *   gutterpress publish --provider itch --connect      # store an API key (token via
  *                                                   #   --token, env var, or piped stdin)
+ *   gutterpress publish --provider gdrive --connect    # oauth providers: opens the
+ *                                                   #   browser instead — nothing to paste
  *   gutterpress publish --provider itch --disconnect   # forget the stored key
  *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
  *
  * Credentials live in the 0600 user-config credential store (never in the
  * project); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
- * SHOPIFY_ADMIN_TOKEN) override it for CI.
+ * SHOPIFY_ADMIN_TOKEN, GDRIVE_REFRESH_TOKEN) override it for CI.
  */
 
 async function readTokenFromStdin(): Promise<string> {
@@ -83,7 +87,7 @@ const commandArgs = {
   },
   provider: {
     type: "string",
-    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify",
+    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify | gdrive",
   },
   list: { type: "boolean", description: "List providers and connection status" },
   connect: {
@@ -120,7 +124,7 @@ export default defineCommand({
   meta: {
     name: "publish",
     description:
-      "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify)",
+      "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive)",
   },
   args: commandArgs,
   async run({ args, rawArgs }) {
@@ -180,7 +184,7 @@ export default defineCommand({
     const providerId = typeof args.provider === "string" ? args.provider : "";
     if (!providerId) {
       log.error(
-        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
+        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify|gdrive> (or --list).",
       );
       process.exit(EXIT_CODES.USAGE);
     }
@@ -196,7 +200,14 @@ export default defineCommand({
     const account = typeof args.account === "string" ? args.account.trim() : "";
 
     if (args.disconnect) {
-      await store.delete(publishCredentialKey(provider.info.credential.host, account));
+      const key = publishCredentialKey(provider.info.credential.host, account);
+      // Best-effort revoke at Google before deleting locally (D4/D6) — never
+      // blocks the local delete, and never logs the token value.
+      const existing = await store.get(key);
+      if (existing?.kind === "google-oauth") {
+        await revokeGoogleCredential(existing.token, { fetchImpl: deps.fetch });
+      }
+      await store.delete(key);
       log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
       return;
     }
@@ -206,6 +217,30 @@ export default defineCommand({
         log.info(
           `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
         );
+        return;
+      }
+      if (provider.info.credential.connect === "oauth") {
+        // No key to paste — an interactive browser consent flow instead.
+        // Today gdrive is the only oauth provider; connectGoogleDrive() is
+        // the shared implementation (CLI here, desktop in Phase 2).
+        try {
+          const result = await connectGoogleDrive(
+            { ...(account ? { account } : {}) },
+            deps,
+            {
+              onAuthUrl: (url) => {
+                log.info("Opening your browser to connect Google Drive…");
+                log.info(`If it didn't open, visit: ${url}`);
+              },
+            },
+          );
+          log.success(
+            `Connected ${provider.info.label}${account ? ` (${account})` : ""}${result.email ? ` — ${result.email}` : ""}.`,
+          );
+        } catch (e) {
+          log.error(e instanceof Error ? e.message : String(e));
+          process.exit(EXIT_CODES.FINDINGS);
+        }
         return;
       }
       const envVar = provider.info.credential.envVar;

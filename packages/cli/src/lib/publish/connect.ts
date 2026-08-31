@@ -64,6 +64,16 @@ export async function connectPublishProvider(
       `${info.label} needs no API key — just publish when you're ready.`,
     );
   }
+  if (info.credential.connect === "oauth") {
+    // This provider has no key to paste — it connects through a browser
+    // consent flow (google-auth.ts's GoogleAuthProvider is the gdrive
+    // implementation). Reject here rather than storing an unverifiable
+    // pasted value under its credential host.
+    throw new Error(
+      `${info.label} connects through your browser, not a pasted key — run ` +
+        `"gutterpress publish --provider ${info.id} --connect" or use the desktop app's Connect button.`,
+    );
+  }
   const token = options.token.trim();
   if (!token) throw new Error("Paste an API key first.");
 

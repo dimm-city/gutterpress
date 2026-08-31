@@ -248,6 +248,29 @@ export type {
   GitHubAuthProviderOptions,
 } from "../lib/remote-auth/github-auth.ts";
 
+// ── Google Drive publish auth (#221) — mirrors the GitHub exports above ─────
+export {
+  GoogleAuthProvider,
+  resolveGoogleClientId,
+  resolveGoogleClientSecret,
+  revokeGoogleCredential,
+  requireGoogleClientCredentials,
+  pkceChallengeFromVerifier,
+  GDRIVE_HOST,
+  GOOGLE_NOT_CONFIGURED_MESSAGE,
+} from "../lib/publish/google-auth.ts";
+
+export type {
+  GoogleHostCallbacks,
+  GoogleAuthProviderOptions,
+} from "../lib/publish/google-auth.ts";
+
+export { connectGoogleDrive } from "../lib/publish/connect-google.ts";
+export type {
+  ConnectGoogleDriveOptions,
+  ConnectGoogleDriveResult,
+} from "../lib/publish/connect-google.ts";
+
 export {
   listGitHubRepositories,
   listGitHubBranches,
