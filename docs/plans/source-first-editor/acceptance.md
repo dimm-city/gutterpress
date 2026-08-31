@@ -11,8 +11,8 @@
 |---|---|---:|---|---|
 | AC-01 | Post-release branch baseline verified | P0a | Recorded `main` SHA, `release/0.11.0` equality check, and work-branch ancestry proof | Evidenced (SFE-P0a: `baseline.md` §1–§3; equality check replaced by the recorded deviation — `release/0.11.0` absent, work branch == `origin/main`) |
 | AC-02 | No ProseMirror-family dependency | P0/P7 | Lockfile/package/import search | Enforced (SFE-P0b: `check-architecture.mjs` Rule 1 in CI, sabotage-proven; final search sweep remains P7) |
-| AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | Evidenced for standard Markdown (SFE-P2a: 19-fixture corpus + P1b browser cases, toggle-pair byte-identity; real-book gates remain P3) |
-| AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Evidenced for standard Markdown (SFE-P2a: independent-bound oracle sabotage-proven against a widened-edit implementation, seeded randomized trials incl. refusal liveness; P3 integrations pending) |
+| AC-03 | Exact no-edit byte identity | P2/P3 | Corpus and real-book byte tests | **Evidenced** (SFE-P2a 19-fixture corpus + P1b browser cases; SFE-P3d-parity: 25 real chapters / 154,366 bytes plus a 3-chapter plugin book round-trip through the real host/controller/projection with zero drift, sabotage-proven) |
+| AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | **Evidenced** (SFE-P2a independent-bound oracle, sabotage-proven; SFE-P3d-parity: the same oracle reused verbatim against real books and the real DesktopDocumentHost — 2,810 locality cases, 400 whole-document cases, plus edits adjacent to and inside plugin regions) |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
 | AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | **Evidenced** (SFE-P2b core markers/raw-html/generated views + malformed matrix + D13 caps; SFE-P2c plugin-region projection, evidence-based transform origin with a six-shape refusal matrix, and range self-checks) |
@@ -20,7 +20,7 @@
 | AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | **Evidenced** (SFE-P1c session/host suites; SFE-P3ab: source↔rich switching, non-Markdown fallback, and preview-commit/rich-command coexistence over one `DocumentHost`, with byte-identity assertions across every switch) |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | Pending |
 | AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | Evidenced for the desktop surface (SFE-P3ab: the P2a command vocabulary, images/links, layout markers, block movement and diagnostics all reachable from rich mode through the shared implementation; the packaged interaction/a11y/performance sweep remains P3d) |
-| AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Pending |
+| AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Evidenced for navigation (SFE-P3d-parity: D8 capability coverage audit, host-command round trips through the real bridge and shell, and a two-layer mutation-separability proof; the P4 deletion itself remains) |
 | AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | Pending |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | Pending |
 | AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | Pending |
@@ -29,7 +29,7 @@
 | AC-18 | Public compatibility preserved | All | CLI/API/build/preview/publish gates | Pending |
 | AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Evidenced for P0b (generated-file + architecture checks wired into the CI build job, each with a self-test proving pass and fail paths; P6 additions pending) |
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending |
-| AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Pending |
+| AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Evidenced for P3 (SFE-P3d-parity: full user guide, design-guide book, validation example and a plugin-using fixture book — 28 chapters total; the field guide is gitignored and out of corpus, and the final P7 sweep remains) |
 | AC-22 | Documentation complete | P7 | Doc link and example lint | Pending |
 | AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 (SFE-P2c mandated security review: plugin execution proven host-only by bundle+import-graph scan, plugin HTML inert under script-payload proof, fail-closed trust gate, no secrets/absolute paths in projections or diagnostics; P3/P5 boundaries pending) |
 | AC-24 | Performance budgets met | P3d | Recorded benchmark results | Pending |
@@ -425,5 +425,55 @@
   ],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "The desktop authors in rich mode for real: the shared editor mounts behind a lazily-loaded shell over the same DocumentHost the source surface and the preview commit engine write through, twelve commands plus images, links, layout markers and block movement route through the shared implementation rather than a desktop copy, the live caret is a first-class contract on both mounts, and projection diagnostics reach the UI with a source-mode escape. Two review rounds; nine confirmed findings, most of them silent data-loss paths."
+}
+```
+
+### SFE-P3d-parity — The parity gate that must be green before P4
+
+```json
+{
+  "status": "complete",
+  "baseSha": "079efe49",
+  "headSha": "b9ca42a9",
+  "history": [
+    "50fdacb5 feat(p3): derived parity gate, real-book byte-drift and separability evidence (lanes A/B/C)",
+    "cf917ab2 docs(p3): amend SFE-P3d-parity with lanes D and E",
+    "cf25729b feat(p3): close the image/link parity gaps and add a plugin-book corpus (lanes D/E)",
+    "b9ca42a9 fix(p3): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: the parity gate was not standing — neither check:parity nor its 410-line sabotage suite had any CI invocation, under a comment in that workflow reading 'a gate that exists but is never invoked is the same as no gate at all'",
+    "R1: the derived extraction dropped mutation-capable actions SILENTLY in six ordinary TypeScript shapes (method-shorthand run, modifier-less helper, class-field arrow, module-level function, object spread, bound method reference) — all six exited 0 with RULE 3 PASS, and the live block-edit action was already invisible to its own file's extraction",
+    "R1: fail-open — one ordinary /['\\\"]/g regex collapsed the whole context-menu extraction to zero, and AP-21 liveness was computed on the UNION of both files so the gate still exited 0",
+    "R1: none of the ten replacement commands the matrix named for condition 2 was exercised by any test — the cited suites drove the pure token module, not the wrappers holding the only non-pure logic",
+    "R1: the source-mode staleness guard was a byte compare at fixed offsets with no document identity — a file switch during the dialog could write into the wrong document",
+    "R1: the caret-token refusal covered fenced blocks only and would rewrite real committed book content markdown-it renders as literal (reproduced against examples/with-design-guide/design-guide/05-layout.md)",
+    "R1: load-bearing header comments named four command functions that do not exist",
+    "R1: two factual claims in the checker's LIMITATIONS header were false",
+    "R1: condition 3's no-edit test titles claimed a rich mount that never occurs"
+  ],
+  "advisories": [
+    "The widened literal-region refusal over-refuses two ordinary shapes and reports them with a 'code block' message",
+    "RULE 1b attributes a commit call site to any commit-reaching method, even when no item consumes it",
+    "evidenceReferencesReplacement passes a row when ANY one of its replacements is referenced by ANY one evidence file",
+    "A doc comment in +page.svelte still describes the two surfaces' staleness guards as differing in kind",
+    "The desktop's buildRichProjection does not yet build a plugin-aware projection — createEditorProjection's capability is proven, the desktop's wiring of it is not",
+    "ContextMenuController still takes commitEngine as a non-optional dependency and reads commitEngine.generation at every menu build — P4 removes that coupling itself",
+    "packages/desktop tests now reach into packages/editor's test tree by deep relative path (reusing P2a's oracle) — a cross-package coupling no fitness check covers"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck (4 workspaces) / cli build (render purity) + 1913:60 / editor 3038 unit + 109 browser (8 suites) + browser-purity (35 files) / desktop 5981:1 + check (892 files) + lint + build (render purity, 145 files) / check-parity self-test + gate (13 extracted, 13 mapped, 0 waivers) / architecture (route ratchet 104==104) / generated-files (1273 tracked) / vendored (26 hashes, 33 files) / knip — all 17 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [
+    "AC-03 fully evidenced (real-book byte identity)",
+    "AC-04 fully evidenced (real-book locality)",
+    "AC-21 evidenced for P3",
+    "AC-12 evidenced for the preview-navigation half"
+  ],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "Parity conditions 1-4 are green on derived, sabotage-proven evidence; condition 5 is the product owner's. The run's real find was a capability loss P4 would have shipped: no command in either editing surface could change an EXISTING image or link, and the only in-place rewriter lived in the preview context menu P4 deletes. The review then found the gate itself defeatable in six ordinary code shapes and a data-loss bug that rewrote a real book's code sample — both fixed. P4 is unblocked on technical grounds, pending sign-off."
 }
 ```

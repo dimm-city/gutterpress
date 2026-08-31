@@ -172,3 +172,97 @@ Both `check:parity` lines above are wired into CI (`.github/workflows/ci.yml`,
 ## Review log
 
 <!-- Appended by the review stage. -->
+
+## Parity gate result — 4 of 5 green, condition 5 awaiting the product owner
+
+| # | Condition | Status | Evidence |
+|---|---|---|---|
+| 1 | All common authoring actions formerly reachable through preview mutation are available in source or rich mode | **GREEN** | `tools/check-parity.mjs` extracts 13 mutation-capable actions from the live source and requires each to have a mapped, existing, tested replacement: 13 mapped rows, **0 waivers**. Wired into CI as a self-test-then-gate pair. |
+| 2 | Image/link/layout context-menu source changes have replacement editor commands | **GREEN** | The three in-place operations that had no replacement anywhere (`image-properties`, `image-unwrap`, `link-edit`) are now caret-driven commands on **both** surfaces, driven end to end with byte-exact assertions in `parity-caret-token-wrappers.test.ts`. |
+| 3 | Real user-guide and plugin-book chapters can be edited without byte drift | **GREEN** | 25 real chapters / 154,366 bytes (user guide, design guide, validation example) plus a 3-chapter test-owned plugin book, all round-tripping through the real `DesktopDocumentHost` / `RichModeController` / `createEditorProjection`; locality via P2a's independent-bound oracle; both assertion families proven able to fail. |
+| 4 | Preview navigation still works | **GREEN** | Coverage audit per D8 capability, the two genuine gaps closed (host-command round trips through the real bridge and shell), plus a two-layer separability proof. |
+| 5 | No stakeholder-designated blocker remains | **PENDING — product owner** | Not a technical condition. See below. |
+
+### What condition 5 needs from the product owner
+
+Nothing is being waived, and no gap is being carried into P4 — conditions 1–4
+are green on their own evidence. Condition 5 asks a person whether anything
+they care about is still outstanding. Two facts are worth having in front of
+that decision:
+
+1. **The parity work found a real capability loss and closed it.** Before this
+   run, no command in either editing surface could change an *existing* image
+   or link — both surfaces only ever inserted new ones, and the only in-place
+   rewriter was reachable solely from the preview context menu P4 deletes.
+   Had P4 run first, authors would have silently lost the ability to edit an
+   image's properties or a link's target.
+2. **Two limits are recorded, neither of them a parity gap.** The desktop's
+   `buildRichProjection` does not yet build a plugin-aware projection
+   (`createEditorProjection`'s capability is proven; the desktop's wiring of it
+   is not), and `ContextMenuController` still takes `commitEngine` as a
+   non-optional dependency and reads `commitEngine.generation` at every menu
+   build — P4 removes that coupling itself.
+
+## Review log
+
+### Round 1 — repair (9 CONFIRMED findings)
+
+The review answered this run's own central question empirically rather than by
+inspection, and the answer was **yes, the gate could be defeated**:
+
+1. **The gate was not standing** — neither `check:parity` nor its 410-line
+   sabotage suite had any CI invocation, under a comment in that same workflow
+   reading "a gate that exists but is never invoked is the same as no gate at
+   all." Wired in as a self-test-then-gate pair matching its four siblings.
+2. **The extraction dropped mutation-capable actions silently in six ordinary
+   TypeScript shapes** — method-shorthand `run`, modifier-less helper,
+   class-field arrow, module-level function, object spread, bound method
+   reference. All six exited 0 with `RULE 3: PASS`; two were not even counted
+   in the "scanned N items" line. This was live: `block-edit` mutates through
+   `this.deps.openInlineEdit(...)` and was invisible to its own file's
+   extraction, reaching the gate only because a different file yielded the
+   same id independently. Fixed by RULE 1b (residual call-site accounting —
+   every real commit call site must fall inside a recognized method or item
+   span, else the gate fails naming the orphan), bare-reference reachability,
+   and a constructor-dependency seed over a maintained read-only allowlist.
+3. **Fail-open on a regex literal** — one ordinary `/['"]/g` collapsed the
+   whole context-menu extraction to zero, and AP-21 liveness was computed on
+   the UNION of both files, so `block-edit` kept it non-empty and the gate
+   still exited 0. Fixed by per-file liveness plus an unterminated-span
+   invariant in the mask builder.
+4. **None of the ten replacement commands the matrix named for condition 2 was
+   exercised by any test** — the cited suites drove the pure token module, not
+   the wrappers, which hold the only logic outside the pure core.
+5. **The source-mode staleness guard was a byte compare at fixed offsets with
+   no document identity** — a file switch or external reload during the dialog
+   could write into the wrong document. Now compares CodeMirror's immutable
+   `doc` reference before the byte compare.
+6. **The caret-token refusal covered fenced blocks only** — it would rewrite
+   real committed book content that markdown-it renders as literal,
+   reproduced against `examples/with-design-guide/design-guide/05-layout.md`
+   where it rewrote a documentation code sample. Now refuses across inline
+   code spans, indented blocks, and blockquoted and list-nested fences, with
+   positive controls still resolving.
+7. **Load-bearing header comments named four command functions that do not
+   exist**, describing an API that was designed away.
+8. **Two factual claims in the checker's LIMITATIONS header were false** — the
+   template-literal limitation is neither absent from the real file nor
+   covered by a fixture.
+9. **Condition 3's test titles claimed a rich mount that never occurs** — the
+   happy-dom substitution is real and documented, but the titles read broader
+   than the evidence.
+
+Verdict after round 1: **approve**, 0 confirmed remaining, 4 advisories (an
+over-refusal in two ordinary shapes reported with a "code block" message;
+RULE 1b attributing a call site to any commit-reaching method; the
+evidence-reference check passing on ANY-of-many; one stale doc comment).
+
+### Gate
+
+PASS — all 17 commands exit 0: install; typecheck (4 workspaces); cli build
+(render purity) + test (1913 pass / 60 skip); editor test (3038) +
+test:browser (109 across 8 suites) + browser-purity (35 files); desktop test
+(5981 pass / 1 skip), check (892 files / 0 errors), lint, build (render
+purity, 145 files); `check-parity` self-test + gate (13 extracted, 13 mapped,
+0 waivers, 7 rules PASS); architecture (route ratchet 104 == 104);
+generated-files (1273 tracked); vendored (26 hashes / 33 files); knip.
