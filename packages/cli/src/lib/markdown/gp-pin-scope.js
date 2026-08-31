@@ -25,13 +25,22 @@ function warn(env, line, type, message, marker) {
 }
 
 export default function gpPinScope(md) {
-  // Parse-time scope check for the author-facing `.gp-pin` class (gutterpress-css.ts): a pinned element resolves against its nearest positioned
-  // ancestor, which core makes .page/.spread. Outside any @page/@spread its
-  // containing block is the document canvas — it can print on a completely
-  // different sheet, and the multicol preview MASKS that failure (the
+  // Parse-time scope check for the author-facing `.gp-pin` class
+  // (gutterpress-css.ts): a pinned element resolves against its nearest
+  // POSITIONED ANCESTOR, falling back to the page/spread that core gives
+  // `position: relative`. This rule polices ONE failure — a pin with no
+  // positioned ancestor at all, i.e. outside any @page/@spread, where the
+  // containing block becomes the document canvas and the art can print on a
+  // completely different sheet. The multicol preview MASKS that failure (the
   // viewer's .gp-strip wrapper is positioned and exactly one page tall, so
-  // the pin looks right on screen). Warn here, where the source line is
-  // still known.
+  // the pin looks right on screen), which is why it is worth a parse-time
+  // warning at a known source line.
+  //
+  // A theme wrapper that is positioned (a `.section` card, a component
+  // shell) legitimately becomes the pin's frame — that is the documented
+  // contract, not a defect, and this rule deliberately says nothing about
+  // it. Scoping a pin to a card is a feature; an author who wanted the sheet
+  // instead authors the art outside the wrapper.
   //
   // Registered with `push` so it runs after markdown-it-attrs'
   // curly_attributes (renderer.ts registers attrs before this plugin) has

@@ -38,8 +38,16 @@
  *                   (shape-outside; the pipeline mirrors the src into
  *                   --gp-shape because CSS url() contexts can't read
  *                   attr()). Floats only; inert elsewhere.
- *   .gp-pin       — pins within the nearest @page/@spread container;
- *                   centered on both axes unless combined with the edge
+ *   .gp-pin       — pins within its nearest POSITIONED ANCESTOR, falling
+ *                   back to the page/spread. Core gives `.page`/`.spread`
+ *                   `position: relative` (markers.js MARKER_CSS), so with no
+ *                   other positioned ancestor in between that is the page —
+ *                   the common case. A theme that positions something closer
+ *                   (a `.section` card, a component shell) becomes the pin's
+ *                   frame instead, BY DESIGN: that is how a pin is scoped to
+ *                   a card rather than a sheet. Page-level furniture must
+ *                   therefore be authored outside such a wrapper.
+ *                   Centered on both axes unless combined with the edge
  *                   modifiers .gp-top/.gp-bottom/.gp-left/.gp-right.
  *   .gp-flush     — with .gp-pin + an edge, the art sits on the PAPER's
  *                   edge rather than on the text block's. No CSS rule here:
