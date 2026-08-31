@@ -21,9 +21,15 @@
  *   4. Credentials → Create credentials → OAuth client ID → **Desktop app**
  *   5. export GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
  *
- * RUN:
+ * RUN (machine with a browser):
  *   node scripts/gdrive-spike.mjs                    # full run
  *   node scripts/gdrive-spike.mjs --folder-id <id>   # re-check a moved folder (P12)
+ *
+ * RUN (headless / remote / SSH — browser is on a DIFFERENT machine):
+ *   node scripts/gdrive-spike.mjs --manual                       # prints the URL
+ *   node scripts/gdrive-spike.mjs --manual --resume "<url>"      # finish with the
+ *                                                                # redirect URL you
+ *                                                                # were bounced to
  */
 import http from "node:http";
 import crypto from "node:crypto";
@@ -59,53 +65,115 @@ const jfetch = async (url, init) => {
 };
 const authHdr = (t) => ({ Authorization: `Bearer ${t}` });
 
-// ── P1: loopback listener on an OS-assigned port + PKCE ───────────────────────
+// ── P1: obtain an authorization code (loopback, or headless two-step) ────────
+// Three modes:
+//   (default)            local listener on 127.0.0.1:<ephemeral>  — full P1 proof
+//   --manual             print the URL + persist PKCE state, then exit (phase A)
+//   --manual --resume U  finish using the redirect URL you were bounced to (phase B)
+// The manual pair exists for HEADLESS/REMOTE boxes (SSH, containers, this repo's
+// cloud sessions) where the machine running the script has no browser and your
+// browser cannot reach the script's 127.0.0.1. Your browser will show
+// "connection refused" on the redirect — that is expected; the code is in the
+// URL bar. Google still had to ACCEPT the un-registered ephemeral loopback port
+// to issue that code, so P1's substantive claim is proven either way.
+const MANUAL = process.argv.includes("--manual");
+const RESUME = process.argv.includes("--resume") ? process.argv[process.argv.indexOf("--resume") + 1] : null;
+const STATE_FILE = path.join(tmpdir(), "gutterpress-spike-pkce.json");
+
 step("P1  Loopback redirect on an ephemeral port + PKCE S256");
-const verifier = b64url(crypto.randomBytes(32));
-const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
-const state = b64url(crypto.randomBytes(16));
 
-const server = http.createServer();
-await new Promise((res) => server.listen(0, "127.0.0.1", res));
-const port = server.address().port;
-const redirectUri = `http://127.0.0.1:${port}`;
-console.log(`  listener bound: ${redirectUri}  (port was NOT pre-registered in Cloud Console)`);
+let verifier, state, redirectUri, code, port;
 
-const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
-  client_id: CLIENT_ID, redirect_uri: redirectUri, response_type: "code", scope: SCOPES,
-  code_challenge: challenge, code_challenge_method: "S256", state,
-  access_type: "offline", prompt: "consent",
-});
+if (RESUME) {
+  // ---- phase B: finish a --manual run -------------------------------------
+  let saved;
+  try { saved = JSON.parse(readFileSync(STATE_FILE, "utf8")); }
+  catch { console.error(`No pending run found (${STATE_FILE}). Run with --manual first.`); process.exit(2); }
+  ({ verifier, state, redirectUri, port } = saved);
+  let got;
+  try { got = new URL(RESUME.trim()); }
+  catch { console.error("--resume needs the FULL redirect URL you were bounced to (starts with http://127.0.0.1:...)"); process.exit(2); }
+  const err = got.searchParams.get("error");
+  if (err) { fail("P1", "consent denied", err); process.exit(1); }
+  if (got.searchParams.get("state") !== state) {
+    fail("P1", "STATE MISMATCH — refusing the code", `expected ${state}, got ${got.searchParams.get("state")}`);
+    process.exit(1);
+  }
+  code = got.searchParams.get("code");
+  if (!code) { fail("P1", "no code in the pasted URL", RESUME.slice(0, 120)); process.exit(1); }
+  try { unlinkSync(STATE_FILE); } catch {}
+  pass("P1", "authorization code obtained (headless two-step)", `Google accepted un-registered loopback port ${port} and issued a code; state matched`);
+} else {
+  // ---- fresh run: build the PKCE challenge --------------------------------
+  verifier = b64url(crypto.randomBytes(32));
+  state = b64url(crypto.randomBytes(16));
+  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
 
-const codePromise = new Promise((resolve, reject) => {
-  server.on("request", (req, res) => {
-    const u = new URL(req.url, redirectUri);
-    const err = u.searchParams.get("error");
-    const code = u.searchParams.get("code");
-    const gotState = u.searchParams.get("state");
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(`<html><body style="font:16px system-ui;padding:3rem"><h2>${err ? "Denied" : "Connected"}</h2><p>Return to the terminal.</p></body></html>`);
-    server.close();
-    if (err) return reject(new Error(`consent denied: ${err}`));
-    if (gotState !== state) return reject(new Error(`STATE MISMATCH (got ${gotState})`));
-    resolve(code);
+  let server = null;
+  if (MANUAL) {
+    port = 8765; // fixed in manual mode: nothing listens, it only has to be a loopback URI
+    redirectUri = `http://127.0.0.1:${port}`;
+  } else {
+    server = http.createServer();
+    await new Promise((res) => server.listen(0, "127.0.0.1", res));
+    port = server.address().port;
+    redirectUri = `http://127.0.0.1:${port}`;
+    console.log(`  listener bound: ${redirectUri}  (port was NOT pre-registered in Cloud Console)`);
+  }
+
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+    client_id: CLIENT_ID, redirect_uri: redirectUri, response_type: "code", scope: SCOPES,
+    code_challenge: challenge, code_challenge_method: "S256", state,
+    access_type: "offline", prompt: "consent",
   });
-  setTimeout(() => reject(new Error("timed out after 5 min")), 5 * 60_000).unref?.();
-});
 
-console.log(`\n  Opening your browser. If it doesn't open, paste:\n  ${authUrl}\n`);
-const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-try {
-  const child = spawn(opener, [authUrl], { detached: true, stdio: "ignore" });
-  // spawn reports ENOENT asynchronously; without this handler a headless box
-  // (no xdg-open) crashes the spike instead of falling back to the printed URL.
-  child.on("error", () => console.log("  (couldn't auto-open a browser — use the URL above)"));
-  child.unref();
-} catch { /* URL is printed above */ }
+  if (MANUAL) {
+    writeFileSync(STATE_FILE, JSON.stringify({ verifier, state, redirectUri, port }), { mode: 0o600 });
+    console.log(`
+  \x1b[1mSTEP 1 — open this in your browser and approve:\x1b[0m
 
-let code;
-try { code = await codePromise; pass("P1", "loopback + state + PKCE round-trip", `un-registered port ${port} accepted by Google; state matched`); }
-catch (e) { fail("P1", "loopback round-trip", String(e.message)); process.exit(1); }
+  ${authUrl}
+
+  \x1b[1mSTEP 2 —\x1b[0m your browser will then fail to load a 127.0.0.1 page
+  ("connection refused"). That is EXPECTED. Copy the full URL from the
+  address bar — it contains ?code=... — and run:
+
+     node scripts/gdrive-spike.mjs --manual --resume "<paste that URL>"
+
+  (PKCE verifier saved to ${STATE_FILE}, mode 0600.)
+`);
+    process.exit(0);
+  }
+
+  const codePromise = new Promise((resolve, reject) => {
+    server.on("request", (req, res) => {
+      const u = new URL(req.url, redirectUri);
+      const err = u.searchParams.get("error");
+      const got = u.searchParams.get("code");
+      const gotState = u.searchParams.get("state");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<html><body style="font:16px system-ui;padding:3rem"><h2>${err ? "Denied" : "Connected"}</h2><p>Return to the terminal.</p></body></html>`);
+      server.close();
+      if (err) return reject(new Error(`consent denied: ${err}`));
+      if (gotState !== state) return reject(new Error(`STATE MISMATCH (got ${gotState})`));
+      resolve(got);
+    });
+    setTimeout(() => reject(new Error("timed out after 5 min")), 5 * 60_000).unref?.();
+  });
+
+  console.log(`\n  Opening your browser. If it doesn't open, paste:\n  ${authUrl}\n`);
+  const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  try {
+    const child = spawn(opener, [authUrl], { detached: true, stdio: "ignore" });
+    // spawn reports ENOENT asynchronously; without this handler a headless box
+    // (no xdg-open) crashes the spike instead of falling back to the printed URL.
+    child.on("error", () => console.log("  (couldn't auto-open a browser — use the URL above, or re-run with --manual)"));
+    child.unref();
+  } catch { /* URL is printed above */ }
+
+  try { code = await codePromise; pass("P1", "loopback + state + PKCE round-trip", `un-registered port ${port} accepted by Google; state matched`); }
+  catch (e) { fail("P1", "loopback round-trip", String(e.message)); process.exit(1); }
+}
 
 // ── P2: does the Desktop client REALLY need client_secret with PKCE? ─────────
 step("P2  Is client_secret required for a Desktop client using PKCE?  (settles D3 / ADR 0011)");

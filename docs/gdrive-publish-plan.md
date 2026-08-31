@@ -550,7 +550,14 @@ follow-ups). A *Testing*-mode consent screen is enough — no verification, no
 review queue — so the entire design can be validated in ~30 minutes on day one:
 ~10 min of Cloud Console setup, ~20 min running the spike. Anything it fails is
 a design change made before any code depends on it. Delete the script once
-`providers/gdrive.ts` and its tests exist. Evidence already gathered without
+`providers/gdrive.ts` and its tests exist.
+
+On a machine with a browser: `node scripts/gdrive-spike.mjs`. On a headless or
+remote box (SSH, container, a cloud coding session) the script's `127.0.0.1`
+listener is unreachable from your browser, so use the two-step form —
+`--manual` prints the consent URL, you approve in your own browser, and
+`--manual --resume "<the redirect URL you were bounced to>"` finishes the run.
+The redirect page failing to load is expected; the code is in the address bar. Evidence already gathered without
 credentials is in **Appendix B**.
  Create the Cloud project; enable the Drive API;
 configure the OAuth consent screen (external) with app name, logo, homepage
