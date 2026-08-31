@@ -195,6 +195,34 @@
  * by the fork's own `absoluteStart`-based machinery, never by this module
  * (see `provider.ts`'s header) — dropping an ambiguous key only ever
  * removes an INACTIVE chip, never a writable range.
+ *
+ * REFUSED PLUGIN REGIONS (SFE-P2c, docs/plans/source-first-editor/runs/
+ * SFE-P2c.md): when a trusted, project-plugin-produced token cannot be
+ * honestly attributed a source range (Lane B's rule-4 refusals —
+ * `editor-projection.ts` emits a diagnostic and projects NO block for it),
+ * this module needs no special case at all: {@link buildBlockIndex} only
+ * ever indexes `projection.blocks` — a refused span was never given a key
+ * to begin with, so {@link matchProjectedBlock} returns `undefined` for it
+ * the same way it does for any other unprojected call, and `provider.ts`
+ * falls through to the fork's own default (plain, fully editable)
+ * rendering. This is an architectural guarantee, not merely an observed
+ * outcome: there is no `bySourceText` entry a refused call could ever
+ * resolve to, by construction.
+ *
+ * DECISION (this run): no additional "edit in source" affordance is added
+ * for a refused region. The run spec explicitly permits this ("never a
+ * guessed writable range... the simplest correct answer is: no chip at
+ * all"). Painting any chip-shaped UI over a refused span — even an inert,
+ * read-only-looking one — risks being mistaken for a writable region,
+ * exactly what G-06 warns against; the region's own diagnostic
+ * (`projection.diagnostics`, unchanged and already surfaced by
+ * `editor-projection.ts`) is the host's existing channel for a broader
+ * "why can't I edit this richly" affordance, should a later run choose to
+ * surface one — this run does not, keeping the design at its smallest
+ * correct shape. `provider.test.ts`'s "plugin-region: matchProjectedBlock"
+ * suite and `tests/gutterpress/plugin-region.btest.ts` both prove this
+ * live: a refused plugin-region renders no chip and stays a normal,
+ * directly-editable block.
  */
 import type { GeneratedView, GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 

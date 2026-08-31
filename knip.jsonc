@@ -75,7 +75,7 @@
       // harness resolves BY PATH STRING (bundle.ts bun-builds them at test
       // runtime), so ones not also type-imported by a btest are invisible to
       // knip's import graph. They are genuine entries, not dead code.
-      "entry": ["scripts/*.mjs", "tests/**/*.test.ts", "tests/**/*.btest.ts", "tests/**/support/entry.ts"],
+      "entry": ["scripts/*.mjs", "tests/**/*.test.ts", "tests/**/*.btest.ts", "tests/**/support/*entry.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,mjs}"]
     },
     "packages/desktop": {

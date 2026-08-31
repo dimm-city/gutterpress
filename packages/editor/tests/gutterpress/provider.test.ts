@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createEditorProjection } from "gutterpress/render";
+import { createEditorProjection, createMarkdownRenderer } from "gutterpress/render";
 import type { BlockAstNode, CustomBlockRendering } from "@dimm-city/vscode-markdown-editor";
 import type { GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh } from "../../src/gutterpress/match.ts";
 import { buildChipPlan } from "../../src/gutterpress/plan.ts";
 import { createGutterpressBlockProvider } from "../../src/gutterpress/provider.ts";
+import { asideMarkerPlugin } from "./support/plugin-fixture.ts";
 
 /**
  * SFE-P2b Lane B — unit coverage for `src/gutterpress/{match,plan,provider}.ts`.
@@ -448,5 +449,119 @@ describe("createGutterpressBlockProvider — stale fallthrough (G-11)", () => {
     expect(
       provider.renderCustomBlock(FAKE_NODE, FIXTURE_SOURCE.slice(chapter.from, chapter.to)),
     ).toBeUndefined();
+  });
+});
+
+// ── SFE-P2c: plugin-region matching + planning ─────────────────────────────
+//
+// Extends the coverage above for the "plugin-region" kind (P2b reserved it;
+// SFE-P2c's Lane A made it real in editor-projection.ts). The fixture is
+// `./support/plugin-fixture.ts`'s "@@aside" plugin — a realistic
+// registered markdown-it core rule, mirroring
+// `packages/cli/src/lib/markdown/editor-projection-plugins.test.ts`'s own
+// fixture byte-for-byte (see that shared module's header for why it is a
+// deliberate port, not a cross-package import).
+//
+// NO PRODUCTION CODE CHANGE was needed for any of this: `match.ts`,
+// `plan.ts`, `provider.ts`, and `render-chip.ts` are all kind-agnostic —
+// they dispatch on `block.editMode` (`plan.ts`) or plain object identity
+// (`match.ts`), never on `block.kind` itself. The tests below VERIFY that
+// claim against the real, unmodified production modules (the run spec's own
+// instruction: "this comes free from the seam... verify rather than
+// assume") rather than merely asserting it in a comment. See
+// `../src/gutterpress/plan.ts`'s and `../src/gutterpress/match.ts`'s own
+// "PLUGIN-REGION (SFE-P2c)" / "REFUSED PLUGIN REGIONS (SFE-P2c)" header
+// sections for the full decision record; `plugin-region.btest.ts` proves
+// the same claims against the real fork in a real browser.
+
+const ASIDE_SOURCE = "@@aside Pull quote here\n";
+
+function buildAsideProjection(keepEvidence: boolean, sourceVersion = 1): GutterpressProjection {
+  const md = createMarkdownRenderer([asideMarkerPlugin(keepEvidence)]);
+  return createEditorProjection(ASIDE_SOURCE, { sourceVersion, md, trusted: true });
+}
+
+describe("plugin-region: matchProjectedBlock (SFE-P2c)", () => {
+  test("matches an evidence-bearing plugin-region block's exact source, plus the fork's own trailing blank-line glue -- the SAME `.trimEnd()` correlation match.ts already uses for every other kind", () => {
+    const projection = buildAsideProjection(true);
+    // AP-21 liveness: the plugin's transform really ran and really produced
+    // a plugin-region block before anything below is meaningful.
+    const region = blockOf(projection, "plugin-region");
+    const exactSlice = ASIDE_SOURCE.slice(region.from, region.to);
+    expect(exactSlice).toBe("@@aside Pull quote here\n");
+
+    const index = buildBlockIndex(projection, ASIDE_SOURCE);
+    for (const extra of ["", "\n", "\n\n"]) {
+      expect(matchProjectedBlock(index, exactSlice + extra)?.block).toBe(region);
+    }
+  });
+
+  test("a refused (no-evidence) plugin token yields zero blocks -- there is architecturally nothing for match.ts to ever match, not merely an empirical 'no chip' outcome", () => {
+    const projection = buildAsideProjection(false);
+    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("plugin_aside_open"),
+      ),
+    ).toBe(true);
+
+    // buildBlockIndex only ever indexes projection.blocks (see match.ts's
+    // BlockIndex.bySourceText doc comment) -- a refused span was never
+    // given a key to begin with, so even the region's OWN exact text
+    // cannot resolve to a match. This is the architectural proof behind
+    // "no chip renders for a refused region": there is no code path by
+    // which one could.
+    const index = buildBlockIndex(projection, ASIDE_SOURCE);
+    expect(matchProjectedBlock(index, ASIDE_SOURCE)).toBeUndefined();
+    expect(matchProjectedBlock(index, "@@aside Pull quote here\n")).toBeUndefined();
+  });
+});
+
+describe("plugin-region: buildChipPlan (SFE-P2c)", () => {
+  test("editor-projection.ts's committed shape: editMode is 'source' (matching raw-html's own posture), so this plans as NOT segmented -- the same bare inert-text preview path, verified for this kind rather than assumed", () => {
+    const projection = buildAsideProjection(true);
+    const region = blockOf(projection, "plugin-region");
+    expect(region.editMode).toBe("source");
+
+    const sourceText = ASIDE_SOURCE.slice(region.from, region.to);
+    const plan = buildChipPlan(region, [], sourceText);
+    expect(plan.segmented).toBe(false);
+    expect(plan.sourceText).toBe(sourceText);
+  });
+
+  test("editor-projection.ts's committed shape carries viewAttributes but NEVER inactiveHtml for this kind -- the 'plugin's own produced HTML' this run's chip renders is therefore the block's own consumed AUTHORED SOURCE (sourceText/plan.sourceText), not a separate rendered-HTML field the projection does not provide", () => {
+    const projection = buildAsideProjection(true);
+    const region = blockOf(projection, "plugin-region");
+    expect(region.inactiveHtml).toBeUndefined();
+    expect(region.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
+
+    const plan = buildChipPlan(region, [], ASIDE_SOURCE.slice(region.from, region.to));
+    // AP-06: carried through unchanged, ready for render-chip.ts's inert
+    // attribute badge -- never written back to source.
+    expect(plan.block.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
+  });
+});
+
+describe("createGutterpressBlockProvider -- plugin-region, still never reaching DOM (SFE-P2c)", () => {
+  test("returns undefined for a refused plugin token's own would-be sourceText -- no block exists to match, so the provider falls through exactly like an ordinary unmatched call, never a guessed writable range", () => {
+    const projection = buildAsideProjection(false);
+    const provider = createGutterpressBlockProvider(projection, {
+      source: ASIDE_SOURCE,
+      ownerDocument: UNUSED_DOCUMENT,
+    });
+    // Never reaches render-chip.ts's document.createElement -- if it did,
+    // this would throw under bun:test's DOM-less runtime, failing the test
+    // outright rather than merely returning the wrong value.
+    expect(provider.renderCustomBlock(FAKE_NODE, ASIDE_SOURCE)).toBeUndefined();
+  });
+
+  test("returns a real CustomBlockRendering shape is NOT exercised here (that needs real DOM -- see plugin-region.btest.ts); needsRefresh still reflects the projection's own sourceVersion for this kind exactly as for every other", () => {
+    const projection = buildAsideProjection(true, 9);
+    const provider = createGutterpressBlockProvider(projection, {
+      source: ASIDE_SOURCE,
+      ownerDocument: UNUSED_DOCUMENT,
+    });
+    expect(provider.needsRefresh(9)).toBe(false);
+    expect(provider.needsRefresh(10)).toBe(true);
   });
 });

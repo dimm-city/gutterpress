@@ -39,6 +39,24 @@
  * P1b2 fork patch itself adopted for the identical reason (see
  * `tests/vscode-adapter/custom-view/support/entry.ts`'s own comment on the
  * same call).
+ *
+ * PLUGIN-REGION (SFE-P2c): the raw-html branch above ("no segments... the
+ * P1b2 bare-dom fallback... rendered as an inert source preview") is reused
+ * VERBATIM for `plugin-region` — both kinds share `editMode: "source"`
+ * (`plan.ts`'s own "PLUGIN-REGION (SFE-P2c)" header section explains why),
+ * so `plan.segmented` is `false` for either and this function never
+ * branches on `plan.block.kind` for that decision, or for anything else —
+ * the kind label (`plan.block.kind`), the CSS modifier class
+ * (`${CHIP_ROOT_CLASS}--${plan.block.kind}`), and `viewAttributes`
+ * rendering below are already fully generic. The SAME `.textContent`-only
+ * inertness this header documents above therefore applies unchanged to a
+ * project plugin's own consumed source — including a `<script>` payload
+ * embedded in it, or in one of its `viewAttributes` — with no new
+ * sanitization code and no new attack surface. `tests/gutterpress/
+ * plugin-region.btest.ts` (SFE-P2c) proves this live: a plugin-region chip
+ * carrying a `<script>` payload in both its source text and a view
+ * attribute never executes it, exactly like the existing raw-html proof in
+ * `gutterpress.btest.ts`.
  */
 import type { CustomBlockRendering, SourceSegment } from "@dimm-city/vscode-markdown-editor";
 import type { ChipPlan } from "./plan.ts";

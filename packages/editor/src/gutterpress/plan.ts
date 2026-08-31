@@ -34,6 +34,48 @@
  * "the provider never creates segments for generated content" (D6/G-04): a
  * `string` cannot carry a segment, so there is no code path — bug or
  * otherwise — through which one could attach one.
+ *
+ * PLUGIN-REGION (SFE-P2c, docs/plans/source-first-editor/runs/SFE-P2c.md):
+ * this run makes the `"plugin-region"` kind real (P2b only reserved it),
+ * and this module needed ZERO code change to handle it — verified, not
+ * assumed (the run spec's own instruction: "this comes free from the
+ * seam... verify rather than assume"). `editor-projection.ts`'s committed
+ * shape gives a `plugin-region` block `editMode: "source"` — the SAME
+ * value `raw-html` gets, for the same reason documented there ("matching
+ * raw-html's two-state posture: G-07's active state is source-aware
+ * editing of the block's own exact range, not a structured command surface
+ * a third-party plugin never opted into"). Since `segmented` above is keyed
+ * on `block.editMode`, never `block.kind`, a plugin-region block already
+ * routes through the exact same "bare inert-text preview" path raw-html
+ * uses — precisely the outcome this file's own paragraph above predicted
+ * for a FUTURE kind ("A future `ProjectedBlockKind` with `editMode:
+ * 'structured'` gets the same treatment automatically"; the mirror image,
+ * for `editMode: "source"`, is what actually landed here).
+ * `tests/gutterpress/plugin-region.btest.ts` (SFE-P2c) proves this live
+ * against the real fork, not merely by reading this file.
+ *
+ * WHAT "THE PLUGIN'S OWN PRODUCED HTML" MEANS IN THIS COMMITTED SHAPE: the
+ * run spec asks the inactive view to render "the plugin's OWN produced
+ * HTML... inertly." Read against `editor-projection.ts`'s actual output
+ * (checked directly, per the run spec's own "(inactiveHtml? viewAttributes?)"
+ * prompt — see `editor-projection-plugins.test.ts` and this package's own
+ * `provider.test.ts` "plugin-region: buildChipPlan" suite, both asserting
+ * this directly): a `plugin-region` block carries `viewAttributes` but
+ * NEVER `inactiveHtml` — unlike `raw-html`, which sets `inactiveHtml =
+ * token.content`. There is therefore no separate rendered-HTML field for
+ * this function to prefer; `sourceText` (the fork's own exact text for the
+ * live call, correlated against the block's own proven range by
+ * `match.ts`) IS the only "plugin output" available, and it is the block's
+ * own AUTHORED SOURCE bytes, not a second, transformed representation.
+ * Routing it through the identical non-segmented/inert path raw-html uses
+ * is therefore the "honest interim" the run spec asks for, not a
+ * workaround — there is nothing else to show. If a future run adds a
+ * distinct `inactiveHtml` to `plugin-region` (e.g. the plugin's own
+ * rendered fragment, separate from its consumed source), `buildChipPlan`
+ * will need an explicit change to prefer it; this run deliberately does
+ * not add that speculative field-read ahead of the projection actually
+ * producing the value (smallest design that satisfies the current,
+ * verified shape).
  */
 import type { GeneratedView, ProjectedBlock } from "gutterpress/render";
 
