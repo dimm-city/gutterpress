@@ -61,6 +61,17 @@ interface PublishSettings {
     /** Saved-credential label to use (see PublishSettings doc). */
     credential?: string;
   };
+  gdrive?: {
+    /** Display name of the target Drive folder; created at My Drive root if
+     * missing. Default when unset: "Gutterpress". */
+    folder?: string;
+    /** Stable Drive folder id (picker-set in the desktop app, or hand-recorded
+     * from the CLI's post-publish tip). Takes precedence over `folder` when
+     * present and the folder still exists. */
+    folderId?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
+  };
 }
 
 export interface GutterpressManifest {
