@@ -11,11 +11,9 @@
     "test": "bun --filter '*' test",
     "typecheck": "bun --filter '*' typecheck",
     "desktop:dev": "bun --cwd packages/desktop dev",
-    "desktop:electron": "bun --cwd packages/desktop electron:dev",
-    "knip": "(cd packages/desktop && bunx svelte-kit sync) && knip --include files,dependencies,unlisted,binaries"
+    "desktop:electron": "bun --cwd packages/desktop electron:dev"
   },
   "devDependencies": {
-    "knip": "6.32.2",
     "playwright-core": "^1.60.0"
   },
   "overrides": {
