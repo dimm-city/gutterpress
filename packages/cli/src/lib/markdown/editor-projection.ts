@@ -271,25 +271,23 @@
  * came from the token's own recorded evidence, the same as any other
  * evidence-bearing token this module has always handled.
  *
- * NO EVIDENCE / LANE B INTEGRATION POINT: when the SAME trusted,
- * plugin-produced, unrecognized token carries no `data-source-range` of its
- * own (the plugin consumed source and synthesized a token the way
+ * NO EVIDENCE / LANE B INTEGRATION POINT (now wired, SFE-P2c): when the SAME
+ * trusted, plugin-produced, unrecognized token carries no `data-source-range`
+ * of its own (the plugin consumed source and synthesized a token the way
  * markers.js's OWN chapter-opener does — `new state.Token(...)` with no
- * map/meta at all), this lane cannot honestly attribute a range to it by
+ * map/meta at all), this module cannot honestly attribute a range to it by
  * itself — inventing one would be exactly the AP-05 guess D6/G-05 forbid.
- * The call site below hands this case to `resolveMaplessPluginTokenOrigin`
- * — a documented, single-purpose function boundary this lane leaves as a
- * fail-closed stub (always returns `null`, i.e. "no recoverable origin").
- * `null` becomes the SAME shape of `EDITOR_UNSUPPORTED_PROJECTION`
- * diagnostic this module has always used for an unattributable token. The
- * run spec's "Origin mechanism" section (rule 3: a single clean before/after
- * core-rule-boundary splice, full range evidence on every removed token,
- * origin = the union of the removed run's ranges — rule 4: refuse for every
- * other shape) is Lane B's `plugin-origin.ts` to build; when that module
- * exists, replacing this stub's body to delegate to it — without touching
- * the branch that calls it — is the intended, small, safe integration. See
- * `resolveMaplessPluginTokenOrigin`'s own doc comment for the exact
- * contract this lane leaves in place.
+ * The call site below hands this case to `resolveMaplessPluginTokenOrigin`,
+ * which now delegates to `plugin-origin.ts`'s evidence-based
+ * before/after-token-stream-object-identity mechanism (that module's own
+ * header documents the full design: rule 3's clean-splice recovery and rule
+ * 4's six distinct refusal shapes). A refusal from that module — including
+ * "no snapshot available" for an `md` this module's own
+ * `registerPluginOriginCapture` call could not bracket — becomes the SAME
+ * shape of `EDITOR_UNSUPPORTED_PROJECTION` diagnostic this module has always
+ * used for an unattributable token; the call site's own diagnostic text is
+ * unchanged from P2b/Lane A (see `resolveMaplessPluginTokenOrigin`'s own doc
+ * comment for the exact contract).
  *
  * PLUGIN CSS: `collectPluginCss(loadedPlugins)` (`renderer.ts`) concatenates
  * every loaded plugin's own `css` export. This module does not call it and
@@ -346,6 +344,7 @@ import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "./renderer";
 import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
+import { registerPluginOriginCapture, resolvePluginTokenOrigin } from "./plugin-origin";
 
 /** D1/D6 — Gutterpress sparse-projection schema version. Bump only via an explicit decision-record amendment. */
 export const PROJECTION_SCHEMA_VERSION = 1 as const;
@@ -627,41 +626,51 @@ const BASE_PIPELINE_OPEN_TOKEN_TYPES = new Set<string>([
 ]);
 
 /**
- * SFE-P2c Lane B INTEGRATION POINT — see the run spec's "Origin mechanism"
- * section (docs/plans/source-first-editor/runs/SFE-P2c.md) for the exact
- * rule this function is eventually expected to implement: rule 3, a single
- * clean before/after core-rule-boundary splice where every removed token
- * carried complete range evidence, yielding origin = the union of the
- * removed run's ranges; rule 4 (refuse) for every other shape.
+ * SFE-P2c Lane B INTEGRATION POINT (now wired) — see the run spec's "Origin
+ * mechanism" section (docs/plans/source-first-editor/runs/SFE-P2c.md) and
+ * `plugin-origin.ts`'s own module header for the full design: rule 3, a
+ * single clean before/after core-rule-boundary splice where every removed
+ * token carried complete range evidence, yielding origin = the union of the
+ * removed run's ranges; rule 4 (refuse, six distinct shapes) for every other
+ * case.
  *
  * Called ONLY for a trusted, project-plugin-produced, nesting===1 open
  * token that carries NO `data-source-range` evidence of its own (the
  * evidence-bearing case is handled directly at the call site below and
- * never reaches this function). This lane (A) proves only that
- * evidence-bearing case; recovering an origin for a map-less token needs the
- * before/after token-stream snapshot across the plugin core-rule boundary
- * that only `plugin-origin.ts` (Lane B — not written by this lane) builds.
+ * never reaches this function) — Lane A's own branch and this function's
+ * calling contract are UNCHANGED; only this function's BODY now does real
+ * work, delegating entirely to `plugin-origin.ts`'s
+ * `resolvePluginTokenOrigin`, which reads the before/after snapshot
+ * `registerPluginOriginCapture` stashed on `env` during `md.parse()` (see
+ * `createEditorProjection` below, where `env` is now threaded through
+ * instead of being a throwaway `{}`).
  *
- * Until that module is wired in here, this resolver is the fail-closed
- * default D14/G-06 require: return `null` (no recoverable origin)
- * unconditionally — NEVER guess a range from the token's type, its
- * neighbors, or anything else. A future change is expected to replace this
- * body to delegate to `plugin-origin.ts`'s own resolver WITHOUT changing the
- * branch that calls it below.
- *
- * `tokenIndex`/`tokens` are threaded through (not just `token`) so a real
- * implementation can locate `token`'s neighbors in the AFTER token stream —
- * the BEFORE snapshot itself is not this function's concern; Lane B's own
- * module is responsible for capturing and threading that through separately
- * (see the run spec: "a core rule pair registered around" the plugin
- * boundary, reusing `source_range`'s own registration pattern).
+ * `env`/`starts`/`source` are ADDITIVE parameters (Lane B's own
+ * extension, per the run spec: "extending it is YOURS to do"): `env` carries
+ * the plugin-origin snapshot; `starts`/`source` convert
+ * `plugin-origin.ts`'s LINE range (the same `token.map` convention
+ * `source-range.ts` and this module's own marker-family branch use) to the
+ * CHAR range this function's return type — and the call site below — have
+ * always promised, via the SAME `charRangeForLines` helper the `parsed`
+ * branch already uses. This function still never throws and still returns
+ * `null` (never a guessed range) for every refusal — `plugin-origin.ts`'s
+ * richer, rule-named reason strings are this module's business only insofar
+ * as the caller's existing generic diagnostic text stays exactly as Lane A
+ * left it (see "the calling branch and its refusal-diagnostic shape stay
+ * as-is" in the run spec); the rich reasons are asserted directly against
+ * `plugin-origin.ts`'s own exported resolver in `plugin-origin.test.ts`.
  */
 function resolveMaplessPluginTokenOrigin(
-  _token: Token,
-  _tokenIndex: number,
-  _tokens: readonly Token[],
+  token: Token,
+  tokenIndex: number,
+  tokens: readonly Token[],
+  env: unknown,
+  starts: readonly number[],
+  source: string,
 ): readonly [number, number] | null {
-  return null;
+  const result = resolvePluginTokenOrigin(token, tokenIndex, tokens, env);
+  if (!result.ok) return null;
+  return charRangeForLines(starts, source, result.range[0], result.range[1]);
 }
 
 // ── D13 resource caps (SFE-P2b Lane C addition — see module header "D13
@@ -772,7 +781,16 @@ export function createEditorProjection(
   opts: CreateEditorProjectionOptions,
 ): GutterpressProjection {
   const md = opts.md ?? createMarkdownRenderer();
-  const tokens = md.parse(source, {});
+  // SFE-P2c Lane B: bracket the plugin core-rule region (see
+  // plugin-origin.ts's header PART 1) and thread a real `env` object through
+  // `md.parse()` (rather than a throwaway `{}`) so the before/after snapshot
+  // that registration stashes survives past this call for
+  // `resolveMaplessPluginTokenOrigin` to read below. Idempotent and a safe
+  // no-op on any `md` without Gutterpress's own pipeline applied — see that
+  // function's own doc comment.
+  registerPluginOriginCapture(md);
+  const env: Record<string, unknown> = {};
+  const tokens = md.parse(source, env);
   const starts = buildLineStarts(source);
 
   const blocks: ProjectedBlock[] = [];
@@ -934,7 +952,7 @@ export function createEditorProjection(
       // NO-EVIDENCE case (Lane B's territory): the integration point.
       const range = parsed
         ? charRangeForLines(starts, source, parsed[0], parsed[1])
-        : resolveMaplessPluginTokenOrigin(token, tokenIndex, tokens);
+        : resolveMaplessPluginTokenOrigin(token, tokenIndex, tokens, env, starts, source);
 
       if (!range) {
         diagnostics.push({
