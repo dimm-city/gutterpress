@@ -72,8 +72,23 @@ jobs:
         run: |
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
+      # The desktop suite imports gutterpress by name (resolves to its built
+      # dist/), so build the package first — same prerequisite as release.yml.
+      - name: Build package dist
+        run: bun run build
+        working-directory: packages/cli
+
+      # THE SAME COMMAND release.yml's Test job runs, on purpose. These two
+      # gates drifted three times in one release cycle and every drift shipped
+      # a failure to the later, slower gate: the Ghostscript gap and the cdp
+      # launch timeout both failed RELEASE dispatches after ci was green,
+      # because ci ran `--filter gutterpress` while release ran `--filter '*'`.
+      # One command, run at PR time, means anything that would fail the
+      # release gate fails here first. This also replaced the separate
+      # "Desktop Test" job (2026-08-30): same coverage, one fewer runner, one
+      # fewer duplicated install/build, and no second surface to drift.
       - name: Run tests
-        run: bun --filter gutterpress test
+        run: bun --filter '*' test
 
       - name: Test Open Design plugin contract
         working-directory: packages/open-design-plugin
@@ -103,20 +118,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # Gate on knip's actionable categories only (files, dependencies,
-      # unlisted, binaries) — see knip.jsonc for why exports/types findings
-      # are excluded (hand-traced false positives, advisory-only, not gated).
-      # Runs the root `knip` script so CI and local `bun run knip` agree, and
-      # sits before the build steps below so a real finding fails fast.
-      #
-      # That script runs `svelte-kit sync` first because knip loads the
-      # desktop's two vite configs, which extend `.svelte-kit/tsconfig.json` —
-      # generated, gitignored, and absent on a fresh checkout. It lived in the
-      # script rather than here so a contributor's `bun run knip` sees what CI
-      # sees; on a dev machine the file usually already exists, so a CI-only
-      # fix would have left local passing by accident.
-      - name: Check for unused files/dependencies (knip)
-        run: bun run knip
+      # knip was dropped 2026-08-30 (owner's call). Its lifetime as a gate: 4
+      # days; 3 failures, all its own wiring bug (missing svelte-kit sync),
+      # which blocked the 0.10.2 release PR; 0 real catches while gating. Its
+      # 3 real findings all came at setup time (91af058) — one-time value,
+      # already banked.
 
       - name: Build CLI npm bundle
         working-directory: packages/cli
@@ -149,47 +155,6 @@ jobs:
       - name: Check renderer purity (CLAUDE.md §8)
         run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
 
-  desktop-test:
-    name: Desktop Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install
-
-      # No `setup-chrome` step here either — same reason as the `test` job above:
-      # this override wins over anything that action installs, so the download
-      # was pure cost. Read that comment before adding one back.
-      - name: Configure Puppeteer to use system Chrome
-        run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
-
-      # The desktop suite imports gutterpress by name (resolves to its
-      # built dist/), so build the package before running desktop tests — same
-      # prerequisite and command as release.yml's `test` job, kept identical
-      # so the two gates cannot drift apart.
-      - name: Build package dist
-        run: bun run build
-        working-directory: packages/cli
-
-      # Keep this explicit even though the full desktop suite also runs it. If
-      # the suite wiring changes, CI must still protect active-frame identity
-      # and page-count-changing swaps.
-      - name: Run instant-preview splice contract
-        run: node tests/preview-shell-regression.test.mjs
-        working-directory: packages/desktop
-
-      - name: Run desktop tests
-        run: bun run test
-        working-directory: packages/desktop
-
-      # "Run desktop lint" (eslint + check-app-tokens) was removed from CI
-      # 2026-08-30: zero failures in its entire lifetime, for a recurring
-      # per-PR cost. `bun run lint` remains available in packages/desktop for
-      # local/on-demand use; re-add a gate only with a recorded catch.
 
   type-check:
     name: Type Check
