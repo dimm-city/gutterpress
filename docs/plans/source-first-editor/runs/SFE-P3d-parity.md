@@ -114,10 +114,29 @@ hand-list and calling it derived.
 | A | `docs/plans/source-first-editor/parity-matrix.md`, `tools/check-parity.mjs` + `tools/check-parity.test.mjs`, `packages/desktop/tests/editor/parity-*.test.ts`, root `package.json` (a `check:parity` script only), and — ONLY to close a discovered parity gap — `packages/desktop/src/lib/editor/**` | existing tests, `packages/desktop/src/lib/routes/inline-edit-controller.svelte.ts`, `context-menu-controller.svelte.ts`, `commit-engine.ts`, other packages | The derived parity matrix + the standing gate |
 | B | `packages/desktop/tests/editor/real-book-*.test.ts`, `packages/cli/tests/**` only if the corpus genuinely belongs there (say why) | production source, other lanes' files | Real-book byte-drift evidence |
 | C | `packages/desktop/tests/preview-*.test.*`, `packages/desktop/tests/editor/preview-navigation-*.test.ts` | production source, other lanes' files | Navigation regression + separability proof |
+| D | `packages/desktop/src/routes/+page.svelte`, `packages/desktop/src/lib/components/EditorToolbar.svelte`, `packages/desktop/src/lib/editor/**`, new tests under `packages/desktop/tests/editor/`, `docs/plans/source-first-editor/parity-matrix.md` (converting the three waiver rows to mapped rows) | Lane A's gate/tool files, other lanes' tests, `packages/editor/src/**`, other packages | Close the three image/link parity gaps condition 2 names |
+| E | `packages/desktop/tests/editor/real-book-plugin-*.test.ts`, a test-owned plugin-book fixture under `packages/desktop/tests/` | production source, `examples/**`, other lanes' files | The plugin-book half of condition 3 |
 | Integrator | `bun.lock`, wiring, commits | — | Install, verification, commits |
 
-Lane A is the only lane permitted to touch production source, and only to
-close a gap it has first documented in the matrix.
+Lane A is the only lane of the first phase permitted to touch production
+source, and only to close a gap it has first documented in the matrix.
+
+**Lanes D and E were added after the first phase reported** (spec amended
+before either ran, per the run-discipline correction recorded in SFE-P3ab's
+review log). Their cause:
+
+- Lane A waived `image-properties`, `image-unwrap` and `link-edit` because no
+  command in either surface edits an EXISTING image or link in place — both
+  surfaces only ever insert new ones — and the wiring needed to close that sat
+  outside Lane A's write boundary. Those three are precisely what condition 2
+  names ("Image/link/layout context-menu source changes have replacement
+  editor commands"), so a waiver cannot satisfy it. **Lane D closes them**;
+  the waiver rows become mapped rows.
+- Lane B established that **no example book configures a markdown-it plugin**
+  (verified by grepping every `manifest.yaml` under `examples/`), so the
+  "plugin-book" half of condition 3 has no corpus. **Lane E supplies one as a
+  test-owned fixture** rather than shipping a new example book — condition 3
+  is an editing-fidelity claim, not a request for new product surface.
 
 ## Review dimensions
 
