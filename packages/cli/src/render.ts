@@ -28,6 +28,9 @@ export type {
 
 export { MARKER_CSS } from "./lib/markdown/markers.js";
 
+export { sourceTokenOccurrenceAt, inlineSourceMetaOf } from "./lib/markdown/inline-source";
+export type { InlineSourceMeta } from "./lib/markdown/inline-source";
+
 export { createEditorProjection, PROJECTION_SCHEMA_VERSION } from "./lib/markdown/editor-projection";
 export type {
   GutterpressProjection,

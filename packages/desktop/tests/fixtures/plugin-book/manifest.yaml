@@ -15,16 +15,15 @@ styles:
 # fixture's chapters exercise.
 #
 # `packages/desktop/electron/editor-projection.ts`'s `buildHostEditorProjection`
-# (the desktop rich editor's own host-side pipeline) loads this entry
-# through its own narrower, host-local loader rather than
-# `packages/cli/src/lib/markdown/plugins.ts`'s `loadPlugin`/`loadPluginsWithCss`
-# — see that module's header ("A CONFIRMED BLOCKER, not a design preference")
-# for exactly why. The manifest shape itself is standard and unaffected: a
-# real CLI build/preview against this project resolves this exact entry
-# through the real loader, same as any other project.
+# (the desktop rich editor's own host-side pipeline) resolves this entry
+# through `gutterpress/plugins`' `loadPluginsWithCss` — the SAME
+# degrade-and-report loader the live preview uses (D11 pre-approved this
+# subpath; `editor-projection.ts` is its first real consumer). There is no
+# second, narrower loader: a real CLI build/preview against this project
+# resolves this exact entry through that identical function.
 #
 # Previously (SFE-P3d-parity) this named an uninstalled npm package
-# (`gutterpress-plugin-callout`) no loader could ever load — this run
+# (`gutterpress-plugin-callout`) no loader could ever load — SFE-P3e
 # replaced that with a genuinely loadable local file specifically so
 # `editor-projection-host.test.ts` and the three
 # `real-book-plugin-*.test.ts` files could drive the desktop's real plugin-

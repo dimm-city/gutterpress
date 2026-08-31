@@ -38,7 +38,23 @@ export default defineConfig({
         // electron-updater is externalized explicitly (the plugin misses it
         // under bun's node_modules layout): it's a production dependency, so
         // electron-builder ships it and its CJS graph from node_modules.
-        external: ["electron", "gutterpress", "electron-updater"],
+        //
+        // SFE-P3e review round 1 (CONFIRMED finding): Rollup matches a
+        // STRING array entry by exact id, so a bare "gutterpress" entry
+        // externalizes only the root import — it does NOT cover
+        // "gutterpress/render" or "gutterpress/plugins". Before SFE-P3e no
+        // file under electron/ imported a gutterpress subpath at all;
+        // electron/editor-projection.ts (this run) introduced the first
+        // ones, and with only the bare string here they got BUNDLED into
+        // out/main/main.js — inlining a whole second copy of the CLI's
+        // plugin loader (module-level state and all: vendorCjsTrees,
+        // isolatedVendorTrees, pathPluginCache, cjsResolverInstalled) into
+        // the SAME main process that already loads that loader through the
+        // ordinary node_modules `gutterpress` specifier (preview/build/
+        // export). A RegExp entry matches every subpath, so this covers
+        // "gutterpress", "gutterpress/render", "gutterpress/plugins", and
+        // any future subpath D11 adds, with no per-subpath upkeep.
+        external: ["electron", /^gutterpress(\/.*)?$/, "electron-updater"],
         input: resolve(root, "electron/main.ts"),
         output: { format: "es", entryFileNames: "main.js" },
       },

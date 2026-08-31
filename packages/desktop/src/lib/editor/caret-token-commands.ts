@@ -72,7 +72,7 @@
  * already do for layout markers.
  */
 import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
-import { createMarkdownRenderer } from "gutterpress/render";
+import { createMarkdownRenderer, inlineSourceMetaOf, sourceTokenOccurrenceAt } from "gutterpress/render";
 import {
   findImageTokenAtOffset,
   findImageWrapper,
@@ -192,12 +192,28 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 //      correctly covers top-level, indented, list-nested, and blockquoted
 //      code — because it IS the parser resolving container/list context,
 //      not a scanner approximating it with regexes and prefix-stripping.
-//   2. A prose block's `inline` token's `.children` is the pipeline's own
-//      answer to "what real inline tokens does this text contain" — an
-//      inline code span, escaped syntax (`\!`), or any other literal shape
-//      simply never produces an `image`/`link_open` child, so "no matching
-//      child" is the same "not really a token here" fact the old scanners
-//      existed to approximate, without a bespoke check for each shape.
+//   2. Every real `image`/`link_open` token the pipeline produces is
+//      stamped with its own exact literal source text and a GLOBAL
+//      occurrence number (`gutterpress/render`'s `inlineSourceMetaOf`/
+//      `sourceTokenOccurrenceAt`, backing `inline-source.ts`'s
+//      `registerInlineSourceMetadata` — the SAME disambiguator the render
+//      path emits as `data-gp-source-token`/`data-gp-source-occurrence` for
+//      the desktop context menu's own DOM-to-source lookups). Computing
+//      that SAME occurrence number for the CANDIDATE under the caret and
+//      requiring an exact stamped match makes this a caret-scoped check,
+//      not merely a block-scoped one.
+//
+// SFE-P3e review round 1 (CONFIRMED finding): the first cut of this section
+// asked only "does ANY real child in the enclosing block have this
+// destination" — a non-real candidate (an inline code span, most often)
+// whose literal text shared its NORMALIZED destination with a real
+// occurrence elsewhere in the SAME block satisfied that check regardless of
+// which one the caret was actually on. Matching on the pipeline's own
+// stamped `{token, occurrence}` pair instead of `src`/`href` set membership
+// closes that gap exactly: two textually different destinations that merely
+// normalize to the same value (e.g. a raw space vs. its `%20` encoding) no
+// longer satisfy each other's check either, since they never share a
+// literal token to begin with — `md.normalizeLink` plays no role here.
 //
 // The regex-based candidate finders (`findImageTokenAtOffset`/
 // `findLinkTokenAtOffset`, `context-menu-actions.ts`) are UNCHANGED and
@@ -233,54 +249,113 @@ function caretLineIsCodeBlock(tokens: readonly MarkdownToken[], line: number): b
   return false;
 }
 
-/** The real inline children of the prose block (paragraph, heading, list
- *  item, …) whose `inline` token's `.map` range covers `line` — `null` when
- *  no such block covers it (a blank line, an `html_block`, or any other
- *  leaf with no inline content at all). */
+/** The real inline children covering `line`, gathered from the INNERMOST
+ *  map-bearing block token whose own `.map` range contains it — not from
+ *  the `inline` token's OWN `.map`, the way this used to look it up.
+ *
+ *  SFE-P3e review round 1 (CONFIRMED finding): markdown-it does not set
+ *  `.map` on a table cell's `td_open`/`inline`/`td_close` triad (only the
+ *  enclosing `table_open`/`tbody_open`/`tr_open` carry it), so requiring
+ *  the enclosing `inline` token ITSELF to have a map refused every
+ *  image/link inside a table cell — a real rendered image had no token this
+ *  function could ever find. Walking the flat token stream and tracking the
+ *  innermost open/close pair that both (a) carries a map covering `line`
+ *  and (b) is the DEEPEST such pair found so far, then collecting every
+ *  `inline` token nested between that pair's open and close (map-less table
+ *  cells included, since nothing here requires the individual `inline`
+ *  token to carry its own map), finds the right children whether or not the
+ *  immediate container happens to carry one.
+ *
+ *  `null` when no block covers `line` at all (a blank line, a top-level
+ *  `html_block` with no wrapping container, or any other leaf with no
+ *  inline content) — unchanged from before. */
 function enclosingProseChildren(tokens: readonly MarkdownToken[], line: number): readonly MarkdownToken[] | null {
-  for (const token of tokens) {
-    if (token.type !== "inline" || !token.map) continue;
-    const [from, to] = token.map;
-    if (line >= from && line < to) return token.children ?? [];
+  let openIndex = -1;
+  let closeIndex = -1;
+  const openStack: number[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.nesting === 1) {
+      openStack.push(i);
+      if (token.map && line >= token.map[0] && line < token.map[1]) {
+        // A deeper qualifying container always arrives LATER in this
+        // preorder walk than its ancestors, so simply overwriting on every
+        // match converges on the innermost one; its own close (below)
+        // resolves `closeIndex` once reached.
+        openIndex = i;
+        closeIndex = -1;
+      }
+    } else if (token.nesting === -1) {
+      const matchingOpen = openStack.pop();
+      if (matchingOpen === openIndex && closeIndex < 0) closeIndex = i;
+    }
   }
-  return null;
+  if (openIndex < 0 || closeIndex < 0) return null;
+  const children: MarkdownToken[] = [];
+  for (let i = openIndex + 1; i < closeIndex; i++) {
+    if (tokens[i]!.type === "inline") children.push(...(tokens[i]!.children ?? []));
+  }
+  return children;
 }
 
 /**
- * Does the real pipeline produce an IMAGE token at `offset` whose `src`
- * equals `candidateSrc`? Returns `null` when it does (the candidate is
- * real — proceed), or the {@link CaretTokenRefusalReason} to refuse with.
+ * Does the real pipeline produce an IMAGE token at THIS EXACT occurrence of
+ * `candidate`'s literal source text? Returns `null` when it does (the
+ * candidate is real — proceed), or the {@link CaretTokenRefusalReason} to
+ * refuse with.
  *
- * `md.normalizeLink()` is applied to `candidateSrc` before comparing:
- * markdown-it percent-encodes spaces and non-ASCII bytes in every href/src
- * it resolves (the image/link core rules both call it internally), so a
- * bare string compare against the DECODED candidate would wrongly refuse
- * ordinary images whose filename has a space or an accented character.
- * Comparing through the SAME normalization the pipeline itself applies is
- * what makes this an evidence-based check rather than a second, subtly
- * different one.
+ * Caret-scoped, not block-scoped (SFE-P3e review round 1, CONFIRMED
+ * finding — see this file's "Real-parser literal-region evidence" header):
+ * computes `candidate`'s own occurrence number the IDENTICAL way
+ * `registerInlineSourceMetadata` computed it while parsing (same function,
+ * same whole-document scan — `sourceTokenOccurrenceAt`), then requires a
+ * real `image` child stamped with that EXACT `{token, occurrence}` pair,
+ * not merely a real image SOMEWHERE in the block sharing a normalized
+ * `src`. A literal `` `![a](b.png)` `` code span and a real `![a](b.png)`
+ * image in the same paragraph now resolve to DIFFERENT occurrence numbers
+ * for the identical literal text, so the caret's own candidate is judged on
+ * its own position, never on a sibling's.
  */
-function pipelineImageRefusal(text: string, offset: number, candidateSrc: string): CaretTokenRefusalReason | null {
+function pipelineImageRefusal(
+  text: string,
+  offset: number,
+  candidate: ImageTokenMatch,
+): CaretTokenRefusalReason | null {
   const md = createMarkdownRenderer();
   const tokens = md.parse(text, {});
   const line = lineNumberAt(text, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const children = enclosingProseChildren(tokens, line) ?? [];
-  const normalizedSrc = md.normalizeLink(candidateSrc);
-  const isReal = children.some((child) => child.type === "image" && child.attrGet("src") === normalizedSrc);
+  const children = enclosingProseChildren(tokens, line);
+  if (!children) return "no-token";
+  const occurrence = sourceTokenOccurrenceAt(text, candidate.tokenRaw, candidate.start);
+  const isReal = children.some((child) => {
+    if (child.type !== "image") return false;
+    const source = inlineSourceMetaOf(child);
+    return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;
+  });
   return isReal ? null : "no-token";
 }
 
-/** The link counterpart of {@link pipelineImageRefusal} — matches against
- *  a real `link_open` token's `href` instead of an `image` token's `src`. */
-function pipelineLinkRefusal(text: string, offset: number, candidateHref: string): CaretTokenRefusalReason | null {
+/** The link counterpart of {@link pipelineImageRefusal} — matches a real
+ *  `link_open` token's own stamped `{token, occurrence}` instead of an
+ *  `image` token's. */
+function pipelineLinkRefusal(
+  text: string,
+  offset: number,
+  candidate: LinkTokenMatch,
+): CaretTokenRefusalReason | null {
   const md = createMarkdownRenderer();
   const tokens = md.parse(text, {});
   const line = lineNumberAt(text, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const children = enclosingProseChildren(tokens, line) ?? [];
-  const normalizedHref = md.normalizeLink(candidateHref);
-  const isReal = children.some((child) => child.type === "link_open" && child.attrGet("href") === normalizedHref);
+  const children = enclosingProseChildren(tokens, line);
+  if (!children) return "no-token";
+  const occurrence = sourceTokenOccurrenceAt(text, candidate.tokenRaw, candidate.start);
+  const isReal = children.some((child) => {
+    if (child.type !== "link_open") return false;
+    const source = inlineSourceMetaOf(child);
+    return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;
+  });
   return isReal ? null : "no-token";
 }
 
@@ -302,7 +377,7 @@ export interface ImageCaretMatch {
 export function locateImageAtCaret(text: string, caret: number): LocateResult<ImageCaretMatch> {
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineImageRefusal(text, caret, match.src);
+  const refusal = pipelineImageRefusal(text, caret, match);
   if (refusal) return refuse(refusal);
   const wrapper = findImageWrapper(text, match);
   const tokens = tokenizeImageAttrs(match.attrsRaw);
@@ -375,7 +450,7 @@ export function computeImagePropertiesEdit(
 export function locateImageUnwrapEdit(text: string, caret: number): LocateResult<TextEdit> {
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineImageRefusal(text, caret, match.src);
+  const refusal = pipelineImageRefusal(text, caret, match);
   if (refusal) return refuse(refusal);
   const wrapper = findImageWrapper(text, match);
   if (!wrapper) return refuse("no-wrapper");
@@ -394,7 +469,7 @@ export interface LinkCaretMatch {
 export function locateLinkAtCaret(text: string, caret: number): LocateResult<LinkCaretMatch> {
   const match = findLinkTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineLinkRefusal(text, caret, match.href);
+  const refusal = pipelineLinkRefusal(text, caret, match);
   if (refusal) return refuse(refusal);
   return { ok: true, value: { match, initialHref: match.href } };
 }

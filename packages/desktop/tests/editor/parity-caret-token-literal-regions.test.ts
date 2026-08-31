@@ -205,3 +205,148 @@ describe("SFE-P3e over-refusal fix: list-item continuation content is not a code
     expect(located.value.match.src).toBe("b.png");
   });
 });
+
+/**
+ * SFE-P3e review round 1 (CONFIRMED finding): the FIRST cut of the
+ * occurrence check asked only "does ANY real image/link child in the
+ * enclosing block share this destination" — set membership, not "is the
+ * caret's own candidate the one the real parser actually recognized". A
+ * code-span literal sharing its destination with a real occurrence
+ * ELSEWHERE in the same block satisfied that check regardless of which one
+ * the caret was on. Reproduced directly against the pre-fix code (restoring
+ * `git show cf66572c`'s scanners refused all four; the block-scoped
+ * set-membership check accepted all four).
+ *
+ * The fix matches the caret's candidate against the real pipeline's own
+ * `{token, occurrence}` stamp (`gutterpress/render`'s
+ * `sourceTokenOccurrenceAt`/`inlineSourceMetaOf` — the SAME disambiguator
+ * `data-gp-source-token`/`data-gp-source-occurrence` uses for the preview
+ * context menu), so each case below asserts BOTH directions: the fake
+ * (code-span) occurrence still refuses, and the real occurrence in the
+ * SAME block still resolves — a fix that merely refused everything would
+ * pass the first assertion and fail the second.
+ */
+describe("SFE-P3e over-acceptance fix: caret-scoped, not block-scoped, evidence", () => {
+  test("image: a code-span literal sharing its src with a real image in the same paragraph refuses; the real one resolves", () => {
+    const text = "A real ![a](b.png) image and a literal `![a](b.png)` sample.\n";
+    const realCaret = text.indexOf("b.png");
+    const codeSpanCaret = text.lastIndexOf("b.png");
+    expect(codeSpanCaret).toBeGreaterThan(realCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("b.png");
+  });
+
+  test("image: reverse order — the code-span literal comes FIRST, the real image second — still resolves correctly both ways", () => {
+    const text = "Use `![a](b.png)` to embed. Example: ![a](b.png)\n";
+    const codeSpanCaret = text.indexOf("b.png");
+    const realCaret = text.lastIndexOf("b.png");
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+  });
+
+  test("link: a code-span literal sharing its href with a real link in the same paragraph refuses; the real one resolves", () => {
+    const text = "A real [t](h.html) link and a literal `[t](h.html)` sample.\n";
+    const realCaret = text.indexOf("h.html");
+    const codeSpanCaret = text.lastIndexOf("h.html");
+    expect(codeSpanCaret).toBeGreaterThan(realCaret);
+
+    const fake = locateLinkAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateLinkAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.href).toBe("h.html");
+  });
+
+  test("multi-line-within-one-paragraph variant: the real image and the code-span literal fall on different SOURCE LINES of the same wrapped paragraph", () => {
+    const text = "A real ![a](b.png) image\nand a literal `![a](b.png)` sample.\n";
+    const realCaret = text.indexOf("b.png");
+    const codeSpanCaret = text.lastIndexOf("b.png");
+    // Liveness: the two occurrences really are on different lines of ONE
+    // paragraph (markdown-it does not treat this as two paragraphs — no
+    // blank line separates them).
+    expect(text.slice(0, realCaret).includes("\n")).toBe(false);
+    expect(text.slice(0, codeSpanCaret).includes("\n")).toBe(true);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+  });
+
+  test("percent-encoding pair: a real %20-encoded destination and a differently-spelled code-span literal do not satisfy each other's evidence check", () => {
+    // Before this fix, `md.normalizeLink` was applied to BOTH sides before
+    // comparing, so normalizeLink("my pic.png") === normalizeLink("my%20pic.png")
+    // made these two TEXTUALLY DIFFERENT destinations satisfy each other's
+    // check. The fix compares literal token text, not normalized
+    // destinations, so it never reaches that collision in the first place.
+    const text = "A real ![a](my%20pic.png) image and a literal `![a](<my pic.png>)` sample.\n";
+    const realCaret = text.indexOf("my%20pic.png");
+    const codeSpanCaret = text.lastIndexOf("my pic.png");
+    expect(codeSpanCaret).toBeGreaterThan(realCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("my%20pic.png");
+  });
+});
+
+/**
+ * SFE-P3e review round 1 (CONFIRMED finding): markdown-it does not set
+ * `.map` on a table cell's `td_open`/`inline`/`td_close` triad (only
+ * `table_open`/`tbody_open`/`tr_open` carry it), so requiring the enclosing
+ * `inline` token itself to carry a map — `enclosingProseChildren`'s
+ * original check — refused every image/link inside a table cell even
+ * though `md.render()` produces a genuine `<img>`/`<a>` for it. Verified as
+ * a REGRESSION against `git show cf66572c`'s scanners, which resolved this
+ * exact shape correctly.
+ */
+describe("SFE-P3e over-refusal fix: images and links inside table cells", () => {
+  test("an image inside a GFM table cell resolves as a real, editable image", () => {
+    const text = "| a | b |\n| - | - |\n| ![a](b.png) | x |\n";
+    const caret = text.indexOf("b.png");
+    expect(text).toContain("![a](b.png)");
+
+    const located = locateImageAtCaret(text, caret);
+    expect(located.ok).toBe(true);
+    if (!located.ok) throw new Error("unreachable");
+    expect(located.value.match.src).toBe("b.png");
+  });
+
+  test("a link inside a GFM table cell resolves as a real, editable link", () => {
+    const text = "| a | b |\n| - | - |\n| [t](h.html) | x |\n";
+    const caret = text.indexOf("h.html");
+
+    const located = locateLinkAtCaret(text, caret);
+    expect(located.ok).toBe(true);
+    if (!located.ok) throw new Error("unreachable");
+    expect(located.value.match.href).toBe("h.html");
+  });
+});

@@ -1302,12 +1302,14 @@
    * SFE-P3ab review round 1 (CONFIRMED finding): this page never built a
    * projection at all, so `RichEditor.svelte` always mounted the plain
    * standard-Markdown surface (`mountEditor`) and `mountGutterpressEditor`
-   * — the whole point of P2b/P2c's projection work — was dead code. Built
-   * via the browser-safe `gutterpress/render` subpath (D4), not a Node-side
-   * call: no project plugins are applied here (that needs host/Node-side
-   * plugin loading, out of this repair's scope), so a plugin's OWN regions
-   * render as plain text rather than plugin-aware chips, but every CORE
-   * marker/raw-html/generated-view block is projected.
+   * — the whole point of P2b/P2c's projection work — was dead code. With a
+   * desktop project open, SFE-P3e replaced that local build with the
+   * host-side, plugin-aware one (`buildRichProjection` below) — a
+   * project's OWN plugin regions render as real chips there, loaded by the
+   * real manifest/plugin pipeline. With no project open (a plain file),
+   * this stays the local, plugin-less `gutterpress/render` build (D4):
+   * every CORE marker/raw-html/generated-view block is still projected, but
+   * there are no plugin regions to render either way.
    */
   let richProjection = $state<GutterpressProjection | null>(null);
 
@@ -1331,17 +1333,61 @@
    * D10's "one renderer path": no third path, no cache layer, no speculative
    * invalidation.
    *
-   * The host call is async; `rebuildRichDocHost` below constructs
-   * `richDocHost` synchronously (so the document is editable immediately)
-   * and assigns `richProjection`/`richPluginCss` once this resolves, guarded
-   * against a since-superseded host (G-11) — see that function's own
-   * comment.
+   * The host call is async, so `rebuildRichDocHost` below does NOT publish
+   * `richDocHost` (or `richProjection`/`richPluginCss`) until this resolves
+   * — SFE-P3e review round 1 (CONFIRMED finding): the first cut published
+   * `richDocHost` synchronously and patched in the projection later, but
+   * Svelte flushes that synchronous assignment (and the template's `{#key
+   * richDocHost}` mount it drives) in a microtask, well before this IPC
+   * round trip can return — so the mount always ran on a null projection
+   * and took the plain `mountEditor` branch, and `RichEditor.svelte`
+   * deliberately has no watcher to correct that later ($effect is banned;
+   * it reads `projection` once in `onMount`), so nothing ever remounted it.
+   * Publishing all three together, only once resolved, is what actually
+   * reaches `mountGutterpressEditor`; the existing "Loading rich editor…"
+   * branch (already there for the module-load race) covers the brief gap
+   * for free. Guarded by a rebuild epoch (G-11), not host identity — see
+   * `rebuildRichDocHost`'s own comment.
    *
    * Each `pluginErrors` entry (a plugin that failed to load, degrade-and-
    * report — never fatal to the projection as a whole) is surfaced through
    * the SAME `onDiagnostic` path every other rich-mode diagnostic in this
    * file uses (`showRichDiagnostic`), as `EDITOR_PLUGIN_LOAD_FAILED`.
    */
+
+  /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
+   *  paired with the `.code` `electron/main.ts`'s `validateEditorProjectionArgs`
+   *  sets on the error it throws once `content` exceeds D13's 2 MiB
+   *  rich-mode ceiling. SFE-P3e review round 1 (CONFIRMED finding): this
+   *  rejection used to fall into `buildRichProjection`'s catch below and
+   *  vanish into a `console.warn` only — the ceiling existed but had no
+   *  user-visible effect. Unlike {@link RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC}
+   *  below, switching to source mode IS a real fix here (the document keeps
+   *  editing, just without the rich surface), so this gets the `safeAction`
+   *  `showRichDiagnostic`'s existing toast-with-action pattern turns into a
+   *  working "switch to source mode" button. */
+  const RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_FILE_TOO_LARGE",
+    message: "This file is too large for the rich editor. Switch to source mode to keep editing it.",
+    safeAction: "Switch to source mode",
+  };
+
+  /** D14 `EDITOR_PLUGIN_LOAD_FAILED` for the HOST projection call failing
+   *  OUTRIGHT — the manifest itself could not be read/resolved. Distinct
+   *  from the PER-PLUGIN `pluginLoadFailedDiagnostic` below, which never
+   *  reaches this catch (a per-plugin degrade never throws). SFE-P3e review
+   *  round 1 (CONFIRMED finding): this used to vanish into a `console.warn`
+   *  only, same as the file-too-large case above. No `safeAction`: the rest
+   *  of the document already fell back to the local, plugin-less
+   *  projection below (still fully editable), and switching to source mode
+   *  would not fix a broken manifest — a heads-up notice, not an action
+   *  prompt, matching `pluginLoadFailedDiagnostic`'s own reasoning. */
+  const RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_PLUGIN_LOAD_FAILED",
+    message:
+      "This project's plugins could not be loaded for the rich editor (its manifest.yaml may be invalid), so plugin regions show as plain text here. Fix the manifest, then reopen this file.",
+  };
+
   async function buildRichProjection(
     content: string,
     sourceVersion: number,
@@ -1359,12 +1405,30 @@
         return { projection: result.projection, pluginCss: result.pluginCss || undefined };
       } catch (e) {
         // The host call itself failed outright (e.g. a malformed
-        // manifest.yaml) — not a per-plugin degrade, which never throws.
-        // Fall through to the same local, plugin-less build the no-project
-        // path already uses below, so the document stays fully editable
-        // rather than getting stuck with no projection at all (D14: unsupported
-        // rich behavior falls back, it never blanks the document).
-        console.warn("buildEditorProjection failed; falling back to the local projection:", e);
+        // manifest.yaml, or content over D13's rich-mode ceiling) — never a
+        // per-plugin degrade, which never throws (see result.pluginErrors
+        // above). SFE-P3e review round 1 (CONFIRMED finding): this used to
+        // vanish into a console.warn only, so neither failure had any
+        // user-visible effect and D13's ceiling had nothing to reuse.
+        // Classified by the boundary error's stable `code` (set in
+        // electron/main.ts's validateEditorProjectionArgs and its
+        // api:editorProjection handler) so this branches on data, not on
+        // English prose (D14: "generic 'failed' errors at a boundary are a
+        // confirmed review finding unless no more specific classification
+        // is possible"). Either classification still falls through to the
+        // same local, plugin-less build the no-project path already uses
+        // below, so the document stays fully editable rather than getting
+        // stuck with no projection at all (D14: unsupported rich behavior
+        // falls back, it never blanks the document) — the diagnostic is
+        // purely the "state the safe next action" half D14 also requires.
+        const code = (e as { code?: string } | null | undefined)?.code;
+        if (code === "EDITOR_FILE_TOO_LARGE") {
+          showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);
+        } else if (code === "EDITOR_PLUGIN_LOAD_FAILED") {
+          showRichDiagnostic(RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC);
+        } else {
+          console.warn("buildEditorProjection failed; falling back to the local projection:", e);
+        }
       }
     }
     return { projection: createEditorProjection(content, { sourceVersion }), pluginCss: undefined };
@@ -1440,9 +1504,23 @@
     message: "Place the cursor in the document, then try that again.",
   };
 
+  /**
+   * Bumped on every rebuild/dispose so an in-flight `buildRichProjection`
+   * result can tell whether it is still wanted — SFE-P3e review round 1
+   * (CONFIRMED finding): the prior guard compared `richDocHost !== nextHost`,
+   * which only worked because `richDocHost` was assigned `nextHost`
+   * SYNCHRONOUSLY; now that publishing is deferred until the projection is
+   * in hand (below), there is no published value yet to compare against, so
+   * an explicit epoch takes its place (G-11: "every async ... result must
+   * carry enough identity to reject stale responses"). Not `$state` — never
+   * read by the template, only by the guard checks below. */
+  let richDocHostEpoch = 0;
+
   function rebuildRichDocHost(path: string | null, content: string): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
+    richDocHostEpoch += 1;
+    const epoch = richDocHostEpoch;
     if (!path) {
       richDocHost = null;
       richProjection = null;
@@ -1451,28 +1529,37 @@
     }
     const nextHost = new DesktopDocumentHost(content, { documentId: path });
     richDocHostUnsub = nextHost.subscribe((snapshot) => onEditorChange(snapshot.text));
-    richDocHost = nextHost;
-    richProjection = null;
-    richPluginCss = undefined;
-    // SFE-P3e: the projection arrives after the host above is already
-    // constructed (async host call) — assign richProjection/richPluginCss
-    // when it resolves, guarded against a since-superseded host. A result
-    // for a host the user has already switched away from must never land on
-    // the CURRENT one (G-11); no other staleness mechanism is added here —
-    // an accepted result whose own sourceVersion has since fallen behind
-    // `richDocHost`'s current version simply falls through exactly as the
-    // mount's existing projection-version contract already handles (see
-    // `richProjection`'s own header comment above).
+    // SFE-P3e review round 1 (CONFIRMED finding): do NOT publish
+    // `richDocHost` until its projection is in hand. The prior code assigned
+    // `richDocHost = nextHost` here, synchronously, then patched in
+    // `richProjection`/`richPluginCss` once the host round trip resolved —
+    // but Svelte flushes that synchronous assignment (and the template's
+    // `{#key richDocHost}` mount it drives) in a microtask, well before the
+    // IPC round trip can return, so the mount always ran on a null
+    // projection and took the plain `mountEditor` branch. `RichEditor.svelte`
+    // deliberately has no watcher to correct that later ($effect is banned;
+    // it reads `projection` once in `onMount`), so nothing ever remounted
+    // it — every later assignment of richProjection/richPluginCss was dead
+    // state. Publishing all three together, only once the projection
+    // resolves, is what actually reaches `mountGutterpressEditor`. The
+    // template's existing "Loading rich editor…" branch (already there for
+    // the module-load race) covers the brief gap for free — no new UI state
+    // needed. Guarded by the epoch above, not host identity, since there is
+    // no published `richDocHost` yet to compare against; `disposeRichDocHost`
+    // also bumps it, so a rebuild superseded by leaving rich mode entirely
+    // is discarded too, not just one superseded by a later rebuild.
     void buildRichProjection(content, nextHost.getSnapshot().version).then((result) => {
-      if (richDocHost !== nextHost) return;
+      if (epoch !== richDocHostEpoch) return;
       richProjection = result.projection;
       richPluginCss = result.pluginCss;
+      richDocHost = nextHost;
     });
   }
 
   function disposeRichDocHost(): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
+    richDocHostEpoch += 1;
     richDocHost = null;
     richProjection = null;
     richPluginCss = undefined;

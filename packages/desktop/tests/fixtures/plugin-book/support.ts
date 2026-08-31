@@ -22,20 +22,16 @@
  * SFE-P3e closes that exact gap: `packages/desktop/electron/editor-
  * projection.ts`'s `buildHostEditorProjection` is now the desktop's real
  * host-side pipeline — the exact function the `api:editorProjection` IPC
- * handler calls — real `loadManifestWithPath`/`resolveConfig`, a real
- * on-disk local-file plugin load (dynamic `import()`, no receipt, no
- * vendoring), real `createMarkdownRenderer`, real
- * `createEditorProjection(..., { trusted: true })`. See that module's own
- * header ("A CONFIRMED BLOCKER, not a design preference") for exactly why
- * its plugin-loading step is a narrower, host-local loader rather than a
- * call into `packages/cli`'s own `loadPlugins` — the short version: that
- * function is not part of `gutterpress`'s published surface, and reaching
- * it any other way breaks `bun run check` on unrelated, unfixable-by-this-
- * lane code. This fixture's manifest now names a REAL local-file plugin
- * (`./plugins/callout.js` — a standard `(md, options) => void` markdown-it
- * plugin with a default export; see that file's own header), so
- * {@link buildRealPluginBookProjection} below drives that real pipeline end
- * to end instead of standing in for it.
+ * handler calls — real `loadManifestWithPath`/`resolveConfig`, plugins
+ * loaded through `gutterpress/plugins`' `loadPluginsWithCss` (the SAME
+ * degrade-and-report loader the live preview uses — D11 pre-approved this
+ * subpath, and `editor-projection.ts` is its first real consumer; there is
+ * no second, narrower loader), real `createMarkdownRenderer`, real
+ * `createEditorProjection(..., { trusted: true })`. This fixture's manifest
+ * now names a REAL local-file plugin (`./plugins/callout.js` — a standard
+ * `(md, options) => void` markdown-it plugin with a default export; see
+ * that file's own header), so {@link buildRealPluginBookProjection} below
+ * drives that real pipeline end to end instead of standing in for it.
  *
  * `plugins/callout.js` is now the SOLE definition of the callout core rule
  * — nothing in this file duplicates its logic. The one thing that DOES
@@ -110,9 +106,9 @@ export function loadPluginBookChapters(): readonly PluginBookChapter[] {
  * `main.ts`'s `api:editorProjection` IPC handler calls. `PLUGIN_BOOK_ROOT`
  * IS this fixture's project directory (where `manifest.yaml` lives), so
  * this resolves and loads `./plugins/callout.js` for real, from disk, via
- * that module's own local-file loader — no hand-built `md`, no injected
- * plugin function; the tests that call this exercise the file the manifest
- * names.
+ * `gutterpress/plugins`' `loadPluginsWithCss` — no hand-built `md`, no
+ * injected plugin function; the tests that call this exercise the file the
+ * manifest names.
  */
 export function buildRealPluginBookProjection(
   content: string,
