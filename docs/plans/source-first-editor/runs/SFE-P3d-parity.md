@@ -181,7 +181,7 @@ Both `check:parity` lines above are wired into CI (`.github/workflows/ci.yml`,
 | 2 | Image/link/layout context-menu source changes have replacement editor commands | **GREEN** | The three in-place operations that had no replacement anywhere (`image-properties`, `image-unwrap`, `link-edit`) are now caret-driven commands on **both** surfaces, driven end to end with byte-exact assertions in `parity-caret-token-wrappers.test.ts`. |
 | 3 | Real user-guide and plugin-book chapters can be edited without byte drift | **GREEN** | 25 real chapters / 154,366 bytes (user guide, design guide, validation example) plus a 3-chapter test-owned plugin book, all round-tripping through the real `DesktopDocumentHost` / `RichModeController` / `createEditorProjection`; locality via P2a's independent-bound oracle; both assertion families proven able to fail. |
 | 4 | Preview navigation still works | **GREEN** | Coverage audit per D8 capability, the two genuine gaps closed (host-command round trips through the real bridge and shell), plus a two-layer separability proof. |
-| 5 | No stakeholder-designated blocker remains | **PENDING — product owner** | Not a technical condition. See below. |
+| 5 | No stakeholder-designated blocker remains | **BLOCKER DESIGNATED, then closed by SFE-P3e** | The product owner ruled (2026-08-31) that the rich editor without plugin regions is a failure of the feature itself; SFE-P3e closes it at the root and removes this run's standing-gate machinery per the same ruling. |
 
 ### What condition 5 needs from the product owner
 
