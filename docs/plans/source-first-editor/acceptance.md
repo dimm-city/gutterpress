@@ -17,9 +17,9 @@
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
 | AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | **Evidenced** (SFE-P2b core markers/raw-html/generated views + malformed matrix + D13 caps; SFE-P2c plugin-region projection, evidence-based transform origin with a six-shape refusal matrix, and range self-checks) |
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Evidenced (SFE-P2b: GeneratedView has no from/to at the type level + runtime absence checks + provider never creates segments for generated content; browser proof of read-only in-chip preview) |
-| AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | Pending |
+| AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | **Evidenced** (SFE-P1c session/host suites; SFE-P3ab: source↔rich switching, non-Markdown fallback, and preview-commit/rich-command coexistence over one `DocumentHost`, with byte-identity assertions across every switch) |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | Pending |
-| AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | Pending |
+| AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | Evidenced for the desktop surface (SFE-P3ab: the P2a command vocabulary, images/links, layout markers, block movement and diagnostics all reachable from rich mode through the shared implementation; the packaged interaction/a11y/performance sweep remains P3d) |
 | AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Pending |
 | AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | Pending |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | Pending |
@@ -382,5 +382,48 @@
   "acceptanceUpdates": ["AC-07 fully evidenced", "AC-23 evidenced for P2"],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "Plugin regions are real and safe: plugins execute host-side only (proven by bundle scan), a clean-splice origin mechanism recovers authored ranges from token object identity across a tightly-bracketed plugin boundary, six distinct shapes refuse by rule name, and everything the mechanism cannot prove falls back to plain source editing with a diagnostic. Three review rounds; P2 is complete."
+}
+```
+
+### SFE-P3ab — Desktop rich mode and authoring parity
+
+```json
+{
+  "status": "complete",
+  "baseSha": "62fa1457",
+  "headSha": "daef08cf",
+  "history": [
+    "a5c74f29 feat(p3): mount the shared rich editor in the desktop",
+    "3578bb46 feat(p3): rich-mode command surface and authoring controls",
+    "5250d1c4 feat(p3): surface the live caret and bind rich commands to it",
+    "27f49e0a / daef08cf fix(p3): address review findings (rounds 1-2)"
+  ],
+  "confirmedFindings": [
+    "R1: rich mode was a second, never-refreshed document owner — preview commits bypassed richDocHost and the next rich command silently reverted them",
+    "R1: block movement corrupted fenced code, misclassified @mention prose as markers, and swapped content across scope-affecting marker boundaries",
+    "R1: rich mode mounted over non-Markdown files with no way back (now gated on isMarkdownPath, with richSurfaceActive as the single source of truth for the live surface)",
+    "R1: rich-mode Link destroyed a non-collapsed selection (the toolbar's fixed placeholder override is now cleared when a real selection exists, matching source mode)",
+    "R1: async-dialog selections were re-applied with no document identity (image properties + snippet picker now capture {host, version, selection} and refuse EDITOR_STALE_EDIT)",
+    "R1: getSelection()'s 'never focused' contract was false and its consumers failed open (browser-proven recurrence; explicit caret-relative callers now refuse with NO_LIVE_CARET)",
+    "R1: the desktop never built a D6 projection, so mountGutterpressEditor and its diagnostics were unreachable (now built via the browser-safe gutterpress/render subpath in lockstep with richDocHost)",
+    "R1: lane-ownership violation — the selection accessor shipped under an undefined 'Lane D' label (spec amended to name Lane C; every in-code attribution rewritten)",
+    "R2: a project plugin's OPENING marker was unprotected while its @end-* closer was a boundary, so one swap could evict the region's body — fixed by structural opener/closer pairing, not by widening the marker vocabulary"
+  ],
+  "advisories": [
+    "Plugin-region pairing is deliberately conservative and can refuse a legitimate move (fail-closed; source mode always remains available)",
+    "The desktop projection is not project-plugin-aware and is not rebuilt per keystroke, matching mountGutterpressEditor's documented rebuild-and-remount contract"
+  ],
+  "gate": {
+    "commands": [
+      "install / cli build (render purity) + cli 1913:60 / typecheck (4 workspaces) / editor 3038 unit + 109 browser (8 suites) + browser-purity / desktop 2380:1 + svelte-check 889 files + lint + build (renderer purity, 144 files) / architecture (route ratchet 104==104) / generated-files (1246 tracked) / vendored (26 hashes, 33 files) / knip — all 15 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [
+    "AC-09 evidenced",
+    "AC-11 evidenced for the desktop surface (P3d packaged/a11y/perf sweep still owed)"
+  ],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "The desktop authors in rich mode for real: the shared editor mounts behind a lazily-loaded shell over the same DocumentHost the source surface and the preview commit engine write through, twelve commands plus images, links, layout markers and block movement route through the shared implementation rather than a desktop copy, the live caret is a first-class contract on both mounts, and projection diagnostics reach the UI with a source-mode escape. Two review rounds; nine confirmed findings, most of them silent data-loss paths."
 }
 ```

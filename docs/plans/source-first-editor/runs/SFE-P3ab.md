@@ -193,3 +193,45 @@ fixed:
    (above) for the seven `packages/editor` files a prior round touched
    under an undefined "Lane D" label; every in-code attribution was
    rewritten to match.
+
+### Round 2 — repair (1 CONFIRMED finding)
+
+The round-2 adversarial batch (re-review of `27f49e0a` against the code, not
+the repair narrative) confirmed one finding and re-verified the other eight as
+genuinely fixed:
+
+1. **A project plugin's OPENING marker was unprotected while its closer was**
+   — round 1 correctly narrowed `MARKER_LINE_RE` to Gutterpress's own
+   `KNOWN_KINDS` plus the generic `@end-*` closer convention, so ordinary
+   `@mention` prose stopped being misread as a marker. But that left an
+   asymmetry `moveBlock` could corrupt: `@end-sidebar` was a protected
+   boundary while `@sidebar` was ordinary movable content, so a single swap
+   could evict a plugin region's entire body and leave an empty opener/closer
+   pair. Fixed in `daef08cf` by **structural pairing**, not by widening the
+   vocabulary (which would reintroduce the round-1 regression):
+   `pluginRegionOpenerIndices` walks each recognized `@end-<name>` closer back
+   to the nearest preceding block whose first line is headed `@<name>` and
+   marks it a boundary; a `@word` line with no matching `@end-word` anywhere
+   in the document pairs with nothing and stays ordinary, movable content.
+   `splitIntoBlocks`'s `isMarker`/`markerKind` are unchanged, so the fix is
+   invisible to every other consumer. Six cases added to
+   `rich-commands.test.ts`, including the negative (`@sarah please review`
+   still moves) and the liveness control (the same document with its
+   `@end-sidebar` removed moves freely).
+
+Verdict after round 2: **approve**, 0 confirmed remaining, 2 advisories —
+"the review log has no round-2 entry yet" (closed by this section) and
+"pairing is deliberately conservative and can refuse a legitimate move"
+(accepted: the refusal is typed and fail-closed, and source mode always
+remains available).
+
+### Gate
+
+PASS — all 15 commands exit 0: install; `packages/cli` build (render-purity
+gate) and `test` (1913 pass / 60 skip); root `typecheck` (4 workspaces);
+`packages/editor` `test` (3038 unit) + `test:browser` (109 across 8 suites) +
+`check:browser-purity`; `packages/desktop` `test` (2380 pass / 1 skip),
+`check` (svelte-check, 889 files, 0 errors), `lint`, and `build` (renderer
+purity, 144 files scanned); `check:architecture` (route ratchet 104 == 104),
+`check:generated-files` (1246 tracked), `check:vendored` (26 hashes / 33
+files), `knip`.
