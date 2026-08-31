@@ -133,4 +133,18 @@ isolation in projections and diagnostics.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+- **Rounds 1-3** (adversarial + mandated security review of `d0de018d..a9fb0090`,
+  two batches): 6+ CONFIRMED findings — an undetected copy shape, discarded
+  rule-named reasons, unguarded plugin-region ranges, base-pipeline rules
+  polluting the origin bracket (plus a latent snapshot-vs-caller-array bug it
+  exposed), a missing source affordance for refused regions with a fabricated
+  justifying quotation, and an inactive view showing authored source instead of
+  the plugin's own rendered HTML. Rounds 2-3 closed bidirectional containment
+  and residual shapes. Fixed in `24306d9c`, `e7b08cc6`, `a9fb0090`. Verdict:
+  **approve**, 0 confirmed remaining, 2 advisories (both fail-closed direction).
+- **Security review** (plan-mandated for this run): plugin execution proven
+  host-only by import-graph and built-bundle scan; plugin HTML inert under a
+  script-payload assertion; trust gate fail-closed by default; no secrets or
+  absolute paths in projections, diagnostics, or chips.
+- **Gate**: PASS — all 13 commands exit 0 (cli 1913/0; editor 3038/0 unit +
+  99/0 across 8 browser suites; desktop 2260/0; all fitness checks green).

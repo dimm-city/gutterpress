@@ -15,7 +15,7 @@
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | Evidenced for standard Markdown (SFE-P2a: independent-bound oracle sabotage-proven against a widened-edit implementation, seeded randomized trials incl. refusal liveness; P3 integrations pending) |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
-| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | Evidenced for core markers/raw-html/generated views (SFE-P2b: exact-range projection + 12-fixture malformed matrix + D13 caps; plugin-region mapping remains P2c) |
+| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | **Evidenced** (SFE-P2b core markers/raw-html/generated views + malformed matrix + D13 caps; SFE-P2c plugin-region projection, evidence-based transform origin with a six-shape refusal matrix, and range self-checks) |
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Evidenced (SFE-P2b: GeneratedView has no from/to at the type level + runtime absence checks + provider never creates segments for generated content; browser proof of read-only in-chip preview) |
 | AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | Pending |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | Pending |
@@ -31,7 +31,7 @@
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending |
 | AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Pending |
 | AC-22 | Documentation complete | P7 | Doc link and example lint | Pending |
-| AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Pending |
+| AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 (SFE-P2c mandated security review: plugin execution proven host-only by bundle+import-graph scan, plugin HTML inert under script-payload proof, fail-closed trust gate, no secrets/absolute paths in projections or diagnostics; P3/P5 boundaries pending) |
 | AC-24 | Performance budgets met | P3d | Recorded benchmark results | Pending |
 
 ## Run results
@@ -345,5 +345,42 @@
   "acceptanceUpdates": ["AC-07 evidenced for core markers", "AC-08 evidenced"],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "The editor understands Gutterpress: exact-range projections from the real pipeline's own evidence (declaration-line spans, G-05-clean), marker chips with per-character segments, inert raw-html, read-only generated previews, fail-closed caps and ambiguity handling — with the review driving the matcher from fail-open to fail-closed across three adversarial rounds. Includes recovery from a mid-run container restart: Lane C's completed work was recovered from the journal, Lane B's was verified directly against every gate. P2c (plugin transform-origin) is next."
+}
+```
+
+### SFE-P2c — Project plugins, transform origin, and trusted rendering
+
+```json
+{
+  "status": "complete",
+  "baseSha": "d0de018d",
+  "headSha": "a9fb0090",
+  "history": [
+    "93c14f47 feat(p2): plugin-aware projection with an explicit trust gate",
+    "6ee0eb64 feat(p2): evidence-based plugin transform origin + plugin-region views",
+    "24306d9c / e7b08cc6 / a9fb0090 fix(p2): address review findings (rounds 1-3)"
+  ],
+  "confirmedFindings": [
+    "R1: the rule-4 copy shape (one consumed region, two output regions) went undetected — sibling open tokens in the added run now refuse independently",
+    "R1: rule-named refusal reasons were computed then discarded behind one generic diagnostic — the rule name now reaches projection.diagnostics end to end",
+    "R1: plugin-region ranges were emitted with no self-check (container-prefix over-claim, nested markers, uncorroborated wide maps) — authored-shape guard + overlap guard added on both the evidence-bearing and recovered paths",
+    "R1: base-pipeline rules (footnote_tail, curly_attributes) ran inside the origin bracket and had their effects attributed to the plugin by name — tight per-rule bracketing added, plus a latent bug where the diff compared against the caller's post-completion array rather than the captured snapshot",
+    "R1: refused regions shipped no source affordance and the justifying comment cited a nonexistent spec sentence — diagnostics now flow to onDiagnostic as a document-level notice (no chip over an unverified span)",
+    "R1: the inactive plugin view rendered authored source rather than the plugin's own HTML — now rendered through the same renderer the print path uses, capped by D13, failing closed",
+    "R2-R3: bidirectional containment and further residual shapes (see the run's review log)"
+  ],
+  "advisories": [
+    "The raw-html overlap guard is order-sensitive: a footnote-relocated html_block that previously projected out of order now refuses (fail-closed direction)",
+    "A trusted plugin-region can still claim a span wider than its tokens wrapped; the invariant holds but the claim is over-wide"
+  ],
+  "gate": {
+    "commands": [
+      "install / cli build (render purity) / typecheck / cli 1913:0 / editor 3038:0 unit + 99:0 browser (8 suites) / purity / desktop 2260:0 + svelte-check 842 files / architecture / generated-files / vendored / knip — all exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-07 fully evidenced", "AC-23 evidenced for P2"],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "Plugin regions are real and safe: plugins execute host-side only (proven by bundle scan), a clean-splice origin mechanism recovers authored ranges from token object identity across a tightly-bracketed plugin boundary, six distinct shapes refuse by rule name, and everything the mechanism cannot prove falls back to plain source editing with a diagnostic. Three review rounds; P2 is complete."
 }
 ```
