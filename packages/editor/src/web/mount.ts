@@ -111,7 +111,7 @@ export interface EditorMount {
   dispose(): void;
 
   /**
-   * SFE-P3ab (Lane D) — an ADDITIVE member: existing callers built against
+   * SFE-P3ab (Lane C) — an ADDITIVE member: existing callers built against
    * the pre-P3ab `{ dispose() }` shape are unaffected (structural typing —
    * nothing destructures this out). Straight passthrough to
    * `VscodeEditorAdapter.getSelection()` (`../vscode-adapter/adapter.ts`,

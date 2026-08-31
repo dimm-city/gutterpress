@@ -138,7 +138,7 @@ async function needsRefresh(): Promise<boolean> {
 async function scriptRan(): Promise<boolean> {
   return harness.page.evaluate(() => window.__gpcScriptRan === true);
 }
-/** SFE-P3ab (Lane D) — the mounted `GutterpressEditorMount`'s live caret. */
+/** SFE-P3ab (Lane C) — the mounted `GutterpressEditorMount`'s live caret. */
 async function selectionOffsets(): Promise<{ from: number; to: number } | undefined> {
   return harness.page.evaluate(() => window.__gpGutterpress.getSelection());
 }
@@ -459,7 +459,7 @@ describe("D13: a limited: true projection renders no chips, even at a matching s
 });
 
 // ---------------------------------------------------------------------------
-// SFE-P3ab (Lane D) — GutterpressEditorMount.getSelection() over a REAL
+// SFE-P3ab (Lane C) — GutterpressEditorMount.getSelection() over a REAL
 // projection-driven mount. mount.btest.ts (packages/editor/tests/web/) is
 // where this accessor's core contract (offset math, forward/backward
 // normalization) is proven in full against the plain surface; this file
@@ -468,7 +468,7 @@ describe("D13: a limited: true projection renders no chips, even at a matching s
 // too), not just the plain block being clicked into.
 // ---------------------------------------------------------------------------
 
-describe("getSelection over a gutterpress-projected mount reports offsets into the FULL document (SFE-P3ab, Lane D)", () => {
+describe("getSelection over a gutterpress-projected mount reports offsets into the FULL document (SFE-P3ab, Lane C)", () => {
   test("undefined before the mounted surface has ever been focused", async () => {
     await mount(FIXTURE_SOURCE);
     await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);

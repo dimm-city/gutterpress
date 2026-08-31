@@ -23,7 +23,7 @@
    * fresh undo epoch (D7: "file switches ... are not undoable into the
    * prior file").
    *
-   * SFE-P3ab (Lane D): the one imperative export this component DOES have
+   * SFE-P3ab (Lane A): the one imperative export this component DOES have
    * is `getSelection()` — a thin passthrough to the mounted handle's own
    * `getSelection()` (`EditorMount`/`GutterpressEditorMount`, both now carry
    * it — see `rich-commands.ts`'s header for the full picture). Exposed via
@@ -99,9 +99,14 @@
   });
 
   /** The mounted surface's LIVE caret/selection (D3 source offsets), or
-   *  `undefined` when there is no caret yet — the surface has never been
-   *  focused, or this component has not mounted (yet, or anymore). Read
-   *  fresh on every call; this component keeps no cached copy. */
+   *  `undefined` when there is no caret AT THIS INSTANT — this component
+   *  has not mounted (yet, or anymore), the surface has never been focused,
+   *  OR a real interaction cleared it again (e.g. clicking the mount's own
+   *  left gutter — SFE-P3ab review round 1, CONFIRMED finding: `undefined`
+   *  is not proof of "never focused"; see `rich-commands.ts`'s header for
+   *  the verified reproduction and `packages/editor/tests/web/
+   *  mount.btest.ts` for the browser proof). Read fresh on every call; this
+   *  component keeps no cached copy. */
   export function getSelection(): { readonly from: number; readonly to: number } | undefined {
     return mountHandle?.getSelection();
   }

@@ -57,7 +57,7 @@ export interface GutterpressEditorMount {
    */
   needsRefresh(): boolean;
   /**
-   * SFE-P3ab (Lane D) — an ADDITIVE member, mirroring `../web/mount.ts`'s
+   * SFE-P3ab (Lane C) — an ADDITIVE member, mirroring `../web/mount.ts`'s
    * `EditorMount.getSelection()` (same contract: D3 source offsets, or
    * `undefined` with no caret). Straight passthrough to the underlying
    * `VscodeEditorAdapter` this mount is built on — see that function's own

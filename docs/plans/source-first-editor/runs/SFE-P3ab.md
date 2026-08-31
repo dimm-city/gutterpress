@@ -65,13 +65,26 @@ a credible primary surface (the precondition P4 deletion depends on).
 | Source reveal | An explicit "edit in source" path from rich mode for any unsupported/refused region | B |
 | Unsupported messaging | Diagnostics from the projection (P2c wires them to `onDiagnostic`) surface in the desktop UI with the safe next action | B |
 
-## Lane ownership (Lane A FIRST; then Lane B)
+## Lane ownership (Lane A FIRST; then Lane B; Lane C added by round-1 repair, see Review log)
 
 | Lane | May write | Must not write | Deliverable |
 |---|---|---|---|
 | A | `packages/desktop/src/lib/components/RichEditor.svelte`, `packages/desktop/src/lib/editor/rich-mode.svelte.ts` (or similarly-named controller), `packages/desktop/src/routes/+page.svelte` (mode wiring only), new tests under `packages/desktop/tests/editor/` | existing tests, `MarkdownEditor.svelte`, buffer-state, document-session, editor-host, packages/editor, packages/cli | Rich shell + mode controller + lazy loading + bundle proof |
 | B | `packages/desktop/src/lib/editor/toolbar-actions.ts`, rich-mode command wiring, `packages/desktop/src/lib/components/EditorToolbar.svelte`, new tests | Lane A's shell/controller files, existing tests, other packages | Command/chrome parity + images/links/markers/movement + diagnostics surfacing |
+| C | `packages/editor/src/vscode-adapter/adapter.ts`, `packages/editor/src/web/mount.ts`, `packages/editor/src/gutterpress/mount.ts`, and their existing tests `packages/editor/tests/web/mount.btest.ts`, `packages/editor/tests/web/support/entry.ts`, `packages/editor/tests/gutterpress/gutterpress.btest.ts`, `packages/editor/tests/gutterpress/support/entry.ts` | other `packages/editor` files, `packages/cli`, `packages/desktop` | The `getSelection()` selection accessor (`EditorMount`/`GutterpressEditorMount`/`VscodeEditorAdapter`) rich mode's command surface depends on — a public-contract co-update (both mount implementations + the one adapter they delegate to, landed together per "A public contract change lands with types, runtime validation, tests, documentation, and compatibility notes") |
 | Integrator | `bun.lock`, wiring, commits | — | Install, verification, commits |
+
+Lane C was originally shipped unreviewed under an in-code "Lane D" label this
+table never defined (a round-1 review finding, CONFIRMED — see Review log).
+The work itself was re-verified sound (the contract co-update is complete:
+both `EditorMount`/`GutterpressEditorMount` implementations delegate to the
+one adapter, no other implementer exists, and every existing
+`applyChapterBlock`/`applySectionBlock`/`applyTwoColumnBlock`/
+`applySpreadBlock`/`applyPageBreak` consumer of the pre-existing shape is
+unaffected); this amendment gives it the named, explicit lane ownership the
+Lane rules require, retroactively. Every in-code "SFE-P3ab (Lane D)"
+attribution was rewritten to "SFE-P3ab (Lane C)" as part of the same repair
+round.
 
 ## Test plan
 
@@ -105,3 +118,78 @@ a credible primary surface (the precondition P4 deletion depends on).
 ## Review log
 
 <!-- Appended by the review stage. -->
+
+### Round 1 — repair (8 CONFIRMED findings)
+
+All eight CONFIRMED findings from the round-1 adversarial batch review were
+fixed:
+
+1. **Rich mode was a second, never-refreshed document owner** — preview
+   commits (`commit-engine.ts`) bypassed `richDocHost` entirely while rich
+   mode was active, and the next rich command silently reverted them.
+   Fixed: `+page.svelte`'s `CommitEngine` construction now routes
+   `editorHasFile`/`applyRangeEdit` through `richDocHost.applyEdit` when the
+   rich surface is live, so the buffer and the rich host can never diverge.
+   `rich-mode.svelte.ts`'s header claims were corrected to describe this
+   explicit convergence instead of an inaccurate "one host, automatic
+   sharing" framing. New integration test:
+   `packages/desktop/tests/editor/rich-mode-commit-integration.test.ts`.
+2. **Block movement corrupted fenced code, misclassified prose as markers,
+   and crossed marker/plugin boundaries** — `splitIntoBlocks`/`moveBlock`
+   (`rich-commands.ts`) are now fence-aware (a fenced region is always one
+   indivisible block), `MARKER_LINE_RE` was narrowed to Gutterpress's own
+   `KNOWN_KINDS` plus the generic `@end-*` closer convention, and
+   `moveBlock` refuses (typed `"boundary"` reason) any swap touching a
+   scope-affecting marker (`chapter`/`spread`/`page`/`section`/
+   `end-section`/`continue`/any `@end-*`) — only `page-break`/`column-break`
+   stay freely movable. Tests updated/added in `rich-commands.test.ts`.
+3. **Rich mode mounted over non-Markdown files with no way back** —
+   `showEditorContent`/`setRichMode` (`+page.svelte`) now gate on
+   `isMarkdownPath`; a non-markdown file falls back to the source surface
+   (the `richMode.mode` PREFERENCE is preserved, so returning to a markdown
+   file resumes rich mode) and surfaces an `EDITOR_UNSUPPORTED_PROJECTION`
+   diagnostic. A new `richSurfaceActive` derived is now the single source of
+   truth for "which surface is actually live", replacing the raw
+   `richMode.mode === "rich"` check at every write-path call site.
+4. **Rich-mode "Link" destroyed a non-collapsed selection** —
+   `applyRichCommand` (`rich-commands.ts`) now special-cases
+   `insert-link` after resolving the live selection: a non-collapsed
+   selection clears the toolbar's fixed `"link text"` override so
+   `computeInsertLink` wraps the SELECTED words instead of discarding them
+   for the literal placeholder, matching source mode's `applyLink`
+   (`const overrideText = from === to ? "link text" : undefined;`). A
+   collapsed selection (or none) keeps the existing placeholder behavior
+   unchanged. `routeToolbarAction`'s own output is intentionally unchanged
+   (it stays selection-agnostic by design; the correction lives in
+   `applyRichCommand`, where the live selection is actually resolved), so
+   `rich-commands.test.ts:431` needed no change — it still accurately
+   describes `routeToolbarAction`'s own behavior.
+5. **Async-dialog selections were re-applied with no document identity** —
+   `openRichImageProperties` and the snippet picker's `onInsert` now capture
+   `{ host, version, selection }` (`captureRichSelection`/
+   `isRichSelectionCaptureFresh`, `+page.svelte`) and refuse with
+   `EDITOR_STALE_EDIT` if the document identity or version moved while the
+   dialog was open, instead of silently applying stale offsets.
+6. **`getSelection()`'s "never focused" contract was false, and the
+   consumer failed open** — `adapter.ts`'s doc comment (and the mirrored
+   ones in `RichEditor.svelte`/`rich-commands.ts`) now state that
+   `undefined` means "no caret at this instant" and can recur after
+   interaction; a new browser case in `mount.btest.ts` proves it (a real
+   caret cleared by clicking the mount's own gutter). The desktop's
+   explicit, caret-relative callers (`handleRichToolbarAction`, the snippet
+   picker) now refuse with `NO_LIVE_CARET_DIAGNOSTIC` instead of silently
+   falling back to `documentEndSelection`; that fallback remains for the
+   genuinely anchorless image-insert path (drag-and-drop).
+7. **The desktop never built a D6 projection** — so `mountGutterpressEditor`
+   was unreachable and its diagnostics unexercisable. `+page.svelte` now
+   builds one via the browser-safe `gutterpress/render` subpath
+   (`createEditorProjection`) in lockstep with `richDocHost`
+   (`rebuildRichDocHost`), passed to `RichEditorComponent` as `projection`.
+   It is not project-plugin-aware (that needs host-side plugin loading, out
+   of this repair's scope) and is not live-refreshed on every keystroke,
+   matching `mountGutterpressEditor`'s own documented "caller rebuilds and
+   remounts" contract.
+8. **Lane-ownership violation** — this table now names Lane C explicitly
+   (above) for the seven `packages/editor` files a prior round touched
+   under an undefined "Lane D" label; every in-code attribution was
+   rewritten to match.

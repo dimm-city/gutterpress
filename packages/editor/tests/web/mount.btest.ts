@@ -118,7 +118,7 @@ async function activeSubscriberCount(): Promise<number> {
   return harness.page.evaluate(() => window.__gpMount.activeSubscriberCount());
 }
 
-/** SFE-P3ab (Lane D) — the primary mount's live caret/selection, via
+/** SFE-P3ab (Lane C) — the primary mount's live caret/selection, via
  *  `EditorMount.getSelection()` (`support/entry.ts`'s passthrough). */
 async function selectionOffsets(): Promise<{ from: number; to: number } | undefined> {
   return harness.page.evaluate(() => window.__gpMount.getSelection());
@@ -443,12 +443,36 @@ describe("dispose isolation between two independent LIVE mounts SHARING one host
   });
 });
 
-describe("getSelection reports the fork's LIVE caret as D3 source offsets (SFE-P3ab, Lane D)", () => {
+describe("getSelection reports the fork's LIVE caret as D3 source offsets (SFE-P3ab, Lane C)", () => {
   // AP-21 liveness precedes behavior here too: every case below reads
   // through `requireDocumentText` before asserting on the selection.
   test("undefined before the mounted surface has ever been focused", async () => {
     const selector = await mount("hello world");
     await requireDocumentText(selector);
+
+    expect(await selectionOffsets()).toBeUndefined();
+  });
+
+  test("undefined AGAIN after a real caret exists — clicking the mount's own gutter clears it (SFE-P3ab review round 1, CONFIRMED finding: the doc comment used to claim undefined meant 'never focused', which this disproves)", async () => {
+    const text = "hello world\nsecond line";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+
+    // Place a real, verifiable caret first.
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("Home");
+    await harness.page.keyboard.press("ArrowRight");
+    expect(await selectionOffsets()).toEqual({ from: 1, to: 1 });
+
+    // Click inside the mounted surface's OWN left gutter — the
+    // `--md-editor-content-inline-start-padding` (48px) strip before
+    // `.md-document` begins (`fork-editor-css.ts`) — still inside
+    // `.md-editor`, not a click outside the mounted surface entirely.
+    const editorBox = await harness.page.locator(`${selector} .md-editor`).boundingBox();
+    expect(editorBox).not.toBeNull();
+    if (editorBox) {
+      await harness.page.mouse.click(editorBox.x + 5, editorBox.y + 5);
+    }
 
     expect(await selectionOffsets()).toBeUndefined();
   });

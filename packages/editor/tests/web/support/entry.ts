@@ -39,7 +39,7 @@ import { withDisposeOnFirstNotify } from "./self-disposing-host.ts";
  * constructs its own independent `hostB`, for the separate DOM/`<style>`
  * isolation proof.
  *
- * SFE-P3ab (Lane D): `getSelection()` exposes the PRIMARY mount's own new
+ * SFE-P3ab (Lane C): `getSelection()` exposes the PRIMARY mount's own new
  * `EditorMount.getSelection()` (`../mount.ts`) — a plain passthrough, no
  * new state — so `mount.btest.ts` can prove the accessor against real
  * keyboard-driven caret movement instead of asserting on the type alone.
@@ -92,7 +92,7 @@ export interface GutterpressMountHarnessDriver {
    * every subscriber of a host shared with another live mount. */
   activeSubscriberCount(): number;
   /**
-   * SFE-P3ab (Lane D) — passthrough to the current mount's own
+   * SFE-P3ab (Lane C) — passthrough to the current mount's own
    * `EditorMount.getSelection()`. `undefined` before `mount()` has been
    * called at all (nothing to read yet), matching that method's own
    * "no caret" contract rather than throwing — a real caller can legally

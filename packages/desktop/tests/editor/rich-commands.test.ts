@@ -68,7 +68,7 @@ describe("documentEndSelection", () => {
   });
 });
 
-// ── resolveRichSelection (SFE-P3ab, Lane D) ────────────────────────────────────
+// ── resolveRichSelection (SFE-P3ab, Lane B) ────────────────────────────────────
 
 describe("resolveRichSelection", () => {
   const snapshot: DocumentSnapshot = { text: "hello world", version: 3 };
@@ -111,6 +111,25 @@ describe("applyRichCommand", () => {
   test("insert-link with an explicit placeholder matches source mode's convention", () => {
     const host = new MemoryDocumentHost({ text: "see also: ", version: 0 });
     const outcome = applyRichCommand(host, { kind: "insert-link", href: "url", text: "link text" });
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("see also: [link text](url)");
+  });
+
+  test("insert-link with a NON-COLLAPSED live selection wraps the selected words instead of discarding them (SFE-P3ab review round 1, CONFIRMED finding — this used to silently replace the selection with the literal placeholder, diverging from source mode's applyLink)", () => {
+    const text = "see the Gutterpress manual";
+    const host = new MemoryDocumentHost({ text, version: 0 });
+    const from = "see the ".length;
+    const to = text.length; // selects "Gutterpress manual"
+    const live: LiveSelection = { from, to };
+    const outcome = applyRichCommand(host, { kind: "insert-link", href: "url", text: "link text" }, live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("see the [Gutterpress manual](url)");
+  });
+
+  test("insert-link with a COLLAPSED live selection still uses the caller-supplied placeholder, same as no selection at all", () => {
+    const host = new MemoryDocumentHost({ text: "see also: ", version: 0 });
+    const live: LiveSelection = { from: 10, to: 10 };
+    const outcome = applyRichCommand(host, { kind: "insert-link", href: "url", text: "link text" }, live);
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("see also: [link text](url)");
   });
@@ -185,7 +204,7 @@ describe("applyRichCommand", () => {
     if (!outcome.ok) expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");
   });
 
-  // ── Live-selection routing (SFE-P3ab, Lane D) ──────────────────────────────
+  // ── Live-selection routing (SFE-P3ab, Lane B) ──────────────────────────────
 
   test("with a live caret MID-DOCUMENT, toggle-bold wraps AT THE CARET, not the document end", () => {
     const host = new MemoryDocumentHost({ text: "one two three", version: 0 });
@@ -255,7 +274,7 @@ describe("applyRichLayoutBlock", () => {
     expect(host.getSnapshot().text).toBe("content\n\n@page-break\n\n");
   });
 
-  test("with a live caret MID-DOCUMENT, inserts the template AT the caret, not the document end (SFE-P3ab, Lane D)", () => {
+  test("with a live caret MID-DOCUMENT, inserts the template AT the caret, not the document end (SFE-P3ab, Lane B)", () => {
     const host = new MemoryDocumentHost({ text: "before after", version: 0 });
     const caret = "before".length;
     const live: LiveSelection = { from: caret, to: caret };
@@ -282,7 +301,7 @@ describe("applyRichAppend", () => {
     expect(host.getSnapshot().text).toBe("one\n\ntwo");
   });
 
-  test("with a live COLLAPSED caret, inserts AT the caret rather than appending (SFE-P3ab, Lane D)", () => {
+  test("with a live COLLAPSED caret, inserts AT the caret rather than appending (SFE-P3ab, Lane B)", () => {
     const host = new MemoryDocumentHost({ text: "one two", version: 0 });
     const caret = "one ".length;
     const live: LiveSelection = { from: caret, to: caret };
@@ -404,7 +423,7 @@ describe("applyRichImageInsert", () => {
     expect(host.getSnapshot().text).toBe("para" + buildImageInsertText(value));
   });
 
-  test("with a live caret MID-DOCUMENT, inserts the built snippet AT the caret, not the document end (SFE-P3ab, Lane D)", () => {
+  test("with a live caret MID-DOCUMENT, inserts the built snippet AT the caret, not the document end (SFE-P3ab, Lane B)", () => {
     const host = new MemoryDocumentHost({ text: "before after", version: 0 });
     const caret = "before".length;
     const live: LiveSelection = { from: caret, to: caret };
@@ -514,7 +533,7 @@ describe("splitIntoBlocks", () => {
     const text = "just one paragraph of prose";
     const blocks = splitIntoBlocks(text);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toEqual({ from: 0, to: text.length, isMarker: false });
+    expect(blocks[0]).toEqual({ from: 0, to: text.length, isMarker: false, markerKind: null });
   });
 
   test("blank-line-separated prose splits into one block per paragraph", () => {
@@ -540,11 +559,51 @@ describe("splitIntoBlocks", () => {
     expect(blocks.every((b) => b.isMarker)).toBe(true);
   });
 
-  test("plugin regions: a project-plugin marker (e.g. @sidebar) is recognized generically, same as a core marker", () => {
+  test("plugin regions: only the generic `@end-*` closer is recognized as a marker — a plugin's own OPENING marker (e.g. @sidebar) is outside Gutterpress's core vocabulary and is ordinary content to this heuristic (markerKindOf's header)", () => {
     const text = "@sidebar\nSidebar content.\n@end-sidebar";
     const blocks = splitIntoBlocks(text);
-    expect(blockTexts(text, blocks)).toEqual(["@sidebar", "Sidebar content.", "@end-sidebar"]);
-    expect(blocks.map((b) => b.isMarker)).toEqual([true, false, true]);
+    // "@sidebar" is not a KNOWN_MARKER_KINDS/"end-*" head, so it merges with
+    // the following prose line into one ordinary text block; "@end-sidebar"
+    // matches the generic "end-*" convention and is its own marker block.
+    expect(blockTexts(text, blocks)).toEqual(["@sidebar\nSidebar content.", "@end-sidebar"]);
+    expect(blocks.map((b) => b.isMarker)).toEqual([false, true]);
+    expect(blocks[1]!.markerKind).toBe("end-sidebar");
+  });
+
+  test("fenced code (```): the whole fence is ONE indivisible block, including a blank line inside it (SFE-P3ab review round 1, CONFIRMED — a prior version tore the fence apart at the blank line)", () => {
+    const text = "```js\nconst a = 1;\n\nconst b = 2;\n```";
+    const blocks = splitIntoBlocks(text);
+    expect(blockTexts(text, blocks)).toEqual([text]);
+    expect(blocks[0]!.isMarker).toBe(false);
+  });
+
+  test("fenced code (~~~) is recognized the same as backtick fences", () => {
+    const text = "~~~\nplain text\n~~~";
+    const blocks = splitIntoBlocks(text);
+    expect(blocks).toHaveLength(1);
+    expect(blockTexts(text, blocks)).toEqual([text]);
+  });
+
+  test("a marker-LIKE line INSIDE a fence is never classified as a marker — the fence swallows it whole (SFE-P3ab review round 1, CONFIRMED — CSS @media inside a fenced block used to be flagged isMarker)", () => {
+    const text = "```css\n@media screen {\n  a { color: red; }\n}\n```";
+    const blocks = splitIntoBlocks(text);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.isMarker).toBe(false);
+    expect(blockTexts(text, blocks)).toEqual([text]);
+  });
+
+  test("an unterminated fence runs to the end of the document as one block", () => {
+    const text = "prose\n\n```js\nconst a = 1;";
+    const blocks = splitIntoBlocks(text);
+    expect(blockTexts(text, blocks)).toEqual(["prose", "```js\nconst a = 1;"]);
+  });
+
+  test("an ordinary @mention line (not core vocabulary) is not a marker — it merges with its paragraph like any other prose (SFE-P3ab review round 1, CONFIRMED)", () => {
+    const text = "@sarah please review this chapter.";
+    const blocks = splitIntoBlocks(text);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.isMarker).toBe(false);
+    expect(blocks[0]!.markerKind).toBeNull();
   });
 
   test("blocks partition the document contiguously with no overlaps, in source order", () => {
@@ -564,7 +623,7 @@ describe("splitIntoBlocks", () => {
   });
 });
 
-// ── blockIndexAtOffset (SFE-P3ab, Lane D — the live-caret -> block-index mapping) ──
+// ── blockIndexAtOffset (SFE-P3ab, Lane B — the live-caret -> block-index mapping) ──
 
 describe("blockIndexAtOffset", () => {
   test("a caret strictly INSIDE a block's own range belongs to that block", () => {
@@ -670,32 +729,46 @@ describe("moveBlock", () => {
     }
   });
 
-  test("marker boundaries: swapping two adjacent marker blocks preserves both markers verbatim and the gap between them", () => {
+  test("marker boundaries: swapping two adjacent SCOPE markers (@section, @end-section with nothing between) refuses — both are boundaries, and swapping them would leave a dangling close-then-open (SFE-P3ab review round 1, CONFIRMED — this used to succeed)", () => {
     const text = "stats\n\n@section\n\n@end-section\n\n";
-    const result = moveBlock(text, 1, "down"); // swap @section and @end-section
+    const result = moveBlock(text, 1, "down"); // would swap @section and @end-section
+    expect(result).toEqual({ refused: true, reason: "boundary" });
+  });
+
+  test("marker-pair crossing: moving content OUT of an @section/@end-section pair refuses in both directions (SFE-P3ab review round 1, CONFIRMED reproduction)", () => {
+    const text = "@section\n\nAlpha para.\n\nBeta para.\n\n@end-section\n";
+    // blocks: [0] @section (boundary), [1] Alpha, [2] Beta, [3] @end-section (boundary)
+    expect(moveBlock(text, 1, "up")).toEqual({ refused: true, reason: "boundary" });
+    expect(moveBlock(text, 2, "down")).toEqual({ refused: true, reason: "boundary" });
+  });
+
+  test("swapping two sibling content blocks INSIDE the same section is still allowed", () => {
+    const text = "@section\n\nAlpha para.\n\nBeta para.\n\n@end-section\n";
+    const result = moveBlock(text, 1, "down"); // Alpha <-> Beta, both inside the section
     expect("edit" in result).toBe(true);
     if ("edit" in result) {
       const { from, to, insert } = result.edit;
       const rebuilt = text.slice(0, from) + insert + text.slice(to);
-      expect(rebuilt).toBe("stats\n\n@end-section\n\n@section\n\n");
+      expect(rebuilt).toBe("@section\n\nBeta para.\n\nAlpha para.\n\n@end-section\n");
     }
   });
 
-  test("plugin regions: moving prose OUT from between two plugin markers is a plain adjacent swap (no region-nesting awareness — documented scope limit)", () => {
+  test("a fenced code block moves (or refuses) as ONE unit — a blank line inside it never becomes a swap point (SFE-P3ab review round 1, CONFIRMED reproduction)", () => {
+    const text = "```js\nconst a = 1;\n\nconst b = 2;\n```";
+    const blocks = splitIntoBlocks(text);
+    expect(blocks).toHaveLength(1);
+    // Only one block exists, so both directions refuse — there is nothing to
+    // tear the fence apart with.
+    expect(moveBlock(text, 0, "up")).toEqual({ refused: true, reason: "first-block" });
+    expect(moveBlock(text, 0, "down")).toEqual({ refused: true, reason: "last-block" });
+  });
+
+  test("plugin regions: the generic @end-* closer is a protected boundary — moving content past it refuses (its own opener, @sidebar, is not in core vocabulary and merges with the content instead — see splitIntoBlocks's tests)", () => {
     const text = "@sidebar\nSidebar content.\n@end-sidebar";
     const blocks = splitIntoBlocks(text);
-    expect(blocks).toHaveLength(3);
-    const result = moveBlock(text, 1, "down"); // swap "Sidebar content." past "@end-sidebar"
-    expect("edit" in result).toBe(true);
-    if ("edit" in result) {
-      const { from, to, insert } = result.edit;
-      const rebuilt = text.slice(0, from) + insert + text.slice(to);
-      expect(rebuilt).toBe("@sidebar\n@end-sidebar\nSidebar content.");
-      // Both markers survive byte-for-byte even though the move crossed a
-      // region boundary this pure function has no concept of pairing.
-      expect(rebuilt).toContain("@sidebar");
-      expect(rebuilt).toContain("@end-sidebar");
-    }
+    expect(blocks).toHaveLength(2); // ["@sidebar\nSidebar content.", "@end-sidebar"]
+    const result = moveBlock(text, 0, "down"); // would push "@end-sidebar" out of position
+    expect(result).toEqual({ refused: true, reason: "boundary" });
   });
 
   test("leading and trailing whitespace outside any block is never touched by a swap", () => {
@@ -750,7 +823,7 @@ describe("applyBlockMove", () => {
   });
 });
 
-// ── Caret-driven block move (SFE-P3ab, Lane D — the full keyboard-wiring
+// ── Caret-driven block move (SFE-P3ab, Lane B — the full keyboard-wiring
 // pipeline: blockIndexAtOffset(host.getSnapshot().text, live.from) then
 // applyBlockMove, exactly as +page.svelte's Alt+Shift+ArrowUp/Down handler
 // composes them) ─────────────────────────────────────────────────────────

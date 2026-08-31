@@ -45,7 +45,7 @@ import { mountGutterpressEditor, type GutterpressEditorMount } from "../../../sr
  * production-only evidence with no native-selection assumption and no
  * package-internal reach-through.
  *
- * SFE-P3ab (Lane D): `getSelection()` on the driver below is a straight
+ * SFE-P3ab (Lane C): `getSelection()` on the driver below is a straight
  * passthrough to `GutterpressEditorMount.getSelection()` (`../mount.ts`) —
  * the mount's own new PUBLIC accessor, not `model.selection.get()` reached
  * through directly, so the "no package-internal reach-through" property
@@ -87,7 +87,7 @@ export interface GutterpressDriver {
   /** Every `.md-block` element in the mounted document, in order. */
   blockCount(): number;
   blockClassName(index: number): string;
-  /** SFE-P3ab (Lane D) — client-space center point of the i-th `.md-block`
+  /** SFE-P3ab (Lane C) — client-space center point of the i-th `.md-block`
    *  (a real point for `page.mouse.click`), mirroring
    *  `segmentCharacterCenter` below for a whole block instead of one
    *  chip segment — used to click into a plain (non-chip) block without
@@ -110,7 +110,7 @@ export interface GutterpressDriver {
   generatedPreviewText(chipIndex: number): string | undefined;
 
   /**
-   * SFE-P3ab (Lane D) — passthrough to the current mount's own
+   * SFE-P3ab (Lane C) — passthrough to the current mount's own
    * `GutterpressEditorMount.getSelection()` (`../mount.ts`). `undefined`
    * before `mount()`/`mountStale()` has been called at all.
    */

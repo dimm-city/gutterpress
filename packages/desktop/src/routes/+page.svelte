@@ -43,7 +43,14 @@
     validateImageProperties,
     type RichCommandOutcome,
   } from "$lib/editor/rich-commands";
-  import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
+  import { diagnosticForEditRejection, type Diagnostic } from "@dimm-city/gutterpress-editor/core";
+  // SFE-P3ab review round 1 (CONFIRMED finding) — the browser-safe render
+  // subpath (CLAUDE.md monorepo layout: "browser-safe public subpath:
+  // gutterpress/render"), already value-imported client-side by
+  // web-adapter.ts for the same reason: this is the ONE place D4 lets the
+  // renderer build a D6 projection without any Node-side work.
+  import { createEditorProjection } from "gutterpress/render";
+  import type { GutterpressProjection } from "gutterpress/render";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
@@ -984,21 +991,28 @@
   let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let snippetPickerOpen = $state(false);
 
-  // SFE-P3ab, Lane D — the rich-mode caret at the moment the snippet picker
-  // opened, captured BEFORE the picker's own UI steals focus (same
-  // rationale as `openRichImageProperties`'s `live` capture below: reading
-  // it from inside `onInsert`, after the picker has had focus, would see
-  // whatever — if anything — the mount still reports once focus has moved
-  // away, not the position the author actually meant when they invoked the
-  // picker). `undefined` in source mode or with no caret; read by the
-  // `SnippetPicker`'s `onInsert` handler near the bottom of this file.
-  let richSnippetLiveSelection: { readonly from: number; readonly to: number } | undefined;
+  // SFE-P3ab, Lane A — the rich-mode document identity + caret at the
+  // moment the snippet picker opened, captured BEFORE the picker's own UI
+  // steals focus (same rationale as `openRichImageProperties`'s `capture`
+  // below: reading it from inside `onInsert`, after the picker has had
+  // focus, would see whatever — if anything — the mount still reports once
+  // focus has moved away, not the position the author actually meant when
+  // they invoked the picker). SFE-P3ab review round 1 (CONFIRMED finding):
+  // a plain selection offset with no document identity attached was
+  // silently re-applied even after an external reload replaced the
+  // document underneath the open dialog — `RichSelectionCapture` (defined
+  // with `captureRichSelection` below) pairs the offsets with the exact
+  // host + version they were read against, so `onInsert` (near the bottom
+  // of this file) can detect that and refuse instead of splicing into the
+  // wrong document. `undefined` in source mode or with no rich document
+  // open at all.
+  let richSnippetCapture: RichSelectionCapture | undefined;
 
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
-    richSnippetLiveSelection = richLiveSelection();
+    richSnippetCapture = captureRichSelection();
     snippetPickerRef?.show();
   }
 
@@ -1162,6 +1176,23 @@
   // mounts against a `DesktopDocumentHost`, not the buffer directly.
   const richMode = createRichModeController();
 
+  /**
+   * Whether `path` is a Markdown source the rich surface can mount against
+   * — the ONLY file type it supports (D2: "source mode remains available
+   * for every document"; the plan's own out-of-scope note keeps CSS/YAML/
+   * JS/plugin/manifest editing CodeMirror-only). SFE-P3ab review round 1
+   * (CONFIRMED finding): `showEditorContent`/`setRichMode` used to rebuild
+   * `richDocHost` — and the template used to mount the rich surface — for
+   * ANY open file while `richMode.mode === "rich"`, so a CSS file clicked
+   * from the tree opened silently inside the Markdown rich surface with no
+   * visible way back (the toolbar's mode toggle only renders for markdown
+   * files). Hoisted so every gate below (`showEditorContent`, `setRichMode`,
+   * `insertImageIntoChapter`, `richSurfaceActive`) shares one definition.
+   */
+  function isMarkdownPath(path: string | null): boolean {
+    return !!path && /\.(md|markdown)$/i.test(path);
+  }
+
   // Hidden/experimental gate (run spec: "off by default this run"). No new
   // settings subsystem — a `localStorage` flag flipped by hand, read once on
   // mount (client-only). With the flag unset (the overwhelming common case)
@@ -1227,7 +1258,35 @@
   let richDocHost = $state<DesktopDocumentHost | null>(null);
   let richDocHostUnsub: (() => void) | null = null;
 
-  // SFE-P3ab, Lane D — the mounted RichEditor component instance, bound the
+  /**
+   * The D6 sparse projection for `richDocHost`'s document — built once per
+   * `{#key richDocHost}` mount cycle, in lockstep with `richDocHost` itself
+   * (`rebuildRichDocHost`/`disposeRichDocHost` below), never live-refreshed
+   * on every keystroke: `mountGutterpressEditor`'s own contract
+   * (`needsRefresh()`'s doc comment, `@dimm-city/gutterpress-editor/
+   * gutterpress`) is explicit that a stale projection is "the caller's cue
+   * to build a fresh projection and remount, not a live-updating property"
+   * — chips fall through to the plain view once the host's version moves
+   * past `sourceVersion`, which is graceful, not broken. `null` exactly
+   * when `richDocHost` is `null`.
+   *
+   * SFE-P3ab review round 1 (CONFIRMED finding): this page never built a
+   * projection at all, so `RichEditor.svelte` always mounted the plain
+   * standard-Markdown surface (`mountEditor`) and `mountGutterpressEditor`
+   * — the whole point of P2b/P2c's projection work — was dead code. Built
+   * via the browser-safe `gutterpress/render` subpath (D4), not a Node-side
+   * call: no project plugins are applied here (that needs host/Node-side
+   * plugin loading, out of this repair's scope), so a plugin's OWN regions
+   * render as plain text rather than plugin-aware chips, but every CORE
+   * marker/raw-html/generated-view block is projected.
+   */
+  let richProjection = $state<GutterpressProjection | null>(null);
+
+  function buildRichProjection(content: string, sourceVersion: number): GutterpressProjection {
+    return createEditorProjection(content, { sourceVersion });
+  }
+
+  // SFE-P3ab, Lane A — the mounted RichEditor component instance, bound the
   // same way `editorRef` binds MarkdownEditor above: `{#key richDocHost}`
   // means a host rebuild destroys and recreates RichEditorComponent, so
   // Svelte resets this to `null` on unmount and repopulates it on the next
@@ -1238,40 +1297,104 @@
     getSelection: () => { readonly from: number; readonly to: number } | undefined;
   } | null>(null);
 
-  /** The rich mount's LIVE caret, or `undefined` when there is none (never
-   *  focused, or no mount yet) — every rich-mode command below reads this
-   *  fresh at the moment it fires rather than caching it. */
+  /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
+   *  review round 1 (CONFIRMED finding): `undefined` does NOT mean "never
+   *  focused" — the fork's own selection observable goes empty again after
+   *  real interaction too (e.g. clicking the mount's own left gutter), so
+   *  this must be treated as "no caret AT THIS INSTANT", never as proof the
+   *  surface was never touched (see `rich-commands.ts`'s header for the full
+   *  verified reproduction). Every rich-mode command below reads this fresh
+   *  at the moment it fires rather than caching it. */
   function richLiveSelection(): { readonly from: number; readonly to: number } | undefined {
     return richEditorRef?.getSelection();
   }
+
+  /** A rich-mode selection paired with the document IDENTITY it was read
+   *  against — SFE-P3ab review round 1 (CONFIRMED finding): a caller that
+   *  captures `richLiveSelection()` and then `await`s something (a dialog)
+   *  before applying an edit must be able to tell whether the document
+   *  changed underneath it (an external reload landed, rebuilding
+   *  `richDocHost` at a fresh version 0 with different text) — a captured
+   *  offset with no identity attached was silently re-applied to whatever
+   *  document happened to be live when the dialog resolved. */
+  interface RichSelectionCapture {
+    readonly host: DesktopDocumentHost;
+    readonly version: number;
+    readonly selection: { readonly from: number; readonly to: number } | undefined;
+  }
+
+  /** Captures {@link richLiveSelection} together with `richDocHost` and its
+   *  CURRENT version. `undefined` when there is no rich document open at
+   *  all (no host to capture identity from). */
+  function captureRichSelection(): RichSelectionCapture | undefined {
+    if (!richDocHost) return undefined;
+    return { host: richDocHost, version: richDocHost.getSnapshot().version, selection: richLiveSelection() };
+  }
+
+  /** Whether `capture` (from {@link captureRichSelection}) is still valid
+   *  against the CURRENT `richDocHost` — false once the document identity
+   *  was replaced (a rebuild) or any edit landed since capture, either of
+   *  which makes the captured offsets meaningless (see that function's own
+   *  header). */
+  function isRichSelectionCaptureFresh(capture: RichSelectionCapture): boolean {
+    return richDocHost === capture.host && richDocHost.getSnapshot().version === capture.version;
+  }
+
+  /** D14 diagnostic for a caret-relative rich command invoked with NO live
+   *  caret at all — the "stop failing open" half of the same review finding
+   *  above: a toolbar click or keyboard shortcut is an explicit, caret-
+   *  relative user gesture, so silently reusing `documentEndSelection` when
+   *  there happens to be no caret right now (one stray gutter click since
+   *  the last keystroke) would format or insert text somewhere the author
+   *  never asked for. `documentEndSelection` remains the correct, DOCUMENTED
+   *  fallback only for a genuinely anchorless gesture (image insertion via
+   *  drag-and-drop, or before the surface has ever been focused) — see
+   *  `openRichImageProperties`/`insertImageIntoChapter` below, which do NOT
+   *  use this diagnostic. */
+  const NO_LIVE_CARET_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_INVALID_RANGE",
+    message: "Place the cursor in the document, then try that again.",
+  };
 
   function rebuildRichDocHost(path: string | null, content: string): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
     if (!path) {
       richDocHost = null;
+      richProjection = null;
       return;
     }
     const nextHost = new DesktopDocumentHost(content, { documentId: path });
     richDocHostUnsub = nextHost.subscribe((snapshot) => onEditorChange(snapshot.text));
     richDocHost = nextHost;
+    richProjection = buildRichProjection(content, nextHost.getSnapshot().version);
   }
 
   function disposeRichDocHost(): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
     richDocHost = null;
+    richProjection = null;
   }
 
   /** The one place rich mode is entered/exited (today: the hidden keyboard
    * shortcut below; a visible toggle is chrome for another lane to add).
    * Keeps `richDocHost` in lockstep with `richMode.mode` so it is never
-   * stale while `"rich"` is selected, and never lingers once it is not. */
+   * stale while `"rich"` is selected, and never lingers once it is not.
+   * SFE-P3ab review round 1 (CONFIRMED finding): only builds the host for a
+   * MARKDOWN file (`isMarkdownPath`) — rich mode has no surface for
+   * anything else (D2). `richMode.mode` itself is still recorded as the
+   * user's PREFERENCE even when the current file can't use it, so returning
+   * to a markdown file resumes rich mode automatically. */
   function setRichMode(next: "source" | "rich"): void {
     if (next === richMode.mode) return;
     if (next === "rich") {
       loadRichEditorModule();
-      rebuildRichDocHost(editorFilePath, editorContent);
+      if (isMarkdownPath(editorFilePath)) {
+        rebuildRichDocHost(editorFilePath, editorContent);
+      } else if (editorFilePath) {
+        showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
+      }
     }
     richMode.switchTo(next);
     if (next === "source") {
@@ -1312,17 +1435,37 @@
     if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
   }
 
+  /** SFE-P3ab review round 1 (CONFIRMED finding) — shown whenever rich mode
+   *  is explicitly entered (or a file switch lands) while the open file
+   *  isn't markdown; see `isMarkdownPath`'s header. No `safeAction`: the
+   *  source surface is already what's showing, there is nothing further for
+   *  the author to do. */
+  const RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC: Diagnostic = {
+    category: "EDITOR_UNSUPPORTED_PROJECTION",
+    message: "Rich mode supports Markdown files only. This file opened in the source editor.",
+  };
+
   /**
    * Routes one `EditorToolbar` action through the RICH path — the mirror of
    * `editorRef?.runToolbarAction(action, payload)` for source mode. Called
    * only while `richMode.mode === "rich"`; "image" is excluded (handled by
    * `openRichImageProperties` below via the `ImagePropertiesDialog` flow,
    * not a plain `EditorCommand`).
+   *
+   * SFE-P3ab review round 1 (CONFIRMED finding): refuses when there is no
+   * LIVE caret rather than letting `applyRichCommand`/`applyRichLayoutBlock`
+   * silently fall back to the document end — a toolbar click is an
+   * explicit, caret-relative gesture (`NO_LIVE_CARET_DIAGNOSTIC`'s header
+   * has the full rationale, including why image insertion is exempt).
    */
   function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
     if (!richDocHost || action === "image") return;
     const route = routeToolbarAction(action, payload);
     const live = richLiveSelection();
+    if (!live) {
+      showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+      return;
+    }
     if (route.kind === "command") {
       reportRichOutcome(applyRichCommand(richDocHost, route.command, live));
     } else if (route.kind === "layout") {
@@ -1337,14 +1480,26 @@
    * `ImagePropertiesDialog` the preview context menu's "Set properties…"
    * uses, seeded blank (a brand-new image has no existing token set to
    * seed from), and applies the confirmed value at the document end.
+   *
+   * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
+   * TOGETHER with the document identity it was read against
+   * (`captureRichSelection`) — the dialog's `await` gives an external
+   * reload (or a file switch) time to rebuild `richDocHost` entirely, and a
+   * captured offset with no identity attached used to be silently applied
+   * to whatever document happened to be live once the dialog resolved. A
+   * missing LIVE CARET at capture time is left to `applyRichImageInsert`'s
+   * own `documentEndSelection` fallback — image insertion is reachable via
+   * drag-and-drop, a genuinely anchorless gesture (`insertImageIntoChapter`
+   * below), so this toolbar path stays consistent with that one behavior
+   * rather than refusing only when invoked from the toolbar.
    */
   async function openRichImageProperties(): Promise<void> {
-    if (!richDocHost) return;
     // Captured BEFORE the dialog opens and steals focus — the dialog is a
     // separate surface, so the caret the author actually meant is whatever
     // it was the moment they invoked "Insert image", not whatever (if
     // anything) the mount still reports once focus has moved away.
-    const live = richLiveSelection();
+    const capture = captureRichSelection();
+    if (!capture) return;
     const blank: ImagePropertiesValue = {
       src: "",
       alt: "",
@@ -1364,7 +1519,11 @@
       toast?.error(error);
       return;
     }
-    reportRichOutcome(applyRichImageInsert(richDocHost, value, live));
+    if (!isRichSelectionCaptureFresh(capture)) {
+      showRichDiagnostic(diagnosticForEditRejection("stale"));
+      return;
+    }
+    reportRichOutcome(applyRichImageInsert(capture.host, value, capture.selection));
   }
 
   /**
@@ -1379,15 +1538,14 @@
    * own "Insert image" button before this run).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
-    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
-    if (!isMd(editorFilePath)) {
+    if (!isMarkdownPath(editorFilePath)) {
       if (mode === "viewer") setMode("editor");
       void ensureEditorFile();
     }
     let tries = 0;
     const tryInsert = () => {
-      if (richMode.mode === "rich") {
-        if (richDocHost && isMd(editorFilePath)) {
+      if (richSurfaceActive) {
+        if (richDocHost) {
           reportRichOutcome(
             applyRichCommand(
               richDocHost,
@@ -1397,7 +1555,7 @@
           );
           return;
         }
-      } else if (editorRef && isMd(editorFilePath)) {
+      } else if (editorRef && isMarkdownPath(editorFilePath)) {
         editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
         focusEditorWhenReady();
         return;
@@ -1437,6 +1595,23 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
+  /**
+   * Whether the RICH surface is the one that should actually be mounted
+   * right now — the user's mode PREFERENCE (`richMode.mode === "rich"`)
+   * narrowed to files rich mode actually supports (`isMarkdownPath`).
+   * `richMode.mode` itself is never forced back to `"source"` for a
+   * non-markdown file (so the preference survives switching back to a
+   * markdown one — see `setRichMode`), but every decision about which
+   * surface is ACTUALLY live, and which write-path an action should take,
+   * keys off THIS, not the raw preference (SFE-P3ab review round 1,
+   * CONFIRMED finding). `editorFilePath === null` (no file open yet) still
+   * counts as active so the rich pane's own "select a file" placeholder
+   * keeps showing while the preference is "rich", matching prior behavior.
+   */
+  let richSurfaceActive = $derived(
+    richMode.mode === "rich" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
+  );
+
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
     else editorRef?.switchFile(path, content);
@@ -1446,7 +1621,17 @@
     // mode responds to either the same way: a fresh epoch, fresh host.
     if (richMode.mode === "rich") {
       richMode.onFileSwitch();
-      rebuildRichDocHost(path, content);
+      // SFE-P3ab review round 1 (CONFIRMED finding): rich mode has no
+      // surface for a non-markdown file — see `isMarkdownPath`'s header.
+      // `richMode.mode` stays "rich" (the preference), but this file opens
+      // on the source surface, and any stale host from a PRIOR markdown
+      // file is dropped rather than left mounted over the wrong content.
+      if (isMarkdownPath(path)) {
+        rebuildRichDocHost(path, content);
+      } else {
+        disposeRichDocHost();
+        showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
+      }
     }
   }
 
@@ -2099,6 +2284,27 @@
   // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
   // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
   // that, exactly like every other write path in the app).
+  //
+  // SFE-P3ab review round 1 (CONFIRMED finding): `editorHasFile`/
+  // `applyRangeEdit` are SURFACE-AWARE — when the rich surface is the one
+  // actually live for the target file, the edit routes through
+  // `richDocHost.applyEdit` (the SAME seam every other rich-mode command in
+  // this file uses, `rich-commands.ts`'s header), not `editorRef` (which is
+  // always `null` in rich mode, since `MarkdownEditor` is unmounted). Before
+  // this fix `editorHasFile` was permanently `false` whenever rich mode was
+  // active, so the engine fell through to `buf.edit(...)` directly — a
+  // write `EditorBuffer.edit()` does NOT report through
+  // `onContentReplaced` (that callback is for EXTERNAL replacements only),
+  // so the mounted rich host never learned about it and kept showing the
+  // pre-commit text. The very next rich-mode command then read that STALE
+  // snapshot, applied its own edit on top of it, and pushed the whole
+  // stale-plus-new text back through `richDocHost`'s `subscribe` ->
+  // `onEditorChange` -> `buffer.edit(...)`, silently REVERTING the
+  // preview's committed change. Routing through `richDocHost.applyEdit`
+  // here closes that gap: its `subscribe` callback (`rebuildRichDocHost`
+  // above) already forwards every accepted edit into `onEditorChange` ->
+  // `buffer.edit(...)`, so the buffer, the rich host, and disk all agree
+  // immediately — there is no second, silently-diverging writer.
   // ----------------------------------------------------------------
   const commitEngine = new CommitEngine({
     currentDir: () => lifecycle.currentDir,
@@ -2107,9 +2313,15 @@
     // reveal:false — a committed menu action must not also scroll the author's
     // editor to the top of the chapter it happened to touch.
     selectEditorFile: (path) => selectEditorFile(path),
-    editorHasFile: (path) => editorRef?.hasFile(path) ?? false,
-    applyRangeEdit: (path, from, to, insert) =>
-      editorRef?.applyRangeEditIn(path, from, to, insert),
+    editorHasFile: (path) =>
+      richSurfaceActive ? richDocHost !== null && editorFilePath === path : (editorRef?.hasFile(path) ?? false),
+    applyRangeEdit: (path, from, to, insert) => {
+      if (richSurfaceActive && richDocHost) {
+        richDocHost.applyEdit({ from, to, insert, expectedVersion: richDocHost.getSnapshot().version });
+        return;
+      }
+      editorRef?.applyRangeEditIn(path, from, to, insert);
+    },
   });
 
   let textPrompt = $state<{
@@ -2379,7 +2591,7 @@
         setRichMode(richMode.mode === "rich" ? "source" : "rich");
         return;
       }
-      // Block movement (SFE-P3ab, Lane D) — Alt+Shift+ArrowUp/Down moves
+      // Block movement (SFE-P3ab, Lane A) — Alt+Shift+ArrowUp/Down moves
       // the block the live rich-mode caret is currently in
       // (`blockIndexAtOffset` + `applyBlockMove`, rich-commands.ts). Rich
       // mode only: source mode keeps its own untouched CodeMirror keymap
@@ -2391,7 +2603,7 @@
       // vocabulary — checked directly, the same pattern the rich-mode
       // toggle above uses.
       if (
-        richMode.mode === "rich" &&
+        richSurfaceActive &&
         e.altKey &&
         e.shiftKey &&
         (e.key === "ArrowUp" || e.key === "ArrowDown")
@@ -3146,7 +3358,7 @@
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
-              richMode={richMode.mode === "rich"}
+              richMode={richSurfaceActive}
               richModeAvailable={richModeAvailable}
               onToggleRichMode={() => setRichMode(richMode.mode === "rich" ? "source" : "rich")}
               onOpenImageProperties={() => void openRichImageProperties()}
@@ -3159,7 +3371,7 @@
                   togglePreview();
                   return;
                 }
-                if (richMode.mode === "rich") {
+                if (richSurfaceActive) {
                   handleRichToolbarAction(action, payload);
                   return;
                 }
@@ -3167,7 +3379,7 @@
               }}
               onSave={handleForceSave}
             />
-            {#if richMode.mode === "rich"}
+            {#if richSurfaceActive}
               <!-- SFE-P3ab, Lane A — rich mode's own DOM subtree. The
                    wrapper's `use:trackSurfaceMount` and this branch's
                    exclusivity with the MarkdownEditor branch below TOGETHER
@@ -3190,6 +3402,7 @@
                     <RichEditorComponent
                       bind:this={richEditorRef}
                       host={richDocHost}
+                      projection={richProjection ?? undefined}
                       onDiagnostic={showRichDiagnostic}
                     />
                   {/key}
@@ -3485,9 +3698,16 @@
   projectDir={lifecycle.currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => {
-    if (richMode.mode === "rich") {
-      if (richDocHost) {
-        reportRichOutcome(applyRichAppend(richDocHost, text, richSnippetLiveSelection));
+    if (richSurfaceActive) {
+      // SFE-P3ab review round 1 (CONFIRMED finding): refuse rather than
+      // silently insert against a stale/absent capture — see
+      // `richSnippetCapture`'s and `NO_LIVE_CARET_DIAGNOSTIC`'s own headers.
+      if (!richSnippetCapture || !isRichSelectionCaptureFresh(richSnippetCapture)) {
+        showRichDiagnostic(diagnosticForEditRejection("stale"));
+      } else if (!richSnippetCapture.selection) {
+        showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
+      } else {
+        reportRichOutcome(applyRichAppend(richSnippetCapture.host, text, richSnippetCapture.selection));
       }
       return;
     }

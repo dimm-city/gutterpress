@@ -19,9 +19,15 @@
  * ("Can both surfaces ever be mounted simultaneously?") gets a loud failure
  * instead of a silent one.
  *
- * Preview (D8's third surface) is NOT part of this invariant — it is a
- * read-only pane that may be visible alongside either editing surface; only
- * source vs. rich are mutually exclusive.
+ * Preview (D8's third surface) is NOT part of this invariant — it may be
+ * visible alongside either editing surface, and only source vs. rich are
+ * mutually exclusive. It is NOT a read-only pane yet, either: until P4
+ * deletes preview source-mutation (D8's own "In-flow `contenteditable`,
+ * preview block-edit requests, preview source mutation ... are deleted in
+ * P4"), its context-menu and in-flow edit paths still write source through
+ * `commit-engine.ts` — see this file's "What this controller is NOT"
+ * section below for how that write is kept from silently diverging from
+ * whichever surface is actually mounted.
  *
  * ## Undo epoch (D7)
  *
@@ -46,12 +52,27 @@
  * ## What this controller is NOT
  *
  * It holds no reference to an `EditorDocumentHost`, a projection, or any
- * document content. Both surfaces read/write through the SAME host
- * instance their caller hands them; this controller only tracks WHICH
- * surface is selected and WHICH one is currently live in the DOM. Session
- * sharing (dirty state, autosave, recovery, external-change banner, file
- * switching) is therefore automatic: there is exactly one document host in
- * the whole system, never one per surface.
+ * document content. This controller only tracks WHICH surface is selected
+ * and WHICH one is currently live in the DOM — session sharing (dirty
+ * state, autosave, recovery, external-change banner, file switching) is a
+ * property of `+page.svelte`'s OWN wiring, not something this class
+ * provides. That wiring is deliberately NOT "one host instance, so sharing
+ * is automatic": `EditorBuffer` (source's `DocumentSession`) and
+ * `richDocHost` (a separate `DesktopDocumentHost`, rebuilt fresh per file —
+ * D7's "file switches ... are not undoable into the prior file") are two
+ * DISTINCT objects while rich mode is active. Convergence between them is
+ * explicit, not structural: `richDocHost.subscribe` forwards every accepted
+ * rich-mode edit into `buffer.edit(...)` (`+page.svelte`'s
+ * `rebuildRichDocHost`), and every OTHER writer of `buffer.content` while
+ * rich mode is the live surface — today, `commit-engine.ts`'s preview-
+ * originated writes — must route back THROUGH `richDocHost.applyEdit`
+ * (`+page.svelte`'s `CommitEngine` construction) rather than writing
+ * `buffer` directly, or the rich host silently goes stale and the next
+ * rich-mode command can revert whatever the other writer just committed
+ * (a CONFIRMED review finding, SFE-P3ab round 1 — see the commit-engine
+ * wiring's own comment in `+page.svelte` for the full failure mode this
+ * fixes). Any FUTURE writer of buffer/session state must be reviewed
+ * against this same requirement; it is not enforced by the type system.
  */
 
 export type EditorSurface = "source" | "rich";

@@ -68,7 +68,7 @@ import { stringEditToSourceEdit } from "./convert.ts";
  * browser.cases.btest.ts`'s case-3 exercises this in a real browser: typing
  * twice, then pressing Ctrl+Z, leaves the source unchanged.
  *
- * SFE-P3ab (Lane D): the returned handle also exposes `getSelection()` —
+ * SFE-P3ab (Lane C): the returned handle also exposes `getSelection()` —
  * the fork's live caret/selection as D3 source offsets (see the interface's
  * own doc comment below). This closes the gap the previous run's
  * `desktop/src/lib/editor/rich-commands.ts` reported: every rich-mode
@@ -130,12 +130,26 @@ export interface VscodeEditorAdapter {
   dispose(): void;
 
   /**
-   * SFE-P3ab (Lane D) — the fork's LIVE caret/selection, as UTF-16 source
+   * SFE-P3ab (Lane C) — the fork's LIVE caret/selection, as UTF-16 source
    * offsets over the same text `host` owns (D3's `SourceEdit`/
    * `DocumentSnapshot` offset convention), or `undefined` when the model has
-   * no caret at all (e.g. the mounted surface has never been focused/
-   * clicked into — verified live: a fresh mount reports `undefined` here
-   * until the user interacts with it).
+   * NO CARET AT THIS INSTANT.
+   *
+   * SFE-P3ab review round 1 (CONFIRMED finding) — `undefined` is NOT proof
+   * the mounted surface was "never focused/clicked into". It recurs after
+   * REAL interaction: verified live against the installed fork, a caret
+   * placed by keyboard navigation is cleared again by clicking the mounted
+   * surface's own left gutter (the `.md-editor-content` inline-start
+   * padding strip before `.md-document` begins) or its block-start padding
+   * — both still inside the mounted surface, not a click outside it. See
+   * `packages/editor/tests/web/mount.btest.ts`'s "clears again after a real
+   * caret exists" case for the browser proof. Callers that represent an
+   * explicit, caret-relative user gesture (a toolbar click, a keyboard
+   * shortcut) MUST NOT treat `undefined` as "safe to anchor at the document
+   * end" — see `rich-commands.ts`'s header for how the desktop app's
+   * callers handle this (some refuse with a diagnostic; image insertion via
+   * drag-and-drop deliberately keeps the document-end fallback, since that
+   * gesture is genuinely anchorless).
    *
    * Backed by `model.selection` (`ISettableObservable<Selection_2 |
    * undefined, void>` — package internals, not re-exported; this is the

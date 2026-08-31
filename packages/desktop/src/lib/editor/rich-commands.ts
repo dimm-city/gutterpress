@@ -17,7 +17,7 @@
  * `toolbar-actions.ts`/`image-classes.ts`/`context-menu-actions.ts` posture
  * (PWA-clean, `bun test`-able without a browser).
  *
- * ## The selection accessor — CLOSED (SFE-P3ab, Lane D)
+ * ## The selection accessor — CLOSED (SFE-P3ab, Lane B)
  *
  * A prior run of this module anchored every command at the document end
  * (`documentEndSelection`) because nothing in `packages/editor`'s mount
@@ -27,8 +27,7 @@
  *   - `VscodeEditorAdapter.getSelection()`
  *     (`packages/editor/src/vscode-adapter/adapter.ts`) reads the fork's
  *     own `model.selection` observable and returns it as UTF-16 D3 source
- *     offsets (`{ from, to } | undefined`) — `undefined` exactly when the
- *     mounted surface has no caret yet (never focused).
+ *     offsets (`{ from, to } | undefined`).
  *   - `EditorMount.getSelection()` (`packages/editor/src/web/mount.ts`) and
  *     `GutterpressEditorMount.getSelection()`
  *     (`packages/editor/src/gutterpress/mount.ts`) are thin passthroughs to
@@ -39,16 +38,34 @@
  *     `MarkdownEditor.svelte`'s `editorRef` pattern) so `+page.svelte` can
  *     read the live caret at the moment a toolbar action or shortcut fires.
  *
- * Every `applyRich*` function below now resolves its edit position through
- * {@link resolveRichSelection}: the LIVE caret/selection when the caller
- * supplies one (a real, focused mount), {@link documentEndSelection} as an
- * explicit, DOCUMENTED FALLBACK only when no caret exists (the surface has
- * never been focused, or the caller has no mount reference yet — e.g. a
- * drag-and-drop insert that arrives before the editor has focus). The
- * compromise this header used to document is now the exceptional path, not
- * the norm — pressing Bold with a caret mid-document formats AT the caret;
- * `documentEndSelection` only fires when there is genuinely nothing better
- * to anchor on.
+ * SFE-P3ab review round 1 (CONFIRMED finding): `undefined` does NOT mean
+ * "never focused" — it means "no caret at THIS INSTANT", and it recurs
+ * after real interaction. Verified live against the installed fork: a caret
+ * placed by keyboard navigation is CLEARED by clicking the mounted surface's
+ * own left gutter (the `--md-editor-content-inline-start-padding` strip
+ * before `.md-document` begins) or its top padding — still inside the
+ * mounted surface, not a click outside it. See
+ * `packages/editor/tests/web/mount.btest.ts`'s "clears again after a real
+ * caret exists" case. The adapter/mount layer deliberately does NOT paper
+ * over this by retaining a "last known" position (that would make
+ * `getSelection()` lie about whether a caret currently exists, which some
+ * callers — e.g. a future cursor-position indicator — legitimately need to
+ * know); every `applyRich*` function below still resolves its edit position
+ * through {@link resolveRichSelection}, which still falls back to
+ * {@link documentEndSelection} when `live` is `undefined`, and that fallback
+ * remains correct for a GENUINELY anchorless caller (image insertion via
+ * drag-and-drop from outside the mounted surface, or before the surface has
+ * ever been focused at all — `applyRichImageInsert`). But a caller that
+ * represents an explicit, caret-relative user gesture — a toolbar click, a
+ * keyboard shortcut, "insert snippet" — must NOT silently reuse that same
+ * fallback: one stray click in the gutter between two keystrokes and the
+ * very next Bold press would otherwise format text at the END of the
+ * document instead of at the caret the author was just looking at. Those
+ * callers (`+page.svelte`'s `handleRichToolbarAction` and its
+ * `SnippetPicker` `onInsert` handler) check `live` themselves and refuse
+ * with a diagnostic ("place the cursor first") instead of calling into this
+ * module at all when there is no live caret — see the review log for
+ * SFE-P3ab round 1.
  *
  * This also matches how the mounted rich editor actually OBSERVES an edit
  * applied this way: `createVscodeEditorAdapter`'s `host.subscribe` listener
@@ -136,8 +153,12 @@ export interface LiveSelection {
  * the caller at the moment the command fires) converted to the shared
  * command layer's `{start, endExclusive}` shape when a caret exists;
  * {@link documentEndSelection} — the documented fallback — when it does
- * not (`live` is `undefined` or omitted: the surface has never been
- * focused, or the caller has no mount reference yet).
+ * not (`live` is `undefined` or omitted). `undefined` is NOT proof the
+ * surface was never focused (see this file's header) — a caller invoking a
+ * caret-relative command in response to an explicit user gesture (a
+ * toolbar click, a keyboard shortcut) should check `live` itself and refuse
+ * BEFORE calling in here rather than let an ambiguous "no caret right now"
+ * silently resolve to the document end.
  *
  * No bounds-clamping here: a `live` value describing a position outside the
  * current `snapshot` (a caret reported for a stale text version, in the
@@ -180,6 +201,28 @@ function resolveHeadingToggle(
 }
 
 /**
+ * `routeToolbarAction`'s "link" case unconditionally sets `text: "link
+ * text"` — a fixed placeholder that is correct ONLY for a collapsed caret
+ * (nothing selected). `computeInsertLink` (`web/standard/link-image.ts`)
+ * uses that `text` as an OVERRIDE whenever it is anything but `undefined`,
+ * always replacing `[start, endExclusive)` — so passed through unconditioned,
+ * a non-collapsed selection's own words are silently discarded and replaced
+ * with the literal placeholder (SFE-P3ab review round 1, CONFIRMED finding:
+ * a divergence from source mode's `applyLink`, which computes exactly this
+ * override itself — `const overrideText = from === to ? "link text" :
+ * undefined;`, `toolbar-actions.ts`). Reproduces that same rule here so
+ * rich mode's Link button wraps a real selection instead of eating it.
+ */
+function resolveLinkOverride(selection: CommandSelection, command: EditorCommand): EditorCommand {
+  if (command.kind !== "insert-link") return command;
+  if (selection.start === selection.endExclusive) return command;
+  // A real, non-collapsed selection exists — let computeInsertLink wrap it
+  // as the link text (its own `overrideText ?? selected` fallback), the
+  // same as source mode's `applyLink` does for this exact case.
+  return { kind: "insert-link", href: command.href, text: undefined };
+}
+
+/**
  * Applies one shared `EditorCommand` (P2a vocabulary) against `host`,
  * anchored at `live` (the mount's current caret/selection) when supplied,
  * falling back to {@link documentEndSelection} otherwise — see
@@ -196,7 +239,8 @@ export function applyRichCommand(
 ): RichCommandOutcome {
   const snapshot = host.getSnapshot();
   const selection = resolveRichSelection(snapshot, live);
-  const resolved = resolveHeadingToggle(snapshot, selection, command);
+  const headingResolved = resolveHeadingToggle(snapshot, selection, command);
+  const resolved = resolveLinkOverride(selection, headingResolved);
   const result = applyCommand(snapshot, selection, resolved);
   if ("refused" in result) return { ok: false, diagnostic: result.refused };
   return finishEdit(host, result.edit);
@@ -413,7 +457,7 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
   }
 }
 
-// ── Block movement (SFE-P3ab, Lane D: now WIRED, via the live caret) ───────
+// ── Block movement (SFE-P3ab, Lane B: now WIRED, via the live caret) ───────
 //
 // A prior run shipped the pure block-movement OPERATION (`splitIntoBlocks`/
 // `moveBlock`/`applyBlockMove` below) without a way to wire it to a toolbar
@@ -454,52 +498,136 @@ export function blockIndexAtOffset(text: string, offset: number): number | undef
   return owner;
 }
 
-/** One structural unit `moveBlock` can reorder. `isMarker` distinguishes a
- *  single `@name ...` directive line (core marker OR project-plugin marker —
- *  both share this syntax, so this module treats them identically without
- *  needing plugin-specific knowledge) from an ordinary prose/content run. */
+/**
+ * One structural unit `moveBlock` can reorder. `isMarker` is true only for a
+ * line whose head matches Gutterpress's own core marker vocabulary
+ * ({@link markerKindOf} below — an inlined copy of `markers.js`'s
+ * `KNOWN_KINDS`, CLAUDE.md §5) or the generic `@end-<name>` closer
+ * convention plugins share with core's `@end-section` — NOT any line that
+ * merely starts with `@word`. A prior version of this module used a far
+ * broader regex and misclassified CSS `@media` rules inside fenced code,
+ * and ordinary `@name ...` prose (an @mention), as markers (SFE-P3ab review
+ * round 1, CONFIRMED). One consequence of the narrower vocabulary: a
+ * project-plugin's own OPENING marker (e.g. `@sidebar`) is outside this
+ * module's known vocabulary and is therefore NOT specially protected here —
+ * only its `@end-*` closer is (see this file's tests for the exact
+ * behavior). Fenced code (``` / ~~~) is always ONE indivisible block
+ * regardless of its contents, including any blank lines or `@word` lines
+ * inside it — see {@link splitIntoBlocks}. */
 export interface SourceBlock {
   readonly from: number;
   readonly to: number;
   readonly isMarker: boolean;
-}
-
-const MARKER_LINE_RE = /^@[A-Za-z][\w-]*(?:[ \t].*)?$/;
-
-function lineKind(trimmed: string): "blank" | "marker" | "text" {
-  if (trimmed === "") return "blank";
-  return MARKER_LINE_RE.test(trimmed) ? "marker" : "text";
+  /** The recognized marker kind ("section", "end-section", "page-break",
+   *  "end-sidebar", ...) when {@link isMarker} is true, else `null`. */
+  readonly markerKind: string | null;
 }
 
 /**
- * One physical line's extent, split three ways so a block's `to` can stop at
- * `contentEnd` — the line's own text, EXCLUDING its trailing `"\n"` — rather
- * than `fullEnd`. This is load-bearing: a block must never own the newline
- * that separates it from whatever comes next, or that separator silently
- * disappears when {@link moveBlock} relocates the block elsewhere (the
- * newline was never independently recoverable as a "gap" if a block's own
- * span had already swallowed it — verified against a doc with NO blank line
- * between two blocks, e.g. `"@sidebar\ncontent\n@end-sidebar"`: the FIRST
- * version of this function attached each line's own `"\n"` to that line
- * itself, so swapping two such ordinarily-adjacent lines produced
- * `"@end-sidebarcontent"` — bytes preserved, but glued together with no
- * separator at all. Stopping at `contentEnd` and letting the gap recover
- * every terminator — a block's own trailing one AND any further blank
- * lines — fixes this uniformly for both the "blank-line-separated" and the
- * "just one ordinary line break" case.
+ * Inlined copy of `packages/cli/src/lib/markdown/markers.js`'s
+ * `KNOWN_KINDS` (CLAUDE.md §5 — a narrow copy, not an import: this module
+ * is browser-safe and Lane B may not import `packages/cli`). Kept in sync
+ * by hand; `markers.js` is the grammar's source of truth.
  */
-interface LineExtent {
+const KNOWN_MARKER_KINDS = new Set([
+  "chapter",
+  "spread",
+  "page",
+  "section",
+  "continue",
+  "page-break",
+  "column-break",
+  "end-section",
+]);
+
+/**
+ * Marker kinds with NO open/close scope semantics — `markers.js` never
+ * calls its internal `stack.open`/`stack.close` for either (they are
+ * parsed as attrs-only leaf markers). Every OTHER recognized kind either
+ * opens a scope (chapter/spread/page/section) or closes/reopens one
+ * (end-section, continue, and any plugin `@end-*`) — moving a block across
+ * one of those would move it into or out of a different scope, which is
+ * exactly the corruption this module's `moveBlock` must refuse (SFE-P3ab
+ * review round 1, CONFIRMED — proven via `@section`/`@end-section`
+ * crossing). `page-break`/`column-break` are the only kinds
+ * {@link moveBlock} may swap across.
+ */
+const NEUTRAL_MARKER_KINDS = new Set(["page-break", "column-break"]);
+
+/**
+ * The marker kind of a `@`-line, narrowed to Gutterpress's OWN grammar
+ * ({@link KNOWN_MARKER_KINDS}) plus the generic `@end-<name>` closing
+ * convention project plugins share with core's `@end-section` (CLAUDE.md
+ * §6: plugins add their own marker families using the same
+ * `@name`/`@end-name` syntax) — `null` for anything else, including a bare
+ * `@word` this module does not recognize (an ordinary prose mention such as
+ * `@sarah please review`, or a near-miss like `@sction`). This is
+ * deliberately NARROWER than the real parser's near-miss tolerance
+ * (`parseMarkerLine`'s `nearestKind`): a rich-mode block boundary only
+ * needs to know "is this DEFINITELY a marker line", not "did the author
+ * mistype one" — an unrecognized `@word` is ordinary content, not its own
+ * movable structural unit.
+ */
+function markerKindOf(trimmed: string): string | null {
+  if (!trimmed.startsWith("@")) return null;
+  const head = trimmed.split(/[ \t]/, 1)[0]!.slice(1);
+  if (!head) return null;
+  if (KNOWN_MARKER_KINDS.has(head)) return head;
+  if (head.startsWith("end-") && head.length > "end-".length) return head;
+  return null;
+}
+
+/** True for a `SourceBlock` {@link moveBlock} must never swap across or
+ *  relocate — every recognized marker kind except the two proven scope-
+ *  neutral ones ({@link NEUTRAL_MARKER_KINDS}). Ordinary content blocks and
+ *  fenced-code blocks are never boundaries. */
+function isBoundaryBlock(block: SourceBlock): boolean {
+  return block.isMarker && !NEUTRAL_MARKER_KINDS.has(block.markerKind ?? "");
+}
+
+const FENCE_OPEN_RE = /^(`{3,}|~{3,})/;
+
+/** The opening fence's character and run length, or `null` when `trimmed`
+ *  does not open a fenced code block. */
+function fenceOpen(trimmed: string): { readonly char: string; readonly len: number } | null {
+  const m = FENCE_OPEN_RE.exec(trimmed);
+  if (!m) return null;
+  const run = m[1]!;
+  return { char: run[0]!, len: run.length };
+}
+
+/** Whether `trimmed` closes an already-open `fence` — CommonMark 4.5: the
+ *  SAME fence character repeated at least the opening run's length, with
+ *  nothing else on the line but trailing whitespace (no info string on a
+ *  closing fence). */
+function fenceCloses(trimmed: string, fence: { readonly char: string; readonly len: number }): boolean {
+  const runRe = fence.char === "`" ? /^`+/ : /^~+/;
+  const m = runRe.exec(trimmed);
+  if (!m || m[0]!.length < fence.len) return false;
+  return trimmed.slice(m[0]!.length).trim() === "";
+}
+
+/** One physical line's extent, split so a block's `to` can stop at
+ *  `contentEnd` — the line's own text, EXCLUDING its trailing `"\n"` —
+ *  rather than `fullEnd`. This is load-bearing: a block must never own the
+ *  newline that separates it from whatever comes next, or that separator
+ *  silently disappears when {@link moveBlock} relocates the block elsewhere
+ *  (verified against a doc with NO blank line between two blocks: attaching
+ *  each line's own `"\n"` to that line itself made a swap glue two lines
+ *  together with no separator at all). Stopping at `contentEnd` and letting
+ *  the gap recover every terminator fixes this uniformly. */
+interface RawLine {
   readonly start: number;
   readonly contentEnd: number;
   readonly fullEnd: number;
-  readonly kind: "blank" | "marker" | "text";
+  readonly trimmed: string;
 }
 
-function lineExtents(text: string): LineExtent[] {
+function rawLines(text: string): RawLine[] {
   if (text === "") return [];
   const parts = text.split("\n");
   const lastIndex = parts.length - 1;
-  const lines: LineExtent[] = [];
+  const lines: RawLine[] = [];
   let pos = 0;
   for (let i = 0; i < parts.length; i++) {
     const content = parts[i]!;
@@ -507,59 +635,91 @@ function lineExtents(text: string): LineExtent[] {
     const start = pos;
     const contentEnd = start + content.length;
     const fullEnd = hasTerminator ? contentEnd + 1 : contentEnd;
-    lines.push({ start, contentEnd, fullEnd, kind: lineKind(content.trim()) });
+    lines.push({ start, contentEnd, fullEnd, trimmed: content.trim() });
     pos = fullEnd;
   }
   return lines;
 }
 
 /**
- * Splits `text` into contiguous, non-overlapping blocks — every consecutive
- * run of non-blank, non-marker lines is one "text" block (spanning from its
- * first line's start to its LAST line's `contentEnd`); every `@name ...`
- * line is its OWN solo "marker" block (never merged with a neighbor, even an
- * adjacent marker line with no blank line between — the conservative
- * reading of "preserve marker/plugin boundaries": a block move must never
- * assume two adjacent markers were meant to travel together). Blank lines
- * and every block's own trailing line terminator are NOT part of any block
- * — they are the (possibly empty) gap between two blocks, recovered on
- * demand by {@link moveBlock} as `text.slice(prev.to, next.from)` so a swap
- * preserves the exact original separator instead of re-deriving spacing
- * (see {@link LineExtent}'s header for why this split point is load-bearing).
+ * Splits `text` into contiguous, non-overlapping blocks:
+ *
+ *   - a fenced code region (``` or ~~~ through its matching closer, or to
+ *     end-of-document if unterminated) is always ONE indivisible block —
+ *     blank lines and `@word` lines INSIDE it never split or classify it
+ *     (SFE-P3ab review round 1, CONFIRMED: a prior version tore a fence in
+ *     half at a blank line, and flagged CSS `@media` inside a fenced block
+ *     as a marker);
+ *   - every consecutive run of non-blank, non-marker, non-fence lines
+ *     (outside any fence) is one "text" block, spanning from its first
+ *     line's start to its LAST line's `contentEnd`;
+ *   - every recognized `@name ...` marker line ({@link markerKindOf}) is its
+ *     OWN solo "marker" block (never merged with a neighbor, even an
+ *     adjacent marker line with no blank line between).
+ *
+ * Blank lines and every block's own trailing line terminator are NOT part
+ * of any block — they are the (possibly empty) gap between two blocks,
+ * recovered on demand by {@link moveBlock} as `text.slice(prev.to,
+ * next.from)` so a swap preserves the exact original separator instead of
+ * re-deriving spacing.
  *
  * A document containing only blank lines (or the empty string) yields `[]`
  * — there is nothing to move.
  */
 export function splitIntoBlocks(text: string): SourceBlock[] {
-  const lines = lineExtents(text);
+  const lines = rawLines(text);
   const blocks: SourceBlock[] = [];
   let openFrom: number | null = null;
   let openContentEnd = 0;
+  let fence: { readonly char: string; readonly len: number } | null = null;
+  let fenceFrom = 0;
 
   const closeOpenTextBlock = (): void => {
     if (openFrom !== null) {
-      blocks.push({ from: openFrom, to: openContentEnd, isMarker: false });
+      blocks.push({ from: openFrom, to: openContentEnd, isMarker: false, markerKind: null });
       openFrom = null;
     }
   };
 
   for (const line of lines) {
-    if (line.kind === "blank") {
-      closeOpenTextBlock();
-    } else if (line.kind === "marker") {
-      closeOpenTextBlock();
-      blocks.push({ from: line.start, to: line.contentEnd, isMarker: true });
-    } else {
-      if (openFrom === null) openFrom = line.start;
-      openContentEnd = line.contentEnd;
+    if (fence) {
+      if (fenceCloses(line.trimmed, fence)) {
+        blocks.push({ from: fenceFrom, to: line.contentEnd, isMarker: false, markerKind: null });
+        fence = null;
+      }
+      continue;
     }
+    if (line.trimmed === "") {
+      closeOpenTextBlock();
+      continue;
+    }
+    const markerKind = markerKindOf(line.trimmed);
+    if (markerKind !== null) {
+      closeOpenTextBlock();
+      blocks.push({ from: line.start, to: line.contentEnd, isMarker: true, markerKind });
+      continue;
+    }
+    const opened = fenceOpen(line.trimmed);
+    if (opened) {
+      closeOpenTextBlock();
+      fence = opened;
+      fenceFrom = line.start;
+      continue;
+    }
+    if (openFrom === null) openFrom = line.start;
+    openContentEnd = line.contentEnd;
   }
   closeOpenTextBlock();
+  if (fence) {
+    // Unterminated fence — runs to the end of the document; still one
+    // indivisible block rather than falling back to per-line splitting.
+    blocks.push({ from: fenceFrom, to: lines[lines.length - 1]!.contentEnd, isMarker: false, markerKind: null });
+  }
   return blocks;
 }
 
 /** Why {@link moveBlock} produced no edit. */
-export type BlockMoveRefusalReason = "out-of-range" | "first-block" | "last-block";
+export type BlockMoveRefusalReason = "out-of-range" | "first-block" | "last-block" | "boundary";
 
 export type BlockMoveResult =
   | { readonly edit: { readonly from: number; readonly to: number; readonly insert: string } }
@@ -573,10 +733,15 @@ export type BlockMoveResult =
  * spanning exactly the two swapped blocks and the gap between them, nothing
  * more (D3: "the smallest safe common source range").
  *
- * Refuses (no edit) when `blockIndex` is out of range, or the move would
- * cross the start/end of the document — moving the first block up, or the
- * last block down. A single-block document always refuses both directions
- * (its only block has no neighbor either way).
+ * Refuses (no edit) when: `blockIndex` is out of range; the move would
+ * cross the start/end of the document (moving the first block up, or the
+ * last block down — a single-block document always refuses both
+ * directions, its only block has no neighbor either way); or EITHER block
+ * in the swap is a scope-affecting marker ({@link isBoundaryBlock} —
+ * SFE-P3ab review round 1, CONFIRMED: swapping a block across
+ * `@section`/`@end-section`, or across any other non-neutral marker, moved
+ * content into or out of that marker's scope). `page-break`/`column-break`
+ * markers stay freely movable past ordinary content — they open no scope.
  */
 export function moveBlock(text: string, blockIndex: number, direction: "up" | "down"): BlockMoveResult {
   const blocks = splitIntoBlocks(text);
@@ -592,6 +757,9 @@ export function moveBlock(text: string, blockIndex: number, direction: "up" | "d
     : [blockIndex, neighborIndex];
   const first = blocks[firstIdx]!;
   const second = blocks[secondIdx]!;
+  if (isBoundaryBlock(first) || isBoundaryBlock(second)) {
+    return { refused: true, reason: "boundary" };
+  }
   const gap = text.slice(first.to, second.from);
   const firstText = text.slice(first.from, first.to);
   const secondText = text.slice(second.from, second.to);
@@ -617,7 +785,9 @@ export function applyBlockMove(
         ? "This is already the first block — it can't move up."
         : result.reason === "last-block"
           ? "This is already the last block — it can't move down."
-          : "Couldn't find that block to move.";
+          : result.reason === "boundary"
+            ? "That would move content across a marker boundary — edit in source mode instead."
+            : "Couldn't find that block to move.";
     return { ok: false, diagnostic: { category: "EDITOR_INVALID_RANGE", message } };
   }
   return finishEdit(host, { ...result.edit, expectedVersion: snapshot.version });
