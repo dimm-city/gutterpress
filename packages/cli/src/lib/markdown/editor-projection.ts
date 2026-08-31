@@ -1,7 +1,9 @@
 /**
  * `createEditorProjection` — the Gutterpress sparse editor projection (D6,
- * docs/plans/source-first-editor-enterprise-refactor.md; run
- * docs/plans/source-first-editor/runs/SFE-P2b.md).
+ * docs/plans/source-first-editor-enterprise-refactor.md; runs
+ * docs/plans/source-first-editor/runs/SFE-P2b.md and, for the plugin-aware
+ * additions documented in "PLUGIN-AWARENESS (SFE-P2c)" below,
+ * docs/plans/source-first-editor/runs/SFE-P2c.md).
  *
  * §1/§8 / ADR 0004: this module is part of the PURE, node-free render graph
  * (`gutterpress/render`, `src/render.ts`) — it imports ONLY `markdown-it`
@@ -57,10 +59,18 @@
  *   html_block token, with evidence      -> "raw-html"
  *   html_block token, matching the       -> GeneratedView (see below), not
  *     `.chapter-opener` generated shape     a block
- *   an unrecognized `layout_`-prefixed   -> "plugin-region" is RESERVED
- *     token (a plugin's own core rule)      (P2c maps it for real); this run
- *                                            emits a diagnostic, no block —
- *                                            see "AMBIGUITY" below
+ *   an unrecognized `layout_`-prefixed   -> diagnostic, no block (this
+ *     token (Gutterpress's OWN reserved     branch is unconditional — see
+ *     namespace)                            "AMBIGUITY" below)
+ *   trusted + a project-plugin's own     -> "plugin-region" WITH the
+ *     nesting===1 open token that KEPT      token's own exact range
+ *     its `token.map` (SFE-P2c;
+ *     "PLUGIN-AWARENESS" below)
+ *   trusted + the same, but map-less     -> diagnostic, no block (Lane B's
+ *     (no evidence of its own)               origin-recovery integration
+ *                                            point; see "PLUGIN-AWARENESS")
+ *   untrusted (default) + any of the     -> nothing at all — not walked,
+ *     above                                  exactly P2b's behavior
  *   inline HTML (`html_inline` tokens,   -> diagnostics entry ONLY, no
  *     support matrix's source-only row)     block (see "INLINE HTML" below)
  *
@@ -176,12 +186,121 @@
  * editing) and is untouched by this module.
  *
  * AMBIGUITY / AP-05 (a `layout_`-prefixed token this module does not
- * recognize — e.g. a plugin's own core rule synthesizing one): rather than
- * guessing a kind or inferring a range, this module emits a single
+ * recognize — e.g. a plugin's own core rule synthesizing one INTO
+ * Gutterpress's OWN reserved `layout_` namespace): rather than guessing a
+ * kind or inferring a range, this module emits a single
  * `EDITOR_UNSUPPORTED_PROJECTION`-categorized diagnostic naming the token
- * type and projects no block. D6's `plugin-region` kind stays RESERVED —
- * P2c maps real project-plugin regions; this run only proves the fail-closed
- * path (the lane's stated boundary).
+ * type and projects no block. This branch is UNCONDITIONAL — independent of
+ * the `trusted` gate SFE-P2c adds (see "PLUGIN-AWARENESS" next) — because it
+ * is about a reserved NAME, not about executing untrusted plugin code:
+ * SFE-P2b's own test for this exact shape passes a bare `MarkdownIt`
+ * instance with no trust concept in play at all, and it must keep passing
+ * unmodified. A THIRD-PARTY project plugin's own token vocabulary — which
+ * will almost never use the `layout_` prefix, since it is not that plugin's
+ * namespace to begin with — is handled by the separate, trust-gated
+ * mechanism documented next.
+ *
+ * PLUGIN-AWARENESS (SFE-P2c): this module was extended to be plugin-aware
+ * here; the rest of this section is new since P2b.
+ *
+ * HOST CONTRACT (D12, §5 CLAUDE.md): this module NEVER loads or applies
+ * project plugins itself. It only ever CONSUMES an already-configured `md`
+ * — `opts.md`, defaulting to a plain `createMarkdownRenderer()` with none
+ * applied. Loading plugins (resolving from npm/a vendored tree, verifying
+ * receipts, importing) and applying them (`applyPlugins(md, loadedPlugins)`,
+ * `renderer.ts`) are the HOST's job, on the Node side, BEFORE the `md`
+ * instance ever reaches this function. This is not a stylistic choice: it is
+ * structurally impossible for this module to do otherwise and remain
+ * browser-safe (see the file-header §1/§8/ADR-0004 note above) —
+ * `plugins.ts` (the loader) imports `node:crypto`, `node:fs`,
+ * `node:fs/promises`, `node:os`, `node:path`, `node:url`, `node:module`,
+ * plus `acorn`/`es-module-lexer`/`resolve.exports` to parse and rewrite
+ * plugin source on disk; none of that can exist in `gutterpress/render`
+ * (`scripts/check-render-pure.mjs` would fail the build the instant it did).
+ * So "the projection loads plugins" is not merely undesirable, it is a
+ * contradiction with this module's own pure/browser-safe contract — the
+ * HOST-applies-then-hands-in shape is the ONLY shape that can satisfy both
+ * "plugins execute in the host, never the editor webview" (D12) and "this
+ * module ships in `gutterpress/render`" at once.
+ *
+ * TRUST GATE (`opts.trusted`, default `false`): D12 — "Project plugins
+ * execute only in trusted desktop projects or trusted VS Code workspaces."
+ * Defaulting to `false` makes the UNTRUSTED path the one a caller gets by
+ * omission — it cannot be skipped by forgetting a flag, only by explicitly
+ * opting in. Precisely what this flag does and does NOT gate:
+ *   - It does NOT decide whether plugin code executes. That already
+ *     happened (or did not) before this module ever sees `md` — see "HOST
+ *     CONTRACT" above. A caller that hands in a plugin-applied `md` without
+ *     `trusted: true` gets a `md.parse()` result that MAY already reflect
+ *     the plugin's transform (the tokens are whatever `md.parse()`
+ *     produces); what `trusted` controls is only whether THIS module is
+ *     willing to expose any of that as a `plugin-region` block.
+ *   - When `false` (or `md` was never plugin-applied to begin with), EVERY
+ *     unrecognized, non-`layout_`-prefixed token this module encounters
+ *     falls through completely unwalked — byte-identical to P2b's behavior
+ *     for the same shape, diagnostic-free, block-free (see
+ *     `editor-projection-plugins.test.ts`'s untrusted-path test, which
+ *     proves this by comparing the FULL projection against the same source
+ *     parsed through a plugin-free `md`, not merely spot-checking one
+ *     field).
+ *   - When `true`, the classification below activates for tokens this
+ *     module does not otherwise recognize.
+ *
+ * EVIDENCE-BEARING PLUGIN-REGION (this run's Lane A scope, in full): a
+ * trusted `nesting === 1` "open" token whose type is neither a recognized
+ * Gutterpress marker kind, nor `layout_`-prefixed (that branch above always
+ * wins first when it matches), nor a member of
+ * `BASE_PIPELINE_OPEN_TOKEN_TYPES` (the fixed, hand-maintained, closed set
+ * of types Gutterpress's OWN base pipeline — markdown-it core plus the
+ * always-on bundled rules — can produce with ZERO project plugins; see that
+ * constant's own doc comment for exactly why this exclusion is required,
+ * not optional) is presumed project-plugin-produced. If it carries
+ * `data-source-range` evidence of ITS OWN — i.e. `source_range.ts`'s core
+ * rule, which runs LAST in the pipeline (`renderer.ts`, after every custom
+ * plugin), already annotated this EXACT token because the plugin itself
+ * preserved `token.map` (or set `token.meta.line`) when it created the
+ * token — this module uses that evidence DIRECTLY, exactly like the
+ * marker-family branch above, and projects `kind: "plugin-region"` with
+ * that exact range, `editMode: "source"` (matching `raw-html`'s two-state
+ * posture: G-07's active state is source-aware editing of the block's own
+ * exact range, not a structured command surface a third-party plugin never
+ * opted into), and `viewAttributes` via the SAME `extractViewAttributes`
+ * helper the marker family uses (AP-06 applies identically — the only
+ * non-authored keys any token in this pipeline ever gains are the two
+ * `source_range.ts` adds). This needs no origin RECOVERY at all: the range
+ * came from the token's own recorded evidence, the same as any other
+ * evidence-bearing token this module has always handled.
+ *
+ * NO EVIDENCE / LANE B INTEGRATION POINT: when the SAME trusted,
+ * plugin-produced, unrecognized token carries no `data-source-range` of its
+ * own (the plugin consumed source and synthesized a token the way
+ * markers.js's OWN chapter-opener does — `new state.Token(...)` with no
+ * map/meta at all), this lane cannot honestly attribute a range to it by
+ * itself — inventing one would be exactly the AP-05 guess D6/G-05 forbid.
+ * The call site below hands this case to `resolveMaplessPluginTokenOrigin`
+ * — a documented, single-purpose function boundary this lane leaves as a
+ * fail-closed stub (always returns `null`, i.e. "no recoverable origin").
+ * `null` becomes the SAME shape of `EDITOR_UNSUPPORTED_PROJECTION`
+ * diagnostic this module has always used for an unattributable token. The
+ * run spec's "Origin mechanism" section (rule 3: a single clean before/after
+ * core-rule-boundary splice, full range evidence on every removed token,
+ * origin = the union of the removed run's ranges — rule 4: refuse for every
+ * other shape) is Lane B's `plugin-origin.ts` to build; when that module
+ * exists, replacing this stub's body to delegate to it — without touching
+ * the branch that calls it — is the intended, small, safe integration. See
+ * `resolveMaplessPluginTokenOrigin`'s own doc comment for the exact
+ * contract this lane leaves in place.
+ *
+ * PLUGIN CSS: `collectPluginCss(loadedPlugins)` (`renderer.ts`) concatenates
+ * every loaded plugin's own `css` export. This module does not call it and
+ * does not know about it — plugin CSS reaches the editor the SAME way the
+ * rest of the resolved presentation context does (pr158-lessons.md G-03 /
+ * `EditorPresentationContext`): the HOST loads plugins once, calls
+ * `collectPluginCss` alongside `applyPlugins`, and hands the editor BOTH the
+ * `md` instance (for this module) and the CSS string (for the editor's own
+ * stylesheet) as sibling outputs of the SAME host-side load. This module
+ * has no CSS-shaped output and adds none — implementing editor-side CSS
+ * loading is out of this lane's and this module's scope entirely.
  *
  * D13 CAPS (SFE-P2b Lane C addition — `editor-projection-limits.test.ts`):
  * enforced in a small, clearly-marked section below ("── D13 resource caps
@@ -231,7 +350,7 @@ import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
 /** D1/D6 — Gutterpress sparse-projection schema version. Bump only via an explicit decision-record amendment. */
 export const PROJECTION_SCHEMA_VERSION = 1 as const;
 
-/** D6's required projected kinds, verbatim. `"plugin-region"` is reserved (P2c) — never emitted by this run. */
+/** D6's required projected kinds, verbatim. `"plugin-region"` (SFE-P2c) is emitted only when `opts.trusted` is `true` — see the module header "PLUGIN-AWARENESS". */
 export type ProjectedBlockKind =
   | "chapter"
   | "page"
@@ -339,9 +458,23 @@ export interface CreateEditorProjectionOptions {
    * The SAME configured `MarkdownIt` instance the render path uses (G-03:
    * "one resolved presentation context") — e.g. one built by
    * `createMarkdownRenderer(projectPlugins)`. Defaults to a plain
-   * `createMarkdownRenderer()` (no project plugins) when omitted.
+   * `createMarkdownRenderer()` (no project plugins) when omitted. See the
+   * module header "HOST CONTRACT": this module never loads or applies
+   * plugins itself — a plugin-applied `md` is always the caller's own doing,
+   * on the Node/host side, before it reaches this function.
    */
   readonly md?: MarkdownIt;
+  /**
+   * SFE-P2c / D12 trust gate. Defaults to `false` — the UNTRUSTED path is
+   * what a caller gets by omission, not something it must remember to ask
+   * for. See the module header "PLUGIN-AWARENESS" / "TRUST GATE" for the
+   * exact contract: this flag never decides whether plugin code executed
+   * (that is already decided by whichever `md` was handed to `opts.md`); it
+   * only decides whether THIS module is willing to classify an unrecognized,
+   * plugin-produced token as a `"plugin-region"` block instead of leaving it
+   * unwalked exactly as P2b did.
+   */
+  readonly trusted?: boolean;
 }
 
 // ── line-start / char-offset table ─────────────────────────────────────────
@@ -434,6 +567,101 @@ function extractViewAttributes(token: Token): Readonly<Record<string, string>> |
  */
 function markerLineLooksAuthored(source: string, from: number, to: number): boolean {
   return /^[ \t]*@/.test(source.slice(from, to));
+}
+
+// ── SFE-P2c plugin-region classification (see module header
+// "PLUGIN-AWARENESS") ───────────────────────────────────────────────────────
+
+/**
+ * Every nesting===1 "open" token type Gutterpress's OWN fixed base pipeline
+ * — `createMarkdownRenderer()` with ZERO project plugins: markdown-it core
+ * plus the always-on bundled rules (markdown-it-attrs, markdown-it-footnote,
+ * markdown-it-deflist, markdown-it-source-map) — can produce. Verified
+ * empirically against the pinned plugin versions, not guessed (see
+ * `editor-projection-plugins.test.ts`'s base-pipeline-survivors test).
+ * `gutterpressMarkers`'s own `layout_*` family is deliberately EXCLUDED from
+ * this set: it is already recognized by `OPEN_KIND_BY_TOKEN_TYPE` and the
+ * `layout_`-prefix check above, both of which run — and `continue` — before
+ * this set is ever consulted. `gp-pin-scope.js`, `images.ts`, and
+ * `inline-source.ts` add no block-level token types at all (they only
+ * read/annotate existing tokens), so they need no entries either, and
+ * `BUILTIN_OPTIONAL_PLUGINS` (markdown-it-mark/sub/sup/abbr) are inline-only
+ * marks that never appear at this nesting.
+ *
+ * Hand-maintained and closed, exactly like `source-range.ts`'s own
+ * `SELF_CLOSING_BLOCK_TYPES` — this package owns every rule that can add to
+ * it, so this is positive knowledge of "content the base editor already
+ * derives" (D6 sparseness), not a guess about a third party's vocabulary.
+ *
+ * WHY THIS SET MUST EXIST: below, a trusted nesting===1 open token whose
+ * type is neither a recognized Gutterpress marker kind nor a member of this
+ * set is presumed project-plugin-produced. Without this exclusion, EVERY
+ * ordinary paragraph/heading/list-item/table/footnote/definition-list
+ * token — which also carries `data-source-range`, since
+ * `source-range.ts`'s `isAnnotationTarget` accepts any nesting===1 token
+ * UNCONDITIONALLY — would be misclassified as a plugin region the instant
+ * `trusted: true` is passed, breaking "survivor tokens project exactly as
+ * in P2b" (this run's own requirement).
+ */
+const BASE_PIPELINE_OPEN_TOKEN_TYPES = new Set<string>([
+  // markdown-it core
+  "paragraph_open",
+  "heading_open",
+  "blockquote_open",
+  "bullet_list_open",
+  "ordered_list_open",
+  "list_item_open",
+  "table_open",
+  "thead_open",
+  "tbody_open",
+  "tr_open",
+  "th_open",
+  "td_open",
+  // markdown-it-footnote
+  "footnote_block_open",
+  "footnote_open",
+  // markdown-it-deflist
+  "dl_open",
+  "dt_open",
+  "dd_open",
+]);
+
+/**
+ * SFE-P2c Lane B INTEGRATION POINT — see the run spec's "Origin mechanism"
+ * section (docs/plans/source-first-editor/runs/SFE-P2c.md) for the exact
+ * rule this function is eventually expected to implement: rule 3, a single
+ * clean before/after core-rule-boundary splice where every removed token
+ * carried complete range evidence, yielding origin = the union of the
+ * removed run's ranges; rule 4 (refuse) for every other shape.
+ *
+ * Called ONLY for a trusted, project-plugin-produced, nesting===1 open
+ * token that carries NO `data-source-range` evidence of its own (the
+ * evidence-bearing case is handled directly at the call site below and
+ * never reaches this function). This lane (A) proves only that
+ * evidence-bearing case; recovering an origin for a map-less token needs the
+ * before/after token-stream snapshot across the plugin core-rule boundary
+ * that only `plugin-origin.ts` (Lane B — not written by this lane) builds.
+ *
+ * Until that module is wired in here, this resolver is the fail-closed
+ * default D14/G-06 require: return `null` (no recoverable origin)
+ * unconditionally — NEVER guess a range from the token's type, its
+ * neighbors, or anything else. A future change is expected to replace this
+ * body to delegate to `plugin-origin.ts`'s own resolver WITHOUT changing the
+ * branch that calls it below.
+ *
+ * `tokenIndex`/`tokens` are threaded through (not just `token`) so a real
+ * implementation can locate `token`'s neighbors in the AFTER token stream —
+ * the BEFORE snapshot itself is not this function's concern; Lane B's own
+ * module is responsible for capturing and threading that through separately
+ * (see the run spec: "a core rule pair registered around" the plugin
+ * boundary, reusing `source_range`'s own registration pattern).
+ */
+function resolveMaplessPluginTokenOrigin(
+  _token: Token,
+  _tokenIndex: number,
+  _tokens: readonly Token[],
+): readonly [number, number] | null {
+  return null;
 }
 
 // ── D13 resource caps (SFE-P2b Lane C addition — see module header "D13
@@ -560,7 +788,9 @@ export function createEditorProjection(
   // no range of its own anchors here (see header "GENERATED VIEWS").
   let lastBlockEnd = 0;
 
-  for (const token of tokens) {
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+    const token = tokens[tokenIndex]!;
+
     if (token.type === "html_block") {
       const rangeAttr = token.attrGet(SOURCE_RANGE_ATTR);
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
@@ -674,20 +904,76 @@ export function createEditorProjection(
     }
 
     if (token.type.startsWith("layout_")) {
-      // A layout-like token this module does not recognize (AP-05 / D6
-      // "plugin-region" reserved — see header "AMBIGUITY"). Fails closed:
-      // no guessed kind, no guessed range.
+      // A layout-like token this module does not recognize, in Gutterpress's
+      // OWN reserved `layout_` namespace (AP-05 / header "AMBIGUITY").
+      // Unconditional — independent of `trusted` — see the header's
+      // "AMBIGUITY" section for why. Fails closed: no guessed kind, no
+      // guessed range.
       diagnostics.push({
         category: "EDITOR_UNSUPPORTED_PROJECTION",
-        reason: `"${token.type}" is a layout-like token this projection does not recognize (plugin-region mapping is reserved for a later run). Edit this content in source mode.`,
+        reason: `"${token.type}" is a layout-like token this projection does not recognize. Edit this content in source mode.`,
       });
       continue;
     }
 
+    // SFE-P2c "PLUGIN-AWARENESS" (module header): a trusted, project-plugin-
+    // produced block-level open token this module does not otherwise
+    // recognize — not a Gutterpress marker kind (handled above), not
+    // `layout_`-prefixed (handled immediately above; a layout_-prefixed
+    // token can never reach here, it always `continue`s first), not a
+    // member of the base pipeline's own known vocabulary. Gated on
+    // `opts.trusted` so the untrusted default degrades to EXACTLY P2b's
+    // silent fallthrough below (see header "TRUST GATE").
+    if (opts.trusted && token.nesting === 1 && !BASE_PIPELINE_OPEN_TOKEN_TYPES.has(token.type)) {
+      const rangeAttr = token.attrGet(SOURCE_RANGE_ATTR);
+      const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
+      // EVIDENCE-BEARING case (this lane, A): the plugin preserved its own
+      // `token.map`/`token.meta.line`, so `source_range.ts` — which runs
+      // LAST, after every custom plugin (renderer.ts) — already stamped
+      // real evidence directly onto THIS token. No origin recovery needed.
+      // NO-EVIDENCE case (Lane B's territory): the integration point.
+      const range = parsed
+        ? charRangeForLines(starts, source, parsed[0], parsed[1])
+        : resolveMaplessPluginTokenOrigin(token, tokenIndex, tokens);
+
+      if (!range) {
+        diagnostics.push({
+          category: "EDITOR_UNSUPPORTED_PROJECTION",
+          reason: `"${token.type}" is a project-plugin-produced token with no source-range evidence of its own and no recoverable transform origin. Edit this content in source mode.`,
+        });
+        continue;
+      }
+
+      // D13 block-count cap applies identically to plugin regions.
+      if (blockCapReached(blocks, diagnostics)) {
+        limited = true;
+        break;
+      }
+
+      const [from, to] = range;
+      blocks.push({
+        id: `plugin-region:${from}:${to}`,
+        kind: "plugin-region",
+        from,
+        to,
+        // G-07: the active state is source-aware editing of the block's own
+        // exact range, not a structured command surface — matches
+        // `raw-html`'s posture, the closest existing analogue.
+        editMode: "source",
+        viewAttributes: extractViewAttributes(token),
+      });
+      lastBlockEnd = to;
+      continue;
+    }
+
     // Ordinary standard-Markdown block (paragraph, heading, list, table,
-    // fence, hr, blockquote, …) or an unrelated plugin token: D6 sparseness
-    // — the base editor already derives these, so this projection carries
-    // only Gutterpress-specific information and does not walk them.
+    // fence, hr, blockquote, footnote, definition list, …) — D6 sparseness:
+    // the base editor already derives these, so this projection carries
+    // only Gutterpress-specific information and does not walk them. When
+    // `trusted` is not set (the default) or `md` carries no project
+    // plugins, an unrecognized project-plugin token also falls through
+    // here, completely unwalked — exactly P2b's behavior, unchanged (header
+    // "TRUST GATE" / "Untrusted context").
   }
 
   return {
