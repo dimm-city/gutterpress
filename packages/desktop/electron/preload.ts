@@ -14,6 +14,8 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  EditorProjectionHostArgs,
+  EditorProjectionHostResult,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -28,8 +30,10 @@ import type {
  * stream or live-BrowserWindow need).
  * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
  * events themselves are a main→renderer push stream.
+ * 5 -> 6 (SFE-P3e): added `api:editorProjection` — the desktop rich editor's
+ * host-built, plugin-aware projection call.
  */
-const DESKTOP_API = 5;
+const DESKTOP_API = 6;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -236,6 +240,13 @@ contextBridge.exposeInMainWorld("electron", {
   build: (args: RawBuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
   // doctor migrated to server route (Phase 2C)
+
+  // SFE-P3e: the desktop rich editor's plugin-aware projection, built
+  // host-side (real manifest + real loaded plugins) — see
+  // electron/editor-projection.ts and main.ts's "api:editorProjection"
+  // handler for the validated boundary.
+  buildEditorProjection: (args: EditorProjectionHostArgs): Promise<EditorProjectionHostResult> =>
+    ipcRenderer.invoke("api:editorProjection", args),
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (

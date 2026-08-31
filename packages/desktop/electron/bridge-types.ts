@@ -14,7 +14,24 @@
  *     VALUE below (`DEFAULT_SETTINGS`) — a plain, side-effect-free data
  *     literal (§8-safe), re-exported as a real value so
  *     `electron/settings-store.ts` doesn't hand-duplicate it (#29).
+ *
+ * CAVEAT (SFE-P3e, mirrors `shared-types.ts`'s own documented
+ * `ProjectSource`/`ProjectCapabilities` caveat): `EditorProjectionHostArgs`/
+ * `EditorProjectionHostResult`/`EditorProjectionPluginError` are re-exported
+ * from `./editor-projection` below, NOT from `shared-types.ts` — that file's
+ * own rule is "no imports, ever" / "self-contained", but the projection
+ * result wraps `gutterpress/render`'s own `GutterpressProjection`, a D6
+ * lib-owned shape this file must not hand-mirror (a manual copy would drift
+ * from the real render pipeline). `editor-projection.ts` lives inside
+ * `electron/`, so this is a same-directory re-export, not a new package
+ * boundary crossing.
  */
+
+export type {
+  EditorProjectionHostArgs,
+  EditorProjectionHostResult,
+  EditorProjectionPluginError,
+} from "./editor-projection";
 
 export type {
   UpdateChannel,

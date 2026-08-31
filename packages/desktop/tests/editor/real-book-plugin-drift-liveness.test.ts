@@ -1,5 +1,5 @@
 /**
- * real-book-plugin-drift-liveness.test.ts (SFE-P3d-parity, Lane E)
+ * real-book-plugin-drift-liveness.test.ts (SFE-P3d-parity, then SFE-P3e Lane A)
  *
  * Parity-gate condition 3, PLUGIN-BOOK half of DELIVERABLE 3 — G-12/AP-20
  * byte-drift liveness, applied to this lane's own plugin-region-specific
@@ -44,8 +44,7 @@ import MarkdownIt from "markdown-it";
 import { createMarkdownRenderer } from "gutterpress/render";
 import {
   loadPluginBookChapters,
-  pluginBookRenderer,
-  calloutMarkerPlugin,
+  buildRealPluginBookProjection,
   type PluginBookChapter,
 } from "../fixtures/plugin-book/support";
 
@@ -115,10 +114,10 @@ describe("drift liveness (G-12/AP-20) — the plugin-region LIVENESS assertion C
     }).toThrow();
   });
 
-  test("POSITIVE CONTROL: the real callout plugin, loaded correctly, on the real fixture, does NOT trip the same liveness assertion", () => {
+  test("POSITIVE CONTROL: the REAL callout plugin, loaded through the REAL host pipeline, on the real fixture, does NOT trip the same liveness assertion", async () => {
     const file = CHAPTERS_WITH_CALLOUTS[0]!;
-    const md = pluginBookRenderer(true);
-    const projection = createEditorProjection(file.text, { sourceVersion: 0, md, trusted: true });
+    const { projection, pluginErrors } = await buildRealPluginBookProjection(file.text, 0);
+    expect(pluginErrors).toEqual([]);
     const pluginRegionCount = projection.blocks.filter((b) => b.kind === "plugin-region").length;
     expect(() => {
       expect(pluginRegionCount).toBeGreaterThan(0);
@@ -191,12 +190,13 @@ interface PluginRegionInfo {
   readonly to: number;
 }
 
-const REGIONS: readonly PluginRegionInfo[] = CHAPTERS_WITH_CALLOUTS.map((file) => {
-  const md = pluginBookRenderer(true);
-  const projection = createEditorProjection(file.text, { sourceVersion: 0, md, trusted: true });
-  const block = projection.blocks.find((b) => b.kind === "plugin-region")!;
-  return { file, from: block.from, to: block.to };
-});
+const REGIONS: readonly PluginRegionInfo[] = await Promise.all(
+  CHAPTERS_WITH_CALLOUTS.map(async (file) => {
+    const { projection } = await buildRealPluginBookProjection(file.text, 0);
+    const block = projection.blocks.find((b) => b.kind === "plugin-region")!;
+    return { file, from: block.from, to: block.to };
+  }),
+);
 
 function isLooseOrderedListCase(commandCase: {
   readonly command: { readonly kind: string; readonly variant?: string };

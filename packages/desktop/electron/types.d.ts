@@ -25,6 +25,8 @@ import type {
   ExportProgressEvent,
   MarkdownFileLaunchEvent,
   PreviewStartResult,
+  EditorProjectionHostArgs,
+  EditorProjectionHostResult,
 } from "./bridge-types";
 
 declare global {
@@ -135,6 +137,8 @@ declare global {
         diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
       }>;
       // doctor migrated to server route (Phase 2C)
+      // SFE-P3e: host-built, plugin-aware rich-editor projection.
+      buildEditorProjection(args: EditorProjectionHostArgs): Promise<EditorProjectionHostResult>;
       // Event subscriptions
       // M29: ExportProgressEvent used to be hand-duplicated here — it is now
       // the single shared-types.ts type (re-exported via bridge-types.ts),

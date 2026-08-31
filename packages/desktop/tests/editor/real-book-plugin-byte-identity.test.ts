@@ -1,5 +1,5 @@
 /**
- * real-book-plugin-byte-identity.test.ts (SFE-P3d-parity, Lane E)
+ * real-book-plugin-byte-identity.test.ts (SFE-P3d-parity, then SFE-P3e Lane A)
  *
  * Parity-gate condition 3, PLUGIN-BOOK half of DELIVERABLE 1 — "Real
  * user-guide and PLUGIN-BOOK chapters can be edited without byte drift":
@@ -8,29 +8,24 @@
  * that file's header for its own documented finding that no `examples/`
  * manifest configures a plugin).
  *
- * ## Why this exists — the gap this lane closes
+ * ## SFE-P3e — this file now goes through the REAL desktop pipeline
  *
  * SFE-P3ab review round 1 found that `+page.svelte`'s own
- * `buildRichProjection` calls `createEditorProjection(content, {
- * sourceVersion })` with NEITHER `md` NOR `trusted` — that page's own
- * comment names this directly: "no project plugins are applied here (that
- * needs host/Node-side plugin loading, out of this repair's scope)". So the
- * desktop app's actual production wiring, TODAY, never produces a
- * `plugin-region` projected block at all. This lane's run spec permits
- * exactly this finding to be reported rather than faked — see
- * `packages/desktop/tests/fixtures/plugin-book/support.ts`'s header for the
- * full "why not `loadPlugins`" reasoning.
- *
- * What this file proves instead, with real, unmodified production code:
- * `createEditorProjection` (`gutterpress/render`) itself — the exact
- * function `buildRichProjection` calls, just called here with the `md`/
- * `trusted` parameters that function's own signature has always accepted —
- * IS plugin-aware and DOES produce genuine `plugin-region` blocks, when fed
- * a real configured `MarkdownIt` instance built by the same production
- * `createMarkdownRenderer` factory the CLI build/preview path uses. The gap
- * is in `+page.svelte`'s wiring (a known, already-documented finding from a
- * prior lane, out of THIS lane's write ownership — production source is
- * off limits here), not in `createEditorProjection`'s own capability.
+ * `buildRichProjection` called `createEditorProjection(content, {
+ * sourceVersion })` with NEITHER `md` NOR `trusted` — so the desktop app's
+ * production wiring never produced a `plugin-region` projected block at
+ * all. SFE-P3e closed that gap: `buildRichProjection` now calls
+ * `packages/desktop/electron/editor-projection.ts`'s
+ * `buildHostEditorProjection` (via typed IPC) whenever a desktop project is
+ * open. This file's fixture-loading helper,
+ * `support.ts`'s `buildRealPluginBookProjection`, calls that EXACT function
+ * directly — real `loadManifestWithPath`/`resolveConfig` against this
+ * fixture's own `manifest.yaml`, a real on-disk load of the REAL local-file
+ * plugin it names (`./plugins/callout.js` — see `editor-projection.ts`'s
+ * own header for exactly why that load step is a narrower, host-local
+ * loader rather than a call into `packages/cli`'s `loadPlugins`), real
+ * `createMarkdownRenderer`, real `createEditorProjection(...,
+ * { trusted: true })`. No hand-built `md`, no injected plugin function.
  *
  * ## Corpus
  *
@@ -47,15 +42,16 @@
  *     deliberate "nothing to project" contrast chapter, mirroring Lane B's
  *     own `with-validation` contrast case.
  *
- * See `support.ts` for the plugin definition (`calloutMarkerPlugin`) and
- * why it is authored directly rather than routed through the vendored npm
- * plugin loader.
+ * See `support.ts` for `buildRealPluginBookProjection` and why the only
+ * hand-written plugin logic left in that file is a deliberate NEGATIVE
+ * (no-evidence) counter-example, not a second copy of the real rule.
  */
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { loadManifest } from "gutterpress";
-import { createEditorProjection, type GutterpressProjection, type ProjectedBlockKind } from "gutterpress/render";
+import { createMarkdownRenderer, type GutterpressPlugin, type ProjectedBlockKind } from "gutterpress/render";
 
 // `rich-mode.svelte.ts` is a rune-bearing `.svelte.ts` module; Bun imports it
 // without the Svelte compiler in these unit tests, so `$state` needs the
@@ -68,8 +64,9 @@ import { DesktopDocumentHost } from "../../src/lib/editor-host/desktop-document-
 import {
   PLUGIN_BOOK_CHAPTER_FILES,
   PLUGIN_BOOK_MANIFEST_PATH,
+  PLUGIN_BOOK_PLUGIN_PATH,
   loadPluginBookChapters,
-  pluginBookRenderer,
+  buildRealPluginBookProjection,
   type PluginBookChapter,
 } from "../fixtures/plugin-book/support";
 
@@ -92,13 +89,13 @@ describe("plugin-book corpus liveness (AP-21) — real, nonempty, plugin-configu
     }
   });
 
-  test("the fixture's manifest.yaml genuinely configures a plugin, parsed by the REAL loadManifest (gutterpress)", async () => {
+  test("the fixture's manifest.yaml genuinely configures a REAL local-file plugin, parsed by the REAL loadManifest (gutterpress)", async () => {
     const manifest = await loadManifest(PLUGIN_BOOK_MANIFEST_PATH);
     expect(Array.isArray(manifest.plugins)).toBe(true);
     expect(manifest.plugins!.length).toBeGreaterThan(0);
     const first = manifest.plugins![0]!;
-    const name = typeof first === "string" ? first : first.name;
-    expect(name).toBe("gutterpress-plugin-callout");
+    const ref = typeof first === "string" ? first : (first.path ?? first.name);
+    expect(ref).toBe("./plugins/callout.js");
   });
 
   test("every chapter this lane claims contains a plugin marker really contains one (source grep, independent of any parser)", () => {
@@ -108,8 +105,9 @@ describe("plugin-book corpus liveness (AP-21) — real, nonempty, plugin-configu
     }
   });
 
-  test("the plugin's own core rule actually fires on every chapter claimed to contain a callout (direct md.parse(), independent of createEditorProjection)", () => {
-    const md = pluginBookRenderer(true);
+  test("the REAL plugins/callout.js file's own core rule actually fires on every chapter claimed to contain a callout (direct md.parse() against the file the manifest names, independent of createEditorProjection AND of buildHostEditorProjection)", async () => {
+    const mod = (await import(pathToFileURL(PLUGIN_BOOK_PLUGIN_PATH).href)) as { default: GutterpressPlugin };
+    const md = createMarkdownRenderer([{ name: "gutterpress-plugin-callout", plugin: mod.default, options: {} }]);
     for (const f of LOADED) {
       const tokenTypes = md.parse(f.text, {}).map((t) => t.type);
       if (CHAPTERS_WITH_CALLOUTS.has(f.id)) {
@@ -138,10 +136,10 @@ describe("plugin-book corpus liveness (AP-21) — real, nonempty, plugin-configu
 // .btest.ts`'s "mount + unmount with zero edits leaves host source
 // byte-identical" cases — real chapters (this file's own plugin-book
 // fixture included) have never been mounted in a real browser; a named,
-// owner-attributed gap (Lane E, this run), not a claim this file makes.
-describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> projection build (PLUGIN-AWARE, TRUSTED) -> read back", () => {
+// owner-attributed gap (Lane E, SFE-P3d-parity), not a claim this file makes.
+describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> buildHostEditorProjection (REAL manifest, REAL loaded plugin, TRUSTED) -> read back", () => {
   for (const file of LOADED) {
-    test(`${file.id} — document session + projection build changes ZERO bytes, with a plugin-aware trusted projection actually built`, () => {
+    test(`${file.id} — document session + REAL host projection build changes ZERO bytes, with a plugin-aware trusted projection actually built`, async () => {
       const original = file.text;
       const originalBuffer = file.bytes;
 
@@ -156,33 +154,33 @@ describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> p
       controller.registerMount("rich");
       expect(controller.mountedSurface).toBe("rich");
 
-      // PLUGIN-AWARE, TRUSTED: the real production `createEditorProjection`,
-      // fed a real configured MarkdownIt built by the same production
-      // `createMarkdownRenderer` factory the CLI build/preview path uses,
-      // with the callout plugin loaded and `trusted: true` — exactly the
-      // parameters that function's own signature has always accepted (see
-      // this file's header for why `+page.svelte` does not pass them
-      // today).
-      const md = pluginBookRenderer(true);
-      let projection: GutterpressProjection;
-      expect(() => {
-        projection = createEditorProjection(host.getSnapshot().text, {
-          sourceVersion: host.getSnapshot().version,
-          md,
-          trusted: true,
-        });
-      }).not.toThrow();
-      projection = projection!;
+      // REAL PIPELINE: buildHostEditorProjection — the exact function the
+      // desktop's `api:editorProjection` IPC handler calls — resolving this
+      // fixture's own manifest.yaml and loading its real local-file plugin.
+      const { projection, pluginCss, pluginErrors } = await buildRealPluginBookProjection(
+        host.getSnapshot().text,
+        host.getSnapshot().version,
+      );
+
+      // AP-21 liveness FIRST: the plugin must have actually loaded — a
+      // pluginError here would make every assertion below vacuous for the
+      // wrong reason (a load failure, not a projection failure).
+      expect(pluginErrors).toEqual([]);
 
       expect(projection.schemaVersion).toBe(1);
       expect(projection.sourceVersion).toBe(0);
 
-      // AP-21 liveness FIRST, before any identity assertion: a projection
-      // with zero plugin regions would make this whole test vacuous for the
-      // callout chapters. Assert it BEFORE the byte-identity checks below.
+      // AP-21 liveness, second: a projection with zero plugin regions would
+      // make this whole test vacuous for the callout chapters. Assert it
+      // BEFORE the byte-identity checks below.
       const pluginRegionCount = projection.blocks.filter((b) => b.kind === "plugin-region").length;
       if (CHAPTERS_WITH_CALLOUTS.has(file.id)) {
         expect(pluginRegionCount).toBeGreaterThan(0);
+        // The real plugin file declares CSS (see its own header) — proves
+        // pluginCss is genuinely populated by the real pipeline, not just
+        // present-but-empty.
+        expect(pluginCss.length).toBeGreaterThan(0);
+        expect(pluginCss).toContain("gp-callout");
       }
 
       for (const block of projection.blocks) {
@@ -214,9 +212,9 @@ describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> p
 
 describe("plugin-region blocks carry real evidence from the real pipeline (not a hand-built projection)", () => {
   for (const file of LOADED.filter((f) => CHAPTERS_WITH_CALLOUTS.has(f.id))) {
-    test(`${file.id} — the plugin-region block's byte range reproduces the exact "@@callout ..." source line, and its inactiveHtml is the plugin's OWN rendered output`, () => {
-      const md = pluginBookRenderer(true);
-      const projection = createEditorProjection(file.text, { sourceVersion: 0, md, trusted: true });
+    test(`${file.id} — the plugin-region block's byte range reproduces the exact "@@callout ..." source line, and its inactiveHtml is the REAL plugin's OWN rendered output`, async () => {
+      const { projection, pluginErrors } = await buildRealPluginBookProjection(file.text, 0);
+      expect(pluginErrors).toEqual([]);
       const block = projection.blocks.find((b) => b.kind === "plugin-region");
       expect(block).toBeDefined();
       const slice = file.text.slice(block!.from, block!.to);
@@ -234,12 +232,12 @@ describe("plugin-region blocks carry real evidence from the real pipeline (not a
 });
 
 describe("plugin-book byte-identity coverage report (deliverable 4)", () => {
-  test("chapter count, total bytes, and the projection kinds this lane genuinely exercised", () => {
+  test("chapter count, total bytes, and the projection kinds this lane genuinely exercised through the REAL pipeline", async () => {
     const totalBytes = LOADED.reduce((sum, f) => sum + f.bytes.length, 0);
-    const md = pluginBookRenderer(true);
     const kindsSeen = new Set<ProjectedBlockKind>();
     for (const f of LOADED) {
-      const projection = createEditorProjection(f.text, { sourceVersion: 0, md, trusted: true });
+      const { projection, pluginErrors } = await buildRealPluginBookProjection(f.text, 0);
+      expect(pluginErrors).toEqual([]);
       for (const b of projection.blocks) kindsSeen.add(b.kind);
     }
     // eslint-disable-next-line no-console -- this IS the coverage report; see this lane's report for the same numbers.

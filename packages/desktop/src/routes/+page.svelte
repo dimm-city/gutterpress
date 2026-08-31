@@ -94,6 +94,9 @@
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
+  // SFE-P3e — the desktop rich editor's host-built projection call and its
+  // degrade-and-report plugin-error payload shape.
+  import type { EditorProjectionPluginError } from "$lib/platform";
   import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -1308,8 +1311,63 @@
    */
   let richProjection = $state<GutterpressProjection | null>(null);
 
-  function buildRichProjection(content: string, sourceVersion: number): GutterpressProjection {
-    return createEditorProjection(content, { sourceVersion });
+  /**
+   * SFE-P3e — plugin CSS from the host-built projection (electron/editor-
+   * projection.ts's `pluginCss`), wired into `RichEditorComponent`'s
+   * `extraCss` prop below. `undefined` on the local (no-project) path,
+   * matching `richProjection`'s own null-when-absent style. Built in
+   * lockstep with `richProjection` — see `rebuildRichDocHost` below.
+   */
+  let richPluginCss = $state<string | undefined>(undefined);
+
+  /**
+   * SFE-P3e — the root-cause fix the run's product-owner ruling names
+   * directly: with a desktop project open, the projection is built HOST-SIDE
+   * (real manifest, real loaded plugins, `trusted: true`) via
+   * `getPlatform().buildEditorProjection` — the `api:editorProjection` IPC
+   * call (`electron/editor-projection.ts`). With no project open (a plain
+   * file), the existing local, plugin-less
+   * `createEditorProjection(content, { sourceVersion })` path is UNCHANGED —
+   * D10's "one renderer path": no third path, no cache layer, no speculative
+   * invalidation.
+   *
+   * The host call is async; `rebuildRichDocHost` below constructs
+   * `richDocHost` synchronously (so the document is editable immediately)
+   * and assigns `richProjection`/`richPluginCss` once this resolves, guarded
+   * against a since-superseded host (G-11) — see that function's own
+   * comment.
+   *
+   * Each `pluginErrors` entry (a plugin that failed to load, degrade-and-
+   * report — never fatal to the projection as a whole) is surfaced through
+   * the SAME `onDiagnostic` path every other rich-mode diagnostic in this
+   * file uses (`showRichDiagnostic`), as `EDITOR_PLUGIN_LOAD_FAILED`.
+   */
+  async function buildRichProjection(
+    content: string,
+    sourceVersion: number,
+  ): Promise<{ projection: GutterpressProjection; pluginCss: string | undefined }> {
+    if (isDesktop() && lifecycle.currentDir) {
+      try {
+        const result = await getPlatform().buildEditorProjection({
+          projectDir: lifecycle.currentDir,
+          content,
+          sourceVersion,
+        });
+        for (const pluginError of result.pluginErrors) {
+          showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
+        }
+        return { projection: result.projection, pluginCss: result.pluginCss || undefined };
+      } catch (e) {
+        // The host call itself failed outright (e.g. a malformed
+        // manifest.yaml) — not a per-plugin degrade, which never throws.
+        // Fall through to the same local, plugin-less build the no-project
+        // path already uses below, so the document stays fully editable
+        // rather than getting stuck with no projection at all (D14: unsupported
+        // rich behavior falls back, it never blanks the document).
+        console.warn("buildEditorProjection failed; falling back to the local projection:", e);
+      }
+    }
+    return { projection: createEditorProjection(content, { sourceVersion }), pluginCss: undefined };
   }
 
   // SFE-P3ab, Lane A — the mounted RichEditor component instance, bound the
@@ -1388,12 +1446,28 @@
     if (!path) {
       richDocHost = null;
       richProjection = null;
+      richPluginCss = undefined;
       return;
     }
     const nextHost = new DesktopDocumentHost(content, { documentId: path });
     richDocHostUnsub = nextHost.subscribe((snapshot) => onEditorChange(snapshot.text));
     richDocHost = nextHost;
-    richProjection = buildRichProjection(content, nextHost.getSnapshot().version);
+    richProjection = null;
+    richPluginCss = undefined;
+    // SFE-P3e: the projection arrives after the host above is already
+    // constructed (async host call) — assign richProjection/richPluginCss
+    // when it resolves, guarded against a since-superseded host. A result
+    // for a host the user has already switched away from must never land on
+    // the CURRENT one (G-11); no other staleness mechanism is added here —
+    // an accepted result whose own sourceVersion has since fallen behind
+    // `richDocHost`'s current version simply falls through exactly as the
+    // mount's existing projection-version contract already handles (see
+    // `richProjection`'s own header comment above).
+    void buildRichProjection(content, nextHost.getSnapshot().version).then((result) => {
+      if (richDocHost !== nextHost) return;
+      richProjection = result.projection;
+      richPluginCss = result.pluginCss;
+    });
   }
 
   function disposeRichDocHost(): void {
@@ -1401,6 +1475,7 @@
     richDocHostUnsub = null;
     richDocHost = null;
     richProjection = null;
+    richPluginCss = undefined;
   }
 
   /** The one place rich mode is entered/exited (today: the hidden keyboard
@@ -1455,6 +1530,30 @@
         ? { label: diagnostic.safeAction, onClick: () => setRichMode("source") }
         : undefined,
     );
+  }
+
+  /**
+   * SFE-P3e — D14 `EDITOR_PLUGIN_LOAD_FAILED` for one project plugin
+   * `buildEditorProjection` reported as failed to load. Wording mirrors the
+   * desktop Plugins panel's own "Needs install" vs generic-error distinction
+   * (`$lib/components/config/config-helpers.ts`'s `pluginStatus`), adapted
+   * for the rich editor: there is no "Install npm plugin below"/"Re-check"
+   * affordance HERE, so the message points the author at the Plugins panel
+   * by name instead. No `safeAction` — unlike the projection/edit-rejection
+   * diagnostics above, switching to source mode fixes nothing here (the rest
+   * of the document already rendered fine; only this one plugin's regions
+   * show as plain text), so the toast is a heads-up notice, not an action
+   * prompt.
+   */
+  function pluginLoadFailedDiagnostic(error: EditorProjectionPluginError): Diagnostic {
+    const needsInstall =
+      /\bnot found\b/i.test(error.message) || /vendored plugin .*\bis missing\b/i.test(error.message);
+    return {
+      category: "EDITOR_PLUGIN_LOAD_FAILED",
+      message: needsInstall
+        ? `The plugin "${error.pluginRef}" isn't installed, so its content shows as plain text here instead of a formatted region. Install it from the Plugins panel, then reopen this file.`
+        : `The plugin "${error.pluginRef}" couldn't load, so its content shows as plain text here instead of a formatted region. Check it in the Plugins panel, then reopen this file.`,
+    };
   }
 
   function reportRichOutcome(outcome: RichCommandOutcome): void {
@@ -3603,6 +3702,7 @@
                       bind:this={richEditorRef}
                       host={richDocHost}
                       projection={richProjection ?? undefined}
+                      extraCss={richPluginCss}
                       onDiagnostic={showRichDiagnostic}
                     />
                   {/key}

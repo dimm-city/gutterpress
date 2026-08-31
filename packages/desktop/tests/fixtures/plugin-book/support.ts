@@ -1,86 +1,60 @@
 /**
- * support.ts (SFE-P3d-parity, Lane E) — shared plugin + fixture-loading code
- * for `packages/desktop/tests/editor/real-book-plugin-*.test.ts`.
+ * support.ts (SFE-P3d-parity, then SFE-P3e Lane A) — shared fixture-loading
+ * code for `packages/desktop/tests/editor/real-book-plugin-*.test.ts` and
+ * `editor-projection-host.test.ts`.
  *
  * Lives inside `packages/desktop/tests/fixtures/plugin-book/**` (this
  * lane's write ownership covers the whole tree, not just markdown/yaml), so
- * the three `real-book-plugin-*.test.ts` files can share ONE plugin
- * definition and ONE chapter loader instead of each re-deriving the plugin's
- * core-rule logic (unlike the sibling `real-book-*.test.ts` files, which
- * duplicate a plain 25-item literal array across files — cheap to repeat;
- * this fixture's plugin is nontrivial parsing logic, where duplicating it
- * three times would itself become a drift risk the run's own "clean code"
- * guidance argues against).
+ * every test file that needs this fixture's chapters or its real projection
+ * shares ONE loader instead of each re-deriving it.
  *
- * ## Why this project has no example under `examples/` (this lane's own gap,
- * named directly per the run spec's DETAILS section)
+ * ## History — why this file used to hand-build a plugin, and why it no longer does
  *
- * `real-book-byte-identity.test.ts` (Lane B, already committed) verified
- * that no manifest under `examples/` declares a `plugins:` key. Condition 3
- * is an editing-fidelity claim about REAL author content containing a real
- * plugin region, not a request for new product surface — so this fixture is
- * a small, genuinely book-shaped project (`manifest.yaml` + three chapters)
- * committed as TEST DATA under `packages/desktop/tests/fixtures/`, never
- * published as an example book.
+ * SFE-P3d-parity found that `+page.svelte`'s `buildRichProjection` never
+ * passed `md`/`trusted` to `createEditorProjection`, so the desktop's own
+ * plugin-loading wiring did not exist yet — that lane's run spec permitted
+ * proving `createEditorProjection`'s OWN plugin-awareness with a hand-built
+ * `MarkdownIt` instance instead (`calloutMarkerPlugin`, `pluginBookRenderer`
+ * below in the pre-SFE-P3e version of this file), and this fixture's
+ * `manifest.yaml` named an uninstalled npm package the real loader could
+ * never load — see git history for that version's full reasoning.
  *
- * ## Why the plugin is authored here rather than loaded via `loadPlugins`
+ * SFE-P3e closes that exact gap: `packages/desktop/electron/editor-
+ * projection.ts`'s `buildHostEditorProjection` is now the desktop's real
+ * host-side pipeline — the exact function the `api:editorProjection` IPC
+ * handler calls — real `loadManifestWithPath`/`resolveConfig`, a real
+ * on-disk local-file plugin load (dynamic `import()`, no receipt, no
+ * vendoring), real `createMarkdownRenderer`, real
+ * `createEditorProjection(..., { trusted: true })`. See that module's own
+ * header ("A CONFIRMED BLOCKER, not a design preference") for exactly why
+ * its plugin-loading step is a narrower, host-local loader rather than a
+ * call into `packages/cli`'s own `loadPlugins` — the short version: that
+ * function is not part of `gutterpress`'s published surface, and reaching
+ * it any other way breaks `bun run check` on unrelated, unfixable-by-this-
+ * lane code. This fixture's manifest now names a REAL local-file plugin
+ * (`./plugins/callout.js` — a standard `(md, options) => void` markdown-it
+ * plugin with a default export; see that file's own header), so
+ * {@link buildRealPluginBookProjection} below drives that real pipeline end
+ * to end instead of standing in for it.
  *
- * `packages/cli/src/lib/markdown/plugins.ts`'s `loadPlugins` (CLAUDE.md §5)
- * resolves the PUBLIC npm registry, verifies tarballs, vendors a full nested
- * dependency tree under a project directory, and writes a schema-v2
- * receipt — the real "gutterpress plugin add" installation pipeline. It has
- * deliberately no lightweight/offline test mode (by design: "Reinstall
- * always fetches fresh bytes"), and building a fake receipt+vendor tree by
- * hand to route around that would be exactly the "hand-constructing a
- * projection object no real pipeline produced" failure the run spec warns
- * against, aimed one layer lower (a hand-constructed FAKE VENDOR TREE
- * instead of a hand-constructed fake projection). This is the "desktop
- * package genuinely cannot build a plugin-aware projection without
- * host-side plugin loading it does not have" case the run spec's escape
- * hatch names — see the report this lane returns for the honest statement
- * in full.
- *
- * What IS reachable, and what this file does: `createEditorProjection`
- * (`gutterpress/render`) accepts any REAL configured `MarkdownIt` instance
- * via `opts.md` — "the SAME configured `MarkdownIt` instance the render
- * path uses ... e.g. one built by `createMarkdownRenderer(projectPlugins)`"
- * (that option's own doc comment). `createMarkdownRenderer` is the exact
- * production factory `renderer.ts` exports and the CLI build/preview path
- * calls; the ONLY thing this file supplies by hand is the `LoadedPlugin`
- * array that function's own signature has always accepted as a plain
- * caller-supplied argument — never a vendored/installed one at that API
- * layer. SFE-P2c's own acceptance tests
- * (`packages/cli/src/lib/markdown/editor-projection-plugins.test.ts`)
- * establish this exact pattern — "a realistic plugin fixture shaped like a
- * REAL registered markdown-it rule" — as the sanctioned way to exercise
- * plugin-region projection without going through `loadPlugins`.
- * `calloutMarkerPlugin` below follows that established shape: a single core
- * rule anchored `after("layout_transform", ...)` (the exact position a real
- * project plugin loaded via `applyPlugins` runs at — `renderer.ts` applies
- * custom plugins after `md.use(gutterpressMarkers)`), walking the flat
- * block-token array once, consuming a recognized
- * `paragraph_open`/`inline`/`paragraph_close` triple, and pushing every
- * OTHER token through unchanged by the same object reference (the
- * survivor-preservation shape `markers.js`'s own `out.push(tok)`
- * establishes). This plugin genuinely FIRES on real parse calls (verified
- * directly via `md.parse()` in every test file that uses it, independent of
- * `createEditorProjection` — AP-21) and its emitted tokens are genuinely
- * walked by the real, unmodified `createEditorProjection` production code —
- * this is a real plugin producing a real plugin-region, not a fabricated
- * projection object.
- *
- * `@@callout` (double-`@`) mirrors P2c's own `@@aside` fixture precisely
- * because it matters: a single-`@` line is markers.js's OWN reserved marker
- * syntax (`@chapter`/`@page`/`@section`/...), so a project plugin's marker
- * vocabulary must not collide with it. `@@callout` is exactly the kind of
- * "branded component marker" CLAUDE.md §5 names as project-plugin territory
- * ("project plugins may add branded component markers such as `@sidebar` or
- * `@callout`").
+ * `plugins/callout.js` is now the SOLE definition of the callout core rule
+ * — nothing in this file duplicates its logic. The one thing that DOES
+ * remain here, {@link noEvidenceCalloutPlugin}, is a deliberate NEGATIVE
+ * counter-example a real, well-behaved plugin file has no reason to
+ * exercise on itself: it drops `token.map` on purpose, reproducing exactly
+ * the D6/G-05 fail-closed "insufficient evidence" shape
+ * `real-book-plugin-locality.test.ts`'s "edit inside a refused/unsupported
+ * region" cases need. This is not a second copy of the real plugin — it is
+ * a different plugin, testing a different (refusal) code path.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMarkdownRenderer, type GutterpressPlugin, type LoadedPlugin } from "gutterpress/render";
+import {
+  buildHostEditorProjection,
+  type EditorProjectionHostResult,
+} from "../../../electron/editor-projection";
 
 /**
  * `MarkdownIt`'s own type, derived structurally from `GutterpressPlugin`
@@ -105,6 +79,8 @@ type MarkdownItInstance = Parameters<GutterpressPlugin>[0];
 // Bun test runtime and plain `tsc`/svelte-check.
 export const PLUGIN_BOOK_ROOT = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_BOOK_MANIFEST_PATH = path.join(PLUGIN_BOOK_ROOT, "manifest.yaml");
+/** The real local-file plugin `manifest.yaml` names — see that file's own header. */
+export const PLUGIN_BOOK_PLUGIN_PATH = path.join(PLUGIN_BOOK_ROOT, "plugins", "callout.js");
 
 export interface PluginBookChapter {
   readonly id: string;
@@ -127,37 +103,43 @@ export function loadPluginBookChapters(): readonly PluginBookChapter[] {
   });
 }
 
+/**
+ * Build a plugin-aware, trusted projection for `content` through the desktop
+ * host pipeline — `buildHostEditorProjection`
+ * (`packages/desktop/electron/editor-projection.ts`), the exact function
+ * `main.ts`'s `api:editorProjection` IPC handler calls. `PLUGIN_BOOK_ROOT`
+ * IS this fixture's project directory (where `manifest.yaml` lives), so
+ * this resolves and loads `./plugins/callout.js` for real, from disk, via
+ * that module's own local-file loader — no hand-built `md`, no injected
+ * plugin function; the tests that call this exercise the file the manifest
+ * names.
+ */
+export function buildRealPluginBookProjection(
+  content: string,
+  sourceVersion: number,
+): Promise<EditorProjectionHostResult> {
+  return buildHostEditorProjection({ projectDir: PLUGIN_BOOK_ROOT, content, sourceVersion });
+}
+
 const CALLOUT_RE = /^@@callout\s+(.+)$/;
 
 /**
- * A realistic project-plugin core rule matching the shape SFE-P2c's own
- * `asideMarkerPlugin` established (see this file's header). Recognizes a
- * `@@callout <label>` paragraph and replaces it with a single
- * `plugin_callout_open`/`plugin_callout_close` pair carrying the label as a
- * `data-callout-label` attribute and a `gp-callout` class — mirroring a
- * real branded-component plugin's own view-attribute vocabulary (CLAUDE.md
- * §6: "Everything Gutterpress emits or styles is `gp-` prefixed"; a project
- * plugin naming its OWN class this way is exactly the kind of thing a
- * `@dimm-city`-style project plugin does).
- *
- * `keepEvidence` selects which of D6/G-05's two real shapes the emitted
- * open token gets — SAME contract as `asideMarkerPlugin`'s own doc comment:
- *   - `true`: copies `token.map` from the consumed `paragraph_open`'s own
- *     map (a well-behaved plugin that preserves evidence) — the case this
- *     lane's byte-identity/locality tests exercise as a genuine
- *     `plugin-region` block.
- *   - `false`: emits the open token with NO map/meta at all (a plugin that
- *     does not preserve evidence, mirroring markers.js's OWN chapter-opener
- *     token) — the case `createEditorProjection` can only refuse
- *     (`EDITOR_UNSUPPORTED_PROJECTION`), used by this lane's locality test
- *     for the "edit inside a refused/unsupported region" case.
+ * A DELIBERATE no-evidence counter-example (see this file's header) — the
+ * `@@callout` core rule, but the emitted open token's `token.map` is left
+ * `null` on purpose, mirroring markers.js's OWN chapter-opener token (ADR
+ * 0009) and reproducing the ONE real shape D6/G-05 requires
+ * `createEditorProjection` to refuse rather than guess at:
+ * `EDITOR_UNSUPPORTED_PROJECTION`, no `ProjectedBlock`. `plugins/callout.js`
+ * — the real plugin file this fixture's manifest actually names — always
+ * preserves this evidence; this variant exists only to prove the refusal
+ * path, never as a competing definition of the real rule.
  */
-export function calloutMarkerPlugin(keepEvidence: boolean): LoadedPlugin {
+export function noEvidenceCalloutPlugin(): LoadedPlugin {
   // Contextually typed against `GutterpressPlugin` rather than an explicit
   // `(md: MarkdownIt) =>` annotation — see `MarkdownItInstance`'s own
   // comment above for why.
   const plugin: GutterpressPlugin = (md) => {
-    md.core.ruler.after("layout_transform", "callout_plugin_transform", (state) => {
+    md.core.ruler.after("layout_transform", "callout_plugin_transform_no_evidence", (state) => {
       const out: typeof state.tokens = [];
       for (let i = 0; i < state.tokens.length; i++) {
         const tok = state.tokens[i]!;
@@ -174,7 +156,7 @@ export function calloutMarkerPlugin(keepEvidence: boolean): LoadedPlugin {
         const open = new state.Token("plugin_callout_open", "div", 1);
         open.attrSet("class", "gp-callout");
         open.attrSet("data-callout-label", match[1]!);
-        if (keepEvidence) open.map = tok.map;
+        // Deliberately NO `open.map = tok.map` — the no-evidence shape.
         out.push(open);
         out.push(new state.Token("plugin_callout_close", "div", -1));
         i += 2; // consumed paragraph_open + inline + paragraph_close
@@ -182,19 +164,19 @@ export function calloutMarkerPlugin(keepEvidence: boolean): LoadedPlugin {
       state.tokens = out;
     });
   };
-  return {
-    name: keepEvidence ? "gutterpress-plugin-callout" : "gutterpress-plugin-callout-no-evidence",
-    plugin,
-    options: {},
-  };
+  return { name: "gutterpress-plugin-callout-no-evidence", plugin, options: {} };
 }
 
 /**
  * The SAME production factory the CLI build/preview path calls
  * (`renderer.ts`'s `createMarkdownRenderer`, re-exported from
- * `gutterpress/render`), configured with `calloutMarkerPlugin` — G-03: "one
- * resolved presentation context", never a parallel parser config.
+ * `gutterpress/render`), configured ONLY with {@link noEvidenceCalloutPlugin}
+ * — used exclusively to build the deliberately-refused region fixture in
+ * `real-book-plugin-locality.test.ts`. Every OTHER (evidence-bearing) use
+ * across this lane's tests goes through {@link buildRealPluginBookProjection}
+ * instead — G-03: "one resolved presentation context", never a parallel
+ * parser config standing in for the real one.
  */
-export function pluginBookRenderer(keepEvidence: boolean): MarkdownItInstance {
-  return createMarkdownRenderer([calloutMarkerPlugin(keepEvidence)]);
+export function noEvidenceCalloutRenderer(): MarkdownItInstance {
+  return createMarkdownRenderer([noEvidenceCalloutPlugin()]);
 }

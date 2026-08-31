@@ -50,6 +50,8 @@ import type {
   PreviewStartResult,
   BuildArgs,
   BuildResult,
+  EditorProjectionArgs,
+  EditorProjectionResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   UpdaterApi,
@@ -807,6 +809,17 @@ export class WebAdapter implements Platform {
 
   cancelExport(_exportId: string): Promise<{ canceled: boolean }> {
     return rejectNotImplemented("cancelExport");
+  }
+
+  // SFE-P3e: the host-built, plugin-aware rich-editor projection is
+  // Electron-only (real manifest/plugin loading happens in the Node-side
+  // main process — see electron/editor-projection.ts). Dormant here, like
+  // cancelExport above: this run's renderer wiring only calls it when
+  // `isDesktop()` is true AND a project is open, so the web target never
+  // reaches this method in practice; the stub exists only so WebAdapter
+  // keeps satisfying the full Platform interface.
+  buildEditorProjection(_args: EditorProjectionArgs): Promise<EditorProjectionResult> {
+    return rejectNotImplemented("buildEditorProjection");
   }
 
   /**

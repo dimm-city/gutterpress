@@ -89,6 +89,11 @@ import {
   type ExportBuildArgs,
 } from "./export/controller";
 import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
+import {
+  buildHostEditorProjection,
+  type EditorProjectionHostArgs,
+  type EditorProjectionHostResult,
+} from "./editor-projection";
 import { GitHubDeviceFlow } from "./github-device-flow";
 import {
   MarkdownFileLaunchQueue,
@@ -1584,6 +1589,66 @@ const exportController = new ExportController({
 });
 
 secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+
+// ── Rich-editor plugin-aware projection (SFE-P3e) ───────────────────────────
+//
+// The host-built half of the desktop rich editor's projection: given the
+// OPEN project's manifest + real loaded plugins, build a plugin-aware,
+// trusted `GutterpressProjection` for whatever source the renderer is
+// currently editing. See electron/editor-projection.ts for the pure,
+// unit-tested implementation this handler validates arguments for and then
+// calls unchanged.
+
+/** D13: rich mode's own file-size ceiling, reused here — a document too
+ *  large for rich mode at all should never reach a host projection build. */
+const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Runtime-validates `args` at the IPC boundary (D10: "runtime validation is
+ * required at every IPC request boundary") and returns the validated,
+ * host-authoritative arguments — never the renderer's own unresolved
+ * `projectDir` string. Mirrors `fs:watchFolder`'s existing pattern above:
+ * `projectDir` must equal the host's OWN `activeWorkspaceRoot`, so a
+ * compromised or buggy renderer cannot point this handler at an arbitrary
+ * directory. Throws a distinct, descriptive error per failure reason
+ * (typed errors, not one generic "invalid arguments" message).
+ */
+function validateEditorProjectionArgs(args: unknown): EditorProjectionHostArgs {
+  if (!args || typeof args !== "object") {
+    throw new Error("api:editorProjection: expected an arguments object.");
+  }
+  const { projectDir, content, sourceVersion } = args as Record<string, unknown>;
+
+  if (typeof projectDir !== "string" || projectDir.length === 0) {
+    throw new Error("api:editorProjection: projectDir must be a non-empty string.");
+  }
+  if (!activeWorkspaceRoot || path.resolve(projectDir) !== activeWorkspaceRoot) {
+    throw new Error(
+      `api:editorProjection: projectDir must be the active workspace directory (got: ${projectDir}).`,
+    );
+  }
+  if (typeof content !== "string") {
+    throw new Error("api:editorProjection: content must be a string.");
+  }
+  if (Buffer.byteLength(content, "utf8") > RICH_MODE_MAX_CONTENT_BYTES) {
+    throw new Error(
+      `api:editorProjection: content exceeds the ${RICH_MODE_MAX_CONTENT_BYTES}-byte rich-mode ceiling (D13).`,
+    );
+  }
+  if (typeof sourceVersion !== "number" || !Number.isFinite(sourceVersion) || sourceVersion < 0) {
+    throw new Error("api:editorProjection: sourceVersion must be a finite, non-negative number.");
+  }
+
+  // activeWorkspaceRoot (not the renderer's raw projectDir) is what actually
+  // resolves manifest/plugin paths below — already proven equal above.
+  return { projectDir: activeWorkspaceRoot, content, sourceVersion };
+}
+
+secureHandle(
+  "api:editorProjection",
+  (_e, args: unknown): Promise<EditorProjectionHostResult> =>
+    buildHostEditorProjection(validateEditorProjectionArgs(args)),
+);
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)

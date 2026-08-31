@@ -1,5 +1,5 @@
 /**
- * real-book-plugin-locality.test.ts (SFE-P3d-parity, Lane E)
+ * real-book-plugin-locality.test.ts (SFE-P3d-parity, then SFE-P3e Lane A)
  *
  * Parity-gate condition 3, PLUGIN-BOOK half of DELIVERABLE 2 — "A
  * representative edit in each real chapter changes exactly its own range
@@ -16,6 +16,15 @@
  * from `packages/editor/tests/corpus/support/independent-bound.ts`, not
  * re-derived (that file's own header explains why a second, self-agreeing
  * oracle would prove nothing).
+ *
+ * SFE-P3e: the "adjacent to a plugin region" half now resolves its region
+ * through `buildRealPluginBookProjection` (`support.ts`) — the REAL desktop
+ * host pipeline, loading the REAL `./plugins/callout.js` this fixture's
+ * manifest names. The "inside a refused/unsupported region" half still uses
+ * `noEvidenceCalloutRenderer` — a deliberate NEGATIVE counter-example (see
+ * `support.ts`'s header), since a real, well-behaved plugin file has no
+ * reason to drop its own evidence, so there is no "real pipeline" variant of
+ * that specific (refusal) shape to route through.
  *
  * ## What "inside a refused/unsupported region" means here
  *
@@ -43,7 +52,12 @@ import {
   spliceIndependently,
 } from "../../../editor/tests/corpus/support/command-harness.ts";
 import { assertEditWithinIndependentBound } from "../../../editor/tests/corpus/support/independent-bound.ts";
-import { loadPluginBookChapters, pluginBookRenderer, type PluginBookChapter } from "../fixtures/plugin-book/support";
+import {
+  loadPluginBookChapters,
+  buildRealPluginBookProjection,
+  noEvidenceCalloutRenderer,
+  type PluginBookChapter,
+} from "../fixtures/plugin-book/support";
 
 const LOADED: readonly PluginBookChapter[] = loadPluginBookChapters();
 const CHAPTERS_WITH_CALLOUTS = LOADED.filter((f) => /^@@callout\s+.+$/m.test(f.text));
@@ -83,16 +97,22 @@ interface PluginRegionInfo {
 }
 
 /** The evidence-bearing `plugin-region` block per callout chapter, resolved
- *  through the real, unmodified production projection — never hand-built. */
-const REGIONS: readonly PluginRegionInfo[] = CHAPTERS_WITH_CALLOUTS.map((file) => {
-  const md = pluginBookRenderer(true);
-  const projection = createEditorProjection(file.text, { sourceVersion: 0, md, trusted: true });
-  const block = projection.blocks.find((b) => b.kind === "plugin-region");
-  if (!block) {
-    throw new Error(`${file.id}: expected a plugin-region block (AP-21 liveness) but found none.`);
-  }
-  return { file, from: block.from, to: block.to };
-});
+ *  through `buildRealPluginBookProjection` — the REAL desktop host
+ *  pipeline (real manifest, real loaded `./plugins/callout.js`, real
+ *  `createEditorProjection`) — never hand-built. */
+const REGIONS: readonly PluginRegionInfo[] = await Promise.all(
+  CHAPTERS_WITH_CALLOUTS.map(async (file) => {
+    const { projection, pluginErrors } = await buildRealPluginBookProjection(file.text, 0);
+    if (pluginErrors.length > 0) {
+      throw new Error(`${file.id}: expected the real plugin to load with no errors, got: ${JSON.stringify(pluginErrors)}`);
+    }
+    const block = projection.blocks.find((b) => b.kind === "plugin-region");
+    if (!block) {
+      throw new Error(`${file.id}: expected a plugin-region block (AP-21 liveness) but found none.`);
+    }
+    return { file, from: block.from, to: block.to };
+  }),
+);
 
 let adjacentAcceptedCount = 0;
 let adjacentRefusedCount = 0;
@@ -178,7 +198,7 @@ interface RefusedRegionInfo {
  *  match against the committed fixture text), since a refused token has no
  *  `ProjectedBlock.from`/`.to` to read. */
 const REFUSED_REGIONS: readonly RefusedRegionInfo[] = CHAPTERS_WITH_CALLOUTS.map((file) => {
-  const noEvidenceMd = pluginBookRenderer(false);
+  const noEvidenceMd = noEvidenceCalloutRenderer();
   const projection = createEditorProjection(file.text, { sourceVersion: 0, md: noEvidenceMd, trusted: true });
 
   // AP-21 liveness: prove the no-evidence variant genuinely produces the

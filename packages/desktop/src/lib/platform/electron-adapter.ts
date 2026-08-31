@@ -18,6 +18,8 @@ import type {
   PreviewStartResult,
   BuildArgs,
   BuildResult,
+  EditorProjectionArgs,
+  EditorProjectionResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   UpdaterApi,
@@ -218,6 +220,12 @@ export class ElectronAdapter implements Platform {
   build(args: BuildArgs): Promise<BuildResult> {
     const { input, ...rest } = args;
     return bridge().build({ ...rest, input: input.key });
+  }
+
+  // SFE-P3e: straight passthrough — no FolderRef translation needed here
+  // (unlike startPreview/build above), `projectDir` is already a plain path.
+  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionResult> {
+    return bridge().buildEditorProjection(args);
   }
 
   // doctor migrated to server route (Phase 2C)

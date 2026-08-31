@@ -1,83 +1,39 @@
-# SFE-P3d-parity — Derived parity matrix
+# SFE-P3d-parity — Parity matrix (point-in-time evidence record)
 
-> Produced by run SFE-P3d-parity, Lane A. This document, `tools/check-parity.mjs`,
-> and `tools/check-parity.test.mjs` together are the standing gate the plan's
-> P3d "parity gate before P4" requires. **This file is machine-read** by
-> `check-parity.mjs` — see "Table format contract" below before editing it.
+> **This document is a POINT-IN-TIME EVIDENCE RECORD, not a machine-read
+> contract.** It has no checker. `tools/check-parity.mjs` and
+> `tools/check-parity.test.mjs` — the standing gate that used to re-derive
+> the `Action` column from live source and re-verify every row on each CI
+> run — were deleted by product-owner ruling (SFE-P3e,
+> `docs/plans/source-first-editor/runs/SFE-P3e.md`, "Product-owner ruling"):
+> a standing static-analysis gate over a surface P4 is about to delete is
+> machinery this program does not need. This document is not re-verified
+> mechanically any more; it stands as the record that justified P4's
+> deletion decision.
 
 ## Why this document exists
 
-P4 may delete `InlineEditController`, `CommitEngine`, the context menu, and
-the preview mutation protocol *only because* this run proves every authoring
-action reachable through those paths today has a working replacement in
-source mode, rich mode, or both. Nothing is deleted in this run — see the run
-specification (`docs/plans/source-first-editor/runs/SFE-P3d-parity.md`).
+P4 deletes `InlineEditController`, `CommitEngine`, the context menu, and the
+preview mutation protocol. It may do so only because this run proved every
+authoring action reachable through those paths had a working replacement in
+source mode, rich mode, or both — see the run specification
+(`docs/plans/source-first-editor/runs/SFE-P3d-parity.md`).
 
-## How the action set was derived — NOT hand-listed
+The **13** mutation-capable preview actions listed below — 12 from
+`context-menu-controller.svelte.ts`'s items and 1 (`block-edit`) from
+`inline-edit-controller.svelte.ts` — were extracted and verified against the
+source at the commit that closed SFE-P3d-parity (`b9ca42a9`, "fix(p3):
+address review findings (round 1)"). Each row's **Replacement command(s)**
+are exercised by the **Test evidence** tests named in that row. Those tests
+are ordinary behavioral tests, not part of this document's own machinery:
+they REMAIN in the suite and keep running in CI via the ordinary desktop
+test job ("Desktop Test" / `bun run test`, `packages/desktop`) — they are
+what actually proves each replacement works. This table is the map from the
+deleted preview surface to that evidence, not a second proof of it.
 
-The **rows below are not a hand-written list**. `tools/check-parity.mjs`
-re-derives the left-hand `Action` column from the live source of
-`packages/desktop/src/lib/routes/context-menu-controller.svelte.ts` and
-`packages/desktop/src/lib/routes/inline-edit-controller.svelte.ts` every time
-it runs (`bun run check:parity`), and fails if:
-
-- an action the extractor finds has no row in either table below;
-- a row names a replacement command identifier that no longer exists in the
-  cited source file;
-- a mapped row's test evidence does not resolve to a real, named
-  `test(...)`/`describe(...)` in the cited file;
-- a waiver row is missing a reason or a decision owner.
-
-The full extraction algorithm — what counts as a "mutation-capable action",
-how a literal-string `id` vs. a `.map()`-fed shorthand `id` (the
-`FORMAT_KINDS`-driven selection-format items) is resolved, and its stated
-limitations — is documented in `tools/check-parity.mjs`'s own header comment.
-In short: an item counts when its `run()` closure (or a private method it
-calls, resolved by a one-hop call-graph over the class's own methods) reaches
-`commitEngine.commitRangePatch(...)`; `InlineEditController`'s one free-form
-block-edit path is extracted under the synthetic id `block-edit` on the same
-basis (its own `commit()` method calls `commitRangePatch` directly).
-
-At the SHA this document was written against, extraction found **13** actions
-— 12 from `context-menu-controller.svelte.ts`'s items and 1
-(`block-edit`) from `inline-edit-controller.svelte.ts`. That number is
-reported by the gate every run, not restated here as a claim to trust — see
-`check:parity`'s own "RULE 1 [extraction]" summary line.
-
-## Table format contract (read before editing)
-
-`check-parity.mjs` parses two `###` sections by heading text (case-insensitive
-substring match): a heading containing **"mapped action"** and a heading
-containing **"waiver"**. Each section's FIRST pipe-table under that heading is
-parsed; its header row's cell text (lower-cased) selects columns by name — so
-column ORDER doesn't matter, but the column TEXT must stay
-`Action` / `Replacement command(s)` / `Surface(s)` / `Test evidence` (mapped
-table) or `Action` / `Reason` / `Decision owner` (waivers table).
-
-- **Action** — the exact extracted id, e.g. `` `format-bold` `` (backticks
-  optional, stripped by the parser).
-- **Replacement command(s)** — one or more `;`-separated references, each
-  either:
-  - `file#identifier` — `file` is one of `toolbar-actions.ts`,
-    `rich-commands.ts`, `commands.ts` (resolved to their real paths by the
-    checker); `identifier` must appear in that file as either an exported
-    `function`/`const`/`type`/`interface` name, or a quoted string literal in
-    real code (an `EditorCommand`/`LayoutBlockKind`/`ToolbarAction` `kind`
-    value) — never inside a comment.
-  - a sentinel — `source-editor#direct-text-edit` or
-    `rich-editor#direct-text-edit` — naming the editor's own always-available
-    direct-text-editing capability as the replacement (used only where no
-    dedicated command exists AND none is needed — see the marker-edit rows'
-    own explanation below). Sentinels always "exist"; they still require real
-    test evidence.
-- **Surface(s)** — free text naming where the replacement is reachable
-  (source toolbar, rich toolbar, keyboard, caret-placement convention, …),
-  `;`-separated to line up with Replacement command(s).
-- **Test evidence** — one or more `;`-separated `path::exact test title`
-  references. The path is repo-root-relative; the title must match a real
-  `test(...)`/`test.each(...)(...)`/`describe(...)` literal string in that
-  file byte-for-byte (the checker does not run the suite — it proves the
-  citation is not fabricated, per G-01/AP-01 "exercise the replacement").
+The rows and their test citations are kept exactly as SFE-P3d-parity Lane D
+verified them — not renumbered or reworded — because they are the evidence
+this record exists to preserve.
 
 ## Mapped actions
 
@@ -133,13 +89,9 @@ this note is removed.
 None. The three waivers this document originally recorded —
 `image-properties`, `image-unwrap`, `link-edit` — are CLOSED by
 SFE-P3d-parity Lane D and now appear as mapped rows above. This section is
-kept (with an explanatory table-format note below) rather than deleted, so
-the run history and the checker's own "mapped action"/"waiver" heading
-contract both stay intact — `check-parity.mjs` looks for a heading
-CONTAINING "waiver"; removing the heading entirely would still pass (an
-absent section parses as zero waiver rows), but keeping it, empty and
-explained, is clearer for a reader landing here mid-history than a heading
-that silently vanished.
+kept, empty and explained, rather than deleted, so a reader landing here
+mid-history sees that the waivers were closed rather than finding the
+section silently gone.
 
 ### How the three waivers were closed (Lane D)
 

@@ -35,6 +35,12 @@ import type {
   AdoptFolderOptions,
   CreateProjectResult,
 } from "gutterpress";
+// SFE-P3e — CAVEAT (mirrors the ProjectSource/ProjectCapabilities caveat
+// below): the desktop rich editor's projection wraps D6's own
+// `GutterpressProjection` shape, so this file type-imports it straight from
+// the render subpath rather than hand-mirroring it into shared-types.ts (§8-
+// safe: `import type` is erased at build, never a runtime SPA import).
+import type { GutterpressProjection } from "gutterpress/render";
 
 // Shared IPC payload types — imported from the single source of truth.
 // Both electron/bridge-types.ts and this file reference shared-types.ts,
@@ -334,6 +340,29 @@ export interface BuildArgs {
   allowShrink?: boolean;
 }
 
+/** Arguments for {@link HostServices.buildEditorProjection} (SFE-P3e). No
+ *  FolderRef translation is needed here (unlike {@link PreviewStartArgs}/
+ *  {@link BuildArgs}) — `projectDir` is a plain path string on both sides;
+ *  the host validates it against its own open-workspace state. */
+export interface EditorProjectionArgs {
+  readonly projectDir: string;
+  readonly content: string;
+  readonly sourceVersion: number;
+}
+
+/** One project plugin that failed to load (D14 `EDITOR_PLUGIN_LOAD_FAILED`), degrade-and-report style. */
+export interface EditorProjectionPluginError {
+  readonly pluginRef: string;
+  readonly message: string;
+}
+
+/** Result of {@link HostServices.buildEditorProjection}. */
+export interface EditorProjectionResult {
+  readonly projection: GutterpressProjection;
+  readonly pluginCss: string;
+  readonly pluginErrors: readonly EditorProjectionPluginError[];
+}
+
 /** OS appearance state (#48). Resolved against "system" theme mode. */
 export interface NativeThemeState {
   shouldUseDarkColors: boolean;
@@ -436,6 +465,16 @@ export interface HostServices {
   stopPreview(): Promise<{ stopped: boolean }>;
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
+
+  /**
+   * SFE-P3e — the desktop rich editor's plugin-aware projection, built
+   * host-side: the OPEN project's real manifest and real loaded plugins
+   * (degrade-and-report — a plugin that fails to load is skipped, reported
+   * in `pluginErrors`, and never blanks the projection). Electron only; the
+   * WebAdapter rejects (see its own doc comment) — this run's renderer
+   * wiring only calls this when a desktop project is open, matching D10.
+   */
+  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionResult>;
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;

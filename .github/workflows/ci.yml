@@ -130,22 +130,6 @@ jobs:
       - name: Check architecture boundaries (plan D4/D10 + ProseMirror ban)
         run: bun run check:architecture
 
-      # SFE-P3d-parity repair (G-12/AP-20): tools/check-parity.mjs (the
-      # derived-parity-matrix standing gate proving every mutation-capable
-      # context-menu/inline-edit action has a mapped, existing, tested
-      # source/rich replacement — parity-matrix.md, D8) had a self-test
-      # (tools/check-parity.test.mjs, 400+ lines of sabotage fixtures
-      # proving the gate can fail) but no CI invocation path for either the
-      # self-test or the gate itself — AP-20: "a gate that exists but is
-      # never invoked is the same as no gate at all." Same self-test-then-
-      # gate order as the generated-files/architecture pairs above;
-      # dependency-free, so no package build is a prerequisite.
-      - name: Check parity gate self-test
-        run: node tools/check-parity.test.mjs
-
-      - name: Check parity gate (SFE-P3d-parity — D8, condition 1/2)
-        run: bun run check:parity
-
       # SFE-P1b2 repair (G-12/AP-20): verify-vendored.mjs (the checksum +
       # completeness gate proving packages/vscode-markdown-editor/dist/ is
       # either byte-identical to the published tarball or exactly the
