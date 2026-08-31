@@ -89,9 +89,9 @@ async function withPdfArtifact(dir: string, title = "Test Book"): Promise<string
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-test("registry lists all five providers and resolves by id", () => {
+test("registry lists all six providers and resolves by id", () => {
   const ids = listPublishProviders().map((p) => p.id);
-  expect(ids).toEqual(["itch", "drivethrurpg", "kdp", "azure-swa", "shopify"]);
+  expect(ids).toEqual(["itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]);
   expect(publishProviderFor("itch").info.label).toBe("itch.io");
   expect(() => publishProviderFor("nope")).toThrow(/Unknown publish provider/);
 });
@@ -754,6 +754,23 @@ test("connectPublishProvider refuses guided providers and empty tokens", async (
     await expect(
       connectPublishProvider({ projectDir: dir, providerId: "itch", token: "  " }, deps),
     ).rejects.toThrow(/Paste an API key/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("connectPublishProvider rejects an oauth provider's pasted token (gdrive) — the old paste path can never store an unverifiable credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await expect(
+      connectPublishProvider(
+        { projectDir: dir, providerId: "gdrive", token: "some-refresh-token" },
+        deps,
+      ),
+    ).rejects.toThrow(/connects through your browser.*--connect/);
+    // Nothing was stored.
+    expect(await deps.tokenStore.get("gdrive")).toBeNull();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
