@@ -879,6 +879,19 @@ function findMatchingCloseIndex(tokens: readonly Token[], openIndex: number): nu
  * own documented failure mode) is treated as "no interior to scan": this
  * function never throws and never widens a refusal beyond what the token
  * stream actually shows.
+ *
+ * SFE-P2c repair round 3 addendum: this scan is keyed to TOKEN NESTING (the
+ * slice strictly between the plugin-region's own open/close pair), while the
+ * block's boundaries come from the CLAIMED RANGE (`origin.range`, from the
+ * plugin's `token.map`). When a plugin's map claims MORE source than its own
+ * open/close pair actually wraps — a self-contained pair adjacent to, not
+ * around, the later token — this function's slice is empty and it has
+ * nothing to catch: that shape is instead caught by the `from < lastBlockEnd`
+ * overlap guard below (and its symmetric counterpart on the `raw-html`
+ * branch), which checks the CLAIMED RANGE against every already-projected
+ * block regardless of token nesting. The two guards are complementary, not
+ * redundant: this one catches over-claims that DO wrap a projectable token;
+ * the overlap guards catch over-claims that don't.
  */
 function pluginRegionContainsProjectableBlock(
   tokens: readonly Token[],
@@ -1016,6 +1029,32 @@ export function createEditorProjection(
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
       if (parsed) {
         const [from, to] = charRangeForLines(starts, source, parsed[0], parsed[1]);
+
+        // SFE-P2c repair round 3 (finding 1) — the symmetric counterpart of
+        // the plugin-region branch's own `from < lastBlockEnd` guard below:
+        // a raw-html block's CLAIMED range comes from `data-source-range`
+        // corroborated only against this document's own line count
+        // (parseSourceRangeAttr/charRangeForLines have no notion of OTHER
+        // already-projected blocks), so a plugin-region whose token pair
+        // does not actually wrap this html_block token — but whose claimed
+        // `token.map` spans past it anyway — could still produce a nested,
+        // overlapping block that `pluginRegionContainsProjectableBlock`'s
+        // token-slice scan cannot see (that scan only walks tokens strictly
+        // between the plugin-region's own open/close pair; a token the
+        // plugin's map over-claims without wrapping is never in that
+        // slice). Fixing this HERE, rather than widening that scan, makes
+        // the "never overlapping" invariant (module header, "ORDERED,
+        // DISJOINT ... never overlapping, never nested") hold for this
+        // branch by construction, regardless of which earlier branch
+        // produced the wide claim.
+        if (from < lastBlockEnd) {
+          diagnostics.push({
+            category: "EDITOR_UNSUPPORTED_PROJECTION",
+            reason: `"${token.type}" token's resolved range overlaps a block already projected earlier in this document — refusing to project an overlapping raw-html block. Edit this content in source mode.`,
+          });
+          continue;
+        }
+
         // D13 block-count cap: checked here, not just in the marker-family
         // branch below — a huge raw-HTML-heavy document must stop exactly
         // the same way a marker-heavy one does.

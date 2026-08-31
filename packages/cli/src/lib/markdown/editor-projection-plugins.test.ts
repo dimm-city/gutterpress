@@ -554,6 +554,100 @@ describe("shape 2 -- container-prefix over-claim (a marker line nested under a b
   });
 });
 
+// ── SFE-P2c repair round 3 (finding 1) — claimed-range overlap, no wrap ──
+//
+// `pluginRegionContainsProjectableBlock` (round 2) is keyed to TOKEN NESTING:
+// it scans the slice strictly between a plugin-region's own open/close pair.
+// That closes the round-2 shape (a wrapper whose close comes AFTER the
+// survivor it nests), but a plugin can also emit a SELF-CONTAINED open/close
+// pair -- nothing between them to scan -- while still setting a `token.map`
+// that claims source spanning a LATER token the pair never structurally
+// wraps. This fixture reproduces that shape directly.
+
+/**
+ * Registers `after("layout_transform", …)` and replaces the FIRST
+ * `@@aside <label>` paragraph with a SELF-CONTAINED
+ * `plugin_overclaim_open`/`plugin_overclaim_close` pair pushed immediately
+ * adjacent to each other -- unlike {@link wrapperAsideMarkerPlugin}, this
+ * pair never wraps any surviving token; `findMatchingCloseIndex` finds the
+ * close at `openIndex + 1`, so the interior slice
+ * `pluginRegionContainsProjectableBlock` walks is empty. The open token's
+ * `token.map` nonetheless spans from the marker's own line through the LAST
+ * line any surviving token in the document can prove -- an honest "this is
+ * everything I consumed" claim from the plugin's own point of view, but one
+ * its own token pair does not structurally contain.
+ */
+function overclaimAsideMarkerPlugin(): LoadedPlugin {
+  const plugin = (md: MarkdownIt): void => {
+    md.core.ruler.after("layout_transform", "overclaim_aside_transform", (state) => {
+      let endLine = 0;
+      for (const t of state.tokens) {
+        if (Array.isArray(t.map)) endLine = Math.max(endLine, t.map[1]);
+      }
+      const out: typeof state.tokens = [];
+      let claimed = false;
+      for (let i = 0; i < state.tokens.length; i++) {
+        const tok = state.tokens[i]!;
+        const next = state.tokens[i + 1];
+        const closer = state.tokens[i + 2];
+        const match =
+          !claimed && tok.type === "paragraph_open" && next?.type === "inline" && closer?.type === "paragraph_close"
+            ? ASIDE_RE.exec(next.content)
+            : null;
+        if (match) {
+          const open = new state.Token("plugin_overclaim_open", "aside", 1);
+          open.attrSet("data-aside-label", match[1]!);
+          open.map = [tok.map![0]!, endLine];
+          out.push(open);
+          out.push(new state.Token("plugin_overclaim_close", "aside", -1));
+          i += 2;
+          claimed = true;
+          continue;
+        }
+        out.push(tok);
+      }
+      state.tokens = out;
+    });
+  };
+  return { name: "overclaim-aside-plugin", plugin, options: {} };
+}
+
+describe("shape 4 -- claimed range not structurally wrapped (a self-contained open/close pair claims a map spanning content it never wraps)", () => {
+  test("SFE-P2c repair round 3 (finding 1): a plugin-region whose pair is adjacent (nothing to scan) but whose claimed map spans a later raw-html block refuses that raw-html block as overlapping, instead of producing nested blocks", () => {
+    const source = "@@aside Note\n\n<div>hi</div>\n\nTail.\n";
+    const md = createMarkdownRenderer([overclaimAsideMarkerPlugin()]);
+
+    // AP-21 liveness: the pair really is adjacent (nothing wrapped between
+    // them) and the raw html_block really survives by identity -- both
+    // preconditions this shape depends on.
+    const tokens = md.parse(source, {});
+    const openIdx = tokens.findIndex((t) => t.type === "plugin_overclaim_open");
+    const closeIdx = tokens.findIndex((t) => t.type === "plugin_overclaim_close");
+    expect(openIdx).toBeGreaterThanOrEqual(0);
+    expect(closeIdx).toBe(openIdx + 1);
+    expect(tokens.map((t) => t.type)).toContain("html_block");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    assertSortedNonOverlapping(projection, source);
+
+    // Pre-fix this produced `blocks = [plugin-region:0:35, raw-html:14:28]`
+    // -- overlapping, violating the module's own invariant, with ZERO
+    // diagnostics. Post-fix: the plugin-region projects (its own pair is
+    // self-contained, so the containment scan finds nothing), and the
+    // LATER raw-html block -- inside the claimed-but-not-wrapped range --
+    // refuses instead of overlapping it.
+    expect(projection.blocks.map((b) => b.kind)).toEqual(["plugin-region"]);
+    const pluginBlock = blockOf(projection, "plugin-region");
+    expect(source.slice(pluginBlock.from, pluginBlock.to)).toBe(source);
+
+    const overlapRefusal = projection.diagnostics.find((d) =>
+      /overlaps a block already projected/i.test(d.reason),
+    );
+    expect(overlapRefusal).toBeDefined();
+    expect(overlapRefusal!.reason).toMatch(/raw-html/i);
+  });
+});
+
 describe("shape 3 -- uncorroborated plugin-declared map (a plugin sets an out-of-bounds token.map)", () => {
   test("a plugin that sets open.map = [0, 99] on a 5-line document refuses instead of claiming the whole document as one token's writable range", () => {
     const source = "A.\n\n---\n\nB.\n";

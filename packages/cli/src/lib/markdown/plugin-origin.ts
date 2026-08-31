@@ -678,6 +678,24 @@ export function resolvePluginTokenOriginFromSnapshot(
   // uniqueness and the "never overlapping" invariant both hold by
   // construction, not by accident of which token happened to be queried
   // first.
+  // SFE-P2c repair round 3 (finding: depth was decremented with no floor,
+  // so an added run that BEGINS with an unmatched close — the archetypal
+  // `@sidebar`/`@callout` shape, CLAUDE.md §5, where a wrapper's open and
+  // close straddle a surviving token in between — drove `depth` to -1.
+  // Every genuine sibling open queried afterward was then counted at a
+  // nonzero depth and never added to `addedTopLevelOpenCount`, so this
+  // check silently stopped firing for exactly the shape it exists to catch:
+  // reproduced live pre-fix with a core rule that opens `plugin_wrap_open`
+  // before a surviving paragraph and, at a later `hr`, emits
+  // `plugin_wrap_close` + `plugin_a_open/close` + `plugin_b_open/close` —
+  // `plugin_a_open` was handed the consumed `hr` range as a clean-splice
+  // origin even though `plugin_b_open` had an equally good claim on the
+  // same run (exactly the "one source region producing several output
+  // regions" ambiguity this check exists to refuse). Clamping the floor at
+  // 0 means an unmatched close in this added run can never mask a sibling
+  // open that follows it — it only ever cancels an open that started
+  // inside THIS SAME added run, which is the only pairing this depth
+  // counter is meant to track.
   let depth = 0;
   let addedTopLevelOpenCount = 0;
   for (let i = leftAfterIdx + 1; i < rightAfterIdx; i++) {
@@ -685,7 +703,7 @@ export function resolvePluginTokenOriginFromSnapshot(
     if (nesting === 1) {
       if (depth === 0) addedTopLevelOpenCount++;
       depth++;
-    } else if (nesting === -1) {
+    } else if (nesting === -1 && depth > 0) {
       depth--;
     }
   }

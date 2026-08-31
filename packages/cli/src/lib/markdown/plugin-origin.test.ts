@@ -487,6 +487,134 @@ describe("NOT shape 2b — one output region with a freshly generated interior (
   });
 });
 
+describe("SFE-P2c repair round 3 regression — an unmatched leading close in the added run must not mask sibling opens (depth floor)", () => {
+  test("hand-built: a straddling wrapper (open before a survivor, close after it) ahead of two genuine sibling opens still refuses both as copy", () => {
+    // before: [paragraph(A) triple, hr, paragraph(B) triple]
+    const paragraphOpenA = new Token("paragraph_open", "p", 1);
+    paragraphOpenA.map = [0, 1];
+    const inlineA = new Token("inline", "", 0);
+    const paragraphCloseA = new Token("paragraph_close", "p", -1);
+    const hr = new Token("hr", "hr", 0);
+    hr.map = [2, 3];
+    const paragraphOpenB = new Token("paragraph_open", "p", 1);
+    paragraphOpenB.map = [4, 5];
+    const inlineB = new Token("inline", "", 0);
+    const paragraphCloseB = new Token("paragraph_close", "p", -1);
+    const before = [paragraphOpenA, inlineA, paragraphCloseA, hr, paragraphOpenB, inlineB, paragraphCloseB];
+
+    // after: a wrapper straddles the FIRST survivor (open before it, close
+    // after it — the archetypal `@sidebar`/`@callout` shape, CLAUDE.md §5),
+    // then the hr is replaced by two DIFFERENT sibling pairs, neither
+    // wrapping the other.
+    const wrapOpen = new Token("plugin_wrap_open", "div", 1);
+    const wrapClose = new Token("plugin_wrap_close", "div", -1);
+    const openA = new Token("plugin_a_open", "div", 1);
+    const closeA = new Token("plugin_a_close", "div", -1);
+    const openB = new Token("plugin_b_open", "div", 1);
+    const closeB = new Token("plugin_b_close", "div", -1);
+    const after = [
+      wrapOpen,
+      paragraphOpenA,
+      inlineA,
+      paragraphCloseA,
+      wrapClose,
+      openA,
+      closeA,
+      openB,
+      closeB,
+      paragraphOpenB,
+      inlineB,
+      paragraphCloseB,
+    ];
+
+    // Liveness proxy: the added run between the two nearest survivors
+    // (paragraphCloseA .. paragraphOpenB, after-indices 4..8) BEGINS with an
+    // unmatched close (`wrapClose`) ahead of two genuine sibling opens —
+    // exactly the shape that drove the unclamped depth counter to -1
+    // pre-fix, masking both siblings from `addedTopLevelOpenCount`.
+    expect(after.slice(4, 9).map((t) => t.nesting)).toEqual([-1, 1, -1, 1, -1]);
+
+    for (const [queried, idx] of [
+      [openA, 5],
+      [openB, 7],
+    ] as const) {
+      const result = resolvePluginTokenOriginFromSnapshot(queried, idx, after, before, ["straddle_plugin_rule"]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/copy/i);
+        expect(result.reason).toMatch(/straddle_plugin_rule/);
+      }
+    }
+  });
+
+  test("end to end through createEditorProjection: a real registered core rule that straddles a survivor with a wrapper, then replaces a later hr with two sibling pairs, refuses the siblings instead of fabricating an origin for one of them", () => {
+    const source = "A.\n\n---\n\nB.\n";
+    const md = createMarkdownRenderer([
+      {
+        name: "straddle-plugin",
+        options: {},
+        plugin: (m: MarkdownIt) =>
+          m.core.ruler.after("layout_transform", "straddle_plugin_transform", (state) => {
+            const out: typeof state.tokens = [];
+            let openedWrapper = false;
+            for (const tok of state.tokens) {
+              if (!openedWrapper && tok.type === "paragraph_open") {
+                out.push(new state.Token("plugin_wrap_open", "div", 1));
+                openedWrapper = true;
+              }
+              if (tok.type === "hr") {
+                out.push(new state.Token("plugin_wrap_close", "div", -1));
+                out.push(new state.Token("plugin_a_open", "div", 1));
+                out.push(new state.Token("plugin_a_close", "div", -1));
+                out.push(new state.Token("plugin_b_open", "div", 1));
+                out.push(new state.Token("plugin_b_close", "div", -1));
+                continue;
+              }
+              out.push(tok);
+            }
+            state.tokens = out;
+          }),
+      },
+    ]);
+
+    // AP-21 liveness: the wrapper really straddles the first survivor, and
+    // both siblings really replace the hr, before any refusal assertion.
+    const tokenTypes = md.parse(source, {}).map((t) => t.type);
+    expect(tokenTypes).toEqual([
+      "plugin_wrap_open",
+      "paragraph_open",
+      "inline",
+      "paragraph_close",
+      "plugin_wrap_close",
+      "plugin_a_open",
+      "plugin_a_close",
+      "plugin_b_open",
+      "plugin_b_close",
+      "paragraph_open",
+      "inline",
+      "paragraph_close",
+    ]);
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+
+    // The defect this fixture reproduces: BEFORE this repair, the unmatched
+    // `plugin_wrap_close` leading the added run drove `depth` to -1, so
+    // neither sibling open was ever counted at depth 0 — `plugin_a_open`
+    // was handed the consumed `hr` range as a fabricated clean-splice
+    // origin (`plugin-region:4:8`) even though `plugin_b_open` had an
+    // equally good claim on the same run. After this repair, both siblings
+    // refuse as "copy" and zero blocks are emitted for the consumed `hr`.
+    expect(projection.blocks.filter((b) => b.kind === "plugin-region")).toHaveLength(0);
+    const copyRefusals = projection.diagnostics.filter((d) => /copy/i.test(d.reason));
+    expect(copyRefusals).toHaveLength(2);
+    for (const d of copyRefusals) {
+      expect(d.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
+      expect(d.reason).toMatch(/straddle_plugin_transform/);
+    }
+    assertSortedNonOverlapping(projection, source);
+  });
+});
+
 describe("refusal matrix — shape 3: moved tokens (a removed-run member reappears elsewhere)", () => {
   test("a token this module is about to declare 'removed' but which is duplicated elsewhere in the transformed stream refuses as moved", () => {
     const survivorLeft = new Token("paragraph_open", "p", 1);
