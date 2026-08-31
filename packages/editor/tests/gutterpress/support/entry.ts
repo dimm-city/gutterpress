@@ -44,6 +44,12 @@ import { mountGutterpressEditor, type GutterpressEditorMount } from "../../../sr
  * produce the exact predicted edit, so this is complete, non-tautological,
  * production-only evidence with no native-selection assumption and no
  * package-internal reach-through.
+ *
+ * SFE-P3ab (Lane D): `getSelection()` on the driver below is a straight
+ * passthrough to `GutterpressEditorMount.getSelection()` (`../mount.ts`) —
+ * the mount's own new PUBLIC accessor, not `model.selection.get()` reached
+ * through directly, so the "no package-internal reach-through" property
+ * above still holds for this driver.
  */
 
 export interface MountResult {
@@ -81,6 +87,13 @@ export interface GutterpressDriver {
   /** Every `.md-block` element in the mounted document, in order. */
   blockCount(): number;
   blockClassName(index: number): string;
+  /** SFE-P3ab (Lane D) — client-space center point of the i-th `.md-block`
+   *  (a real point for `page.mouse.click`), mirroring
+   *  `segmentCharacterCenter` below for a whole block instead of one
+   *  chip segment — used to click into a plain (non-chip) block without
+   *  depending on `:nth-child` CSS matching every sibling under
+   *  `.md-document`. */
+  blockCenter(index: number): { x: number; y: number };
 
   /** Every `.gp-block-chip` element in the mounted document, in order. */
   chipCount(): number;
@@ -95,6 +108,13 @@ export interface GutterpressDriver {
   generatedPreviewAcceptsFocus(chipIndex: number): boolean;
   /** textContent of the i-th chip's generated-preview source `<pre>`, or undefined if it has none. */
   generatedPreviewText(chipIndex: number): string | undefined;
+
+  /**
+   * SFE-P3ab (Lane D) — passthrough to the current mount's own
+   * `GutterpressEditorMount.getSelection()` (`../mount.ts`). `undefined`
+   * before `mount()`/`mountStale()` has been called at all.
+   */
+  getSelection(): { readonly from: number; readonly to: number } | undefined;
 }
 
 const CONTAINER_ID = "gp-gutterpress-mount";
@@ -177,6 +197,12 @@ window.__gpGutterpress = {
     if (!el) throw new Error(`gutterpress harness: no block at index ${index}`);
     return el.className;
   },
+  blockCenter(index: number): { x: number; y: number } {
+    const el = blockElements()[index];
+    if (!el) throw new Error(`gutterpress harness: no block at index ${index}`);
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  },
 
   chipCount: () => chipElements().length,
   chipInfo(index: number): ChipInfo {
@@ -209,5 +235,7 @@ window.__gpGutterpress = {
     const pre = chip.querySelector<HTMLElement>(".gp-block-chip__generated .gp-block-chip__preview-source");
     return pre?.textContent ?? undefined;
   },
+
+  getSelection: () => mountHandle?.getSelection(),
 };
 window.__gpReady = true;

@@ -56,6 +56,16 @@ export interface GutterpressEditorMount {
    * remount, not a live-updating property of the current mount.
    */
   needsRefresh(): boolean;
+  /**
+   * SFE-P3ab (Lane D) — an ADDITIVE member, mirroring `../web/mount.ts`'s
+   * `EditorMount.getSelection()` (same contract: D3 source offsets, or
+   * `undefined` with no caret). Straight passthrough to the underlying
+   * `VscodeEditorAdapter` this mount is built on — see that function's own
+   * doc comment (`../vscode-adapter/adapter.ts`) for the full contract.
+   * Existing callers of the pre-P3ab `{ dispose(), needsRefresh() }` shape
+   * are unaffected.
+   */
+  getSelection(): { readonly from: number; readonly to: number } | undefined;
 }
 
 /**
@@ -141,5 +151,6 @@ export function mountGutterpressEditor(
       extraStyleEl?.remove();
     },
     needsRefresh: (): boolean => provider.needsRefresh(host.getSnapshot().version),
+    getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
   };
 }

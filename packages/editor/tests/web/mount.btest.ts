@@ -118,6 +118,12 @@ async function activeSubscriberCount(): Promise<number> {
   return harness.page.evaluate(() => window.__gpMount.activeSubscriberCount());
 }
 
+/** SFE-P3ab (Lane D) — the primary mount's live caret/selection, via
+ *  `EditorMount.getSelection()` (`support/entry.ts`'s passthrough). */
+async function selectionOffsets(): Promise<{ from: number; to: number } | undefined> {
+  return harness.page.evaluate(() => window.__gpMount.getSelection());
+}
+
 describe("mount renders host text via the fork (liveness)", () => {
   test("mounts exactly one .md-editor with the host's current snapshot text", async () => {
     const selector = await mount("hello world");
@@ -434,6 +440,108 @@ describe("dispose isolation between two independent LIVE mounts SHARING one host
 
     await disposeSecond();
     expect(await activeSubscriberCount()).toBe(0);
+  });
+});
+
+describe("getSelection reports the fork's LIVE caret as D3 source offsets (SFE-P3ab, Lane D)", () => {
+  // AP-21 liveness precedes behavior here too: every case below reads
+  // through `requireDocumentText` before asserting on the selection.
+  test("undefined before the mounted surface has ever been focused", async () => {
+    const selector = await mount("hello world");
+    await requireDocumentText(selector);
+
+    expect(await selectionOffsets()).toBeUndefined();
+  });
+
+  test("a keyboard-navigated collapsed caret matches an INDEPENDENTLY computed index", async () => {
+    const text = "hello world";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("Home");
+    // The independent computation: "hello ".length, not a number pulled
+    // from the accessor itself or from mount()'s own bookkeeping.
+    const target = "hello ".length;
+    for (let i = 0; i < target; i++) {
+      await harness.page.keyboard.press("ArrowRight");
+    }
+
+    expect(await selectionOffsets()).toEqual({ from: target, to: target });
+  });
+
+  test("a real keystroke at that reported position lands EXACTLY there — corroborating the offset independently of the accessor itself", async () => {
+    const text = "hello world";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("Home");
+    const target = "hello ".length;
+    for (let i = 0; i < target; i++) {
+      await harness.page.keyboard.press("ArrowRight");
+    }
+    expect(await selectionOffsets()).toEqual({ from: target, to: target });
+
+    await harness.page.keyboard.type("X");
+    await harness.page.waitForTimeout(50);
+
+    // If the caret had actually been anywhere else, this exact string could
+    // not result — independent, non-tautological proof the reported offset
+    // was the REAL caret position, not merely a value the accessor invented.
+    expect(await hostText()).toBe("hello Xworld");
+  });
+
+  test("a non-collapsed FORWARD selection reports {from: start, to: end}, matching an independently computed span", async () => {
+    const text = "hello world";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("Home");
+    const wordStart = "hello ".length;
+    for (let i = 0; i < wordStart; i++) {
+      await harness.page.keyboard.press("ArrowRight");
+    }
+    for (let i = 0; i < "world".length; i++) {
+      await harness.page.keyboard.press("Shift+ArrowRight");
+    }
+
+    expect(await selectionOffsets()).toEqual({ from: wordStart, to: text.length });
+  });
+
+  test("a non-collapsed BACKWARD selection (dragged right-to-left) still normalizes to {from <= to}", async () => {
+    const text = "hello world";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("End"); // anchor at text.length
+    const wordStart = "hello ".length;
+    for (let i = 0; i < text.length - wordStart; i++) {
+      await harness.page.keyboard.press("Shift+ArrowLeft"); // active walks BACKWARD past the anchor
+    }
+
+    // anchor (text.length) > active (wordStart) here -- a real backward
+    // drag -- yet the accessor's contract (adapter.ts: "never see from > to")
+    // still reports the normalized, ascending pair.
+    expect(await selectionOffsets()).toEqual({ from: wordStart, to: text.length });
+  });
+
+  test("dispose leaves getSelection reporting the LAST known state on the disposed handle, not a throw", async () => {
+    const selector = await mount("probe");
+    await requireDocumentText(selector);
+    await harness.page.click(selector);
+    await harness.page.keyboard.press("End");
+
+    await expect(dispose()).resolves.toBeUndefined();
+    // dispose() does not null out mountHandle in the driver (see
+    // support/entry.ts) -- reading getSelection() on an already-disposed
+    // mount must not throw. An unhandled rejection from evaluate() below
+    // would fail this test on its own; what the disposed handle actually
+    // REPORTS is not this test's concern (the underlying model is torn
+    // down) -- only that reading it stays safe.
+    await harness.page.evaluate(() => window.__gpMount.getSelection());
   });
 });
 

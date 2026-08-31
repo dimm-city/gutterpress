@@ -67,6 +67,16 @@ import { stringEditToSourceEdit } from "./convert.ts";
  * `host.applyEdit`/`replaceExternal`. `tests/vscode-adapter/
  * browser.cases.btest.ts`'s case-3 exercises this in a real browser: typing
  * twice, then pressing Ctrl+Z, leaves the source unchanged.
+ *
+ * SFE-P3ab (Lane D): the returned handle also exposes `getSelection()` —
+ * the fork's live caret/selection as D3 source offsets (see the interface's
+ * own doc comment below). This closes the gap the previous run's
+ * `desktop/src/lib/editor/rich-commands.ts` reported: every rich-mode
+ * command used to anchor at the document end because nothing surfaced the
+ * mount's real caret. Verified against the installed runtime, not assumed:
+ * `tests/web/mount.btest.ts`'s selection cases type at a keyboard-navigated
+ * position and assert the reported offsets against an independently
+ * computed index.
  */
 
 /** Options accepted by `createVscodeEditorAdapter`. */
@@ -118,6 +128,34 @@ export interface VscodeEditorAdapter {
    * `EditorMount.dispose()` contract.
    */
   dispose(): void;
+
+  /**
+   * SFE-P3ab (Lane D) — the fork's LIVE caret/selection, as UTF-16 source
+   * offsets over the same text `host` owns (D3's `SourceEdit`/
+   * `DocumentSnapshot` offset convention), or `undefined` when the model has
+   * no caret at all (e.g. the mounted surface has never been focused/
+   * clicked into — verified live: a fresh mount reports `undefined` here
+   * until the user interacts with it).
+   *
+   * Backed by `model.selection` (`ISettableObservable<Selection_2 |
+   * undefined, void>` — package internals, not re-exported; this is the
+   * ONE place outside the package that may read it, per D5). `Selection_2`
+   * carries `anchor`/`active` (which end the user is dragging) rather than
+   * an already-ordered `from <= to` pair, so this reads `.range` instead
+   * (`Selection_2.range`, verified against the installed runtime's own
+   * `get range()`: `isForward ? new OffsetRange(anchor, active) : new
+   * OffsetRange(active, anchor)`) — that normalizes a BACKWARD selection
+   * (the user dragged right-to-left) the same as a forward one, so callers
+   * never see `from > to`.
+   *
+   * A plain `.get()` read, not a subscription: this run's callers
+   * (`rich-commands.ts`) poll it at the moment a command is invoked, the
+   * same way `host.getSnapshot()` is read fresh on every call rather than
+   * cached — there is no live-updating consumer of this value yet, so no
+   * subscribe-and-notify seam is added ahead of a real need (plan: "prefer
+   * the smallest design that fully satisfies the specification").
+   */
+  getSelection(): { readonly from: number; readonly to: number } | undefined;
 }
 
 /**
@@ -298,6 +336,13 @@ export function createVscodeEditorAdapter(
       controller.dispose();
       view.dispose();
       view.element.remove();
+    },
+
+    getSelection(): { readonly from: number; readonly to: number } | undefined {
+      const selection = model.selection.get();
+      if (!selection) return undefined;
+      const range = selection.range;
+      return { from: range.start, to: range.endExclusive };
     },
   };
 }

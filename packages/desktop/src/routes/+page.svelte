@@ -38,6 +38,8 @@
     applyRichLayoutBlock,
     applyRichImageInsert,
     applyRichAppend,
+    applyBlockMove,
+    blockIndexAtOffset,
     validateImageProperties,
     type RichCommandOutcome,
   } from "$lib/editor/rich-commands";
@@ -982,10 +984,21 @@
   let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let snippetPickerOpen = $state(false);
 
+  // SFE-P3ab, Lane D — the rich-mode caret at the moment the snippet picker
+  // opened, captured BEFORE the picker's own UI steals focus (same
+  // rationale as `openRichImageProperties`'s `live` capture below: reading
+  // it from inside `onInsert`, after the picker has had focus, would see
+  // whatever — if anything — the mount still reports once focus has moved
+  // away, not the position the author actually meant when they invoked the
+  // picker). `undefined` in source mode or with no caret; read by the
+  // `SnippetPicker`'s `onInsert` handler near the bottom of this file.
+  let richSnippetLiveSelection: { readonly from: number; readonly to: number } | undefined;
+
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
     void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
+    richSnippetLiveSelection = richLiveSelection();
     snippetPickerRef?.show();
   }
 
@@ -1214,6 +1227,24 @@
   let richDocHost = $state<DesktopDocumentHost | null>(null);
   let richDocHostUnsub: (() => void) | null = null;
 
+  // SFE-P3ab, Lane D — the mounted RichEditor component instance, bound the
+  // same way `editorRef` binds MarkdownEditor above: `{#key richDocHost}`
+  // means a host rebuild destroys and recreates RichEditorComponent, so
+  // Svelte resets this to `null` on unmount and repopulates it on the next
+  // mount — no manual bookkeeping needed here. Read ONLY for its
+  // `getSelection()` export (rich-commands.ts's header has the full design);
+  // this page never calls any other method on it.
+  let richEditorRef = $state<{
+    getSelection: () => { readonly from: number; readonly to: number } | undefined;
+  } | null>(null);
+
+  /** The rich mount's LIVE caret, or `undefined` when there is none (never
+   *  focused, or no mount yet) — every rich-mode command below reads this
+   *  fresh at the moment it fires rather than caching it. */
+  function richLiveSelection(): { readonly from: number; readonly to: number } | undefined {
+    return richEditorRef?.getSelection();
+  }
+
   function rebuildRichDocHost(path: string | null, content: string): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
@@ -1291,10 +1322,11 @@
   function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
     if (!richDocHost || action === "image") return;
     const route = routeToolbarAction(action, payload);
+    const live = richLiveSelection();
     if (route.kind === "command") {
-      reportRichOutcome(applyRichCommand(richDocHost, route.command));
+      reportRichOutcome(applyRichCommand(richDocHost, route.command, live));
     } else if (route.kind === "layout") {
-      reportRichOutcome(applyRichLayoutBlock(richDocHost, route.layout));
+      reportRichOutcome(applyRichLayoutBlock(richDocHost, route.layout, live));
     }
     // "unsupported" ("snippet"/"focus-mode") never reaches here — the
     // toolbar's onAction below special-cases both before routing.
@@ -1308,6 +1340,11 @@
    */
   async function openRichImageProperties(): Promise<void> {
     if (!richDocHost) return;
+    // Captured BEFORE the dialog opens and steals focus — the dialog is a
+    // separate surface, so the caret the author actually meant is whatever
+    // it was the moment they invoked "Insert image", not whatever (if
+    // anything) the mount still reports once focus has moved away.
+    const live = richLiveSelection();
     const blank: ImagePropertiesValue = {
       src: "",
       alt: "",
@@ -1327,7 +1364,7 @@
       toast?.error(error);
       return;
     }
-    reportRichOutcome(applyRichImageInsert(richDocHost, value));
+    reportRichOutcome(applyRichImageInsert(richDocHost, value, live));
   }
 
   /**
@@ -1352,7 +1389,11 @@
       if (richMode.mode === "rich") {
         if (richDocHost && isMd(editorFilePath)) {
           reportRichOutcome(
-            applyRichCommand(richDocHost, { kind: "insert-image", src: payload.src, alt: payload.alt }),
+            applyRichCommand(
+              richDocHost,
+              { kind: "insert-image", src: payload.src, alt: payload.alt },
+              richLiveSelection(),
+            ),
           );
           return;
         }
@@ -2338,6 +2379,37 @@
         setRichMode(richMode.mode === "rich" ? "source" : "rich");
         return;
       }
+      // Block movement (SFE-P3ab, Lane D) — Alt+Shift+ArrowUp/Down moves
+      // the block the live rich-mode caret is currently in
+      // (`blockIndexAtOffset` + `applyBlockMove`, rich-commands.ts). Rich
+      // mode only: source mode keeps its own untouched CodeMirror keymap
+      // (`toolbar-actions.ts`, another lane's file). This was Lane B's one
+      // unwired deliverable from the prior run, blocked on exactly the
+      // selection accessor this run added — a keyboard shortcut, not a
+      // toolbar button, because `EditorToolbar.svelte`/`toolbar-actions.ts`
+      // are also another lane's files. Not part of resolveGlobalShortcut's
+      // vocabulary — checked directly, the same pattern the rich-mode
+      // toggle above uses.
+      if (
+        richMode.mode === "rich" &&
+        e.altKey &&
+        e.shiftKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        if (richDocHost) {
+          const live = richLiveSelection();
+          const blockIndex = live
+            ? blockIndexAtOffset(richDocHost.getSnapshot().text, live.from)
+            : undefined;
+          if (blockIndex !== undefined) {
+            reportRichOutcome(
+              applyBlockMove(richDocHost, blockIndex, e.key === "ArrowUp" ? "up" : "down"),
+            );
+          }
+        }
+        return;
+      }
       // Cmd/Ctrl+\ toggles the left panel
       if (command === "toggle-left-panel") {
         e.preventDefault();
@@ -3116,6 +3188,7 @@
                        simulated one (see richDocHost's own comment above). -->
                   {#key richDocHost}
                     <RichEditorComponent
+                      bind:this={richEditorRef}
                       host={richDocHost}
                       onDiagnostic={showRichDiagnostic}
                     />
@@ -3413,7 +3486,9 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => {
     if (richMode.mode === "rich") {
-      if (richDocHost) reportRichOutcome(applyRichAppend(richDocHost, text));
+      if (richDocHost) {
+        reportRichOutcome(applyRichAppend(richDocHost, text, richSnippetLiveSelection));
+      }
       return;
     }
     editorRef?.insertSnippet(text);

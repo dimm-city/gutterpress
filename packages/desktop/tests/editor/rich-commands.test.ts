@@ -28,12 +28,15 @@ import {
   applyRichCommand,
   applyRichImageInsert,
   applyRichLayoutBlock,
+  blockIndexAtOffset,
   buildImageInsertText,
   documentEndSelection,
   moveBlock,
+  resolveRichSelection,
   routeToolbarAction,
   splitIntoBlocks,
   validateImageProperties,
+  type LiveSelection,
   type SourceBlock,
 } from "../../src/lib/editor/rich-commands";
 import { descriptorForLayoutBlock, type LayoutBlockKind } from "../../src/lib/editor/toolbar-actions";
@@ -62,6 +65,35 @@ describe("documentEndSelection", () => {
 
   test("is [0, 0) for an empty document", () => {
     expect(documentEndSelection({ text: "", version: 0 })).toEqual({ start: 0, endExclusive: 0 });
+  });
+});
+
+// ── resolveRichSelection (SFE-P3ab, Lane D) ────────────────────────────────────
+
+describe("resolveRichSelection", () => {
+  const snapshot: DocumentSnapshot = { text: "hello world", version: 3 };
+
+  test("with no live selection, falls back to documentEndSelection", () => {
+    expect(resolveRichSelection(snapshot)).toEqual(documentEndSelection(snapshot));
+    expect(resolveRichSelection(snapshot, undefined)).toEqual(documentEndSelection(snapshot));
+  });
+
+  test("with a live COLLAPSED caret, converts {from,to} to {start,endExclusive} at that position", () => {
+    const live: LiveSelection = { from: 5, to: 5 };
+    expect(resolveRichSelection(snapshot, live)).toEqual({ start: 5, endExclusive: 5 });
+  });
+
+  test("with a live NON-collapsed selection, preserves the full range", () => {
+    const live: LiveSelection = { from: 2, to: 7 };
+    expect(resolveRichSelection(snapshot, live)).toEqual({ start: 2, endExclusive: 7 });
+  });
+
+  test("a live selection at [0, 0) is used verbatim, not treated as \"no selection\"", () => {
+    // A falsy-looking {from: 0, to: 0} must still route through the LIVE
+    // branch (a real caret at the document start), not be mistaken for
+    // "live is undefined" by a truthiness check on the object's contents.
+    const live: LiveSelection = { from: 0, to: 0 };
+    expect(resolveRichSelection(snapshot, live)).toEqual({ start: 0, endExclusive: 0 });
   });
 });
 
@@ -152,6 +184,57 @@ describe("applyRichCommand", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.diagnostic.category).toBe("EDITOR_STALE_EDIT");
   });
+
+  // ── Live-selection routing (SFE-P3ab, Lane D) ──────────────────────────────
+
+  test("with a live caret MID-DOCUMENT, toggle-bold wraps AT THE CARET, not the document end", () => {
+    const host = new MemoryDocumentHost({ text: "one two three", version: 0 });
+    const caret = "one ".length; // between "one " and "two three"
+    const live: LiveSelection = { from: caret, to: caret };
+    const outcome = applyRichCommand(host, { kind: "toggle-bold" }, live);
+    expect(outcome.ok).toBe(true);
+    // A collapsed caret produces a fresh, empty **|** pair spliced in AT the
+    // caret -- proving this landed at offset 4, not at text.length (13).
+    expect(host.getSnapshot().text).toBe("one ****two three");
+  });
+
+  test("with a live NON-COLLAPSED selection, toggle-bold wraps the SELECTED TEXT, not an insert at its end", () => {
+    const host = new MemoryDocumentHost({ text: "one two three", version: 0 });
+    const wordStart = "one ".length;
+    const live: LiveSelection = { from: wordStart, to: wordStart + "two".length };
+    const outcome = applyRichCommand(host, { kind: "toggle-bold" }, live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("one **two** three");
+  });
+
+  test("with NO live selection supplied (the fallback path), behaves exactly like the pre-P3ab document-end anchor", () => {
+    const host = new MemoryDocumentHost({ text: "one two", version: 0 });
+    const outcome = applyRichCommand(host, { kind: "toggle-bold" });
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("one two****");
+  });
+
+  test("an explicit undefined live selection is the SAME fallback as omitting the argument", () => {
+    const host = new MemoryDocumentHost({ text: "one two", version: 0 });
+    const outcome = applyRichCommand(host, { kind: "toggle-bold" }, undefined);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("one two****");
+  });
+
+  test("set-heading's toggle-off-when-already-active decision reads the LIVE selection's line, not the last line of the document", () => {
+    // Two headings; the live caret sits on the FIRST one. Without live
+    // routing this would read commandState against the document-end
+    // selection (the SECOND heading's line) and reach the wrong verdict.
+    const text = "## First\n\n## Second";
+    const host = new MemoryDocumentHost({ text, version: 0 });
+    const caret = 3; // inside "## First"
+    const live: LiveSelection = { from: caret, to: caret };
+    const outcome = applyRichCommand(host, { kind: "set-heading", level: 2 }, live);
+    expect(outcome.ok).toBe(true);
+    // Toggled OFF: the caret's own line lost its "## " prefix; the second
+    // heading, untouched by this command, is unaffected.
+    expect(host.getSnapshot().text).toBe("First\n\n## Second");
+  });
 });
 
 // ── applyRichLayoutBlock ──────────────────────────────────────────────────────
@@ -171,6 +254,22 @@ describe("applyRichLayoutBlock", () => {
     applyRichLayoutBlock(host, "page-break");
     expect(host.getSnapshot().text).toBe("content\n\n@page-break\n\n");
   });
+
+  test("with a live caret MID-DOCUMENT, inserts the template AT the caret, not the document end (SFE-P3ab, Lane D)", () => {
+    const host = new MemoryDocumentHost({ text: "before after", version: 0 });
+    const caret = "before".length;
+    const live: LiveSelection = { from: caret, to: caret };
+    const outcome = applyRichLayoutBlock(host, "page-break", live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("before\n\n@page-break\n\n after");
+  });
+
+  test("with NO live selection (the fallback), still lands at the document end", () => {
+    const host = new MemoryDocumentHost({ text: "before after", version: 0 });
+    const outcome = applyRichLayoutBlock(host, "page-break");
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("before after\n\n@page-break\n\n");
+  });
 });
 
 // ── applyRichAppend ────────────────────────────────────────────────────────────
@@ -181,6 +280,24 @@ describe("applyRichAppend", () => {
     const outcome = applyRichAppend(host, "\n\ntwo");
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("one\n\ntwo");
+  });
+
+  test("with a live COLLAPSED caret, inserts AT the caret rather than appending (SFE-P3ab, Lane D)", () => {
+    const host = new MemoryDocumentHost({ text: "one two", version: 0 });
+    const caret = "one ".length;
+    const live: LiveSelection = { from: caret, to: caret };
+    const outcome = applyRichAppend(host, "MID", live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("one MIDtwo");
+  });
+
+  test("with a live NON-COLLAPSED selection, REPLACES the selected text — mirrors MarkdownEditor.insertSnippet's own replace-selection behavior in source mode", () => {
+    const host = new MemoryDocumentHost({ text: "one two three", version: 0 });
+    const wordStart = "one ".length;
+    const live: LiveSelection = { from: wordStart, to: wordStart + "two".length };
+    const outcome = applyRichAppend(host, "TWO", live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("one TWO three");
   });
 });
 
@@ -285,6 +402,16 @@ describe("applyRichImageInsert", () => {
     const outcome = applyRichImageInsert(host, value);
     expect(outcome.ok).toBe(true);
     expect(host.getSnapshot().text).toBe("para" + buildImageInsertText(value));
+  });
+
+  test("with a live caret MID-DOCUMENT, inserts the built snippet AT the caret, not the document end (SFE-P3ab, Lane D)", () => {
+    const host = new MemoryDocumentHost({ text: "before after", version: 0 });
+    const caret = "before".length;
+    const live: LiveSelection = { from: caret, to: caret };
+    const value = { ...blankImage, src: "cover.png", alt: "Cover" };
+    const outcome = applyRichImageInsert(host, value, live);
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("before" + buildImageInsertText(value) + " after");
   });
 });
 
@@ -437,6 +564,58 @@ describe("splitIntoBlocks", () => {
   });
 });
 
+// ── blockIndexAtOffset (SFE-P3ab, Lane D — the live-caret -> block-index mapping) ──
+
+describe("blockIndexAtOffset", () => {
+  test("a caret strictly INSIDE a block's own range belongs to that block", () => {
+    const text = "First.\n\nSecond.\n\nThird.";
+    const blocks = splitIntoBlocks(text);
+    // Offset 10 falls inside "Second." (blocks[1]).
+    expect(blocks[1]!.from).toBeLessThanOrEqual(10);
+    expect(blocks[1]!.to).toBeGreaterThan(10);
+    expect(blockIndexAtOffset(text, 10)).toBe(1);
+  });
+
+  test("a caret at a block's exact start offset belongs to that block", () => {
+    const text = "First.\n\nSecond.";
+    const blocks = splitIntoBlocks(text);
+    expect(blockIndexAtOffset(text, blocks[1]!.from)).toBe(1);
+  });
+
+  test("a caret in a GAP (a blank line between two blocks) belongs to the PRECEDING block", () => {
+    const text = "First.\n\nSecond.";
+    // Offset 7 is the blank line between "First." (ends at 6) and
+    // "Second." (starts at 8) -- squarely inside the gap.
+    expect(blockIndexAtOffset(text, 7)).toBe(0);
+  });
+
+  test("a caret BEFORE every block (leading blank lines) has no owning block", () => {
+    const text = "\n\nFirst.\n\nSecond.";
+    // Offset 0 is before blocks[0].from (which starts after the leading
+    // blank lines).
+    const blocks = splitIntoBlocks(text);
+    expect(blocks[0]!.from).toBeGreaterThan(0);
+    expect(blockIndexAtOffset(text, 0)).toBeUndefined();
+  });
+
+  test("an empty document has no owning block at any offset", () => {
+    expect(blockIndexAtOffset("", 0)).toBeUndefined();
+  });
+
+  test("a caret past the LAST block's end still belongs to that last block (trailing whitespace/EOF)", () => {
+    const text = "First.\n\nSecond.";
+    expect(blockIndexAtOffset(text, text.length)).toBe(1);
+  });
+
+  test("marker boundaries: a caret on a solo marker line resolves to that marker's own block, distinct from its prose neighbors", () => {
+    const text = "Intro.\n\n@page-break\n\nOutro.";
+    const blocks = splitIntoBlocks(text);
+    const markerIndex = blocks.findIndex((b) => b.isMarker);
+    const markerOffset = blocks[markerIndex]!.from + 1; // inside "@page-break"
+    expect(blockIndexAtOffset(text, markerOffset)).toBe(markerIndex);
+  });
+});
+
 // ── moveBlock ──────────────────────────────────────────────────────────────────
 
 describe("moveBlock", () => {
@@ -568,5 +747,58 @@ describe("applyBlockMove", () => {
     expect(applyBlockMove(host, 0, "up").ok).toBe(false);
     expect(applyBlockMove(host, 0, "down").ok).toBe(false);
     expect(host.getSnapshot().version).toBe(0);
+  });
+});
+
+// ── Caret-driven block move (SFE-P3ab, Lane D — the full keyboard-wiring
+// pipeline: blockIndexAtOffset(host.getSnapshot().text, live.from) then
+// applyBlockMove, exactly as +page.svelte's Alt+Shift+ArrowUp/Down handler
+// composes them) ─────────────────────────────────────────────────────────
+
+describe("caret-driven block move (blockIndexAtOffset + applyBlockMove composed, as the keyboard shortcut does)", () => {
+  test("a live caret inside the SECOND block moves it up, past the first", () => {
+    const host = new MemoryDocumentHost({ text: "First.\n\nSecond.\n\nThird.", version: 0 });
+    const live: LiveSelection = { from: "First.\n\nSec".length, to: "First.\n\nSec".length };
+    const blockIndex = blockIndexAtOffset(host.getSnapshot().text, live.from);
+    expect(blockIndex).toBe(1); // "Second."
+    const outcome = applyBlockMove(host, blockIndex!, "up");
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("Second.\n\nFirst.\n\nThird.");
+  });
+
+  test("a live caret inside the FIRST block refuses to move up (nowhere to go), same diagnostic as the direct call", () => {
+    const host = new MemoryDocumentHost({ text: "First.\n\nSecond.", version: 0 });
+    const live: LiveSelection = { from: 2, to: 2 };
+    const blockIndex = blockIndexAtOffset(host.getSnapshot().text, live.from);
+    expect(blockIndex).toBe(0);
+    const outcome = applyBlockMove(host, blockIndex!, "up");
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.diagnostic.message).toContain("first block");
+    expect(host.getSnapshot().text).toBe("First.\n\nSecond.");
+  });
+
+  test("with no live caret at all (never focused), there is no blockIndex to move — the caller's own null-check, not a refusal from applyBlockMove", () => {
+    const host = new MemoryDocumentHost({ text: "First.\n\nSecond.", version: 0 });
+    const live: LiveSelection | undefined = undefined;
+    const blockIndex = live
+      ? blockIndexAtOffset(host.getSnapshot().text, live.from)
+      : undefined;
+    expect(blockIndex).toBeUndefined();
+    // Mirrors +page.svelte's own guard: with no blockIndex, applyBlockMove
+    // is never called at all.
+    expect(host.getSnapshot().text).toBe("First.\n\nSecond.");
+    expect(host.getSnapshot().version).toBe(0);
+  });
+
+  test("moving a marker block by caret preserves its bytes exactly, same as the direct moveBlock call", () => {
+    const host = new MemoryDocumentHost({ text: "Intro.\n\n@page-break\n\nOutro.", version: 0 });
+    const markerOffset = "Intro.\n\n@page".length; // inside "@page-break"
+    const blockIndex = blockIndexAtOffset(host.getSnapshot().text, markerOffset);
+    const blocks = splitIntoBlocks(host.getSnapshot().text);
+    expect(blocks[blockIndex!]!.isMarker).toBe(true);
+    const outcome = applyBlockMove(host, blockIndex!, "down");
+    expect(outcome.ok).toBe(true);
+    expect(host.getSnapshot().text).toBe("Intro.\n\nOutro.\n\n@page-break");
+    expect(host.getSnapshot().text).toContain("@page-break");
   });
 });

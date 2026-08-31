@@ -17,52 +17,50 @@
  * `toolbar-actions.ts`/`image-classes.ts`/`context-menu-actions.ts` posture
  * (PWA-clean, `bun test`-able without a browser).
  *
- * ## The missing accessor — why every insert below is CARET-INDEPENDENT
+ * ## The selection accessor — CLOSED (SFE-P3ab, Lane D)
  *
- * The hard part named by this run's own spec is SELECTION: "the rich editor
- * owns its own selection." This module was written only after confirming,
- * by reading the actual mount surface, that there is currently NO way for
- * desktop code to read (or set) the rich editor's live caret/selection:
+ * A prior run of this module anchored every command at the document end
+ * (`documentEndSelection`) because nothing in `packages/editor`'s mount
+ * surface exposed the fork's live caret/selection, and reported the exact
+ * missing accessor. That gap is now closed:
  *
- *   - `EditorMount` (`packages/editor/src/web/mount.ts`) returns only
- *     `{ dispose(): void }`.
- *   - `GutterpressEditorMount` (`packages/editor/src/gutterpress/mount.ts`,
- *     what `RichEditor.svelte` actually holds as `mount`) returns only
- *     `{ dispose(): void; needsRefresh(): boolean }`.
- *   - `VscodeEditorAdapter` (`packages/editor/src/vscode-adapter/adapter.ts`,
- *     the layer both mount functions are built on) returns only
- *     `{ dispose(): void }` too — even the adapter that constructs the
- *     underlying `EditorModel` (which DOES carry a real
- *     `readonly selection: ISettableObservable<Selection_2 | undefined,
- *     void>` — see `packages/vscode-markdown-editor/dist/index.d.ts`) never
- *     surfaces that observable outward.
+ *   - `VscodeEditorAdapter.getSelection()`
+ *     (`packages/editor/src/vscode-adapter/adapter.ts`) reads the fork's
+ *     own `model.selection` observable and returns it as UTF-16 D3 source
+ *     offsets (`{ from, to } | undefined`) — `undefined` exactly when the
+ *     mounted surface has no caret yet (never focused).
+ *   - `EditorMount.getSelection()` (`packages/editor/src/web/mount.ts`) and
+ *     `GutterpressEditorMount.getSelection()`
+ *     (`packages/editor/src/gutterpress/mount.ts`) are thin passthroughs to
+ *     the adapter — the SAME accessor, additive on both mount return
+ *     shapes.
+ *   - `RichEditor.svelte` exposes it upward as an imperative
+ *     `getSelection()` export (bound via `bind:this`, mirroring
+ *     `MarkdownEditor.svelte`'s `editorRef` pattern) so `+page.svelte` can
+ *     read the live caret at the moment a toolbar action or shortcut fires.
  *
- * Per the run spec's own instruction ("if the current EditorMount does NOT
- * expose a readable selection, you may NOT edit packages/editor — instead
- * implement what IS possible honestly ... and REPORT the exact missing
- * accessor ... Do not fake a selection"), this module does not guess at a
- * caret position. Every command below anchors its edit at the END of the
- * current document (`documentEndSelection`) — an honest, caret-independent
- * "insert here" point, exactly like `toolbar-actions.ts`'s own
- * `insertionPointAfterCurrentLine` is to CodeMirror's real cursor, minus the
- * "current line" part this module cannot know.
+ * Every `applyRich*` function below now resolves its edit position through
+ * {@link resolveRichSelection}: the LIVE caret/selection when the caller
+ * supplies one (a real, focused mount), {@link documentEndSelection} as an
+ * explicit, DOCUMENTED FALLBACK only when no caret exists (the surface has
+ * never been focused, or the caller has no mount reference yet — e.g. a
+ * drag-and-drop insert that arrives before the editor has focus). The
+ * compromise this header used to document is now the exceptional path, not
+ * the norm — pressing Bold with a caret mid-document formats AT the caret;
+ * `documentEndSelection` only fires when there is genuinely nothing better
+ * to anchor on.
  *
  * This also matches how the mounted rich editor actually OBSERVES an edit
  * applied this way: `createVscodeEditorAdapter`'s `host.subscribe` listener
  * cannot tell "a toolbar pushed this edit via `host.applyEdit` from outside"
  * apart from any other external actor's accepted edit (`submittingOwnEdit`
  * is only true for edits the PACKAGE's own `onWillApplySourceEdit` handler
- * is mid-flight submitting) — so every edit this module produces necessarily
+ * is mid-flight submitting) — so every edit this module produces still
  * lands in the mounted view as a full `model.replaceSourceText(...)`
- * external replacement, the same as an out-of-band file change. There is no
- * "select the placeholder text afterward" step to add here even in
- * principle: the adapter exposes no selection SETTER either.
- *
- * See this run's report for the exact accessor this blocks and the minimal
- * signature a later run would need to add to close the gap (e.g.
- * `EditorMount.getSelection(): { readonly from: number; readonly to: number
- * } | undefined`, threaded from `VscodeEditorAdapterOptions`'s underlying
- * `model.selection` observable).
+ * external replacement, the same as an out-of-band file change. There is
+ * still no "select the placeholder text afterward" step to add here even in
+ * principle: the adapter exposes no selection SETTER, only the getter this
+ * run added.
  */
 import type {
   Diagnostic,
@@ -110,11 +108,51 @@ export type RichCommandOutcome =
   | { readonly ok: false; readonly diagnostic: Diagnostic };
 
 /**
- * The caret-independent anchor every insert/toggle below computes against —
- * see this file's header. A collapsed selection at the end of the document.
+ * The document-end FALLBACK anchor every insert/toggle below resolves
+ * to when no live caret is available — see this file's header. A collapsed
+ * selection at the end of the document.
  */
 export function documentEndSelection(snapshot: DocumentSnapshot): CommandSelection {
   return { start: snapshot.text.length, endExclusive: snapshot.text.length };
+}
+
+/**
+ * The live caret/selection shape `EditorMount.getSelection()` /
+ * `GutterpressEditorMount.getSelection()` (`@dimm-city/gutterpress-editor/
+ * web` and `/gutterpress`) report — UTF-16 D3 source offsets, `from <= to`
+ * always (the adapter normalizes a backward drag). Declared locally rather
+ * than imported: this module only needs the two fields structurally, and a
+ * consumer-shaped type belongs with the consuming domain (plan D4), not
+ * coupled to `packages/editor`'s own export surface.
+ */
+export interface LiveSelection {
+  readonly from: number;
+  readonly to: number;
+}
+
+/**
+ * The ONE place every `applyRich*` function below resolves "where does this
+ * edit happen": `live` (the mount's CURRENT `getSelection()` result, read by
+ * the caller at the moment the command fires) converted to the shared
+ * command layer's `{start, endExclusive}` shape when a caret exists;
+ * {@link documentEndSelection} — the documented fallback — when it does
+ * not (`live` is `undefined` or omitted: the surface has never been
+ * focused, or the caller has no mount reference yet).
+ *
+ * No bounds-clamping here: a `live` value describing a position outside the
+ * current `snapshot` (a caret reported for a stale text version, in the
+ * narrow window before the mount observes a newer one) is passed through
+ * as-is and refused downstream through the SAME `EDITOR_INVALID_RANGE`
+ * path an out-of-range selection already takes (`applyCommand`'s own
+ * `invalidSelection` check, `@dimm-city/gutterpress-editor/web/standard`) —
+ * one refusal path, not a second silent-clamp behavior that could mask a
+ * real staleness bug.
+ */
+export function resolveRichSelection(
+  snapshot: DocumentSnapshot,
+  live?: LiveSelection,
+): CommandSelection {
+  return live ? { start: live.from, endExclusive: live.to } : documentEndSelection(snapshot);
 }
 
 function finishEdit(host: EditorDocumentHost, edit: SourceEdit): RichCommandOutcome {
@@ -143,15 +181,21 @@ function resolveHeadingToggle(
 
 /**
  * Applies one shared `EditorCommand` (P2a vocabulary) against `host`,
- * anchored at {@link documentEndSelection}. Covers every mapped toolbar
- * action EXCEPT image insertion (its full `gp-*` attribute vocabulary has no
- * room in `insert-image`'s minimal `{src, alt?}` shape — see
+ * anchored at `live` (the mount's current caret/selection) when supplied,
+ * falling back to {@link documentEndSelection} otherwise — see
+ * {@link resolveRichSelection}. Covers every mapped toolbar action EXCEPT
+ * image insertion (its full `gp-*` attribute vocabulary has no room in
+ * `insert-image`'s minimal `{src, alt?}` shape — see
  * {@link applyRichImageInsert}) and layout markers (a separate template
  * vocabulary — see {@link applyRichLayoutBlock}).
  */
-export function applyRichCommand(host: EditorDocumentHost, command: EditorCommand): RichCommandOutcome {
+export function applyRichCommand(
+  host: EditorDocumentHost,
+  command: EditorCommand,
+  live?: LiveSelection,
+): RichCommandOutcome {
   const snapshot = host.getSnapshot();
-  const selection = documentEndSelection(snapshot);
+  const selection = resolveRichSelection(snapshot, live);
   const resolved = resolveHeadingToggle(snapshot, selection, command);
   const result = applyCommand(snapshot, selection, resolved);
   if ("refused" in result) return { ok: false, diagnostic: result.refused };
@@ -160,25 +204,45 @@ export function applyRichCommand(host: EditorDocumentHost, command: EditorComman
 
 /**
  * Inserts a `@marker` layout skeleton (chapter/section/two-column/
- * page-break/spread) at the document end, via the SAME templates
- * `toolbar-actions.ts`'s `applyLayoutBlock` inserts into CodeMirror
- * (`descriptorForLayoutBlock` — one template, two thin appliers; G-09).
+ * page-break/spread) at `live`'s current position when supplied, falling
+ * back to the document end otherwise (`resolveRichSelection`), via the SAME
+ * templates `toolbar-actions.ts`'s `applyLayoutBlock` inserts into
+ * CodeMirror (`descriptorForLayoutBlock` — one template, two thin
+ * appliers; G-09). Every descriptor's own `insert` text is padded with
+ * leading/trailing `"\n\n"` (verified against `toolbar-actions.ts`'s
+ * templates), so splicing it at an arbitrary mid-line caret — unlike source
+ * mode's `insertionPointAfterCurrentLine`, this does not first walk to the
+ * end of the caret's line — still lands the marker on its own, correctly
+ * isolated line; it may split the surrounding prose into two paragraphs
+ * where source mode would not, an accepted, documented divergence rather
+ * than reproducing CodeMirror's line-boundary walk against plain source
+ * text.
  */
-export function applyRichLayoutBlock(host: EditorDocumentHost, kind: LayoutBlockKind): RichCommandOutcome {
+export function applyRichLayoutBlock(
+  host: EditorDocumentHost,
+  kind: LayoutBlockKind,
+  live?: LiveSelection,
+): RichCommandOutcome {
   const snapshot = host.getSnapshot();
-  const at = snapshot.text.length;
+  const at = resolveRichSelection(snapshot, live).endExclusive;
   const d = descriptorForLayoutBlock(kind);
   return finishEdit(host, { from: at, to: at, insert: d.insert, expectedVersion: snapshot.version });
 }
 
-/** Appends arbitrary text (a snippet body) at the document end. The rich
- *  counterpart of `MarkdownEditor.insertSnippet` (which inserts at the live
- *  CodeMirror caret) — same caret-independence rationale as every other
- *  function in this file. */
-export function applyRichAppend(host: EditorDocumentHost, text: string): RichCommandOutcome {
+/** Replaces `live`'s current selection (or a collapsed caret at the
+ *  document end when no caret is available — `resolveRichSelection`) with
+ *  `text` — a snippet body. The rich counterpart of
+ *  `MarkdownEditor.insertSnippet`, which does the same thing against the
+ *  live CodeMirror selection (`view.dispatch({changes: {from, to, insert:
+ *  text}, ...})` — replace, not append-after). */
+export function applyRichAppend(
+  host: EditorDocumentHost,
+  text: string,
+  live?: LiveSelection,
+): RichCommandOutcome {
   const snapshot = host.getSnapshot();
-  const at = snapshot.text.length;
-  return finishEdit(host, { from: at, to: at, insert: text, expectedVersion: snapshot.version });
+  const { start, endExclusive } = resolveRichSelection(snapshot, live);
+  return finishEdit(host, { from: start, to: endExclusive, insert: text, expectedVersion: snapshot.version });
 }
 
 // ── Images (G-10/AP-17, G-09) ───────────────────────────────────────────────
@@ -249,13 +313,21 @@ export function buildImageInsertText(value: ImagePropertiesValue): string {
   return `\n\n![${alt}](${src})${attrs}\n\n`;
 }
 
-/** Applies a validated {@link ImagePropertiesValue} as a new image, appended
- *  at the document end. Callers should run {@link validateImageProperties}
- *  first and surface its message instead of calling this on an invalid
- *  value (mirrors the existing context-menu image-properties flow). */
-export function applyRichImageInsert(host: EditorDocumentHost, value: ImagePropertiesValue): RichCommandOutcome {
+/** Applies a validated {@link ImagePropertiesValue} as a new image, inserted
+ *  at `live`'s current position when supplied, falling back to the document
+ *  end otherwise (`resolveRichSelection`) — the SAME leading/trailing
+ *  `"\n\n"`-padded self-isolation `applyRichLayoutBlock` relies on (see its
+ *  own doc comment) makes a mid-line insertion point safe here too.
+ *  Callers should run {@link validateImageProperties} first and surface its
+ *  message instead of calling this on an invalid value (mirrors the
+ *  existing context-menu image-properties flow). */
+export function applyRichImageInsert(
+  host: EditorDocumentHost,
+  value: ImagePropertiesValue,
+  live?: LiveSelection,
+): RichCommandOutcome {
   const snapshot = host.getSnapshot();
-  const at = snapshot.text.length;
+  const at = resolveRichSelection(snapshot, live).endExclusive;
   const insert = buildImageInsertText(value);
   return finishEdit(host, { from: at, to: at, insert, expectedVersion: snapshot.version });
 }
@@ -341,21 +413,46 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
   }
 }
 
-// ── Block movement (new vocabulary — pure function only this run) ──────────
+// ── Block movement (SFE-P3ab, Lane D: now WIRED, via the live caret) ───────
 //
-// `EditorMount`/`GutterpressEditorMount` expose no selection (this file's
-// header), and `MarkdownEditor`'s own exported `editorRef` shape
-// (`+page.svelte`) exposes `getSelectionText()` — the SELECTED TEXT — but no
-// CURSOR OFFSET either, so `+page.svelte` cannot determine "which block" in
-// EITHER surface without a signature change to a file outside this lane's
-// write ownership (`RichEditor`'s mount return shape, or `MarkdownEditor`'s
-// `editorRef` export — both belong to other lanes/files this run may not
-// write). Per the run spec's "implement what IS possible honestly ... REPORT
-// the exact missing accessor" instruction, this run therefore ships the pure
-// block-movement OPERATION — fully specified and tested — WITHOUT wiring a
-// toolbar control for it (a control with no way to know its own target would
-// not be honest capability; see this run's report for the two accessors a
-// later run needs to close this gap).
+// A prior run shipped the pure block-movement OPERATION (`splitIntoBlocks`/
+// `moveBlock`/`applyBlockMove` below) without a way to wire it to a toolbar
+// or keyboard control, because neither mount exposed a selection nor did
+// `MarkdownEditor`'s `editorRef` expose a cursor OFFSET (only
+// `getSelectionText()`, the selected TEXT) — so `+page.svelte` had no way to
+// determine "which block" the move should target.
+//
+// The mount side of that gap is now closed (`EditorMount.getSelection()` /
+// `GutterpressEditorMount.getSelection()`, this file's header). This
+// section adds the other missing piece: {@link blockIndexAtOffset}, the
+// pure mapping from "the live caret's offset" to "the `blockIndex` argument
+// `applyBlockMove` already takes" — `+page.svelte`'s keyboard wiring
+// (`EditorToolbar.svelte`/`toolbar-actions.ts` are another lane's files,
+// so this run's control surface is a keyboard shortcut checked directly in
+// `+page.svelte`'s `onGlobalKey`, exactly the pattern that file's own
+// rich-mode-toggle shortcut already uses) reads
+// `richEditorRef.getSelection()`, resolves it to a block with the function
+// below, then calls `applyBlockMove` unchanged.
+
+/**
+ * Which {@link SourceBlock} (index into `splitIntoBlocks(text)`) OWNS a
+ * given caret `offset` — the pure mapping block-movement's keyboard wiring
+ * needs. A caret strictly inside a block belongs to that block; a caret
+ * sitting in a GAP (a blank line, or the terminator between two adjacent
+ * blocks — see {@link splitIntoBlocks}'s own header) belongs to the block
+ * immediately BEFORE the gap — "the block the author was just in", not the
+ * one ahead that has not been reached yet. A caret before every block
+ * (leading blank lines, or an empty document) has no owning block.
+ */
+export function blockIndexAtOffset(text: string, offset: number): number | undefined {
+  const blocks = splitIntoBlocks(text);
+  let owner: number | undefined;
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i]!.from > offset) break;
+    owner = i;
+  }
+  return owner;
+}
 
 /** One structural unit `moveBlock` can reorder. `isMarker` distinguishes a
  *  single `@name ...` directive line (core marker OR project-plugin marker —
@@ -505,8 +602,8 @@ export function moveBlock(text: string, blockIndex: number, direction: "up" | "d
 }
 
 /** Applies {@link moveBlock}'s edit through `host`, mapping a refusal to a
- *  `Diagnostic`. Exported for completeness/future wiring; no toolbar control
- *  calls this yet — see this section's header. */
+ *  `Diagnostic`. Wired to `+page.svelte`'s Alt+Shift+ArrowUp/Down keyboard
+ *  shortcut via {@link blockIndexAtOffset} — see this section's header. */
 export function applyBlockMove(
   host: EditorDocumentHost,
   blockIndex: number,

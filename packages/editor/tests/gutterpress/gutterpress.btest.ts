@@ -138,6 +138,13 @@ async function needsRefresh(): Promise<boolean> {
 async function scriptRan(): Promise<boolean> {
   return harness.page.evaluate(() => window.__gpcScriptRan === true);
 }
+/** SFE-P3ab (Lane D) — the mounted `GutterpressEditorMount`'s live caret. */
+async function selectionOffsets(): Promise<{ from: number; to: number } | undefined> {
+  return harness.page.evaluate(() => window.__gpGutterpress.getSelection());
+}
+async function blockCenter(index: number): Promise<{ x: number; y: number }> {
+  return harness.page.evaluate((i) => window.__gpGutterpress.blockCenter(i), index);
+}
 
 /** AP-21 liveness: the mounted container really has the expected block/chip counts before any behavioral assertion proceeds. */
 async function requireCounts(blocks: number, chips: number): Promise<void> {
@@ -449,6 +456,74 @@ describe("D13: a limited: true projection renders no chips, even at a matching s
     await requireCounts(10_001, 0);
     expect(await needsRefresh()).toBe(true);
   }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// SFE-P3ab (Lane D) — GutterpressEditorMount.getSelection() over a REAL
+// projection-driven mount. mount.btest.ts (packages/editor/tests/web/) is
+// where this accessor's core contract (offset math, forward/backward
+// normalization) is proven in full against the plain surface; this file
+// adds only what is DISTINCT about the gutterpress-projected one: the
+// reported offset is into the FULL document (spanning marker/chip blocks
+// too), not just the plain block being clicked into.
+// ---------------------------------------------------------------------------
+
+describe("getSelection over a gutterpress-projected mount reports offsets into the FULL document (SFE-P3ab, Lane D)", () => {
+  test("undefined before the mounted surface has ever been focused", async () => {
+    await mount(FIXTURE_SOURCE);
+    await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
+
+    expect(await selectionOffsets()).toBeUndefined();
+  });
+
+  test("clicking into the trailing plain-text block and navigating by keyboard reports an offset matching an INDEPENDENTLY computed index into FIXTURE_SOURCE", async () => {
+    await mount(FIXTURE_SOURCE);
+    await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
+
+    // The independent computation: String.prototype.indexOf against the
+    // fixture constant itself, not anything derived from the mount or the
+    // accessor under test.
+    const trailOffset = FIXTURE_SOURCE.indexOf("Trail text.");
+    expect(trailOffset).toBeGreaterThan(-1);
+
+    const center = await blockCenter(TRAIL_BLOCK_INDEX);
+    await harness.page.mouse.click(center.x, center.y);
+    await harness.page.keyboard.press("Home");
+    const withinBlock = "Trail ".length;
+    for (let i = 0; i < withinBlock; i++) {
+      await harness.page.keyboard.press("ArrowRight");
+    }
+
+    const expected = trailOffset + withinBlock;
+    expect(await selectionOffsets()).toEqual({ from: expected, to: expected });
+  });
+
+  test("a real keystroke at that reported position lands EXACTLY there in the host's full text — corroborating the offset independently of the accessor itself", async () => {
+    await mount(FIXTURE_SOURCE);
+    await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
+
+    const trailOffset = FIXTURE_SOURCE.indexOf("Trail text.");
+    const center = await blockCenter(TRAIL_BLOCK_INDEX);
+    await harness.page.mouse.click(center.x, center.y);
+    await harness.page.keyboard.press("Home");
+    const withinBlock = "Trail ".length;
+    for (let i = 0; i < withinBlock; i++) {
+      await harness.page.keyboard.press("ArrowRight");
+    }
+    const expected = trailOffset + withinBlock;
+    expect(await selectionOffsets()).toEqual({ from: expected, to: expected });
+
+    await harness.page.keyboard.type("X");
+    await harness.page.waitForTimeout(50);
+
+    const text = await hostText();
+    expect(text.slice(expected, expected + 1)).toBe("X");
+    // The rest of the fixture, around the inserted character, is untouched
+    // -- reconstructed from FIXTURE_SOURCE itself (an independent value),
+    // not from any offset the mount or the accessor under test produced.
+    expect(text.slice(0, expected)).toBe(FIXTURE_SOURCE.slice(0, expected));
+    expect(text.slice(expected + 1)).toBe(FIXTURE_SOURCE.slice(expected));
+  });
 });
 
 describe("harness liveness", () => {

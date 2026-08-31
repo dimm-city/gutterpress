@@ -109,6 +109,17 @@ export interface EditorMount {
    * `EditorMount.dispose()` contract and `VscodeEditorAdapter.dispose()`'s.
    */
   dispose(): void;
+
+  /**
+   * SFE-P3ab (Lane D) — an ADDITIVE member: existing callers built against
+   * the pre-P3ab `{ dispose() }` shape are unaffected (structural typing —
+   * nothing destructures this out). Straight passthrough to
+   * `VscodeEditorAdapter.getSelection()` (`../vscode-adapter/adapter.ts`,
+   * whose own doc comment has the full contract) — this wrapper adds CSS
+   * injection and option defaulting, not a second selection
+   * implementation.
+   */
+  getSelection(): { readonly from: number; readonly to: number } | undefined;
 }
 
 /**
@@ -184,5 +195,6 @@ export function mountEditor(
       baseStyleEl.remove();
       extraStyleEl?.remove();
     },
+    getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
   };
 }

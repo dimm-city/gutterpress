@@ -23,10 +23,20 @@
    * fresh undo epoch (D7: "file switches ... are not undoable into the
    * prior file").
    *
-   * No business logic lives here: which projection to build, which host
-   * backs a document, and mode selection are ALL decided by the caller.
-   * This component owns DOM lifecycle for its own subtree only — create
-   * the container, mount, dispose.
+   * SFE-P3ab (Lane D): the one imperative export this component DOES have
+   * is `getSelection()` — a thin passthrough to the mounted handle's own
+   * `getSelection()` (`EditorMount`/`GutterpressEditorMount`, both now carry
+   * it — see `rich-commands.ts`'s header for the full picture). Exposed via
+   * `bind:this` exactly the way `MarkdownEditor.svelte`'s `editorRef` is
+   * (`+page.svelte`'s existing pattern for reading live editor state from
+   * outside), not a new prop shape — this component still owns no reactive
+   * state of its own; `getSelection()` just forwards to whatever the mount
+   * currently reports, read fresh on every call.
+   *
+   * No other business logic lives here: which projection to build, which
+   * host backs a document, and mode selection are ALL decided by the
+   * caller. This component owns DOM lifecycle for its own subtree only —
+   * create the container, mount, dispose.
    */
   import { onMount } from "svelte";
   import { mountGutterpressEditor } from "@dimm-city/gutterpress-editor/gutterpress";
@@ -68,13 +78,33 @@
 
   let container = $state<HTMLDivElement | undefined>(undefined);
 
+  // Set once in onMount, cleared once on unmount — a plain instance field,
+  // not `$state` (see the header: this component owns no REACTIVE state;
+  // `getSelection()` below only needs a stable reference to read through,
+  // never a render trigger).
+  let mountHandle:
+    | { getSelection(): { readonly from: number; readonly to: number } | undefined }
+    | undefined;
+
   onMount(() => {
     if (!container) return;
     const mount = projection
       ? mountGutterpressEditor(container, host, { projection, readonly, extraCss, onDiagnostic })
       : mountEditor(container, host, { readonly, extraCss, onDiagnostic });
-    return () => mount.dispose();
+    mountHandle = mount;
+    return () => {
+      mountHandle = undefined;
+      mount.dispose();
+    };
   });
+
+  /** The mounted surface's LIVE caret/selection (D3 source offsets), or
+   *  `undefined` when there is no caret yet — the surface has never been
+   *  focused, or this component has not mounted (yet, or anymore). Read
+   *  fresh on every call; this component keeps no cached copy. */
+  export function getSelection(): { readonly from: number; readonly to: number } | undefined {
+    return mountHandle?.getSelection();
+  }
 </script>
 
 <div class="rich-editor-host" bind:this={container}></div>
