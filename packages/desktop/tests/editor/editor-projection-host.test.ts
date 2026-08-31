@@ -1,5 +1,5 @@
 /**
- * editor-projection-host.test.ts (SFE-P3e, Lane A, NEW)
+ * editor-projection-host.test.ts (SFE-P3e, Lane A, then Lane C's loader swap)
  *
  * Drives {@link buildHostEditorProjection}
  * (`packages/desktop/electron/editor-projection.ts`) directly — the EXACT
@@ -10,12 +10,15 @@
  * the run's central end-to-end proof (deliverable 5): a real project
  * fixture ON DISK, a real manifest, a real degrade-and-report load of a
  * real local-file plugin FROM DISK, feeding the real, unmodified
- * `createMarkdownRenderer`/`createEditorProjection`. See
- * `editor-projection.ts`'s own header ("A CONFIRMED BLOCKER, not a design
- * preference") for exactly why the plugin-LOADING step is this module's own
- * narrower, host-local loader rather than a call into `packages/cli`'s
- * `loadPlugins` — reaching that function any other way was empirically
- * proven to break `bun run check` on unrelated code this lane cannot edit.
+ * `createMarkdownRenderer`/`createEditorProjection`.
+ *
+ * Lane C swapped the plugin-LOADING step from Lane A's narrower, host-local
+ * duplicate to `gutterpress/plugins`'s `loadPluginsWithCss` — the same
+ * degrade-and-report loader the live preview uses (see
+ * `editor-projection.ts`'s own header, "Loader boundary"). Every assertion
+ * below still holds against the real loader; Part 2(a)'s error-message
+ * assertion now pins that loader's OWN "not found" message text (quoted
+ * from a real run) rather than the deleted duplicate's shorter one.
  *
  * Part 1 — the positive case, against the COMMITTED plugin-book fixture
  * (`packages/desktop/tests/fixtures/plugin-book/`): the plugin genuinely
@@ -154,7 +157,7 @@ afterAll(() => {
 const ORDINARY_CONTENT = "# Hello\n\nSome ordinary prose, no markers.\n";
 
 describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
-  test("a projection is still produced, the npm plugin is skipped, and pluginErrors names it", async () => {
+  test("a projection is still produced, the npm plugin is skipped, and pluginErrors names it with the REAL loader's own needs-install message", async () => {
     const dir = makeTempProjectDir();
     writeFileSync(
       path.join(dir, "manifest.yaml"),
@@ -174,12 +177,22 @@ describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
     });
 
     // Never a blank projection, never a silent omission: exactly the one
-    // configured (uninstalled) plugin is named, with a real message — and
-    // the projection itself is still a valid, usable D6 shape.
+    // configured (uninstalled) plugin is named. The message text is pinned
+    // to the REAL `gutterpress/plugins` loader's own `loadNpmPackage`
+    // "not found" wording (quoted verbatim from a real run against this
+    // exact fixture, via `loadPlugin`'s `Failed to load plugin "…": …`
+    // wrapper) — not the deleted narrower duplicate's shorter message. The
+    // projection itself is still a valid, usable D6 shape.
     expect(pluginErrors.length).toBe(1);
     expect(pluginErrors[0]!.pluginRef).toBe("gutterpress-plugin-definitely-not-installed");
-    expect(pluginErrors[0]!.message.length).toBeGreaterThan(0);
-    expect(pluginErrors[0]!.message).toContain("gutterpress-plugin-definitely-not-installed");
+    expect(pluginErrors[0]!.message).toBe(
+      'Failed to load plugin "gutterpress-plugin-definitely-not-installed": ' +
+        'Plugin "gutterpress-plugin-definitely-not-installed" not found. Install it from ' +
+        "Project settings > Plugins > Install npm plugin,\n" +
+        "or reference a local file:\n" +
+        "  plugins:\n" +
+        "    - path: ./plugins/gutterpress-plugin-definitely-not-installed.js",
+    );
 
     expect(projection.schemaVersion).toBe(1);
     expect(projection.sourceVersion).toBe(0);
@@ -213,7 +226,14 @@ describe("degradation (b): a local plugin file that throws on load", () => {
 
     expect(pluginErrors.length).toBe(1);
     expect(pluginErrors[0]!.pluginRef).toBe("./plugins/broken.js");
-    expect(pluginErrors[0]!.message).toContain("this plugin always fails to load");
+    // The REAL loader (`loadPlugin`) wraps the thrown error in a
+    // `Failed to load plugin "…": …` prefix the deleted duplicate never
+    // added (it propagated the plugin's own throw unwrapped) — an
+    // observable wording difference, pinned exactly (quoted from a real
+    // run) rather than left to a loose substring match.
+    expect(pluginErrors[0]!.message).toBe(
+      'Failed to load plugin "./plugins/broken.js": this plugin always fails to load',
+    );
 
     expect(projection.schemaVersion).toBe(1);
     expect(Array.isArray(projection.blocks)).toBe(true);

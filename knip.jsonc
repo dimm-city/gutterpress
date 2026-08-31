@@ -35,6 +35,10 @@
         "src/cli.ts",
         "src/index.ts",
         "src/render.ts",
+        // gutterpress/plugins (D11, SFE-P3e): a subpath dist entrypoint like
+        // render.ts above, not imported by anything else in this package —
+        // consumed externally via package.json's "./plugins" export.
+        "src/plugins.ts",
         // Browser-side engine bundles: the sole `Bun.build` entrypoints
         // invoked by scripts/build-engine-bundles.mjs (see that script's
         // header) and embedded into the CLI binary via embedded-assets.ts —

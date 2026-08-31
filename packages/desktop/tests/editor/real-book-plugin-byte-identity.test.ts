@@ -1,5 +1,6 @@
 /**
- * real-book-plugin-byte-identity.test.ts (SFE-P3d-parity, then SFE-P3e Lane A)
+ * real-book-plugin-byte-identity.test.ts (SFE-P3d-parity, then SFE-P3e Lane A,
+ * then Lane C's loader swap)
  *
  * Parity-gate condition 3, PLUGIN-BOOK half of DELIVERABLE 1 — "Real
  * user-guide and PLUGIN-BOOK chapters can be edited without byte drift":
@@ -21,11 +22,12 @@
  * `support.ts`'s `buildRealPluginBookProjection`, calls that EXACT function
  * directly — real `loadManifestWithPath`/`resolveConfig` against this
  * fixture's own `manifest.yaml`, a real on-disk load of the REAL local-file
- * plugin it names (`./plugins/callout.js` — see `editor-projection.ts`'s
- * own header for exactly why that load step is a narrower, host-local
- * loader rather than a call into `packages/cli`'s `loadPlugins`), real
- * `createMarkdownRenderer`, real `createEditorProjection(...,
- * { trusted: true })`. No hand-built `md`, no injected plugin function.
+ * plugin it names (`./plugins/callout.js`), real `createMarkdownRenderer`,
+ * real `createEditorProjection(..., { trusted: true })`. No hand-built `md`,
+ * no injected plugin function. The plugin-loading step itself is
+ * `gutterpress/plugins`'s `loadPluginsWithCss` (Lane C, SFE-P3e) — the SAME
+ * degrade-and-report loader the live preview uses, not a desktop-local
+ * duplicate; see `editor-projection.ts`'s own header ("Loader boundary").
  *
  * ## Corpus
  *

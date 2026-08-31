@@ -39,6 +39,10 @@
     "./render": {
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "default": "./dist/plugins.js"
     }
   },
   "files": [
@@ -47,7 +51,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:library": "bun scripts/build-engine-bundles.mjs && rimraf dist && bun build src/index.ts src/api/index.ts --target=node --packages=external --splitting --outdir=dist && bun build src/render.ts --target=node --packages=external --outdir=dist && node scripts/check-render-pure.mjs && tsc -p tsconfig.build.json",
+    "build:library": "bun scripts/build-engine-bundles.mjs && rimraf dist && bun build src/index.ts src/api/index.ts src/plugins.ts --target=node --packages=external --splitting --outdir=dist && bun build src/render.ts --target=node --packages=external --outdir=dist && node scripts/check-render-pure.mjs && tsc -p tsconfig.build.json",
     "build": "bun run build:library && bun build src/cli.ts --target=node --packages=external --splitting --outdir=dist",
     "prepublishOnly": "bun run build",
     "test": "bun test",

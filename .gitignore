@@ -71,6 +71,11 @@ _site/dc-design-guide-migration-check/
 .gutterpress-stage/
 web-ui-signing.key
 
+# Plugin-loader freshness-cache shadow files (plugins.ts's hard-link reload
+# mechanism, cleaned at process exit — which Bun's test runner never fires, so
+# they linger next to test fixtures' local plugin files).
+.*.gutterpress-reload-*.js
+
 # Playwright artifacts (cross-browser preview smoke test)
 test-results/
 
