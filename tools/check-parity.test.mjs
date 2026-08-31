@@ -49,7 +49,12 @@ function withFixture(fn) {
 // (proving the shorthand-id array-resolution mechanism on a fixture, not
 // just against the live repo).
 
-function contextMenuFixture({ extraDirectItem = "", extraFormatKind = "" } = {}) {
+function contextMenuFixture({
+  extraDirectItem = "",
+  extraFormatKind = "",
+  extraClassMember = "",
+  extraModuleLevel = "",
+} = {}) {
   return `
 export class ContextMenuController {
   private static readonly FORMAT_KINDS = [
@@ -64,7 +69,7 @@ export class ContextMenuController {
   private helperEdit(): void {
     void this.commit("x", "y");
   }
-
+${extraClassMember}
   private buildFormatItems(): unknown[] {
     return this.constructor.FORMAT_KINDS.map(({ id, label, kind }) => {
       return {
@@ -106,6 +111,7 @@ export class ContextMenuController {
     ];
   }
 }
+${extraModuleLevel}
 `;
 }
 
@@ -354,6 +360,35 @@ withFixture((root) => {
   check("a fabricated test title in a real file fails the gate", r.status, 1);
 });
 
+// --- SABOTAGE: cited test exists but never references the row's OWN
+// replacement identifier — G-01/AP-01 (SFE-P3d-parity repair round 1,
+// CONFIRMED finding): a matrix row can cite a real test in a real file, and
+// that test can still prove only the PURE CORE underneath the named
+// replacement, never the replacement itself. `evidenceExists` alone cannot
+// catch this (the title is real); `evidenceReferencesReplacement` can.
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    // The evidence file no longer mentions "applyRichWidgetEdit" ANYWHERE —
+    // simulating a test file that imports/exercises only a shared pure
+    // module the real replacement wraps, never the replacement itself.
+    evidenceTest: `
+import { test } from "bun:test";
+test("applyWidgetEdit works", () => {});
+test("widget-alt helper path works", () => {});
+test("widget format items work", () => {});
+`,
+    matrix: cleanMatrix().replace(
+      "packages/desktop/tests/editor/parity-widget.test.ts::applyRichWidgetEdit works",
+      "packages/desktop/tests/editor/parity-widget.test.ts::widget-alt helper path works",
+    ),
+  });
+  const r = run(root);
+  check("a cited test that exists but never references its row's own replacement identifier fails the gate", r.status, 1);
+  check("failure is reported under RULE 6", r.stdout.includes("RULE 6 [test-evidence]: FAIL"), true);
+  check("failure names the un-referenced replacement identifier", r.stderr.includes("applyRichWidgetEdit"), true);
+});
+
 // --- SABOTAGE: waiver with no reason / no owner ---------------------------
 
 withFixture((root) => {
@@ -390,6 +425,324 @@ withFixture((root) => {
   const r = run(root);
   check("an action present in both mapped and waivers tables fails the gate", r.status, 1);
   check("failure names it double-covered", r.stderr.includes("DOUBLE-COVERED"), true);
+});
+
+// --- SABOTAGE: six ordinary TypeScript shapes that used to silently drop a
+// real commit-reaching action with the gate exiting 0 (SFE-P3d-parity repair
+// round 1, CONFIRMED finding). Each adds ONE extra item reaching the commit
+// path through a shape the item/method scanning in extractContextMenuActions
+// does not itself recognize, WITHOUT adding a matrix row — before the repair
+// every one of these exited 0 silently. Now residual call-site accounting
+// (RULE 1b) must catch five of them as a loud, named failure; the sixth
+// (bound method reference) is fixed at the primary extraction level (the
+// widened `this.<name>` reachability test) and must be a normal RULE 3
+// unmapped-action failure instead. ----------------------------------------
+
+withFixture((root) => {
+  // Shape A: method-shorthand `run() {...}` — not `run: () => {...}`.
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraDirectItem: `
+      {
+        id: "widget-shape-a",
+        label: "Method-shorthand run",
+        enabled: true,
+        async run() {
+          await this.commit("shapeA1", "shapeA2");
+        },
+      },`,
+    }),
+  });
+  const r = run(root);
+  check("shape A (method-shorthand run) is not silently dropped: gate fails", r.status, 1);
+  check("shape A failure is reported under RULE 1b (residual orphan call site)", r.stdout.includes("RULE 1b [residual-calls]: FAIL"), true);
+  check("shape A failure names an orphan call site", r.stderr.includes("ORPHAN CALL SITE"), true);
+});
+
+withFixture((root) => {
+  // Shape B: a helper method reaching commit with NO access modifier —
+  // findMethodBodies requires private/public/protected.
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraClassMember: `
+  helperEditNoModifier(): void {
+    void this.commit("shapeB1", "shapeB2");
+  }
+`,
+      extraDirectItem: `
+      {
+        id: "widget-shape-b",
+        label: "Modifier-less helper",
+        enabled: true,
+        run: () => this.helperEditNoModifier(),
+      },`,
+    }),
+  });
+  const r = run(root);
+  check("shape B (modifier-less helper method) is not silently dropped: gate fails", r.status, 1);
+  check("shape B failure is reported under RULE 1b", r.stdout.includes("RULE 1b [residual-calls]: FAIL"), true);
+});
+
+withFixture((root) => {
+  // Shape C: a class-field arrow property — sigRe requires `IDENT(`, not
+  // `IDENT = `.
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraClassMember: `
+  private dangerArrow = async (): Promise<void> => {
+    await this.commit("shapeC1", "shapeC2");
+  };
+`,
+      extraDirectItem: `
+      {
+        id: "widget-shape-c",
+        label: "Class-field arrow",
+        enabled: true,
+        run: () => this.dangerArrow(),
+      },`,
+    }),
+  });
+  const r = run(root);
+  check("shape C (class-field arrow property) is not silently dropped: gate fails", r.status, 1);
+  check("shape C failure is reported under RULE 1b", r.stdout.includes("RULE 1b [residual-calls]: FAIL"), true);
+});
+
+withFixture((root) => {
+  // Shape D: a module-level free function reached from `run`, calling
+  // commitRangePatch directly (no `this.<method>(` for the call-graph walk
+  // to find at all).
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraModuleLevel: `
+function dangerModuleHelper(controller: ContextMenuController): void {
+  (controller as unknown as { deps: { commitEngine: { commitRangePatch: (p: unknown) => void } } })
+    .deps.commitEngine.commitRangePatch({ a: "shapeD1", b: "shapeD2" });
+}
+`,
+      extraDirectItem: `
+      {
+        id: "widget-shape-d",
+        label: "Module-level free function",
+        enabled: true,
+        run: () => dangerModuleHelper(this),
+      },`,
+    }),
+  });
+  const r = run(root);
+  check("shape D (module-level free function) is not silently dropped: gate fails", r.status, 1);
+  check("shape D failure is reported under RULE 1b", r.stdout.includes("RULE 1b [residual-calls]: FAIL"), true);
+});
+
+withFixture((root) => {
+  // Shape E: an object-spread-built item — `id` supplied by the spread, not
+  // present at the item literal's own depth, so findItemLiterals's
+  // `id && run` requirement never registers the item at all.
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraClassMember: `
+  private static readonly SHAPE_E_BASE = { id: "widget-shape-e", label: "Spread-built", enabled: true };
+`,
+      extraDirectItem: `
+      {
+        ...ContextMenuController.SHAPE_E_BASE,
+        run: async () => {
+          await this.commit("shapeE1", "shapeE2");
+        },
+      },`,
+    }),
+  });
+  const r = run(root);
+  check("shape E (object-spread-built item) is not silently dropped: gate fails", r.status, 1);
+  check("shape E failure is reported under RULE 1b", r.stdout.includes("RULE 1b [residual-calls]: FAIL"), true);
+});
+
+withFixture((root) => {
+  // Shape F: a bound method reference (`run: this.helperBound.bind(this)`)
+  // — the OLD reach test required `this\.<name>\(`, a direct call, and
+  // missed the bare reference. Fixed at the PRIMARY extraction level (the
+  // widened `this.<name>` test), so this one gets a real action id and a
+  // normal RULE 3 unmapped-action failure — RULE 1b must stay green because
+  // helperBound's own body is a recognized (privately-modified) method,
+  // correctly attributing its call site regardless.
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraClassMember: `
+  private helperBound(): void {
+    void this.commit("shapeF1", "shapeF2");
+  }
+`,
+      extraDirectItem: `
+      {
+        id: "widget-shape-f",
+        label: "Bound method reference",
+        enabled: true,
+        run: this.helperBound.bind(this),
+      },`,
+    }),
+    // matrix intentionally UNCHANGED — the new action has no row.
+  });
+  const r = run(root);
+  check("shape F (bound method reference) is properly extracted, not silently dropped", r.status, 1);
+  check("shape F is reported as an unmapped action under RULE 3 (real extraction, not just a residual failure)", r.stderr.includes("widget-shape-f"), true);
+  check("shape F's underlying call site is still correctly attributed (RULE 1b stays green)", r.stdout.includes("RULE 1b [residual-calls]: PASS"), true);
+});
+
+// --- SABOTAGE: a mutation reached only through an unrecognized constructor-
+// dependency callback (`this.deps.<name>(...)`) — mirrors the LIVE
+// `block-edit` / `this.deps.openInlineEdit(...)` case in
+// context-menu-controller.svelte.ts. Before the repair this was invisible to
+// extraction entirely (no method-name call graph can see a DI callback); now
+// any dependency call outside READ_ONLY_DEPENDENCY_METHODS is treated as
+// commit-reaching by default. --------------------------------------------
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraDirectItem: `
+      {
+        id: "widget-shape-dep",
+        label: "Constructor dependency mutation",
+        enabled: true,
+        run: () => {
+          this.deps.someUnknownMutatingDependency("depArg1", "depArg2");
+        },
+      },`,
+    }),
+    // matrix intentionally UNCHANGED — the new action has no row.
+  });
+  const r = run(root);
+  check("a mutation reached only through an unrecognized constructor-dependency call is extracted, not invisible", r.status, 1);
+  check("the dependency-reached action is reported as unmapped under RULE 3", r.stderr.includes("widget-shape-dep"), true);
+});
+
+// --- SABOTAGE: fail-open regex literal with an unpaired quote inside a
+// character class (`/['"]/`) collapses buildMask()'s naive string handling
+// into a phantom string that swallows the rest of the file — SFE-P3d-parity
+// repair round 1 (CONFIRMED finding). Before the repair this exited 0 with
+// "scanned 0 context-menu item literal(s)" because AP-21 liveness was
+// computed on the UNION of both files' extracted actions and inline-edit's
+// unaffected `block-edit` masked the collapse. -----------------------------
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    contextMenu:
+      `const APOS_OR_QUOTE = /['"]/g;\n` +
+      contextMenuFixture({
+        extraDirectItem: `
+      {
+        id: "widget-regex-victim-1",
+        label: "Victim 1",
+        enabled: true,
+        run: async () => { await this.commit("r1", "r2"); },
+      },
+      {
+        id: "widget-regex-victim-2",
+        label: "Victim 2",
+        enabled: true,
+        run: async () => { await this.commit("r3", "r4"); },
+      },`,
+      }),
+  });
+  const r = run(root);
+  check("a regex literal with an unpaired quote does not silently collapse extraction to a green gate", r.status !== 0, true);
+  check(
+    "the mask-integrity failure is reported (unterminated string), not a silent PASS",
+    r.stderr.includes("unterminated"),
+    true,
+  );
+});
+
+// --- SABOTAGE: per-file AP-21 liveness — a TOTAL collapse of ONE file's
+// extraction must fail even while the OTHER file still contributes actions
+// (the union-based check this replaces could never go red on either file
+// alone, since `block-edit` is independently extracted from BOTH files).
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    contextMenu: `
+export class ContextMenuController {
+  private buildItems(): unknown[] {
+    return [
+      {
+        id: "go-to-source",
+        label: "Go to source",
+        enabled: true,
+        run: () => { this.deps.goToSource(); },
+      },
+    ];
+  }
+}
+`,
+    // inlineEdit left CLEAN — it still yields a real, extractable block-edit
+    // action, which is exactly what let the OLD union check pass silently.
+  });
+  const r = run(root);
+  check(
+    "a total collapse of context-menu extraction fails the gate even though inline-edit still yields block-edit (per-file liveness)",
+    r.status,
+    1,
+  );
+  check(
+    "the failure specifically names context-menu-controller.svelte.ts's own liveness",
+    r.stdout.includes("context-menu-controller.svelte.ts extraction yielded"),
+    true,
+  );
+});
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    // commit() with NO access modifier — findMethodBodies never sees it, so
+    // inline-edit extraction yields zero methods and zero actions.
+    inlineEdit: `
+export class InlineEditController {
+  async commit(text: string): Promise<void> {
+    await this.deps.commitEngine.commitRangePatch({ text });
+  }
+}
+`,
+    // contextMenu left CLEAN — it still yields real, extractable actions.
+  });
+  const r = run(root);
+  check(
+    "a total collapse of inline-edit extraction (modifier-less commit) fails the gate even though context-menu still yields actions (per-file liveness)",
+    r.status,
+    1,
+  );
+  check(
+    "the failure specifically names inline-edit-controller.svelte.ts's own liveness",
+    r.stdout.includes("inline-edit-controller.svelte.ts extraction yielded"),
+    true,
+  );
+});
+
+// --- Positive: a code-bearing, INTERPOLATED template literal inside a
+// commit-reaching item's `run` closure does not defeat extraction — mirrors
+// the LIVE template literal at context-menu-controller.svelte.ts:793
+// (SFE-P3d-parity repair round 1, CONFIRMED finding: the header used to
+// falsely claim no such literal existed in the real file and that this case
+// was fixture-covered; neither was true before this repair).
+
+withFixture((root) => {
+  scaffoldClean(root, {
+    contextMenu: contextMenuFixture({
+      extraDirectItem: `
+      {
+        id: "widget-template-literal",
+        label: "Template literal in run",
+        enabled: true,
+        run: async () => {
+          const note = \`This selection already contains \${"formatting"} noted\`;
+          await this.commit("t1", "t2");
+        },
+      },`,
+    }),
+    matrix:
+      cleanMatrix() +
+      "\n| `widget-template-literal` | `toolbar-actions.ts#applyWidgetEdit` | source toolbar | `packages/desktop/tests/editor/parity-widget.test.ts::applyWidgetEdit works` |\n",
+  });
+  const r = run(root);
+  check("a code-bearing interpolated template literal in a commit-reaching item's run closure does not defeat extraction", r.status, 0);
+  check("the template-literal item is extracted and mapped (RULE 3 passes)", r.stdout.includes("RULE 3 [coverage]: PASS"), true);
 });
 
 // --- Positive: stale matrix rows (action id no longer extracted) WARN, not FAIL ---

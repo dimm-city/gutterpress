@@ -112,7 +112,7 @@
  * (run spec: "NO layout/marker/plugin commands (P2b+)") and are unchanged.
  */
 import type { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
+import { EditorSelection, type Text } from "@codemirror/state";
 import type { Diagnostic, EditorCommand, LayoutBlockKind } from "@dimm-city/gutterpress-editor/core";
 import { applyCommand, commandState } from "@dimm-city/gutterpress-editor/standard";
 import {
@@ -778,17 +778,45 @@ export type CaretTokenCommandOutcome =
   | { readonly ok: false; readonly diagnostic: Diagnostic };
 
 /**
- * D14 diagnostic for a caret-token command whose target span changed
+ * D14 diagnostic for a caret-token command whose target document changed
  * underneath it between locating the token and applying the edit — an
  * intervening dialog (`promptImageProperties`/`promptText`, owned by the
- * caller) gives real time for an external reload, a file switch, or the
+ * caller) gives real time for an external reload, a FILE SWITCH, or the
  * author's own typing to land. CodeMirror's `view.dispatch` has no
  * staleness check of its own (unlike the rich surface's
  * `EditorDocumentHost.applyEdit`, which is versioned — see
  * `rich-commands.ts`'s equivalent functions), so this is the proportionate
- * replacement: re-verify the EXACT original span text is still there
- * immediately before dispatching. "Must never guess a range" (this run's
- * own instruction) is exactly what this check prevents.
+ * replacement: re-verify DOCUMENT IDENTITY, not just the target span's own
+ * bytes, immediately before dispatching. "Must never guess a range" (this
+ * run's own instruction) is exactly what this check prevents.
+ *
+ * SFE-P3d-parity repair round 1 (CONFIRMED finding): a bare byte compare at
+ * the ORIGINAL offsets (`sliceString(match.start, match.end) !==
+ * originalSpan`) has no notion of document identity. This desktop app keeps
+ * ONE `EditorView` alive across every open file — `MarkdownEditor.svelte`'s
+ * own header: "the view itself is never torn down between files" — and
+ * `switchFile()` replaces the view's state via `view.setState(...)`, a
+ * WHOLESALE state replacement, not an incremental edit. So while a dialog
+ * is open the author (or an external reload) can switch to a DIFFERENT
+ * file entirely; the byte-compare alone could pass if the new file happens
+ * to have the SAME bytes at the SAME offsets (two chapters sharing a
+ * boilerplate `![Logo](logo.png)` at the same position is entirely
+ * plausible in a book), silently writing the edit into the WRONG document.
+ * `EditorState` in CodeMirror 6 is immutable and the `doc` (`Text`) field is
+ * REPLACED — not merely mutated — by any accepted transaction OR by
+ * `setState()`, and is reference-EQUAL to its prior value only when the
+ * document truly did not change (a selection-only transaction reuses the
+ * same `Text`). Capturing `view.state.doc` at locate time and comparing by
+ * REFERENCE at apply time is therefore both a document-identity check (a
+ * file switch always produces a brand-new `Text`) and a strictly stronger
+ * substitute for the byte compare (any accepted edit anywhere in the
+ * document invalidates the capture) — the SAME strictness the rich
+ * surface's `captureRichSelection`/`isRichSelectionCaptureFresh` already
+ * applies via `richDocHost.getSnapshot().version`, just proven a different
+ * way on this surface's plain `EditorView` (no `DocumentSnapshot.version`
+ * to compare here). The original exact-span byte compare is KEPT alongside
+ * it as defense in depth (belt and suspenders — a future change to either
+ * surface's identity semantics should not silently reopen this gap).
  */
 function staleCaretTokenSpanDiagnostic(): Diagnostic {
   return {
@@ -800,12 +828,14 @@ function staleCaretTokenSpanDiagnostic(): Diagnostic {
 /** Locate step for "Image properties…": resolves the image at the caret
  *  and seeds an {@link ImagePropertiesValue} from its current token, ready
  *  for the caller to hand to `ImagePropertiesDialog`. `originalSpan` is the
- *  exact text {@link applyImagePropertiesEdit} re-verifies is still there
- *  before dispatching. */
+ *  exact text, and `capturedDoc` the exact document IDENTITY,
+ *  {@link applyImagePropertiesEdit} re-verifies before dispatching (see
+ *  {@link staleCaretTokenSpanDiagnostic}'s header). */
 export interface ImagePropertiesAtCaret {
   readonly match: ImageTokenMatch;
   readonly initial: ImagePropertiesValue;
   readonly originalSpan: string;
+  readonly capturedDoc: Text;
 }
 
 export function locateImagePropertiesAtCaret(view: EditorView): LocateResult<ImagePropertiesAtCaret> {
@@ -814,11 +844,15 @@ export function locateImagePropertiesAtCaret(view: EditorView): LocateResult<Ima
   const located = locateImageAtCaret(text, from);
   if (!located.ok) return located;
   const { match, initial } = located.value;
-  return { ok: true, value: { match, initial, originalSpan: text.slice(match.start, match.end) } };
+  return {
+    ok: true,
+    value: { match, initial, originalSpan: text.slice(match.start, match.end), capturedDoc: view.state.doc },
+  };
 }
 
-/** Apply step for "Image properties…": re-verifies `located`'s span, then
- *  computes and dispatches the diff between `located.initial` and `next`
+/** Apply step for "Image properties…": re-verifies `located`'s document
+ *  identity AND its span's exact bytes, then computes and dispatches the
+ *  diff between `located.initial` and `next`
  *  (`caret-token-commands.ts#computeImagePropertiesEdit` — the exact same
  *  diff rule `context-menu-controller.svelte.ts`'s "Set properties…" uses).
  *  Caller is expected to have already validated `next`
@@ -828,7 +862,10 @@ export function applyImagePropertiesEdit(
   located: ImagePropertiesAtCaret,
   next: ImagePropertiesValue,
 ): CaretTokenCommandOutcome {
-  if (view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan) {
+  if (
+    view.state.doc !== located.capturedDoc ||
+    view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan
+  ) {
     return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
   }
   const edit = computeImagePropertiesEdit(located.match, located.initial, next);
@@ -853,12 +890,14 @@ export function applyImageUnwrapAtCaret(view: EditorView): CaretTokenCommandOutc
 
 /** Locate step for "Edit link…": resolves the link at the caret, ready to
  *  seed a text prompt with its current target. `originalSpan` is the exact
- *  text {@link applyLinkEditEdit} re-verifies is still there before
- *  dispatching. */
+ *  text, and `capturedDoc` the exact document IDENTITY,
+ *  {@link applyLinkEditEdit} re-verifies before dispatching (see
+ *  {@link staleCaretTokenSpanDiagnostic}'s header). */
 export interface LinkEditAtCaret {
   readonly match: LinkTokenMatch;
   readonly initialHref: string;
   readonly originalSpan: string;
+  readonly capturedDoc: Text;
 }
 
 export function locateLinkEditAtCaret(view: EditorView): LocateResult<LinkEditAtCaret> {
@@ -867,15 +906,21 @@ export function locateLinkEditAtCaret(view: EditorView): LocateResult<LinkEditAt
   const located = locateLinkAtCaret(text, from);
   if (!located.ok) return located;
   const { match, initialHref } = located.value;
-  return { ok: true, value: { match, initialHref, originalSpan: text.slice(match.start, match.end) } };
+  return {
+    ok: true,
+    value: { match, initialHref, originalSpan: text.slice(match.start, match.end), capturedDoc: view.state.doc },
+  };
 }
 
-/** Apply step for "Edit link…": re-verifies `located`'s span, then
- *  computes and dispatches the new href
+/** Apply step for "Edit link…": re-verifies `located`'s document identity
+ *  AND its span's exact bytes, then computes and dispatches the new href
  *  (`caret-token-commands.ts#computeLinkEditEdit` — `rewriteLinkToken`
  *  unchanged). */
 export function applyLinkEditEdit(view: EditorView, located: LinkEditAtCaret, href: string): CaretTokenCommandOutcome {
-  if (view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan) {
+  if (
+    view.state.doc !== located.capturedDoc ||
+    view.state.doc.sliceString(located.match.start, located.match.end) !== located.originalSpan
+  ) {
     return { ok: false, diagnostic: staleCaretTokenSpanDiagnostic() };
   }
   const edit = computeLinkEditEdit(located.match, href);

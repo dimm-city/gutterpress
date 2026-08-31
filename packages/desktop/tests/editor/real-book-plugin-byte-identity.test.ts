@@ -129,9 +129,19 @@ describe("plugin-book corpus liveness (AP-21) — real, nonempty, plugin-configu
   });
 });
 
-describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> rich-mount lifecycle (PLUGIN-AWARE, TRUSTED projection) -> unmount -> read back", () => {
+// SFE-P3d-parity repair round 1 (CONFIRMED finding): same correction as
+// `real-book-byte-identity.test.ts` — these titles used to say "rich-mount
+// lifecycle" / "mount then unmount". No mount happens: `registerMount` is
+// bookkeeping state and `createEditorProjection` is a pure function. A REAL
+// browser mount of the actual fork is proven separately, against a
+// SYNTHETIC corpus, by `packages/editor/tests/vscode-adapter/browser.cases
+// .btest.ts`'s "mount + unmount with zero edits leaves host source
+// byte-identical" cases — real chapters (this file's own plugin-book
+// fixture included) have never been mounted in a real browser; a named,
+// owner-attributed gap (Lane E, this run), not a claim this file makes.
+describe("no-edit byte identity: plugin-book chapter -> DesktopDocumentHost -> projection build (PLUGIN-AWARE, TRUSTED) -> read back", () => {
   for (const file of LOADED) {
-    test(`${file.id} — mount then unmount changes ZERO bytes, with a plugin-aware trusted projection actually built`, () => {
+    test(`${file.id} — document session + projection build changes ZERO bytes, with a plugin-aware trusted projection actually built`, () => {
       const original = file.text;
       const originalBuffer = file.bytes;
 

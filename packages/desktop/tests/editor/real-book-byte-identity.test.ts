@@ -190,9 +190,24 @@ describe("real-book corpus liveness (AP-21) — this file actually loaded real, 
   });
 });
 
-describe("no-edit byte identity: real chapter -> DesktopDocumentHost -> rich-mount lifecycle -> unmount -> read back", () => {
+// SFE-P3d-parity repair round 1 (CONFIRMED finding): these titles used to
+// say "rich-mount lifecycle" / "mount then unmount". No mount happens here
+// — `RichModeController.registerMount` is bookkeeping state, and
+// `createEditorProjection` is a pure function; neither can write to the
+// host. That is exactly right for THIS deliverable (see the file header's
+// honest "What this file DOES prove" list), but the OLD titles claimed
+// more than the bodies run, and titles are what a gate result quotes. A
+// REAL browser mount of the actual fork IS proven elsewhere — see
+// `packages/editor/tests/vscode-adapter/browser.cases.btest.ts`'s
+// "mount + unmount with zero edits leaves host source byte-identical"
+// cases, which mount the real `@vscode/markdown-editor` fork in Chromium —
+// against a SYNTHETIC corpus, not these real chapters. Real chapters have
+// never been mounted in a real browser; that is a named, owner-attributed
+// gap (Lane B, this run) for a follow-up to close, not a claim this file
+// makes.
+describe("no-edit byte identity: real chapter -> DesktopDocumentHost -> projection build -> read back", () => {
   for (const file of LOADED) {
-    test(`${file.id} — mount then unmount changes ZERO bytes`, () => {
+    test(`${file.id} — document session + projection build changes ZERO bytes`, () => {
       // ── 1. Read the file (already done above; re-assert here so this
       //    test is self-contained and legible on its own). ──────────────
       const original = file.text;

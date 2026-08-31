@@ -43,13 +43,48 @@
 //      method that merely CONSTRUCTS other items is not conflated with a
 //      method that ITSELF calls the commit path) contains a call to
 //      `commitEngine.commitRangePatch(`, then closed one hop by "any method
-//      that calls `this.<seed method>(`" (this file's real shape needs only
-//      one hop — `commit()` is the seed, `promptEditMarkerLine()` is the one
-//      method that calls it — but the closure is computed to a fixed point
-//      so a future multi-hop helper chain is still found).
+//      that calls `this.<seed method>` — a bare reference counts, not only a
+//      direct call, so `run: this.helperEdit.bind(this)` reaches exactly
+//      like `run: () => this.helperEdit()` does" (this file's real shape
+//      needs only one hop — `commit()` is the seed, `promptEditMarkerLine()`
+//      is the one method that calls it — but the closure is computed to a
+//      fixed point so a future multi-hop helper chain is still found).
+//      SFE-P3d-parity repair round 1 (CONFIRMED finding): also seeded by any
+//      `this.deps.<name>(` call whose `<name>` is NOT in the small,
+//      maintained `READ_ONLY_DEPENDENCY_METHODS` allowlist below — a
+//      constructor-injected dependency (`ContextMenuDeps`) is, by
+//      construction, invisible to the method-name call graph, and the one
+//      real case (`block-edit`'s `this.deps.openInlineEdit(...)`) used to
+//      reach the gate ONLY because `inline-edit-controller.svelte.ts`
+//      independently yields the same synthetic id — a NEW dependency
+//      callback that mutates would have been silently invisible from this
+//      file's own extraction. The allowlist is fail-safe in the unsafe
+//      direction: an unrecognized dependency method is treated as
+//      commit-reaching by default, not the reverse.
 //   4. An item literal is a MUTATION-CAPABLE ACTION when its own `run` text
-//      contains `this.commit(`/`commitRangePatch(` directly, OR calls
-//      `this.<method>(` for a method found reachable in step 3.
+//      contains `this.commit(`/`commitRangePatch(` directly, references
+//      `this.<method>` for a method found reachable in step 3, or calls
+//      `this.deps.<name>(` for a `<name>` outside the read-only allowlist.
+//   4a. RESIDUAL CALL-SITE ACCOUNTING (SFE-P3d-parity repair round 1,
+//      CONFIRMED finding — closes the "an ordinary TypeScript shape this
+//      shallow scanner doesn't recognize makes the whole action silently
+//      vanish" failure mode independently of steps 2-4 above): after
+//      extraction, this file separately re-scans the WHOLE (masked) source
+//      for every real-code occurrence of `commitRangePatch(` / `this.commit(`
+//      and asserts each one falls inside EITHER a recognized method body
+//      (step 3) OR an item's extracted `run` value span (step 2/4). A hit
+//      that falls in neither — a method-shorthand `run() {...}` (no `:`,
+//      never recognized as a property value), a modifier-less helper method
+//      (step 3 requires `private`/`public`/`protected`), a class-field arrow
+//      (`x = () => {...}` is not `IDENT(...)`), a bare module-level
+//      function, or a `run` built by object-spread (`{ ...BASE, run: ... }`,
+//      which has no `id` at the spread's own depth so step 2 never records
+//      it) — is a REAL, LOUD gate failure (RULE 1b), never a silent pass.
+//      This is deliberately independent of, and does not require, widening
+//      steps 2/3 to recognize every one of those shapes by name: the run's
+//      binding constraint is "cannot silently vanish", and a hard FAIL that
+//      names the orphan call site's file:line satisfies that even where this
+//      scanner cannot also produce a clean action id for it (see LIMITATIONS).
 //   5. For an item literal with a LITERAL string id, that string is the
 //      action id. For a SHORTHAND id (`{ id, ... }` fed by `.map()`), the
 //      nearest enclosing `IDENTIFIER.map(` call is found, `IDENTIFIER`'s own
@@ -72,15 +107,27 @@
 // LIMITATIONS (stated plainly rather than silently assumed away — SFE-P3d-parity's
 // own instructions: "If a lane finds the extraction cannot be made reliable
 // … it reports that rather than falling back to a hand-list and calling it
-// derived"):
+// derived". Corrected by SFE-P3d-parity repair round 1 (CONFIRMED finding):
+// this section previously made two claims that were false the day it was
+// written — see git history for the original text — and understated how far
+// a real TypeScript shape could defeat the scanner. Both are fixed below.):
 //   - This is a string/brace-balance scanner, not a real TypeScript parser.
 //     It correctly skips `//` and `/* */` comments and `'`/`"`/`` ` ``
 //     string content (including escapes) for the purpose of brace/paren
 //     matching, but does not model template-literal `${…}` interpolation
-//     depth — neither target file contains a code-bearing backtick outside a
-//     comment today (verified by direct inspection at authoring time), so
-//     this is a real constraint on the technique, not a hidden bug, and is
-//     exercised by a fixture in check-parity.test.mjs.
+//     depth. `context-menu-controller.svelte.ts` DOES contain a code-bearing
+//     template literal today (inside the `FORMAT_KINDS.map()` callback,
+//     `` `This selection already contains ${label.toLowerCase()} formatting.` ``
+//     — a disabled-reason string, not inside a comment). Extraction survives
+//     it only because that literal is brace-balanced and has no nested
+//     backtick, so the naive "scan to the next same-quote character" string
+//     handling still finds the true closing backtick and blanks the whole
+//     span uniformly — a template literal that itself contained a nested
+//     backtick (a tagged template, or one embedding another template) would
+//     not be handled correctly. A fixture in check-parity.test.mjs now
+//     exercises exactly this shape (a code-bearing, interpolated template
+//     literal inside a commit-reaching item's `run` closure) and asserts the
+//     action is still extracted.
 //   - The array-resolution step (§5 above) finds the id array via the
 //     identifier name immediately before `.map(` and a same-name `= [`
 //     declaration elsewhere in the file. A shorthand-id item fed by
@@ -90,12 +137,44 @@
 //     checker's liveness/notes output makes the miss visible rather than
 //     silently under-counting (an item flagged commit-reaching with an
 //     unresolved shorthand id is reported as a NOTE and still fails the
-//     "has no matrix mapping" rule under a synthetic placeholder id, so it
-//     cannot silently vanish from the gate).
+//     "has no matrix mapping" rule under a synthetic placeholder id).
 //   - The commit-reachability closure is call-graph analysis over METHOD
 //     NAMES textually, not real binding resolution. This is the same
 //     "spirit of check-render-purity.mjs" string-scan posture the sibling
 //     check-architecture.mjs documents for its own import-specifier scan.
+//   - RESIDUAL CALL-SITE ACCOUNTING (rule 1b, added by SFE-P3d-parity repair
+//     round 1) is what actually backs a "cannot silently vanish" claim now —
+//     NOT the shape of steps 2-4 alone. An adversarial verification pass
+//     (repair round 1) constructed six ordinary TypeScript shapes that each
+//     independently made steps 2-4 alone extract ZERO actions for a real
+//     commit-reaching item, with the gate exiting 0: a method-shorthand
+//     `run() {...}` property, a modifier-less helper method, a class-field
+//     arrow property, a module-level free function invoked from `run`, an
+//     object-spread-built item (`{ ...BASE, run: ... }`, `id` supplied by
+//     the spread), and a bound method reference (`run: this.helperEdit.bind(this)`
+//     — this LAST one is now additionally fixed at the step-3/4 level by
+//     widening the reachability test from `this\.<name>\(` to the bare
+//     `this\.<name>` reference, so it gets a real action id, not just a
+//     residual failure). Rule 1b (see step 4a above) catches the other five
+//     as loud gate failures naming the orphan call site — it does NOT give
+//     them a clean action id or a matrix row of their own; a human must add
+//     one to clear the failure. This is a materially WEAKER guarantee than
+//     "every shape is correctly identified", and is stated as such rather
+//     than reasserting the stronger claim the original text made.
+//   - STILL NOT COVERED, disclosed rather than silently assumed: a mutation
+//     reached only through a constructor-injected dependency callback whose
+//     OWN implementation lives in a DIFFERENT file — i.e. `this.deps.<name>(...)`
+//     where `<name>` is outside `READ_ONLY_DEPENDENCY_METHODS` — is treated
+//     as commit-reaching (step 3), but if the real mutation lived behind a
+//     dependency name this checker cannot see calling `commitRangePatch(`
+//     nowhere in either of the two scanned files (imagine a THIRD file
+//     entirely), rule 1b's residual scan — which only re-scans the same two
+//     files' own text — would not find a local call site to flag either.
+//     Cross-file dependency-injection reachability is not implemented; a
+//     genuinely new mutation surface introduced entirely through a
+//     dependency call whose body the two scanned files never locally
+//     reference `commitRangePatch(`/`this.commit(` in is a known gap, not a
+//     silently-assumed non-issue.
 //
 // Usage:  node tools/check-parity.mjs [--root <path>]
 //   --root defaults to the repository root (two levels up from this file).
@@ -146,9 +225,33 @@ function parseArgs(argv) {
 // Code-aware scanning primitives (comments/strings masked out)
 // ---------------------------------------------------------------------------
 
+// SFE-P3d-parity repair round 1 (CONFIRMED finding, fail-open sabotage
+// proof): a regex literal whose character class holds an UNPAIRED quote
+// (e.g. `const APOS = /['"]/g;`) is invisible to this scanner — it has no
+// notion of a regex literal at all — so the stray `'`/`"` inside it opens a
+// PHANTOM string that this naive "scan to the next same-quote character"
+// logic then hunts for the close of, potentially swallowing the rest of the
+// file (every subsequent brace, item literal, and method body) as fake
+// string content while reporting nothing wrong. Full regex-literal detection
+// (division-vs-regex disambiguation) is real-parser territory this
+// dependency-free scanner deliberately does not attempt (see LIMITATIONS).
+// What IS cheap and reliable: a well-formed TypeScript/Svelte source file
+// never legitimately ends mid-string or mid-block-comment — reaching EOF
+// while still "inside" one is always anomalous, and a phantom string opened
+// by a stray quote inside a regex character class either (a) never finds a
+// same-quote character again before EOF (this scanner's fixture below), or
+// (b) happens to close somewhere later, in which case the RESULT is
+// silently wrong data rather than a crash — case (a) this function catches
+// directly; case (b) is exactly why rule 1b's residual call-site accounting
+// (see this file's header) exists as a second, independent line of defense
+// that does not depend on the mask being correct in the first place.
+// Returns `{ mask, unterminated }` — `unterminated` is `null` when the scan
+// completed cleanly, or `{ kind, start }` (line-reportable via `lineOf`)
+// naming the first string/comment span that never found its terminator.
 function buildMask(text) {
   const n = text.length;
   const mask = new Uint8Array(n); // 1 = real code, 0 = string/comment content
+  let unterminated = null;
   let i = 0;
   while (i < n) {
     const c = text[i];
@@ -161,6 +264,7 @@ function buildMask(text) {
       continue;
     }
     if (c === "/" && c2 === "*") {
+      const spanStart = i;
       mask[i] = 0;
       mask[i + 1] = 0;
       i += 2;
@@ -172,11 +276,14 @@ function buildMask(text) {
         mask[i] = 0;
         mask[i + 1] = 0;
         i += 2;
+      } else if (!unterminated) {
+        unterminated = { kind: "comment", start: spanStart };
       }
       continue;
     }
     if (c === '"' || c === "'" || c === "`") {
       const quote = c;
+      const spanStart = i;
       mask[i] = 0;
       i++;
       while (i < n && text[i] !== quote) {
@@ -192,13 +299,15 @@ function buildMask(text) {
       if (i < n) {
         mask[i] = 0;
         i++;
+      } else if (!unterminated) {
+        unterminated = { kind: "string", start: spanStart };
       }
       continue;
     }
     mask[i] = 1;
     i++;
   }
-  return mask;
+  return { mask, unterminated };
 }
 
 // A SEPARATE mask from buildMask(): blanks ONLY `//`/`/* */` comment
@@ -287,6 +396,22 @@ function findItemLiterals(text, mask) {
   const n = text.length;
   const stack = [];
   const results = [];
+  // Every `{ ... }` that is a DIRECT ELEMENT of an array literal (`[ {...},
+  // {...} ]`), regardless of what properties it has or whether it parses as
+  // a recognized `id`+`run` item — SFE-P3d-parity repair round 1 (CONFIRMED
+  // finding, shapes A/E: a method-shorthand `run() {...}` property is never
+  // registered as a "run" key at all — the preceding `async` keyword eats
+  // the key-position check — and an object-spread-built item has no `id` at
+  // its own depth — so neither is a `results` entry, yet BOTH are still
+  // array elements this enclosing method (`buildItems()`) merely
+  // CONSTRUCTS, not implements). Used below to strip every array-element
+  // object wholesale before computing commit-reachability, so an
+  // unrecognized item's leaked internal call site can never make its
+  // CONTAINER method look like a genuine commit-reaching implementation —
+  // which would wrongly exempt that exact call site from residual
+  // accounting (header step 4a) precisely because of the gap it is
+  // evidence of.
+  const arrayElementObjectSpans = [];
   let i = 0;
   while (i < n) {
     if (mask[i] !== 1) {
@@ -295,13 +420,15 @@ function findItemLiterals(text, mask) {
     }
     const c = text[i];
     if (c === "{" || c === "(" || c === "[") {
-      stack.push({ ch: c, start: i, props: new Map() });
+      const parent = stack.length > 0 ? stack[stack.length - 1] : null;
+      stack.push({ ch: c, start: i, props: new Map(), isArrayElement: c === "{" && !!parent && parent.ch === "[" });
       i++;
       continue;
     }
     if (c === "}" || c === ")" || c === "]") {
       const frame = stack.pop();
       if (frame && frame.ch === "{" && c === "}") {
+        if (frame.isArrayElement) arrayElementObjectSpans.push({ start: frame.start, end: i + 1 });
         if (frame.props.has("id") && frame.props.has("run")) {
           results.push({ start: frame.start, end: i, idProp: frame.props.get("id"), runProp: frame.props.get("run") });
         }
@@ -350,7 +477,7 @@ function findItemLiterals(text, mask) {
       if (prop && prop.kind === "colon" && prop.valueEnd == null) prop.valueEnd = r.end;
     }
   }
-  return results;
+  return { results, arrayElementObjectSpans };
 }
 
 // Finds every `private`/`public`/`protected` class method's body span.
@@ -434,6 +561,64 @@ function lineOf(text, index) {
   return text.slice(0, index).split("\n").length;
 }
 
+// `ContextMenuDeps` methods known to be read-only/non-mutating (see header
+// step 3) — a MAINTAINED ALLOWLIST, not a blocklist: a `this.deps.<name>(`
+// call whose `<name>` is NOT in this set is treated as commit-reaching by
+// default. This is the fail-safe direction — a newly added dependency
+// method starts out "suspect" until proven read-only and added here, rather
+// than starting out invisible to the gate. Kept in sync by hand with
+// `ContextMenuDeps` in context-menu-controller.svelte.ts; a fixture in
+// check-parity.test.mjs exercises what happens when a call falls OUTSIDE it.
+const READ_ONLY_DEPENDENCY_METHODS = new Set([
+  "client",
+  "enabled",
+  "rendering",
+  "currentDir",
+  "openContent",
+  "readFile",
+  "getIframeOrigin",
+  "getWorkspaceRect",
+  "promptText",
+  "promptImageProperties",
+  "goToSource",
+  "openMediaPanel",
+  "copyToClipboard",
+  "toastSuccess",
+  "toastError",
+]);
+
+// ---------------------------------------------------------------------------
+// Residual call-site accounting (SFE-P3d-parity repair round 1, CONFIRMED
+// finding — header step 4a). Independent of the item/method-shape scanning
+// above: re-scans the WHOLE masked file for every real-code
+// `commitRangePatch(` / `this.commit(` call site and reports any that fall
+// OUTSIDE both a recognized method body and an extracted item's `run` value
+// span. This is what turns "an ordinary shape this scanner doesn't
+// recognize" into a loud gate failure instead of a silent miscount — it
+// does not need to understand WHY a call site is orphaned (method-shorthand,
+// missing modifier, arrow field, spread, module-level function — see
+// LIMITATIONS), only THAT it is.
+// ---------------------------------------------------------------------------
+
+function findResidualCallSites(text, mask, methods, attributedSpans, relPath, patterns = [/commitRangePatch\s*\(/g, /this\.commit\s*\(/g]) {
+  const residual = [];
+  const seen = new Set(); // dedupe by start index — a site can match at most one pattern, but guard anyway
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(text))) {
+      const idx = m.index;
+      if (mask[idx] !== 1) continue; // inside a string/comment — not real code
+      if (seen.has(idx)) continue;
+      seen.add(idx);
+      const inMethod = methods.some((meth) => idx >= meth.bodyStart && idx < meth.bodyEnd);
+      const inExtractedSpan = attributedSpans.some((span) => idx >= span.start && idx < span.end);
+      if (inMethod || inExtractedSpan) continue;
+      residual.push({ file: relPath, line: lineOf(text, idx), snippet: m[0] });
+    }
+  }
+  return residual;
+}
+
 // ---------------------------------------------------------------------------
 // Extraction: context-menu-controller.svelte.ts
 // ---------------------------------------------------------------------------
@@ -445,16 +630,40 @@ function extractContextMenuActions(root) {
     return { error: `context-menu source file not found: ${relPath}` };
   }
   const text = readFileSync(absPath, "utf8");
-  const mask = buildMask(text);
-  const items = findItemLiterals(text, mask);
+  const { mask, unterminated } = buildMask(text);
+  if (unterminated) {
+    return {
+      error:
+        `${relPath}: the code-mask scanner reached end of file still inside an unterminated ${unterminated.kind} ` +
+        `starting at line ${lineOf(text, unterminated.start)} — likely a regex literal containing an unpaired quote ` +
+        `(this scanner has no notion of regex literals; see buildMask()'s header). Extraction results cannot be ` +
+        `trusted while this holds; fix the source (or, if this really is a regex literal, teach buildMask about it).`,
+    };
+  }
+  const { results: items, arrayElementObjectSpans } = findItemLiterals(text, mask);
   const methods = findMethodBodies(text, mask);
 
-  // Strip nested item-literal `run` value spans out of method bodies before
-  // seeding the commit-reachability set, so a BUILDER method that merely
-  // constructs items (whose closures happen to call the commit path when
-  // LATER invoked) is not conflated with a method that calls the commit
-  // path itself when the builder runs. See header §3.
+  // Strip nested item-literal spans out of method bodies before seeding the
+  // commit-reachability set, so a BUILDER method that merely constructs
+  // items (whose closures happen to call the commit path when LATER
+  // invoked) is not conflated with a method that calls the commit path
+  // itself when the builder runs. See header §3. Two sources, covering
+  // every item shape regardless of whether it parsed as a recognized
+  // `id`+`run` item:
+  //   - every DIRECT ARRAY ELEMENT object (`arrayElementObjectSpans` —
+  //     `buildItems()`'s own `[ {...}, {...} ]` return) is stripped WHOLESALE,
+  //     recognized or not — this is what keeps an unrecognized item (a
+  //     method-shorthand `run() {...}`, shape A; an object-spread-built
+  //     item, shape E) from leaking its internal call site into its
+  //     CONTAINER method's reachability, which would wrongly exempt that
+  //     exact call site from residual accounting (header step 4a).
+  //   - every RECOGNIZED item's `run:` value span (`items`) is ALSO
+  //     stripped — needed for an item that is NOT a direct array element,
+  //     e.g. the `FORMAT_KINDS.map()` callback's `return { ... }`.
   const stripped = text.split("");
+  for (const span of arrayElementObjectSpans) {
+    for (let k = span.start; k < span.end; k++) stripped[k] = " ";
+  }
   for (const it of items) {
     if (it.runProp.kind === "colon") {
       for (let k = it.runProp.valueStart; k < it.runProp.valueEnd; k++) stripped[k] = " ";
@@ -462,10 +671,29 @@ function extractContextMenuActions(root) {
   }
   const strippedText = stripped.join("");
 
+  // A bare `this.<name>` REFERENCE counts as reaching, not only a direct
+  // `this.<name>(` CALL — SFE-P3d-parity repair round 1 (CONFIRMED finding):
+  // `run: this.helperEdit.bind(this)` reaches `helperEdit` exactly like
+  // `run: () => this.helperEdit()` does; the old `\(` suffix requirement
+  // silently missed it. See header step 3.
+  const reachesThisRef = (target, body) => new RegExp(`\\bthis\\.${target}\\b`).test(body);
+
   const reachesCommit = new Set();
   for (const meth of methods) {
     const body = strippedText.slice(meth.bodyStart, meth.bodyEnd);
     if (/commitRangePatch\s*\(/.test(body)) reachesCommit.add(meth.name);
+    // Constructor-dependency seed (header step 3): a call through
+    // `this.deps.<name>(` where `<name>` is outside the read-only
+    // allowlist is treated as commit-reaching too — a DI callback is
+    // invisible to method-name call-graph analysis otherwise.
+    const depCallRe = /this\.deps\.([A-Za-z_$][\w$]*)\s*\(/g;
+    let dm;
+    while ((dm = depCallRe.exec(body))) {
+      if (!READ_ONLY_DEPENDENCY_METHODS.has(dm[1])) {
+        reachesCommit.add(meth.name);
+        break;
+      }
+    }
   }
   let changed = true;
   while (changed) {
@@ -474,7 +702,7 @@ function extractContextMenuActions(root) {
       if (reachesCommit.has(meth.name)) continue;
       const body = strippedText.slice(meth.bodyStart, meth.bodyEnd);
       for (const target of reachesCommit) {
-        if (new RegExp(`\\bthis\\.${target}\\s*\\(`).test(body)) {
+        if (reachesThisRef(target, body)) {
           reachesCommit.add(meth.name);
           changed = true;
           break;
@@ -485,19 +713,36 @@ function extractContextMenuActions(root) {
 
   const actions = new Map(); // id -> [{ file, line }]
   const notes = [];
+  const extractedRunSpans = []; // { start, end } — residual accounting exemption (header step 4a)
   for (const it of items) {
     const runText = it.runProp.kind === "colon" ? text.slice(it.runProp.valueStart, it.runProp.valueEnd) : "";
     let reaches = /this\.commit\s*\(/.test(runText) || /commitRangePatch\s*\(/.test(runText);
     if (!reaches) {
       for (const target of reachesCommit) {
         if (target === "commit") continue;
-        if (new RegExp(`\\bthis\\.${target}\\s*\\(`).test(runText)) {
+        if (reachesThisRef(target, runText)) {
+          reaches = true;
+          break;
+        }
+      }
+    }
+    if (!reaches) {
+      // A `this.deps.<name>(` call outside the read-only allowlist, made
+      // DIRECTLY from the item's own run text (not via a helper method) —
+      // same rule as the seeding step above, applied here too so an item
+      // that calls the dependency inline (not through a private helper)
+      // is not missed.
+      const depCallRe = /this\.deps\.([A-Za-z_$][\w$]*)\s*\(/g;
+      let dm;
+      while ((dm = depCallRe.exec(runText))) {
+        if (!READ_ONLY_DEPENDENCY_METHODS.has(dm[1])) {
           reaches = true;
           break;
         }
       }
     }
     if (!reaches) continue;
+    if (it.runProp.kind === "colon") extractedRunSpans.push({ start: it.runProp.valueStart, end: it.runProp.valueEnd });
     const line = lineOf(text, it.start);
     if (it.idProp.kind === "colon") {
       const raw = it.idProp.valueStart != null ? text.slice(it.idProp.valueStart, it.idProp.valueEnd).trim() : "";
@@ -529,7 +774,23 @@ function extractContextMenuActions(root) {
       }
     }
   }
-  return { actions, notes, itemLiteralCount: items.length, methodCount: methods.length };
+
+  // Residual accounting (header step 4a) must NOT exempt a call site merely
+  // for sitting somewhere inside a CONTAINER method's textual span — every
+  // item literal `buildItems()`/`buildFormatItems()` return is nested
+  // INSIDE that method's own body, so a blanket "any recognized method
+  // body" exemption would silently re-swallow exactly the shapes this rule
+  // exists to catch (an unrecognized item nested inside `buildItems()`,
+  // e.g. a method-shorthand `run` or a spread-built item, sits textually
+  // inside `buildItems`'s span even though `buildItems` itself never calls
+  // commit directly). Narrowed to methods actually IN `reachesCommit` — a
+  // real implementation method (seeded directly, or reached via the
+  // `this.<name>`/`this.deps.<name>` closure above) — so a pure item-literal
+  // CONTAINER provides no blanket exemption; only an extracted item's own
+  // run span (attributedSpans) or a genuinely reaching method's body counts.
+  const reachingMethods = methods.filter((meth) => reachesCommit.has(meth.name));
+  const residual = findResidualCallSites(text, mask, reachingMethods, extractedRunSpans, relPath);
+  return { actions, notes, residual, itemLiteralCount: items.length, methodCount: methods.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +804,16 @@ function extractInlineEditActions(root) {
     return { error: `inline-edit source file not found: ${relPath}` };
   }
   const text = readFileSync(absPath, "utf8");
-  const mask = buildMask(text);
+  const { mask, unterminated } = buildMask(text);
+  if (unterminated) {
+    return {
+      error:
+        `${relPath}: the code-mask scanner reached end of file still inside an unterminated ${unterminated.kind} ` +
+        `starting at line ${lineOf(text, unterminated.start)} — likely a regex literal containing an unpaired quote ` +
+        `(this scanner has no notion of regex literals; see buildMask()'s header). Extraction results cannot be ` +
+        `trusted while this holds; fix the source (or, if this really is a regex literal, teach buildMask about it).`,
+    };
+  }
   const methods = findMethodBodies(text, mask);
   const actions = new Map();
   for (const meth of methods) {
@@ -561,7 +831,20 @@ function extractInlineEditActions(root) {
       break; // one location is enough evidence per method
     }
   }
-  return { actions, methodCount: methods.length };
+
+  // Residual accounting (header step 4a): this file has exactly ONE
+  // possible action id ("block-edit"), so a `this.commit(` REFERENCE calling
+  // the already-recognized private `commit()` method is not a candidate for
+  // a SEPARATE, missed action — it is the same action, reached from another
+  // caller (e.g. a default-visibility `endActive(commit: boolean)`, which
+  // has no explicit modifier and so is invisible to findMethodBodies —
+  // verified live in this file today). Scanning only for bare
+  // `commitRangePatch(` here (not `this.commit(`) still catches a genuinely
+  // NEW, separate write path that bypasses `commit()` entirely and lives
+  // outside any modifier-having method — a modifier-less helper, a
+  // class-field arrow, or a bare module-level function.
+  const residual = findResidualCallSites(text, mask, methods, [], relPath, [/commitRangePatch\s*\(/g]);
+  return { actions, residual, methodCount: methods.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -720,6 +1003,51 @@ function evidenceExists(root, ref) {
   return { exists: true };
 }
 
+// SFE-P3d-parity repair round 1 (CONFIRMED finding — G-01/AP-01): a cited
+// test title existing somewhere in a cited file proves NOTHING about
+// whether that test exercises the CITED REPLACEMENT COMMAND — a matrix row
+// could cite `locateImagePropertiesAtCaret` as its replacement and a test
+// file that imports and exercises only the PURE core module underneath it
+// (`caret-token-commands.ts`), never once referencing the named wrapper.
+// This is exactly what happened before this repair: three matrix rows
+// named ten wrapper functions and every cited test file imported only the
+// shared pure module. Requires that AT LEAST ONE evidence file cited for a
+// row contain, as real code (not a comment), at least one of that row's
+// OWN replacement identifiers — a coarse but real connection between "what
+// the row claims replaces the action" and "what the cited test file
+// actually imports/calls". Rows whose replacements are ALL sentinels
+// (`source-editor#direct-text-edit`/`rich-editor#direct-text-edit` — no
+// dedicated function to reference) are exempt; there is nothing to grep for.
+function evidenceReferencesReplacement(root, evidenceRefs, replacementRefs) {
+  const identifiers = replacementRefs
+    .filter((ref) => !DIRECT_EDIT_SENTINELS.has(ref))
+    .map((ref) => ref.slice(ref.indexOf("#") + 1))
+    .filter(Boolean);
+  if (identifiers.length === 0) return { ok: true }; // sentinel-only row — exempt
+
+  const filePaths = [...new Set(evidenceRefs.map((ref) => ref.slice(0, ref.indexOf("::"))).filter(Boolean))];
+  for (const relPath of filePaths) {
+    const absPath = join(root, relPath);
+    if (!existsSync(absPath)) continue; // already reported by evidenceExists
+    const text = readFileSync(absPath, "utf8");
+    const commentMask = buildCommentOnlyMask(text);
+    for (const id of identifiers) {
+      const idRe = new RegExp(`\\b${id}\\b`, "g");
+      let m;
+      while ((m = idRe.exec(text))) {
+        if (commentMask[m.index] === 1) return { ok: true };
+      }
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `none of this row's evidence file(s) (${filePaths.join(", ")}) reference any of its own replacement ` +
+      `identifier(s) (${identifiers.join(", ")}) as real code — the cited test(s) may prove only the pure core ` +
+      `underneath the named replacement, not the replacement itself (G-01/AP-01)`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -757,22 +1085,67 @@ function main() {
   );
   for (const note of cmResult.notes) summary.push(`  NOTE: ${note}`);
 
-  // AP-21 liveness: an empty extracted set is a fixture error, never a
-  // silent pass — it means the extraction never actually exercised the
-  // controllers' real shape (both source files were readable, so a real
-  // repo tree with real context-menu items should never land here).
-  if (extracted.size === 0) {
-    summary.push(`RULE 1 [extraction]: FAIL (liveness, AP-21) — zero mutation-capable actions extracted`);
+  // AP-21 liveness, PER SOURCE FILE (SFE-P3d-parity repair round 1,
+  // CONFIRMED finding — a UNION check across both files let a total
+  // collapse of ONE file's extraction hide behind the OTHER file still
+  // contributing at least one action; `block-edit` is extracted from BOTH
+  // files independently today, so a union check could never actually go
+  // red on either file alone). Each file must independently show it saw
+  // real, structured content AND produced at least one action — zero item
+  // literals, zero methods, or zero actions in EITHER file is always a
+  // fixture/scan error, never a silent pass.
+  if (cmResult.itemLiteralCount === 0 || cmResult.methodCount === 0 || cmResult.actions.size === 0) {
+    summary.push(
+      `RULE 1 [extraction]: FAIL (liveness, AP-21) — context-menu-controller.svelte.ts extraction yielded ` +
+        `${cmResult.itemLiteralCount} item literal(s), ${cmResult.methodCount} method(s), ${cmResult.actions.size} action(s)`,
+    );
     hasFail = true;
     failDetails.push(
-      "Extraction produced an EMPTY action set. Per AP-21 this is always a fixture/scan error, never a silent pass — " +
-        "either the two source files no longer contain any commit()-reaching context-menu item or commitRangePatch() " +
-        "call (in which case the preview mutation surface has already been deleted and this gate's whole purpose is " +
-        "gone), or the extraction's own pattern-matching stopped recognizing the real code shape. Either way this must " +
-        "be investigated, not passed through.",
+      "Context-menu extraction produced a zero count somewhere it should not have. Per AP-21 this is always a " +
+        "fixture/scan error, never a silent pass — either the file no longer contains any commit()-reaching item " +
+        "(in which case the preview mutation surface has already been deleted and this gate's whole purpose is gone), " +
+        "or the extraction's own pattern-matching stopped recognizing the real code shape.",
     );
   } else {
-    summary.push(`RULE 1 [extraction]: PASS — nonempty, real action set`);
+    summary.push(`RULE 1 [extraction]: PASS — context-menu-controller.svelte.ts liveness (nonempty items/methods/actions)`);
+  }
+  if (ieResult.methodCount === 0 || ieResult.actions.size === 0) {
+    summary.push(
+      `RULE 1 [extraction]: FAIL (liveness, AP-21) — inline-edit-controller.svelte.ts extraction yielded ` +
+        `${ieResult.methodCount} method(s), ${ieResult.actions.size} action(s)`,
+    );
+    hasFail = true;
+    failDetails.push(
+      "Inline-edit extraction produced a zero count somewhere it should not have. Per AP-21 this is always a " +
+        "fixture/scan error, never a silent pass.",
+    );
+  } else {
+    summary.push(`RULE 1 [extraction]: PASS — inline-edit-controller.svelte.ts liveness (nonempty methods/actions)`);
+  }
+
+  // RULE 1b [residual calls] (SFE-P3d-parity repair round 1, CONFIRMED
+  // finding — header step 4a): every real-code `commitRangePatch(`/
+  // `this.commit(` call site in either file must be attributable to a
+  // recognized method body or an extracted item's run span. An orphan call
+  // site means a real mutation-capable action escaped extraction under a
+  // TypeScript shape this scanner's item/method matching doesn't recognize
+  // — this is what keeps that failure mode a loud gate failure instead of a
+  // silent undercount (see LIMITATIONS for exactly which shapes this closes
+  // and which remain a disclosed gap).
+  const residual = [...cmResult.residual, ...ieResult.residual];
+  if (residual.length > 0) {
+    summary.push(`RULE 1b [residual-calls]: FAIL — ${residual.length} orphan mutation call site(s) attributable to no extracted action`);
+    hasFail = true;
+    for (const r of residual) {
+      failDetails.push(
+        `  ORPHAN CALL SITE: "${r.snippet}" at ${r.file}:${r.line} is not inside any recognized method body or ` +
+          `extracted item's run span — a real authoring action may have escaped extraction under a TypeScript shape ` +
+          `this scanner does not recognize (method-shorthand, missing modifier, class-field arrow, module-level ` +
+          `function, or object-spread — see LIMITATIONS). This must be investigated, not passed through.`,
+      );
+    }
+  } else {
+    summary.push(`RULE 1b [residual-calls]: PASS — every commitRangePatch(...)/this.commit(...) call site is attributable`);
   }
 
   // ── Matrix parsing ─────────────────────────────────────────────────────
@@ -864,6 +1237,12 @@ function main() {
       const res = evidenceExists(root, ref);
       if (!res.exists) badEvidence.push({ row, ref, reason: res.reason });
     }
+    // SFE-P3d-parity repair round 1 (CONFIRMED finding): existence of the
+    // cited test title is not enough — it must connect to the row's OWN
+    // replacement command(s), not merely a test of the pure core beneath
+    // them. See evidenceReferencesReplacement's own header.
+    const refCheck = evidenceReferencesReplacement(root, row.evidence, row.replacements);
+    if (!refCheck.ok) badEvidence.push({ row, reason: refCheck.reason });
   }
   if (badEvidence.length > 0) {
     summary.push(`RULE 6 [test-evidence]: FAIL — ${badEvidence.length} test evidence reference(s) do not resolve`);

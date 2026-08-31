@@ -157,8 +157,13 @@ review log). Their cause:
 - `cd packages/desktop && bun run test && bun run check && bun run lint && bun run build`
 - `cd packages/cli && bun run build && bun run test`
 - `cd packages/editor && bun run test && bun run test:browser && bun run check:browser-purity`
+- `node tools/check-parity.test.mjs` (self-test — must pass before the gate below is trusted, per G-12/AP-20)
 - `bun run check:parity`
 - `bun run check:architecture && bun run check:generated-files && bun run check:vendored && bun run knip`
+
+Both `check:parity` lines above are wired into CI (`.github/workflows/ci.yml`,
+`build` job, self-test-then-gate pair immediately after `check:architecture`)
+— a gate with no CI invocation path is the same as no gate at all (AP-20).
 
 ## Parity gate result
 

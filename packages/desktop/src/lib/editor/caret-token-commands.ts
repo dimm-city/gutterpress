@@ -38,18 +38,36 @@
  * "known command files" (`toolbar-actions.ts`/`rich-commands.ts`/
  * `commands.ts`) — the per-surface, NAMED command a caller actually invokes
  * (and that the matrix cites as each row's "Replacement command(s)") lives
- * in those files: `toolbar-actions.ts#applyImagePropertiesAtCaret`/
- * `#applyImageUnwrapAtCaret`/`#applyLinkEditAtCaret` for source (each takes
- * the live `EditorView` — the same shape every other function in that file
- * uses — plus the dialog callback it needs), and
- * `rich-commands.ts#applyRichImagePropertiesAtCaret`/
- * `#applyRichImageUnwrapAtCaret`/`#applyRichLinkEditAtCaret` for rich (same
- * `(host: EditorDocumentHost, …, live: LiveSelection)` shape as this file's
- * other `applyRich*` functions). Both sets of six wrappers are thin: read
- * text/caret from their own surface, delegate the ENTIRE locate/compute
- * decision to the pure functions below, and dispatch through their own
- * surface's existing write seam (`view.dispatch`/`host.applyEdit`) — one
- * implementation, two thin appliers (G-09), exactly like
+ * in those files. SFE-P3d-parity repair round 1 (CONFIRMED finding): the
+ * six names this paragraph used to give — `applyImagePropertiesAtCaret`/
+ * `applyLinkEditAtCaret` (source) and `applyRichImagePropertiesAtCaret`/
+ * `applyRichLinkEditAtCaret` (rich), each said to take "the live
+ * `EditorView`/host … plus the dialog callback it needs" — do not exist and
+ * never did; only `applyImageUnwrapAtCaret`/`applyRichImageUnwrapAtCaret`
+ * (no dialog, so no locate/apply split) match that description. The REAL
+ * shape, correctly documented 300 lines below in `toolbar-actions.ts`
+ * (search that file for "LOCATE step" / "APPLY step") and mirrored in
+ * `rich-commands.ts`, is a LOCATE/APPLY SPLIT, not a single function taking
+ * a dialog callback: `toolbar-actions.ts#locateImagePropertiesAtCaret` /
+ * `#applyImagePropertiesEdit`, `#applyImageUnwrapAtCaret`,
+ * `#locateLinkEditAtCaret` / `#applyLinkEditEdit` for source (each LOCATE
+ * function takes the live `EditorView` and returns a `LocateResult`; each
+ * APPLY function takes the view, the located result, and the caller-
+ * resolved value — no callback), and `rich-commands.ts#locateRichImageProp
+ * ertiesAtCaret` / `#applyRichImagePropertiesEdit`,
+ * `#applyRichImageUnwrapAtCaret`, `#locateRichLinkEditAtCaret` /
+ * `#applyRichLinkEditEdit` for rich (same `(host: EditorDocumentHost, …,
+ * live: LiveSelection)` shape as this file's other `applyRich*` functions).
+ * The split exists because the CALLER (`+page.svelte`) owns both the
+ * `promptImageProperties`/`promptText` dialog AND the document-identity
+ * staleness re-check that must happen AFTER the dialog's `await` resolves
+ * and BEFORE the edit dispatches — see `toolbar-actions.ts`'s
+ * `staleCaretTokenSpanDiagnostic` header for the full rationale. Each set
+ * of five wrappers (plus the two single-step unwrap functions) is thin:
+ * read text/caret from their own surface, delegate the ENTIRE locate/
+ * compute decision to the pure functions below, and dispatch through their
+ * own surface's existing write seam (`view.dispatch`/`host.applyEdit`) —
+ * one implementation, two thin appliers (G-09), exactly like
  * `descriptorForLayoutBlock`/`applyLayoutBlock`/`applyRichLayoutBlock`
  * already do for layout markers.
  */
@@ -103,11 +121,15 @@ export interface TextEdit {
  *    caret (covers "genuinely nothing here", a reference-style link, and a
  *    "linkified" bare URL alike — see `findLinkTokenAtOffset`'s own header
  *    for why this module does not further distinguish those three).
- *  - `"fenced-code-block"` — the caret sits inside a fenced code span.
- *    Markdown-it never parses inline syntax there, so text that LOOKS like
- *    `![alt](src)` inside a fence is not a real image — refusing here is
- *    what the run's own fixture requirement ("that is not a real image")
- *    describes.
+ *  - `"fenced-code-block"` — the caret sits inside a region markdown-it
+ *    treats as literal text: a fenced code block, an indented code block,
+ *    or an inline code span ({@link isInsideLiteralMarkdownRegion} — this
+ *    reason id predates that widening and is kept as-is rather than
+ *    renamed, since it is a stable D14-adjacent identifier callers and
+ *    tests already match on). Markdown-it never parses inline syntax in
+ *    any of the three, so text that LOOKS like `![alt](src)` there is not
+ *    a real image — refusing here is what the run's own fixture
+ *    requirement ("that is not a real image") describes.
  *  - `"no-wrapper"` — a real image token WAS found, but it has no enclosing
  *    link wrapper for `image-unwrap` to remove. */
 export type CaretTokenRefusalReason = "no-token" | "fenced-code-block" | "no-wrapper";
@@ -147,15 +169,46 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 const FENCE_OPEN_RE = /^(`{3,}|~{3,})/;
 
 /**
+ * Strips container-indentation the fence match itself doesn't care about:
+ * an optional single-level blockquote marker (`>` with an optional trailing
+ * space — repeated, so a nested blockquote is handled too) THEN any amount
+ * of leading whitespace. SFE-P3d-parity repair round 1 (CONFIRMED finding):
+ * this used to strip only `{0,3}` leading spaces and never a `>`, so a
+ * blockquoted fence (`` > ``` ``) and a list-nested fence indented 4+
+ * columns were both invisible to this scanner — real committed content
+ * (`examples/with-design-guide/design-guide`) quotes both shapes. Widening
+ * this to "any amount of whitespace, after stripping blockquote markers" is
+ * deliberately MORE permissive than strict CommonMark fence recognition
+ * (which caps container indentation) — this module's whole posture is
+ * fail-CLOSED (refuse a real target rather than risk rewriting literal
+ * text), so over-refusing a few edge shapes that aren't really fenced code
+ * is the safe direction to be wrong in.
+ */
+function stripFenceContainerPrefix(line: string): string {
+  let s = line;
+  for (;;) {
+    const stripped = s.replace(/^ {0,3}>[ \t]?/, "");
+    if (stripped === s) break;
+    s = stripped;
+  }
+  return s.replace(/^\s*/, "");
+}
+
+/**
  * Whether `offset` sits inside a fenced code block (``` or ~~~, including
  * its own opening/closing fence lines, up to an unterminated fence's
- * end-of-document). Independent of, and deliberately not sharing an
- * implementation with, `rich-commands.ts`'s `splitIntoBlocks` — that
- * function does not distinguish a fenced block from an ordinary paragraph
- * in its own returned shape (both are `isMarker:false`), so reusing it here
- * would mean reaching into its internals rather than its public contract;
- * this is a small, self-contained check with the one property this module
- * needs.
+ * end-of-document; blockquoted and arbitrarily-indented fences included —
+ * see {@link stripFenceContainerPrefix}). Independent of, and deliberately
+ * not sharing an implementation with, `rich-commands.ts`'s
+ * `splitIntoBlocks` — that function does not distinguish a fenced block
+ * from an ordinary paragraph in its own returned shape (both are
+ * `isMarker:false`), so reusing it here would mean reaching into its
+ * internals rather than its public contract; this is a small, self-
+ * contained check with the one property this module needs. The two DO now
+ * agree on the RESULT for a list-nested (4+ column indented) fence — both
+ * treat it as literal — even though they remain separate implementations;
+ * `splitIntoBlocks` is canonical for pagination/block segmentation, this
+ * function is canonical for the caret-token refusal decision.
  */
 export function isInsideFencedCodeBlock(text: string, offset: number): boolean {
   const lines = text.split("\n");
@@ -165,7 +218,7 @@ export function isInsideFencedCodeBlock(text: string, offset: number): boolean {
   let fenceFrom = 0;
   for (const line of lines) {
     const contentEnd = pos + line.length;
-    const trimmed = line.replace(/^ {0,3}/, "");
+    const trimmed = stripFenceContainerPrefix(line);
     const fenceMatch = FENCE_OPEN_RE.exec(trimmed);
     if (fenceChar) {
       const closes =
@@ -191,6 +244,157 @@ export function isInsideFencedCodeBlock(text: string, offset: number): boolean {
   return false;
 }
 
+/**
+ * Whether `offset`'s line is part of a CommonMark INDENTED code block — four
+ * or more columns of leading indentation (or a leading tab), forming its
+ * OWN block: preceded by a blank line or the start of the file, not a
+ * continuation of a shallower paragraph or list item. SFE-P3d-parity
+ * repair round 1 (CONFIRMED finding): markdown-it treats this region as
+ * literal exactly like a fenced block, and this scanner had no notion of
+ * it at all — a caret on `    ![a](b.png)` (4-space indent, no fence)
+ * resolved as a real image token.
+ *
+ * Deliberately conservative rather than a full CommonMark list-context
+ * resolver (see this file's header on why this module is a scanner, not a
+ * parser): a run of indented, non-blank lines (blank-line gaps inside the
+ * run are tolerated, matching CommonMark) that is NOT preceded by a
+ * shallower, non-blank line is treated as one indented code block. This
+ * intentionally also swallows some genuinely-indented list-continuation
+ * content that is not really "code" — over-refusing here is the SAME safe
+ * direction {@link stripFenceContainerPrefix} documents.
+ */
+function isInsideIndentedCodeBlock(text: string, offset: number): boolean {
+  const lines = text.split("\n");
+  const lineStart: number[] = [];
+  let pos = 0;
+  for (const line of lines) {
+    lineStart.push(pos);
+    pos += line.length + 1;
+  }
+  const isIndented = (line: string) => /^( {4,}|\t)/.test(line);
+  let i = 0;
+  let prevWasBlankOrStart = true;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (line.trim() === "") {
+      prevWasBlankOrStart = true;
+      i++;
+      continue;
+    }
+    if (isIndented(line) && prevWasBlankOrStart) {
+      const blockStartLine = i;
+      let j = i;
+      while (j < lines.length) {
+        const l = lines[j]!;
+        if (l.trim() === "") {
+          let k = j + 1;
+          while (k < lines.length && lines[k]!.trim() === "") k++;
+          if (k < lines.length && isIndented(lines[k]!)) {
+            j = k;
+            continue;
+          }
+          break;
+        }
+        if (!isIndented(l)) break;
+        j++;
+      }
+      const blockEndLine = j - 1;
+      const from = lineStart[blockStartLine]!;
+      const to = lineStart[blockEndLine]! + lines[blockEndLine]!.length;
+      if (offset >= from && offset <= to) return true;
+      i = j;
+      prevWasBlankOrStart = false;
+      continue;
+    }
+    prevWasBlankOrStart = false;
+    i++;
+  }
+  return false;
+}
+
+/**
+ * Whether `offset` sits inside an inline code span (`` `…` ``) within its
+ * OWN paragraph. CommonMark inline code spans are backtick runs of equal
+ * length delimiting literal content markdown-it never parses as further
+ * markdown — exactly the same "not a real token" case
+ * {@link isInsideFencedCodeBlock} exists for, scoped to the paragraph (a
+ * code span cannot cross a blank line). SFE-P3d-parity repair round 1
+ * (CONFIRMED finding): `` Use `![a](b.png)` in markdown. `` resolved as a
+ * real image token before this existed — real committed documentation
+ * (this project's own user guide and design guide) is exactly the corpus
+ * most likely to quote markdown syntax this way.
+ *
+ * A best-effort scan, not a full CommonMark inline-code-span resolver
+ * (greedy pairing of equal-length backtick runs in source order) — good
+ * enough for the fail-closed refusal this function backs.
+ */
+function isInsideInlineCodeSpan(text: string, offset: number): boolean {
+  // Find the contiguous non-blank-line "paragraph" containing `offset` — a
+  // code span cannot cross a blank line, so scoping to it both bounds the
+  // scan and avoids false matches from backticks in unrelated paragraphs.
+  let paraStart = offset;
+  while (paraStart > 0 && text[paraStart - 1] !== "\n") paraStart--;
+  for (;;) {
+    if (paraStart === 0) break;
+    let lineStart = paraStart - 1;
+    while (lineStart > 0 && text[lineStart - 1] !== "\n") lineStart--;
+    const line = text.slice(lineStart, paraStart - 1);
+    if (line.trim() === "") break;
+    paraStart = lineStart;
+  }
+  let paraEnd = offset;
+  while (paraEnd < text.length && text[paraEnd] !== "\n") paraEnd++;
+  for (;;) {
+    if (paraEnd >= text.length) break;
+    let lineEnd = paraEnd + 1;
+    while (lineEnd < text.length && text[lineEnd] !== "\n") lineEnd++;
+    const line = text.slice(paraEnd + 1, lineEnd);
+    if (line.trim() === "") break;
+    paraEnd = lineEnd;
+  }
+  const para = text.slice(paraStart, paraEnd);
+  const localOffset = offset - paraStart;
+
+  const runRe = /`+/g;
+  const runs: { start: number; end: number; len: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = runRe.exec(para))) {
+    runs.push({ start: m.index, end: m.index + m[0].length, len: m[0].length });
+  }
+  let idx = 0;
+  while (idx < runs.length) {
+    const open = runs[idx]!;
+    let matched = false;
+    for (let j = idx + 1; j < runs.length; j++) {
+      const close = runs[j]!;
+      if (close.len === open.len) {
+        if (localOffset >= open.start && localOffset < close.end) return true;
+        idx = j + 1;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) idx++;
+  }
+  return false;
+}
+
+/**
+ * Whether `offset` sits inside ANY markdown region markdown-it treats as
+ * literal text — a fenced code block, an indented code block, or an inline
+ * code span. This is the check every locate function below actually uses;
+ * `isInsideFencedCodeBlock` stays separately exported (and separately
+ * tested) for the sabotage-fixture and probe-test callers that care about
+ * that one region specifically.
+ */
+export function isInsideLiteralMarkdownRegion(text: string, offset: number): boolean {
+  return (
+    isInsideFencedCodeBlock(text, offset) ||
+    isInsideIndentedCodeBlock(text, offset) ||
+    isInsideInlineCodeSpan(text, offset)
+  );
+}
+
 // ── Image properties (waiver row: image-properties) ────────────────────────
 
 export interface ImageCaretMatch {
@@ -207,7 +411,7 @@ export interface ImageCaretMatch {
  *  from its current token — ready to hand to `ImagePropertiesDialog`. Also
  *  used by `image-unwrap` (below) for its own locate step. */
 export function locateImageAtCaret(text: string, caret: number): LocateResult<ImageCaretMatch> {
-  if (isInsideFencedCodeBlock(text, caret)) return refuse("fenced-code-block");
+  if (isInsideLiteralMarkdownRegion(text, caret)) return refuse("fenced-code-block");
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
   const wrapper = findImageWrapper(text, match);
@@ -279,7 +483,7 @@ export function computeImagePropertiesEdit(
  *  with `"no-wrapper"` when the image exists but is not wrapped — there is
  *  nothing to unwrap, not an error in locating the image. */
 export function locateImageUnwrapEdit(text: string, caret: number): LocateResult<TextEdit> {
-  if (isInsideFencedCodeBlock(text, caret)) return refuse("fenced-code-block");
+  if (isInsideLiteralMarkdownRegion(text, caret)) return refuse("fenced-code-block");
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
   const wrapper = findImageWrapper(text, match);
@@ -297,7 +501,7 @@ export interface LinkCaretMatch {
 /** Locates the link at `caret`, ready to seed a text prompt with its
  *  current target. */
 export function locateLinkAtCaret(text: string, caret: number): LocateResult<LinkCaretMatch> {
-  if (isInsideFencedCodeBlock(text, caret)) return refuse("fenced-code-block");
+  if (isInsideLiteralMarkdownRegion(text, caret)) return refuse("fenced-code-block");
   const match = findLinkTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
   return { ok: true, value: { match, initialHref: match.href } };

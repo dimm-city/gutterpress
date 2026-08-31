@@ -470,11 +470,16 @@ export function routeToolbarAction(action: ToolbarAction, payload?: ToolbarPaylo
     case "image-properties":
     case "image-unwrap":
     case "link-edit":
-      // These three DO have real rich-mode replacements —
-      // `applyRichImagePropertiesAtCaret`/`applyRichImageUnwrapAtCaret`/
-      // `applyRichLinkEditAtCaret` below — but they need a dialog callback
-      // (and, for image-properties/link-edit, an `await`) this function's
-      // synchronous `RichToolbarRoute` return shape has no room for, so
+      // These three DO have real rich-mode replacements — below:
+      // `locateRichImagePropertiesAtCaret`/`applyRichImagePropertiesEdit`,
+      // `applyRichImageUnwrapAtCaret`, and `locateRichLinkEditAtCaret`/
+      // `applyRichLinkEditEdit` (SFE-P3d-parity repair round 1: this
+      // comment used to name `applyRichImagePropertiesAtCaret`/
+      // `applyRichLinkEditAtCaret`, which do not exist — see the real
+      // locate/apply split documented in this file's next section header)
+      // — but the image-properties/link-edit pair needs a dialog `await`
+      // this function's synchronous `RichToolbarRoute` return shape has no
+      // room for, so
       // `+page.svelte`'s `onAction` calls them directly instead of routing
       // through here (same pre-check pattern "snippet"/"focus-mode" already
       // use above, for a different reason). Reachable here only if a caller
