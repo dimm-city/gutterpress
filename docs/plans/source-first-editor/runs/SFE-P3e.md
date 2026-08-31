@@ -100,6 +100,19 @@ Two deliverables, one per lane:
 |---|---|---|---|
 | A | `packages/desktop/electron/**`, `packages/desktop/src/routes/+page.svelte`, `packages/desktop/src/lib/platform/**`, `packages/desktop/tests/fixtures/plugin-book/**`, `packages/desktop/tests/editor/real-book-plugin-*.test.ts`, new `packages/desktop/tests/editor/editor-projection-host.test.ts` | `packages/cli/**`, `packages/editor/**`, `packages/desktop/src/lib/editor/**`, `tools/**`, `docs/plans/source-first-editor/parity-matrix.md` | Host-built plugin-aware projection, wired and proven end-to-end |
 | B | `tools/check-parity.mjs` (delete), `tools/check-parity.test.mjs` (delete), root `package.json`, `.github/workflows/ci.yml`, `docs/plans/source-first-editor/parity-matrix.md`, `packages/desktop/src/lib/editor/caret-token-commands.ts`, `packages/desktop/tests/editor/parity-caret-token-*.test.ts` | `packages/desktop/electron/**`, `+page.svelte`, `packages/desktop/src/lib/editor/toolbar-actions.ts`, `rich-commands.ts`, other lanes' tests | The deletions and the parser-evidence rewrite |
+| C | `packages/cli/package.json`, `packages/cli/src/plugins.ts` (new subpath barrel), `packages/cli/src/index.ts`/`src/api/index.ts` (only if the barrel needs them), the `build` script's entrypoints, `knip.json`, `packages/desktop/electron/editor-projection.ts`, `packages/desktop/tests/editor/editor-projection-host.test.ts`, `packages/desktop/tests/editor/real-book-plugin-*.test.ts` | `packages/desktop/src/**`, `packages/editor/**`, `tools/**`, everything else | Replace Lane A's duplicated local-file loader with the real one via the `gutterpress/plugins` subpath D11 already names |
+
+Lane C was added after the first phase reported (spec amended before it ran).
+Its cause: Lane A could not call the real `loadPlugins`/`loadPluginsWithCss`
+because the gutterpress package exports only `.`, `./api` and `./render` —
+so, boxed in by its write boundary, it shipped a narrower duplicate loader
+(local-file only, npm entries reported as failures). A second plugin loader
+is exactly the duplication the product-owner ruling forbids, and its
+local-file-only scope is a real behavior gap: a vendored npm plugin loads in
+the preview but would fail in rich mode. D11 pre-approves the fix — the
+`gutterpress/plugins` subpath, added now that it has a real consumer — after
+which the duplicate is deleted and the desktop host calls the one loader the
+preview uses, degrade-and-report mode included.
 | Integrator | `bun.lock`, wiring, commits | — | Install, verification, commits |
 
 Lane A may update the plugin-book fixture's manifest from the uninstallable
