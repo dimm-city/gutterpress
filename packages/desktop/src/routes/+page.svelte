@@ -29,6 +29,19 @@
   // rich-mode.svelte.ts's own header for the mode-selection contract.
   import { createRichModeController, trackSurfaceMount } from "$lib/editor/rich-mode.svelte";
   import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
+  // SFE-P3ab, Lane B — the adapter that lets the shared P2a command
+  // vocabulary drive the rich surface (rich-commands.ts's own header has
+  // the full design, including the confirmed-missing selection accessor).
+  import {
+    routeToolbarAction,
+    applyRichCommand,
+    applyRichLayoutBlock,
+    applyRichImageInsert,
+    applyRichAppend,
+    validateImageProperties,
+    type RichCommandOutcome,
+  } from "$lib/editor/rich-commands";
+  import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
@@ -1235,13 +1248,98 @@
     }
   }
 
+  // ── Rich-mode command wiring (SFE-P3ab, Lane B) ──────────────────────────
+  //
+  // Diagnostics reaching this app from rich mode come from two places: an
+  // edit THIS page pushes through `richDocHost.applyEdit` directly (a
+  // rejected/refused `RichCommandOutcome` from `rich-commands.ts`), and one
+  // the mounted adapter reports on its own via `RichEditor`'s `onDiagnostic`
+  // prop below (a typed rejection from the live view, or a P2c projection
+  // diagnostic surfaced at mount time). Both funnel through this one
+  // function so they render identically (deliverable 5: "surface them ...
+  // with their safeAction text") — reusing the existing toast/action-button
+  // pattern (`ExportController`'s "Build anyway" offer above is the other
+  // toast-with-action precedent in this file) rather than inventing a new
+  // banner. The action button's label is the diagnostic's OWN `safeAction`
+  // text verbatim; its handler always switches to source mode — the one
+  // concrete, always-available recovery this app can offer today regardless
+  // of which D14 category produced the diagnostic (deliverable "Source
+  // reveal": "An explicit 'edit in source' path from rich mode for any
+  // unsupported/refused region").
+  function showRichDiagnostic(diagnostic: Diagnostic): void {
+    toast?.show(
+      diagnostic.message,
+      "error",
+      undefined,
+      diagnostic.safeAction
+        ? { label: diagnostic.safeAction, onClick: () => setRichMode("source") }
+        : undefined,
+    );
+  }
+
+  function reportRichOutcome(outcome: RichCommandOutcome): void {
+    if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
+  }
+
+  /**
+   * Routes one `EditorToolbar` action through the RICH path — the mirror of
+   * `editorRef?.runToolbarAction(action, payload)` for source mode. Called
+   * only while `richMode.mode === "rich"`; "image" is excluded (handled by
+   * `openRichImageProperties` below via the `ImagePropertiesDialog` flow,
+   * not a plain `EditorCommand`).
+   */
+  function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
+    if (!richDocHost || action === "image") return;
+    const route = routeToolbarAction(action, payload);
+    if (route.kind === "command") {
+      reportRichOutcome(applyRichCommand(richDocHost, route.command));
+    } else if (route.kind === "layout") {
+      reportRichOutcome(applyRichLayoutBlock(richDocHost, route.layout));
+    }
+    // "unsupported" ("snippet"/"focus-mode") never reaches here — the
+    // toolbar's onAction below special-cases both before routing.
+  }
+
+  /**
+   * "Insert image" while rich mode is active (G-10/AP-17): opens the SAME
+   * `ImagePropertiesDialog` the preview context menu's "Set properties…"
+   * uses, seeded blank (a brand-new image has no existing token set to
+   * seed from), and applies the confirmed value at the document end.
+   */
+  async function openRichImageProperties(): Promise<void> {
+    if (!richDocHost) return;
+    const blank: ImagePropertiesValue = {
+      src: "",
+      alt: "",
+      width: "",
+      position: "",
+      pinAlignment: "center",
+      size: "",
+      spacing: "",
+      shape: false,
+      flush: false,
+      layer: "",
+    };
+    const value = await promptImageProperties(blank);
+    if (value == null) return;
+    const error = validateImageProperties(value);
+    if (error) {
+      toast?.error(error);
+      return;
+    }
+    reportRichOutcome(applyRichImageInsert(richDocHost, value));
+  }
+
   /**
    * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
    * "Insert" button used to dead-end behind a disabled state, telling the author
    * to go open a file first). If no markdown chapter is open, open one and the
-   * editor pane, then insert once the editor has mounted AND loaded that chapter
-   * — a bounded rAF retry, so there's no race (we never insert into an unloaded
-   * doc) and no infinite loop (gives up with a clear toast).
+   * editor pane, then insert once EITHER surface has mounted AND loaded that
+   * chapter — a bounded rAF retry, so there's no race (we never insert into an
+   * unloaded doc) and no infinite loop (gives up with a clear toast). Routes
+   * to whichever surface is active (SFE-P3ab: this used to be CodeMirror-only
+   * — a G-10 gap the media panel's drag/drop path shared with the toolbar's
+   * own "Insert image" button before this run).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
@@ -1251,7 +1349,14 @@
     }
     let tries = 0;
     const tryInsert = () => {
-      if (editorRef && isMd(editorFilePath)) {
+      if (richMode.mode === "rich") {
+        if (richDocHost && isMd(editorFilePath)) {
+          reportRichOutcome(
+            applyRichCommand(richDocHost, { kind: "insert-image", src: payload.src, alt: payload.alt }),
+          );
+          return;
+        }
+      } else if (editorRef && isMd(editorFilePath)) {
         editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
         focusEditorWhenReady();
         return;
@@ -2969,6 +3074,10 @@
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
+              richMode={richMode.mode === "rich"}
+              richModeAvailable={richModeAvailable}
+              onToggleRichMode={() => setRichMode(richMode.mode === "rich" ? "source" : "rich")}
+              onOpenImageProperties={() => void openRichImageProperties()}
               onAction={(action, payload) => {
                 if (action === "snippet") {
                   openSnippetPicker();
@@ -2976,6 +3085,10 @@
                 }
                 if (action === "focus-mode") {
                   togglePreview();
+                  return;
+                }
+                if (richMode.mode === "rich") {
+                  handleRichToolbarAction(action, payload);
                   return;
                 }
                 editorRef?.runToolbarAction(action, payload);
@@ -3004,7 +3117,7 @@
                   {#key richDocHost}
                     <RichEditorComponent
                       host={richDocHost}
-                      onDiagnostic={(d) => toast?.error(d.message)}
+                      onDiagnostic={showRichDiagnostic}
                     />
                   {/key}
                 {:else if richEditorModuleFailed}
@@ -3298,7 +3411,13 @@
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
-  onInsert={(text) => editorRef?.insertSnippet(text)}
+  onInsert={(text) => {
+    if (richMode.mode === "rich") {
+      if (richDocHost) reportRichOutcome(applyRichAppend(richDocHost, text));
+      return;
+    }
+    editorRef?.insertSnippet(text);
+  }}
 />
 <!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
      Export button. Mounted fresh per open so its state resets. -->

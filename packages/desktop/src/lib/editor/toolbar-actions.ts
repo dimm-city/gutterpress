@@ -492,12 +492,7 @@ export function applyHr(view: EditorView): void {
 // Source: packages/cli/src/lib/markdown/markers.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const insert = "\n\n@page-break\n\n";
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(insertAt + insert.length),
-  });
+  dispatchLayoutDescriptor(view, pageBreakDescriptor());
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
@@ -585,70 +580,119 @@ export function applyImage(
  *  one-vocabulary rule applies to it as the union's other consumer). */
 export type { LayoutBlockKind };
 
-/** `@chapter` + a nested `@page`, with the title placeholder selected so
- *  typing immediately replaces it (mirrors applyLink's "select link text"
- *  placeholder pattern above).
+/**
+ * A layout-block insertion, decoupled from ANY editing surface (SFE-P3ab).
+ * `insert` is the exact text to splice in; `selectFrom`/`selectTo` are
+ * OFFSETS RELATIVE TO THE INSERTION POINT (not absolute document offsets —
+ * the caller adds its own `insertAt`) marking the range a caller should
+ * place the selection/caret over afterward (`selectFrom === selectTo` is a
+ * collapsed cursor, matching `EditorSelection.range(x, x)` === `cursor(x)`).
  *
- *  The placeholder is QUOTED (`@chapter "Chapter Title"`), not bare. A bare
+ * Split out of `applyChapterBlock`/`applySectionBlock`/`applyTwoColumnBlock`/
+ * `applySpreadBlock`/`applyPageBreak` below (byte-identical templates, only
+ * the CARET MATH was hoisted into a documented `{insert, selectFrom,
+ * selectTo}` shape) so `rich-commands.ts` — which has no `EditorView` to
+ * dispatch a transaction against — can compute the exact same `@marker`
+ * skeletons via {@link descriptorForLayoutBlock} and apply them through
+ * `EditorDocumentHost.applyEdit` instead (G-09: one template, two thin
+ * per-surface appliers, not two copies of the marker text).
+ */
+export interface LayoutInsertDescriptor {
+  readonly insert: string;
+  readonly selectFrom: number;
+  readonly selectTo: number;
+}
+
+function pageBreakDescriptor(): LayoutInsertDescriptor {
+  const insert = "\n\n@page-break\n\n";
+  return { insert, selectFrom: insert.length, selectTo: insert.length };
+}
+
+/** The placeholder is QUOTED (`@chapter "Chapter Title"`), not bare. A bare
  *  multi-word label tokenizes into more than one bare token in
  *  `parseMarkerLine`, which fails its "exactly one bare token" name rule and
  *  silently degrades to no `data-chapter-label` / no `.chapter-opener` —
  *  exactly the opposite of what this control advertises. Quoting collapses
  *  the label to a single token regardless of internal spaces, so it actually
  *  produces the label + chapter-opener (verified against the core marker
- *  renderer). See marker-completions.ts's
- *  `applyChapterCompletion` for the identical fix applied to the completion
- *  source's `@chapter` template. */
-export function applyChapterBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
+ *  renderer). See marker-completions.ts's `applyChapterCompletion` for the
+ *  identical fix applied to the completion source's `@chapter` template. */
+function chapterBlockDescriptor(): LayoutInsertDescriptor {
   const label = "Chapter Title";
   const prefix = '\n\n@chapter "';
   const suffix = '"';
-  const labelStart = insertAt + prefix.length;
   const insert = `${prefix}${label}${suffix}\n\n@page\n\n`;
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.range(labelStart, labelStart + label.length),
-  });
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length + label.length };
 }
 
-/** `@section` / `@end-section` pair, cursor left on the blank line between
- *  them (same shape as the marker-completions.ts inline template, just
- *  block-inserted after the current line instead of typed in place). */
-export function applySectionBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
+function sectionBlockDescriptor(): LayoutInsertDescriptor {
   const prefix = "\n\n@section\n";
   const insert = `${prefix}\n@end-section\n\n`;
-  const cursorPos = insertAt + prefix.length;
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(cursorPos),
-  });
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length };
 }
 
 /** A working two-column section. `.col-split` (not bare `.two-column`) is
  *  required because `@column-break` is structural within that authoring
  *  primitive; plain CSS multicol does not create the explicit left/right
  *  wrappers the fixed split needs. */
-export function applyTwoColumnBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
+function twoColumnBlockDescriptor(): LayoutInsertDescriptor {
   const prefix = "\n\n@section .col-split\n";
   const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
-  const cursorPos = insertAt + prefix.length;
+  return { insert, selectFrom: prefix.length, selectTo: prefix.length };
+}
+
+function spreadBlockDescriptor(): LayoutInsertDescriptor {
+  const insert = "\n\n@spread\n\n@page\n\n";
+  return { insert, selectFrom: insert.length, selectTo: insert.length };
+}
+
+/** The single source of truth for every `@marker` skeleton `applyLayoutBlock`
+ *  (this file, CodeMirror) and `applyRichLayoutBlock` (`rich-commands.ts`,
+ *  the rich surface) insert. `"page-break"` reuses {@link pageBreakDescriptor}
+ *  — one canonical `@page-break` token, not a second copy. */
+export function descriptorForLayoutBlock(kind: LayoutBlockKind): LayoutInsertDescriptor {
+  switch (kind) {
+    case "chapter":     return chapterBlockDescriptor();
+    case "section":     return sectionBlockDescriptor();
+    case "two-column":  return twoColumnBlockDescriptor();
+    case "page-break":  return pageBreakDescriptor();
+    case "spread":      return spreadBlockDescriptor();
+  }
+}
+
+/** Dispatches one {@link LayoutInsertDescriptor} as a single CodeMirror
+ *  transaction, inserted after the current line (this file's own
+ *  `insertionPointAfterCurrentLine` convention). */
+function dispatchLayoutDescriptor(view: EditorView, d: LayoutInsertDescriptor): void {
+  const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(cursorPos),
+    changes: { from: insertAt, to: insertAt, insert: d.insert },
+    selection: EditorSelection.range(insertAt + d.selectFrom, insertAt + d.selectTo),
   });
+}
+
+/** `@chapter` + a nested `@page`, with the title placeholder selected so
+ *  typing immediately replaces it (mirrors applyLink's "select link text"
+ *  placeholder pattern above). */
+export function applyChapterBlock(view: EditorView): void {
+  dispatchLayoutDescriptor(view, chapterBlockDescriptor());
+}
+
+/** `@section` / `@end-section` pair, cursor left on the blank line between
+ *  them (same shape as the marker-completions.ts inline template, just
+ *  block-inserted after the current line instead of typed in place). */
+export function applySectionBlock(view: EditorView): void {
+  dispatchLayoutDescriptor(view, sectionBlockDescriptor());
+}
+
+/** A working two-column section — see {@link twoColumnBlockDescriptor}. */
+export function applyTwoColumnBlock(view: EditorView): void {
+  dispatchLayoutDescriptor(view, twoColumnBlockDescriptor());
 }
 
 /** `@spread` with a first nested `@page`, cursor left ready to write. */
 export function applySpreadBlock(view: EditorView): void {
-  const insertAt = insertionPointAfterCurrentLine(view);
-  const insert = "\n\n@spread\n\n@page\n\n";
-  view.dispatch({
-    changes: { from: insertAt, to: insertAt, insert },
-    selection: EditorSelection.cursor(insertAt + insert.length),
-  });
+  dispatchLayoutDescriptor(view, spreadBlockDescriptor());
 }
 
 /** Dispatches to the right layout-block helper for `kind`. `"page-break"`
@@ -679,6 +723,45 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;
+
+// ── Toolbar action vocabulary (SFE-P3ab) ─────────────────────────────────────
+//
+// Declared HERE (a plain `.ts` module) rather than inside `EditorToolbar.svelte`
+// (where they used to live) because `rich-commands.ts` — also a plain `.ts`
+// module, so it runs under `bun test` without svelte-check's preprocessing —
+// needs them too: TypeScript's ambient `*.svelte` declaration exposes only a
+// component's default export, so `import type { ToolbarAction } from
+// "….svelte"` fails to typecheck outside svelte-check (see
+// `components/crash-recovery-types.ts`'s header for the same rule applied to
+// an earlier case). `EditorToolbar.svelte` now imports and re-exports these
+// two names so its own existing public contract (`import type { ToolbarAction,
+// ToolbarPayload } from "$lib/components/EditorToolbar.svelte"`, used by
+// `+page.svelte`) is unchanged.
+
+/** The set of named edit actions the toolbar can fire. */
+export type ToolbarAction =
+  | "bold"
+  | "italic"
+  | "strikethrough"
+  | "code"
+  | "link"
+  | "blockquote"
+  | "ul"
+  | "ol"
+  | "heading"
+  | "hr"
+  | "page-break"
+  | "table"
+  | "image"
+  | "snippet"
+  | "focus-mode"
+  | "layout-block";
+
+export type ToolbarPayload =
+  | { level: 1 | 2 | 3 | 4 } // heading
+  | { cols: number } // table
+  | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
+  | { kind: LayoutBlockKind }; // layout-block
 
 // ── Toolbar item declarations (single source of truth — M23) ────────────────
 //

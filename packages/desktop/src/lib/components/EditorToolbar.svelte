@@ -35,7 +35,22 @@
     LAYOUT_BLOCK_ITEMS,
     type ToolbarItemDef,
     type LayoutBlockKind,
+    type ToolbarAction as ToolbarActionType,
+    type ToolbarPayload as ToolbarPayloadType,
   } from "$lib/editor/toolbar-actions";
+
+  // Type ALIASES (not a bare `export type { X }` re-export — svelte-check's
+  // component typegen does not surface a plain re-export the way it does an
+  // `export type X = ...` declaration, which broke both of this component's
+  // existing consumers, `MarkdownEditor.svelte` and `+page.svelte`) so this
+  // component's existing public contract (`import type { ToolbarAction,
+  // ToolbarPayload } from "$lib/components/EditorToolbar.svelte"`) stays
+  // unchanged — see toolbar-actions.ts's own header for why the canonical
+  // declarations themselves moved there (SFE-P3ab: `rich-commands.ts`, a
+  // plain `.ts` module, needs them too, and cannot import types from a
+  // `.svelte` file).
+  export type ToolbarAction = ToolbarActionType;
+  export type ToolbarPayload = ToolbarPayloadType;
 
   // toolbar-actions.ts declares item icons as plain strings (it stays
   // Svelte-import-free by design). Narrow to Icon's actual prop type here,
@@ -45,42 +60,49 @@
   let {
     /** Current file path — toolbar is only active for .md files. */
     filePath = null,
-    /** Called by the parent to route an edit action into the CodeMirror view. */
+    /** Called by the parent to route an edit action into the active editing
+     *  surface (CodeMirror when `richMode` is false, the rich editor's own
+     *  `EditorDocumentHost` when it is true — see `+page.svelte`'s
+     *  `onAction` wiring, SFE-P3ab). */
     onAction,
     onSave,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
+    /**
+     * Whether the RICH editing surface is the currently mounted one
+     * (SFE-P3ab, G-10: "the active surface owns the authoring workflow").
+     * Changes what the "Insert image" button does (see `onOpenImageProperties`
+     * below) — every other toolbar item fires the same `onAction` either way,
+     * with `+page.svelte` deciding which surface actually receives it.
+     */
+    richMode = false,
+    /**
+     * Gates the visible source/rich mode-switch control — the same
+     * `gp:experimental-rich-editor` flag `+page.svelte` reads (still off by
+     * default this run). `undefined`/`false` hides the control entirely, so
+     * existing callers that do not pass it see no change.
+     */
+    richModeAvailable = false,
+    onToggleRichMode,
+    /**
+     * Opens the FULL `ImagePropertiesDialog` flow instead of this
+     * component's own simpler (width/position/size/shape) inline dialog —
+     * called for "Insert image" only while `richMode` is true (G-10/AP-17:
+     * image authoring must be reachable from whichever surface is active;
+     * G-09: reuse the one dialog that already owns the complete `gp-*`
+     * vocabulary rather than growing this component's own dialog to match).
+     */
+    onOpenImageProperties,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     onSave?: () => void;
     projectDir?: string | null;
+    richMode?: boolean;
+    richModeAvailable?: boolean;
+    onToggleRichMode?: () => void;
+    onOpenImageProperties?: () => void;
   } = $props();
-
-  /** The set of named edit actions the toolbar can fire. */
-  export type ToolbarAction =
-    | "bold"
-    | "italic"
-    | "strikethrough"
-    | "code"
-    | "link"
-    | "blockquote"
-    | "ul"
-    | "ol"
-    | "heading"
-    | "hr"
-    | "page-break"
-    | "table"
-    | "image"
-    | "snippet"
-    | "focus-mode"
-    | "layout-block";
-
-  export type ToolbarPayload =
-    | { level: 1 | 2 | 3 | 4 }           // heading
-    | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
-    | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
   let isMarkdown = $derived(
@@ -308,6 +330,14 @@
   }
 
   function openImageDialog(e: MouseEvent) {
+    // Rich mode (SFE-P3ab, G-10/G-09): route to the parent's
+    // `ImagePropertiesDialog` flow (the full `gp-*` vocabulary) instead of
+    // this component's own simpler dialog — see this component's own prop
+    // doc comment on `onOpenImageProperties`.
+    if (richMode) {
+      onOpenImageProperties?.();
+      return;
+    }
     imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
     imageOpen = true;
     // Initial focus placement is handled by the dialogBehavior action.
@@ -577,6 +607,25 @@
       </div>
     {/if}
   </div>
+
+  {#if richModeAvailable}
+    <!-- SFE-P3ab, deliverable (4) — the visible source/rich mode control
+         Lane A deliberately left for this lane. Gated on the same
+         experimental flag `+page.svelte` reads (still off by default).
+         `aria-pressed` reflects "rich" as the pressed/"on" state, matching a
+         toggle-button convention rather than a two-state radio pair — only
+         one control, so there is nothing to roving-focus between. -->
+    <button
+      class="tb-btn tb-mode-toggle"
+      onclick={() => onToggleRichMode?.()}
+      aria-pressed={richMode}
+      title={richMode ? "Rich editor — click to switch to source" : "Source editor — click to switch to rich (experimental)"}
+      aria-label={richMode ? "Switch to source editor" : "Switch to rich editor"}
+    >
+      <Icon name={richMode ? "pen-line" : "code"} size={14} />
+      <span class="tb-mode-label">{richMode ? "Rich" : "Source"}</span>
+    </button>
+  {/if}
 </div>
 {/if}
 
@@ -929,6 +978,26 @@
     .tb-more-wrap {
       display: flex;
     }
+  }
+
+  /* ── Rich/source mode toggle (SFE-P3ab, experimental) ────────────────────── */
+  .tb-mode-toggle {
+    margin-left: 6px;
+    gap: 4px;
+    padding-left: 7px;
+    padding-right: 8px;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+  }
+  .tb-mode-toggle[aria-pressed="true"] {
+    background: var(--app-control-active-bg);
+    border-color: var(--app-focus-ring);
+  }
+  .tb-mode-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
 
   /* ── Image insert dialog ──────────────────────────────────────────────────── */
