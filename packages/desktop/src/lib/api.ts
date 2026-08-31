@@ -56,6 +56,7 @@ export type {
   HostConnectionInfo,
   SyncOutcome,
   PublishProviderCard,
+  PublishDestination,
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
@@ -82,6 +83,7 @@ import type {
   CloneRepositoryArgs,
   UpdaterStatus,
   PublishProviderCard,
+  PublishDestination,
   PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
@@ -180,6 +182,9 @@ export interface PublishProviderStaticInfo {
   credentialHost: string | null;
   tokenUrl: string | null;
   hint: string | null;
+  /** #221 — "oauth" = the browser consent flow (gdrive); null/absent = the
+   *  existing paste-an-API-key flow. Drives Connections' add-a-key branch. */
+  connectKind: 'token' | 'oauth' | null;
 }
 
 // ── Project configuration view (#PCV) — author-facing manifest subset ──────
@@ -719,5 +724,17 @@ export const api = {
         ...(options?.dryRun ? { dryRun: true } : {}),
         ...(options?.artifactPath ? { artifactPath: options.artifactPath } : {}),
       }),
+
+    /**
+     * Existing places a provider can publish into (#221 D9, gdrive: Drive
+     * folders) — provider-neutral; the wizard only calls this when the
+     * provider's card carries `destinations` (see `listProviders`).
+     */
+    listDestinations: (projectDir: string, providerId: string) =>
+      post<PublishDestination[]>('/api/publish/destinations/list', { projectDir, providerId }),
+
+    /** Create a new destination (gdrive: a Drive folder at My Drive root). */
+    createDestination: (projectDir: string, providerId: string, name: string) =>
+      post<PublishDestination>('/api/publish/destinations/create', { projectDir, providerId, name }),
   },
 };

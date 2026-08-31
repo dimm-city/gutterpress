@@ -25,6 +25,13 @@ export const POST: RequestHandler = defineRoute<
         account && lib.publishCredentialKey
           ? lib.publishCredentialKey(host, account)
           : host;
+      // Best-effort revoke at Google BEFORE deleting locally (#221 D4/D6) —
+      // never blocks the local delete, and never logs the token value.
+      // Mirrors the CLI's `--disconnect` branch (commands/publish.ts).
+      const existing = await hooks.tokenStore.get(key);
+      if (existing?.kind === 'google-oauth' && lib.revokeGoogleCredential) {
+        await lib.revokeGoogleCredential(existing.token);
+      }
       await hooks.tokenStore.delete(key);
       return { ok: true };
     }),

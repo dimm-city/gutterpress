@@ -33,7 +33,31 @@ export interface LibPublishProviderInfo {
     envVar?: string;
     tokenUrl?: string;
     hint?: string;
+    /** #221 — "token" (default/absent) = pasted-key connect; "oauth" = the
+     *  browser consent flow (gdrive). Drives the wizard's connect UI branch. */
+    connect?: 'token' | 'oauth';
   };
+  /** #221 — present when the provider has a folder/destination picker. */
+  destinations?: {
+    label: string;
+    canCreate: boolean;
+  };
+}
+
+/** One existing destination a provider can publish into (#221, gdrive: a
+ *  Drive folder). Mirrors the lib's `PublishProduct`. */
+export interface LibPublishDestination {
+  id: string;
+  title: string;
+  url?: string;
+}
+
+/** The subset of a live provider object the destinations routes call —
+ *  narrower than the lib's real `PublishProvider` (only what's needed here). */
+export interface LibPublishProviderHandle {
+  info: LibPublishProviderInfo;
+  listDestinations?(req: unknown): Promise<LibPublishDestination[]>;
+  createDestination?(req: unknown, name: string): Promise<LibPublishDestination>;
 }
 
 /**
@@ -58,7 +82,22 @@ interface LibPublishSavedAccount {
 
 export interface PublishLibModule {
   listPublishProviders?(): LibPublishProviderInfo[];
-  publishProviderFor?(id: string): { info: LibPublishProviderInfo };
+  publishProviderFor?(id: string): LibPublishProviderHandle;
+  /**
+   * Resolve the {@link PublishRequest}-shaped object a provider's
+   * `listDestinations`/`createDestination` (and, in principle, any other
+   * provider method) needs — #221's destinations routes are the only current
+   * callers. `unknown` here is intentional: the real shape is the lib's
+   * `PublishRequest`, and these routes only ever pass it straight through to
+   * a provider method, never read its fields themselves.
+   */
+  resolvePublishRequest?(
+    options: { projectDir: string; providerId: string },
+    deps: PublishRouteDeps,
+  ): Promise<unknown>;
+  /** Best-effort revoke at Google (never throws) — used by disconnect for
+   *  `kind: "google-oauth"` credentials, mirroring the CLI's `--disconnect`. */
+  revokeGoogleCredential?(refreshToken: string): Promise<void>;
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
     deps: PublishRouteDeps,

@@ -62,10 +62,17 @@ export const POST: RequestHandler = defineRoute<
             credentialRequired: info.credential.required,
             ...(info.credential.tokenUrl ? { tokenUrl: info.credential.tokenUrl } : {}),
             ...(info.credential.hint ? { hint: info.credential.hint } : {}),
+            // #221 — "oauth" swaps the wizard's paste-a-key form for a
+            // Connect button; absent/"token" is every provider's existing
+            // paste-a-key behavior, unchanged.
+            ...(info.credential.connect === 'oauth' ? { connectKind: 'oauth' as const } : {}),
             connected: status.connected,
             config,
             savedAccounts,
             selectedAccount,
+            // #221 D9 — present only for providers with a folder/destination
+            // picker (gdrive); the wizard renders the picker only when this is set.
+            ...(info.destinations ? { destinations: info.destinations } : {}),
           };
         }),
       );
