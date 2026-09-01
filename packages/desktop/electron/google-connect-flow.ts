@@ -17,18 +17,14 @@
  * the auth URL via `shell.openExternal` (host-side — see the constructor
  * `openExternal` dep, wired to `main.ts`'s existing http(s)-only gate).
  *
- * NOTE: `GoogleAuthProvider.connect()` ALSO best-effort opens the URL itself
- * (via the lib's own `openPath()`, its `openBrowser` default — there is no
- * hook on `connectGoogleDrive` to suppress it). This class's own
- * `openExternal()` call is therefore a SECOND, redundant open on the success
- * path (mirroring D10's explicit instruction to open via `shell.openExternal`
- * for the reliable, sandboxed Electron-native path) — a harmless duplicate
- * browser tab in the common case, and the one that actually opens when the
- * lib's spawn-based opener fails silently (headless/minimal Linux without
- * `xdg-open`). Documented here rather than silently "fixed" by dropping
- * either call, since `connectGoogleDrive` (packages/cli/src/lib/publish/
- * connect-google.ts) does not expose an `openBrowser` override to suppress
- * the lib's own attempt — see this phase's final report for the same note.
+ * `GoogleAuthProvider.connect()` would ALSO best-effort open the URL itself
+ * by default (via the lib's own spawn-based `openPath()`). That is suppressed
+ * here — `connectGoogleDrive`'s `openBrowser` override (added alongside this
+ * fix) is passed a no-op — because Electron's `shell.openExternal` (via the
+ * `openExternal` dep below, wired to `main.ts`'s existing http(s)-only gate)
+ * is the reliable, sandboxed, already-validated path the rest of the app
+ * uses for external links, and D10 specifies it explicitly. This class is
+ * therefore the ONE place a browser opens on this platform, not two.
  *
  * Node/lib-side ONLY — never imported by the renderer.
  */
@@ -82,13 +78,15 @@ export class GoogleConnectFlow {
 
     const donePromise = lib
       .connectGoogleDrive(
-        account ? { account } : {},
+        // openBrowser: async () => {} suppresses the lib's own default opener
+        // (see the class doc) — shell.openExternal below is the sole opener.
+        { ...(account ? { account } : {}), openBrowser: async () => {} },
         { tokenStore: this.deps.tokenStore },
         {
           onAuthUrl: (url) => {
             resolveAuthUrl({ authUrl: url });
             // Best-effort; the URL was already handed to the host UI above as
-            // a fallback link (see the class doc re: the lib's own open too).
+            // a fallback link.
             this.deps.openExternal(url).catch(() => {});
           },
           signal: controller.signal,
