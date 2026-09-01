@@ -188,19 +188,29 @@ export class PublishSectionController {
   };
 
   /**
-   * Choose which format this book publishes to a multi-format provider
-   * (#221 phase 3, D8 — gdrive only), written immediately to
-   * `publish.<id>.format` the same way `selectCredential` writes the
-   * credential choice, so the wizard's other format-dependent UI (the
-   * folder picker step, the artifact picker) sees it right away.
+   * The shared "busy-lock this provider → write non-secret config → reload
+   * the cards" sequence `selectFormat`/`selectDestination`/
+   * `createNewDestination` all need. `valuesOrBuilder` is either the config
+   * values directly, or an async builder (for a caller — `createNewDestination`
+   * — that has real work to do, e.g. an API call, BEFORE it knows what to
+   * write, and that work must happen INSIDE the same busy-lock window as the
+   * write itself; the builder receives the already-null-checked `projectDir`
+   * so it doesn't need to re-resolve or re-guard it).
    */
-  selectFormat = async (providerId: string, format: "pdf" | "html"): Promise<void> => {
+  private applyConfig = async (
+    providerId: string,
+    valuesOrBuilder:
+      | Record<string, string>
+      | ((projectDir: string) => Promise<Record<string, string>>),
+  ): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
-      await this.deps.setConfig(projectDir, providerId, { format });
+      const values =
+        typeof valuesOrBuilder === "function" ? await valuesOrBuilder(projectDir) : valuesOrBuilder;
+      await this.deps.setConfig(projectDir, providerId, values);
       await this.loadPublish();
     } catch (e) {
       this.publishError = e instanceof Error ? e.message : String(e);
@@ -208,6 +218,16 @@ export class PublishSectionController {
       this.publishBusyId = null;
     }
   };
+
+  /**
+   * Choose which format this book publishes to a multi-format provider
+   * (#221 phase 3, D8 — gdrive only), written immediately to
+   * `publish.<id>.format` the same way `selectCredential` writes the
+   * credential choice, so the wizard's other format-dependent UI (the
+   * folder picker step, the artifact picker) sees it right away.
+   */
+  selectFormat = (providerId: string, format: "pdf" | "html"): Promise<void> =>
+    this.applyConfig(providerId, { format });
 
   /**
    * Choose which SAVED credential this book uses for a provider (book-level
@@ -421,53 +441,31 @@ export class PublishSectionController {
 
   /** Pick an existing destination — writes `{folderId, folder}` via the same
    *  non-secret settings path the free-text `folder` config field uses. */
-  selectDestination = async (providerId: string, destination: PublishDestination): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.publishBusyId) return;
-    this.publishBusyId = providerId;
-    this.publishError = null;
-    try {
-      await this.deps.setConfig(projectDir, providerId, {
-        folderId: destination.id,
-        folder: destination.title,
-      });
-      await this.loadPublish();
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.publishBusyId = null;
-    }
-  };
+  selectDestination = (providerId: string, destination: PublishDestination): Promise<void> =>
+    this.applyConfig(providerId, { folderId: destination.id, folder: destination.title });
 
   setNewDestinationDraft = (providerId: string, value: string): void => {
     this.newDestinationDrafts = { ...this.newDestinationDrafts, [providerId]: value };
   };
 
   /** Inline "New folder…" — create it, then select it (same as picking an
-   *  existing one), and add it to the picker list without a full reload. */
-  createNewDestination = async (providerId: string): Promise<void> => {
-    const projectDir = this.deps.projectDir();
+   *  existing one), and add it to the picker list without a full reload. The
+   *  create call and the local state updates happen inside applyConfig's
+   *  builder callback, so they share its busy-lock window (the UI shows
+   *  "busy" for the whole create-then-select operation, not just the final
+   *  config write) exactly like the un-refactored version did. */
+  createNewDestination = (providerId: string): Promise<void> => {
     const name = (this.newDestinationDrafts[providerId] ?? "").trim();
-    if (!projectDir || this.publishBusyId || !name) return;
-    this.publishBusyId = providerId;
-    this.publishError = null;
-    try {
+    if (!name) return Promise.resolve();
+    return this.applyConfig(providerId, async (projectDir) => {
       const destination = await this.deps.createDestination(projectDir, providerId, name);
       this.publishDestinations = {
         ...this.publishDestinations,
         [providerId]: [...(this.publishDestinations[providerId] ?? []), destination],
       };
       this.newDestinationDrafts = { ...this.newDestinationDrafts, [providerId]: "" };
-      await this.deps.setConfig(projectDir, providerId, {
-        folderId: destination.id,
-        folder: destination.title,
-      });
-      await this.loadPublish();
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.publishBusyId = null;
-    }
+      return { folderId: destination.id, folder: destination.title };
+    });
   };
 
   runPublish = async (providerId: string, dryRun: boolean): Promise<void> => {
