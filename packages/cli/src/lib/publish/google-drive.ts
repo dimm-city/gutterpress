@@ -151,8 +151,9 @@ const FOLDER_MIME = "application/vnd.google-apps.folder";
 /** App-visible folders (drive.file scope: only ones this app created), most
  * recently modified first. Follows `nextPageToken` and accumulates every
  * page — an author with more than one page of app-created folders would
- * otherwise see `ensureFolder`'s find-by-name search (and the destinations
- * picker) silently miss folders past the first 100. */
+ * otherwise see the destinations picker silently miss folders past the
+ * first 100. (`ensureFolder`'s find-by-name lookup uses its own single
+ * server-side query, {@link findFolderByName} below, and doesn't paginate.) */
 export async function listFolders(
   fetchImpl: typeof fetch,
   accessToken: string,
@@ -213,15 +214,43 @@ export async function createFolder(
   return (await res.json()) as DriveFolder;
 }
 
+/** Look up one app-visible folder by exact name with a single server-side
+ * query — the same `q=` pattern as {@link findFileInFolder} — rather than
+ * paginating through every app-created folder client-side. `orderBy` keeps
+ * the same "most recently modified match wins" tie-break `ensureFolder` had
+ * when it picked the first hit from {@link listFolders}'s already-sorted
+ * list. */
+async function findFolderByName(
+  fetchImpl: typeof fetch,
+  accessToken: string,
+  name: string,
+): Promise<DriveFolder | null> {
+  const q = `name='${escapeDriveQueryValue(name)}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name)",
+    orderBy: "modifiedTime desc",
+    pageSize: "1",
+  });
+  const res = await driveFetch(fetchImpl, `${DRIVE_API_BASE}/files?${params.toString()}`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) throw new FriendlyHttpError(`Couldn't look up the Drive folder "${name}" (HTTP ${res.status}).`);
+  const body = (await res.json()) as { files?: DriveFolder[] };
+  return body.files?.[0] ?? null;
+}
+
 /** Find-or-create a folder by name at My Drive root (D5's name-resolution
- * path, used when the manifest has no recorded `folderId` yet). */
+ * path, used when the manifest has no recorded `folderId` yet). One query,
+ * not a client-side scan of every app-created folder — see
+ * {@link findFolderByName}. */
 export async function ensureFolder(
   fetchImpl: typeof fetch,
   accessToken: string,
   name: string,
 ): Promise<DriveFolder> {
-  const existing = await listFolders(fetchImpl, accessToken);
-  const found = existing.find((f) => f.name === name);
+  const found = await findFolderByName(fetchImpl, accessToken, name);
   if (found) return found;
   return createFolder(fetchImpl, accessToken, name);
 }
@@ -331,14 +360,11 @@ async function queryUploadStatus(
 ): Promise<{ kind: "progress"; receivedBytes: number } | { kind: "done"; file: DriveFile } | null> {
   let res: Response;
   try {
-    res = await withFetchTimeout(
-      { timeoutMs: CHUNK_TIMEOUT_MS, offlineMessage: OFFLINE_MESSAGE },
-      (signal) =>
-        fetchImpl(sessionUrl, {
-          method: "PUT",
-          headers: { "Content-Range": `bytes */${total}` },
-          signal,
-        }),
+    res = await driveFetch(
+      fetchImpl,
+      sessionUrl,
+      { method: "PUT", headers: { "Content-Range": `bytes */${total}` } },
+      CHUNK_TIMEOUT_MS,
     );
   } catch {
     return null;
@@ -370,18 +396,18 @@ async function putChunkWithRetry(
   for (;;) {
     let res: Response;
     try {
-      res = await withFetchTimeout(
-        { timeoutMs: CHUNK_TIMEOUT_MS, offlineMessage: OFFLINE_MESSAGE },
-        (signal) =>
-          fetchImpl(sessionUrl, {
-            method: "PUT",
-            headers: {
-              "Content-Range": `bytes ${start}-${start + buf.length - 1}/${total}`,
-              "Content-Length": String(buf.length),
-            },
-            body: buf,
-            signal,
-          }),
+      res = await driveFetch(
+        fetchImpl,
+        sessionUrl,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Range": `bytes ${start}-${start + buf.length - 1}/${total}`,
+            "Content-Length": String(buf.length),
+          },
+          body: buf,
+        },
+        CHUNK_TIMEOUT_MS,
       );
     } catch (e) {
       if (attempt >= maxRetries) throw e;
@@ -448,7 +474,11 @@ export async function resumableUpload(
     let offset = 0;
     for (;;) {
       const len = Math.min(chunkSize, opts.totalBytes - offset);
-      const buf = Buffer.alloc(len);
+      // allocUnsafe, not alloc: the bytesRead !== len guard right below
+      // throws before any byte of this buffer is ever sent, so there is no
+      // uninitialized-memory-disclosure risk from skipping the zero-fill —
+      // and zero-filling an 8 MiB buffer per chunk is real, wasted work.
+      const buf = Buffer.allocUnsafe(len);
       const { bytesRead } = await fh.read(buf, 0, len, offset);
       if (bytesRead !== len) {
         throw new FriendlyHttpError(

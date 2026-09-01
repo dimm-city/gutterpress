@@ -160,8 +160,9 @@ test("ensureFolder finds an existing folder by name before creating one", async 
 
 // A3: listFolders must follow nextPageToken and accumulate every page — an
 // author with more than 100 app-created Drive folders would otherwise have
-// ensureFolder's find-by-name search (and the destinations picker) silently
-// miss folders past the first page.
+// the destinations picker silently miss folders past the first page.
+// (ensureFolder's find-by-name lookup is a single server-side query and
+// doesn't go through listFolders at all — see the test below.)
 
 test("listFolders follows nextPageToken and returns folders from every page", async () => {
   const pageTokensSeen: Array<string | null> = [];
@@ -186,27 +187,25 @@ test("listFolders follows nextPageToken and returns folders from every page", as
   expect(pageTokensSeen).toEqual([null, "page-2"]);
 });
 
-test("ensureFolder finds a match that only exists on a later page", async () => {
+test("ensureFolder looks up by name with a single query, not a client-side scan", async () => {
   let createCalled = false;
+  const requests: string[] = [];
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
+    requests.push(String(init?.method ?? "GET"));
     if (init?.method === "POST") {
       createCalled = true;
       return jsonResponse({ id: "new", name: "Gutterpress" });
     }
-    const pageToken = u.searchParams.get("pageToken");
-    if (!pageToken) {
-      return jsonResponse({
-        files: Array.from({ length: 100 }, (_, i) => ({ id: `filler-${i}`, name: `Filler ${i}` })),
-        nextPageToken: "page-2",
-      });
-    }
+    expect(u.searchParams.get("q")).toContain("name='Gutterpress'");
+    expect(u.searchParams.get("pageSize")).toBe("1");
     return jsonResponse({ files: [{ id: "real-match", name: "Gutterpress" }] });
   }) as unknown as typeof fetch;
 
   const folder = await ensureFolder(fetchImpl, "at", "Gutterpress");
   expect(folder).toEqual({ id: "real-match", name: "Gutterpress" });
-  expect(createCalled).toBe(false); // the match on page 2 was found — no duplicate created
+  expect(createCalled).toBe(false);
+  expect(requests).toEqual(["GET"]); // exactly one lookup request — no pagination loop
 });
 
 test("ensureFolder creates the folder at My Drive root when none matches by name", async () => {

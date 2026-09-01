@@ -241,6 +241,11 @@ function waitForCallback(
       server.removeListener("request", onRequest);
       signal?.removeEventListener("abort", onAbort);
       server.close();
+      // server.close() only stops accepting new connections — an idle
+      // keep-alive socket (the browser's, or the 204 branch's speculative
+      // probe) would otherwise linger until Node's default 5s
+      // keepAliveTimeout, holding the CLI open after "success" is printed.
+      server.closeIdleConnections();
     };
     const finishResolve = (value: CallbackResult) => {
       if (settled) return;
@@ -270,28 +275,27 @@ function waitForCallback(
         // browser preconnect/speculative probe, or someone hitting the
         // loopback port manually). Don't settle the flow on it; keep
         // waiting for the real callback.
-        res.writeHead(204).end();
+        res.writeHead(204, { Connection: "close" }).end();
         return;
       }
+      const fail = (message: string) => {
+        res.writeHead(200, { "Content-Type": "text/html", Connection: "close" }).end(FAILURE_HTML);
+        finishReject(new Error(message));
+      };
       if (err) {
-        res.writeHead(200, { "Content-Type": "text/html" }).end(FAILURE_HTML);
-        finishReject(new Error("Google sign-in was declined. You can connect Google Drive again whenever you're ready."));
+        fail("Google sign-in was declined. You can connect Google Drive again whenever you're ready.");
         return;
       }
+      // Past this point !err held, so the `!err && !code` guard above
+      // guarantees `code` is set — there is no third "neither" case here.
       if (gotState !== expectedState) {
         // Never proceed on a state mismatch — reject without exposing the
         // received value (could be forged/attacker-controlled input).
-        res.writeHead(200, { "Content-Type": "text/html" }).end(FAILURE_HTML);
-        finishReject(new Error("Google sign-in failed a security check (state mismatch). Connect Google Drive again."));
+        fail("Google sign-in failed a security check (state mismatch). Connect Google Drive again.");
         return;
       }
-      if (!code) {
-        res.writeHead(200, { "Content-Type": "text/html" }).end(FAILURE_HTML);
-        finishReject(new Error("Google sign-in didn't return an authorization code. Try again."));
-        return;
-      }
-      res.writeHead(200, { "Content-Type": "text/html" }).end(SUCCESS_HTML);
-      finishResolve({ code });
+      res.writeHead(200, { "Content-Type": "text/html", Connection: "close" }).end(SUCCESS_HTML);
+      finishResolve({ code: code as string });
     };
     const onAbort = () => finishReject(new Error("Google sign-in was canceled."));
     const timer = setTimeout(
