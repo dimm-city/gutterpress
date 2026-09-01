@@ -2,32 +2,32 @@
  * Project-scoping guard coverage for the route families that ARC review #37
  * never reached (2026-07-29 file-operations audit, Theme 1).
  *
- * `fs/*`, `media/*`, `log/read` and
- * `plugin/add-npm` confined their renderer-supplied path to the host-owned
- * `projectRoots()` allow-list; every OTHER route taking a `projectDir`
- * validated it with `requireAbsolute` alone — a bare `isAbsolute` check. Any
- * code that can issue a same-origin fetch inside the renderer (a preview XSS,
- * a malicious plugin-injected script, a compromised dependency — the threat
- * model `electron/server-bridge/fs-guard.ts` documents) could therefore drive
- * real filesystem work at ANY absolute path on disk:
+ * `fs/*`, `media/*`, `log/read` and `plugin/add-npm` confined their
+ * renderer-supplied path to the host-owned `projectRoots()` allow-list;
+ * every OTHER route taking a `projectDir` validated it with `requireAbsolute`
+ * alone — a bare `isAbsolute` check. Any code that can issue a same-origin
+ * fetch inside the renderer (a preview XSS, a malicious plugin-injected
+ * script, a compromised dependency — the threat model
+ * `electron/server-bridge/fs-guard.ts` documents) could therefore drive real
+ * filesystem work at ANY absolute path on disk:
  *
- *   - `vcs/restore-snapshot` force-checks-out any git repo
- *     (`git.checkout({ force: true })`)
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
  *   - `publish/run` uploads a file to a configured provider
- *   - `theme/remove` `rm -rf`s a `themes/<slug>` subtree
- *   - `theme/apply` / `style/set-active` / `manifest/set-fields` /
- *     `plugin/set-enabled` rewrite any `manifest.yaml`
- *   - `plugin/validate` dynamic-`import()`s whatever JS the target
- *     directory's manifest names — an execute primitive
- *   - `tpl/save-as-template` recursively copies any folder into app storage
  *
- * The table below pins the guard on every one of them: outside → 403, sibling
- * directory with a shared string prefix → 403 (the `/proj` vs `/proj2`
- * regression), no project open → 403, and — the multi-project half of the
- * contract — the enclosing REPO ROOT is allowed, because `projectRoots()` is
- * the opened book PLUS its host-detected repo root, which is what lets a book
- * subfolder session act on repo-root shared files.
+ * The table below pins the guard on every ROUTE that remains HTTP after
+ * SFE-P5c2: outside → rejected, sibling directory with a shared string
+ * prefix → rejected (the `/proj` vs `/proj2` regression), no project open →
+ * rejected, and — the multi-project half of the contract — the enclosing
+ * REPO ROOT is allowed, because `projectRoots()` is the opened book PLUS its
+ * host-detected repo root, which is what lets a book subfolder session act
+ * on repo-root shared files.
+ *
+ * SFE-P5c2 migrated `vcs`, `theme`, `style`, `project`, `manifest`,
+ * `plugin`, `snip`, and `tpl` off these HTTP routes to typed IPC — their
+ * scoping-guard coverage (the exact same cases this file pins, run against
+ * `electron/api/*.ts` instead of a `+server.ts` handler) moved to
+ * `project-config-ipc.test.ts` (project/manifest/tpl/snip/plugin/theme/
+ * style) and `vcs-ipc.test.ts` (vcs).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
@@ -35,14 +35,10 @@ import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
-import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 
-import { POST as vcsSaveSnapshot } from "../../src/routes/api/vcs/save-snapshot/+server";
-import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-snapshot/+server";
-import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
-import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
 import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
@@ -50,35 +46,12 @@ import { POST as publishSetConfig } from "../../src/routes/api/publish/set-confi
 import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
-import { POST as themeApply } from "../../src/routes/api/theme/apply/+server";
-import { POST as themeRemove } from "../../src/routes/api/theme/remove/+server";
-import { POST as themeReadCss } from "../../src/routes/api/theme/read-css/+server";
-import { POST as themeImportFromUrl } from "../../src/routes/api/theme/import-from-url/+server";
-import { POST as themeImportFromFile } from "../../src/routes/api/theme/import-from-file/+server";
-import { POST as themeImportFromFolder } from "../../src/routes/api/theme/import-from-folder/+server";
-import { POST as themeActive } from "../../src/routes/api/theme/active/+server";
-import { POST as themeProject } from "../../src/routes/api/theme/project/+server";
-import { POST as themePrevious } from "../../src/routes/api/theme/previous/+server";
-import { POST as themeRevert } from "../../src/routes/api/theme/revert/+server";
-import { POST as styleSetActive } from "../../src/routes/api/style/set-active/+server";
-import { POST as projectListStyles } from "../../src/routes/api/project/list-styles/+server";
-import { POST as manifestRead } from "../../src/routes/api/manifest/read/+server";
-import { POST as manifestSetFields } from "../../src/routes/api/manifest/set-fields/+server";
-import { POST as pluginSetEnabled } from "../../src/routes/api/plugin/set-enabled/+server";
-import { POST as pluginList } from "../../src/routes/api/plugin/list/+server";
-import { POST as pluginAddLocal } from "../../src/routes/api/plugin/add-local/+server";
-import { POST as pluginValidate } from "../../src/routes/api/plugin/validate/+server";
-import { POST as snipSave } from "../../src/routes/api/snip/save/+server";
-import { POST as snipRead } from "../../src/routes/api/snip/read/+server";
-import { POST as snipDelete } from "../../src/routes/api/snip/delete/+server";
-import { POST as snipList } from "../../src/routes/api/snip/list/+server";
-import { POST as tplSaveAsTemplate } from "../../src/routes/api/tpl/save-as-template/+server";
 import { POST as lintProject } from "../../src/routes/api/lint/project/+server";
 // shell/show-in-folder migrated to typed IPC (SFE-P5c1) — see shell-ipc.test.ts.
+// vcs/theme/style/project/manifest/plugin/snip/tpl migrated to typed IPC
+// (SFE-P5c2) — see project-config-ipc.test.ts / vcs-ipc.test.ts.
 
 type RouteHandler = (event: { request: Request }) => Promise<Response>;
-
-const HEX40_A = "a".repeat(40);
 
 /**
  * Every route that takes a renderer-supplied `projectDir` and does real
@@ -87,10 +60,6 @@ const HEX40_A = "a".repeat(40);
  * only come from the path guard — never from a missing field.
  */
 const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) => unknown }> = [
-  { name: "vcs/save-snapshot", handler: vcsSaveSnapshot as RouteHandler, body: (d) => ({ projectDir: d, message: "snap" }) },
-  { name: "vcs/restore-snapshot", handler: vcsRestoreSnapshot as RouteHandler, body: (d) => ({ projectDir: d, id: HEX40_A }) },
-  { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "publish/run", handler: publishRun as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch" }) },
@@ -98,29 +67,6 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "publish/connect", handler: publishConnect as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", token: "tok" }) },
   { name: "publish/list", handler: publishList as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
-  { name: "theme/apply", handler: themeApply as RouteHandler, body: (d) => ({ projectDir: d, target: { kind: "builtin", id: "classic" } }) },
-  { name: "theme/remove", handler: themeRemove as RouteHandler, body: (d) => ({ projectDir: d, id: "some-theme" }) },
-  { name: "theme/read-css", handler: themeReadCss as RouteHandler, body: (d) => ({ projectDir: d, source: { kind: "project", id: "some-theme" } }) },
-  { name: "theme/import-from-url", handler: themeImportFromUrl as RouteHandler, body: (d) => ({ projectDir: d, url: "https://example.test/theme.css" }) },
-  { name: "theme/import-from-file", handler: themeImportFromFile as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/import-from-folder", handler: themeImportFromFolder as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/active", handler: themeActive as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/project", handler: themeProject as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/previous", handler: themePrevious as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/revert", handler: themeRevert as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "style/set-active", handler: styleSetActive as RouteHandler, body: (d) => ({ projectDir: d, paths: [] }) },
-  { name: "project/list-styles", handler: projectListStyles as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "manifest/read", handler: manifestRead as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "manifest/set-fields", handler: manifestSetFields as RouteHandler, body: (d) => ({ projectDir: d, updates: { title: "pwned" } }) },
-  { name: "plugin/set-enabled", handler: pluginSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, ref: "some-plugin", enabled: true }) },
-  { name: "plugin/list", handler: pluginList as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "plugin/add-local", handler: pluginAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "plugin/validate", handler: pluginValidate as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "snip/save", handler: snipSave as RouteHandler, body: (d) => ({ projectDir: d, name: "snip", body: "text" }) },
-  { name: "snip/read", handler: snipRead as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
-  { name: "snip/delete", handler: snipDelete as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
-  { name: "snip/list", handler: snipList as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "tpl/save-as-template", handler: tplSaveAsTemplate as RouteHandler, body: (d) => ({ projectDir: d, name: "tpl" }) },
   { name: "lint/project", handler: lintProject as RouteHandler, body: (d) => ({ projectDir: d }) },
 ];
 
@@ -144,6 +90,7 @@ let bookDir: string;
 let siblingBook: string; // "<repo>/books/field-guide" + "2" — inside the repo
 let siblingRepo: string; // "<base>/repo" + "2" — a DIFFERENT repo, shared prefix
 let outsideDir: string;
+let savedHostServices: HostServices | null;
 
 function request(body: unknown): Request {
   return new Request("http://local.test", {
@@ -175,6 +122,10 @@ function openProject(roots: string[]): void {
 }
 
 beforeEach(async () => {
+  // Host services are process-global — save/restore so this file's fixture
+  // never leaks into a sibling test file.
+  savedHostServices = getHostServices();
+
   base = await mkdtemp(path.join(tmpdir(), "gutterpress-route-scoping-"));
   repoRoot = path.join(base, "repo");
   bookDir = path.join(repoRoot, "books", "field-guide");
@@ -196,6 +147,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
+  registerHostServices(savedHostServices as HostServices);
 });
 
 // ── Every guarded route: outside the open project is 403 ──────────────────
@@ -212,18 +164,9 @@ for (const route of ROUTES) {
 // `siblingRepo` is `repoRoot + "2"`, so a bare `startsWith(root)` containment
 // test would accept it as "inside the repo". One representative route per
 // family (the whole set shares one guard, so this pins the guard's separator
-// handling without re-running 36 near-identical cases).
+// handling without re-running every near-identical case).
 
-const SIBLING_CASES = [
-  "vcs/restore-snapshot",
-  "remote/sync",
-  "publish/run",
-  "theme/remove",
-  "manifest/set-fields",
-  "plugin/validate",
-  "snip/save",
-  "tpl/save-as-template",
-];
+const SIBLING_CASES = ["remote/sync", "publish/run"];
 
 for (const name of SIBLING_CASES) {
   test(`${name}: a sibling REPO with a shared string prefix is rejected (403)`, async () => {
@@ -244,16 +187,6 @@ test("a sibling BOOK is rejected when only that book's own root is open", async 
     const status = await statusOf(route.handler({ request: request(route.body(siblingBook)) }));
     expect(status).toBe(403);
   }
-});
-
-test("a sibling book IS in scope for a repo-root session (both share the repo)", async () => {
-  // The multi-project half: sibling books of the same repo are inside
-  // `repoRoot`, so a repo-root session reaches them by design. This is not a
-  // containment hole — it is R9's "a project is its git repo".
-  const status = await statusOf(
-    manifestRead({ request: request({ projectDir: siblingBook }) } as Parameters<typeof manifestRead>[0]),
-  );
-  expect(status).not.toBe(403);
 });
 
 // ── No project open → fail closed, never "anywhere" ───────────────────────
@@ -286,56 +219,6 @@ test("the enclosing REPO ROOT passes the guard on every route (multi-project ses
     const status = await statusOf(route.handler({ request: request(route.body(repoRoot)) }));
     expect(status).not.toBe(403);
   }
-});
-
-// ── Real positive round-trips (200), not just "not 403" ──────────────────
-
-test("manifest/read returns the open book's manifest fields", async () => {
-  const res = (await manifestRead({ request: request({ projectDir: bookDir }) } as Parameters<
-    typeof manifestRead
-  >[0])) as Response;
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({ title: "Field Guide" });
-});
-
-test("project/list-styles offers the repo's shared stylesheets for a nested book", async () => {
-  // 2026-07-29 audit: shared stylesheets were only listable while they sat in
-  // the manifest, so unchecking one removed it from the UI for good. The route
-  // now forwards the session's repo root — guarded exactly like projectDir, so a
-  // renderer cannot turn it into a directory-enumeration primitive.
-  await writeFile(path.join(repoRoot, "shared", "styles", "components.css"), "body{}", "utf8");
-  const res = (await projectListStyles({
-    request: request({ projectDir: bookDir, repoRoot }),
-  } as Parameters<typeof projectListStyles>[0])) as Response;
-  expect(res.status).toBe(200);
-  const styles = (await res.json()) as Array<{ displayName: string; active: boolean }>;
-  expect(styles.map((s) => s.displayName)).toContain("../../shared/styles/components.css");
-});
-
-test("project/list-styles rejects a repoRoot outside the open project (403)", async () => {
-  const status = await statusOf(
-    projectListStyles({
-      request: request({ projectDir: bookDir, repoRoot: outsideDir }),
-    } as Parameters<typeof projectListStyles>[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test("project/list-styles works for a repo-root-keyed project dir", async () => {
-  await writeFile(path.join(repoRoot, "shared", "styles", "components.css"), "body{}", "utf8");
-  const res = (await projectListStyles({ request: request({ projectDir: repoRoot }) } as Parameters<
-    typeof projectListStyles
-  >[0])) as Response;
-  expect(res.status).toBe(200);
-  expect(Array.isArray(await res.json())).toBe(true);
-});
-
-test("manifest/set-fields still writes inside the open book", async () => {
-  const res = (await manifestSetFields({
-    request: request({ projectDir: bookDir, updates: { title: "Renamed" } }),
-  } as Parameters<typeof manifestSetFields>[0])) as Response;
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({ title: "Renamed" });
 });
 
 // ── publish/run's artifactPath: the upload SOURCE, not just projectDir ────
@@ -472,9 +355,9 @@ test.skipIf(!canSymlink)(
     const alias = path.join(bookDir, "alias");
     await symlink(outsideDir, alias, "dir");
     const status = await statusOf(
-      manifestSetFields({
-        request: request({ projectDir: alias, updates: { title: "pwned" } }),
-      } as Parameters<typeof manifestSetFields>[0]),
+      remoteDiagnoseProject({
+        request: request({ projectDir: alias }),
+      } as Parameters<typeof remoteDiagnoseProject>[0]),
     );
     expect(status).toBe(403);
   },

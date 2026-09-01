@@ -13,7 +13,7 @@
  * rune fields and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor and the `api.plugin.*`
+ * (§8 / ADR 0004): the reactive `projectDir` accessor and the `plugin*`
  * host calls. `ProjectPluginEntry` / `PluginValidationResult` /
  * `RecommendedPlugin` are type-only imports — ZERO `node:*` / lib value
  * imports.

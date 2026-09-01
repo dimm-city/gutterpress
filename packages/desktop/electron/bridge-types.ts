@@ -68,6 +68,16 @@ export type {
   MarkdownFileLaunchEvent,
 } from "../src/lib/platform/shared-types";
 
+// SFE-P5c2: local version history (vcs:*) IPC payload types — already lived
+// in shared-types.ts (the routes never stopped being typed there even while
+// `vcs` was HTTP), just not re-exported here until the bridge itself needed
+// them.
+export type {
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+} from "../src/lib/platform/shared-types";
+
 // VALUE re-export (see file header) — the canonical settings defaults (#29).
 export { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";
 
@@ -76,6 +86,28 @@ export { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";
 // file is deliberately import-free) but the relative-import-into-src/lib
 // pattern is the same one already used above for shared-types.ts.
 export type { DiscoveredProject, ProjectClassification } from "../src/lib/platform/dtos";
+
+// SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
+// DTOs. All ~13 of these already lived in `dtos.ts` (the established home
+// for "plain request/response shapes a server route returns", per that
+// file's own header) before this run — moving the TRANSPORT under them
+// doesn't move the DTOs; the bridge just needs to reach them now too, via
+// the same relative-import-into-src/lib pattern used above.
+export type {
+  TemplateInfo,
+  SavedTemplateInfo,
+  SnippetEntry,
+  ProjectConfigFields,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ThemeImportResult,
+  ProjectStyle,
+  MediaImageEntry,
+  MediaImageDetails,
+} from "../src/lib/platform/dtos";
 
 // AppImage status/result shapes are electron-side-owned (electron/
 // appimage-integration.ts is the real implementation main.ts already

@@ -5,7 +5,7 @@
    *
    * Architecture:
    * - Snippets live in the open project's `snippets/` folder. The host does the
-   *   file IO via `api.snip.*` server routes. The
+   *   file IO via `project-config-capability`'s `snip*` functions. The
    *   variable substitution is pure renderer code (`snippet-vars.ts`) so no Node
    *   lib is pulled into the SPA bundle (§8 / ADR 0004).
    * - The component owns no editor knowledge: it calls `onInsert(text)` with the
@@ -20,8 +20,8 @@
    * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`$lib/dialog`).
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
-  import type { SnippetEntry } from "$lib/api";
+  import { snipList, snipRead, snipSave, snipDelete } from "$lib/project-config/project-config-capability";
+  import type { SnippetEntry } from "$lib/platform/dtos";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
   import {
     dialogBehavior,
@@ -89,7 +89,7 @@
     error = null;
     loading = true;
     try {
-      snippets = await api.snip.list(projectDir);
+      snippets = await snipList(projectDir);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       snippets = [];
@@ -107,7 +107,7 @@
     if (!projectDir) return;
     error = null;
     try {
-      const body = await api.snip.read(projectDir, entry.fileName);
+      const body = await snipRead(projectDir, entry.fileName);
       const vars = extractVariables(body);
       if (vars.length === 0) {
         onInsert(body);
@@ -153,7 +153,7 @@
     }
     error = null;
     try {
-      await api.snip.save(projectDir, saveName.trim(), saveBody);
+      await snipSave(projectDir, saveName.trim(), saveBody);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -163,7 +163,7 @@
   async function remove(entry: SnippetEntry) {
     if (!projectDir) return;
     try {
-      await api.snip.delete(projectDir, entry.fileName);
+      await snipDelete(projectDir, entry.fileName);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);

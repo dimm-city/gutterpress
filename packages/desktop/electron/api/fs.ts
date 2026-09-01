@@ -13,27 +13,10 @@
  */
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { gitIdentityFrom } from "../git-identity";
-import { getPrefsHooks } from "../server-bridge/prefs-hooks";
 import { getVcsHooks, type VcsHooks } from "../server-bridge/vcs-hooks";
 import { notifyPreviewSettledWrite, scheduleAutoWriteEffects } from "../server-bridge/write-hooks";
-import { deepMergeSettings } from "../../src/lib/settings-merge";
-import { DEFAULT_SETTINGS, type AppSettings, type DeepPartial } from "../../src/lib/platform/shared-types";
+import { gitIdentityArgs } from "./git-identity-args";
 import { requireAbsolute, requireSegment, requireWithinProjectRoot } from "./validation";
-
-/**
- * The author's configured commit identity for a host-initiated (not
- * user-typed) snapshot. Mirrors the deleted `src/lib/server/settings.ts`'s
- * `gitIdentityArgs()` exactly (same `DEFAULT_SETTINGS` merge, same
- * `gitIdentityFrom` call) so this IPC path and every other commit path keep
- * agreeing on who the author is.
- */
-async function gitIdentityArgs(): Promise<ReturnType<typeof gitIdentityFrom>> {
-  const hooks = getPrefsHooks();
-  if (!hooks) return gitIdentityFrom(DEFAULT_SETTINGS);
-  const merged = deepMergeSettings(DEFAULT_SETTINGS, (await hooks.readSettings()) as DeepPartial<AppSettings>);
-  return gitIdentityFrom(merged);
-}
 
 export interface DirEntry {
   name: string;

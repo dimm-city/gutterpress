@@ -56,6 +56,17 @@ import * as dialogApi from "./api/dialog";
 import * as shellApi from "./api/shell";
 import * as logApi from "./api/log";
 import * as appApi from "./api/app";
+// SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/vcs/style moved
+// from SvelteKit HTTP routes to typed IPC — same rationale as P5c1 above.
+import * as projectApi from "./api/project";
+import * as manifestApi from "./api/manifest";
+import * as tplApi from "./api/tpl";
+import * as snipApi from "./api/snip";
+import * as mediaApi from "./api/media";
+import * as pluginApi from "./api/plugin";
+import * as themeApi from "./api/theme";
+import * as vcsApi from "./api/vcs";
+import * as styleApi from "./api/style";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1128,6 +1139,87 @@ secureHandle("app:acknowledgeFlushFailure", (_e, failedAt: unknown) =>
 secureHandle("app:appImageIntegrationStatus", () => appApi.appImageIntegrationStatus());
 secureHandle("app:appImageIntegrationInstall", () => appApi.appImageIntegrationInstall());
 secureHandle("app:appImageIntegrationRemove", () => appApi.appImageIntegrationRemove());
+
+// ── project / manifest / tpl / snip / media / plugin / theme / vcs / style —
+// typed IPC (SFE-P5c2) ───────────────────────────────────────────────────
+// Replaces src/routes/api/{project,manifest,tpl,snip,media,plugin,theme,
+// vcs,style}/**/+server.ts. Same porting discipline as the P5c1 block above.
+
+secureHandle("project:listStyles", (_e, projectDir: unknown, repoRoot?: unknown) =>
+  projectApi.projectListStyles(projectDir, repoRoot),
+);
+
+secureHandle("manifest:read", (_e, projectDir: unknown) => manifestApi.manifestRead(projectDir));
+secureHandle("manifest:setFields", (_e, projectDir: unknown, updates: unknown) =>
+  manifestApi.manifestSetFields(projectDir, updates),
+);
+
+secureHandle("tpl:listBuiltIn", () => tplApi.tplListBuiltIn());
+secureHandle("tpl:listCustom", (_e, templatesRoot?: unknown) => tplApi.tplListCustom(templatesRoot));
+secureHandle("tpl:importFromFolder", () => tplApi.tplImportFromFolder());
+secureHandle("tpl:saveAsTemplate", (_e, projectDir: unknown, name: unknown, sharedRefs?: unknown) =>
+  tplApi.tplSaveAsTemplate(projectDir, name, sharedRefs),
+);
+
+secureHandle("snip:list", (_e, projectDir: unknown) => snipApi.snipList(projectDir));
+secureHandle("snip:read", (_e, projectDir: unknown, fileName: unknown) => snipApi.snipRead(projectDir, fileName));
+secureHandle("snip:save", (_e, projectDir: unknown, name: unknown, body: unknown) =>
+  snipApi.snipSave(projectDir, name, body),
+);
+secureHandle("snip:delete", (_e, projectDir: unknown, fileName: unknown) =>
+  snipApi.snipDelete(projectDir, fileName),
+);
+
+secureHandle("media:listImages", (_e, projectDir: unknown) => mediaApi.mediaListImages(projectDir));
+secureHandle("media:thumbnail", (_e, imagePath: unknown) => mediaApi.mediaThumbnail(imagePath));
+secureHandle("media:inspect", (_e, imagePath: unknown) => mediaApi.mediaInspect(imagePath));
+secureHandle("media:importImage", (_e, projectDir: unknown, src: unknown) =>
+  mediaApi.mediaImportImage(projectDir, src),
+);
+
+secureHandle("plugin:list", (_e, projectDir: unknown) => pluginApi.pluginList(projectDir));
+secureHandle("plugin:setEnabled", (_e, projectDir: unknown, ref: unknown, enabled: unknown) =>
+  pluginApi.pluginSetEnabled(projectDir, ref, enabled),
+);
+secureHandle("plugin:addNpm", (_e, projectDir: unknown, packageName: unknown, exportName?: unknown) =>
+  pluginApi.pluginAddNpm(projectDir, packageName, exportName),
+);
+secureHandle("plugin:addLocal", (_e, projectDir: unknown) => pluginApi.pluginAddLocal(projectDir));
+secureHandle("plugin:validate", (_e, projectDir: unknown) => pluginApi.pluginValidate(projectDir));
+secureHandle("plugin:recommended", () => pluginApi.pluginRecommended());
+
+secureHandle("theme:listBuiltIn", () => themeApi.themeListBuiltIn());
+secureHandle("theme:listProject", (_e, projectDir: unknown) => themeApi.themeListProject(projectDir));
+secureHandle("theme:getActive", (_e, projectDir: unknown) => themeApi.themeGetActive(projectDir));
+secureHandle("theme:apply", (_e, projectDir: unknown, target: unknown) => themeApi.themeApply(projectDir, target));
+secureHandle("theme:importFromFolder", (_e, projectDir: unknown) => themeApi.themeImportFromFolder(projectDir));
+secureHandle("theme:importFromFile", (_e, projectDir: unknown) => themeApi.themeImportFromFile(projectDir));
+secureHandle("theme:importFromUrl", (_e, projectDir: unknown, url: unknown) =>
+  themeApi.themeImportFromUrl(projectDir, url),
+);
+secureHandle("theme:readCss", (_e, projectDir: unknown, source: unknown) =>
+  themeApi.themeReadCss(projectDir, source),
+);
+secureHandle("theme:remove", (_e, projectDir: unknown, id: unknown) => themeApi.themeRemove(projectDir, id));
+secureHandle("theme:getPrevious", (_e, projectDir: unknown) => themeApi.themeGetPrevious(projectDir));
+secureHandle("theme:revert", (_e, projectDir: unknown) => themeApi.themeRevert(projectDir));
+
+secureHandle("vcs:enableVersionHistory", (_e, projectDir: unknown) =>
+  vcsApi.vcsEnableVersionHistory(projectDir),
+);
+secureHandle("vcs:listSnapshotsPage", (_e, projectDir: unknown, limit?: unknown, before?: unknown) =>
+  vcsApi.vcsListSnapshotsPage(projectDir, limit, before),
+);
+secureHandle("vcs:restoreSnapshot", (_e, projectDir: unknown, id: unknown) =>
+  vcsApi.vcsRestoreSnapshot(projectDir, id),
+);
+secureHandle("vcs:saveSnapshot", (_e, projectDir: unknown, message?: unknown) =>
+  vcsApi.vcsSaveSnapshot(projectDir, message),
+);
+
+secureHandle("style:setActive", (_e, projectDir: unknown, paths: unknown) =>
+  styleApi.styleSetActive(projectDir, paths),
+);
 
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {

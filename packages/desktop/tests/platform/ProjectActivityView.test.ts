@@ -10,7 +10,7 @@
  * Test surface:
  *  1. PWA-cleanliness (§8) — no lib/node value imports
  *  2. H2 — a Restore action exists per snapshot entry, wired to
- *     api.vcs.restoreSnapshot
+ *     vcsRestoreSnapshot
  *  3. H2 — plain-language confirmation copy before restoring
  *  4. H2 — a busy/"Restoring…" state while the call is in flight
  *  5. H2 — friendly error handling on a failed restore (routed through
@@ -60,18 +60,18 @@ describe("ProjectActivityView — PWA-cleanliness (§8)", () => {
     }
   });
 
-  test("all host work goes through the typed api wrapper", () => {
+  test("all host work goes through the typed vcs-capability wrapper", () => {
     const src = readSource();
-    expect(src).toContain('from "$lib/api"');
+    expect(src).toContain('from "$lib/vcs/vcs-capability"');
     expect(src).not.toMatch(/window\.electron/);
     expect(src).not.toMatch(/ipcRenderer/);
   });
 });
 
 describe("ProjectActivityView — H2 restore action", () => {
-  test("calls api.vcs.restoreSnapshot with the project dir and snapshot id", () => {
+  test("calls vcsRestoreSnapshot with the project dir and snapshot id", () => {
     const src = readSource();
-    expect(src).toMatch(/api\.vcs\.restoreSnapshot\(\s*projectDir\s*,\s*id\s*\)/);
+    expect(src).toMatch(/vcsRestoreSnapshot\(\s*projectDir\s*,\s*id\s*\)/);
   });
 
   test("a Restore control exists per history entry, keyed off the row's own armed state", () => {

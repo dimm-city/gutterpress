@@ -104,6 +104,7 @@
   // degrade-and-report plugin-error payload shape (both now owned by this
   // module — SFE-P5b review round 1).
   import { buildEditorProjection, type EditorProjectionPluginError } from "$lib/editor-host/editor-projection-capability";
+  import { vcsSaveSnapshot } from "$lib/vcs/vcs-capability";
   import {
     onFlushBeforeClose,
     onOpenMarkdownFile,
@@ -4036,7 +4037,7 @@
       const dir = lifecycle.currentDir;
       if (!dir) return;
       try {
-        await api.vcs.saveSnapshot(dir);
+        await vcsSaveSnapshot(dir);
         toast?.success("Saved a version.");
         activityViewRef?.refreshHistory();
       } catch (e) {

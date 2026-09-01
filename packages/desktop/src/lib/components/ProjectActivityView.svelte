@@ -3,7 +3,7 @@
    * ProjectActivityView — the writer-facing view of a project's version
    * history and operation log (UX review M37: the ONE log/activity surface).
    *
-   * Restore (H2): the host's `/api/vcs/restore-snapshot` route validates the
+   * Restore (H2): the host's `vcs:restoreSnapshot` handler validates the
    * snapshot id and snapshots the current state before restoring (ADR 0006
    * D5), so restoring can never lose the author's in-progress work. This view
    * still asks for a plain-language confirmation before calling it, shows a
@@ -14,7 +14,8 @@
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api, type SnapshotEntry } from "$lib/api";
+  import { vcsRestoreSnapshot, vcsListSnapshotsPage } from "$lib/vcs/vcs-capability";
+  import type { SnapshotEntry } from "$lib/platform/contract";
   import { readLog } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { friendlyHostError } from "$lib/errors";
   import {
@@ -73,7 +74,7 @@
     restoringId = id;
     restoreError = null;
     try {
-      await api.vcs.restoreSnapshot(projectDir, id);
+      await vcsRestoreSnapshot(projectDir, id);
       restoreConfirmId = null;
       // Reload so the new "restored to <version>" safety snapshot (and any
       // remote-side commits) appear immediately.
@@ -90,7 +91,7 @@
     if (!projectDir) return;
     historyLoading = true;
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir);
+      const page = await vcsListSnapshotsPage(projectDir);
       entries = page.entries;
       hasMore = page.hasMore;
     } catch (e) {
@@ -111,7 +112,7 @@
     const last = entries[entries.length - 1]!;
     loadingOlder = true;
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir, { before: last.id });
+      const page = await vcsListSnapshotsPage(projectDir, { before: last.id });
       entries = [...entries, ...page.entries];
       hasMore = page.hasMore;
     } catch (e) {

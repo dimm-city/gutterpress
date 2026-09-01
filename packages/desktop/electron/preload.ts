@@ -28,6 +28,22 @@ import type {
   AppImageStatus,
   AppImageInstallResult,
   AppImageRemoveResult,
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+  TemplateInfo,
+  SavedTemplateInfo,
+  SnippetEntry,
+  ProjectConfigFields,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ThemeImportResult,
+  ProjectStyle,
+  MediaImageEntry,
+  MediaImageDetails,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -48,7 +64,10 @@ import type {
 // 6 -> 7 (SFE-P5c1): added `fs`, `dialog`, `shell`, `log`, `app` -- the five
 // route groups migrated from SvelteKit HTTP routes to typed IPC. The routes
 // and their `api.ts` client methods are deleted in the same run.
-const DESKTOP_API = 7;
+// 7 -> 8 (SFE-P5c2): added `project`, `manifest`, `tpl`, `snip`, `media`,
+// `plugin`, `theme`, `vcs`, `style` -- the nine route groups migrated from
+// SvelteKit HTTP routes to typed IPC in the same run.
+const DESKTOP_API = 8;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -67,16 +86,19 @@ const DESKTOP_API = 7;
 // to server routes (Phase 2B), leaving the local mirrors unreferenced; the
 // real shapes live in the lib's project-scaffold.ts.
 
-// plugin:*, theme:*, project:listStyles types removed — migrated to server
-// routes (Phase 2E). This block used to also declare module-local
+// plugin:*, theme:*, project:listStyles types were removed here when that
+// surface migrated to server routes (Phase 2E) and are back as of SFE-P5c2
+// (imported from ./bridge-types at the top of this file, same as every
+// other IPC payload type). This block used to also declare module-local
 // `StyleToken`/`RecentFolderEntry`/`FavoriteEntry`/`DiscoveredProject`
 // interfaces left behind by that migration and never referenced anywhere in
-// this file — the real shapes live in src/lib/platform/dtos.ts. Removed in
-// the 2026-07-28 duplication audit; see
-// docs/reviews/duplication-audit-2026-07-28.md.
+// this file — those (StyleToken excepted — SPA-only, never crossed the
+// bridge) live in src/lib/platform/dtos.ts. Removed in the 2026-07-28
+// duplication audit; see docs/reviews/duplication-audit-2026-07-28.md.
 
-// Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
-// `ProjectClassification` are defined in `src/lib/platform/shared-types.ts`
+// Local version history (#13): `SnapshotEntry` / `SnapshotPage` /
+// `RestoreVersionResult` / `ProjectClassification` are defined in
+// `src/lib/platform/shared-types.ts` (or dtos.ts for `ProjectClassification`)
 // and re-exported here via `electron/bridge-types.ts`.
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -145,8 +167,8 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ────────────────
-  // listProjectImages, imageThumbnail, inspectImage stay server routes
-  // (media:*, P5c4). checkCss, lintProject stay server routes (lint:*).
+  // media:* moved to typed IPC too, but in SFE-P5c2 — see the `media` block
+  // below. checkCss, lintProject stay server routes (lint:*, P5c4).
   fs: {
     readFile: (path: string): Promise<string> => ipcRenderer.invoke("fs:readFile", path),
     writeFile: (path: string, content: string): Promise<FileWriteResult> =>
@@ -225,6 +247,107 @@ contextBridge.exposeInMainWorld("electron", {
     },
   },
 
+  // ── project / manifest / tpl / snip / media / plugin / theme / vcs / style
+  // — typed IPC (SFE-P5c2) ──────────────────────────────────────────────────
+  // checkCss / lintProject stay server routes (lint:*, P5c4).
+
+  project: {
+    listStyles: (projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]> =>
+      ipcRenderer.invoke("project:listStyles", projectDir, repoRoot ?? undefined),
+  },
+
+  manifest: {
+    read: (projectDir: string): Promise<ProjectConfigFields> => ipcRenderer.invoke("manifest:read", projectDir),
+    setFields: (projectDir: string, updates: ProjectConfigFields): Promise<ProjectConfigFields> =>
+      ipcRenderer.invoke("manifest:setFields", projectDir, updates),
+  },
+
+  tpl: {
+    listBuiltIn: (): Promise<TemplateInfo[]> => ipcRenderer.invoke("tpl:listBuiltIn"),
+    listCustom: (templatesRoot?: string): Promise<TemplateInfo[]> =>
+      ipcRenderer.invoke("tpl:listCustom", templatesRoot),
+    saveAsTemplate: (opts: {
+      projectDir: string;
+      name: string;
+      sharedRefs?: "vendor" | "exclude";
+    }): Promise<SavedTemplateInfo> =>
+      ipcRenderer.invoke("tpl:saveAsTemplate", opts.projectDir, opts.name, opts.sharedRefs),
+    importFromFolder: (): Promise<TemplateInfo | null> => ipcRenderer.invoke("tpl:importFromFolder"),
+  },
+
+  snip: {
+    list: (projectDir: string): Promise<SnippetEntry[]> => ipcRenderer.invoke("snip:list", projectDir),
+    read: (projectDir: string, fileName: string): Promise<string> =>
+      ipcRenderer.invoke("snip:read", projectDir, fileName),
+    save: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
+      ipcRenderer.invoke("snip:save", projectDir, name, body),
+    delete: (projectDir: string, fileName: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("snip:delete", projectDir, fileName),
+  },
+
+  media: {
+    listImages: (projectDir: string): Promise<MediaImageEntry[]> =>
+      ipcRenderer.invoke("media:listImages", projectDir),
+    thumbnail: (imagePath: string): Promise<string | null> => ipcRenderer.invoke("media:thumbnail", imagePath),
+    inspect: (imagePath: string): Promise<MediaImageDetails | null> =>
+      ipcRenderer.invoke("media:inspect", imagePath),
+    importImage: (projectDir: string, src: string): Promise<{ src: string; copied: boolean }> =>
+      ipcRenderer.invoke("media:importImage", projectDir, src),
+  },
+
+  plugin: {
+    list: (projectDir: string): Promise<ProjectPluginEntry[]> => ipcRenderer.invoke("plugin:list", projectDir),
+    setEnabled: (projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("plugin:setEnabled", projectDir, ref, enabled),
+    addNpm: (projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null> =>
+      ipcRenderer.invoke("plugin:addNpm", projectDir, packageName, exportName),
+    addLocal: (projectDir: string): Promise<ProjectPluginEntry | null> =>
+      ipcRenderer.invoke("plugin:addLocal", projectDir),
+    validate: (projectDir: string): Promise<PluginValidationResult[]> =>
+      ipcRenderer.invoke("plugin:validate", projectDir),
+    recommended: (): Promise<RecommendedPlugin[]> => ipcRenderer.invoke("plugin:recommended"),
+  },
+
+  theme: {
+    listBuiltIn: (): Promise<ThemeInfo[]> => ipcRenderer.invoke("theme:listBuiltIn"),
+    listProject: (projectDir: string): Promise<ThemeInfo[]> => ipcRenderer.invoke("theme:listProject", projectDir),
+    getActive: (projectDir: string): Promise<ThemeInfo | null> => ipcRenderer.invoke("theme:getActive", projectDir),
+    apply: (projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> =>
+      ipcRenderer.invoke("theme:apply", projectDir, target),
+    importFromFolder: (projectDir: string): Promise<ThemeInfo | null> =>
+      ipcRenderer.invoke("theme:importFromFolder", projectDir),
+    importFromFile: (projectDir: string): Promise<ThemeImportResult | null> =>
+      ipcRenderer.invoke("theme:importFromFile", projectDir),
+    importFromUrl: (projectDir: string, url: string): Promise<ThemeInfo> =>
+      ipcRenderer.invoke("theme:importFromUrl", projectDir, url),
+    readCss: (projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string> =>
+      ipcRenderer.invoke("theme:readCss", projectDir, source),
+    remove: (projectDir: string, id: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("theme:remove", projectDir, id),
+    getPrevious: (projectDir: string): Promise<ThemeInfo | null> =>
+      ipcRenderer.invoke("theme:getPrevious", projectDir),
+    revert: (projectDir: string): Promise<ThemeInfo> => ipcRenderer.invoke("theme:revert", projectDir),
+  },
+
+  vcs: {
+    enableVersionHistory: (projectDir: string): Promise<unknown> =>
+      ipcRenderer.invoke("vcs:enableVersionHistory", projectDir),
+    listSnapshotsPage: (
+      projectDir: string,
+      options?: { limit?: number; before?: string },
+    ): Promise<SnapshotPage> =>
+      ipcRenderer.invoke("vcs:listSnapshotsPage", projectDir, options?.limit, options?.before),
+    restoreSnapshot: (projectDir: string, id: string): Promise<RestoreVersionResult> =>
+      ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
+    saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
+      ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
+  },
+
+  style: {
+    setActive: (projectDir: string, paths: string[]): Promise<string[]> =>
+      ipcRenderer.invoke("style:setActive", projectDir, paths),
+  },
+
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
@@ -268,12 +391,11 @@ contextBridge.exposeInMainWorld("electron", {
     return off;
   },
 
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from contextBridge.
-
-  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from contextBridge.
-
-  // Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*):
-  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot, saveSnapshot.
+  // tpl:*, snip:*, plugin:*, theme:*, project:listStyles, and local version
+  // history (#13) round-tripped through SvelteKit server routes (Phase
+  // 2D/2E) and are back on this bridge as of SFE-P5c2 — see the `project`/
+  // `manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` blocks
+  // above.
 
   // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
   // Two-phase connect: Start returns the user code to display; Wait resolves

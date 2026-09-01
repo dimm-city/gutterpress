@@ -114,6 +114,24 @@ import type {
   AppImageIntegrationInstallResult,
   AppImageIntegrationRemoveResult,
   LogFileEntry,
+  // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
+  // DTOs. These ~13 shapes already lived in `./dtos` (the established home
+  // for "plain request/response shapes a server route returns" — see this
+  // file's own header) before this run; ElectronBridge just needs to
+  // reference them now that the transport under them is IPC.
+  TemplateInfo,
+  SavedTemplateInfo,
+  SnippetEntry,
+  ProjectConfigFields,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ThemeImportResult,
+  ProjectStyle,
+  MediaImageEntry,
+  MediaImageDetails,
 } from "./dtos";
 
 // Shared IPC payload types — imported from the single source of truth.
@@ -610,5 +628,82 @@ export interface ElectronBridge {
       install(): Promise<AppImageIntegrationInstallResult>;
       remove(): Promise<AppImageIntegrationRemoveResult>;
     };
+  };
+
+  // ── project / manifest / tpl / snip / media / plugin / theme / vcs /
+  // style — typed IPC (SFE-P5c2) ────────────────────────────────────────
+  // Replaces the deleted src/routes/api/{project,manifest,tpl,snip,media,
+  // plugin,theme,vcs,style}/** +server.ts routes and their api.ts client
+  // methods. checkCss / lintProject stay server routes (lint:*, P5c4).
+
+  project: {
+    listStyles(projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]>;
+  };
+
+  manifest: {
+    read(projectDir: string): Promise<ProjectConfigFields>;
+    setFields(projectDir: string, updates: ProjectConfigFields): Promise<ProjectConfigFields>;
+  };
+
+  tpl: {
+    listBuiltIn(): Promise<TemplateInfo[]>;
+    listCustom(templatesRoot?: string): Promise<TemplateInfo[]>;
+    saveAsTemplate(opts: {
+      projectDir: string;
+      name: string;
+      sharedRefs?: "vendor" | "exclude";
+    }): Promise<SavedTemplateInfo>;
+    importFromFolder(): Promise<TemplateInfo | null>;
+  };
+
+  snip: {
+    list(projectDir: string): Promise<SnippetEntry[]>;
+    read(projectDir: string, fileName: string): Promise<string>;
+    save(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
+    delete(projectDir: string, fileName: string): Promise<{ ok: boolean }>;
+  };
+
+  media: {
+    listImages(projectDir: string): Promise<MediaImageEntry[]>;
+    thumbnail(imagePath: string): Promise<string | null>;
+    inspect(imagePath: string): Promise<MediaImageDetails | null>;
+    importImage(projectDir: string, src: string): Promise<{ src: string; copied: boolean }>;
+  };
+
+  plugin: {
+    list(projectDir: string): Promise<ProjectPluginEntry[]>;
+    setEnabled(projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }>;
+    addNpm(projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null>;
+    addLocal(projectDir: string): Promise<ProjectPluginEntry | null>;
+    validate(projectDir: string): Promise<PluginValidationResult[]>;
+    recommended(): Promise<RecommendedPlugin[]>;
+  };
+
+  theme: {
+    listBuiltIn(): Promise<ThemeInfo[]>;
+    listProject(projectDir: string): Promise<ThemeInfo[]>;
+    getActive(projectDir: string): Promise<ThemeInfo | null>;
+    apply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+    importFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+    importFromFile(projectDir: string): Promise<ThemeImportResult | null>;
+    importFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+    readCss(projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string>;
+    remove(projectDir: string, id: string): Promise<{ ok: true }>;
+    getPrevious(projectDir: string): Promise<ThemeInfo | null>;
+    revert(projectDir: string): Promise<ThemeInfo>;
+  };
+
+  vcs: {
+    enableVersionHistory(projectDir: string): Promise<unknown>;
+    listSnapshotsPage(
+      projectDir: string,
+      options?: { limit?: number; before?: string },
+    ): Promise<SnapshotPage>;
+    restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
+    saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+  };
+
+  style: {
+    setActive(projectDir: string, paths: string[]): Promise<string[]>;
   };
 }

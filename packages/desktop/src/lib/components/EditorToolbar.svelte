@@ -10,8 +10,8 @@
    * - All actions operate through `onAction(action, payload?)` — a callback prop
    *   that the parent (+page.svelte) routes into the EditorView transaction. The
    *   toolbar has zero direct knowledge of CodeMirror; it just fires named events.
-   * - The Insert Image flow involves host calls (dialog.pickImageFile +
-   *   api.media.importImage — the ONE host-side import-policy route, UX
+   * - The Insert Image flow involves host calls (pickImageFile +
+   *   mediaImportImage — the ONE host-side import-policy call, UX
    *   review M10), so the toolbar accepts `projectDir` to keep it testable
    *   without a full Electron environment. The toolbar does no path/fs math
    *   of its own; the route returns the project-relative `src` to insert.
@@ -22,7 +22,7 @@
   import type { ComponentProps } from "svelte";
   import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
-  import { api } from "$lib/api";
+  import { mediaImportImage } from "$lib/project-config/project-config-capability";
   import { pickImageFile } from "$lib/files/files-capability";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
   import {
@@ -286,7 +286,7 @@
       // ONE route (UX review M10) — the toolbar just hands it the picked
       // absolute path and gets back a project-relative `src`.
       if (projectDir && isDesktop()) {
-        const result = await api.media.importImage(projectDir, imageSrc);
+        const result = await mediaImportImage(projectDir, imageSrc);
         finalSrc = result.src;
       }
     } catch (e) {

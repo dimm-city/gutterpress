@@ -7,7 +7,7 @@
    * behind Advanced). Renders the theme grid (apply / remove / import from
    * folder + URL) and per-card thumbnail preview — no section wrapper or
    * `<h3>` of its own anymore; the parent owns the outer `.block`/heading.
-   * All state, `api.theme.*` calls, and thumbnail loading live in
+   * All state, `theme*` capability calls, and thumbnail loading live in
    * `AppearanceSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods. Shared primitives

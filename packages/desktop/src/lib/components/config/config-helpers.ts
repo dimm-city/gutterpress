@@ -117,7 +117,7 @@ export function pluginLabel(
  *
  * Tri-state fix (M34): `pluginValidating` is true only while a validate
  * round-trip is in flight. If it's `false` and there's still no result for
- * this ref, `api.plugin.validate` threw (or never ran) — that must NOT read
+ * this ref, `pluginValidate` threw (or never ran) — that must NOT read
  * the same as "in progress", since it will never resolve on its own. It gets
  * its own "stale" kind with a distinct label pointing at the fix (Re-check).
  */

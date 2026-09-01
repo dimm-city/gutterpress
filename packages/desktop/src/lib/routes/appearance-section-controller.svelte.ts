@@ -15,7 +15,7 @@
  * rune fields and calls the intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the reactive `projectDir` accessor, the `api.theme.*`
+ * (§8 / ADR 0004): the reactive `projectDir` accessor, the `theme*`
  * host calls, the `onApplied` callback (the panel forwards this to its own
  * `onThemeApplied` prop so the app can toast), and `afterThemeChange` — a
  * cross-section refresh hook the panel wires to reload the Styles + Design

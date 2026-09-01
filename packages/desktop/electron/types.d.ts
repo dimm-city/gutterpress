@@ -58,6 +58,22 @@ import type {
   AppImageStatus,
   AppImageInstallResult,
   AppImageRemoveResult,
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+  TemplateInfo,
+  SavedTemplateInfo,
+  SnippetEntry,
+  ProjectConfigFields,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ThemeImportResult,
+  ProjectStyle,
+  MediaImageEntry,
+  MediaImageDetails,
 } from "./bridge-types";
 
 declare global {
@@ -142,15 +158,82 @@ declare global {
         };
       };
 
+      // ── project / manifest / tpl / snip / media / plugin / theme / vcs /
+      // style — typed IPC (SFE-P5c2) ─────────────────────────────────────
+      project: {
+        listStyles(projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]>;
+      };
+      manifest: {
+        read(projectDir: string): Promise<ProjectConfigFields>;
+        setFields(projectDir: string, updates: ProjectConfigFields): Promise<ProjectConfigFields>;
+      };
+      tpl: {
+        listBuiltIn(): Promise<TemplateInfo[]>;
+        listCustom(templatesRoot?: string): Promise<TemplateInfo[]>;
+        saveAsTemplate(opts: {
+          projectDir: string;
+          name: string;
+          sharedRefs?: "vendor" | "exclude";
+        }): Promise<SavedTemplateInfo>;
+        importFromFolder(): Promise<TemplateInfo | null>;
+      };
+      snip: {
+        list(projectDir: string): Promise<SnippetEntry[]>;
+        read(projectDir: string, fileName: string): Promise<string>;
+        save(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
+        delete(projectDir: string, fileName: string): Promise<{ ok: boolean }>;
+      };
+      media: {
+        listImages(projectDir: string): Promise<MediaImageEntry[]>;
+        thumbnail(imagePath: string): Promise<string | null>;
+        inspect(imagePath: string): Promise<MediaImageDetails | null>;
+        importImage(projectDir: string, src: string): Promise<{ src: string; copied: boolean }>;
+      };
+      plugin: {
+        list(projectDir: string): Promise<ProjectPluginEntry[]>;
+        setEnabled(projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }>;
+        addNpm(projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null>;
+        addLocal(projectDir: string): Promise<ProjectPluginEntry | null>;
+        validate(projectDir: string): Promise<PluginValidationResult[]>;
+        recommended(): Promise<RecommendedPlugin[]>;
+      };
+      theme: {
+        listBuiltIn(): Promise<ThemeInfo[]>;
+        listProject(projectDir: string): Promise<ThemeInfo[]>;
+        getActive(projectDir: string): Promise<ThemeInfo | null>;
+        apply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+        importFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+        importFromFile(projectDir: string): Promise<ThemeImportResult | null>;
+        importFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+        readCss(projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string>;
+        remove(projectDir: string, id: string): Promise<{ ok: true }>;
+        getPrevious(projectDir: string): Promise<ThemeInfo | null>;
+        revert(projectDir: string): Promise<ThemeInfo>;
+      };
+      vcs: {
+        enableVersionHistory(projectDir: string): Promise<unknown>;
+        listSnapshotsPage(
+          projectDir: string,
+          options?: { limit?: number; before?: string },
+        ): Promise<SnapshotPage>;
+        restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
+        saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+      };
+      style: {
+        setActive(projectDir: string, paths: string[]): Promise<string[]>;
+      };
+
       // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
       onNativeThemeUpdated(
         cb: (data: { shouldUseDarkColors: boolean }) => void
       ): () => void;
       onOpenMarkdownFile(cb: (data: MarkdownFileLaunchEvent) => void): () => void;
-      // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
-      // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronBridge.
-      // Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*):
-      // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot, saveSnapshot.
+      // tpl:*, snip:*, plugin:*, theme:*, project:listStyles, and local
+      // version history (#13 — enableVersionHistory, listSnapshotsPage,
+      // restoreSnapshot, saveSnapshot) round-tripped through SvelteKit
+      // server routes for a while (Phase 2D/2E) and are back on this bridge
+      // as of SFE-P5c2 — see the `project`/`manifest`/`tpl`/`snip`/`media`/
+      // `plugin`/`theme`/`vcs`/`style` members above.
       // Managed GitHub integration (#15)
       connectGitHubStart(): Promise<DeviceCodeInfo>;
       connectGitHubWait(): Promise<RemoteConnection>;

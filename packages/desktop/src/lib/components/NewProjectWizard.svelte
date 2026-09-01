@@ -2,7 +2,8 @@
   import Icon from "$lib/components/Icon.svelte";
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { TemplateInfo } from "$lib/api";
+  import { tplListBuiltIn, tplListCustom, tplImportFromFolder } from "$lib/project-config/project-config-capability";
+  import type { TemplateInfo } from "$lib/platform/dtos";
   import {
     getDesktopPrefs,
     setDesktopPrefs,
@@ -182,10 +183,10 @@
   async function loadTemplates() {
     templatesError = null;
     try {
-      const builtins = await api.tpl.listBuiltIn();
+      const builtins = await tplListBuiltIn();
       let customs: TemplateInfo[] = [];
       try {
-        customs = await api.tpl.listCustom();
+        customs = await tplListCustom();
       } catch {
         customs = [];
       }
@@ -223,7 +224,7 @@
     importing = true;
     error = null;
     try {
-      const imported = await api.tpl.importFromFolder();
+      const imported = await tplImportFromFolder();
       if (imported) {
         await loadTemplates();
         selectTemplate(templates.find((t) => t.id === imported.id) ?? imported);

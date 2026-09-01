@@ -2,7 +2,7 @@
   /**
    * Plugins section of ProjectConfigPanel — the configured list + toggle +
    * validate, the recommended built-in features, and the npm/local install
-   * controls. All state and `api.plugin.*` calls live
+   * controls. All state and `plugin*` capability calls live
    * in `PluginsSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods. `pluginStatus` is a

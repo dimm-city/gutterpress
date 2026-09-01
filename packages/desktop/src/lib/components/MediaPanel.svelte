@@ -9,7 +9,7 @@
    *
    * Host work — listing, thumbnails (generated AND cached host-side so
    * multi-MB originals never reach the renderer), inspection, and file
-   * copies — goes through `api.media.*` server routes and
+   * copies — goes through the `project-config-capability`'s `media*` functions and
    * `$lib/files/files-capability`'s typed IPC, the default seam (CLAUDE.md
    * §8); the app-lifecycle capability's
    * `onFolderChanged` is used only for the live folder-changed push stream,
@@ -19,7 +19,12 @@
   import { onMount } from "svelte";
   import { isDesktop } from "$lib/platform";
   import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
-  import { api } from "$lib/api";
+  import {
+    mediaListImages,
+    mediaThumbnail,
+    mediaInspect,
+    mediaImportImage,
+  } from "$lib/project-config/project-config-capability";
   import { pickImageFiles, showInFolder } from "$lib/files/files-capability";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
@@ -69,7 +74,7 @@
       while (next < queue.length && seq === loadSeq) {
         const entry = queue[next++];
         try {
-          const url = await api.media.thumbnail(entry.path);
+          const url = await mediaThumbnail(entry.path);
           if (seq !== loadSeq) return;
           thumbs[entry.relPath] = url;
         } catch {
@@ -94,7 +99,7 @@
     loading = true;
     error = null;
     try {
-      const list = await api.media.listImages(dir);
+      const list = await mediaListImages(dir);
       if (seq !== loadSeq) return;
       images = list;
       thumbs = {}; // bounded: rebuilt per load, never accumulates across loads
@@ -143,7 +148,7 @@
     };
   });
 
-  // L7: rapid tile clicks each kick off an `api.media.inspect` call; without
+  // L7: rapid tile clicks each kick off a `mediaInspect` call; without
   // a sequence guard an earlier click's response can resolve AFTER a later
   // click's and overwrite `details`/`selected` with the wrong image's
   // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` already
@@ -157,7 +162,7 @@
     details = null;
     detailsLoading = true;
     try {
-      const result = await api.media.inspect(entry.path);
+      const result = await mediaInspect(entry.path);
       if (seq !== selectSeq) return;
       details = result;
     } catch {
@@ -199,7 +204,7 @@
       // dialog calls — so this panel does zero path/fs logic of its own.
       let destName: string | null = null;
       for (const src of picked) {
-        const result = await api.media.importImage(dir, src);
+        const result = await mediaImportImage(dir, src);
         destName ??= result.src.includes("/") ? result.src.slice(0, result.src.indexOf("/")) : null;
       }
       notice = destName

@@ -15,7 +15,7 @@ against them.
 
 | Metric | Baseline | Current | Delta |
 |---|---:|---:|---:|
-| Desktop HTTP routes (`+server.ts`) | 104 | 69 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, `check:architecture`'s route ratchet re-baselined 104→69; remaining groups migrate in P5c2–P5c4) | −35 |
+| Desktop HTTP routes (`+server.ts`) | 104 | 32 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, ratchet re-baselined 104→69; SFE-P5c2 `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` migrated — 37 more deleted, ratchet re-baselined 69→32; remaining groups migrate in P5c3–P5c4) | −72 |
 | IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
 | `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
@@ -1037,3 +1037,298 @@ the gate rather than by inspection:
    capability.ts` functions from `export function` to `export async
    function` (mechanical, verified by re-running the full suite — 7
    failures → 0).
+
+### SFE-P5c2 — 2026-09-01 — migrate `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` to typed IPC
+
+Lane A (implementation). Uncommitted at hand-off — the integrator commits
+after review, per the run's protocol. Base SHA is P5c1's committed head
+(this lane's working tree — see that section above).
+
+**Scoping note:** the plan's own P5c subrun table
+(`docs/plans/source-first-editor/runs/SFE-P5c.md`) assigns `media` to P5c2,
+which is where it lands here — `capability-map.md` §6's P0a-derived proposal
+had `media` in P5c4 (a pre-P5c1 estimate the plan itself supersedes; that
+section's own preamble says so). `electron/preload.ts`'s P5c1-era comment
+("media:* server routes… P5c4") was accordingly stale and is corrected in
+this run.
+
+**What was deleted:**
+
+- 37 `+server.ts` routes (1,058 lines) under `src/routes/api/{project,
+  manifest,tpl,snip,media,plugin,theme,vcs,style}/**`: `project` (1 —
+  `list-styles`), `manifest` (2 — `read`/`set-fields`), `tpl` (4 —
+  `built-in`/`custom`/`import-from-folder`/`save-as-template`), `snip` (4 —
+  `list`/`read`/`save`/`delete`), `media` (4 —
+  `list-images`/`inspect`/`thumbnail`/`import-image`), `plugin` (6 —
+  `list`/`set-enabled`/`add-npm`/`add-local`/`validate`/`recommended`),
+  `theme` (11 — `active`/`apply`/`built-in`/`import-from-{file,folder,url}`/
+  `previous`/`project`/`read-css`/`remove`/`revert`), `vcs` (4 —
+  `enable-version-history`/`save-snapshot`/`restore-snapshot`/
+  `list-snapshots-page`), `style` (1 — `set-active`). Route count 69 → 32
+  (`tools/architecture-baseline.json`'s `desktopHttpRoutes` re-baselined in
+  the same commit, per the ratchet's WARN-on-lower contract).
+- **No routes were confirmed dead.** All 37 had a real caller enumerated
+  before migration (see the per-namespace caller lists in the header
+  comments of `electron/api/*.ts` and `project-config-capability.ts`/
+  `vcs-capability.ts`) — unlike P5c1's `fs/copy-file`, nothing in this
+  subrun's scope was a straight deletion. `vcs/enable-version-history` has
+  **zero SPA callers today** (its own deleted route carried this exact
+  note) but is NOT dead code: it is CLAUDE.md §7's documented "local-folder
+  → versioned project" escape hatch, explicitly retained ahead of a
+  version-history UI milestone (#13) by the humans who wrote the route —
+  migrated (ported, not deleted) with that same note preserved verbatim in
+  `electron/api/vcs.ts`.
+- `src/lib/api.ts`'s `media`/`tpl`/`snip`/`plugin`/`theme`/`project`/
+  `manifest`/`style`/`vcs` namespaces (net −187 lines: +22/−209) and their
+  now-orphaned local types (`TemplateInfo`/`SavedTemplateInfo`/
+  `SnippetEntry`/`ProjectConfigFields` — moved to `platform/dtos.ts`, the
+  file the sibling `ThemeInfo`/`ProjectPluginEntry`/`ProjectStyle`/etc.
+  DTOs already lived in) and now-unused internal (non-re-exported) type
+  imports (`SnapshotEntry` from `contract.ts`; `ProjectPluginEntry`/
+  `PluginValidationResult`/`RecommendedPlugin`/`ThemeInfo`/
+  `ApplyThemeTarget`/`ThemeImportResult`/`ProjectStyle`/
+  `ProjectClassification`/`MediaImageEntry`/`MediaImageDetails` from
+  `dtos.ts`). The EXPORTED type re-exports for all of these stay in
+  `api.ts` unchanged — `theme-grid.ts`/`config-helpers.ts` still import
+  `ThemeInfo`/`ProjectPluginEntry`/etc. from `$lib/api` (type-only, zero
+  runtime coupling) and were not required to move by the run's write
+  ownership ("api.ts ONLY to delete migrated namespaces").
+
+**What was added:**
+
+- `electron/api/{project,manifest,tpl,snip,media,plugin,theme,vcs,style}.ts`
+  (830 lines) — the main-process IPC handler logic, ported from the deleted
+  routes, reusing `electron/api/validation.ts` (P5c1) verbatim for every
+  `projectDir` guard — no path-validation logic was re-derived. Two shared
+  helpers factored out in this run: `electron/api/lib-loader.ts` (38
+  lines — `loadLib()`/`loadApiLib()`, the main-process twin of
+  `_lib/route.ts`'s cache-once dynamic imports, shared by all nine
+  handlers) and `electron/api/git-identity-args.ts` (27 lines — extracted
+  from P5c1's `fs.ts`, which had its own private copy for `fs:delete`'s
+  safety snapshot; `vcs.ts`'s `vcsEnableVersionHistory`/`vcsSaveSnapshot`
+  now share that one implementation instead of a second copy — `fs.ts`
+  itself shrank by 19 lines as part of this dedup).
+- **Plugin (SPECIAL WEIGHT, D12/§5):** `electron/api/plugin.ts`'s
+  `pluginAddNpm` calls the exact same `lib.addNpmPlugin` the deleted route
+  called — the vendored-install pipeline (npm registry resolution, tarball
+  verification, whole-tree vendoring, schema-v2 receipt, load-test) is
+  UNTOUCHED main-process code this run never imports into, only calls.
+  Preserved verbatim: the `RECOMMENDED_PLUGINS`-bundled fast path (no
+  trust prompt), the native `confirmNpmPluginInstall` gate for third-party
+  packages (declined → resolves `null`, no partial install), and the
+  hooks-check-before-validation ORDER the deleted `defineRoute({ hooks,
+  validate, call })` shape enforced (verified by `plugin-ipc.test.ts`'s
+  "rejects an outside directory before showing the trust prompt" case —
+  `confirmations` stays `[]`). `pluginValidate`'s degrade-and-report
+  `{ ref, kind, enabled, ok, error? }` shape — what the Plugins panel
+  renders as "Needs install"/inline load-error rows — is untouched;
+  `PluginsSectionController`/`PluginsSection.svelte` never changed (they
+  already received `validate`/`list`/etc. as injected functions, not a
+  hard `api.plugin.*` dependency, so only their construction site in
+  `ProjectSettingsView.svelte` needed a name swap).
+- **VCS (SPECIAL WEIGHT):** `electron/api/vcs.ts`'s `vcsRestoreSnapshot`
+  calls the exact same `lib.restoreVersionWithBackup` the deleted route
+  called — the checkout-journal crash-safety guarantee itself
+  (a pull/restore that dies between merge and checkout must not publish a
+  wholesale revert) lives and is tested inside `packages/cli` (outside
+  this lane's write ownership; untouched). What this lane owns and tests
+  (`vcs-ipc.test.ts`) is the desktop-side entry point staying wired
+  unchanged: the 40-hex-char snapshot-id format guard (and the
+  `list-snapshots-page` continuation-cursor guard) still rejects a
+  malformed value BEFORE it can reach the lib's checkout, exactly as the
+  deleted routes' own `error(400, …)` validation did.
+- **Media payload shape (run note):** none of the four media routes ever
+  moved raw image bytes as an upload — `media:importImage`'s `src` is
+  always an absolute HOST PATH (from a native dialog or already on disk);
+  the handler copies the file itself with `node:fs`, never reading bytes
+  into the request/response body. `media:thumbnail` is the only place
+  bytes cross the IPC boundary, and only as a `data:` URL STRING
+  (base64-in-JSON) — `getMediaHooks().createThumbnail` and the SVG/
+  tiny-file fallback both return `string | null`, never a `Buffer`. IPC's
+  structured clone would carry a raw `Buffer` (avoiding ~33% base64
+  inflation) but that would change the shape `MediaPanel.svelte`'s `<img
+  src>` binding already depends on — kept as the exact `string | null`
+  data-URL shape (rule 2: preserve behavior across the transport change;
+  "improve the wire shape" was not this run's job).
+- **Style (run note):** verified before migrating — `style:setActive`
+  is the CSS editor's project-styling surface (replaces the manifest's
+  active `styles:` list). `checkCss` (print-safety linting) was NEVER a
+  `style.*`/`project.*` member; it is `api.lint.checkCss`, a separate
+  namespace this run does not touch (P5c4).
+- 37 new `secureHandle` IPC channel registrations in `electron/main.ts`
+  (1 `project:*` + 2 `manifest:*` + 4 `tpl:*` + 4 `snip:*` + 4 `media:*` +
+  6 `plugin:*` + 11 `theme:*` + 4 `vcs:*` + 1 `style:*`), named `<ns>:<op>`
+  matching the established convention and the deleted `api.ts` method
+  names 1:1 (`project.listStyles` → `project:listStyles`, etc.).
+  `DESKTOP_API` bumped 7 → 8 in `electron/preload.ts` with a dated comment,
+  matching P5c1's own convention.
+- `src/lib/project-config/project-config-capability.ts` (276 lines, new
+  module — D10/capability-map's "project config" bounded context) — all
+  eight of `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/
+  `style` in one file: they share one consumer surface
+  (`ProjectSettingsView.svelte`'s composition root plus `MediaPanel`/
+  `EditorToolbar`/`SnippetPicker`/`NewProjectWizard`/`ExportDialog`), and
+  `style` joins `project` specifically because `project.listStyles` +
+  `style.setActive` already feed the same `StylesSection`/
+  `StylesSectionController` pair — a dedicated module for one function
+  would be ceremony `files-capability.ts`'s own precedent (grouping
+  `shell` into the `fs`/`dialog` module on the same "no separate module
+  for a one-function bounded sub-context" reasoning) already rejected.
+  `src/lib/vcs/vcs-capability.ts` (65 lines, new module) is its own file
+  per the run's dispatch note ("vcs joins app-lifecycle or its own small
+  module") — SFE-P5b's capability map found nothing tying `vcs` to the
+  project-config bounded context (its one live member, `saveSnapshot`, was
+  dead at the time), and it carries the crash-safety weight documented
+  above, which earned it a dedicated file rather than a corner of a
+  eight-namespace module.
+- `src/lib/platform/dtos.ts` gained `TemplateInfo`/`SavedTemplateInfo`/
+  `SnippetEntry`/`ProjectConfigFields` (+56 lines) — moved from `api.ts`'s
+  "genuinely api-local shapes" section now that `tpl`/`snip`/`manifest`
+  are IPC, joining their already-resident siblings (`ThemeInfo`/
+  `ProjectPluginEntry`/`ProjectStyle`/etc.).
+  `src/lib/platform/contract.ts`'s `ElectronBridge` interface gained the
+  nine matching members (+90 lines) built from `./dtos` types (extending
+  the import list already used for `DiscoveredProject`/
+  `ProjectClassification`) plus `SnapshotEntry`/`SnapshotPage`/
+  `RestoreVersionResult` (already imported from `./shared-types` for
+  other reasons). `electron/types.d.ts` and `electron/bridge-types.ts`
+  gained the mirrored ambient/re-export shapes (+66 / +30 lines) — the
+  same three-way hand-maintained-mirror discipline P5c1's `ElectronBridge`
+  parity note describes. `src/app.d.ts` needed **zero changes** — it only
+  imports `ElectronBridge` by name.
+- 5 IPC-handler test files (881 lines total: 181 lines in two renamed/
+  rewritten former route-test files + 700 lines in three wholly new files)
+  replacing the deleted route-level tests:
+  `manifest-style-ipc.test.ts` (renamed from `project-config-routes.test.ts`,
+  content ported to call `manifestRead`/`manifestSetFields`/`styleSetActive`
+  directly), `plugin-ipc.test.ts` (renamed from `plugin-add-npm-route.
+  test.ts`, same rename-in-place treatment), `media-ipc.test.ts` (new —
+  combines the deleted `media-routes-scoping.test.ts` + `media-import-
+  image-route.test.ts`), `project-config-ipc.test.ts` (new — the
+  project/manifest/tpl/snip/plugin/theme/style rows of the deleted
+  `route-scoping.test.ts`'s `ROUTES` table, ported to call the handler
+  functions directly, plus the `project:listStyles` repo-sharing round
+  trips and the symlink-escape case that table's own file carried),
+  `vcs-ipc.test.ts` (new — the `vcs/*` rows of the same table, PLUS the
+  SPECIAL WEIGHT snapshot-id/cursor format guards and the
+  hooks-not-registered-before-validation ordering case). `route-scoping.
+  test.ts` (still-HTTP `remote`/`publish`/`lint` rows) and `picked-files-
+  capability.test.ts` (its `media:importImage` half) are trimmed/updated
+  in place rather than deleted outright, per the run's own precedent for
+  shared cross-namespace test files. Every scoping/round-trip scenario
+  from the deleted route tests is ported, asserting the REJECTED PROMISE'S
+  MESSAGE (IPC has no status code) instead of an HTTP status.
+- 4 pre-existing source-string test files that asserted the OLD
+  `api.<ns>.<method>(...)` call-site text were updated to the new call
+  text (mechanical rename, same class of fix as P5c1's `NewProjectWizard.
+  test.ts` precedent): `ProjectActivityView.test.ts` (`api.vcs.
+  restoreSnapshot` → `vcsRestoreSnapshot`; the "all host work goes through
+  the typed api wrapper" test now checks for `$lib/vcs/vcs-capability`
+  instead of `$lib/api`), `SnippetPicker.test.ts` (`api.snip.delete` →
+  `snipDelete`, twice), `export-dialog.test.ts` (`api.tpl.saveAsTemplate`
+  → `tplSaveAsTemplate`), `git-identity-and-activity.test.ts` (the
+  file-content checks that used to read `src/routes/api/vcs/{save-
+  snapshot,enable-version-history}/+server.ts` for `authorName`/
+  `authorEmail` now read `electron/api/vcs.ts` for the shared
+  `gitIdentityArgs()` call inside each function's own body, plus a check
+  that `git-identity-args.ts` calls `gitIdentityFrom`; the `activity`
+  string check for `api.vcs.listSnapshotsPage` → `vcsListSnapshotsPage`).
+
+**Host-services test-isolation fix (found and fixed by this lane, before
+hand-off):** running the full suite after the initial port showed 2
+order-dependent failures (`doctor-route.test.ts`, `app-ipc.test.ts`) that
+both passed in isolation — a process-global `registerHostServices()` leak.
+The deleted `route-scoping.test.ts`/`project-config-routes.test.ts` never
+saved/restored host services in `afterEach` (only some sibling suites,
+e.g. `media-import-image-route.test.ts`/`picked-files-capability.test.ts`,
+already did); this run's ported/new files inherited that same gap, and
+adding the new files apparently shifted execution order enough to surface
+it. Fixed by adding the `savedHostServices = getHostServices()` /
+`registerHostServices(savedHostServices as HostServices)` save-restore
+pair (`picked-files-capability.test.ts`'s own established convention) to
+`route-scoping.test.ts`, `project-config-ipc.test.ts`, `vcs-ipc.test.ts`,
+`manifest-style-ipc.test.ts`, and `media-ipc.test.ts`'s
+`withScopingFixture` helper. Full suite: 2 failures → 0.
+
+**Net diffstat** (against the uncommitted working tree; this lane's own
+numbers):
+
+```
+$ git diff --numstat -- packages/desktop/src packages/desktop/electron   (tracked files only)
+→ +629 / −1375
+
+$ wc -l <13 new electron/api/*.ts + src/lib/{project-config,vcs}/*.ts files>   (new, untracked files)
+→ 1,236 lines added
+
+Production total: +1,865 / −1,375  (net +490)
+```
+
+```
+$ git diff --numstat -- packages/desktop/tests   (tracked files only, incl. 2 renames)
+→ +95 / −856
+
+$ wc -l <3 new *-ipc.test.ts files>   (new, untracked files)
+→ 700 lines added
+
+Test total: +795 / −856  (net −61)
+```
+
+Same shape as P5c1's own accounting: production is net-positive (+490)
+because this is a transport migration, not a feature deletion — the
+`electron/api/*.ts` handlers (830 lines) carry the SAME validation/lib-call
+logic the 37 deleted routes (1,058 lines) did, plus the new capability
+modules (341 lines), IPC channel registrations, and preload/bridge/contract
+type additions the transport change requires. Rule 9's "route files + fetch
+plumbing die; validation moves rather than grows" holds on the route+api.ts
+side specifically (routes −1,058, `api.ts` net −187, dtos.ts local-type
+moves net neutral = −1,245 combined) even though the run-wide sum is
+positive; the success-criterion net-LOC requirement is scoped to the
+combined P4–P6 phases, not each P5 subrun (same scoping P5c1's own section
+cites). The test suite IS net-negative this subrun (−61) despite five new
+IPC-handler files, because the route-level suites this run replaced carried
+SvelteKit request/response plumbing (HTTP `Request`/`Response` construction,
+`isHttpError` status assertions) per test that direct function calls don't
+need.
+
+#### Search proofs (from repo root, against the working tree)
+
+```
+$ find packages/desktop/src/routes/api/{project,manifest,tpl,snip,media,plugin,theme,vcs,style} -maxdepth 0
+(all nine: No such file or directory — route directories deleted)
+
+$ grep -rn "api\.\(media\|tpl\|snip\|plugin\|theme\|project\|manifest\|style\|vcs\)\." packages/desktop/src --include="*.ts" --include="*.svelte" | grep -v "src/lib/api.ts:"
+→ 4 hits, all doc/JSDoc comments describing the migration (contract.ts's
+  historical P5b note, project-config-capability.ts×1, vcs-capability.ts×1)
+  — zero real call sites (the permissive multi-line-chain-catching variant,
+  `api\s*\n?\s*\.\s*(media|tpl|snip|plugin|theme|project|manifest|style|
+  vcs)\.`, was also run per P5c1's own report warning and returns the same
+  4 files with no additional real call sites — no multi-line chain like
+  P5c1's `api.app\n  .discoverProjects()` case exists for these nine
+  namespaces)
+
+$ find packages/desktop/src/routes/api -name "+server.ts" | wc -l
+32   (matches the re-baselined tools/architecture-baseline.json exactly)
+```
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && bun run test` | 0 | 5824 pass, 1 skip, 0 fail |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 755 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean |
+| `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity` (142 files scanned, no forbidden host/node markers) clean |
+| `bun run check:architecture` (repo root) | 0 | route ratchet 32 == baseline 32; ProseMirror ban, D4 import direction, future-package rules all PASS |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged |
+
+One defect was found and fixed before hand-off, by actually running the
+gate rather than by inspection: `electron/api/theme.ts`'s first-draft
+`themeApply` used a hand-rolled `{ kind: string; id: string }` validation
+shape instead of the real discriminated-union `ApplyThemeTarget` (`{kind:
+"builtin", id} | {kind: "project", id}` — already defined in
+`platform/dtos.ts`), so `lib.applyTheme(projectDir, target as
+ApplyThemeTarget)` failed `bun run typecheck` with a type mismatch against
+the lib's own stricter `ApplyThemeTarget`. Fixed by importing the real type
+from `dtos.ts` instead of hand-declaring a loose local one (the same fix
+class as reusing an existing DTO rather than inventing a parallel shape).

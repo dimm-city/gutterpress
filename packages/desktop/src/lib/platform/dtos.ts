@@ -220,6 +220,65 @@ export interface ProjectStyle {
   active: boolean;
 }
 
+// ── Templates (#29) — SFE-P5c2 ────────────────────────────────────────────
+//
+// Moved here from `$lib/api.ts` (its "genuinely api-local shapes" section)
+// when `tpl` migrated off HTTP routes to typed IPC — these have no canonical
+// twin in the lib (a starter-template listing is a desktop-only view), so
+// they join the rest of this bounded context's DTOs instead of living only
+// in the now-deleted `api.tpl` namespace.
+
+/** One starter template offered by the New Project wizard. */
+export interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+  /** The `preset:` this template's manifest declares — the starting point
+   *  the new-book wizard seeds its preset choice from (ADR 0008). */
+  preset?: string;
+  /** The `targets:` this template's manifest declares, if any. */
+  targets?: string[];
+}
+
+/** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
+export interface SavedTemplateInfo extends TemplateInfo {
+  /** Book-local paths the `../../shared/...` refs were vendored to (vendor mode). */
+  vendoredRefs?: string[];
+  /** Manifest entries dropped because they pointed outside the book (exclude mode). */
+  excludedRefs?: string[];
+}
+
+// ── Snippets (#29) — SFE-P5c2 ─────────────────────────────────────────────
+//
+// Moved here from `$lib/api.ts` alongside `TemplateInfo` (see that section's
+// note) when `snip` migrated to typed IPC.
+
+/** One reusable markdown snippet in the open project's `snippets/` folder. */
+export interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+
+// ── Project configuration view (#PCV) — SFE-P5c2 ──────────────────────────
+//
+// Moved here from `$lib/api.ts` (mirrors the lib's `ProjectConfigFields`)
+// when `manifest` migrated to typed IPC — declared locally so the SPA bundle
+// stays free of value imports from `gutterpress` (§8 renderer purity).
+
+/** The author-facing manifest subset the Details section reads/writes. */
+export interface ProjectConfigFields {
+  title?: string;
+  authors?: string[];
+  /** `source.files` — null is the deliberate "all chapter files" sentinel. */
+  sourceFiles?: string[] | null;
+  /** `targets:` — the publish destinations this book is validated against
+   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
+  targets?: string[];
+}
+
 // Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
 // defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
 // editable `:root` custom property surfaced to the guided Design panel.

@@ -31,14 +31,29 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<SettingsView");
 });
 
-test("snapshot, history enable, and sync routes pass git identity from settings", () => {
-  const saveSnapshot = read("src/routes/api/vcs/save-snapshot/+server.ts");
-  const enableHistory = read("src/routes/api/vcs/enable-version-history/+server.ts");
+test("snapshot, history enable, and sync IPC handlers / routes pass git identity from settings", () => {
+  // vcs:saveSnapshot / vcs:enableVersionHistory migrated from HTTP routes to
+  // typed IPC (SFE-P5c2) — `gitIdentityArgs()` (electron/api/
+  // git-identity-args.ts, shared with fs:delete's safety-snapshot path) is
+  // the call each handler spreads into its lib call now; `remote/sync`
+  // stays an HTTP route (out of this run's scope), still passing the
+  // fields by name.
+  const vcs = read("electron/api/vcs.ts");
+  const enableVersionHistoryBody = vcs.slice(
+    vcs.indexOf("export async function vcsEnableVersionHistory("),
+    vcs.indexOf("export async function vcsSaveSnapshot("),
+  );
+  const saveSnapshotBody = vcs.slice(
+    vcs.indexOf("export async function vcsSaveSnapshot("),
+    vcs.indexOf("export async function vcsRestoreSnapshot("),
+  );
+  expect(enableVersionHistoryBody).toContain("...(await gitIdentityArgs())");
+  expect(saveSnapshotBody).toContain("...(await gitIdentityArgs())");
+
+  const gitIdentityArgsModule = read("electron/api/git-identity-args.ts");
+  expect(gitIdentityArgsModule).toContain("gitIdentityFrom");
+
   const sync = read("src/routes/api/remote/sync/+server.ts");
-  expect(saveSnapshot).toContain("authorName");
-  expect(saveSnapshot).toContain("authorEmail");
-  expect(enableHistory).toContain("authorName");
-  expect(enableHistory).toContain("authorEmail");
   expect(sync).toContain("authorName");
   expect(sync).toContain("authorEmail");
 });
@@ -61,7 +76,7 @@ test("sync status details open an editor-side activity view, not the modal", () 
   // "Technical details" disclosure, and the surface is titled "Previous versions".
   expect(activity).toContain("Technical details");
   expect(activity).toContain("Previous versions");
-  expect(activity).toContain("api.vcs.listSnapshotsPage");
+  expect(activity).toContain("vcsListSnapshotsPage");
   expect(activity).toContain("readLog(");
 });
 
