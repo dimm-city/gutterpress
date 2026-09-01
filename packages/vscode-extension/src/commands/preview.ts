@@ -29,6 +29,22 @@
  * `Disposable` composes this in, so `extension.ts`'s existing
  * `context.subscriptions.push(registerProjectServices(context))` needs no
  * change to get this cleanup for free.
+ *
+ * REPAIR ROUND 1 (finding "gutterpress.preview can serve the wrong project:
+ * identity is tracked against a handle field restart() never updates"):
+ * `open()` used to compare against `this.#handle.inputPath` — but the real
+ * `PreviewServerHandle.inputPath` (`packages/cli/src/server.ts`) is a plain
+ * value captured in the handle's OWN object literal at start time, and
+ * `restart()` mutates the SERVER's internal state without ever replacing
+ * that already-returned object or its `inputPath` property. So after
+ * `open(A)` -> `open(B)` (which calls `restart(B)`, leaving
+ * `handle.inputPath` still reading `A`) -> `open(A)` again, the THIRD call's
+ * `this.#handle.inputPath === projectDir` comparison would wrongly match A
+ * and return the cached URL WITHOUT restarting — even though the server is
+ * actually still serving project B. `#currentProjectDir` below is this
+ * class's OWN tracked value, set on both `start` and `restart`, so it always
+ * reflects what THIS session actually last requested, independent of
+ * whatever `PreviewServerHandle`'s own field does or does not update.
  */
 import * as vscode from "vscode";
 import { currentActiveProjectDirParams, resolveProjectForCommand } from "../project/discover.ts";
@@ -61,6 +77,10 @@ export type PreviewServerStarter = (options: {
 export class PreviewSession {
   #handle: PreviewServerHandleLike | undefined;
   readonly #starter: PreviewServerStarter;
+  /** The project directory THIS session last started or restarted the
+   *  server for — see this class's own header ("REPAIR ROUND 1") for why
+   *  this is tracked here rather than read back off `this.#handle.inputPath`. */
+  #currentProjectDir: string | undefined;
 
   constructor(starter: PreviewServerStarter) {
     this.#starter = starter;
@@ -70,10 +90,11 @@ export class PreviewSession {
    *  returns its URL. */
   async open(projectDir: string): Promise<{ readonly url: string }> {
     if (this.#handle) {
-      if (this.#handle.inputPath === projectDir) {
+      if (this.#currentProjectDir === projectDir) {
         return { url: this.#handle.url };
       }
       await this.#handle.restart(projectDir);
+      this.#currentProjectDir = projectDir;
       return { url: this.#handle.url };
     }
     this.#handle = await this.#starter({
@@ -85,6 +106,7 @@ export class PreviewSession {
       openBrowser: false,
       installSignalHandlers: false,
     });
+    this.#currentProjectDir = projectDir;
     return { url: this.#handle.url };
   }
 
@@ -92,6 +114,7 @@ export class PreviewSession {
   async dispose(): Promise<void> {
     const handle = this.#handle;
     this.#handle = undefined;
+    this.#currentProjectDir = undefined;
     if (handle) await handle.stop();
   }
 }

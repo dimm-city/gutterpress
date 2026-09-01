@@ -53,9 +53,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/webview/tsconfig.json",
     "test": "bun test",
-    "test:browser": "bun test ./tests/webview/mount.btest.ts && bun test ./tests/webview/fallback.btest.ts && bun test ./tests/webview/disposal.btest.ts && bun test ./tests/webview/csp-inertness.btest.ts && bun test ./tests/webview/projection-upgrade.btest.ts && bun test ./tests/webview/edit-version-reconciliation.btest.ts",
-    "build": "bun scripts/build.mjs",
-    "test:host-fidelity": "node tests/host-fidelity/launch.mjs"
+    "test:browser": "bun test ./tests/webview/mount.btest.ts && bun test ./tests/webview/fallback.btest.ts && bun test ./tests/webview/disposal.btest.ts && bun test ./tests/webview/csp-inertness.btest.ts && bun test ./tests/webview/projection-upgrade.btest.ts && bun test ./tests/webview/edit-version-reconciliation.btest.ts && bun test ./tests/webview/production-shell.btest.ts && bun test ./tests/webview/protocol-rejection.btest.ts && bun test ./tests/webview/trust-explanation.btest.ts",
+    "build": "bun scripts/build.mjs"
   },
   "dependencies": {
     "@dimm-city/gutterpress-editor": "workspace:*",
@@ -65,7 +64,6 @@
     "@types/bun": "1.3.14",
     "@types/node": "^22.0.0",
     "@types/vscode": "1.134.0",
-    "@vscode/test-electron": "^3.1.0",
     "typescript": "^5"
   }
 }

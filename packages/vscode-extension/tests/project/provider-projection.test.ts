@@ -15,10 +15,18 @@
 // synchronous ready-handshake reply) never carries one, so that weaker check
 // would be trivially, uselessly true for every session.
 //
-// Kept in tests/project/** (this lane's write boundary) rather than
-// tests/provider.test.ts (Lane A's, frozen) — see this run's report for the
-// one existing assertion in that file this run's own required feature
-// necessarily outdates, which this file does not attempt to patch around.
+// Kept in tests/project/** rather than tests/provider.test.ts, which covers
+// the SAME provider.ts from a plain-vscode-mock angle without a real
+// project fixture on disk.
+//
+// REPAIR ROUND 1 update: this file's own "projection resend" describe block
+// was renamed and its first test rewritten (finding "Every accepted
+// keystroke rebuilds the projection and dispose-then-remounts the whole
+// editor") — an accepted edit no longer triggers a resend; only the initial
+// mount and a trust grant do. tests/provider.test.ts was updated the same
+// way, in the same round — see both files' own "repair round 1" comments
+// for the full account, and docs/plans/source-first-editor/runs/SFE-P3c.md's
+// "Deviations and evidence" section for the round's summary.
 //
 // Uses the REAL (unmocked) gutterpress/plugins loader against this run's
 // own local fixture (fixtures/plugin-project/) — the SPY-based "never
@@ -258,12 +266,20 @@ describe("resolveCustomTextEditor — projection sent on the ready handshake (de
   });
 });
 
-describe("resolveCustomTextEditor — projection resend on authoritative snapshot changes (deliverable 2)", () => {
-  test("an accepted edit triggers a resend reflecting the new content and version", async () => {
+describe("resolveCustomTextEditor — projection resend ONLY on the mount and trust-grant triggers (repair round 1, deliverable 2)", () => {
+  // Repair round 1 (finding "Every accepted keystroke rebuilds the
+  // projection and dispose-then-remounts the whole editor"): this describe
+  // block used to be named "... on authoritative snapshot changes" and its
+  // first test PINNED a resend after every accepted edit — exactly the
+  // confirmed defect. provider.ts now sends the projection only on the
+  // `ready` handshake and on a trust grant; see provider.ts's own header
+  // for the full account and tests/provider.test.ts for the host-side
+  // regression proof using a fake vscode host directly.
+  test("an ACCEPTED edit does NOT trigger a projection resend", async () => {
     mockWorkspaceFolderFsPath = undefined;
     mockIsTrusted = true;
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
-    const { panel, fireMessage, waitForNextProjection } = fakePanel();
+    const { panel, fireMessage, waitForNextProjection, sentToWebview } = fakePanel();
     provider.resolveCustomTextEditor(fakeDocument("hello world"), panel, {} as vscode.CancellationToken);
     fireMessage({ type: "ready", protocolVersion: EDITOR_PROTOCOL_VERSION });
     const first = await waitForNextProjection();
@@ -281,8 +297,43 @@ describe("resolveCustomTextEditor — projection resend on authoritative snapsho
       base: 0,
     });
 
-    const second = await waitForNextProjection();
-    expect((second.projection as { sourceVersion: number }).sourceVersion).toBe(1);
+    // No further projection-bearing message is EVER sent for this edit, so
+    // there is no "next" one to await — bounded wait, then assert exactly
+    // the one from "ready" was ever sent (mirrors the rejected-edit case
+    // below, which already proved this pattern for a different trigger).
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const projectionMessages = sentToWebview.filter((m) => isProjectionBearingPresentationInput(m));
+    expect(projectionMessages).toHaveLength(1);
+  });
+
+  test("a trust grant AFTER an accepted edit resends a projection reflecting the EDITED content", async () => {
+    // Proves the two triggers compose correctly: an ordinary edit does not
+    // resend (see the case above), but the projection the trust-grant
+    // trigger eventually sends still reflects the document's CURRENT
+    // (edited) text, not a stale pre-edit snapshot — resolveEditorProjectionPayload
+    // is always called with gateway.currentSnapshot() at CALL time, not a
+    // value captured back at mount time.
+    mockWorkspaceFolderFsPath = FIXTURE_ROOT;
+    mockIsTrusted = false;
+    const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
+    const { panel, fireMessage, waitForNextProjection } = fakePanel();
+    provider.resolveCustomTextEditor(fakeDocument("hello world"), panel, {} as vscode.CancellationToken);
+    fireMessage({ type: "ready", protocolVersion: EDITOR_PROTOCOL_VERSION });
+    await waitForNextProjection(); // the initial (untrusted, base-pipeline) projection
+
+    fireMessage({
+      type: "apply-edit",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      edit: { from: 6, to: 11, insert: "there", expectedVersion: 0 },
+      base: 0,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the (non-resending) accepted-edit reply land
+
+    mockIsTrusted = true;
+    const afterTrustPromise = waitForNextProjection();
+    trustListener?.();
+    const afterTrust = await afterTrustPromise;
+    expect((afterTrust.projection as { sourceVersion: number }).sourceVersion).toBe(1); // the edited document's version, not 0
   });
 
   test("a REJECTED edit (stale base) does not trigger an extra resend", async () => {

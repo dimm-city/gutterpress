@@ -33,14 +33,27 @@ import { registerProjectServices } from "./project/register.ts";
  *
  * `@vscode/test-electron` and this package's build step were both P1a-
  * recorded gaps ("the run that adds a real build step" / "real activation
- * inside an actual VS Code instance is deferred"); THIS run is that run —
- * see `scripts/build.mjs` and this run's report for the build step, and
- * `tests/host-fidelity/` (or this run's report, if the bounded attempt did
- * not succeed) for the `@vscode/test-electron` outcome. The mocked unit
- * tests still work exactly as P1a set them up (`tests/support/vscode-mock.ts`
- * / `mock.module("vscode", ...)`, mirroring `packages/desktop/tests/support/
- * electron-mock.ts`'s identical pattern for "electron") — neither module is
- * a real runtime outside its actual host process.
+ * inside an actual VS Code instance is deferred"); the SFE-P3c run added
+ * the build step (`scripts/build.mjs`). Its own bounded, time-boxed
+ * `@vscode/test-electron` attempt could not reach the VS Code download CDN
+ * through this environment's outbound proxy allowlist — the exact command
+ * and failure are recorded in `docs/plans/source-first-editor/runs/SFE-P3c.md`'s
+ * "Deviations and evidence" section. Repair round 1 removed the resulting
+ * dead scaffold (`tests/host-fidelity/launch.mjs`/`run-in-host.js`/its
+ * fixture, and the `@vscode/test-electron` devDependency and
+ * `test:host-fidelity` script) rather than keep an untested, never-invoked
+ * launcher whose own package-identifier lookup was independently confirmed
+ * wrong (a scoped package name never produces a valid unscoped VS Code
+ * extension identifier) — see that same section for the full account.
+ * `tests/support/fidelity-vscode.ts`'s FIDELITY MOCK (real
+ * `offsetAt`/`positionAt`/`WorkspaceEdit` application/event semantics — see
+ * that module's own fidelity checklist) is, and remains, the sanctioned
+ * substitute this run's own specification named for exactly this
+ * situation. The mocked unit tests still work exactly as P1a set them up
+ * (`tests/support/vscode-mock.ts` / `mock.module("vscode", ...)`, mirroring
+ * `packages/desktop/tests/support/electron-mock.ts`'s identical pattern for
+ * "electron") — neither module is a real runtime outside its actual host
+ * process.
  */
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("Gutterpress");

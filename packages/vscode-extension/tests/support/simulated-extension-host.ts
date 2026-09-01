@@ -169,6 +169,17 @@ export class SimulatedExtensionHost {
     return this.#snapshot;
   }
 
+  /** The base stamp's CURRENT value — mirrors `DocumentGateway.currentStamp()`
+   *  field-for-field (this class's own header: "mirroring
+   *  ../../src/host/document-gateway.ts's #stamp field-for-field"). Repair
+   *  round 1: exposed so a test can build a projection with a `sourceVersion`
+   *  correctly drawn from the HOST'S stamp space, exactly as a real
+   *  provider.ts's `sendProjection()` does — never a hand-picked literal in
+   *  the proxy's OWN (different) mirror-local version space. */
+  currentStamp(): number {
+    return this.#stamp;
+  }
+
   /** Simulates the real `DocumentGateway`'s `EDITOR_HOST_DISCONNECTED`
    *  broadcast (a closed document, in real usage) — delivered immediately,
    *  bypassing the FIFO cursor entirely, since a real disconnect is not

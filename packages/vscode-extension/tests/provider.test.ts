@@ -13,7 +13,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { mock } from "bun:test";
 import { EDITOR_PROTOCOL_VERSION } from "@dimm-city/gutterpress-editor/core";
-import { createEditorProjection } from "gutterpress/render";
 import type * as vscode from "vscode";
 import {
   vscodeMock,
@@ -91,9 +90,21 @@ describe("renderWebviewHtml", () => {
   test("the <script> tag carries the SAME nonce as the CSP directive", () => {
     const html = renderWebviewHtml(options);
     const cspNonce = html.match(/script-src 'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
-    const tagNonce = html.match(/<script nonce="([A-Za-z0-9+/=]+)"/)?.[1];
+    const tagNonce = html.match(/<script type="module" nonce="([A-Za-z0-9+/=]+)"/)?.[1];
     expect(cspNonce).toBeTruthy();
     expect(cspNonce).toBe(tagNonce);
+  });
+
+  // Repair round 1, finding "the webview bundle is ESM served through a
+  // classic <script> tag — it cannot parse": scripts/build.mjs emits
+  // dist/webview.js with format: "esm" (its output ends
+  // `export { mountGutterpressWebview };`, a hard SyntaxError under a
+  // classic script). This pins the fix at the string level; the real-
+  // Chromium pairing proof lives in
+  // tests/webview/production-shell.btest.ts.
+  test("the script tag is type=\"module\" (dist/webview.js is built as ESM)", () => {
+    const html = renderWebviewHtml(options);
+    expect(html).toContain(`<script type="module" nonce=`);
   });
 
   test("declares an explicit <base> as the FIRST element in <head>, restricted by a base-uri CSP directive", () => {
@@ -325,7 +336,17 @@ describe("resolveCustomTextEditor — 'ready' handshake", () => {
 });
 
 describe("resolveCustomTextEditor — apply-edit end to end", () => {
-  test("a valid apply-edit reaches workspace.applyEdit via document.positionAt and replies with the new snapshot, then a merged presentation-input projection resend", async () => {
+  test("a valid apply-edit reaches workspace.applyEdit via document.positionAt and replies with the new snapshot ONLY — no projection resend for an ordinary accepted edit", async () => {
+    // Repair round 1 (finding "Every accepted keystroke rebuilds the
+    // projection and dispose-then-remounts the whole editor"): this test
+    // used to assert a SECOND, merged presentation-input resend followed
+    // every accepted edit — that was exactly the confirmed defect. An
+    // ordinary accepted edit now produces its one snapshot reply and
+    // NOTHING else; the projection is (re)sent only on the initial "ready"
+    // handshake and on a trust grant — see
+    // "resolveCustomTextEditor — projection resend is NOT triggered by
+    // ordinary accepted edits" below for the dedicated regression proof,
+    // and provider.ts's own header for the full account.
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
     const { panel, fireMessage, sentToWebview } = fakeWebviewPanel();
     provider.resolveCustomTextEditor(fakeDocument("hello world"), panel, {} as vscode.CancellationToken);
@@ -344,38 +365,54 @@ describe("resolveCustomTextEditor — apply-edit end to end", () => {
     // (fire-and-forget: the message-listener contract is synchronous), and
     // DocumentGateway.applyEdit is itself async (it awaits
     // workspace.applyEdit before its single reply site) — flush pending
-    // microtasks so that reply, AND the projection rebuild it triggers
-    // (`../src/provider.ts`'s own `gatewayApi.postMessage` intercept calls
-    // `sendProjection()` synchronously, which resolves via a microtask
-    // chain with no real plugin I/O here — no workspace folder is mocked,
-    // so `project` is `undefined` and the base pipeline resolves
-    // immediately), have both landed before asserting.
+    // microtasks so that reply has landed before asserting.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(apiCalls.applyEditCalls).toHaveLength(1);
-    // Reconciliation addendum's message merge: the accepted edit's own
-    // snapshot reply is ONE message; the projection rebuild it triggers
-    // (deliverable 2) is a SECOND, merged presentation-input resend — two
-    // messages total, in that order, not the pre-merge single reply.
-    expect(sentToWebview).toHaveLength(2);
+    expect(sentToWebview).toHaveLength(1);
     expect(sentToWebview[0]).toEqual({
       type: "snapshot",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       snapshot: { text: "hello there", version: 1 },
       baseStamp: 1,
     });
-    expect(sentToWebview[1]).toEqual({
-      type: "presentation-input",
+  });
+
+  test("resolveCustomTextEditor — projection resend is NOT triggered by ordinary accepted edits, even across several in a row", async () => {
+    const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
+    const { panel, fireMessage, sentToWebview } = fakeWebviewPanel();
+    provider.resolveCustomTextEditor(fakeDocument("hello world"), panel, {} as vscode.CancellationToken);
+
+    fireMessage({ type: "ready", protocolVersion: EDITOR_PROTOCOL_VERSION });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const countAfterReady = sentToWebview.filter((m) => (m as { type: string }).type === "presentation-input").length;
+    // The "ready" handshake itself sends TWO presentation-input messages:
+    // the bare synchronous one (mode decision, no projection yet) and the
+    // projection-bearing one sendProjection() sends moments later — see
+    // provider.ts's own header ("SENT ASYNCHRONOUSLY, ALWAYS AFTER the
+    // ready handshake's other three messages"). That pair is the baseline
+    // this test asserts stays UNCHANGED across the edits below.
+    expect(countAfterReady).toBe(2);
+
+    fireMessage({
+      type: "apply-edit",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
-      mode: "rich",
-      // No workspace folder is mocked in this suite (getWorkspaceFolder's
-      // default), so `project` is `undefined` and this resend takes the
-      // base (non-plugin-aware) pipeline — computed via the SAME real
-      // function provider.ts itself calls, not a hand-typed shape.
-      projection: createEditorProjection("hello there", { sourceVersion: 1 }),
-      pluginCss: "",
-      pluginErrors: [],
+      edit: { from: 6, to: 11, insert: "there", expectedVersion: 0 },
+      base: 0,
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireMessage({
+      type: "apply-edit",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      edit: { from: 11, to: 11, insert: "!", expectedVersion: 1 },
+      base: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const presentationInputCount = sentToWebview.filter((m) => (m as { type: string }).type === "presentation-input").length;
+    // Still exactly the ready handshake's own pair — never resent for
+    // either accepted edit.
+    expect(presentationInputCount).toBe(2);
   });
 });
 

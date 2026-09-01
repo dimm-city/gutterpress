@@ -44,10 +44,10 @@
   //      "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/webview/tsconfig.json",
   //      mirroring packages/editor/package.json's own three-program chain.
   //
-  // Until both land, `cd packages/vscode-extension && bun run typecheck`
-  // fails on src/webview/**'s and tests/webview/**'s DOM usage under the
-  // root program — a known, expected, precedented gap this file's own
-  // program does NOT have (verified independently — see this run's report).
+  // Both integrator edits have landed: ../../tsconfig.json's own "exclude"
+  // covers "src/webview"/"tests/webview", and package.json's "typecheck"
+  // script chains this program after the root one. `cd
+  // packages/vscode-extension && bun run typecheck` covers both.
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"]

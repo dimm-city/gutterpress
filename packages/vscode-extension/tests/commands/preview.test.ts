@@ -131,6 +131,39 @@ describe("PreviewSession — vscode-free", () => {
     expect(restart.mock.calls[0]?.[0]).toBe("/proj/b");
   });
 
+  test("repair round 1: open(A) -> open(B) -> open(A) restarts on BOTH the second and third call — identity is tracked independently of the fake handle's own (never-updated) inputPath field", async () => {
+    // The fake handle's `inputPath` never changes on restart() — this is
+    // deliberate: it reproduces the REAL `PreviewServerHandle.inputPath`'s
+    // own behavior exactly (a plain field captured once in the object
+    // literal at start; `restart()` mutates the server's internal state,
+    // never that already-returned object — see preview.ts's own header).
+    // Before the fix, PreviewSession.open() compared against
+    // `this.#handle.inputPath`, so this exact sequence would wrongly treat
+    // the THIRD open(A) as a cache hit (since the handle's own stale
+    // inputPath still read "A" from the very first start) and return the
+    // cached URL WITHOUT restarting, even though the server was actually
+    // still serving project B.
+    const restart = mock(async (_newInputPath: string): Promise<void> => {});
+    const starter = mock(
+      async (_options: StartOptions): Promise<PreviewServerHandleLike> => ({
+        url: "http://127.0.0.1:5555",
+        inputPath: "/proj/a", // never updated by the fake restart() below
+        stop: async () => {},
+        restart: (newInputPath: string) => restart(newInputPath),
+      }),
+    );
+    const session = new PreviewSession(starter);
+
+    await session.open("/proj/a");
+    await session.open("/proj/b");
+    await session.open("/proj/a");
+
+    expect(starter.mock.calls).toHaveLength(1); // still just one server EVER started
+    expect(restart.mock.calls).toHaveLength(2); // B, then A again — NOT a cache hit the third time
+    expect(restart.mock.calls[0]?.[0]).toBe("/proj/b");
+    expect(restart.mock.calls[1]?.[0]).toBe("/proj/a");
+  });
+
   test("dispose() stops the active server; a fresh session with no open() call is a safe no-op", async () => {
     const stop = mock(async (): Promise<void> => {});
     const starter = mock(

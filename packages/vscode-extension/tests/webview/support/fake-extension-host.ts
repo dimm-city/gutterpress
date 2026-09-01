@@ -21,8 +21,8 @@ import type { WebviewHostTransport } from "../../../src/webview-host/proxy-docum
  * `@dimm-city/gutterpress-editor/core` and this package's own
  * webview-purity-checked `src/protocol/**` modules, and its own runtime
  * surface is `setTimeout`/`Math.random`/`Date.now`/`Set`, all standard
- * browser globals, not Node-specific. Verified by reading it (not assumed);
- * see this run's report. This module therefore REUSES it directly for the
+ * browser globals, not Node-specific. Verified by reading it (not assumed).
+ * This module therefore REUSES it directly for the
  * D3 authority/convergence semantics (readonly -> stale -> invalid-range,
  * FIFO-ordered replies, out-of-order `externalChange` injection,
  * `disconnect()`) rather than re-deriving that logic — duplicating it would
@@ -114,6 +114,32 @@ export interface FakeExtensionHostSession {
    * message-count side effect.
    */
   listenerCount(): number;
+  /**
+   * Delivers an ARBITRARY, untyped payload directly to every subscriber of
+   * this session's transport — bypassing `SimulatedExtensionHost` entirely,
+   * which only ever constructs well-formed `HostToWebviewMessage`s (repair
+   * round 1, finding "One malformed inbound message permanently destroys
+   * the editing surface"). Simulates a malformed message or unrelated
+   * window-message noise reaching the real webview's
+   * `window.addEventListener("message", ...)` listener — the exact path
+   * the finding names as untested by any suite.
+   */
+  deliverRaw(raw: unknown): void;
+  /**
+   * Sends a LATER, well-formed `trust-state` message on its own — mirrors
+   * `../../../src/provider.ts`'s `onDidGrantWorkspaceTrust` subscription
+   * handler's own FIRST statement (a fresh `trust-state` post, independent
+   * of and always followed by that same handler's `sendProjection()` call —
+   * see `sendProjectionUpdate` above for the second half of that same real
+   * sequence). This session's OWN construction-time `trusted` option
+   * (`FakeExtensionHostOptions.trusted`) already covers the INITIAL
+   * handshake reply; this method exists for a test that needs a SECOND,
+   * later `trust-state` — repair round 1, finding "D9's required trust
+   * explanation is not implemented" (proving the webview's OPTIMISTIC
+   * `onTrustChange` clear, independent of whatever `presentation-input`
+   * resend follows it).
+   */
+  sendTrustState(trusted: boolean): void;
 }
 
 /**
@@ -174,6 +200,14 @@ export function createFakeExtensionHost(
     simulated,
     recordedEdits: () => edits.slice(),
     listenerCount: () => listeners.size,
+    deliverRaw: (raw: unknown) => {
+      // Bypasses `deliver`'s `HostToWebviewMessage` typing on purpose — see
+      // this session's own `deliverRaw` doc comment.
+      for (const listener of listeners) listener(raw);
+    },
+    sendTrustState: (trusted: boolean) => {
+      deliver({ type: "trust-state", protocolVersion: EDITOR_PROTOCOL_VERSION, trusted });
+    },
     sendProjectionUpdate: (payload) => {
       deliver({
         type: "presentation-input",

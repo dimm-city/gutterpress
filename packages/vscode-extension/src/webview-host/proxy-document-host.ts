@@ -61,11 +61,50 @@ export type PresentationInputPayload = Pick<
 >;
 
 export interface ProxyDocumentHostOptions {
-  /** Fired for every locally-relevant `Diagnostic`: a rejected inbound
-   *  message, an external-replacement notice, or an `EDITOR_HOST_DISCONNECTED`
-   *  transition. Threaded straight through by Lane C's `mountGutterpressEditor`
-   *  call the same way every other host's `onDiagnostic` option already is. */
+  /** Fired for every locally-relevant `Diagnostic`: an external-replacement
+   *  notice, or a GENUINE `EDITOR_HOST_DISCONNECTED` transition
+   *  (`#handleDisconnect` — a closed document or a reply that never
+   *  arrived). Threaded straight through by Lane C's `mountGutterpressEditor`
+   *  call the same way every other host's `onDiagnostic` option already is.
+   *
+   *  Repair round 1 (finding "One malformed inbound message permanently
+   *  destroys the editing surface"): a rejected inbound message NO LONGER
+   *  fires this callback — see `onProtocolRejection` below for why, and for
+   *  where that signal now goes instead. */
   readonly onDiagnostic?: (diagnostic: Diagnostic) => void;
+  /**
+   * Repair round 1 (finding "One malformed inbound message permanently
+   * destroys the editing surface, while the proxy mirror stays writable and
+   * the message listener does no origin filtering"): fired for a message
+   * that fails `validateHostToWebviewMessage` — a wrong protocol version,
+   * unknown type, missing/wrong-typed field, or an oversized payload.
+   *
+   * PRE-repair, this same event was reported through `onDiagnostic` as
+   * `EDITOR_HOST_DISCONNECTED` (the closest existing D14 category —
+   * `diagnosticForProtocolRejection`'s own doc comment) — and the webview's
+   * `handleDiagnostic` treats ANY `EDITOR_HOST_DISCONNECTED` as "tear down
+   * and latch a permanent fallback." That conflated two genuinely different
+   * events: a REJECTED MESSAGE (this class's own D3/D12 checks already
+   * refused it — nothing was applied, the mirror is provably unharmed and
+   * stays fully writable, exactly as `#disconnected` staying `false`
+   * already implies) is not the same as a REAL channel loss (a closed
+   * document, a reply that never arrives). Worse, with `window.addEventListener("message",
+   * ...)` doing no origin filtering (the webview entry's own known,
+   * documented limitation — see that file's header), ANY unrelated window
+   * message reaching this listener — from a stray browser extension, an
+   * embedded iframe, anything sharing the same `window` — could trip this
+   * path and permanently kill an otherwise-healthy session.
+   *
+   * This callback is the FIX: the webview logs it (dev-visible) and
+   * CONTINUES — the session survives a malformed/unrelated message exactly
+   * as it should, since nothing about this class's own state actually
+   * changed. `diagnostic-report`'s wire payload back to the host is
+   * UNCHANGED (still `EDITOR_HOST_DISCONNECTED`, the closest existing D14
+   * category for a host-side dev log line the host never acts on) —
+   * `onDiagnostic`/`EDITOR_HOST_DISCONNECTED` is reserved, from this class's
+   * webview-facing surface, for a REAL disconnection only.
+   */
+  readonly onProtocolRejection?: (failure: ProtocolValidationFailure) => void;
   /** Fired on every `trust-state` message (D9: "Trust granted mid-session
    *  re-resolves"). Outside `EditorDocumentHost`'s own contract (that
    *  interface has no trust member — see `packages/editor/src/core/hosts.ts`)
@@ -163,6 +202,7 @@ export class ProxyDocumentHost implements EditorDocumentHost {
   readonly #transport: WebviewHostTransport;
   readonly #unsubscribeTransport: () => void;
   readonly #onDiagnostic?: (diagnostic: Diagnostic) => void;
+  readonly #onProtocolRejection?: (failure: ProtocolValidationFailure) => void;
   readonly #onTrustChange?: (trusted: boolean) => void;
   readonly #onPresentationInput?: (input: PresentationInputPayload) => void;
   readonly #replyTimeoutMs: number;
@@ -188,6 +228,33 @@ export class ProxyDocumentHost implements EditorDocumentHost {
    *  reply against — `#handleSnapshot` still converges by plain text
    *  comparison. */
   #inFlightExpectedText: string | undefined;
+  /**
+   * Repair round 1 (finding "Projection staleness compares the host's
+   * TextDocument.version against the webview mirror's LOCAL version"): the
+   * mirror's own LOCAL `version` (`#mirror.version`) is what
+   * `packages/editor`'s `projectionNeedsRefresh` compares a projection's
+   * `sourceVersion` against (via `getSnapshot().version`, this class's own
+   * public surface) — but `../project/projection.ts` stamps a built
+   * projection's `sourceVersion` from `DocumentGateway.currentStamp()`, a
+   * THIRD space (see that method's own doc comment). Left unremapped, the
+   * two spaces "only ever coincide by accident" (this class's own header,
+   * describing the identical failure mode the reconciliation addendum's
+   * `baseStamp` fixed for the edit-application path) — a rejected/queued
+   * edit permanently offsets them, silently and permanently disabling every
+   * Gutterpress chip for the rest of the session.
+   *
+   * This field pairs `#lastKnownStamp` (the host-stamp space) with the
+   * mirror `.version` (the mirror-local space) it corresponded to at the
+   * exact moment the mirror last provably converged to EXACTLY the text
+   * that stamp describes — see `#recordConvergenceAnchor`'s own doc
+   * comment for the precise conditions under which that is true, and
+   * `#remapProjectionSourceVersion` for how it is used. `undefined` means
+   * "no valid anchor for the CURRENT `#lastKnownStamp`" — a projection
+   * tagged with any stamp then remaps to a value that can never equal the
+   * mirror's current version, so it is safely treated as stale rather than
+   * wrongly trusted.
+   */
+  #mirrorVersionAtLastKnownStamp: number | undefined;
   /** Edits applied to the mirror while another edit was already in flight —
    *  optimistic and already reflected in `#mirror`/subscribers by the time
    *  they land here; only their WIRE SEND is deferred. Each entry pairs the
@@ -224,6 +291,7 @@ export class ProxyDocumentHost implements EditorDocumentHost {
     this.#readonly = options.initialReadonly ?? false;
     this.#transport = transport;
     this.#onDiagnostic = options.onDiagnostic;
+    this.#onProtocolRejection = options.onProtocolRejection;
     this.#onTrustChange = options.onTrustChange;
     this.#onPresentationInput = options.onPresentationInput;
     this.#replyTimeoutMs = options.replyTimeoutMs ?? DEFAULT_REPLY_TIMEOUT_MS;
@@ -332,6 +400,53 @@ export class ProxyDocumentHost implements EditorDocumentHost {
   }
 
   /**
+   * Records (or invalidates) the anchor pairing `#lastKnownStamp` with a
+   * mirror version — see `#mirrorVersionAtLastKnownStamp`'s own doc
+   * comment. Called ONLY from `#handleSnapshot`'s `confirmed` branch, where
+   * `confirmedText` is `snapshot.text` — the text this reply just
+   * confirmed. Valid (records `this.#mirror.version`) ONLY when the
+   * mirror's CURRENT text is EXACTLY `confirmedText` right now: if
+   * `confirmed` matched only via `#inFlightExpectedText` while the mirror
+   * has since moved further ahead (queued local edits already applied on
+   * top before this reply arrived), the mirror does NOT currently equal
+   * what this stamp describes, and no mirror version anchors it correctly
+   * — invalidated (`undefined`) rather than recording one whose text would
+   * not actually match.
+   */
+  #recordConvergenceAnchor(confirmedText: string): void {
+    this.#mirrorVersionAtLastKnownStamp = confirmedText === this.#mirror.text ? this.#mirror.version : undefined;
+  }
+
+  /**
+   * Remaps a projection's host-stamp-space `sourceVersion` (see
+   * `resolveEditorProjectionPayload`, `../project/projection.ts`, which
+   * stamps it from `DocumentGateway.currentStamp()`, never
+   * `document.version`) into the mirror's own LOCAL version space
+   * `mountGutterpressEditor`'s `isStale()` check actually compares against
+   * (`host.getSnapshot().version`, i.e. `this.#mirror.version` —
+   * `packages/editor/src/gutterpress/mount.ts`, `match.ts`'s
+   * `projectionNeedsRefresh`). See `#mirrorVersionAtLastKnownStamp`'s own
+   * doc comment for the full account of the defect this fixes.
+   *
+   * A projection built from EXACTLY the state this mirror last provably
+   * converged to (`hostStamp === #lastKnownStamp`, AND a valid anchor
+   * exists for it) remaps to that anchor's own mirror version — equal to
+   * `this.#mirror.version` right now if, and only if, nothing has changed
+   * the mirror since that convergence (no later local edit, no later
+   * authoritative reply). Any OTHER stamp — older, unrecognized, or one
+   * with no valid anchor at all — remaps to a sentinel `this.#mirror.version`
+   * can never equal (mirror versions are always finite and non-negative),
+   * so the projection is correctly treated as stale rather than silently
+   * trusted against a state it does not actually describe.
+   */
+  #remapProjectionSourceVersion(hostStamp: number): number {
+    if (this.#mirrorVersionAtLastKnownStamp !== undefined && hostStamp === this.#lastKnownStamp) {
+      return this.#mirrorVersionAtLastKnownStamp;
+    }
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  /**
    * Sends the next queued edit (if any), using the stamp `#handleSnapshot`
    * just recorded — or, if the queue is empty, marks nothing in flight.
    * Called ONLY from `#handleSnapshot`'s "no divergence" branch (a reply
@@ -358,8 +473,13 @@ export class ProxyDocumentHost implements EditorDocumentHost {
   }
 
   #reportRejectedInbound(failure: ProtocolValidationFailure): void {
+    // Repair round 1 — see `onProtocolRejection`'s own doc comment: a
+    // rejected MESSAGE is reported on its own dedicated channel, never
+    // `onDiagnostic`/`EDITOR_HOST_DISCONNECTED` (which the webview treats
+    // as a genuine, permanent channel loss). Nothing about this class's own
+    // state changed — the mirror stays exactly as writable as it was.
+    this.#onProtocolRejection?.(failure);
     const diagnostic = diagnosticForProtocolRejection(failure);
-    this.#onDiagnostic?.(diagnostic);
     // D15-safe: `diagnostic` never carries document text (see
     // `../protocol/diagnostics.ts`'s header). Reported back to the host
     // purely for its own dev-log visibility — the host never changes
@@ -379,7 +499,16 @@ export class ProxyDocumentHost implements EditorDocumentHost {
         this.#onPresentationInput?.({
           mode: message.mode,
           diagnostic: message.diagnostic,
-          projection: message.projection,
+          // Repair round 1 (finding "Projection staleness compares the
+          // host's TextDocument.version against the webview mirror's LOCAL
+          // version"): the projection this class hands upward NEVER
+          // carries the host's own wire-space `sourceVersion` unremapped
+          // — see `#remapProjectionSourceVersion`'s own doc comment. This
+          // is a plain STATE comparison against values this class already
+          // tracks (G-05: never an origin inference).
+          projection: message.projection
+            ? { ...message.projection, sourceVersion: this.#remapProjectionSourceVersion(message.projection.sourceVersion) }
+            : undefined,
           pluginCss: message.pluginCss,
           pluginErrors: message.pluginErrors,
         });
@@ -432,6 +561,7 @@ export class ProxyDocumentHost implements EditorDocumentHost {
         // Run spec convergence case (a): no spurious replacement. If this
         // was the reply the in-flight edit was waiting on, the queue
         // advances; otherwise there is nothing to advance.
+        this.#recordConvergenceAnchor(snapshot.text);
         if (wasInFlight) this.#dispatchNextQueued();
       } else if (isFirstSnapshot && this.#hasAppliedLocalEdit) {
         // The FIRST snapshot this proxy EVER receives is always the reply
@@ -443,7 +573,9 @@ export class ProxyDocumentHost implements EditorDocumentHost {
         // REAL reply is still to come) — its STAMP is still recorded above
         // so the genuinely fresher reply that follows compares correctly,
         // but its CONTENT is discarded here, and nothing in-flight/queued
-        // is touched.
+        // is touched. No valid convergence anchor exists for THIS stamp
+        // either — the mirror is provably ahead of what it describes.
+        this.#mirrorVersionAtLastKnownStamp = undefined;
       } else {
         // Text differs and this is real, current information: either a
         // rejected edit reverting to the host's unchanged text (case (b)),
@@ -455,6 +587,9 @@ export class ProxyDocumentHost implements EditorDocumentHost {
         this.replaceExternal(snapshot.text);
         this.#queue.length = 0;
         this.#inFlightExpectedText = undefined;
+        // Valid unconditionally: replaceExternal just set #mirror.text to
+        // EXACTLY snapshot.text.
+        this.#mirrorVersionAtLastKnownStamp = this.#mirror.version;
         this.#onDiagnostic?.(externalReplacementDiagnostic());
       }
     }

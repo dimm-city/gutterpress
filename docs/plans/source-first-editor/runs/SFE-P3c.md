@@ -252,3 +252,231 @@ artifacts.
 ## Review log
 
 <!-- Appended by the review stage. -->
+
+## Deviations and evidence
+
+Added by repair round 1 (finding "The run's required evidence record does
+not exist: 19 source comments cite 'this run's report'..."). This is that
+record — every in-repo comment that used to say "see this run's report"
+now points here instead, or has been shortened because the context it
+referenced is now resolved.
+
+### Host-fidelity deviation (`@vscode/test-electron`)
+
+The run spec's "Host-fidelity requirement" calls for one bounded,
+time-boxed `@vscode/test-electron` attempt, with the exact command and
+exact failure recorded as a deviation if it cannot run. Re-verified fresh
+during repair round 1 (the original scaffold's own launcher, `tests/
+host-fidelity/launch.mjs`, called `@vscode/test-electron`'s
+`downloadAndUnzipVSCode`, which resolves `update.code.visualstudio.com`):
+
+```
+$ curl -sS -m 15 -o /dev/null -w "HTTP_STATUS:%{http_code}\n" \
+    "https://update.code.visualstudio.com/api/versions/stable/linux-x64/stable"
+curl: (56) CONNECT tunnel failed, response 403
+HTTP_STATUS:000
+```
+
+The session's outbound-proxy status endpoint confirms this is a policy
+denial, not a transient failure — the proxy's `noProxy` allowlist
+(`$HTTPS_PROXY/__agentproxy/status`) does not include
+`update.code.visualstudio.com` or any VS Code download host, and its
+`recentRelayFailures` log records the same `"gateway answered 403 to
+CONNECT (policy denial or upstream failure)"` shape for other
+non-allowlisted hosts requested in this same session. `bun run
+test:host-fidelity` (before its removal below) would fail identically:
+`downloadAndUnzipVSCode` cannot fetch VS Code's version manifest, well
+before `run-in-host.js`'s own `vscode.extensions.getExtension(...)` line
+ever runs.
+
+**Substitute:** `tests/support/fidelity-vscode.ts`'s FIDELITY MOCK — a
+`TextDocument`/`WorkspaceEdit`/workspace-event/trust surface with real
+`offsetAt`/`positionAt`/`getText`/`version` semantics and a real,
+mutating `applyEdit` — is, and remains, the sanctioned substitute the run
+spec names for exactly this situation ("the mock stays only for fast unit
+suites" if the attempt succeeds, unconditionally otherwise). Its own
+fidelity checklist records exactly what is and is not reproduced,
+including the one honestly-flagged gap (CRLF line endings are untested).
+
+**Scaffold removed, not fixed, in repair round 1:** the outer launcher
+(`tests/host-fidelity/launch.mjs`), the inner VS-Code-host entry
+(`run-in-host.js`), its fixture, the `test:host-fidelity` package.json
+script, and the `@vscode/test-electron` devDependency were deleted rather
+than kept as untested dead code. Beyond being unreachable in this
+environment, `run-in-host.js`'s own first assertion was independently
+confirmed WRONG regardless of network access: a VS Code extension
+identifier is `<publisher>.<manifest name>`, and this package's real
+`name` is the scoped `@dimm-city/gutterpress-vscode` (D1's binding
+package name — not something this repair round may rename), so the
+identifier VS Code actually computes is
+`dimm-city.@dimm-city/gutterpress-vscode`, never the bare
+`dimm-city.gutterpress-vscode` the deleted script looked up — and a
+scoped package name is not even a valid VS Code extension name (`vsce`
+rejects it), so no non-D1-violating rename could have fixed this either.
+Re-adding a host-fidelity launcher against a real, verified VS Code host,
+on a networked runner, remains a legitimate future improvement; it is not
+attempted here.
+
+### G-12/AP-20 sabotage-proof results
+
+Both were re-verified fresh during repair round 1 (not merely re-cited
+from an earlier, uncommitted claim):
+
+1. **`tests/support/fidelity-vscode.ts`'s document-identity filter proof.**
+   Mutated: `src/host/document-gateway.ts`'s
+   `if (event.document !== this.#api.document) return;` guard inside the
+   `onDidChangeTextDocument` subscription, replaced with a no-op comment.
+   Command: `bun test tests/host/document-gateway.test.ts`. Result: 23
+   pass, 1 fail — `DocumentGateway — filters events to THIS document only
+   (sabotage-provable) > a change to a DIFFERENT document on the same
+   workspace produces NO message for this gateway`, `expect(sent).toHaveLength(0)`
+   received `1`. Guard restored; full suite back to 24 pass, 0 fail.
+
+2. **`tests/webview/disposal.btest.ts`'s listener-leak proof.** Mutated:
+   `src/webview/index.ts`'s `WebviewSession.dispose()`, its `host.dispose()`
+   call replaced with a no-op comment. Command:
+   `bun test ./tests/webview/disposal.btest.ts`. Result: 1 pass, 3 fail —
+   every assertion of the shape `expect(await listenerCount()).toBe(0)`
+   (in "dispose removes the transport-level listener > listenerCount drops
+   from 1 to 0", "... > dispose is idempotent", and "dispose then remount
+   on the same fake host > exactly one MORE apply-edit reaches the host
+   after remount") received `1` instead of `0`. Call restored; full suite
+   back to 4 pass, 0 fail.
+
+Repair round 1 also produced and locally sabotage-verified several NEW
+gates/tests of its own before committing them (each verified to fail
+against the pre-fix code and pass against the fix, then restored to the
+fix):
+
+- `tests/extension-load.test.ts` (finding "dist/extension.js is not
+  loadable") — fails with the exact `SyntaxError: Cannot use 'import.meta'
+  outside a module` the finding predicted when `gutterpress` is bundled
+  instead of externalized.
+- `tests/webview/production-shell.btest.ts` (finding "the webview bundle
+  is ESM served through a classic <script> tag") — times out waiting for
+  the "ready" handshake and records a real
+  `SyntaxError: Cannot use 'import.meta' outside a module` page error when
+  the `<script>` tag omits `type="module"`.
+- `tests/webview/projection-upgrade.btest.ts`'s new negative case (finding
+  "Projection staleness compares the host's TextDocument.version against
+  the webview mirror's LOCAL version") — reverting the
+  `ProxyDocumentHost#remapProjectionSourceVersion` wiring back to an
+  unremapped `projection: message.projection` makes BOTH the positive and
+  the new negative case in that file fail (the positive case now reads its
+  `sourceVersion` from the host's own stamp space via `hostStamp()` rather
+  than a hand-picked mirror-space literal, so it is no longer accidentally
+  insensitive to the bug either).
+- `tests/webview/protocol-rejection.btest.ts` (finding "One malformed
+  inbound message permanently destroys the editing surface") — reverting
+  `ProxyDocumentHost#reportRejectedInbound` to call `onDiagnostic` instead
+  of `onProtocolRejection` makes both cases in this file fail
+  (`editorElementCount()` drops to `0`, i.e. the mount was torn down by a
+  single malformed/unrelated message).
+- `tests/host/document-gateway.test.ts`'s new "order-independent echo
+  suppression" describe block, `changeEventTiming="after-resolve"` cases
+  (finding "the gateway's echo suppression depends on an uncited
+  applyEdit/onDidChangeTextDocument ordering") — reverting
+  `DocumentGateway#broadcastSnapshot`/`#sendSnapshot` back to the
+  `#applyInProgress`-only guard makes exactly the two "after-resolve"
+  cases fail (`sent` grows to 2/3 instead of staying at 1/2), while the
+  "before-resolve" cases keep passing (the old guard was already correct
+  for that one ordering) — demonstrating the fix is genuinely
+  order-independent, not merely differently lucky.
+- `tests/webview/trust-explanation.btest.ts` (finding "D9's required trust
+  explanation is not implemented" — the WEBVIEW-side half: a visible notice
+  banner, `src/webview/index.ts`'s `updateNotices`/`renderNoticeBanner`/
+  `onTrustChange`). Three separate mutations, each restored immediately
+  after its run:
+  1. `onTrustChange: (trusted) => { if (trusted) renderNoticeBanner([]); }`
+     replaced with a no-op. Command:
+     `bun test ./tests/webview/trust-explanation.btest.ts`. Result: 2 pass,
+     2 fail, 1 unhandled error (the shared Chromium session closes after
+     the first timeout, so later tests in the same file report a page-
+     closed error rather than their own timeout — the decisive result is
+     that "mechanism 1" itself failed on a timeout waiting for
+     `noticeBannerHidden() === true`, and the initial "shows the notice"
+     test, which does not depend on `onTrustChange` at all, still passed).
+     Restored; full file back to 4 pass, 0 fail.
+  2. `updateNotices`'s closing `renderNoticeBanner(visible);` guarded with
+     `if (visible.length > 0)` (never clears on an empty resend). Command:
+     `bun test ./tests/webview/trust-explanation.btest.ts`. Result: 3 pass,
+     1 fail, 1 unhandled error — "mechanism 2" timed out waiting for
+     `noticeBannerHidden() === true`; both the initial "shows" test and
+     "mechanism 1" (a different clearing path) still passed, showing the
+     two mechanisms are genuinely independent of each other in this suite,
+     not accidentally covering for one another. Restored; full file back to
+     4 pass, 0 fail.
+  3. `updateNotices`'s `if (input.diagnostic) diagnostics.push(input.diagnostic);`
+     replaced with `if (false && input.diagnostic) ...` (the diagnostic is
+     silently dropped). Command:
+     `bun test ./tests/webview/trust-explanation.btest.ts`. Result: 1 pass,
+     3 fail, 1 unhandled error — every test that depends on the banner ever
+     becoming visible in the first place (all three in the "D9 trust
+     explanation" describe block) timed out or errored on the now-closed
+     session; only the unrelated "harness liveness" test passed. Restored;
+     full file back to 4 pass, 0 fail.
+
+### CSP/protocol-category rationale accounts
+
+- **CSP.** `src/provider.ts`'s `renderWebviewHtml` doc comment is the
+  authoritative account of the CSP recipe (`default-src 'none'`, nonced
+  `script-src`, un-nonced `style-src: 'unsafe-inline'` and why, `img-src`/
+  `font-src` scoped to `cspSource`). `tests/webview/csp-inertness.btest.ts`
+  and `tests/provider.test.ts`'s `renderWebviewHtml` describe block prove
+  it live and pin its string shape, respectively; no separate account was
+  needed beyond those two plus the doc comment itself.
+- **Protocol-category mapping.** `src/protocol/diagnostics.ts`'s
+  `diagnosticForProtocolRejection` doc comment records the judgment call
+  (no dedicated D14 "malformed message" category exists, and
+  `packages/editor/src/core/diagnostics.ts` — where one would have to be
+  added — is outside every lane's write boundary this run) and, as of
+  repair round 1, the scope narrowing that judgment call now has: it
+  governs only the `diagnostic-report` WIRE message the host logs and
+  never acts on, not the webview's own reaction, which
+  `ProxyDocumentHost`'s `onProtocolRejection` (a separate channel,
+  introduced in repair round 1) now owns — see that option's own doc
+  comment for the full account of why conflating the two was itself a
+  confirmed defect.
+- **Message-origin filtering — a documented non-fix.** The security
+  review's "message-origin and shape validation on both sides" requirement
+  is met for SHAPE (`validateHostToWebviewMessage`, fully verified,
+  engine-agnostic) but deliberately NOT for origin: `src/webview/index.ts`'s
+  production `onMessage` wiring carries a comment recording that an
+  `event.origin`-based filter was tried, empirically caught by this
+  package's own `production-shell.btest.ts` rejecting its own legitimate
+  same-origin test traffic, and reverted — VS Code's real webview
+  host<->content bridge's exact `event.origin`/`event.source` value could
+  not be verified against a real host in this environment (see the
+  host-fidelity deviation above), and shipping an unverified guess that
+  already demonstrated it can silently break message delivery was judged
+  worse than the narrower gap that remains once the "one rejected message
+  is fatal" defect (this run's actual severe consequence) is fixed. A
+  verified origin/source check is a legitimate future improvement once it
+  can be proven against a real VS Code host.
+
+### Self-inflicted flake found and fixed during repair round 1
+
+`tests/extension-load.test.ts` (added by this round, for finding "dist/
+extension.js is not loadable") originally called `Bun.build()` in-process,
+mirroring `tests/webview/build-output.test.ts`'s own pattern. Running the
+FULL `bun run test` suite with both files present made
+`build-output.test.ts` fail DETERMINISTICALLY, every run, never in
+isolation or in a 2-file subset: `error: EISDIR reading file:
+".../packages/editor/src/core/index.ts"` against a plain, real,
+non-directory file both bundles' dependency graphs happen to share. This
+is a Bun 1.3.11 test-file-concurrency interaction between two `Bun.build()`
+calls in different files racing on a shared source file, not a defect in
+either bundle's own config — reproduced 3/3 runs with both files present,
+0/3 with `extension-load.test.ts` temporarily moved aside. Fixed by having
+`extension-load.test.ts` shell out to the real `bun run build` as a genuine
+child process instead of calling `Bun.build()` in-process (a strict
+improvement independent of the flake: it now exercises the real build
+script end to end rather than a duplicated config that could drift from
+it) — re-verified 3/3 clean runs of the full suite after the fix.
+
+### Acceptance
+
+`docs/plans/source-first-editor/acceptance.md`'s AC-10 ("VS Code host
+integration and trust") is updated by this repair round to reflect the
+round-1 fixes described above; it remains owned by the run's close-out
+step for final sign-off, not by this repair round.

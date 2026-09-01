@@ -21,6 +21,10 @@ import {
   type FidelityWorkspaceEdit,
 } from "../support/fidelity-vscode.ts";
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Wires one `DocumentGateway` over a fresh `FidelitySimulatedWorkspace` and
  *  one document, recording every outbound message and every `log()` call. */
 function setup(initialText: string, workspace: FidelitySimulatedWorkspace = new FidelitySimulatedWorkspace()) {
@@ -295,6 +299,71 @@ describe("DocumentGateway — dispose (sabotage-provable)", () => {
       gateway.dispose();
     }).not.toThrow();
   });
+});
+
+describe("DocumentGateway — order-independent echo suppression (repair round 1, finding \"the gateway's echo suppression depends on an uncited applyEdit/onDidChangeTextDocument ordering\")", () => {
+  // `@types/vscode`'s applyEdit doc block does not specify whether
+  // onDidChangeTextDocument fires before or after the returned thenable
+  // resolves — see fidelity-vscode.ts's own "ORDERING CAVEAT" header. Every
+  // assertion below runs under BOTH orderings; PRE-repair, the
+  // "after-resolve" runs would have observed a SECOND, spurious snapshot
+  // reply for the same accepted edit (verified locally while authoring this
+  // fix — reverting document-gateway.ts's #ownChangeAlreadyReported/
+  // #lastReportedVersion fix back to the old #applyInProgress-only guard
+  // reproduces exactly that: `sent` grows to 2, not 1, under
+  // "after-resolve").
+  for (const changeEventTiming of ["before-resolve", "after-resolve"] as const) {
+    test(`a single accepted edit produces EXACTLY ONE snapshot reply — changeEventTiming="${changeEventTiming}"`, async () => {
+      const workspace = new FidelitySimulatedWorkspace({ changeEventTiming });
+      const { gateway, handle, sent } = setup("hello world", workspace);
+
+      await gateway.applyEdit({ from: 6, to: 11, insert: "there", expectedVersion: 0 }, 0);
+      // For "after-resolve", the deferred onDidChangeTextDocument firing
+      // happens on a LATER macrotask than applyEdit's own await chain —
+      // give it a turn to run before asserting no second message arrived.
+      await sleep(20);
+
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toEqual({
+        type: "snapshot",
+        protocolVersion: 1,
+        snapshot: { text: "hello there", version: 1 },
+        baseStamp: 1,
+      });
+      expect(handle.document.getText()).toBe("hello there");
+    });
+
+    test(`two consecutive accepted edits each still produce exactly one reply, with the stamp advancing by exactly 1 each time — changeEventTiming="${changeEventTiming}"`, async () => {
+      const workspace = new FidelitySimulatedWorkspace({ changeEventTiming });
+      const { gateway, sent } = setup("abc", workspace);
+
+      await gateway.applyEdit({ from: 3, to: 3, insert: "d", expectedVersion: 0 }, 0);
+      await sleep(20);
+      await gateway.applyEdit({ from: 4, to: 4, insert: "e", expectedVersion: 1 }, 1);
+      await sleep(20);
+
+      expect(sent).toHaveLength(2);
+      expect((sent[0] as { baseStamp: number }).baseStamp).toBe(1);
+      expect((sent[1] as { baseStamp: number }).baseStamp).toBe(2);
+    });
+
+    test(`a REJECTED edit (stale base) still replies exactly once — changeEventTiming="${changeEventTiming}"`, async () => {
+      const workspace = new FidelitySimulatedWorkspace({ changeEventTiming });
+      const { gateway, handle, sent } = setup("current text", workspace);
+
+      await gateway.applyEdit({ from: 0, to: 7, insert: "X", expectedVersion: 0 }, 99);
+      await sleep(20);
+
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toEqual({
+        type: "snapshot",
+        protocolVersion: 1,
+        snapshot: { text: "current text", version: 0 },
+        baseStamp: 1,
+      });
+      expect(handle.document.getText()).toBe("current text"); // never mutated
+    });
+  }
 });
 
 describe("DocumentGateway — D15: never logs document text", () => {

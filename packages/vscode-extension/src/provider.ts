@@ -13,8 +13,7 @@ import { resolveEditorProjectionPayload } from "./project/projection.ts";
  * (run spec DETAILS #4: "PROVIDER + EXTENSION WIRING").
  *
  * P1a's version rendered a minimal, inert, read-only placeholder webview
- * (`enableScripts: false`) — see this run's report for the full account.
- * THIS run replaces it with the real wiring D9 describes: the host owns
+ * (`enableScripts: false`). SFE-P3c replaced it with the real wiring D9 describes: the host owns
  * `TextDocument`/`WorkspaceEdit`/file events (via `DocumentGateway`,
  * `./host/document-gateway.ts`) and validates every inbound webview message
  * before dispatch; the webview owns model/view/controller state and has no
@@ -45,10 +44,8 @@ import { resolveEditorProjectionPayload } from "./project/projection.ts";
  * ("provider.ts — ONLY to wire the projection/presentation flow into
  * resolveCustomTextEditor"): resolve the document's Gutterpress project once
  * (`./project/discover.ts`'s `findGutterpressProject`, D9 — a plain folder
- * with no manifest is a supported non-error `undefined`), build+send the
- * first projection resend after the `ready` handshake's other three, and
- * rebuild+resend on exactly the events D9/G-11 name: an authoritative
- * `snapshot` change for this document, and a trust grant.
+ * with no manifest is a supported non-error `undefined`), and build+send the
+ * projection on the `ready` handshake and on a trust grant.
  *
  * RECONCILIATION ADDENDUM (integration lane D): two changes land here.
  * (1) The `ready` handshake's `snapshot` reply is now sent through
@@ -63,25 +60,40 @@ import { resolveEditorProjectionPayload } from "./project/projection.ts";
  * alongside `message.edit` — the addendum's other required change, and
  * `DocumentGateway.applyEdit`'s one production caller.
  *
- * REUSING THE GATEWAY'S EXISTING SUBSCRIPTION FLOW, LITERALLY (run spec:
- * "reuse the gateway's existing subscription flow from provider.ts rather
- * than adding a second watcher"): `DocumentGateway` already funnels EVERY
- * outbound message it ever sends — the accepted/rejected-edit reply AND the
- * external-change broadcast alike — through exactly one injected function,
- * `gatewayApi.postMessage` (this file's own construction, below). Wrapping
- * THAT function catches both of D9's named triggers with ZERO new `vscode`
- * subscriptions of any kind — not a second `onDidChangeTextDocument`
- * listener, which would be an entirely avoidable regression against
- * `tests/provider.test.ts`'s own "subscribes ... exactly once each" pin (a
- * file outside this lane's write boundary — see this run's report for the
- * one assertion elsewhere in that same suite this wiring still legitimately
- * outdates, which no available design could avoid without weakening the
- * feature itself). `#lastProjectedVersion` distinguishes a genuine new
- * version (accepted edit or external change, D3: both strictly bump the
- * version) from a REJECTED edit's reply (same version, unchanged text) —
- * only the former re-triggers a rebuild, so a stale/invalid edit costs
- * nothing extra. Trust grants use the EXISTING `trustSubscription` below,
- * extended with one more call — not a new subscription either.
+ * REPAIR ROUND 1 (finding "Every accepted keystroke rebuilds the
+ * projection and dispose-then-remounts the whole editor"): the PRE-repair
+ * version of this file wrapped `gatewayApi.postMessage` to call
+ * `sendProjection()` for ANY `"snapshot"` whose version moved — and
+ * `DocumentGateway.applyEdit`'s single reply site sends a fresh snapshot
+ * after EVERY accepted edit (D3: the version bumps on every accepted edit,
+ * not just an external change), so that wrapper fired on every keystroke,
+ * not merely the two triggers D9/G-11 actually name. Downstream, the
+ * webview's `handlePresentationInput` (`src/webview/index.ts`) disposes and
+ * remounts the WHOLE editor for any projection-bearing message — so every
+ * keystroke tore the editor down and rebuilt it (losing caret, selection,
+ * focus, scroll, and IME state) AND re-read `manifest.yaml` and reloaded
+ * every project plugin from disk, per keystroke (`./project/projection.ts`'s
+ * own header: "NO CACHING ... every call re-resolves the manifest and
+ * reloads plugins from scratch"). This also could not meet D13's edit-to-
+ * paint budget. THE FIX: `sendProjection()` is now called from exactly TWO
+ * places — the `"ready"` handler (initial mount) and the trust-grant
+ * subscription below — never from an accepted-edit reply. A projection that
+ * has grown stale relative to later edits degrades exactly the way
+ * `GutterpressEditorMount.needsRefresh()` already contracts (falls through
+ * to the fork's default, non-chip view; `packages/editor/src/gutterpress/
+ * mount.ts`'s own doc comment: "this is the caller's cue to build a fresh
+ * projection and remount, not a live-updating property") — never a wrong or
+ * corrupted render. A mid-session, per-edit refresh with caret preservation
+ * was considered and is NOT implemented here: `packages/editor`'s mount
+ * surface (frozen for this run — see the run spec's "Behavior that must
+ * remain unchanged") exposes `getSelection()` but no matching setter, so
+ * there is no way to RESTORE a caret position after a forced remount; a
+ * genuinely necessary editor-package change for that is a blocking report
+ * for a future run, not a lane fix here.
+ *
+ * The gateway's own outbound channel is otherwise UNCHANGED —
+ * `gatewayApi.postMessage` still just forwards every message
+ * `DocumentGateway` sends to the webview, with no side effect of its own.
  *
  * The actual DECIDE-and-BUILD logic (trust/project gating,
  * `loadPluginsWithCss`, `createEditorProjection`, the base-pipeline
@@ -93,14 +105,22 @@ import { resolveEditorProjectionPayload } from "./project/projection.ts";
  *
  * STALENESS (G-11 — "reject stale responses"): building a plugin-aware
  * projection means loading plugin code from disk, which is not
- * instantaneous, and multiple rebuild triggers can overlap (a fast typist's
- * several accepted edits, each producing its own gateway reply).
+ * instantaneous, and the two remaining triggers (mount, trust grant) could
+ * still overlap in principle (trust granted moments after opening).
  * `#projectionEpoch` below is bumped once per rebuild ATTEMPT (not per
  * completion) and once more on disposal; a build only posts its result if
  * its own captured epoch still equals the current one when it finishes —
  * whichever rebuild STARTED most recently always eventually wins, and a
  * result computed for an epoch a newer attempt has already superseded is
  * silently dropped rather than posted out of order.
+ *
+ * PER-PLUGIN LOAD FAILURES (repair round 1, finding "Absolute filesystem
+ * paths cross into the webview via presentation-input.pluginErrors"): the
+ * `onPluginLoadError` callback passed to `resolveEditorProjectionPayload`
+ * below logs the RAW, detailed per-plugin failure host-side only (this
+ * `vscode.OutputChannel`, never the webview) — `payload.pluginErrors` on
+ * the posted message already carries only the fixed, sanitized wire message
+ * `./project/projection.ts` constructs (see that module's own header).
  */
 
 /**
@@ -165,11 +185,6 @@ export function createGutterpressMarkdownEditorProvider(
       // G-11 staleness guard — see this file's own header for the full
       // account. Bumped on every rebuild ATTEMPT and once more on disposal.
       let projectionEpoch = 0;
-      // Distinguishes a genuine new version (D3: an accepted edit or an
-      // external change both strictly bump it) from a REJECTED edit's
-      // reply, whose snapshot is unchanged — see #lastProjectedVersion in
-      // this file's own header.
-      let lastProjectedVersion = document.version;
 
       function sendProjection(): void {
         // D13: a document already mounting the source-mode fallback never
@@ -183,13 +198,29 @@ export function createGutterpressMarkdownEditorProvider(
 
         projectionEpoch += 1;
         const epoch = projectionEpoch;
-        void resolveEditorProjectionPayload(gateway.currentSnapshot(), project, vscode.workspace.isTrusted, (error) => {
-          log("projection-build-failed", { message: error instanceof Error ? error.message : String(error) });
-        }).then((payload) => {
+        // Repair round 1 (finding "Projection staleness compares the
+        // host's TextDocument.version against the webview mirror's LOCAL
+        // version"): `.text` is the document's real current text, but
+        // `.version` here is deliberately `gateway.currentStamp()`, NOT
+        // `gateway.currentSnapshot().version` (real `TextDocument.version`)
+        // — see `DocumentGateway.currentStamp()`'s own doc comment for why.
+        // Both are read synchronously, at the same instant, so the pairing
+        // is always accurate for whatever this build actually reflects.
+        void resolveEditorProjectionPayload(
+          { text: gateway.currentSnapshot().text, version: gateway.currentStamp() },
+          project,
+          vscode.workspace.isTrusted,
+          (error) => {
+            log("projection-build-failed", { message: error instanceof Error ? error.message : String(error) });
+          },
+          undefined,
+          (pluginRef, error) => {
+            // Repair round 1 — see this file's own header, "PER-PLUGIN LOAD
+            // FAILURES": the RAW detail stays host-side only.
+            log("plugin-load-failed", { pluginRef, message: error.message });
+          },
+        ).then((payload) => {
           if (epoch !== projectionEpoch) return; // superseded by a later rebuild — drop, never post out of order
-          for (const pluginError of payload.pluginErrors) {
-            log("plugin-load-failed", { pluginRef: pluginError.pluginRef });
-          }
           // Reconciliation addendum — message merge: the projection payload
           // rides inside a `presentation-input` resend, `mode` held fixed at
           // this session's own decision (`presentationInput.mode`, never
@@ -213,18 +244,11 @@ export function createGutterpressMarkdownEditorProvider(
         applyWorkspaceEdit: (edit) => vscode.workspace.applyEdit(edit),
         onDidChangeTextDocument: (listener) => vscode.workspace.onDidChangeTextDocument(listener),
         onDidCloseTextDocument: (listener) => vscode.workspace.onDidCloseTextDocument(listener),
-        postMessage: (message) => {
-          // Every "snapshot" DocumentGateway ever sends — the accepted/
-          // rejected-edit reply AND the external-change broadcast alike —
-          // passes through here (see this file's header). A version that
-          // did not move means a REJECTED edit's unchanged bounce-back,
-          // not one of D9's two named triggers; skip it.
-          if (message.type === "snapshot" && message.snapshot.version !== lastProjectedVersion) {
-            lastProjectedVersion = message.snapshot.version;
-            sendProjection();
-          }
-          return webviewPanel.webview.postMessage(message);
-        },
+        // Repair round 1 (finding "Every accepted keystroke rebuilds the
+        // projection..."): a plain forward, with no side effect of its own
+        // — see this file's own header for why a projection rebuild is no
+        // longer triggered from here.
+        postMessage: (message) => webviewPanel.webview.postMessage(message),
       };
       const gateway = new DocumentGateway(gatewayApi, log);
 
@@ -355,6 +379,19 @@ interface WebviewHtmlOptions {
  *     the load-bearing property D12 actually cares about ("author HTML
  *     never grants script execution in the editor") — no other script,
  *     inline or remote, author-influenced or not, can execute.
+ *   - the one `<script>` tag itself carries `type="module"` (repair round
+ *     1, finding "the webview bundle is ESM served through a classic
+ *     <script> tag — it cannot parse"): `scripts/build.mjs` emits
+ *     `dist/webview.js` with `format: "esm"` — its final statement is a
+ *     bare `export { mountGutterpressWebview };`, which is a hard
+ *     `SyntaxError` when parsed as a CLASSIC script (the `export` keyword
+ *     is module-syntax-only). A nonced `<script type="module" ...>` tag is
+ *     exactly as governed by `script-src 'nonce-...'` as a classic one —
+ *     the CSP recipe above needed no change, only the tag itself did. See
+ *     `tests/webview/production-shell.btest.ts` for the real-Chromium proof
+ *     that serves this exact function's output with the exact built
+ *     `dist/webview.js` equivalent and asserts the mount renders — no
+ *     other suite pairs the real built artifact with the real HTML shell.
  *   - `style-src 'unsafe-inline'` — NOT nonced. `@dimm-city/gutterpress-editor`'s
  *     `mountEditor`/`mountGutterpressEditor` (`packages/editor/src/web/mount.ts`,
  *     `.../gutterpress/mount.ts` — outside this lane's write boundary this
@@ -372,10 +409,9 @@ interface WebviewHtmlOptions {
  *     `asWebviewUri`-resolved extension resources) — no remote `https:`/
  *     `http:` origin is ever allowed, so a markdown author's remote image
  *     URL will not load (a conservative default; loosening it is a future,
- *     explicit decision, not this run's). Included now, ahead of this
- *     run's own use, so Lane B/C's later asset-resolution work is not
- *     blocked behind a provider.ts change from a lane that will not be
- *     running anymore by then — see this run's report.
+ *     explicit decision). Included ahead of this run's own use, so a later
+ *     asset-resolution run is not blocked behind an otherwise-unrelated
+ *     provider.ts change.
  */
 export function renderWebviewHtml(options: WebviewHtmlOptions): string {
   const nonce = createNonce();
@@ -398,7 +434,7 @@ export function renderWebviewHtml(options: WebviewHtmlOptions): string {
 </head>
 <body>
 <div id="gp-editor-root" style="position:fixed;inset:0;"></div>
-<script nonce="${nonce}" src="${options.scriptUri}"></script>
+<script type="module" nonce="${nonce}" src="${options.scriptUri}"></script>
 </body>
 </html>`;
 }

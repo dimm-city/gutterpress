@@ -133,16 +133,69 @@ export class DocumentGateway {
    *  rejected by two hosts that simply have not talked yet. */
   #stamp = 0;
   /** True for the exact span of an in-flight `workspace.applyEdit` call.
-   *  `workspace.applyEdit` succeeding fires `onDidChangeTextDocument` for
-   *  the SAME change `applyEdit`'s own reply (the single reply site below)
-   *  is about to report — without this guard, `#broadcastSnapshot` would
-   *  send a SECOND, redundant reply for that one change. This is a narrow,
-   *  local reentrancy flag scoped to one method call, not the request/reply
+   *  Used by `#broadcastSnapshot` to recognize "this
+   *  `onDidChangeTextDocument` firing is the one THIS gateway's own
+   *  in-flight `applyEdit()` call is causing" — see that method's own
+   *  comment and `#ownChangeAlreadyReported`'s doc comment for the repair
+   *  round 1 fix this now composes with (this flag alone no longer decides
+   *  whether a reply is sent for that firing — see below). A narrow, local
+   *  reentrancy flag scoped to one method call, not the request/reply
    *  correlation the run spec's binding model rules out (point 4): it
    *  never tracks WHICH edit a message corresponds to, only WHETHER a
    *  `workspace.applyEdit` this gateway itself just issued is still in
    *  flight. */
   #applyInProgress = false;
+  /**
+   * Repair round 1 (finding "The gateway's echo suppression depends on an
+   * uncited applyEdit/onDidChangeTextDocument ordering"): PRE-repair,
+   * `#broadcastSnapshot` unconditionally SKIPPED sending while
+   * `#applyInProgress` was true, and `applyEdit`'s own single reply site
+   * ALWAYS sent afterward — correct ONLY if `onDidChangeTextDocument`
+   * always fires before `workspace.applyEdit`'s own promise resolves.
+   * `@types/vscode`'s own `.d.ts` documents only "a thenable that resolves
+   * when the edit could be applied," not that ordering — an unproven
+   * assumption this run spec's own rule treats as a confirmed finding
+   * either way. Under the OTHER order (the event fires AFTER the promise
+   * resolves, once `#applyInProgress` has already been reset to `false`),
+   * `#broadcastSnapshot` would ALSO send, producing TWO snapshot replies
+   * for the SAME accepted edit — and on the proxy side (`../webview-host/
+   * proxy-document-host.ts`), the SECOND one no longer matches what the
+   * (already-confirmed, possibly queue-advanced) mirror expects, so it is
+   * treated as a divergence: `replaceExternal` fires and discards the send
+   * queue, silently dropping an already-accepted keystroke.
+   *
+   * THE FIX is order-independent: reset to `false` at the TOP of every
+   * `applyEdit()` call. If `#broadcastSnapshot` fires WHILE `#applyInProgress`
+   * is true (the "favourable" order), it sends for real (so the proxy hears
+   * about the change as soon as VS Code reports it, whichever order that
+   * is) and sets this to `true`; `applyEdit`'s own single reply site then
+   * SKIPS its own send only in that one case, since the change has already
+   * been reported. Under the OTHER order, `#broadcastSnapshot` does not
+   * fire during the window at all (nothing has changed from the CALLER's
+   * perspective while `#applyInProgress` is still true), this flag stays
+   * `false`, and `applyEdit`'s own reply site sends as before — the
+   * dedicated `#lastReportedVersion` check inside `#broadcastSnapshot`'s
+   * "not currently in progress" branch is what then prevents that SAME
+   * change's now-delayed event from producing a SECOND, redundant send.
+   */
+  #ownChangeAlreadyReported = false;
+  /**
+   * The `document.version` of the most recent snapshot this gateway
+   * actually SENT (from EITHER `#sendSnapshot` caller) — repair round 1,
+   * the other half of `#ownChangeAlreadyReported`'s fix. `#broadcastSnapshot`'s
+   * "not currently in progress" branch skips sending when the document's
+   * CURRENT version already equals this value: VS Code's real
+   * `TextDocument.version` "will strictly increase after each change," so
+   * two snapshot messages ever carrying the identical version can only be
+   * describing the exact same underlying state — a delayed echo of a
+   * change `applyEdit`'s own reply site already reported, never new
+   * information. This can NEVER wrongly suppress a genuinely new external
+   * change (a different, always-higher version), and it is deliberately
+   * NOT consulted by `applyEdit`'s own reply site itself, which must always
+   * reply even when the document's version happens to be unchanged (a
+   * rejected edit) — see that method's own comment.
+   */
+  #lastReportedVersion: number | undefined;
 
   /**
    * D15's correlation id is not stored here: it identifies a SESSION (one
@@ -174,6 +227,27 @@ export class DocumentGateway {
    *  cached copy of its own (D2: the `TextDocument` IS the authority). */
   currentSnapshot(): DocumentSnapshot {
     return { text: this.#api.document.getText(), version: this.#api.document.version };
+  }
+
+  /**
+   * The base stamp's CURRENT value — see this class's own header for the
+   * full account of what `#stamp` is and is not. Repair round 1 (finding
+   * "Projection staleness compares the host's TextDocument.version against
+   * the webview mirror's LOCAL version"): `../project/projection.ts`'s
+   * `resolveEditorProjectionPayload` stamps a built projection's
+   * `sourceVersion` with THIS value — never `currentSnapshot().version`
+   * (real `TextDocument.version`) — because `ProxyDocumentHost` (the ONLY
+   * thing that ever compares a projection's `sourceVersion` against
+   * anything, via `packages/editor`'s `projectionNeedsRefresh`) tracks the
+   * gateway's stamp (`#lastKnownStamp`), never the real document version,
+   * for exactly the reason this class's own header explains: the two
+   * spaces "only ever coincide by accident." Reading this value at the same
+   * moment as `currentSnapshot()` (both from `../provider.ts`'s
+   * `sendProjection()`, synchronously, before either could change) keeps
+   * the pairing accurate — see that call site's own comment.
+   */
+  currentStamp(): number {
+    return this.#stamp;
   }
 
   /**
@@ -245,6 +319,10 @@ export class DocumentGateway {
       return;
     }
 
+    // Repair round 1 — reset PER CALL; see `#ownChangeAlreadyReported`'s
+    // own doc comment for the order-independent fix this is half of.
+    this.#ownChangeAlreadyReported = false;
+
     if (base === this.#stamp) {
       const current = this.currentSnapshot();
       // D3's own pure check (readonly/invalid-range), reused rather than
@@ -288,8 +366,15 @@ export class DocumentGateway {
 
     // The single reply site (see this method's own doc comment): always
     // the document's FRESH truth, whether or not anything actually
-    // changed above.
-    await this.#sendSnapshot();
+    // changed above — UNLESS `#broadcastSnapshot` already sent this exact
+    // change's reply while this call was still in flight (the "favourable"
+    // ordering — see `#ownChangeAlreadyReported`'s own doc comment). A
+    // rejected-locally/rejected-stale-base path never sets that flag (no
+    // `workspace.applyEdit` call, so no `onDidChangeTextDocument` firing to
+    // race), so this method always still replies on those paths.
+    if (!this.#ownChangeAlreadyReported) {
+      await this.#sendSnapshot();
+    }
   }
 
   /**
@@ -307,7 +392,24 @@ export class DocumentGateway {
   }
 
   #broadcastSnapshot(): void {
-    if (this.#disconnected || this.#applyInProgress) return;
+    if (this.#disconnected) return;
+    if (this.#applyInProgress) {
+      // Repair round 1 (order-independent fix — see `#ownChangeAlreadyReported`'s
+      // own doc comment): this firing is the change THIS gateway's own
+      // in-flight `applyEdit()` call is causing. Send now, whichever order
+      // this happens to be, and flag it so `applyEdit`'s own reply site
+      // recognizes the change is already reported and skips a redundant
+      // second send for the SAME resulting state.
+      this.#ownChangeAlreadyReported = true;
+      void this.#sendSnapshot();
+      return;
+    }
+    // Repair round 1 — the OTHER order: `applyEdit`'s own reply site may
+    // already have sent this exact change (see `#lastReportedVersion`'s own
+    // doc comment) by the time this now-delayed event fires. Skipping a
+    // duplicate here can never wrongly suppress a genuinely NEW external
+    // change, since a real change always strictly advances the version.
+    if (this.#api.document.version === this.#lastReportedVersion) return;
     void this.#sendSnapshot();
   }
 
@@ -323,6 +425,7 @@ export class DocumentGateway {
    */
   async #sendSnapshot(): Promise<void> {
     this.#stamp += 1;
+    this.#lastReportedVersion = this.#api.document.version;
     await this.#send({
       type: "snapshot",
       protocolVersion: EDITOR_PROTOCOL_VERSION,

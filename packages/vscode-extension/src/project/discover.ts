@@ -35,9 +35,9 @@
  * (P3e's ruling: the smallest real design, not speculative machinery for a
  * shape nothing here asks for).
  */
-import path from "node:path";
 import * as vscode from "vscode";
 import { hasProjectManifest } from "gutterpress";
+import { isPathInsideFolder } from "./path-containment.ts";
 
 /** A Gutterpress project found at a known directory. Intentionally minimal —
  *  callers that need the manifest's own contents (plugins, styles, ...) load
@@ -149,13 +149,3 @@ export function currentActiveProjectDirParams(): ActiveProjectDirParams {
   };
 }
 
-/** True when `filePath` is `folderPath` itself or a descendant of it.
- *  `path.relative` is the standard, symlink-agnostic way to ask this: a
- *  relative path that is empty, or that does not start with `..` and is not
- *  itself absolute (which `path.relative` only returns on Windows when the
- *  two inputs are on different drives), means `filePath` is inside
- *  `folderPath`. */
-function isPathInsideFolder(filePath: string, folderPath: string): boolean {
-  const rel = path.relative(folderPath, filePath);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}

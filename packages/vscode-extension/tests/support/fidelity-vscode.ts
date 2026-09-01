@@ -5,7 +5,11 @@ import type * as vscode from "vscode";
  *
  * P1a recorded a gap: no real VS Code host, only a `mock.module("vscode", ...)`
  * namespace with hand-hardcoded return values per test. This run's bounded
- * `@vscode/test-electron` attempt is recorded in this run's report; this
+ * `@vscode/test-electron` attempt — its exact command and exact failure —
+ * is recorded in `docs/plans/source-first-editor/runs/SFE-P3c.md`'s
+ * "Deviations and evidence" section (repair round 1 also removed the
+ * resulting dead launcher scaffold; see that section and
+ * `src/extension.ts`'s own header for the full account); this
  * module is the FIDELITY MOCK that requirement calls for regardless of that
  * attempt's outcome ("the mock stays only for fast unit suites" if the
  * attempt succeeds) — a `TextDocument` with REAL `offsetAt`/`positionAt`/
@@ -115,6 +119,31 @@ import type * as vscode from "vscode";
  *                          against the real `.d.ts`: only
  *                          `onDidGrantWorkspaceTrust: Event<void>` exists).
  *
+ * ── ORDERING CAVEAT — `changeEventTiming` (repair round 1) ────────────────
+ * `@types/vscode` 1.134's `applyEdit` doc block says only "A thenable that
+ * resolves when the edit could be applied" — it does NOT document whether
+ * `onDidChangeTextDocument` fires before or after that thenable resolves.
+ * PRE-repair, this mock only ever reproduced ONE ordering (fire BEFORE the
+ * `applyEdit` promise resolves — `#fireChange` called synchronously inside
+ * the async body, before `return`), which happens to be the ordering
+ * `DocumentGateway`'s OWN (now-fixed) implementation was originally written
+ * against — meaning the mock encoded the implementation's own assumption
+ * back at it, exactly the review dimension the run spec names for this
+ * mock ("is the fidelity mock ... faithful, or does it encode the
+ * implementation's own assumptions back at it?"). `changeEventTiming`
+ * (constructor option, default `"before-resolve"` — UNCHANGED default
+ * behavior for every other suite using this mock) lets a test ALSO exercise
+ * `"after-resolve"`: `#fireChange` is deferred via `setTimeout(fn, 0)` (a
+ * macrotask, guaranteed to run only after every already-pending microtask —
+ * including the `applyEdit` promise's own resolution and everything
+ * `DocumentGateway.applyEdit`'s caller does synchronously after its
+ * `await` — has drained), so a test can prove `DocumentGateway` behaves
+ * correctly under BOTH orderings rather than only the one this mock used to
+ * assume. `tests/host/document-gateway.test.ts`'s own "order-independent
+ * echo suppression" describe block runs the SAME assertions against both
+ * settings. This caveat is recorded here, per the run spec's own
+ * instruction, rather than silently guessed at either way.
+ *
  * ── SABOTAGE CASE (proves this mock CAN fail a wrong implementation) ──────
  * `tests/host/document-gateway.test.ts`'s "ignores onDidChangeTextDocument
  * events for a different document" test constructs TWO documents on ONE
@@ -125,7 +154,10 @@ import type * as vscode from "vscode";
  * plausible implementation bug this exact mock is capable of catching,
  * since the event genuinely fires for both documents) makes that test fail
  * — verified by temporarily deleting the guard locally while authoring
- * this run (not committed; see this run's report).
+ * this run (not committed to source; the exact result is recorded in
+ * `docs/plans/source-first-editor/runs/SFE-P3c.md`'s "Deviations and
+ * evidence" section, per G-12/AP-20's "sabotage or defect-reintroduction
+ * demonstration" requirement).
  */
 
 // ── Uri ──────────────────────────────────────────────────────────────────
@@ -242,9 +274,16 @@ export class FidelitySimulatedWorkspace {
    *  anything — exercises `DocumentGateway`'s "rejected applyEdit" path
    *  (run spec behavior table / DETAILS #2) without a separate stub. */
   rejectNextApply = false;
+  /** Repair round 1 — see this module's own "ORDERING CAVEAT" header
+   *  section. `"before-resolve"` (default, unchanged pre-repair behavior):
+   *  `onDidChangeTextDocument` fires synchronously, before `applyEdit`'s own
+   *  promise resolves. `"after-resolve"`: deferred via a macrotask so it
+   *  fires strictly after. */
+  readonly #changeEventTiming: "before-resolve" | "after-resolve";
 
-  constructor(options: { readonly isTrusted?: boolean } = {}) {
+  constructor(options: { readonly isTrusted?: boolean; readonly changeEventTiming?: "before-resolve" | "after-resolve" } = {}) {
     this.#isTrusted = options.isTrusted ?? false;
+    this.#changeEventTiming = options.changeEventTiming ?? "before-resolve";
   }
 
   get isTrusted(): boolean {
@@ -283,8 +322,10 @@ export class FidelitySimulatedWorkspace {
    * REAL application: for every replacement in `edit` that targets a
    * document THIS workspace created, converts its `Range` back to offsets
    * via that document's own `offsetAt`, splices the text, bumps its
-   * version by 1, and fires `onDidChangeTextDocument`. Returns `false`
-   * (mutating nothing) if `rejectNextApply` was set.
+   * version by 1, and fires `onDidChangeTextDocument` — timed per
+   * `#changeEventTiming` (repair round 1, see this module's own "ORDERING
+   * CAVEAT" header section). Returns `false` (mutating nothing) if
+   * `rejectNextApply` was set.
    */
   async applyEdit(edit: FidelityWorkspaceEdit): Promise<boolean> {
     if (this.rejectNextApply) {
@@ -299,7 +340,19 @@ export class FidelitySimulatedWorkspace {
         entry.state.text = entry.state.text.slice(0, from) + replacement.newText + entry.state.text.slice(to);
         entry.state.version += 1;
       }
-      if (replacements.length > 0) this.#fireChange(entry.document);
+      if (replacements.length > 0) {
+        if (this.#changeEventTiming === "before-resolve") {
+          this.#fireChange(entry.document);
+        } else {
+          // A macrotask (never a microtask): guaranteed to run only after
+          // every currently-pending microtask — including THIS async
+          // method's own promise resolution and everything its caller does
+          // synchronously after `await`ing it — has already drained. See
+          // this module's own "ORDERING CAVEAT" header for why a plain
+          // `queueMicrotask` would NOT reliably achieve "after resolve".
+          setTimeout(() => this.#fireChange(entry.document), 0);
+        }
+      }
     }
     return true;
   }

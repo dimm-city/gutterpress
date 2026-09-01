@@ -16,14 +16,20 @@ import { resolve } from "node:path";
  * only because a stale `dist/webview.js` happened to be lying around from
  * an earlier invocation.
  *
- * `scripts/build.mjs`'s own placeholder-vs-real branch
- * (`existsSync(WEBVIEW_ENTRY_PATH)`) is what already stops the placeholder
- * from being emitted once `src/webview/index.ts` exists — this test does
- * not re-prove that branch (Lane A's own file, outside this lane's write
- * boundary); it proves the REAL bundle's own content directly.
+ * REPAIR ROUND 1 (finding "build.mjs's webview placeholder is dead
+ * machinery, a false header, and a silent-fail path"): `scripts/build.mjs`'s
+ * placeholder-vs-real branch (`existsSync(WEBVIEW_ENTRY_PATH)`) has been
+ * deleted — the entry is unconditionally bundled now, and a missing entry
+ * is a build FAILURE, not a silently-emitted "not yet built" notice. The
+ * two `not.toContain` assertions this test used to run against the
+ * placeholder's own exact marker strings are therefore now vacuous (those
+ * strings exist nowhere in this package any more) and have been replaced
+ * below with `result.success` plus the same positive-evidence assertions —
+ * proof the REAL bundle's own content is present, not proof an unreachable
+ * fallback string is absent.
  */
-describe("src/webview/index.ts bundles to a real (non-placeholder) browser entry", () => {
-  test("bundling succeeds and the output contains no placeholder marker", async () => {
+describe("src/webview/index.ts bundles to a real browser entry", () => {
+  test("bundling succeeds and the output contains the real entry's own content", async () => {
     const entryPath = resolve(import.meta.dir, "../../src/webview/index.ts");
     const result = await Bun.build({
       entrypoints: [entryPath],
@@ -36,16 +42,12 @@ describe("src/webview/index.ts bundles to a real (non-placeholder) browser entry
 
     const code = await result.outputs[0]!.text();
 
-    // scripts/build.mjs's WEBVIEW_PLACEHOLDER_JS's own exact marker
-    // strings — must be absent from the REAL bundle.
-    expect(code).not.toContain("is not yet built");
-    expect(code).not.toContain("SFE-P3c Lane A placeholder");
-
     // Positive evidence this is the real entry, not an empty/trivial
-    // bundle: a string literal only this module's production code
-    // contains (the container id the mount looks up and the fallback DOM
-    // tags).
+    // bundle: string literals only this module's production code
+    // contains (the container id the mount looks up, the fallback DOM
+    // tags, and the exported production entry point's own name).
     expect(code).toContain("gp-editor-root");
     expect(code).toContain("data-gp-fallback");
+    expect(code).toContain("mountGutterpressWebview");
   });
 });

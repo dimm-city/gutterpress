@@ -22,11 +22,14 @@ import { openHarnessSession, waitForHarnessReady, type HarnessSession } from "@d
  *      two, proving the FIRST (disposed) mount's wiring is not still firing
  *      alongside the second.
  *
- * SABOTAGE (G-12/AP-20 — see this run's report): both assertions below were
- * verified LOCALLY to fail when `WebviewSession.dispose()`'s `host.dispose()`
- * call was temporarily removed — `listenerCount()` stayed 1 instead of
- * dropping to 0, and the remount case's edit count came back 2 higher
- * instead of 1. Not committed; see this run's report for the exact result.
+ * SABOTAGE (G-12/AP-20): both assertions below were verified LOCALLY to fail
+ * when `WebviewSession.dispose()`'s `host.dispose()` call was temporarily
+ * removed — `listenerCount()` stayed at 1 instead of dropping to 0 (all
+ * three `listenerCount()` assertions in this file fail identically that
+ * way, one per test in this describe block and the remount test below).
+ * Not committed to source; the exact re-verified result (repair round 1) is
+ * recorded in `docs/plans/source-first-editor/runs/SFE-P3c.md`'s
+ * "Deviations and evidence" section.
  *
  * ONE shared browser session drives every case in this file
  * (`beforeAll`/`afterAll`) — see `mount.btest.ts`'s header for why.

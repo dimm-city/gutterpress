@@ -41,13 +41,39 @@
  * accepted edit, an external change, a trust grant) through its own epoch
  * guard — never a second cache layer here.
  */
+import { resolve } from "node:path";
 import type { Diagnostic, DocumentSnapshot } from "@dimm-city/gutterpress-editor/core";
 import { loadManifestWithPath, resolveConfig } from "gutterpress";
 import { loadPluginsWithCss } from "gutterpress/plugins";
 import { createEditorProjection, createMarkdownRenderer, type GutterpressProjection } from "gutterpress/render";
-import { projectionBuildFailedDiagnostic } from "../protocol/diagnostics.ts";
+import { pluginsUntrustedDiagnostic, projectionBuildFailedDiagnostic } from "../protocol/diagnostics.ts";
 import type { ProjectionPluginError } from "../protocol/messages.ts";
 import type { GutterpressProjectInfo } from "./discover.ts";
+import { isPathInsideFolder } from "./path-containment.ts";
+
+/**
+ * Repair round 1 (finding "Absolute filesystem paths cross into the webview
+ * via presentation-input.pluginErrors"): the fixed, categorized wire message
+ * for a plugin the real `gutterpress/plugins` loader reported as failed —
+ * NEVER the loader's own `error.message`, which interpolates absolute
+ * filesystem paths (`Plugin file not found: ${pluginPath} (resolved from
+ * manifest entry path="…")`, and similarly for the vendored-tree cases).
+ * D12/D14: "not … unrestricted absolute paths in user-visible output." The
+ * raw, detailed error is still available host-side via `onPluginLoadError`
+ * below — this constant is only what ever reaches `pluginErrors`, the field
+ * that crosses into the webview.
+ */
+const PLUGIN_LOAD_FAILED_WIRE_MESSAGE = "This plugin could not be loaded. See the Gutterpress output channel for details.";
+
+/**
+ * The fixed, categorized wire message for a manifest plugin `path` that
+ * resolves outside the project directory (repair round 1, finding "Manifest
+ * plugin paths are not workspace-root-scoped: a `../` escape … loads and
+ * EXECUTES code outside the project"). Already safe on its own — it names
+ * no absolute path — but kept alongside `PLUGIN_LOAD_FAILED_WIRE_MESSAGE`
+ * for the same "one fixed string per failure class" reason.
+ */
+const PLUGIN_PATH_ESCAPES_PROJECT_MESSAGE = "Plugin path escapes the project directory and was not loaded.";
 
 export interface ProjectEditorProjectionArgs {
   /** The open project's root directory — where `manifest.yaml` and
@@ -71,8 +97,8 @@ export interface ProjectEditorProjectionArgs {
  * FILES in this exact Bun version (1.3.11) regardless of file order — a
  * spy registered in one file's `mock.module("gutterpress/plugins", ...)`
  * silently served a DIFFERENT file's un-mocked import of the same
- * specifier too (verified empirically before choosing this design; see
- * this run's report). `tests/project/projection.test.ts` needs the REAL
+ * specifier too (verified empirically before choosing this design).
+ * `tests/project/projection.test.ts` needs the REAL
  * loader (a real project, real plugin, real CSS) in the SAME `bun test`
  * run as `tests/project/provider-projection.test.ts`'s spy-verified
  * "never invoked when untrusted" proof (D9/run spec deliverable 3) — those
@@ -110,17 +136,55 @@ export interface ProjectEditorProjectionResult {
  * `loadPlugins` defaults to the real `loadPluginsWithCss` — see
  * {@link PluginLoaderFn}'s own doc comment for why this is a plain,
  * optional parameter rather than a `mock.module()` target.
+ *
+ * `onPluginLoadError`, when supplied, is called with the RAW plugin ref and
+ * error for every per-plugin failure — a workspace-escaping path (repair
+ * round 1) or a real loader failure alike — before this function reduces it
+ * to the fixed, safe wire message that actually lands in the returned
+ * `pluginErrors` (never `error.message`, which can carry absolute
+ * filesystem paths). Mirrors {@link resolveEditorProjectionPayload}'s own
+ * `onBuildError` pattern for the whole-build-failure case; `../provider.ts`
+ * uses both callbacks the same way — log the detail host-side, never send
+ * it over the wire.
  */
 export async function buildProjectEditorProjection(
   args: ProjectEditorProjectionArgs,
   loadPlugins: PluginLoaderFn = loadPluginsWithCss,
+  onPluginLoadError?: (pluginRef: string, error: Error) => void,
 ): Promise<ProjectEditorProjectionResult> {
   const { manifest, manifestDir } = await loadManifestWithPath(args.projectDir);
   const config = resolveConfig({}, manifest);
 
   const pluginErrors: ProjectionPluginError[] = [];
-  const { plugins, pluginCss } = await loadPlugins(config.plugins, manifestDir, (pluginRef, error) => {
-    pluginErrors.push({ pluginRef, message: error.message });
+
+  // Repair round 1 (finding "Manifest plugin paths are not workspace-root-
+  // scoped: a `../` escape ... loads and EXECUTES code outside the
+  // project"). `gutterpress/plugins`' own loader resolves a manifest's
+  // local `path` entry with a plain `resolve(baseDir, config.path)` and no
+  // containment check (packages/cli/src/lib/markdown/plugins.ts) — that
+  // stays the shared loader's own concern to fix independently; THIS
+  // package scopes every local plugin path to `manifestDir` (the trusted
+  // project root a VS Code custom editor ever resolves plugins for) before
+  // any entry ever reaches that loader, so an escaping entry is refused
+  // here rather than silently imported and executed. `config.name` entries
+  // (npm-package-name plugins) are untouched — they resolve through the
+  // vendored-tree/receipt mechanism, not a raw filesystem join, and are
+  // outside this specific escape vector.
+  const scopedConfigs = config.plugins.filter((pluginConfig) => {
+    if (pluginConfig.path === undefined) return true;
+    const resolvedPath = resolve(manifestDir, pluginConfig.path);
+    if (isPathInsideFolder(resolvedPath, manifestDir)) return true;
+    onPluginLoadError?.(
+      pluginConfig.path,
+      new Error(`Plugin path "${pluginConfig.path}" resolves to ${resolvedPath}, outside project root ${manifestDir}.`),
+    );
+    pluginErrors.push({ pluginRef: pluginConfig.path, message: PLUGIN_PATH_ESCAPES_PROJECT_MESSAGE });
+    return false;
+  });
+
+  const { plugins, pluginCss } = await loadPlugins(scopedConfigs, manifestDir, (pluginRef, error) => {
+    onPluginLoadError?.(pluginRef, error);
+    pluginErrors.push({ pluginRef, message: PLUGIN_LOAD_FAILED_WIRE_MESSAGE });
   });
 
   const md = createMarkdownRenderer(plugins);
@@ -170,6 +234,14 @@ export interface EditorProjectionPayload {
  * may record ... projection fallback reason"), never document text; the
  * caller (`../provider.ts`) reduces it to a safe log line.
  *
+ * `onPluginLoadError`, when supplied, is forwarded to
+ * {@link buildProjectEditorProjection} unchanged — see that function's own
+ * doc comment. Same rationale as `onBuildError`: the RAW per-plugin failure
+ * detail (which can include absolute filesystem paths) is only ever safe
+ * host-side; `pluginErrors` on the returned payload always carries the
+ * fixed, sanitized wire message instead (repair round 1, finding "Absolute
+ * filesystem paths cross into the webview via presentation-input.pluginErrors").
+ *
  * `loadPlugins` is forwarded to {@link buildProjectEditorProjection}
  * unchanged (see that function's own doc comment / {@link PluginLoaderFn}
  * for why it exists and defaults to the real loader) — it is what
@@ -185,6 +257,7 @@ export async function resolveEditorProjectionPayload(
   trusted: boolean,
   onBuildError?: (error: unknown) => void,
   loadPlugins: PluginLoaderFn = loadPluginsWithCss,
+  onPluginLoadError?: (pluginRef: string, error: Error) => void,
 ): Promise<EditorProjectionPayload> {
   if (trusted && project) {
     try {
@@ -195,6 +268,7 @@ export async function resolveEditorProjectionPayload(
           sourceVersion: snapshot.version,
         },
         loadPlugins,
+        onPluginLoadError,
       );
       return { projection: built.projection, pluginCss: built.pluginCss, pluginErrors: built.pluginErrors };
     } catch (error) {
@@ -208,5 +282,17 @@ export async function resolveEditorProjectionPayload(
     }
   }
 
-  return { projection: buildBaseEditorProjection(snapshot.text, snapshot.version), pluginCss: "", pluginErrors: [] };
+  // Repair round 1 (finding "D9's required trust explanation is not
+  // implemented"): a REAL project's plugins are being withheld here purely
+  // because the workspace is untrusted (D9/D12) — the behavior table
+  // requires this be explained, not silently dropped. `!project` (no
+  // manifest at all — D9's own "supported, non-error state") carries no
+  // such diagnostic: there is nothing being withheld to explain.
+  const diagnostic = !trusted && project ? pluginsUntrustedDiagnostic() : undefined;
+  return {
+    projection: buildBaseEditorProjection(snapshot.text, snapshot.version),
+    pluginCss: "",
+    pluginErrors: [],
+    ...(diagnostic ? { diagnostic } : {}),
+  };
 }

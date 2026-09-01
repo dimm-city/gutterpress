@@ -1,6 +1,7 @@
 import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
 import { mountEditor, type EditorMount } from "@dimm-city/gutterpress-editor/web";
 import { mountGutterpressEditor } from "@dimm-city/gutterpress-editor/gutterpress";
+import { pluginLoadFailedDiagnostic } from "../protocol/diagnostics.ts";
 import {
   ProxyDocumentHost,
   type PresentationInputPayload,
@@ -34,6 +35,19 @@ import {
  * only job is UI: decide what to show in `#gp-editor-root` for the host's
  * `presentation-input` decision (D13) and for an `EDITOR_HOST_DISCONNECTED`
  * diagnostic (D14) at any later point in the session.
+ *
+ * TWO REGIONS INSIDE `#gp-editor-root` (repair round 1, finding "D9's
+ * required trust explanation is not implemented"): `#gp-editor-root` itself
+ * now owns a small, stable "notice banner" element (`data-gp-notice`,
+ * created once, never disposed with the mount) ABOVE a nested `mountRoot`
+ * element that is what actually gets handed to `mountEditor`/
+ * `mountGutterpressEditor`/`renderFallback` — never the outer container
+ * directly. This keeps the mount's own DOM management (whatever it clears
+ * or replaces inside the element it is given) from ever touching the
+ * notice banner, and vice versa. Existing selectors like `#gp-editor-root
+ * .md-editor` keep matching unchanged (a CSS descendant selector matches at
+ * any depth, and every existing test/production selector in this package
+ * already uses one).
  *
  * PROJECTION UPGRADE (reconciliation addendum, integration lane D — the
  * wiring this file's own seam comment on `mountRichSurface` used to defer):
@@ -102,6 +116,31 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
   let disposed = false;
   let fallbackShown = false;
 
+  // Repair round 1 — see this file's own header, "TWO REGIONS INSIDE
+  // #gp-editor-root". The notice banner is created once, up front, and
+  // outlives every mount/remount/fallback below; mountRoot is the ONLY
+  // element ever handed to mountEditor/mountGutterpressEditor/renderFallback.
+  // `container` becomes a flex column so the (naturally-sized) banner and
+  // the (fill-the-rest) mount root share its space predictably regardless
+  // of whatever fixed/absolute sizing `../provider.ts`'s static HTML shell
+  // gave `container` itself.
+  if (container instanceof HTMLElement) {
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+  }
+
+  const noticeBanner = ownerDocument.createElement("div");
+  noticeBanner.setAttribute("data-gp-notice", "");
+  noticeBanner.hidden = true;
+  noticeBanner.style.cssText =
+    "flex:none;font-family:sans-serif;padding:0.5rem 1rem;line-height:1.4;font-size:0.9em;";
+  container.appendChild(noticeBanner);
+
+  const mountRoot = ownerDocument.createElement("div");
+  mountRoot.setAttribute("data-gp-mount-root", "");
+  mountRoot.style.cssText = "flex:1;min-height:0;position:relative;";
+  container.appendChild(mountRoot);
+
   // `ProxyDocumentHost`'s constructor sends "ready" as its OWN last
   // statement (see that class's own header), and this file's binding
   // callback (`onPresentationInput` below) reads the outer `host` const
@@ -130,6 +169,29 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
     transport,
     {
       onDiagnostic: handleDiagnostic,
+      // Repair round 1 (finding "One malformed inbound message permanently
+      // destroys the editing surface"): a rejected MESSAGE (wrong protocol
+      // version, unknown type, missing/wrong-typed field) is dev-visible
+      // only — never `handleDiagnostic`, which is reserved for a GENUINE
+      // `EDITOR_HOST_DISCONNECTED` and would otherwise tear down and
+      // permanently latch a fallback over a session that is, in fact,
+      // completely healthy. See `ProxyDocumentHost`'s own
+      // `onProtocolRejection` doc comment for the full account.
+      onProtocolRejection: (failure) => {
+        console.warn(`[gutterpress webview] rejected inbound message: ${failure.reason}`);
+      },
+      // Repair round 1 (finding "D9's required trust explanation is not
+      // implemented"): trust only ever transitions false -> true (D9 —
+      // there is no "revoke" event), so a grant here is UNCONDITIONALLY
+      // safe to treat as "any untrust notice this session was showing is
+      // now stale" — clear it immediately, ahead of the slower,
+      // project-aware `presentation-input` resend that will shortly
+      // confirm the same thing (or, if the untrust notice was never
+      // showing, this is a harmless no-op). `updateNotices` below remains
+      // the AUTHORITATIVE source once that resend arrives.
+      onTrustChange: (trusted) => {
+        if (trusted) renderNoticeBanner([]);
+      },
       onPresentationInput: (input) => {
         if (!hostConstructed) {
           pendingPresentationInput = input;
@@ -188,14 +250,24 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
       renderFallback(input.diagnostic ?? UNRESOLVED_PRESENTATION_DIAGNOSTIC);
       return;
     }
-    // Dev-visible only (a projection build failure still falls back to the
-    // SAFE base pipeline, per that message's own contract) — never blocks
-    // the mount below.
-    if (input.diagnostic) handleDiagnostic(input.diagnostic);
+
+    // Repair round 1 (finding "D9's required trust explanation is not
+    // implemented"): every presentation-input — the initial handshake
+    // reply and every later resend alike — updates the visible notice
+    // banner from THIS message's own diagnostic/pluginErrors, so a session
+    // that stops carrying an untrust diagnostic (trust was granted and the
+    // project-aware resend arrived) correctly clears it, not just the
+    // OPTIMISTIC onTrustChange clear above. Also logs each one dev-visible
+    // via handleDiagnostic — this REPLACES the old unconditional
+    // `if (input.diagnostic) handleDiagnostic(input.diagnostic)` call
+    // (updateNotices does that internally, for input.diagnostic AND for
+    // every pluginErrors entry converted to EDITOR_PLUGIN_LOAD_FAILED —
+    // see that function's own doc comment).
+    updateNotices(input);
 
     if (input.projection) {
       mount?.dispose();
-      mount = mountGutterpressEditor(container, host, {
+      mount = mountGutterpressEditor(mountRoot, host, {
         projection: input.projection,
         extraCss: input.pluginCss || undefined,
         onDiagnostic: handleDiagnostic,
@@ -203,7 +275,55 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
       return;
     }
 
-    if (!mount) mount = mountRichSurface(container, host, handleDiagnostic);
+    if (!mount) mount = mountRichSurface(mountRoot, host, handleDiagnostic);
+  }
+
+  /**
+   * Repair round 1 (finding "D9's required trust explanation is not
+   * implemented"): reduces ONE `presentation-input` payload's
+   * `diagnostic`/`pluginErrors` into the set of diagnostics that are both
+   * (a) logged dev-visible via `handleDiagnostic` (every diagnostic this
+   * message carries, matching the PRE-repair behavior for `input.diagnostic`
+   * exactly, now extended to `pluginErrors` too — "surface pluginErrors as
+   * EDITOR_PLUGIN_LOAD_FAILED", the other half of the same finding) and (b)
+   * rendered in the visible notice banner (`EDITOR_PLUGIN_UNTRUSTED` and
+   * `EDITOR_PLUGIN_LOAD_FAILED` only — the categories D9/this finding name
+   * as needing a visible explanation, not every possible diagnostic
+   * category).
+   */
+  function updateNotices(input: PresentationInputPayload): void {
+    const diagnostics: Diagnostic[] = [];
+    if (input.diagnostic) diagnostics.push(input.diagnostic);
+    for (const pluginError of input.pluginErrors ?? []) {
+      diagnostics.push(pluginLoadFailedDiagnostic(pluginError.pluginRef, pluginError.message));
+    }
+    for (const diagnostic of diagnostics) handleDiagnostic(diagnostic);
+
+    const visible = diagnostics.filter(
+      (d) => d.category === "EDITOR_PLUGIN_UNTRUSTED" || d.category === "EDITOR_PLUGIN_LOAD_FAILED",
+    );
+    renderNoticeBanner(visible);
+  }
+
+  /** Replaces the notice banner's content with one line per diagnostic in
+   *  `diagnostics`, or hides it entirely when empty. Never touches `mount`
+   *  or `mountRoot` — see this file's own header, "TWO REGIONS INSIDE
+   *  #gp-editor-root". */
+  function renderNoticeBanner(diagnostics: readonly Diagnostic[]): void {
+    if (disposed) return;
+    noticeBanner.replaceChildren();
+    if (diagnostics.length === 0) {
+      noticeBanner.hidden = true;
+      return;
+    }
+    for (const diagnostic of diagnostics) {
+      const line = ownerDocument.createElement("p");
+      line.setAttribute("data-gp-notice-line", diagnostic.category);
+      line.style.cssText = "margin:0.25em 0;";
+      line.textContent = diagnostic.safeAction ? `${diagnostic.message} ${diagnostic.safeAction}` : diagnostic.message;
+      noticeBanner.appendChild(line);
+    }
+    noticeBanner.hidden = false;
   }
 
   /**
@@ -234,7 +354,19 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
     fallbackShown = true;
     mount?.dispose();
     mount = undefined;
-    container.replaceChildren();
+    // Repair round 1 — see this file's own header, "TWO REGIONS INSIDE
+    // #gp-editor-root". Clears/rebuilds `mountRoot` only, never `container`
+    // itself: `container.replaceChildren()` here would also destroy the
+    // sibling `noticeBanner` element, permanently losing whatever notice it
+    // was showing (or silently making it un-appendable to a detached
+    // container on any later, now-impossible call — moot since
+    // `handlePresentationInput` early-returns once `fallbackShown` is true,
+    // but `mountRoot` is the correct target on its own terms regardless).
+    // Once a fallback is shown the notice banner is intentionally left as
+    // it was at that moment (frozen, not cleared) — see `renderNoticeBanner`'s
+    // own doc comment; a fallback is a terminal state for this session, so
+    // there is no further `presentation-input` that could update it anyway.
+    mountRoot.replaceChildren();
 
     const wrap = ownerDocument.createElement("div");
     wrap.setAttribute("data-gp-fallback", diagnostic.category);
@@ -253,7 +385,7 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
       wrap.appendChild(action);
     }
 
-    container.appendChild(wrap);
+    mountRoot.appendChild(wrap);
   }
 
   return {
@@ -322,6 +454,41 @@ if (typeof acquireVsCodeApi === "function") {
     const vscodeApi = acquireVsCodeApi();
     const transport: WebviewHostTransport = {
       postMessage: (message) => vscodeApi.postMessage(message),
+      // Repair round 1 (finding "the message listener does no origin
+      // filtering") — DELIBERATELY NOT IMPLEMENTED, and the reason is
+      // itself evidence, not merely caution: an `event.origin`-based
+      // filter rejecting plain `http:`/`https:` origins (the first design
+      // tried while fixing this finding, on the reasoning that VS Code's
+      // real internal bridge never uses one) was PROVEN, empirically, in
+      // this exact package's own `tests/webview/production-shell.btest.ts`,
+      // to reject legitimate SAME-ORIGIN `window.postMessage` traffic the
+      // moment the page serving this script is itself reached over plain
+      // `http:` (as `production-shell.btest.ts`'s own local test server
+      // does, and as this run's sandbox cannot verify a real VS Code
+      // webview's `vscode-webview://`-scheme host bridge does NOT also, in
+      // some internal frame, resemble) — the filtered test hung on its own
+      // simulated host handshake, exactly the "silently breaks legitimate
+      // delivery" failure mode this fix would risk shipping into the REAL
+      // packaged extension. This package has no `@vscode/test-electron` run
+      // against a real VS Code host (the bounded attempt could not reach
+      // the VS Code download CDN through this environment's outbound proxy
+      // allowlist — see this run's Deviations and evidence section) to
+      // verify a real VS Code
+      // host's actual `event.origin`/`event.source` value against, and per
+      // the run spec's own rule ("guessing at VS Code semantics with no
+      // citation is a confirmed finding either way"), shipping an unverified
+      // guess that already demonstrated it can silently break message
+      // delivery is worse than the gap it would close: this finding's
+      // SEVERE consequence (one malformed message permanently destroying
+      // the session) is already fixed above (`onProtocolRejection`) without
+      // needing an origin check at all — a stray/unrelated window message
+      // now fails `validateHostToWebviewMessage`'s shape validation (the
+      // fully-verified, engine-agnostic defense that already covers every
+      // case this suite's own malformed-message tests exercise) and is
+      // logged and ignored, never fatal. A verified origin/source check
+      // is a genuine future improvement once it can be proven against a
+      // real VS Code host; until then this is a deliberate, evidenced
+      // deferral, not an oversight.
       onMessage: (listener) => {
         const handler = (event: MessageEvent): void => listener(event.data);
         window.addEventListener("message", handler);

@@ -50,10 +50,7 @@
  * and `tests/provider.test.ts` (both outside this lane's write boundary)
  * would throw on a call to `undefined(...)` the moment they run `activate()`/
  * `resolveCustomTextEditor(...)` — extending ONLY the shared factory's
- * defaults, never those two files themselves, is what keeps them green (see
- * this run's report for the one assertion in `tests/provider.test.ts` a
- * WORKING default cannot save, because it is not a missing-member crash but
- * an intentional new message this run's own required feature adds).
+ * defaults, never those two files themselves, is what keeps them green.
  */
 
 export interface VscodeDisposableLike {

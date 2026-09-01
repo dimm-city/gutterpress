@@ -5,8 +5,8 @@ import { createFakeExtensionHost } from "./fake-extension-host.ts";
  * SFE-P3c Lane C — the CSP/inertness browser entry
  * (`tests/webview/csp-inertness.btest.ts`, run spec DETAILS #4c).
  *
- * WHY A RECONSTRUCTED CSP, NOT AN IMPORT (see this file's own comment below
- * and this run's report for the same account): `../../../src/provider.ts`'s
+ * WHY A RECONSTRUCTED CSP, NOT AN IMPORT (see this file's own comment
+ * below): `../../../src/provider.ts`'s
  * `renderWebviewHtml` imports `"vscode"` as a VALUE, so it cannot be bundled
  * into this browser-target entry at all — attempting to would fail the
  * build the same way importing any Node-extension-host module into a

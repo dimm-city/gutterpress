@@ -20,7 +20,7 @@
  * tears down itself (AP-25).
  */
 import { afterAll, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -143,11 +143,34 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
     expect(message.pluginErrors).toEqual([]);
   });
 
+  // Repair round 1, finding "D9's required trust explanation is not
+  // implemented": a REAL project's plugins are withheld solely because the
+  // workspace is untrusted — that must be explained, not silently dropped.
+  test("D9's required trust explanation: untrusted + project present carries EDITOR_PLUGIN_UNTRUSTED with a safe action", async () => {
+    const message = await resolveEditorProjectionPayload(
+      { text: HIGHLIGHT_CONTENT, version: 0 },
+      { projectDir: FIXTURE_ROOT },
+      false,
+    );
+    expect(message.diagnostic?.category).toBe("EDITOR_PLUGIN_UNTRUSTED");
+    expect(message.diagnostic?.message.length).toBeGreaterThan(0);
+    expect(message.diagnostic?.safeAction?.length).toBeGreaterThan(0);
+  });
+
+  // Negative control for the case above (G-12/AP-20): an untrusted session
+  // with NO project has nothing being withheld, so no trust diagnostic is
+  // warranted — proves the positive case above is not vacuously always-set.
+  test("D9: untrusted + NO project present carries no trust diagnostic (nothing is being withheld)", async () => {
+    const message = await resolveEditorProjectionPayload({ text: "hello", version: 0 }, undefined, false);
+    expect(message.diagnostic).toBeUndefined();
+  });
+
   test("D9: trusted + no project present -> base pipeline ONLY", async () => {
     const message = await resolveEditorProjectionPayload({ text: HIGHLIGHT_CONTENT, version: 0 }, undefined, true);
     const regions = message.projection.blocks.filter((b) => b.kind === "plugin-region");
     expect(regions).toEqual([]);
     expect(message.pluginCss).toBe("");
+    expect(message.diagnostic).toBeUndefined();
   });
 
   test("core layout markers still project in the base pipeline (D9: 'core markers still project')", async () => {
@@ -251,6 +274,60 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
     // Still a usable, editable base projection — never blanked (D14).
     expect(message.projection.sourceVersion).toBe(0);
     expect(message.pluginCss).toBe("");
+    expect(message.pluginErrors).toEqual([]);
+  });
+});
+
+describe("repair round 1: manifest plugin paths are workspace-root-scoped (finding \"Manifest plugin paths are not workspace-root-scoped\")", () => {
+  test("a `../` escape attempt is refused: the outside file is never loaded, and a safe pluginError is recorded with no absolute path in the message", async () => {
+    const parent = mkdtempSync(path.join(tmpdir(), "gp-vscode-traversal-"));
+    disposableDirs.push(parent);
+    const projectDir = path.join(parent, "project");
+    const outsideDir = path.join(parent, "outside");
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(outsideDir, { recursive: true });
+
+    // Decisive, side-effect-based proof (not "no error was thrown"): the
+    // outside module's own top-level code writes a marker file the instant
+    // it is require()'d — exactly mirroring the run spec's own "evil
+    // loaded: true" reproduction technique.
+    const evilMarkerPath = path.join(outsideDir, "evil-loaded.marker");
+    writeFileSync(
+      path.join(outsideDir, "evil.js"),
+      `require("node:fs").writeFileSync(${JSON.stringify(evilMarkerPath)}, "true");\nmodule.exports = () => {};\n`,
+    );
+    writeFileSync(path.join(projectDir, "manifest.yaml"), 'title: "traversal-test"\nplugins:\n  - ../outside/evil.js\n');
+
+    const message = await resolveEditorProjectionPayload({ text: "hello", version: 0 }, { projectDir }, true);
+
+    // AP-21 decisive proof: the file outside the project directory was
+    // never required/executed at all.
+    expect(existsSync(evilMarkerPath)).toBe(false);
+
+    expect(message.pluginErrors).toHaveLength(1);
+    expect(message.pluginErrors[0]?.pluginRef).toBe("../outside/evil.js");
+    expect(message.pluginErrors[0]?.message.length).toBeGreaterThan(0);
+    // D12: no absolute path — neither directory's own path, nor a leading
+    // path separator — ever reaches the wire message.
+    expect(message.pluginErrors[0]?.message).not.toContain(projectDir);
+    expect(message.pluginErrors[0]?.message).not.toContain(outsideDir);
+    expect(message.pluginErrors[0]?.message.startsWith("/")).toBe(false);
+
+    // The document itself is still a usable, editable projection — a
+    // refused plugin never blanks the document (D14).
+    expect(message.projection.sourceVersion).toBe(0);
+  });
+
+  test("a plugin path INSIDE the project (including a nested subdirectory) is unaffected by the containment check", async () => {
+    const parent = mkdtempSync(path.join(tmpdir(), "gp-vscode-traversal-ok-"));
+    disposableDirs.push(parent);
+    const pluginsDir = path.join(parent, "plugins", "nested");
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(path.join(pluginsDir, "safe.js"), "module.exports = () => {};\n");
+    writeFileSync(path.join(parent, "manifest.yaml"), 'title: "traversal-ok-test"\nplugins:\n  - ./plugins/nested/safe.js\n');
+
+    const message = await resolveEditorProjectionPayload({ text: "hello", version: 0 }, { projectDir: parent }, true);
+
     expect(message.pluginErrors).toEqual([]);
   });
 });

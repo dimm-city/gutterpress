@@ -30,6 +30,18 @@ import { createEditorProjection } from "gutterpress/render";
  * drifting from the real schema `PresentationInputMessage.projection`
  * (`../../src/protocol/messages.ts`) actually carries.
  *
+ * `sourceVersion` (repair round 1, finding "Projection staleness compares
+ * the host's TextDocument.version against the webview mirror's LOCAL
+ * version"): drawn from `window.__gpWebview.hostStamp()` — the fake host's
+ * OWN base-stamp space (mirroring `DocumentGateway.currentStamp()`) — never
+ * a hand-picked literal. The PRE-repair version of this test hardcoded `1`,
+ * which happened to equal the PROXY's own post-convergence MIRROR version
+ * (a completely different space) purely by the same "only ever coincide by
+ * accident" coincidence the finding's own fix addresses — that literal
+ * passed against the broken wiring just as easily as against the fix, so it
+ * proved nothing about the remap. The negative case below (an
+ * OLDER-stamped projection) is the one that actually distinguishes the two.
+ *
  * ONE shared browser session drives every case in this file
  * (`beforeAll`/`afterAll`) — see `mount.btest.ts`'s header for why.
  */
@@ -89,7 +101,13 @@ describe("reconciliation addendum: presentation-input upgrade to mountGutterpres
     expect(await chipCount()).toBe(0);
     await requireDocumentText(text);
 
-    const projection = createEditorProjection(text, { sourceVersion: 1 });
+    // The fake host's CURRENT stamp (0 — untouched since the initial "ready"
+    // handshake, which does not bump it) — the exact space a real
+    // provider.ts's sendProjection() stamps a projection's sourceVersion
+    // from. See this file's own header for why a hardcoded literal used to
+    // stand here and why it proved nothing.
+    const stamp = await harness.page.evaluate(() => window.__gpWebview.hostStamp());
+    const projection = createEditorProjection(text, { sourceVersion: stamp });
     // AP-21 liveness #2: the fixture itself actually carries a marker
     // block, so a chip rendering below is real evidence of the upgrade,
     // not a coincidence.
@@ -145,6 +163,59 @@ describe("reconciliation addendum: presentation-input upgrade to mountGutterpres
       { timeout: 5_000 },
     );
     expect(await hostText()).toBe(expectedAfterEdit);
+  });
+
+  // Repair round 1, finding "Projection staleness compares the host's
+  // TextDocument.version against the webview mirror's LOCAL version": the
+  // decisive negative case the review named — this is what actually
+  // distinguishes the remap from the broken (pre-repair) wiring, unlike the
+  // positive case above (which the broken wiring could also pass by
+  // accident on a single, unedited convergence — see this file's own
+  // header).
+  test("a projection tagged with an OLDER (superseded) host stamp than the mirror has already converged past never renders a chip", async () => {
+    const text = "@page splash\n\nHello world.\n";
+    const selector = await harness.page.evaluate((initialText: string) => window.__gpWebview.mount(initialText), text);
+    await harness.page.waitForFunction(
+      (expected: string) => window.__gpWebview.documentText() === expected,
+      text,
+      { timeout: 5_000 },
+    );
+    expect(await editorElementCount()).toBe(1); // AP-21 liveness
+
+    // The stamp BEFORE the edit below — will be stale the instant the edit
+    // is accepted.
+    const staleStamp = await harness.page.evaluate(() => window.__gpWebview.hostStamp());
+
+    await harness.page.click(selector);
+    // Control+End (not "End" alone): `text` is multi-line, and "End" alone
+    // moves the caret to the end of the CURRENT line only — Control+End is
+    // the unambiguous "end of the whole document" chord regardless of line
+    // count.
+    await harness.page.keyboard.press("Control+End");
+    await harness.page.keyboard.type("!");
+    await harness.page.waitForFunction(
+      (expected: string) => window.__gpWebview.hostText() === expected,
+      `${text}!`,
+      { timeout: 5_000 },
+    );
+    // The mirror has now converged past `staleStamp` — a fresh stamp exists.
+    const freshStamp = await harness.page.evaluate(() => window.__gpWebview.hostStamp());
+    expect(freshStamp).not.toBe(staleStamp);
+
+    const staleProjection = createEditorProjection(text, { sourceVersion: staleStamp });
+    expect(staleProjection.blocks.length).toBeGreaterThan(0); // AP-21: a real block exists to (not) render as a chip
+
+    await harness.page.evaluate((p) => window.__gpWebview.sendProjectionUpdate({ projection: p }), staleProjection);
+
+    // Bounded wait for anything that WOULD have rendered, then assert
+    // absence — mirrors this suite's own established "prove a negative"
+    // pattern elsewhere in this package's tests.
+    await harness.page.waitForTimeout(300);
+    expect(await chipCount()).toBe(0);
+    // The mount itself still happened (dispose-then-remount to
+    // mountGutterpressEditor proceeds regardless of staleness — only the
+    // CHIP rendering is gated) — exactly one editor, never zero, never two.
+    expect(await editorElementCount()).toBe(1);
   });
 });
 

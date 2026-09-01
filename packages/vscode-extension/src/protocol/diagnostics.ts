@@ -39,14 +39,22 @@ import type { ProtocolValidationFailure } from "./validate.ts";
  *     means: too much data for this editor to safely hold.
  *   - "wrong-protocol-version" / "unknown-message-type" / "missing-field" /
  *     "wrong-field-type" all reduce to the SAME practical fact: this
- *     message cannot be safely parsed, so this side of the channel can no
- *     longer trust what it is hearing from the other side.
- *     `EDITOR_HOST_DISCONNECTED` is the closest existing category — same
- *     safe next action ("stop trusting this channel; reload") as a genuine
- *     panel/document disconnection. This is a documented judgment call
- *     (see this run's report) rather than a spec-mandated 1:1 mapping; a
- *     future run may split it out with a decision-record amendment if that
- *     proves too coarse in practice.
+ *     message cannot be safely parsed. `EDITOR_HOST_DISCONNECTED` is the
+ *     closest existing category for the WIRE `diagnostic-report` this
+ *     produces — a documented judgment call, not a spec-mandated 1:1
+ *     mapping; a future run may split it out with a decision-record
+ *     amendment if that proves too coarse in practice.
+ *
+ *     Repair round 1 (finding "One malformed inbound message permanently
+ *     destroys the editing surface"): this category choice is now scoped
+ *     STRICTLY to that one wire message, which only the HOST logs and never
+ *     acts on (`DiagnosticReportMessage`'s own doc comment,
+ *     `../protocol/messages.ts`). It is no longer also the signal the
+ *     WEBVIEW itself reacts to for a rejected message — `../webview-host/
+ *     proxy-document-host.ts`'s `onProtocolRejection` is that signal now,
+ *     deliberately separate from a genuine panel/document disconnection
+ *     (`onDiagnostic`) — see that option's own doc comment for the full
+ *     account of why conflating the two was the confirmed defect.
  */
 export function diagnosticForProtocolRejection(failure: ProtocolValidationFailure): Diagnostic {
   switch (failure.reason) {
@@ -140,5 +148,46 @@ export function projectionBuildFailedDiagnostic(): Diagnostic {
     message:
       "This project's plugins could not be loaded for the rich editor (its manifest.yaml may be invalid), " +
       "so plugin regions show as plain text here. Fix the manifest, then reopen this file.",
+  };
+}
+
+/**
+ * Repair round 1 (finding "D9's required trust explanation is not
+ * implemented"): D9/the behavior table's Trust-gate row require that in an
+ * untrusted workspace "plugin regions render as source or safe placeholders
+ * WITH A TRUST EXPLANATION." `EDITOR_PLUGIN_UNTRUSTED` had zero producers in
+ * the repository before this — this is its first real one
+ * (`../project/projection.ts`'s `resolveEditorProjectionPayload`, emitted
+ * only when a real project's plugins are actually being withheld:
+ * `!trusted && project`, never for a plain untrusted single-file session
+ * with no manifest, which has nothing to withhold).
+ */
+export function pluginsUntrustedDiagnostic(): Diagnostic {
+  return {
+    category: "EDITOR_PLUGIN_UNTRUSTED",
+    message:
+      "This project has plugins, but this workspace is not trusted, so they are not loaded. " +
+      "Plugin-authored regions show as plain source until you trust this workspace.",
+    safeAction: "Trust this workspace to enable plugin-authored content.",
+  };
+}
+
+/**
+ * Repair round 1 (finding "Absolute filesystem paths cross into the webview
+ * via presentation-input.pluginErrors" / "D9's required trust explanation is
+ * not implemented"): converts one already-sanitized `ProjectionPluginError`
+ * (`{pluginRef, message}` — `pluginRef` is always the manifest's own
+ * project-relative ref; `message` is always one of
+ * `../project/projection.ts`'s fixed, safe wire strings, never a raw loader
+ * error) into a `Diagnostic` the webview can both log (`onDiagnostic`) and
+ * render in its notice banner — the "surface pluginErrors as
+ * EDITOR_PLUGIN_LOAD_FAILED" half of the same finding. Never combines with
+ * anything unsanitized: this function trusts its caller to have already
+ * removed any absolute path from `message`.
+ */
+export function pluginLoadFailedDiagnostic(pluginRef: string, message: string): Diagnostic {
+  return {
+    category: "EDITOR_PLUGIN_LOAD_FAILED",
+    message: `Plugin "${pluginRef}": ${message}`,
   };
 }

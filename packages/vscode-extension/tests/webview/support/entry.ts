@@ -1,5 +1,4 @@
 import type { SourceEdit } from "@dimm-city/gutterpress-editor/core";
-import type { GutterpressProjection } from "gutterpress/render";
 import { mountGutterpressWebview, type WebviewSession } from "../../../src/webview/index.ts";
 import {
   createFakeExtensionHost,
@@ -60,6 +59,16 @@ export interface GutterpressWebviewHarnessDriver {
   remount(): string;
   hostText(): string;
   hostVersion(): number;
+  /** `SimulatedExtensionHost.currentStamp()` passthrough — the HOST-STAMP
+   *  space `DocumentGateway.currentStamp()`/`../../../src/project/
+   *  projection.ts`'s `resolveEditorProjectionPayload` actually stamps a
+   *  built projection's `sourceVersion` from (repair round 1: never
+   *  `hostVersion()`'s space — see `ProxyDocumentHost`'s own
+   *  `#remapProjectionSourceVersion` doc comment for why those are
+   *  different spaces that must never be conflated). Lets a test build a
+   *  projection whose `sourceVersion` is drawn from the CORRECT space, the
+   *  same way a real provider.ts's `sendProjection()` does. */
+  hostStamp(): number;
   /** Every `SourceEdit` the CURRENT fake host has received, in order —
    *  `{from, to, insert}`, independently comparable against expected values
    *  (run spec DETAILS #4b: byte-exact). */
@@ -70,14 +79,27 @@ export interface GutterpressWebviewHarnessDriver {
   disconnectHost(): void;
   /** `SimulatedExtensionHost.externalChange(text)` passthrough. */
   externalChange(text: string): void;
+  /** `FakeExtensionHostSession.deliverRaw` passthrough — repair round 1: an
+   *  arbitrary malformed/untyped payload delivered directly to the real
+   *  webview's message listener. */
+  deliverRaw(raw: unknown): void;
+  /** `FakeExtensionHostSession.sendTrustState` passthrough — repair round
+   *  1: a later, standalone `trust-state` message, independent of any
+   *  `presentation-input` resend. */
+  sendTrustState(trusted: boolean): void;
   /** Live transport-listener count on the CURRENT fake host — see
    *  `fake-extension-host.ts`'s own doc comment on `listenerCount()`. */
   listenerCount(): number;
   /** `FakeExtensionHostSession.sendProjectionUpdate` passthrough on the
    *  CURRENT fake host — sends a projection-bearing `presentation-input`
    *  resend, driving `mountGutterpressWebview`'s dispose-then-remount
-   *  upgrade. */
-  sendProjectionUpdate(payload: { readonly projection: GutterpressProjection; readonly pluginCss?: string }): void;
+   *  upgrade. Repair round 1: the parameter type is DERIVED from
+   *  `FakeExtensionHostSession` itself (`Parameters<...>[0]`), not
+   *  hand-duplicated — a hand-copied narrower type here (only
+   *  `projection`/`pluginCss`) is exactly what silently left `diagnostic`/
+   *  `pluginErrors` unreachable from this driver before the D9 trust-notice
+   *  fix needed them (`../trust-explanation.btest.ts`). */
+  sendProjectionUpdate(payload: Parameters<FakeExtensionHostSession["sendProjectionUpdate"]>[0]): void;
   hasEditorMounted(): boolean;
   /** `.md-document`'s rendered text, or `null` if no editor is mounted. */
   documentText(): string | null;
@@ -103,6 +125,19 @@ export interface GutterpressWebviewHarnessDriver {
   fallbackCategory(): string | null;
   fallbackMessage(): string | null;
   fallbackAction(): string | null;
+  /** `true`/`false` mirroring the notice banner element's own `hidden`
+   *  IDL property (`../../../src/webview/index.ts`'s `noticeBanner`), or
+   *  `null` if no session is mounted at all — repair round 1, finding "D9's
+   *  required trust explanation is not implemented". */
+  noticeBannerHidden(): boolean | null;
+  /** Every notice line's `data-gp-notice-line` attribute (the `Diagnostic`
+   *  category it renders), in DOM order — empty when the banner is
+   *  hidden/empty. */
+  noticeCategories(): readonly string[];
+  /** The FIRST notice line's rendered text, or `null` if none — this
+   *  session's `renderNoticeBanner` renders at most one line per test
+   *  scenario in this suite, so "first" is unambiguous here. */
+  noticeText(): string | null;
   readonly containerSelector: string;
 }
 
@@ -168,10 +203,13 @@ window.__gpWebview = {
   },
   hostText: () => requireFakeHost().simulated.currentSnapshot().text,
   hostVersion: () => requireFakeHost().simulated.currentSnapshot().version,
+  hostStamp: () => requireFakeHost().simulated.currentStamp(),
   recordedEdits: () => requireFakeHost().recordedEdits(),
   applyEditCount: () => requireFakeHost().recordedEdits().length,
   disconnectHost: () => requireFakeHost().simulated.disconnect(),
   externalChange: (text: string) => requireFakeHost().simulated.externalChange(text),
+  deliverRaw: (raw: unknown) => requireFakeHost().deliverRaw(raw),
+  sendTrustState: (trusted: boolean) => requireFakeHost().sendTrustState(trusted),
   listenerCount: () => requireFakeHost().listenerCount(),
   sendProjectionUpdate: (payload) => requireFakeHost().sendProjectionUpdate(payload),
   hasEditorMounted: () => document.querySelectorAll(`#${CONTAINER_ID} .md-editor`).length > 0,
@@ -188,6 +226,12 @@ window.__gpWebview = {
     document.querySelector(`#${CONTAINER_ID} [data-gp-fallback]`)?.getAttribute("data-gp-fallback") ?? null,
   fallbackMessage: () => document.querySelector(`#${CONTAINER_ID} [data-gp-fallback-message]`)?.textContent ?? null,
   fallbackAction: () => document.querySelector(`#${CONTAINER_ID} [data-gp-fallback-action]`)?.textContent ?? null,
+  noticeBannerHidden: () => document.querySelector<HTMLElement>(`#${CONTAINER_ID} [data-gp-notice]`)?.hidden ?? null,
+  noticeCategories: () =>
+    Array.from(document.querySelectorAll(`#${CONTAINER_ID} [data-gp-notice-line]`)).map(
+      (el) => el.getAttribute("data-gp-notice-line") ?? "",
+    ),
+  noticeText: () => document.querySelector(`#${CONTAINER_ID} [data-gp-notice-line]`)?.textContent ?? null,
   containerSelector: `#${CONTAINER_ID}`,
 };
 window.__gpReady = true;

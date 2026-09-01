@@ -157,10 +157,96 @@ describe("ProxyDocumentHost — inbound message validation (D12)", () => {
     deliver?.({ type: "snapshot", protocolVersion: 999, snapshot: { text: "y", version: 1 } });
 
     expect(proxy.getSnapshot()).toEqual({ text: "x", version: 0 }); // never applied
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0]?.category).toBe("EDITOR_HOST_DISCONNECTED"); // wrong-protocol-version mapping
+    // Repair round 1 (finding "One malformed inbound message permanently
+    // destroys the editing surface"): a rejected MESSAGE no longer fires
+    // onDiagnostic at all — see the dedicated onProtocolRejection tests
+    // below for where this signal now goes, and why.
+    expect(diagnostics).toHaveLength(0);
     const reportCalls = sentToHost.filter((m): m is { type: string } => (m as { type?: string }).type === "diagnostic-report");
     expect(reportCalls).toHaveLength(1);
+    // The wire payload back to the host is unchanged — still the closest
+    // existing D14 category, for the host's own dev-log line only (the
+    // host never acts on it — DiagnosticReportMessage's own doc comment).
+    expect((reportCalls[0] as unknown as { diagnostic: { category: string } }).diagnostic.category).toBe(
+      "EDITOR_HOST_DISCONNECTED",
+    );
+  });
+});
+
+describe("ProxyDocumentHost — onProtocolRejection: the session SURVIVES a malformed/unrelated message (repair round 1)", () => {
+  test("onProtocolRejection fires with the specific rejection reason; onDiagnostic does not fire", () => {
+    let deliver: ((message: unknown) => void) | undefined;
+    const transport = {
+      postMessage: () => {},
+      onMessage: (listener: (message: unknown) => void) => {
+        deliver = listener;
+        return () => {};
+      },
+    };
+    const rejections: Array<{ reason: string }> = [];
+    const diagnostics: unknown[] = [];
+    // eslint-disable-next-line no-new -- constructing for its side effect below
+    new ProxyDocumentHost({ text: "x", version: 0 }, transport, {
+      onProtocolRejection: (failure) => rejections.push(failure),
+      onDiagnostic: (d) => diagnostics.push(d),
+    });
+
+    deliver?.({ type: "not-a-real-type", protocolVersion: 1 });
+
+    expect(rejections).toHaveLength(1);
+    expect(rejections[0]?.reason).toBe("unknown-message-type");
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  test("the mirror stays fully writable after a rejected message — applyEdit still succeeds", () => {
+    let deliver: ((message: unknown) => void) | undefined;
+    const transport = {
+      postMessage: () => {},
+      onMessage: (listener: (message: unknown) => void) => {
+        deliver = listener;
+        return () => {};
+      },
+    };
+    const proxy = new ProxyDocumentHost({ text: "hello", version: 0 }, transport, {
+      onProtocolRejection: () => {},
+    });
+
+    deliver?.({ type: "snapshot" }); // missing protocolVersion — malformed
+    deliver?.("not even an object"); // arbitrary unrelated window-message noise
+    deliver?.(null);
+
+    const result = proxy.applyEdit({ from: 0, to: 5, insert: "world", expectedVersion: 0 });
+    expect(result).toEqual({ ok: true, snapshot: { text: "world", version: 1 } });
+    expect(proxy.getSnapshot()).toEqual({ text: "world", version: 1 });
+  });
+
+  test("SABOTAGE-PROVABLE: a real EDITOR_HOST_DISCONNECTED (via #handleDisconnect) still fires onDiagnostic and IS terminal — distinguishing the two paths is the point of this fix, not a relaxation of the real one", () => {
+    let deliver: ((message: unknown) => void) | undefined;
+    const transport = {
+      postMessage: () => {},
+      onMessage: (listener: (message: unknown) => void) => {
+        deliver = listener;
+        return () => {};
+      },
+    };
+    const diagnostics: Array<{ category: string }> = [];
+    const proxy = new ProxyDocumentHost({ text: "x", version: 0 }, transport, {
+      onDiagnostic: (d) => diagnostics.push(d),
+      onProtocolRejection: () => {},
+    });
+
+    deliver?.({
+      type: "disconnect",
+      protocolVersion: 1,
+      diagnostic: { category: "EDITOR_HOST_DISCONNECTED", message: "closed" },
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.category).toBe("EDITOR_HOST_DISCONNECTED");
+
+    const result = proxy.applyEdit({ from: 0, to: 1, insert: "y", expectedVersion: 0 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("readonly"); // genuinely terminal, unlike a protocol rejection
   });
 });
 
