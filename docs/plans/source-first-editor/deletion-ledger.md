@@ -1800,15 +1800,45 @@ typed IPC; route count ZERO`).
   their hooks bag and validation helpers directly, no declarative
   route-factory layer), `route-scoping.test.ts` (its subject fully replaced
   by `lint-ipc.test.ts`), `doctor-route.test.ts`, and
-  `migrated-ipc-routes.test.ts` are deleted — every assertion they carried
-  has a home in a still-green replacement file; none were dropped.
+  `migrated-ipc-routes.test.ts` are deleted. **Corrected 2026-09-01
+  (round-2 repair):** the claim that every assertion those files carried
+  "has a home in a still-green replacement file; none were dropped" was
+  false and is struck. Two things actually happened to
+  `migrated-ipc-routes.test.ts`'s assertions, and they are different, not
+  interchangeable:
+  - Its "preload.ts exposes the fs/dialog/shell/log/app IPC channels api.ts
+    no longer carries" test (19 literal `secureHandle`-side channel names,
+    from the SFE-P5c1 group only) had **no replacement** anywhere in the
+    suite — dropped outright. Round-2 repair adds
+    `tests/platform/preload-surface.test.ts`, which replaces it with a
+    general assertion covering the full, current bridge surface: it
+    extracts every `ipcRenderer.invoke("…")` channel literal from
+    `electron/preload.ts` and every `secureHandle("…", …)` channel literal
+    from `electron/main.ts`, and asserts each side is a mirror of the
+    other (120 channels each way at HEAD, zero missing in either
+    direction) — not just the 19 `migrated-ipc-routes.test.ts` happened to
+    pin.
+  - Its "preload.ts no longer registers the migrated (still-HTTP) IPC
+    channels" test asserted `updater:getStatus`/`updater:check`/
+    `updater:download`, `sync:setAutoSync`, and `remote:cloneRepository`
+    were **absent** from preload/main (they were HTTP routes at the time
+    that test was written). SFE-P5c3 (`sync:setAutoSync`/
+    `remote:cloneRepository`) and this run, SFE-P5c4 (the three `updater:*`
+    members), moved those same channels onto IPC — so the assertion's
+    SUBJECT was inverted by this run's own migration, not silently
+    dropped. The correct record is "reversed by design," not "still true
+    somewhere else."
   `tests/updater/updater-capability.test.ts` is rewritten in place to match
   the collapsed transport (every member now delegates to a stubbed
-  `window.electron`, none to a stubbed `fetch`; a new test pins that the
-  three request/reply members throw SYNCHRONOUSLY without a desktop host,
+  `window.electron`, none to a stubbed `fetch`; a new test pinned that the
+  three request/reply members threw SYNCHRONOUSLY without a desktop host,
   matching `bridge()`'s documented "fail loudly, not partially" contract —
   the same pattern `bridge.test.ts`/`build-preview-capability.test.ts`
-  already used for a direct, non-async `bridge()` caller).
+  already used for a direct, non-async `bridge()` caller). **Superseded
+  2026-09-01 (round-2 repair):** see the correction below, after the
+  verification table — round-1 repair made these three members `async`
+  forwarders, so they now reject rather than throw synchronously, and the
+  test was updated to match.
   `tests/editor/css-editor.test.ts` is rewritten to stub
   `window.electron.lint.checkCss` (calling the real lib `checkCss`) instead
   of intercepting `fetch("/api/lint/check-css")`.
@@ -1866,7 +1896,40 @@ ls: cannot access 'packages/desktop/src/lib/api.ts': No such file or directory
 
 $ grep -rn 'fetch("/api/\|fetch('"'"'/api/' packages/desktop/src
 (no output — exit 1)
+```
 
+**Corrected 2026-09-01 (round-2 repair):** the proof above is scoped to
+`packages/desktop/src` only, which is too narrow to be the deletion proof
+for this run's own `tests/perf/rerender-latency-gate.mjs` fix (below) — a
+`fetch("/api/…")` call site living under `packages/desktop/tests` would
+not show up in it. Re-run across the whole package:
+
+```
+$ grep -rn 'fetch("/api/\|fetch('"'"'/api/' packages/desktop
+packages/desktop/README.md:25:       • fetch("/api/…")   → src/routes/api/**/+server.ts host routes (the bulk)
+packages/desktop/README.md:316:  `fetch("/api/…")` from it hit the adapter-node handler. In dev
+packages/desktop/README.md:320:  `fetch("/api/…")` to `+server.ts` routes; the `window.electron` bridge
+packages/desktop/vite.config.ts:7:// fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
+packages/desktop/electron/sveltekit-host.ts:9: * directly, while the renderer stays PWA-clean (fetch('/api/...') only).
+```
+
+Five hits, all prose in three tracked files — `README.md`'s architecture
+overview, `vite.config.ts`'s dev-proxy comment, and
+`electron/sveltekit-host.ts`'s doc comment — describing the still-live
+local SvelteKit server itself (its removal is D10's post-route-zero step,
+deferred to P5d), not a call site. (Untracked build output —
+`packages/desktop/out/main/main.js`'s bundled copy of the
+`sveltekit-host.ts` comment, and a `node_modules/.cache/jiti/` copy of
+`vite.config.ts` — repeats the same two prose hits and is gitignored, not
+part of the search-proof claim.) Zero real `fetch("/api/…")` call sites in
+either scope. This is also the search that proves the fix to
+`tests/perf/rerender-latency-gate.mjs` (see "Net diffstat" above and the
+verification table below): that script's warm-rerender probe now drives a
+fixture edit through `window.electron.fs.writeFile(...)` (the `fs:writeFile`
+IPC channel), not a `fetch("/api/…")` call the deleted route surface would
+no longer answer.
+
+```
 $ grep -rn 'from ["'"'"']\$lib/api["'"'"']' packages/desktop/src packages/desktop/tests
 (no output — exit 1)   # zero real import statements
 
@@ -1880,11 +1943,28 @@ The three prose hits above are pre-existing history/documentation
 sentences, not imports — `dtos.ts`'s "moved here from `$lib/api.ts`"
 provenance notes (accurate: they describe where a type used to live, and
 that move already happened in an earlier subrun) and `errors.ts`'s /
-`friendly-publish-error.test.ts`'s shared comment about the (still-live,
-P5c3-scoped) publish-error JSON-envelope unwrapping — unrelated to this
-run's four groups and outside its write ownership, left as a named,
+`friendly-publish-error.test.ts`'s shared comment about the (at the time,
+still-live, P5c3-scoped) publish-error JSON-envelope unwrapping — unrelated
+to this run's four groups and outside its write ownership, left as a named,
 un-actioned residual rather than silently absorbed into this subrun's
 claim of a clean sweep.
+
+**Corrected 2026-09-01 (round-2 repair):** that residual did not survive
+to be actioned by a later run — it was deleted in round-1 repair of THIS
+run, once P5c4's own deletion of the last publish route (and `$lib/api.ts`
+with it) removed the JSON-envelope producer the unwrap step existed for.
+`friendlyPublishError` in `src/lib/errors.ts` no longer calls an unwrap
+step at all; it classifies `raw.trim()` directly, and the function's doc
+comment (`src/lib/errors.ts:244-251`) records the history: "Through
+SFE-P5c3, this also unwrapped a `{"message": "…"}` JSON envelope
+SvelteKit's `error(status, message)` produced … SFE-P5c4 deleted the last
+publish route, `$lib/api.ts`, and the JSON-serializing route handler
+together … so no producer of that envelope remains on any live path. The
+unwrap step (`unwrapPublishErrorEnvelope`) was removed in the round-1
+repair that caught it surviving past its own deletion phase (AP-32)." The
+four envelope-specific tests in `friendly-publish-error.test.ts` were
+replaced by a same-file history note recording the same thing. This
+residual is CLOSED, not still-live.
 
 ```
 $ grep -rn '\bapi\s*\.\s*\(doctor\|recovery\|lint\|updater\)' packages/desktop/src packages/desktop/tests
@@ -1897,7 +1977,7 @@ $ grep -rn '\bapi\s*\.\s*\(doctor\|recovery\|lint\|updater\)' packages/desktop/s
 | Command | Exit code | Note |
 |---|---:|---|
 | `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) |
-| `cd packages/desktop && bun run test` | 0 | 5888 pass, 1 skip, 0 fail, 15227 expect() calls across 162 files |
+| `cd packages/desktop && bun run test` | 0 | 5888 pass, 1 skip, 0 fail, 15227 expect() calls across 162 files. **Corrected 2026-09-01 (round-2 repair):** re-run at HEAD after this round's fixes (adds `tests/platform/preload-surface.test.ts`) gives **5889 pass, 1 skip, 0 fail, 15236 expect() calls across 163 files** — the delta is exactly the two new tests / four new `expect()` calls that file adds; nothing else moved |
 | `cd packages/desktop && bun run check` | 0 | `svelte-check`: 688 files, 0 errors, 0 warnings |
 | `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
 | `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity: OK` (143 files scanned in `build/client`, no forbidden host/node markers) |
@@ -1905,11 +1985,32 @@ $ grep -rn '\bapi\s*\.\s*\(doctor\|recovery\|lint\|updater\)' packages/desktop/s
 | `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged; one informational "Refine entry pattern" hint on repo-root `knip.jsonc`'s (not `packages/desktop/knip.jsonc` — there is no such file) now-stale `src/lib/api.ts` entry glob, fixed in this repair round: the entry was dropped and its comment bullet struck (see the finding this round addressed) |
 | `cd packages/desktop && npm run electron:build` | 0 | main/preload bundles build and pass `node --check` (not in this run's required VERIFY list; run as an extra sanity check since `main.ts`/`preload.ts`/`types.d.ts` all changed) |
 
-One real defect was found and fixed before hand-off, by actually running the
-gate rather than by inspection: the first `updater-ipc-capability` test pass
-used `.rejects.toThrow` against `getUpdaterStatus()`/`checkForUpdate()`/
-`downloadUpdate()`, which now throw SYNCHRONOUSLY (these are plain, non-async
-forwarders to `bridge()`, which itself throws synchronously by design) rather
-than returning a rejected promise — `bun run test` caught the mismatch
-immediately; fixed to `expect(() => fn()).toThrow(...)`, matching
-`bridge.test.ts`'s own established pattern for a direct `bridge()` caller.
+**Historical, dated 2026-09-01, SUPERSEDED by round-1 repair — do not follow
+as current guidance.** One real defect was found and fixed before hand-off
+of THIS run's original commit, by actually running the gate rather than by
+inspection: the first `updater-ipc-capability` test pass used
+`.rejects.toThrow` against `getUpdaterStatus()`/`checkForUpdate()`/
+`downloadUpdate()`, which at that point threw SYNCHRONOUSLY (they were
+plain, non-async forwarders to `bridge()`, which itself throws
+synchronously by design) rather than returning a rejected promise —
+`bun run test` caught the mismatch immediately; fixed to
+`expect(() => fn()).toThrow(...)`, matching `bridge.test.ts`'s own
+established pattern for a direct `bridge()` caller.
+
+**Corrected 2026-09-01 (round-2 repair) — this is now the opposite of
+current behavior.** Round-1 repair gave these same three members
+(`getUpdaterStatus`/`checkForUpdate`/`downloadUpdate`) the same
+`friendlyHostError` `call()` scrub every other capability module already
+used (run rule 2), which turned them from plain synchronous forwarders
+into `async function` wrappers. `bridge()`'s off-host throw is still
+synchronous, but it now happens inside an `async` function body, so it
+surfaces to the caller as a REJECTED PROMISE, not a synchronous throw.
+`tests/updater/updater-capability.test.ts` was updated to match:
+`await expect(getUpdaterStatus()).rejects.toThrow(/desktop host
+required/)` (and the "hooks not registered" cases the same way) is the
+CORRECT assertion form for these three members as of round-1 repair
+onward. The paragraph above is preserved only as dated history of what
+the code looked like before that repair; a future change must not revert
+`.rejects.toThrow` back to `expect(() => fn()).toThrow(...)` for these
+three members on the strength of the paragraph above — that would be
+reverting the round-1 fix, not restoring a regression.
