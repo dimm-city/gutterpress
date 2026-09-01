@@ -232,3 +232,15 @@ deleting the analyzer removes the ratchet that would catch a NEW
 mutation-capable preview action added between now and P4 — accepted
 explicitly by the ruling, and P4's own review re-verifies the matrix once,
 at deletion time.
+
+## Gate
+
+PASS — all 16 commands exit 0: install; typecheck (4 workspaces); cli build
+(render purity) + test (1913 pass / 60 skip); editor test (3038) +
+test:browser (109 across 8 suites) + browser-purity (35 files); desktop test
+(**6017 pass / 1 skip**), check (896 files / 0 errors), lint, build (render
+purity, 145 files), and **electron:build** (added to this run's gate because
+the review changed `electron.vite.config.ts` — `out/main/main.js` builds with
+every `gutterpress` subpath external and passes `node --check`); architecture
+(route ratchet 104 == 104); generated-files (1276 tracked); vendored (26
+hashes / 33 files); knip.

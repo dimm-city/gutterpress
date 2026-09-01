@@ -15,7 +15,7 @@
 | AC-04 | Explicit edit locality | P2/P3 | Source diff tests and randomized range cases | **Evidenced** (SFE-P2a independent-bound oracle, sabotage-proven; SFE-P3d-parity: the same oracle reused verbatim against real books and the real DesktopDocumentHost — 2,810 locality cases, 400 whole-document cases, plus edits adjacent to and inside plugin regions) |
 | AC-05 | Stale/invalid edits fail closed | P1/P3 | Host contract tests | Evidenced for P1 (SFE-P1a contract/property/validator tests; SFE-P1c: the same shared contract suite green on MemoryDocumentHost AND DesktopDocumentHost, incl. the version-collision attack regression; P3 integrations pending) |
 | AC-06 | Shared desktop/VS Code editor mount | P3 | Package import graph and integration tests | Pending |
-| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | **Evidenced** (SFE-P2b core markers/raw-html/generated views + malformed matrix + D13 caps; SFE-P2c plugin-region projection, evidence-based transform origin with a six-shape refusal matrix, and range self-checks) |
+| AC-07 | Gutterpress projection coverage | P2 | Fixture matrix and diagnostics | **Evidenced** (SFE-P2b core markers/raw-html/generated views + malformed matrix + D13 caps; SFE-P2c plugin-region projection with a six-shape refusal matrix; SFE-P3e: the DESKTOP's own wiring now builds the plugin-aware, trusted projection host-side — the P2c machinery is reachable from the actual app, not just from tests) |
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Evidenced (SFE-P2b: GeneratedView has no from/to at the type level + runtime absence checks + provider never creates segments for generated content; browser proof of read-only in-chip preview) |
 | AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | **Evidenced** (SFE-P1c session/host suites; SFE-P3ab: source↔rich switching, non-Markdown fallback, and preview-commit/rich-command coexistence over one `DocumentHost`, with byte-identity assertions across every switch) |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | Pending |
@@ -31,7 +31,7 @@
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending |
 | AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Evidenced for P3 (SFE-P3d-parity: full user guide, design-guide book, validation example and a plugin-using fixture book — 28 chapters total; the field guide is gitignored and out of corpus, and the final P7 sweep remains) |
 | AC-22 | Documentation complete | P7 | Doc link and example lint | Pending |
-| AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 (SFE-P2c mandated security review: plugin execution proven host-only by bundle+import-graph scan, plugin HTML inert under script-payload proof, fail-closed trust gate, no secrets/absolute paths in projections or diagnostics; P3/P5 boundaries pending) |
+| AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 and the desktop P3 boundary (SFE-P2c security review: host-only plugin execution, inert plugin HTML, fail-closed trust gate; SFE-P3e: rich-mode plugins execute only in main for the opened project — the same trust decision the preview already exercises — over one validated IPC channel whose projectDir must equal the host's own workspace root; VS Code trust remains P3c, P5 boundaries pending) |
 | AC-24 | Performance budgets met | P3d | Recorded benchmark results | Pending |
 
 ## Run results
@@ -484,7 +484,7 @@
 {
   "status": "complete",
   "baseSha": "cf66572c",
-  "headSha": "<set at gate>",
+  "headSha": "317bb490",
   "history": [
     "fba2bead feat(p3): plugin-aware rich-editor projection; delete parity analyzer and scanners (lanes A/B)",
     "7a5e9f8e feat(p3): gutterpress/plugins subpath; the desktop host uses the one real loader (lane C)",
@@ -510,7 +510,12 @@
     "Rich mode feeds plugin code unsaved buffer content where the preview processes saved files — same project, same trust decision, slightly wider input set",
     "Deleting the analyzer removes the ratchet that would catch a NEW mutation-capable preview action before P4 — accepted explicitly by the product-owner ruling; P4's review re-verifies the matrix once, at deletion time"
   ],
-  "gate": { "commands": ["<filled at gate>"], "passed": false },
+  "gate": {
+    "commands": [
+      "install / typecheck (4 workspaces) / cli build (render purity) + 1913:60 / editor 3038 unit + 109 browser (8 suites) + browser-purity (35 files) / desktop 6017:1 + check (896 files, 0 errors) + lint + build (render purity, 145 files) + electron:build (subpaths external, node --check on out/main+preload) / architecture (route ratchet 104==104) / generated-files (1276 tracked) / vendored (26 hashes, 33 files) / knip — all 16 exit 0"
+    ],
+    "passed": true
+  },
   "acceptanceUpdates": [
     "AC-07 now evidenced through the DESKTOP's own wiring (not just createEditorProjection in isolation)",
     "AC-23 evidenced for the rich-editor plugin boundary (host-only execution, opened-project trust, validated IPC)",
