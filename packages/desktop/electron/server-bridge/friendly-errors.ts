@@ -109,7 +109,18 @@ export async function handleRemoteErrors<T>(
 // google-auth.ts/google-drive.ts throw (not-configured, reconnect,
 // sign-in declined/canceled/timed out/state-mismatch, HTTP failures) since
 // each one names "Google" as a whole word — the boundary keeps it from
-// matching unrelated identifiers like "googleapis.com" or "GoogleDriveProvider".
+// matching unrelated RUN-TOGETHER identifiers like "googleapis.com" or
+// "GoogleDriveProvider" (no non-word character sits between "google" and the
+// text that follows, so \b never fires there). It is, however, wider than
+// "hand-written author-facing copy mentioning Google": `.` also counts as a
+// word boundary, so the pattern equally matches "google" wherever it appears
+// as a DOTTED segment — e.g. inside "accounts.google.com" or
+// "drive.google.com", which several of those same messages embed verbatim
+// (an OAuth error can echo the request URL). That's harmless by construction:
+// those URLs only ever carry the public client_id and PKCE challenge, never a
+// token or secret (see the redaction invariant above) — but it's a wider
+// match than "names Google as prose" implies, so don't read this as
+// "only matches hand-authored sentences."
 const PUBLISH_FRIENDLY_ERROR =
   /api key|access token|didn't accept|deployment token|connect (itch|azure|shopify)|butler|swa cli|myshopify|shopify|itch\.io|kdp|drivethrurpg|build (the|it)|Gutterpress build|manifest|publish\.[a-z-]+|paste|couldn't reach|couldn't download|try again|not available in this version|needs no api key|book\.html|exit \d+|failed \(exit|\bgoogle\b/i;
 

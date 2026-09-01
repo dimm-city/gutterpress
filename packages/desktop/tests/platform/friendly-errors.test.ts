@@ -215,3 +215,41 @@ test("handlePublishErrors replaces an unexpected internal failure with a terse p
     spy.mockRestore();
   }
 });
+
+// #221 C7 — the `\bgoogle\b` allowlist alternation's comment claimed it only
+// matches hand-written author-facing prose naming "Google"; it's actually
+// wider (harmlessly) because "." counts as a word boundary too. These pin
+// the ACTUAL matching behavior the corrected comment now describes, so a
+// future edit to the regex can't silently narrow or widen it unnoticed.
+test("the google allowlist also matches a dotted Google domain embedded in a message (harmless — no secret ever appears there)", async () => {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  // Deliberately avoids every OTHER alternative in the allowlist (no "try
+  // again", "paste", etc.) so only the `\bgoogle\b` boundary-on-dots behavior
+  // this test targets can be what lets the message through verbatim.
+  const msg = "Unexpected condition reported near the accounts.google.com endpoint.";
+  try {
+    await expect(
+      handlePublishErrors("publish:connectGoogleStart", async () => {
+        throw new Error(msg);
+      }),
+    ).rejects.toThrow(msg);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("the google allowlist does NOT match run-together identifiers with no boundary around 'google'", async () => {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    // Neither "googleapis.com" nor "GoogleDriveProvider" has a non-word
+    // character directly after/around "google" — \b never fires, so this
+    // stays an unexpected-internal-failure message like any other.
+    await expect(
+      handlePublishErrors("publish:test", async () => {
+        throw new Error("GoogleDriveProvider failed to reach googleapis.com");
+      }),
+    ).rejects.toThrow("Publishing could not be completed. See the app log for details.");
+  } finally {
+    spy.mockRestore();
+  }
+});
