@@ -445,12 +445,26 @@ importer through the bare `$lib/platform` specifier.
 
 ## 8. Net diffstat (this run)
 
+Reproduced against the recorded SHA range (review round 1 — D15 requires
+reproducible evidence, not a working-tree snapshot):
+
 ```
-production (packages/desktop/src): 21 files, +583 / -531 insertions/deletions (net +52)
-tests      (packages/desktop/tests): 11 files, +487 / -207 insertions/deletions (net +280)
+$ git diff --numstat 951623d7..f45d7961 -- packages/desktop/src
+→ 21 files, +580 / -531  (net +49)
+
+$ git diff --numstat 951623d7..f45d7961 -- packages/desktop/tests
+→ 11 files, +487 / -207  (net +280)
 ```
 
-Production is near-flat (+52 lines) despite deleting an entire 253-line
+The original hand-off recorded production as `+583 / -531 (net +52)` from
+`git diff --cached --numstat` inside the lane's own working tree at the
+time; the committed range reproduces 3 fewer insertions (`+580`). The file
+count and every other figure (tests included) match exactly. This does not
+change any conclusion drawn from the diffstat (production is still
+near-flat, tests are still the expected net-positive kind) — recorded here
+so the range-based figure is the one future runs can reproduce, per D15.
+
+Production is near-flat (+49 lines) despite deleting an entire 253-line
 class (`electron-adapter.ts`) and ~180 lines of `HostServices`/`Platform`
 interface text from `contract.ts`, because the 5 new capability modules
 carry substantial doc-comment explanation of *why* each is shaped the way it
