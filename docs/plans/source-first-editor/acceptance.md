@@ -477,3 +477,50 @@
   "checkpointSummary": "Parity conditions 1-4 are green on derived, sabotage-proven evidence; condition 5 is the product owner's. The run's real find was a capability loss P4 would have shipped: no command in either editing surface could change an EXISTING image or link, and the only in-place rewriter lived in the preview context menu P4 deletes. The review then found the gate itself defeatable in six ordinary code shapes and a data-loss bug that rewrote a real book's code sample — both fixed. P4 is unblocked on technical grounds, pending sign-off."
 }
 ```
+
+### SFE-P3e — Plugins in the rich editor for real, and machinery removal
+
+```json
+{
+  "status": "complete",
+  "baseSha": "cf66572c",
+  "headSha": "<set at gate>",
+  "history": [
+    "fba2bead feat(p3): plugin-aware rich-editor projection; delete parity analyzer and scanners (lanes A/B)",
+    "7a5e9f8e feat(p3): gutterpress/plugins subpath; the desktop host uses the one real loader (lane C)",
+    "b6aeb814 / 8ec005d6 / 317bb490 fix(p3): address review findings (rounds 1-3)"
+  ],
+  "confirmedFindings": [
+    "R1: the headline feature was inert in the app — richDocHost published synchronously while the host projection arrived an IPC round trip later, so the mount always took mountEditor and P3ab's marker chips regressed with it",
+    "R1: the parser-evidence gate was block-scoped, not caret-scoped — a code-span occurrence became editable when the same destination appeared for real in the block",
+    "R1: new over-refusal — images/links inside GFM table cells (map-less inline tokens) could no longer be edited",
+    "R1: the de-duplicated plugin loader was re-duplicated at BUILD level — electron-vite externalized only bare 'gutterpress', bundling render+plugins subpaths into out/main/main.js (827 KB -> 197 KB after the one-line RegExp fix)",
+    "R1: fixture manifest and support docs still described the deleted duplicate loader",
+    "R1: host-projection failure degraded silently and D13's 2 MiB ceiling had no user-visible effect",
+    "R2: occurrence numbers were counted in two coordinate spaces (document vs. the block's own state.src) — the false accept survived round 1 and repeated tokens across blocks falsely refused",
+    "R2: the .code-tagged thrown Error never crossed Electron's IPC serialization — replaced by a RESOLVED discriminated outcome threaded through the whole seam",
+    "R2: round 1's deferred publication re-opened the committed-preview-edit divergence (cross-chapter CommitEngine race) — closed via richDocHostPending awaited in selectEditorFile",
+    "R3: the same occurrence inversion reproduced inside a GFM table row — fixed with one InlineScope per inline token, both occurrence numbers counted in the same string by construction"
+  ],
+  "advisories": [
+    "An escaped pipe in a table row refuses every image/link in that row (fail-closed, broader than necessary)",
+    "Per-cell scope recovery is positional string matching, not a parser range",
+    "Images inside a raw html_block now refuse (fail-closed behavior change vs. baseline)",
+    "Full-document reparse (~80-105 ms at 250 KiB) per toolbar invocation on the UI thread — fine for clicks, not for any future per-keystroke reuse",
+    "Rich mode feeds plugin code unsaved buffer content where the preview processes saved files — same project, same trust decision, slightly wider input set",
+    "Deleting the analyzer removes the ratchet that would catch a NEW mutation-capable preview action before P4 — accepted explicitly by the product-owner ruling; P4's review re-verifies the matrix once, at deletion time"
+  ],
+  "gate": { "commands": ["<filled at gate>"], "passed": false },
+  "acceptanceUpdates": [
+    "AC-07 now evidenced through the DESKTOP's own wiring (not just createEditorProjection in isolation)",
+    "AC-23 evidenced for the rich-editor plugin boundary (host-only execution, opened-project trust, validated IPC)",
+    "AC-20 advanced: net -2,300 lines of machinery removed this run against a one-module feature addition"
+  ],
+  "deletionLedgerUpdates": [
+    "tools/check-parity.mjs + check-parity.test.mjs + root script + 2 CI steps deleted (-2,142 LOC)",
+    "caret-token literal-region scanners replaced by parser evidence",
+    "desktop duplicate plugin loader deleted (-129 LOC in editor-projection.ts) in favor of the D11 gutterpress/plugins subpath"
+  ],
+  "checkpointSummary": "The 90% feature is real: a plugin-using project's chapters show plugin regions in the desktop's rich mode, built host-side by the one loader the preview uses, trusted by the same opened-project decision, degrading per-plugin with visible diagnostics. Getting there took three review rounds because the first wiring was inert in the actual app and the parser-evidence rewrite had to converge from block-scoped to caret-and-cell-scoped occurrence identity. Net complexity is strongly negative per the product-owner ruling."
+}
+```

@@ -26,8 +26,10 @@ source at the commit that closed SFE-P3d-parity (`b9ca42a9`, "fix(p3):
 address review findings (round 1)"). Each row's **Replacement command(s)**
 are exercised by the **Test evidence** tests named in that row. Those tests
 are ordinary behavioral tests, not part of this document's own machinery:
-they REMAIN in the suite and keep running in CI via the ordinary desktop
-test job ("Desktop Test" / `bun run test`, `packages/desktop`) — they are
+they REMAIN in the suite and keep running in CI via the ordinary workspace
+test jobs — `bun run test` in `packages/desktop` for every citation except
+`tests/standard/wrap-toggles.test.ts`, which runs in `packages/editor`'s own
+test job — they are
 what actually proves each replacement works. This table is the map from the
 deleted preview surface to that evidence, not a second proof of it.
 
