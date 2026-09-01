@@ -19,7 +19,7 @@ notes), and opens the platform's upload page with a step-by-step checklist.
 
 ## Setting Up a Provider
 
-1. Open **Project settings → Publish** in the desktop app.
+1. Press **Publish** in the toolbar of the desktop app.
 2. Fill in the provider's settings (for itch.io that's your project as
    `user/game`; for Shopify your store domain). These are saved in
    `manifest.yaml` — safe to commit, nothing secret.
@@ -40,15 +40,17 @@ publish:
 Google Drive works a little differently from the other providers, because
 there's no API key to create or paste.
 
-1. Open **Project settings → Publish** and click **Connect Google Drive**.
-   Your browser opens to Google's own sign-in page — choose your account and
-   click **Allow**. That's it: nothing to copy, nothing to type back into
+1. Press **Publish** in the toolbar and click **Connect Google Drive**. Your
+   browser opens to Google's own sign-in page — choose your account and click
+   **Allow**. That's it: nothing to copy, nothing to type back into
    Gutterpress.
 2. Once connected, pick a **Folder** from the dropdown, or choose **New
    folder…** and give it a name. Gutterpress only ever sees folders it
    created itself — it can't browse the rest of your Drive.
-3. Press **Publish**. Your PDF (or the zipped website export) lands in that
-   folder.
+3. Choose **what to publish** — your built PDF, or a zipped export of the
+   website version — using the wizard's radio buttons. (From the CLI, set
+   `publish.gdrive.format` to `pdf` or `html` in `manifest.yaml` instead.)
+4. Press **Publish**. The file you chose lands in that folder.
 
 Publishing again **updates the same file** instead of creating a duplicate,
 so a link you already emailed to an editor or sent to a printer keeps
@@ -69,6 +71,7 @@ Drive's own **Share** button.
 publish:
   gdrive:
     folder: My Books
+    format: pdf   # or html, for the zipped website export
 ```
 
 ```bash
