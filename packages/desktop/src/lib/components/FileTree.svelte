@@ -5,7 +5,7 @@
    * Browsable project tree: lists folders AND editable files, and lets the
    * author expand any subfolder to reach files nested anywhere in the project
    * (e.g. `themes/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
-   * children are loaded via `api.fs.listDir` (server route in Electron main).
+   * children are loaded via `$lib/files/files-capability`'s `listDir` (typed IPC).
    * There is no `isDesktop()` gate on the root load; the parent only mounts
    * this when a folder project is open (`sourceMode === "folder"`).
    *
@@ -62,7 +62,13 @@
    * explicitly out of scope regardless.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import {
+    listDir,
+    createFile,
+    createFolder,
+    renamePath,
+    deletePath,
+  } from "$lib/files/files-capability";
   import { isDesktop } from "$lib/platform";
   import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
   import Icon from "$lib/components/Icon.svelte";
@@ -145,7 +151,7 @@
     loading = true;
     error = null;
     try {
-      const entries = await api.fs.listDir(dir);
+      const entries = await listDir(dir);
       if (seq !== rootLoadSeq) return;
       rootEntries = visibleEntries(entries);
     } catch (e) {
@@ -189,7 +195,7 @@
     delete nextErrors[dir];
     errorByPath = nextErrors;
     try {
-      const entries = await api.fs.listDir(dir);
+      const entries = await listDir(dir);
       childrenByPath = { ...childrenByPath, [dir]: visibleEntries(entries) };
     } catch (e) {
       errorByPath = {
@@ -281,12 +287,12 @@
     try {
       if (kind === "file") {
         const fileName = EDITABLE_EXT.test(name) ? name : `${name}.md`;
-        const result = await api.fs.createFile(dir, fileName, chapterTemplate(fileName));
+        const result = await createFile(dir, fileName, chapterTemplate(fileName));
         creating = null;
         await afterMutateDir(dir);
         onSelectFile?.(result.path);
       } else {
-        await api.fs.createFolder(dir, name);
+        await createFolder(dir, name);
         creating = null;
         await afterMutateDir(dir);
       }
@@ -333,7 +339,7 @@
     const { path: oldPath, parentDir, isDir } = renaming;
     try {
       if ((await onBeforeRename?.(oldPath)) === false) return;
-      const result = await api.fs.renamePath(oldPath, newName);
+      const result = await renamePath(oldPath, newName);
       renaming = null;
       if (isDir) {
         const wasExpanded = expanded.has(oldPath);
@@ -375,7 +381,7 @@
     deleteError = null;
     try {
       if ((await onBeforeDelete?.(entry.path)) === false) return;
-      await api.fs.deletePath(entry.path, projectDir);
+      await deletePath(entry.path, projectDir);
       if (entry.isDir) {
         childrenByPath = invalidateSubtree(childrenByPath, entry.path);
         expanded = collapseDir(expanded, entry.path);

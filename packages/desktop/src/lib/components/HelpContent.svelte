@@ -10,6 +10,7 @@
    */
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
+  import { openExternal } from "$lib/files/files-capability";
   import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -81,7 +82,7 @@
   }
 
   function openDocs() {
-    if (isDesktop() && data) api.shell.openExternal(data.docsUrl).catch(() => {});
+    if (isDesktop() && data) openExternal(data.docsUrl).catch(() => {});
   }
 
   const isMac = $derived(data?.platform?.os === 'darwin');

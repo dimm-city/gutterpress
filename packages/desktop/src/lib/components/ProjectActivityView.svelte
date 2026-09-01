@@ -15,6 +15,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api, type SnapshotEntry } from "$lib/api";
+  import { readLog } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { friendlyHostError } from "$lib/errors";
   import {
     versionLabel,
@@ -124,7 +125,7 @@
     if (!logFilePath) return;
     logLoading = true;
     try {
-      logContent = (await api.log.read(logFilePath)) ?? "";
+      logContent = (await readLog(logFilePath)) ?? "";
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {

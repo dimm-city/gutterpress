@@ -30,11 +30,12 @@
    * providers needs the open project's manifest — so that form asks for an
    * open project when none is.
    *
-   * PWA-clean (§8): api.* routes + the remote capability module only.
+   * PWA-clean (§8): api.* routes + the remote and files capability modules only.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api, type PublishProviderStaticInfo } from "$lib/api";
+  import { openExternal } from "$lib/files/files-capability";
   import { isDesktop } from "$lib/platform";
   import { connectGitHubCancel, connectGitHubStart, connectGitHubWait } from "$lib/remote/remote-capability";
   import { friendlyHostError } from "$lib/errors";
@@ -166,7 +167,7 @@
     try {
       const info = await connectGitHubStart();
       ghCode = info;
-      api.shell.openExternal(info.verificationUri).catch(() => {});
+      openExternal(info.verificationUri).catch(() => {});
       await connectGitHubWait();
       ghCode = null;
       await load();
@@ -379,7 +380,7 @@
         <p class="hint muted">Open a project to add a publishing key — the key is checked with the platform first, and some checks read the project's settings. Saved keys work across all projects.</p>
       {/if}
       {#if selectedProvider?.tokenUrl}
-        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && api.shell.openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
+        <p class="hint">Create a key at: <button class="inline-link" onclick={() => selectedProvider?.tokenUrl && openExternal(selectedProvider.tokenUrl).catch(() => {})}>{selectedProvider.tokenUrl}</button></p>
       {/if}
       {#if pubNotice}<p class="notice">{pubNotice}</p>{/if}
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
@@ -421,7 +422,7 @@
       {#if tokenUrl}
         <p class="hint">
           Create a token on your server:
-          <button class="inline-link" onclick={() => tokenUrl && api.shell.openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
+          <button class="inline-link" onclick={() => tokenUrl && openExternal(tokenUrl).catch(() => {})}>open the token settings page</button>
         </p>
       {/if}
       {#if serverNotice}<p class="notice">{serverNotice}</p>{/if}

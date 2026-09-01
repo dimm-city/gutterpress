@@ -257,10 +257,47 @@ describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
     expect(src).not.toMatch(/unwatchFolder:\s*\(/);
     expect(src).not.toMatch(/flushDone:\s*\(/);
     expect(src).not.toMatch(/^\s*status:\s*\(\)\s*=>/m);
-    // The routes/wrappers they backed are gone; api.fs.watchFolder's sibling
-    // (statFile) must still be present — proves this isn't a wholesale
-    // deletion of the fs namespace.
-    expect(src).toMatch(/statFile:\s*\(/);
+    // SFE-P5c1: fs/dialog/shell/log/app moved wholesale to typed IPC —
+    // `statFile` (fs's own sibling this test used to pin as "still there,
+    // proving the earlier cleanup wasn't a wholesale deletion") is gone from
+    // api.ts NOW, on purpose, along with the rest of those five namespaces.
+    // See migrated-ipc-routes.test.ts's own header for the ARCH review #8
+    // scope this describe block still covers (sync/remote/updater); the
+    // fs/dialog/shell/log/app IPC migration itself is covered by
+    // fs-capability.test.ts / dialog-capability.test.ts /
+    // app-lifecycle-capability.test.ts.
+    expect(src).not.toMatch(/statFile:\s*\(/);
+    expect(src).not.toContain("dialog: {");
+    expect(src).not.toContain("shell: {");
+    expect(src).not.toContain("log: {");
+    expect(src).not.toMatch(/^\s*app:\s*\{/m);
+  });
+
+  test("preload.ts exposes the fs/dialog/shell/log/app IPC channels api.ts no longer carries", async () => {
+    const src = await readFile(path.resolve(__dirname, "../../electron/preload.ts"), "utf-8");
+    for (const channel of [
+      '"fs:readFile"',
+      '"fs:writeFile"',
+      '"fs:statFile"',
+      '"fs:listDir"',
+      '"fs:createFile"',
+      '"fs:createFolder"',
+      '"fs:rename"',
+      '"fs:delete"',
+      '"dialog:openDirectory"',
+      '"dialog:savePdf"',
+      '"dialog:pickImageFile"',
+      '"dialog:pickImageFiles"',
+      '"shell:openExternal"',
+      '"shell:showInFolder"',
+      '"log:read"',
+      '"log:list"',
+      '"app:getDesktopPrefs"',
+      '"app:setSettings"',
+      '"app:appImageIntegrationStatus"',
+    ]) {
+      expect(src).toContain(channel);
+    }
   });
 
   test("preload.ts no longer registers the migrated IPC channels", async () => {

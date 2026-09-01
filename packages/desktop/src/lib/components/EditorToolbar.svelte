@@ -23,6 +23,7 @@
   import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { pickImageFile } from "$lib/files/files-capability";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
   import {
     IMAGE_POSITION_OPTIONS,
@@ -260,7 +261,7 @@
     imageError = "";
     imageBusy = true;
     try {
-      const picked = await api.dialog.pickImageFile();
+      const picked = await pickImageFile();
       if (!picked) return;
       imageSrc = picked;
       imageError = "";

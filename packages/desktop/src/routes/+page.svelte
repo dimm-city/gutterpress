@@ -108,8 +108,28 @@
     onFlushBeforeClose,
     onOpenMarkdownFile,
     watchFolder,
+    acknowledgeFlushFailure as acknowledgeFlushFailureCapability,
+    adoptFolder as adoptFolderCapability,
+    classifyProject as classifyProjectCapability,
+    getDesktopPrefs as getDesktopPrefsCapability,
+    getDesktopProjectState as getDesktopProjectStateCapability,
+    recordFlushFailure as recordFlushFailureCapability,
+    setDesktopPrefs as setDesktopPrefsCapability,
+    setDesktopProjectState as setDesktopProjectStateCapability,
+    setDirtyState as setDirtyStateCapability,
   } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { onSyncStatus } from "$lib/remote/remote-capability";
+  import {
+    readFile as readFileCapability,
+    writeFile as writeFileCapability,
+    statFile as statFileCapability,
+    listDir as listDirCapability,
+    openDirectory as openDirectoryCapability,
+    savePdf as savePdfCapability,
+    pickPdfFile as pickPdfFileCapability,
+    openExternal as openExternalCapability,
+    showInFolder as showInFolderCapability,
+  } from "$lib/files/files-capability";
   import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -215,7 +235,7 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
+    chooseSavePath: (defaultName) => savePdfCapability(defaultName),
     onBuildProgress,
     buildPdf: (input, outPath, opts) =>
       build({
@@ -255,7 +275,7 @@
       // build() download URLs), so the SPA owns the lifecycle.
       setTimeout(() => URL.revokeObjectURL(url), 0);
     },
-    showInFolder: (path) => api.shell.showInFolder(path),
+    showInFolder: (path) => showInFolderCapability(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
     // `show` rather than `error`: the over-wide "Build anyway" offer (#163)
     // needs a duration and an action button, which `error()` does not take.
@@ -270,8 +290,9 @@
   // used to live in ProjectConfigPanel's "crammed at the bottom" Publish
   // section now drives the front-and-centre PublishWizard opened from the
   // toolbar. Constructed here so the wizard and the toolbar button share one
-  // instance. Host coupling injected (§8) — api.publish.* / api.dialog.* /
-  // api.shell.*; toast/lifecycle are safe forward-referenced closures.
+  // instance. Host coupling injected (§8) — api.publish.* /
+  // $lib/files/files-capability's dialog/shell functions; toast/lifecycle
+  // are safe forward-referenced closures.
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
@@ -280,9 +301,9 @@
     connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
-    pickPdfFile: () => api.dialog.pickPdfFile(),
-    openDirectory: () => api.dialog.openDirectory(),
-    openExternal: (url) => api.shell.openExternal(url),
+    pickPdfFile: () => pickPdfFileCapability(),
+    openDirectory: () => openDirectoryCapability(),
+    openExternal: (url) => openExternalCapability(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
     onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
     onPublished: (guided) =>
@@ -333,7 +354,7 @@
     savePrefs: (patch) => saveDesktopPrefs(patch),
     savePageDirect: (page) => {
       if (lifecycle.currentDir) {
-        trackPersistence(api.app.setDesktopProjectState(lifecycle.currentDir, { currentPage: page }));
+        trackPersistence(setDesktopProjectStateCapability(lifecycle.currentDir, { currentPage: page }));
       }
     },
   });
@@ -542,8 +563,8 @@
   // lifecycle controller (after currentDir is assigned) — see its
   // refreshSyncDiag dep below.
   const projectSession = new ProjectSessionController({
-    classifyProject: (dir) => api.app.classifyProject(dir),
-    setDesktopPrefs: (prefs) => api.app.setDesktopPrefs(prefs),
+    classifyProject: (dir) => classifyProjectCapability(dir),
+    setDesktopPrefs: (prefs) => setDesktopPrefsCapability(prefs),
   });
 
   // ── Project open/close lifecycle (Phase 5d, UX H5 / ARCH #10) ────────────────
@@ -565,7 +586,7 @@
     desktopRequiredMessage: DESKTOP_APP_REQUIRED,
     startPreviewHost: (input) => startPreview({ input }),
     stopPreviewHost: () => stopPreview(),
-    adoptFolder: (dir) => api.app.adoptFolder({ dir }),
+    adoptFolder: (dir) => adoptFolderCapability({ dir }),
     invalidateDiscoveredProjects: () => invalidateDiscoveredProjects(),
     projectSession,
     clearSyncDiag: () => {
@@ -582,7 +603,7 @@
     // write below uses (`saveDesktopPrefs`/`setDesktopProjectState` are keyed to
     // `lifecycle.currentDir`). Callers used to fetch this themselves for the dir
     // the user PICKED, which silently missed on any retargeted open.
-    getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
+    getDesktopProjectState: (dir) => getDesktopProjectStateCapability(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
     resetBuffer: () => resetEditorBuffer(),
@@ -859,7 +880,7 @@
     }
     let handedOff = false;
     try {
-      const pathStr = await api.dialog.openDirectory().catch(() => null);
+      const pathStr = await openDirectoryCapability().catch(() => null);
       if (!pathStr) return false; // cancelled — stay where we were
       handedOff = true;
       return await openProjectPath(pathStr, label);
@@ -878,12 +899,12 @@
 
   const RELEASE_NOTES_URL = "https://github.com/dimm-city/Gutterpress/releases";
   function openReleaseNotes() {
-    api.shell.openExternal(RELEASE_NOTES_URL).catch(() => {});
+    openExternalCapability(RELEASE_NOTES_URL).catch(() => {});
   }
 
   function setLandingStartupPref(show: boolean) {
     landingShowPref = show;
-    trackPersistence(api.app.setDesktopPrefs({ showLandingAtStartup: show }));
+    trackPersistence(setDesktopPrefsCapability({ showLandingAtStartup: show }));
   }
 
   // ── Crash recovery (#44) ──────────────────────────────────────────────────
@@ -899,7 +920,7 @@
     crashRecoveryEnabled: () => settings.current.editor.crashRecovery,
     listRecovery: (dir) => api.recovery.list(dir),
     clearRecovery: (filePath) => api.recovery.clear(filePath),
-    readRecoveryFile: (path) => api.fs.readFile(path),
+    readRecoveryFile: (path) => readFileCapability(path),
     restoreIntoBuffer: (filePath, content) => restoreRecoveredFile(filePath, content),
     showEditor: () => {
       editorView = "editor";
@@ -979,7 +1000,7 @@
     "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
-    api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
+    openExternalCapability(SETUP_GUIDE_URL).catch(() => {});
   }
 
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
@@ -2035,7 +2056,7 @@
     flush: (target) => flushEditorBuffer(target),
     onActivate: (target) => {
       if (target.filePath) showEditorContent(target.filePath, target.content);
-      if (isDesktop()) trackPersistence(api.app.setDirtyState(target.hasPendingSave));
+      if (isDesktop()) trackPersistence(setDirtyStateCapability(target.hasPendingSave));
     },
     onClear: () => editorRef?.switchFile(null, ""),
     onSelectionError: () => toast?.error("Could not open that file."),
@@ -2098,7 +2119,7 @@
   function createEditorBuffer(): EditorBuffer {
     let instance: EditorBuffer;
     instance = new EditorBuffer({
-      fs: api.fs,
+      fs: { readFile: readFileCapability, writeFile: writeFileCapability, statFile: statFileCapability },
       saveDelayMs: settings.current.editor.autoSaveDelay,
       recoveryEnabled: settings.current.editor.crashRecovery,
       onError: (msg) => {
@@ -2112,7 +2133,7 @@
       },
       onDirty: (pending) => {
         if (editorFiles.isActive(instance) && isDesktop()) {
-          trackPersistence(api.app.setDirtyState(pending));
+          trackPersistence(setDirtyStateCapability(pending));
         }
       },
     });
@@ -2139,7 +2160,7 @@
     } catch {
       reportIgnoredPersistenceFailure();
       if (recordMarker) {
-        void api.app.recordFlushFailure(projectDir).catch(() => {});
+        void recordFlushFailureCapability(projectDir).catch(() => {});
       }
       return false;
     }
@@ -2389,7 +2410,7 @@
   }
 
   async function defaultEditorFile(dir: string, markdownOnly = false): Promise<string | null> {
-    const files = (await api.fs.listDir(dir)).filter((entry) => !entry.isDir);
+    const files = (await listDirCapability(dir)).filter((entry) => !entry.isDir);
     const markdown = files
       .filter((entry) => /\.md$/i.test(entry.name))
       .sort((a, b) => a.name.localeCompare(b.name))[0];
@@ -2451,7 +2472,7 @@
   function persistLeftPanelPrefs() {
     if (!leftPanelPrefsLoaded) return;
     trackPersistence(
-      api.app.setDesktopPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>),
+      setDesktopPrefsCapability({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>),
     );
   }
 
@@ -2640,13 +2661,13 @@
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
     isSomethingOpen: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy),
-    getDesktopPrefs: () => api.app.getDesktopPrefs(),
+    getDesktopPrefs: () => getDesktopPrefsCapability(),
     showLastFlushFailure: (marker) => {
       if (!toast) return false;
       toast.warning(formatLastFlushFailureNotice(marker), 0);
       return true;
     },
-    acknowledgeFlushFailure: (failedAt) => api.app.acknowledgeFlushFailure(failedAt),
+    acknowledgeFlushFailure: (failedAt) => acknowledgeFlushFailureCapability(failedAt),
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
@@ -3166,7 +3187,7 @@
 
   function openInBrowser() {
     if (!lifecycle.currentUrl) return;
-    api.shell.openExternal(lifecycle.currentUrl).catch(() => {});
+    openExternalCapability(lifecycle.currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
@@ -3208,7 +3229,7 @@
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
-    trackPersistence(api.app.setDesktopProjectState(lifecycle.currentDir, patch as Record<string, unknown>));
+    trackPersistence(setDesktopProjectStateCapability(lifecycle.currentDir, patch as Record<string, unknown>));
   }
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────

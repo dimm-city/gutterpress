@@ -9,8 +9,9 @@
    *
    * Host work — listing, thumbnails (generated AND cached host-side so
    * multi-MB originals never reach the renderer), inspection, and file
-   * copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
-   * default seam (CLAUDE.md §8); the app-lifecycle capability's
+   * copies — goes through `api.media.*` server routes and
+   * `$lib/files/files-capability`'s typed IPC, the default seam (CLAUDE.md
+   * §8); the app-lifecycle capability's
    * `onFolderChanged` is used only for the live folder-changed push stream,
    * one of the seam's narrower classes. Renderer-side thumbnail state is
    * bounded (THUMB_LIMIT) so a huge project can't balloon memory.
@@ -19,6 +20,7 @@
   import { isDesktop } from "$lib/platform";
   import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { api } from "$lib/api";
+  import { pickImageFiles, showInFolder } from "$lib/files/files-capability";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
     buildPrintWarnings,
@@ -190,7 +192,7 @@
     importBusy = true;
     notice = null;
     try {
-      const picked = await api.dialog.pickImageFiles();
+      const picked = await pickImageFiles();
       if (picked.length === 0) return;
       // Destination policy + path math live in the ONE host-side import
       // route (UX review M10) — same one the editor toolbar's Insert Image
@@ -284,7 +286,7 @@
             Open a markdown file in the editor to insert images.
           </p>
         {/if}
-        <button class="ghost-btn" onclick={() => api.shell.showInFolder(sel.path).catch(() => {})}>
+        <button class="ghost-btn" onclick={() => showInFolder(sel.path).catch(() => {})}>
           Show in folder
         </button>
       </div>

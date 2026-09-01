@@ -301,7 +301,7 @@ export type RemoteGuidanceId =
 export interface LogFileEntry {
   /** File name (e.g. "my-book.log"). */
   name: string;
-  /** Absolute path — feed to `api.log.read`. */
+  /** Absolute path — feed to `$lib/app-lifecycle/app-lifecycle-capability`'s `readLog`. */
   path: string;
   /** File size in bytes. */
   sizeBytes: number;

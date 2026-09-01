@@ -15,7 +15,7 @@ against them.
 
 | Metric | Baseline | Current | Delta |
 |---|---:|---:|---:|
-| Desktop HTTP routes (`+server.ts`) | 104 | — | — |
+| Desktop HTTP routes (`+server.ts`) | 104 | 69 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, `check:architecture`'s route ratchet re-baselined 104→69; remaining groups migrate in P5c2–P5c4) | −35 |
 | IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
 | `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
@@ -803,3 +803,237 @@ error was `adapter.test.ts`'s now-broken import, resolved by its deletion
 function that fails SYNCHRONOUSLY, matching the deleted `getPlatform()`'s
 own synchronous-throw behavior — a test-authoring mistake in this lane's own
 new file, corrected before hand-off, not a production defect).
+
+### SFE-P5c1 — 2026-09-01 — migrate `fs`/`dialog`/`shell`/`log`/`app` to typed IPC
+
+Lane A (implementation). Uncommitted at hand-off — the integrator commits
+after review, per the run's protocol. Base SHA is `f45d7961` (SFE-P5b's
+committed head, per that section above).
+
+**What was deleted:**
+
+- 35 `+server.ts` routes (1,119 lines) under `src/routes/api/{fs,dialog,
+  shell,log,app}/**`: `fs` (9 routes — `read-file`/`write-file`/`stat-file`/
+  `list-dir`/`list-project-files`/`create-file`/`create-folder`/`rename`/
+  `delete`), `dialog` (5 — `open-directory`/`save-pdf`/`pick-image-file`/
+  `pick-pdf-file`/`pick-image-files`), `shell` (2 — `open-external`/
+  `show-in-folder`), `log` (2 — `read`/`list`), `app` (16 —
+  `gutterpress-prefs` GET+POST/`gutterpress-project-state/{get,set}`/
+  `settings` GET+POST/`native-theme`/`recent-folders`/`favorites` GET+
+  `favorites/toggle`/`recent/remove`/`discover-projects`/`classify-project`/
+  `create-project`/`adopt-folder`/`dirty-state`/`flush-failure`/
+  `appimage-integration` GET+POST). Route count 104 → 69 (`tools/
+  architecture-baseline.json`'s `desktopHttpRoutes` re-baselined in the
+  same commit, per the ratchet's WARN-on-lower contract).
+- `fs/copy-file` (65 lines) was NOT ported to IPC and is a straight
+  deletion, not a migration: search proof (`grep -rn "\.copyFile(\|api\.fs\."
+  packages/desktop/src`, cross-checked against `api.ts`'s own pre-existing
+  comment) found zero `api.ts` wrapper ever existed for it — the SPA's
+  insert-image/import flows always went through `media:importImage`
+  instead — and the route-level tests that exercised it
+  (`fs-routes-scoping.test.ts`'s 3 copy-file cases,
+  `picked-files-capability.test.ts`'s 3 copy-file cases) tested the route's
+  own guard mechanism in isolation, not a real caller. The underlying
+  guard mechanism (`requireWithinProjectRoot`/the picked-files one-time
+  capability) is unaffected — it is exercised by every migrated `fs:*`
+  operation and by the still-HTTP `media:importImage` route.
+- `src/lib/api.ts`'s `fs`/`dialog`/`shell`/`log`/`app` namespaces (net
+  −176 lines: +18/−194) and their now-orphaned local types (`DirEntry`,
+  `ProjectFileEntry` — moved to their new owning module) and re-exports
+  (`FileWriteResult`/`FileStat`/`DesktopPrefs`/`LastFlushFailure`/
+  `ProjectState`/`CreateProjectResult` from `contract.ts`;
+  `AppImageIntegrationStatus`/`InstallResult`/`RemoveResult`/
+  `DiscoveredProject`/`ProjectClassification`/`LogFileEntry` from
+  `dtos.ts` — `ProjectClassification` stays re-exported: `vcs.
+  enableVersionHistory`, a surviving namespace, also returns it).
+- `electron/types.d.ts`'s `Window.electron` block was DELETED then
+  RESTORED in the same turn — see "Correction" below; net change to that
+  file is additive (the five new namespaces' shapes), not a deletion.
+
+**What was added:**
+
+- `electron/api/{validation,fs,dialog,shell,log,app}.ts` (1,025 lines) —
+  the main-process IPC handler logic, ported from the deleted routes.
+  `validation.ts` re-implements `requireAbsolute`/`requireWithinProjectRoot`/
+  `requireProjectDir`/`requireContainedOrPicked`/`requireSegment` as plain
+  `Error`-throwing functions (IPC has no HTTP status code) that call the
+  SAME unchanged main-process primitives the deleted route-side
+  `_lib/fs-guard.ts` called (`electron/server-bridge/fs-guard.ts`'s
+  `isWithinAnyRootCanonical`/`getFsGuardHooks`, `picked-files.ts`'s
+  `getPickedFilesHooks`) — the security-load-bearing logic is REUSED
+  verbatim, not re-derived; only the SvelteKit-specific outer shim (HTTP
+  status + JSON envelope) is gone, which is inherent to the transport
+  change (D14/rule 2: no caller ever branched on status — `api.ts`'s
+  `post`/`get` already discarded it and kept only the message text, so
+  preserving the message string is what preserves observable behavior).
+- 39 new `secureHandle` IPC channel registrations in `electron/main.ts`
+  (9 `fs:*` + 5 `dialog:*` + 2 `shell:*` + 2 `log:*` + 21 `app:*`), named
+  `<ns>:<op>` matching the file's established convention (`fs:readFile`,
+  `dialog:openDirectory`, `shell:openExternal`, `log:read`,
+  `app:getDesktopPrefs`, `app:appImageIntegrationStatus`, …) — alongside 4
+  PRE-EXISTING `fs:`/`app:`-prefixed channels this run did not touch
+  (`fs:watchFolder`/`fs:unwatchFolder`/`app:flushDone`/
+  `app:openMarkdownFileReady`, all already IPC before this run), for 43
+  total `secureHandle("fs:` / `"app:` registrations verifiable by grep.
+- `src/lib/files/files-capability.ts` (167 lines, new module — D10's
+  "files/dialog" bounded context had none yet per SFE-P5b) — `fs`/
+  `dialog`/`shell` (grouped per the capability map's own read: "shell |
+  files/dialog (OS shell integration)").
+- `src/lib/app-lifecycle/app-lifecycle-capability.ts` EXTENDED (not a new
+  module) with `log`/`app` — the plan's own P5c1 scoping note ("kept
+  whole here — its settings/prefs/dirty-state/discovery members are one
+  bounded context") plus the capability map's "app lifecycle /
+  diagnostics" read for `log`.
+- 6 new IPC-handler test files (1,105 lines) replacing the deleted
+  route-level tests: `tests/platform/{fs,dialog,shell,log,app}-ipc.test.ts`
+  + `media-routes-scoping.test.ts` (the renamed, trimmed former
+  `fs-routes-scoping.test.ts` — its `media/*` cases stay HTTP, P5c4).
+  Every scenario from the deleted route tests (project-scoping 403s,
+  sibling-prefix rejection, symlink/dangling-symlink escapes, no-project-
+  open fail-closed, create/rename/delete conflict handling, the
+  snapshot-before-delete discipline including a real-git end-to-end case,
+  the picked-files one-time-capability registration/consumption, the
+  http(s)-only scheme gate, the AppImage friendly-error mapping, the M20
+  scan-failure-must-not-resolve-`[]` invariant) is ported, asserting the
+  REJECTED PROMISE'S MESSAGE (IPC has no status code) instead of an HTTP
+  status. `picked-files-capability.test.ts`, `route-scoping.test.ts`, and
+  `save-path-capability.test.ts` are trimmed in place (their `dialog`/
+  `shell` cases moved out; their `media`/`publish`/`vcs`/… cases, outside
+  this subrun's scope, are untouched) rather than deleted outright.
+
+**Correction made during this run (not by instruction — by running the
+verification the run specification requires):** the DETAILS section's own
+suggestion — "the SFE-P5b review flagged `types.d.ts`'s `Window.electron`
+block as a zero-consumer duplicate… if you confirm that, DELETE the
+duplicate" — was acted on, then reverted after `bun run typecheck` actually
+failed. SFE-P5b's search proved zero RUNTIME reads of `window.electron`
+under `electron/`, which is true and unrelated to what broke: `electron/
+main.ts` value-imports `src/lib/persistence-failures.ts`, which type-imports
+`platform/contract.ts`, which type-imports `EditorProjectionArgs`/
+`EditorProjectionOutcome` from `editor-host/editor-projection-capability.ts`
+(SFE-P5b's own deliberate "pure forwarding survives for the DTOs" exception)
+— a module that VALUE-imports `platform/bridge.ts`, whose `window.electron`
+reference needs SOME ambient `Window.electron` type to satisfy `tsc -p
+electron/tsconfig.json` (a program that does not include `src/app.d.ts`, the
+SPA's own ambient declaration). This pre-existing chain — unrelated to this
+run's own new `files-capability.ts` import, which hits the identical
+failure a second way — means the block was never actually a zero-consumer
+duplicate; it is a TYPE-graph dependency SFE-P5b's runtime-only search could
+not see. Restored, with the header rewritten to record why, and extended to
+also carry `fs`/`dialog`/`shell`/`log`/`app`'s shapes so it stays in
+agreement with `contract.ts`'s `ElectronBridge` (verified by hand, same as
+before — both are hand-maintained mirrors of the real preload boundary,
+per `contract.ts`'s own header). Recorded here per D15 ("every deletion
+claim requires search proof, dependency proof, and passing behavior
+tests") — this is the passing-behavior-tests proof for a deletion claim
+that did NOT hold up, caught before hand-off rather than after.
+
+**Net diffstat** (reproduced against the uncommitted working tree; this
+lane's own numbers — the integrator's commit range will reproduce them
+exactly per D15, same caveat SFE-P5b's own section notes about hand-off
+figures vs. committed-range figures):
+
+```
+$ git diff --numstat -- packages/desktop/src packages/desktop/electron   (tracked files only)
+→ +730 / −1484
+
+$ wc -l packages/desktop/electron/api/*.ts packages/desktop/src/lib/files/*.ts   (new, untracked files)
+→ 1,025 lines added
+
+Production total: +1,755 / −1,484  (net +271)
+```
+
+```
+$ git diff --numstat -- packages/desktop/tests   (tracked files only)
+→ +133 / −1509
+
+$ wc -l <6 new *-ipc.test.ts / media-routes-scoping.test.ts files>   (new, untracked files)
+→ 1,105 lines added
+
+Test total: +1,238 / −1,509  (net −271)
+```
+
+Production is net-positive (+271) despite deleting 1,119 route lines +
+194 `api.ts` lines (−1,313 combined) because the new `electron/api/*.ts`
+modules (1,025 lines) carry the SAME validation/hook logic the routes did
+— this is a transport migration, not a feature deletion, so the
+underlying logic's line count does not disappear, it moves — plus IPC
+channel registrations in `main.ts`, preload/bridge/contract type
+additions, and doc-comment explanation of the capability cut (the "why"
+this section itself also records, same rationale SFE-P5b's own near-flat
+production diffstat cites). Rule 9's "net LOC per subrun should trend
+negative (route files + fetch plumbing die; validation moves rather than
+grows)" is met on the ROUTE+CLIENT side specifically (−1,313 route+api.ts
+lines) even though the SUM across the run is positive once the new
+main-process modules land; the success-criterion net-LOC requirement is
+scoped to the combined P4–P6 phases, not each individual P5 subrun (same
+scoping SFE-P5b's section cites), and P5c1's test suite is net-negative
+(−271) — real coverage moved to a leaner set of files (the deleted
+route-level suites carried SvelteKit request/response plumbing per test
+that the IPC-handler suites no longer need).
+
+#### Search proofs (from repo root, against the working tree)
+
+```
+$ find packages/desktop/src/routes/api/{fs,dialog,shell,log,app} -maxdepth 0
+(all five: No such file or directory — route directories deleted)
+
+$ grep -rn "api\.fs\.\|api\.dialog\.\|api\.shell\.\|api\.log\.\|api\.app\." packages/desktop/src --include="*.ts" --include="*.svelte" | grep -v "src/lib/api.ts"
+→ 9 hits, all doc/JSDoc comments describing the migration (buffer-state.
+  svelte.ts, LogsPanel.svelte, contract.ts×2, api.contract-dto.type-test.ts,
+  files-capability.ts×2, settings.svelte.ts, app-lifecycle-capability.ts) —
+  zero real call sites (a permissive multi-line-chain-catching variant,
+  `api\s*\.\s*(fs|dialog|shell|log|app)\b`, was also run and returns the
+  same 9 comment-only hits, which is what caught the two real multi-line
+  chains — `api.app\n    .discoverProjects()` in `projects-discover-
+  cache.ts`, `api.app\n    .getNativeTheme()` in `theme.svelte.ts` — the
+  single-line pattern above would have missed during this run's own sweep)
+
+$ find packages/desktop/src/routes/api -name "+server.ts" | wc -l
+69   (matches the re-baselined tools/architecture-baseline.json exactly)
+```
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && bun run test` | 0 | 5816 pass, 1 skip, 0 fail |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 826 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean |
+| `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity` (142 files scanned, no forbidden host/node markers) clean |
+| `bun run check:architecture` (repo root) | 0 | route ratchet 69 == baseline 69; ProseMirror ban, D4 import direction, future-package rules all PASS |
+| `bun run check:generated-files` (repo root) | 0 | 1,333 tracked files scanned, no generated/output paths tracked |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged |
+| `cd packages/cli && bun run build` | 0 | unaffected by this lane's write ownership |
+| `cd packages/editor && bun run test` | 0 | 3038 pass, 0 fail — unaffected by this lane's write ownership |
+
+Two defects were found and fixed before hand-off, both by actually running
+the gate rather than by inspection:
+
+1. **The `types.d.ts` deletion** — see "Correction made during this run"
+   above.
+2. **Synchronous throw inside capability-module wrapper functions** — every
+   new `$lib/files/files-capability.ts` and `$lib/app-lifecycle/
+   app-lifecycle-capability.ts` function was first written as a plain
+   (non-`async`) `function X(): Promise<T> { return call(bridge().ns.op(
+   ...)); }`. `bridge().ns.op(...)` is evaluated EAGERLY as `call`'s
+   argument; if `bridge()` (or `.ns`) throws before producing a promise —
+   `tests/platform/theme.test.ts`'s mock omits `app` from its
+   `window.electron` stub — the enclosing plain function throws
+   SYNCHRONOUSLY to its caller instead of returning a rejected promise,
+   breaking any `.then().catch()` call site (`theme.svelte.ts`'s
+   `initTheme()`, `settings.svelte.ts`'s `_loadSettings()`). This is the
+   SAME class of defect SFE-P5b's own hand-off note records for
+   `editor-projection-capability.test.ts` (a function that "fails
+   SYNCHRONOUSLY" tripping a `.rejects.toThrow()` assertion) — evidently a
+   recurring pitfall of this `call(bridge()...)` wrapper shape, worth
+   naming explicitly for whichever subrun writes the next capability
+   module: **declare the wrapper `async function`**, not a plain function
+   returning a `Promise`, so a synchronous throw during argument
+   evaluation is captured into the returned promise's rejection instead of
+   escaping to the caller. Fixed by converting all 16 new
+   `files-capability.ts` functions and all 20 new `app-lifecycle-
+   capability.ts` functions from `export function` to `export async
+   function` (mechanical, verified by re-running the full suite — 7
+   failures → 0).

@@ -20,8 +20,10 @@
  * `api.fs.*` with zero added logic. That indirection died with the locator:
  * `EditorBufferFs` below is the narrow, consumer-shaped interface this class
  * actually needs (D4 — "consumer-shaped interfaces live with the consuming
- * domain"), and `+page.svelte` satisfies it by passing `api.fs` directly
- * (which structurally has all three methods, plus more this class ignores).
+ * domain"). SFE-P5c1 migrated `fs.*` from HTTP (`api.fs`) to typed IPC
+ * (`$lib/files/files-capability`); `+page.svelte` now satisfies this
+ * interface by passing that module's `readFile`/`writeFile`/`statFile`
+ * functions directly.
  *
  * ## Delegation to `DocumentSession` (SFE-P1c)
  *
@@ -54,9 +56,9 @@ export type EditorBufferPhase = DocumentSessionPhase;
 
 /**
  * The narrow fs slice {@link EditorBuffer} actually needs (SFE-P5b) —
- * satisfied in production by `$lib/api`'s `api.fs` (which structurally has
- * all three methods, plus more this class ignores) and by a test double
- * (`MemoryPlatform` in `buffer-state.test.ts`) in tests.
+ * satisfied in production by `$lib/files/files-capability`'s
+ * `readFile`/`writeFile`/`statFile` (SFE-P5c1: typed IPC, not `api.fs`) and
+ * by a test double (`MemoryPlatform` in `buffer-state.test.ts`) in tests.
  */
 export interface EditorBufferFs {
   readFile(path: string): Promise<string>;
@@ -73,7 +75,7 @@ export interface ExternalChange {
 }
 
 export interface EditorBufferOptions {
-  /** The fs primitives this buffer reads/writes through (SFE-P5b: `api.fs` in production). */
+  /** The fs primitives this buffer reads/writes through (SFE-P5c1: `$lib/files/files-capability` in production). */
   fs: EditorBufferFs;
   /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview loop). */
   saveDelayMs?: number;

@@ -151,14 +151,14 @@ describe("CrashRecoveryDialog — Compare versions preview (M12 fix 2)", () => {
     expect(source).toContain("No saved version on disk yet.");
   });
 
-  test("fetches the recovered text via api.fs.readFile(item.recoveryPath)", () => {
+  test("fetches the recovered text via files-capability's readFile(item.recoveryPath)", () => {
     const source = readSource();
-    expect(source).toMatch(/api\.fs\.readFile\(\s*item\.recoveryPath\s*\)/);
+    expect(source).toMatch(/readFile\(\s*item\.recoveryPath\s*\)/);
   });
 
-  test("fetches the on-disk text via api.fs.readFile(item.filePath)", () => {
+  test("fetches the on-disk text via files-capability's readFile(item.filePath)", () => {
     const source = readSource();
-    expect(source).toMatch(/api\.fs\.readFile\(\s*item\.filePath\s*\)/);
+    expect(source).toMatch(/readFile\(\s*item\.filePath\s*\)/);
   });
 
   test("panes use a monospace font", () => {

@@ -111,7 +111,7 @@ test("renaming the open file: flush-before-rename, then reload at the new path â
   expect(buffer.phase).toBe("clean");
   expect(platform.getContent("/book/chapter-01.md")).toBe("saved text + unsaved edit");
 
-  // The rename itself (what api.fs.renamePath does on disk).
+  // The rename itself (what files-capability's renamePath does on disk).
   platform.externalRename("/book/chapter-01.md", "/book/intro.md");
 
   // onTreeFileRenamed: reload at the new path.

@@ -62,7 +62,7 @@ test("sync status details open an editor-side activity view, not the modal", () 
   expect(activity).toContain("Technical details");
   expect(activity).toContain("Previous versions");
   expect(activity).toContain("api.vcs.listSnapshotsPage");
-  expect(activity).toContain("api.log.read");
+  expect(activity).toContain("readLog(");
 });
 
 test("taskbar icon path resolves packaged and dev app resources", () => {

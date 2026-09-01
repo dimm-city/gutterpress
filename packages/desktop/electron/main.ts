@@ -48,6 +48,14 @@ import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
+// SFE-P5c1: fs/dialog/shell/log/app moved from SvelteKit HTTP routes to typed
+// IPC. Each module below is the main-process logic the deleted +server.ts
+// handlers used to run — see electron/api/*.ts's own header comments.
+import * as fsApi from "./api/fs";
+import * as dialogApi from "./api/dialog";
+import * as shellApi from "./api/shell";
+import * as logApi from "./api/log";
+import * as appApi from "./api/app";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1049,6 +1057,77 @@ secureHandle("app:flushDone", async (event, flushed: boolean): Promise<void> => 
   if (!active || active.window.webContents !== event.sender) return;
   active.session.resolve(flushed === true);
 });
+
+// ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ──────────────────
+// Replaces src/routes/api/{fs,dialog,shell,log,app}/**/+server.ts. Each
+// handler below runs a plain function from electron/api/*.ts — the same
+// validation and hook calls the deleted routes used, ported verbatim (see
+// each module's own header). A thrown Error's message is exactly the message
+// the HTTP route used to send as its response body; ipcMain.handle surfaces
+// it to ipcRenderer.invoke's rejection the same way for every channel here,
+// so callers keep reading `e.message` (via `friendlyHostError`) as before.
+
+secureHandle("fs:readFile", (_e, filePath: unknown) => fsApi.fsReadFile(filePath));
+secureHandle("fs:writeFile", (_e, filePath: unknown, content: unknown) =>
+  fsApi.fsWriteFile(filePath, content),
+);
+secureHandle("fs:statFile", (_e, filePath: unknown) => fsApi.fsStatFile(filePath));
+secureHandle("fs:listDir", (_e, dirPath: unknown) => fsApi.fsListDir(dirPath));
+secureHandle("fs:listProjectFiles", (_e, projectDir: unknown) => fsApi.fsListProjectFiles(projectDir));
+secureHandle("fs:createFile", (_e, dir: unknown, name: unknown, content: unknown) =>
+  fsApi.fsCreateFile(dir, name, content),
+);
+secureHandle("fs:createFolder", (_e, dir: unknown, name: unknown) => fsApi.fsCreateFolder(dir, name));
+secureHandle("fs:rename", (_e, filePath: unknown, newName: unknown) => fsApi.fsRename(filePath, newName));
+secureHandle("fs:delete", (_e, filePath: unknown, projectDir: unknown) =>
+  fsApi.fsDeletePath(filePath, projectDir),
+);
+
+secureHandle("dialog:openDirectory", () => dialogApi.dialogOpenDirectory());
+secureHandle("dialog:savePdf", (_e, defaultName?: unknown) => dialogApi.dialogSavePdf(defaultName));
+secureHandle("dialog:pickImageFile", () => dialogApi.dialogPickImageFile());
+secureHandle("dialog:pickPdfFile", () => dialogApi.dialogPickPdfFile());
+secureHandle("dialog:pickImageFiles", () => dialogApi.dialogPickImageFiles());
+
+secureHandle("shell:openExternal", (_e, url: unknown) => shellApi.shellOpenExternal(url));
+secureHandle("shell:showInFolder", (_e, filePath: unknown) => shellApi.shellShowInFolder(filePath));
+
+secureHandle("log:read", (_e, logPath: unknown) => logApi.logRead(logPath));
+secureHandle("log:list", () => logApi.logList());
+
+secureHandle("app:getDesktopPrefs", () => appApi.appGetDesktopPrefs());
+secureHandle("app:setDesktopPrefs", (_e, prefs: unknown) =>
+  appApi.appSetDesktopPrefs(prefs as Record<string, unknown>),
+);
+secureHandle("app:getDesktopProjectState", (_e, projectDir: unknown) =>
+  appApi.appGetDesktopProjectState(projectDir),
+);
+secureHandle("app:setDesktopProjectState", (_e, projectDir: unknown, state: unknown) =>
+  appApi.appSetDesktopProjectState(projectDir, state),
+);
+secureHandle("app:getSettings", () => appApi.appGetSettings());
+secureHandle("app:setSettings", (_e, settings: unknown) =>
+  appApi.appSetSettings(settings as Record<string, unknown>),
+);
+secureHandle("app:getNativeTheme", () => appApi.appGetNativeTheme());
+secureHandle("app:getRecentFolders", () => appApi.appGetRecentFolders());
+secureHandle("app:getFavorites", () => appApi.appGetFavorites());
+secureHandle("app:toggleFavorite", (_e, path: unknown, title: unknown) =>
+  appApi.appToggleFavorite(path, title),
+);
+secureHandle("app:removeRecent", (_e, path: unknown) => appApi.appRemoveRecent(path));
+secureHandle("app:discoverProjects", () => appApi.appDiscoverProjects());
+secureHandle("app:classifyProject", (_e, projectDir: unknown) => appApi.appClassifyProject(projectDir));
+secureHandle("app:createProject", (_e, options: unknown) => appApi.appCreateProject(options));
+secureHandle("app:adoptFolder", (_e, options: unknown) => appApi.appAdoptFolder(options));
+secureHandle("app:setDirtyState", (_e, dirty: unknown) => appApi.appSetDirtyState(dirty));
+secureHandle("app:recordFlushFailure", (_e, projectDir: unknown) => appApi.appRecordFlushFailure(projectDir));
+secureHandle("app:acknowledgeFlushFailure", (_e, failedAt: unknown) =>
+  appApi.appAcknowledgeFlushFailure(failedAt),
+);
+secureHandle("app:appImageIntegrationStatus", () => appApi.appImageIntegrationStatus());
+secureHandle("app:appImageIntegrationInstall", () => appApi.appImageIntegrationInstall());
+secureHandle("app:appImageIntegrationRemove", () => appApi.appImageIntegrationRemove());
 
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {

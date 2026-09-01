@@ -22,7 +22,7 @@
 import { bridge } from "$lib/platform/bridge";
 import { useSettings } from "$lib/settings.svelte";
 import type { NativeThemeState } from "$lib/platform/contract";
-import { api } from "$lib/api";
+import { getNativeTheme } from "$lib/app-lifecycle/app-lifecycle-capability";
 
 export type ThemeMode = "light" | "dark" | "system";
 type ResolvedTheme = "light" | "dark";
@@ -79,8 +79,7 @@ export function initTheme(): void {
   // finish loading via the reactive read below.
   state.mode = settings.current.appearance.theme;
 
-  api.app
-    .getNativeTheme()
+  getNativeTheme()
     .then((s: NativeThemeState) => {
       state.osDark = s.shouldUseDarkColors;
       apply();

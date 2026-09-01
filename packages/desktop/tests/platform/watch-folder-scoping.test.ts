@@ -25,38 +25,31 @@
  * longer registers..." test), (a) and (c) below pin the fixed shape of
  * `fsGuardImpl.projectRoots()` and the `fs:watchFolder` handler via
  * source-text assertions rather than importing/executing main.ts. (b)
- * exercises the REAL `fs/read-file` route + the real project-scoping guard
- * (src/routes/api/_lib/fs-guard.ts) with a `projectRoots()` hook shaped like
- * the FIXED main.ts (no watcher-state union) to confirm the route correctly
- * 403s a directory that is merely "being watched" but is not the active
- * workspace project — the exact bypass the review demonstrated.
+ * exercises the REAL `fs:readFile` IPC handler (SFE-P5c1: migrated off the
+ * `fs/read-file` HTTP route to `electron/api/fs.ts`; the underlying guard —
+ * `electron/api/validation.ts`'s `requireWithinProjectRoot`, ported verbatim
+ * from the deleted route-side `_lib/fs-guard.ts` — is unchanged) with a
+ * `projectRoots()` hook shaped like the FIXED main.ts (no watcher-state
+ * union) to confirm the handler correctly rejects a directory that is
+ * merely "being watched" but is not the active workspace project — the
+ * exact bypass the review demonstrated.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { readFile, mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
-import { POST as readFileRoute } from "../../src/routes/api/fs/read-file/+server";
+import { fsReadFile } from "../../electron/api/fs";
 
 const main = await readFile(path.resolve(import.meta.dir, "../../electron/main.ts"), "utf8");
 
-function request(body: unknown): Request {
-  return new Request("http://local.test", {
-    method: "POST",
-    body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
-  });
-}
-
-async function caught(p: Promise<unknown>): Promise<{ status: number; message: unknown }> {
+async function caught(p: Promise<unknown>): Promise<{ message: unknown }> {
   try {
     await p;
     throw new Error("expected the promise to reject, but it resolved");
   } catch (e) {
-    if (!isHttpError(e)) throw e;
-    return { status: e.status, message: (e.body as { message?: unknown }).message };
+    return { message: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -114,21 +107,12 @@ afterEach(async () => {
   await rm(path.dirname(previewDir), { recursive: true, force: true });
 });
 
-test("(b) fs/read-file: a path inside the active workspace is still allowed", async () => {
-  const res = await readFileRoute({
-    request: request({ path: path.join(previewDir, "chapter-01.md") }),
-  } as Parameters<typeof readFileRoute>[0]);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toBe("# In project");
+test("(b) fs:readFile: a path inside the active workspace is still allowed", async () => {
+  expect(await fsReadFile(path.join(previewDir, "chapter-01.md"))).toBe("# In project");
 });
 
-test("(b) fs/read-file: a directory merely watched outside the active workspace is rejected (403)", async () => {
-  const { status, message } = await caught(
-    readFileRoute({
-      request: request({ path: path.join(watchedOnlyDir, "id_rsa") }),
-    } as Parameters<typeof readFileRoute>[0]),
-  );
-  expect(status).toBe(403);
+test("(b) fs:readFile: a directory merely watched outside the active workspace is rejected", async () => {
+  const { message } = await caught(fsReadFile(path.join(watchedOnlyDir, "id_rsa")));
   expect(message).toBe("fs:readFile: path is outside the open project");
 });
 

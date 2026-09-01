@@ -47,6 +47,8 @@ export type {
   UpdaterStatus,
   UpdaterEventPayload,
   AppSettings,
+  DesktopPrefs,
+  ProjectState,
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
@@ -68,3 +70,25 @@ export type {
 
 // VALUE re-export (see file header) — the canonical settings defaults (#29).
 export { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";
+
+// SFE-P5c1: fs/dialog/shell/log/app IPC payload types. `DiscoveredProject`/
+// `ProjectClassification` are DTOs (not IPC-shared-types.ts leaf types — that
+// file is deliberately import-free) but the relative-import-into-src/lib
+// pattern is the same one already used above for shared-types.ts.
+export type { DiscoveredProject, ProjectClassification } from "../src/lib/platform/dtos";
+
+// AppImage status/result shapes are electron-side-owned (electron/
+// appimage-integration.ts is the real implementation main.ts already
+// constructs `AppImageHooks` from) — re-exported here so preload.ts's
+// contextBridge typing doesn't hand-duplicate them.
+export type {
+  AppImageStatus,
+  AppImageInstallResult,
+  AppImageRemoveResult,
+} from "./appimage-integration";
+
+// fs/dialog/log request-response DTOs — small shapes owned by their
+// electron/api/*.ts module (same-directory re-export, same rationale as
+// editor-projection.ts above).
+export type { DirEntry, FileStat, FileWriteResult, ProjectFileEntry } from "./api/fs";
+export type { LogFileEntry } from "./api/log";

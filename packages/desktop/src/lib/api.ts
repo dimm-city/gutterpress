@@ -1,10 +1,19 @@
 /**
  * Typed fetch client for SvelteKit +server.ts API routes.
  *
- * Each method corresponds to a route under src/routes/api/. The platform
- * adapter (getPlatform()) remains in use for push-channel subscriptions and
- * complex orchestration flows (preview, build, vcs, sync, updater) that cannot
- * be expressed as simple request/reply routes.
+ * Each method corresponds to a route under src/routes/api/. Push-channel
+ * subscriptions and complex orchestration flows (preview, build, vcs, sync,
+ * updater) go through the feature-owned capability modules under
+ * `$lib/*-capability.ts`, consumed via the shared `bridge()` accessor
+ * (`$lib/platform/bridge.ts`) — not this client.
+ *
+ * SFE-P5c1: `fs`, `dialog`, `shell`, `log`, and `app` were migrated wholesale
+ * from these HTTP routes to typed IPC — see `$lib/files/files-capability.ts`
+ * (fs/dialog/shell) and `$lib/app-lifecycle/app-lifecycle-capability.ts`
+ * (log/app). Their routes (`src/routes/api/{fs,dialog,shell,log,app}/**`)
+ * are deleted; call `$lib/files/files-capability`'s or
+ * `$lib/app-lifecycle/app-lifecycle-capability`'s exports instead of
+ * `api.fs.*`/`api.dialog.*`/`api.shell.*`/`api.log.*`/`api.app.*`.
  *
  * All methods throw on non-OK responses (with the response body as the message).
  */
@@ -43,8 +52,6 @@ async function get<T>(url: string): Promise<T> {
 // 0004 renderer purity). Re-exported so existing `$lib/api` type consumers
 // keep resolving.
 export type {
-  FileWriteResult,
-  FileStat,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -59,15 +66,9 @@ export type {
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
-  DesktopPrefs,
-  LastFlushFailure,
-  ProjectState,
-  CreateProjectResult,
 } from './platform/contract';
 
 import type {
-  FileWriteResult,
-  FileStat,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -83,18 +84,9 @@ import type {
   UpdaterStatus,
   PublishProviderCard,
   PublishRunResult,
-  DesktopPrefs,
-  LastFlushFailure,
-  ProjectState,
-  CreateProjectResult,
 } from './platform/contract';
 
 export type {
-  AppImageIntegrationStatus,
-  AppImageIntegrationInstallResult,
-  AppImageIntegrationRemoveResult,
-  AppImageIntegrationPaths,
-  DiscoveredProject,
   PluginKind,
   ProjectPluginEntry,
   PluginValidationResult,
@@ -114,11 +106,6 @@ export type {
 } from './platform/dtos';
 
 import type {
-  LogFileEntry,
-  AppImageIntegrationStatus,
-  AppImageIntegrationInstallResult,
-  AppImageIntegrationRemoveResult,
-  DiscoveredProject,
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
@@ -196,16 +183,8 @@ export interface ProjectConfigFields {
   targets?: string[];
 }
 
-export interface DirEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-}
-
-export interface ProjectFileEntry {
-  md: string[];
-  css: string[];
-}
+// DirEntry/ProjectFileEntry moved to `$lib/files/files-capability.ts`
+// (SFE-P5c1) — the fs namespace's own DTOs now that fs moved off HTTP.
 
 /** Typed API client for all server routes under src/routes/api/. */
 export const api = {
@@ -213,164 +192,9 @@ export const api = {
   _post: post,
   _get: get,
 
-  dialog: {
-    /** Open native directory picker. Resolves null when cancelled. */
-    openDirectory: () => post<string | null>('/api/dialog/open-directory'),
-    /** Open native PDF save dialog. Resolves null when cancelled. */
-    savePdf: (defaultName?: string) =>
-      post<string | null>('/api/dialog/save-pdf', defaultName !== undefined ? { defaultName } : {}),
-    /** Open native single image file picker. Resolves null when cancelled. */
-    pickImageFile: () => post<string | null>('/api/dialog/pick-image-file'),
-    /** Native open dialog for the publish artifact (PDF). Null when cancelled. */
-    pickPdfFile: () => post<string | null>('/api/dialog/pick-pdf-file'),
-    /** Open native multi-select image file picker. Resolves [] when cancelled. */
-    pickImageFiles: () => post<string[]>('/api/dialog/pick-image-files'),
-  },
-
-  shell: {
-    /** Open a URL in the system browser. */
-    openExternal: (url: string) => post<{ ok: boolean }>('/api/shell/open-external', { url }),
-    /** Reveal a file in the OS file manager. */
-    showInFolder: (filePath: string) =>
-      post<{ ok: boolean }>('/api/shell/show-in-folder', { filePath }),
-  },
-
-  log: {
-    /** Read an operation log file. Returns null when the file doesn't exist. */
-    read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
-    /** List the app's diagnostic log files (newest first). */
-    list: () => post<LogFileEntry[]>('/api/log/list', {}),
-  },
-
-  fs: {
-    /** Read a file as UTF-8 text. Path must be absolute. */
-    readFile: (filePath: string) => post<string>('/api/fs/read-file', { path: filePath }),
-    /**
-     * Write UTF-8 content to a file. Path must be absolute. Triggers
-     * auto-snapshot/sync debounce if the file is inside the open project.
-     * Returns { mtimeMs } of the post-write stat.
-     */
-    writeFile: (filePath: string, content: string) =>
-      post<FileWriteResult>('/api/fs/write-file', { path: filePath, content }),
-    /** Stat a file. Returns { exists: false } instead of throwing when absent. */
-    statFile: (filePath: string) => post<FileStat>('/api/fs/stat-file', { path: filePath }),
-    /** List the immediate entries of a directory. Path must be absolute. */
-    listDir: (dirPath: string) => post<DirEntry[]>('/api/fs/list-dir', { path: dirPath }),
-    // copyFile wrapper deleted (audit D2) — the SPA's image-insert flow calls
-    // api.media.importImage, not this. The /api/fs/copy-file ROUTE is retained
-    // deliberately: it still guards the shared picker-capability + fs-guard
-    // path and carries that mechanism's security regression tests.
-    // watchFolder/unwatchFolder deleted (ARCH review #8) — the folder watch
-    // stays IPC-only (preload.ts / electron-adapter.ts); these client
-    // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
-    // callers, the IPC path being the live one.
-    /**
-     * List top-level .md and .css files in a project directory. No SPA caller
-     * on the Electron target today (audit D6). The browser implementation this
-     * was staged for was removed with the PWA host (SFE-P5a); the route and
-     * this wrapper are P5c/P5d deletion candidates.
-     */
-    listProjectFiles: (projectDir: string) =>
-      post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
-
-    // ── Tree CRUD (UX review M9) ─────────────────────────────────────────
-    // `dir` + `name` (not a full path) so path-joining stays host-side —
-    // see create-file/+server.ts's header comment.
-    /** Create a new file under `dir`. Fails (409) if a file already exists there. */
-    createFile: (dir: string, name: string, content = '') =>
-      post<{ path: string; mtimeMs: number }>('/api/fs/create-file', { dir, name, content }),
-    /** Create a new folder under `dir`. Fails (409) if something already exists there. */
-    createFolder: (dir: string, name: string) =>
-      post<{ path: string }>('/api/fs/create-folder', { dir, name }),
-    /** Rename a file/folder in place (same parent dir, new name). Fails (409) on a name collision. */
-    renamePath: (path: string, newName: string) =>
-      post<{ path: string }>('/api/fs/rename', { path, newName }),
-    /**
-     * Delete a file or folder (recursive). When the project has version
-     * history the host snapshots the working tree first (best-effort no-op
-     * when there's nothing new to save) so the deleted content stays
-     * recoverable through Version History; the call rejects WITHOUT
-     * deleting if that safety snapshot fails.
-     */
-    deletePath: (path: string, projectDir: string) =>
-      post<{ ok: true }>('/api/fs/delete', { path, projectDir }),
-  },
-
-  app: {
-    /** Get desktop prefs (lastProjectDir, recentFolders, projectStates, etc.). */
-    getDesktopPrefs: () => get<DesktopPrefs>('/api/app/gutterpress-prefs'),
-    /** Shallow-merge patch into desktop prefs. */
-    setDesktopPrefs: (prefs: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/gutterpress-prefs', prefs),
-    /** Get per-project editor/preview state for the given projectDir. */
-    getDesktopProjectState: (projectDir: string) =>
-      post<ProjectState | null>('/api/app/gutterpress-project-state/get', { projectDir }),
-    /** Set per-project editor/preview state for the given projectDir. */
-    setDesktopProjectState: (projectDir: string, state: Record<string, unknown>) =>
-      post<{ ok: boolean }>('/api/app/gutterpress-project-state/set', { projectDir, state }),
-    /** Get app settings (merged with defaults). */
-    getSettings: () => get<Record<string, unknown>>('/api/app/settings'),
-    /** Deep-merge patch into app settings. */
-    setSettings: (settings: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/settings', settings),
-    /** Get the OS native dark/light theme preference. */
-    getNativeTheme: () => get<{ shouldUseDarkColors: boolean }>('/api/app/native-theme'),
-    /** Get the recent folders list (with exists flag). `lastActiveBook` (C2) is
-     *  the absolute folder of the book that was active when a repo-backed
-     *  entry was recorded — absent for standalone (non-git) entries. */
-    getRecentFolders: () =>
-      get<Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>>(
-        '/api/app/recent-folders',
-      ),
-    /** Get the favorites list (with exists flag). */
-    getFavorites: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/favorites'),
-    /** Toggle a folder in the favorites list. */
-    toggleFavorite: (path: string, title: string) =>
-      post<{ favorited: boolean }>('/api/app/favorites/toggle', { path, title }),
-    /** Remove a folder from the recent list. */
-    removeRecent: (path: string) => post<{ ok: boolean }>('/api/app/recent/remove', { path }),
-    /** Discover Gutterpress projects under the configured search roots. */
-    discoverProjects: () => post<DiscoveredProject[]>('/api/app/discover-projects', {}),
-    /** Classify a project folder (source type + capabilities + repo book list). */
-    classifyProject: (projectDir: string) =>
-      post<ProjectClassification>('/api/app/classify-project', { projectDir }),
-    /** Scaffold a new project from a template. */
-    createProject: (opts: Record<string, unknown>) =>
-      post<CreateProjectResult>('/api/app/create-project', opts),
-    /** Adopt an existing folder as a Gutterpress project. */
-    adoptFolder: (opts: Record<string, unknown>) =>
-      post<CreateProjectResult>('/api/app/adopt-folder', opts),
-    /** Push a best-effort dirty-state hint; close still requests a direct flush. */
-    setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
-    /** Persist a failed editor-buffer flush marker in the atomic desktop prefs store. */
-    recordFlushFailure: (projectDir: string | null) =>
-      post<LastFlushFailure>('/api/app/flush-failure', { action: 'record', projectDir }),
-    /** Clear exactly the marker that was surfaced, without racing a newer failure. */
-    acknowledgeFlushFailure: (failedAt: string) =>
-      post<{ acknowledged: boolean }>('/api/app/flush-failure', { action: 'acknowledge', failedAt }),
-
-    /**
-     * Linux AppImage application-menu integration (#119). `status()` is safe to
-     * call on every platform — off-Linux, in dev, or outside an AppImage it
-     * reports `supported: false` with a reason, and the Settings action stays
-     * hidden. Neither action takes a path: the host owns the fixed per-user
-     * destinations.
-     */
-    appImageIntegration: {
-      getStatus: () => get<AppImageIntegrationStatus>('/api/app/appimage-integration'),
-      install: () =>
-        post<AppImageIntegrationInstallResult>('/api/app/appimage-integration', {
-          action: 'install',
-        }),
-      remove: () =>
-        post<AppImageIntegrationRemoveResult>('/api/app/appimage-integration', {
-          action: 'remove',
-        }),
-    },
-    // flushDone deleted (ARCH review #8) — this wrapper (and the
-    // /api/app/flush-done route) had zero callers: the real flush-before-close
-    // reply is fired directly over IPC (preload.ts's onFlushBeforeClose calls
-    // ipcRenderer.invoke("app:flushDone") — it can't route through fetch, since
-    // it must resolve synchronously with the renderer's own close-time flush).
-  },
+  // fs, dialog, shell, log, app deleted (SFE-P5c1) — migrated wholesale to
+  // typed IPC. See `$lib/files/files-capability.ts` (fs/dialog/shell) and
+  // `$lib/app-lifecycle/app-lifecycle-capability.ts` (log/app).
 
   media: {
     /** List all image files under a project directory (recursive, bounded). */

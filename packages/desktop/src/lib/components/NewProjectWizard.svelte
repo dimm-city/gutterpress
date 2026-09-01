@@ -3,6 +3,12 @@
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
+  import {
+    getDesktopPrefs,
+    setDesktopPrefs,
+    createProject,
+  } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { openDirectory } from "$lib/files/files-capability";
   import { dialogBehavior, guardedClose } from "$lib/dialog";
   import { useSettings } from "$lib/settings.svelte";
   import {
@@ -307,7 +313,7 @@
    * leaving Create dead behind a mandatory native folder picker. Priority:
    *
    *   1. the parent folder the writer last chose HERE (persisted in desktop
-   *      prefs under `newProjectParentDir` — `api.app.set/getDesktopPrefs`
+   *      prefs under `newProjectParentDir` — `setDesktopPrefs`/`getDesktopPrefs`
    *      already exist and merge shallowly, so this needs no new route);
    *   2. the folder containing the most recently opened project
    *      (`lastProjectDir`, already returned — and existence-checked — by
@@ -324,7 +330,7 @@
   async function loadDefaultParentDir() {
     if (!isDesktop()) return;
     try {
-      const prefs = await api.app.getDesktopPrefs();
+      const prefs = await getDesktopPrefs();
       // The writer may have already used "Choose folder…" while this was in
       // flight — never clobber a choice they already made.
       if (parentDir) return;
@@ -375,7 +381,7 @@
     }
     error = null;
     try {
-      const pathStr = await api.dialog.openDirectory();
+      const pathStr = await openDirectory();
       if (pathStr) parentDir = pathStr;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -395,7 +401,7 @@
     error = null;
     try {
       const tpl = selectedTemplate;
-      const result = await api.app.createProject({
+      const result = await createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
@@ -417,7 +423,7 @@
       });
       // Remember this location as the default next time (M21) — best-effort,
       // never blocks the create flow.
-      if (parentDir) void api.app.setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
+      if (parentDir) void setDesktopPrefs({ newProjectParentDir: parentDir }).catch(() => {});
       // `close` is guarded on `creating` (M19) — clear it BEFORE calling
       // close() here, or the guard would treat this as still-in-flight and
       // no-op the close. Successful create goes through close() like every

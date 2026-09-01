@@ -14,8 +14,15 @@
  * Types only: fully erased at build, no runtime, no `gutterpress` value
  * import (§8 renderer purity). `import type { api }` binds `api` for use only
  * in type positions (`typeof api.…`) — no value import, no bundle cost.
+ *
+ * SFE-P5c1: the four `app.*` endpoints this file pins (classifyProject,
+ * getDesktopPrefs, getDesktopProjectState, createProject, adoptFolder) moved
+ * off `api.app.*` (deleted, HTTP) to
+ * `$lib/app-lifecycle/app-lifecycle-capability` (typed IPC) — the same
+ * regression guard now pins those functions' return types instead.
  */
 import type { api, ProjectRemoteDiagnosis } from "./api";
+import type * as appLifecycleCapability from "./app-lifecycle/app-lifecycle-capability";
 import type { ProjectSource } from "./platform/shared-types";
 import type { DesktopPrefs, ProjectState, CreateProjectResult } from "./platform/contract";
 import type { ProjectClassification, DoctorDiagnostics } from "./platform/dtos";
@@ -57,28 +64,28 @@ export const _classificationIsProjectSource: [ClassificationT] extends [ProjectS
 // `Record<string, unknown>` / a hand-inlined literal must stay pinned to
 // their real DTO. ─────────────────────────────────────────────────────────
 
-type ClassifyProjectT = Awaited<ReturnType<typeof api.app.classifyProject>>;
+type ClassifyProjectT = Awaited<ReturnType<typeof appLifecycleCapability.classifyProject>>;
 export const _classifyProjectIsProjectClassification: AssertDto<
   ClassifyProjectT,
   ProjectClassification
 > = true;
 
-type GetDesktopPrefsT = Awaited<ReturnType<typeof api.app.getDesktopPrefs>>;
+type GetDesktopPrefsT = Awaited<ReturnType<typeof appLifecycleCapability.getDesktopPrefs>>;
 export const _getDesktopPrefsIsDesktopPrefs: AssertDto<GetDesktopPrefsT, DesktopPrefs> = true;
 
-type GetDesktopProjectStateT = Awaited<ReturnType<typeof api.app.getDesktopProjectState>>;
+type GetDesktopProjectStateT = Awaited<ReturnType<typeof appLifecycleCapability.getDesktopProjectState>>;
 export const _getDesktopProjectStateIsProjectStateOrNull: AssertDto<
   GetDesktopProjectStateT,
   ProjectState | null
 > = true;
 
-type CreateProjectT = Awaited<ReturnType<typeof api.app.createProject>>;
+type CreateProjectT = Awaited<ReturnType<typeof appLifecycleCapability.createProject>>;
 export const _createProjectIsCreateProjectResult: AssertDto<
   CreateProjectT,
   CreateProjectResult
 > = true;
 
-type AdoptFolderT = Awaited<ReturnType<typeof api.app.adoptFolder>>;
+type AdoptFolderT = Awaited<ReturnType<typeof appLifecycleCapability.adoptFolder>>;
 export const _adoptFolderIsCreateProjectResult: AssertDto<
   AdoptFolderT,
   CreateProjectResult

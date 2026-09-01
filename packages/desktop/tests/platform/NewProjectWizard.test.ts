@@ -79,7 +79,7 @@ describe("NewProjectWizard — M21 default parentDir", () => {
 
   test("loadDefaultParentDir prefers the persisted newProjectParentDir pref", () => {
     const src = readSource();
-    expect(src).toContain("api.app.getDesktopPrefs()");
+    expect(src).toContain("getDesktopPrefs()");
     expect(src).toContain("newProjectParentDir");
   });
 

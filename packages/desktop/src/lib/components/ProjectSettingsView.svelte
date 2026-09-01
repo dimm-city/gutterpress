@@ -38,10 +38,12 @@
    * every rule under that ancestor class.
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
-   * goes through `api.*` HTTP routes inside the controllers.
+   * goes through `api.*` HTTP routes or `$lib/files/files-capability`'s typed
+   * IPC inside the controllers.
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { readFile, writeFile, listDir } from "$lib/files/files-capability";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { AppearanceSectionController } from "$lib/routes/appearance-section-controller.svelte";
@@ -96,8 +98,8 @@
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    readFile: (path) => api.fs.readFile(path),
-    writeFile: (path, content) => api.fs.writeFile(path, content),
+    readFile: (path) => readFile(path),
+    writeFile: (path, content) => writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
     onEditRawCss: (path) => onEditRawCss?.(path),
   });
@@ -120,9 +122,9 @@
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
-      api.fs
-        .listDir(dir)
-        .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
+      listDir(dir).then((entries) =>
+        entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name),
+      ),
     // Which print tools are absent, for the publish-targets note — the same
     // /api/doctor data the Help tab shows.
     listMissingPrintTools: () =>

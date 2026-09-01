@@ -101,6 +101,20 @@ import type {
 // (SFE-P5b review round 1) — that module is the one place this file's
 // EditorProjection* types now live; see this file's header.
 import type { EditorProjectionArgs, EditorProjectionOutcome } from "../editor-host/editor-projection-capability";
+// SFE-P5c1: `DirEntry`/`ProjectFileEntry` moved to `$lib/files/files-capability`
+// (the module's own DTOs — the run specification's "files/dialog gets a new
+// module... DTOs move with their owners out of api.ts") — same type-only
+// back-import shape as the editor-projection exception above (module graph
+// looks circular, erased at build, so it isn't one at runtime).
+import type { DirEntry, ProjectFileEntry } from "../files/files-capability";
+import type {
+  DiscoveredProject,
+  ProjectClassification,
+  AppImageIntegrationStatus,
+  AppImageIntegrationInstallResult,
+  AppImageIntegrationRemoveResult,
+  LogFileEntry,
+} from "./dtos";
 
 // Shared IPC payload types — imported from the single source of truth.
 // Both electron/bridge-types.ts and this file reference shared-types.ts,
@@ -537,4 +551,64 @@ export interface ElectronBridge {
    * (#44), backing external-edit detection. Returns an unsubscribe fn.
    */
   onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void;
+
+  // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ────────────────
+  // Replaces the deleted src/routes/api/{fs,dialog,shell,log,app}/**
+  // +server.ts routes and their api.ts client methods.
+
+  fs: {
+    readFile(path: string): Promise<string>;
+    writeFile(path: string, content: string): Promise<FileWriteResult>;
+    statFile(path: string): Promise<FileStat>;
+    listDir(path: string): Promise<DirEntry[]>;
+    listProjectFiles(projectDir: string): Promise<ProjectFileEntry>;
+    createFile(dir: string, name: string, content: string): Promise<{ path: string; mtimeMs: number }>;
+    createFolder(dir: string, name: string): Promise<{ path: string }>;
+    renamePath(path: string, newName: string): Promise<{ path: string }>;
+    deletePath(path: string, projectDir: string): Promise<{ ok: true }>;
+  };
+
+  dialog: {
+    openDirectory(): Promise<string | null>;
+    savePdf(defaultName?: string): Promise<string | null>;
+    pickImageFile(): Promise<string | null>;
+    pickPdfFile(): Promise<string | null>;
+    pickImageFiles(): Promise<string[]>;
+  };
+
+  shell: {
+    openExternal(url: string): Promise<{ ok: true }>;
+    showInFolder(filePath: string): Promise<{ ok: true }>;
+  };
+
+  log: {
+    read(logPath: string): Promise<string | null>;
+    list(): Promise<LogFileEntry[]>;
+  };
+
+  app: {
+    getDesktopPrefs(): Promise<SharedDesktopPrefs>;
+    setDesktopPrefs(prefs: Record<string, unknown>): Promise<{ ok: true }>;
+    getDesktopProjectState(projectDir: string): Promise<ProjectState | null>;
+    setDesktopProjectState(projectDir: string, state: Record<string, unknown>): Promise<{ ok: true }>;
+    getSettings(): Promise<Record<string, unknown>>;
+    setSettings(settings: Record<string, unknown>): Promise<{ ok: true }>;
+    getNativeTheme(): Promise<NativeThemeState>;
+    getRecentFolders(): Promise<Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>>;
+    getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>>;
+    toggleFavorite(path: string, title: string): Promise<{ favorited: boolean }>;
+    removeRecent(path: string): Promise<{ ok: true }>;
+    discoverProjects(): Promise<DiscoveredProject[]>;
+    classifyProject(projectDir: string): Promise<ProjectClassification>;
+    createProject(options: Record<string, unknown>): Promise<CreateProjectResult>;
+    adoptFolder(options: Record<string, unknown>): Promise<CreateProjectResult>;
+    setDirtyState(dirty: boolean): Promise<{ ok: true }>;
+    recordFlushFailure(projectDir: string | null): Promise<LastFlushFailure>;
+    acknowledgeFlushFailure(failedAt: string): Promise<{ acknowledged: boolean }>;
+    appImageIntegration: {
+      getStatus(): Promise<AppImageIntegrationStatus>;
+      install(): Promise<AppImageIntegrationInstallResult>;
+      remove(): Promise<AppImageIntegrationRemoveResult>;
+    };
+  };
 }

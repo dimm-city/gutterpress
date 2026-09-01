@@ -16,6 +16,18 @@ import type {
   MarkdownFileLaunchEvent,
   EditorProjectionHostArgs,
   EditorProjectionOutcome,
+  DirEntry,
+  FileStat,
+  FileWriteResult,
+  ProjectFileEntry,
+  LogFileEntry,
+  DesktopPrefs,
+  ProjectState,
+  DiscoveredProject,
+  ProjectClassification,
+  AppImageStatus,
+  AppImageInstallResult,
+  AppImageRemoveResult,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -33,7 +45,10 @@ import type {
  * 5 -> 6 (SFE-P3e): added `api:editorProjection` — the desktop rich editor's
  * host-built, plugin-aware projection call.
  */
-const DESKTOP_API = 6;
+// 6 -> 7 (SFE-P5c1): added `fs`, `dialog`, `shell`, `log`, `app` -- the five
+// route groups migrated from SvelteKit HTTP routes to typed IPC. The routes
+// and their `api.ts` client methods are deleted in the same run.
+const DESKTOP_API = 7;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -129,16 +144,87 @@ contextBridge.exposeInMainWorld("electron", {
       forwardPush("updater:event", cb),
   },
 
-  // Dialogs
-  // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
-  // openDirectory migrated to server route (api.dialog.openDirectory)
-  // openExternal, showInFolder, readLogFile migrated to server routes
-  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
+  // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ────────────────
+  // listProjectImages, imageThumbnail, inspectImage stay server routes
+  // (media:*, P5c4). checkCss, lintProject stay server routes (lint:*).
+  fs: {
+    readFile: (path: string): Promise<string> => ipcRenderer.invoke("fs:readFile", path),
+    writeFile: (path: string, content: string): Promise<FileWriteResult> =>
+      ipcRenderer.invoke("fs:writeFile", path, content),
+    statFile: (path: string): Promise<FileStat> => ipcRenderer.invoke("fs:statFile", path),
+    listDir: (path: string): Promise<DirEntry[]> => ipcRenderer.invoke("fs:listDir", path),
+    listProjectFiles: (projectDir: string): Promise<ProjectFileEntry> =>
+      ipcRenderer.invoke("fs:listProjectFiles", projectDir),
+    createFile: (dir: string, name: string, content: string): Promise<{ path: string; mtimeMs: number }> =>
+      ipcRenderer.invoke("fs:createFile", dir, name, content),
+    createFolder: (dir: string, name: string): Promise<{ path: string }> =>
+      ipcRenderer.invoke("fs:createFolder", dir, name),
+    renamePath: (path: string, newName: string): Promise<{ path: string }> =>
+      ipcRenderer.invoke("fs:rename", path, newName),
+    deletePath: (path: string, projectDir: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("fs:delete", path, projectDir),
+  },
 
-  // Filesystem primitives migrated to SvelteKit server routes (api.fs.*)
-  // readFile, writeFile, listDir, statFile migrated to server routes
-  // listProjectFiles migrated to server route
-  // checkCss, lintProject migrated to server routes (Phase 2C)
+  dialog: {
+    openDirectory: (): Promise<string | null> => ipcRenderer.invoke("dialog:openDirectory"),
+    savePdf: (defaultName?: string): Promise<string | null> =>
+      ipcRenderer.invoke("dialog:savePdf", defaultName),
+    pickImageFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickImageFile"),
+    pickPdfFile: (): Promise<string | null> => ipcRenderer.invoke("dialog:pickPdfFile"),
+    pickImageFiles: (): Promise<string[]> => ipcRenderer.invoke("dialog:pickImageFiles"),
+  },
+
+  shell: {
+    openExternal: (url: string): Promise<{ ok: true }> => ipcRenderer.invoke("shell:openExternal", url),
+    showInFolder: (filePath: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("shell:showInFolder", filePath),
+  },
+
+  log: {
+    read: (logPath: string): Promise<string | null> => ipcRenderer.invoke("log:read", logPath),
+    list: (): Promise<LogFileEntry[]> => ipcRenderer.invoke("log:list"),
+  },
+
+  app: {
+    getDesktopPrefs: (): Promise<DesktopPrefs> => ipcRenderer.invoke("app:getDesktopPrefs"),
+    setDesktopPrefs: (prefs: Record<string, unknown>): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("app:setDesktopPrefs", prefs),
+    getDesktopProjectState: (projectDir: string): Promise<ProjectState | null> =>
+      ipcRenderer.invoke("app:getDesktopProjectState", projectDir),
+    setDesktopProjectState: (projectDir: string, state: Record<string, unknown>): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("app:setDesktopProjectState", projectDir, state),
+    getSettings: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("app:getSettings"),
+    setSettings: (settings: Record<string, unknown>): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("app:setSettings", settings),
+    getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
+      ipcRenderer.invoke("app:getNativeTheme"),
+    getRecentFolders: (): Promise<
+      Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>
+    > => ipcRenderer.invoke("app:getRecentFolders"),
+    getFavorites: (): Promise<Array<{ path: string; title: string; exists: boolean }>> =>
+      ipcRenderer.invoke("app:getFavorites"),
+    toggleFavorite: (path: string, title: string): Promise<{ favorited: boolean }> =>
+      ipcRenderer.invoke("app:toggleFavorite", path, title),
+    removeRecent: (path: string): Promise<{ ok: true }> => ipcRenderer.invoke("app:removeRecent", path),
+    discoverProjects: (): Promise<DiscoveredProject[]> => ipcRenderer.invoke("app:discoverProjects"),
+    classifyProject: (projectDir: string): Promise<ProjectClassification> =>
+      ipcRenderer.invoke("app:classifyProject", projectDir),
+    createProject: (options: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke("app:createProject", options),
+    adoptFolder: (options: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke("app:adoptFolder", options),
+    setDirtyState: (dirty: boolean): Promise<{ ok: true }> => ipcRenderer.invoke("app:setDirtyState", dirty),
+    recordFlushFailure: (projectDir: string | null): Promise<{ failedAt: string; projectDir?: string }> =>
+      ipcRenderer.invoke("app:recordFlushFailure", projectDir),
+    acknowledgeFlushFailure: (failedAt: string): Promise<{ acknowledged: boolean }> =>
+      ipcRenderer.invoke("app:acknowledgeFlushFailure", failedAt),
+    appImageIntegration: {
+      getStatus: (): Promise<AppImageStatus> => ipcRenderer.invoke("app:appImageIntegrationStatus"),
+      install: (): Promise<AppImageInstallResult> => ipcRenderer.invoke("app:appImageIntegrationInstall"),
+      remove: (): Promise<AppImageRemoveResult> => ipcRenderer.invoke("app:appImageIntegrationRemove"),
+    },
+  },
+
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
@@ -154,12 +240,7 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // getStatus migrated to server route (Phase 2C)
-  // app:getLastProject, app:getDesktopPrefs,
-  // app:setDesktopPrefs, app:getDesktopProjectState, app:setDesktopProjectState,
-  // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
-  // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
-  // app:classifyProject, app:createProject, app:adoptFolder
-  // — migrated to SvelteKit server routes (Phase 2B). No IPC bridge needed.
+  // app:getLastProject has no route/IPC — never implemented as a distinct op.
 
   // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
@@ -262,7 +343,6 @@ contextBridge.exposeInMainWorld("electron", {
   // writeRecovery, clearRecovery, listRecovery — migrated to server routes
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
-  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
    * renderer flushes, then calls `app:flushDone` with the actual outcome.

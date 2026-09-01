@@ -9,6 +9,25 @@
 // in src/lib/platform/shared-types.ts and re-exported here via bridge-types.ts.
 // No more "Keep them in sync manually" — add new shared types to shared-types.ts.
 //
+// SFE-P5c1 correction: an earlier revision of this run deleted this
+// `Window.electron` block as a "zero-consumer duplicate" of preload.ts's own
+// typing (SFE-P5b's search found zero RUNTIME reads of `window.electron`
+// anywhere under electron/). That search was real but incomplete: this
+// block is also a TYPE-graph dependency, not just a runtime one.
+// `electron/main.ts` value-imports `../src/lib/persistence-failures.ts`,
+// which type-imports `src/lib/platform/contract.ts`, which type-imports
+// `EditorProjectionArgs`/`EditorProjectionOutcome` from
+// `../editor-host/editor-projection-capability.ts` — a module that
+// VALUE-imports `../platform/bridge.ts`, whose `window.electron` reference
+// needs SOME ambient `Window.electron` typing to satisfy `tsc -p
+// electron/tsconfig.json` (which does not include `src/app.d.ts` — the SPA's
+// OWN `Window.electron` ambient declaration lives in a tsconfig program this
+// one does not share). Deleting this block broke `bun run typecheck` via
+// that pre-existing chain — confirmed by actually running it, not by a
+// repeated grep for `window.electron` reads. Restored; kept in agreement
+// with `bridge-types.ts` + `contract.ts`'s `ElectronBridge` by hand, same as
+// before.
+//
 // This file is a TS module (has `import type`) so all augmentations live
 // inside `declare global { ... }`.
 // ──────────────────────────────────────────────────────────────────────────
@@ -27,6 +46,18 @@ import type {
   PreviewStartResult,
   EditorProjectionHostArgs,
   EditorProjectionOutcome,
+  DirEntry,
+  FileStat,
+  FileWriteResult,
+  ProjectFileEntry,
+  LogFileEntry,
+  DesktopPrefs,
+  ProjectState,
+  DiscoveredProject,
+  ProjectClassification,
+  AppImageStatus,
+  AppImageInstallResult,
+  AppImageRemoveResult,
 } from "./bridge-types";
 
 declare global {
@@ -50,38 +81,67 @@ declare global {
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
 
-  // plugin:*, theme:*, project:listStyles types removed — migrated to server
-  // routes (Phase 2E). This block used to also declare ambient `StyleToken`,
-  // `ProjectClassification`, `RecoveryConfirmRequest`, and `ConflictPreview`
-  // interfaces left behind by that migration — none of them were ever
-  // referenced (every real call site
-  // imports its own copy from src/lib/platform/dtos.ts or contract.ts).
-  // Removed in the 2026-07-28 duplication audit; see
-  // docs/reviews/duplication-audit-2026-07-28.md.
-
   interface Window {
     electron?: {
       /** Integer IPC-surface version exposed by the preload bridge. */
       apiVersion: number;
       updater: ElectronUpdater;
-      // Dialogs
-      // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
-      // openDirectory migrated to server route (api.dialog.openDirectory)
-      // openExternal, showInFolder, readLogFile migrated to server routes
-      // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
-      // listProjectFiles migrated to server route
-      // Filesystem primitives migrated to server routes (api.fs.*)
-      // readFile, writeFile, listDir, statFile migrated to server routes
-      // checkCss, lintProject migrated to server routes (Phase 2C)
-      // File metadata + folder watch (PlatformAdapter, #44)
-      watchFolder(dirPath: string, cb: () => void): () => void;
-      // getStatus, doctor migrated to server routes (Phase 2C)
-      // app:getLastProject, app:getDesktopPrefs,
-      // app:setDesktopPrefs, app:getDesktopProjectState, app:setDesktopProjectState,
-      // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
-      // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
-      // app:classifyProject, app:createProject, app:adoptFolder
-      // — migrated to SvelteKit server routes (Phase 2B).
+
+      // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ──────────
+      fs: {
+        readFile(path: string): Promise<string>;
+        writeFile(path: string, content: string): Promise<FileWriteResult>;
+        statFile(path: string): Promise<FileStat>;
+        listDir(path: string): Promise<DirEntry[]>;
+        listProjectFiles(projectDir: string): Promise<ProjectFileEntry>;
+        createFile(dir: string, name: string, content: string): Promise<{ path: string; mtimeMs: number }>;
+        createFolder(dir: string, name: string): Promise<{ path: string }>;
+        renamePath(path: string, newName: string): Promise<{ path: string }>;
+        deletePath(path: string, projectDir: string): Promise<{ ok: true }>;
+      };
+      dialog: {
+        openDirectory(): Promise<string | null>;
+        savePdf(defaultName?: string): Promise<string | null>;
+        pickImageFile(): Promise<string | null>;
+        pickPdfFile(): Promise<string | null>;
+        pickImageFiles(): Promise<string[]>;
+      };
+      shell: {
+        openExternal(url: string): Promise<{ ok: true }>;
+        showInFolder(filePath: string): Promise<{ ok: true }>;
+      };
+      log: {
+        read(logPath: string): Promise<string | null>;
+        list(): Promise<LogFileEntry[]>;
+      };
+      app: {
+        getDesktopPrefs(): Promise<DesktopPrefs>;
+        setDesktopPrefs(prefs: Record<string, unknown>): Promise<{ ok: true }>;
+        getDesktopProjectState(projectDir: string): Promise<ProjectState | null>;
+        setDesktopProjectState(projectDir: string, state: Record<string, unknown>): Promise<{ ok: true }>;
+        getSettings(): Promise<Record<string, unknown>>;
+        setSettings(settings: Record<string, unknown>): Promise<{ ok: true }>;
+        getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }>;
+        getRecentFolders(): Promise<
+          Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>
+        >;
+        getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>>;
+        toggleFavorite(path: string, title: string): Promise<{ favorited: boolean }>;
+        removeRecent(path: string): Promise<{ ok: true }>;
+        discoverProjects(): Promise<DiscoveredProject[]>;
+        classifyProject(projectDir: string): Promise<ProjectClassification>;
+        createProject(options: Record<string, unknown>): Promise<unknown>;
+        adoptFolder(options: Record<string, unknown>): Promise<unknown>;
+        setDirtyState(dirty: boolean): Promise<{ ok: true }>;
+        recordFlushFailure(projectDir: string | null): Promise<{ failedAt: string; projectDir?: string }>;
+        acknowledgeFlushFailure(failedAt: string): Promise<{ acknowledged: boolean }>;
+        appImageIntegration: {
+          getStatus(): Promise<AppImageStatus>;
+          install(): Promise<AppImageInstallResult>;
+          remove(): Promise<AppImageRemoveResult>;
+        };
+      };
+
       // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
       onNativeThemeUpdated(
         cb: (data: { shouldUseDarkColors: boolean }) => void
@@ -149,7 +209,8 @@ declare global {
       onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-      // app:setDirtyState — migrated to server route (Phase 2B).
+      // app:setDirtyState migrated to typed IPC (SFE-P5c1) — see the `app`
+      // member above.
       onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
       onFolderChanged(cb: (data: { filename: string }) => void): () => void;
     };

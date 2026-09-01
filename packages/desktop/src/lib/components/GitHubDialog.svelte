@@ -17,6 +17,7 @@
     onCloneProgress,
   } from "$lib/remote/remote-capability";
   import { api } from "$lib/api";
+  import { openDirectory, openExternal } from "$lib/files/files-capability";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
   import type {
@@ -126,7 +127,7 @@
       code = info;
       step = "code";
       // Open the verification page for the user; the code stays visible here.
-      api.shell.openExternal(info.verificationUri).catch(() => {});
+      openExternal(info.verificationUri).catch(() => {});
       const conn = await connectGitHubWait();
       username = conn.username ?? null;
       await loadRepos();
@@ -197,7 +198,7 @@
   }
 
   async function pickDestination() {
-    const pathStr = await api.dialog.openDirectory();
+    const pathStr = await openDirectory();
     if (pathStr) destination = pathStr;
   }
 
@@ -379,7 +380,7 @@
             <button
               type="button"
               class="link-btn"
-              onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}
+              onclick={() => code && openExternal(code.verificationUri).catch(() => {})}
             >{code.verificationUri}</button>
           {/if}
         </p>
