@@ -5,26 +5,30 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 
 /**
- * preview-separability-mutation-inert.test.ts (SFE-P3d-parity, Lane C).
+ * preview-separability-mutation-inert.test.ts (SFE-P3d-parity, Lane C;
+ * updated by SFE-P4).
  *
  * The load-bearing deliverable: proving the D8 navigation surface (preview
  * navigation, selection/copy, open link/image, page controls, source
- * reveal) does NOT depend on the mutation surface P4 deletes
+ * reveal) does NOT depend on the mutation surface P4 deleted
  * (`InlineEditController`, the `contenteditable` authoring path, and the
  * `beginBlockEdit`/`endBlockEdit` protocol messages — see
  * docs/plans/source-first-editor/mutation-inventory.md §1.1-1.5). This file
  * proves it at TWO layers and is explicit about what each layer does and
  * does not establish — see the block comment above each `describe`.
  *
- * Nothing here edits production source. Every "mutation entry point removed"
- * scenario below is constructed either by deleting a property on the
- * in-memory `previewAPI` object AFTER loading the real script (a runtime
- * effect scoped to one test's own object, not a file edit), or by
- * constructing `ContextMenuController` with fake dependencies whose
- * mutation-path methods throw — the exact technique
- * `context-menu-controller.test.ts` already uses to construct that
- * controller with fakes, extended here to make the mutation fakes poisoned
- * rather than merely recording.
+ * Nothing here edits production source. Before P4, Layer 1 proved this by
+ * deleting `beginBlockEdit`/`endBlockEdit` from the in-memory `previewAPI`
+ * object AFTER loading the (then still mutation-capable) real script; P4 has
+ * since deleted the in-flow block editing block from
+ * `preview-interface.js`'s source itself, so Layer 1 now loads the real,
+ * permanently-reduced script directly and asserts on its actual shape — the
+ * absence is load-bearing, not simulated. Layer 2 constructs
+ * `ContextMenuController` with fake dependencies — the exact technique
+ * `context-menu-controller.test.ts` already uses — but no longer needs to
+ * poison mutation-path fakes: P4 removed `commitEngine`/`openInlineEdit` from
+ * the controller's dependencies entirely, so there is nothing left to poison
+ * (see Layer 2's own header for detail).
  */
 
 const scriptDir = path.resolve(
@@ -148,44 +152,37 @@ function reply(posted: unknown[], id: number): { ok: boolean; result?: unknown; 
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// LAYER 1 — preview scripts: navigation survives with beginBlockEdit/
-// endBlockEdit deleted from previewAPI, and never triggers the block-edit
+// LAYER 1 — preview scripts: navigation works with beginBlockEdit/
+// endBlockEdit absent from previewAPI, and never triggers the block-edit
 // event family or the contenteditable authoring attribute as a side effect.
 //
-// WHAT THIS ESTABLISHES: within `preview-interface.js` + `preview-bridge.js`
-// as they exist TODAY, every navigation-class command (getTotalPages,
-// goToPage/nextPage/prevPage/getCurrentPage, getContextTargetAt across
-// block/image/link/selection kinds, setZoom, setViewMode) executes to
-// completion, through the real bridge dispatch, with `beginBlockEdit`/
-// `endBlockEdit` deleted from the API object entirely — i.e. these commands
-// contain no internal call to, or dependency on, the two commands P4 removes.
+// SFE-P4 UPDATE (post-deletion truth): this layer used to prove the claim by
+// deleting `beginBlockEdit`/`endBlockEdit` from previewAPI AT RUNTIME, after
+// loading the (pre-P4) real preview-interface.js, to simulate the shape P4
+// would leave behind — see this file's git history for that version. P4 has
+// now deleted the in-flow block editing block from preview-interface.js's
+// SOURCE itself (startEdit/finishEdit, the contenteditable attribute
+// handling, the beginBlockEdit/endBlockEdit previewAPI methods, and the
+// three block-edit events), so `loadBook()` below loads the REAL,
+// permanently-reduced script — there is nothing left to delete at runtime,
+// and the absence below is load-bearing, not simulated.
 //
-// WHAT THIS DOES NOT ESTABLISH: that `preview-interface.js`'s SOURCE CODE
-// can be safely deleted line-for-line without the file being edited — that
-// is P4a's own job, verified by its own search/dependency proof (D15) when
-// it happens. Deleting a property at runtime proves the *behavior* is
-// independent; it is evidence for, not a substitute for, P4a's source-level
-// deletion review.
+// WHAT THIS ESTABLISHES: within `preview-interface.js` + `preview-bridge.js`
+// as they exist TODAY (post-P4), every navigation-class command
+// (getTotalPages, goToPage/nextPage/prevPage/getCurrentPage,
+// getContextTargetAt across block/image/link/selection kinds, setZoom,
+// setViewMode) executes to completion, through the real bridge dispatch,
+// with `beginBlockEdit`/`endBlockEdit` absent from the API object entirely.
 // ─────────────────────────────────────────────────────────────────────────
-describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works with beginBlockEdit/endBlockEdit removed", () => {
-  test("liveness: the fixture's mutation entry points exist before we remove them (removing something absent would prove nothing)", () => {
+describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works with beginBlockEdit/endBlockEdit absent", () => {
+  test("beginBlockEdit/endBlockEdit do not exist on the real previewAPI (the permanent post-deletion shape)", () => {
     const { api } = loadBook();
-    expect(typeof api.beginBlockEdit).toBe("function");
-    expect(typeof api.endBlockEdit).toBe("function");
+    expect(api.beginBlockEdit).toBeUndefined();
+    expect(api.endBlockEdit).toBeUndefined();
   });
 
-  function loadBookWithMutationRemoved(): BookHandle {
+  test("getTotalPages/goToPage/nextPage/prevPage/getCurrentPage work, through the real bridge", () => {
     const h = loadBook();
-    // Runtime deletion on THIS test's own previewAPI object — not a file
-    // edit. Simulates the post-P4a shape of previewAPI (beginBlockEdit/
-    // endBlockEdit gone) without touching preview-interface.js on disk.
-    delete h.api.beginBlockEdit;
-    delete h.api.endBlockEdit;
-    return h;
-  }
-
-  test("with beginBlockEdit/endBlockEdit deleted: getTotalPages/goToPage/nextPage/prevPage/getCurrentPage still work, through the real bridge", () => {
-    const h = loadBookWithMutationRemoved();
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 1, cmd: "getTotalPages", args: [] });
     expect(reply(h.posted, 1)?.result).toBe(2);
 
@@ -202,8 +199,8 @@ describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works
     expect(reply(h.posted, 5)?.result).toBe(2);
   });
 
-  test("with beginBlockEdit/endBlockEdit deleted: getContextTargetAt still resolves block/image/link/selection kinds (open link/image, source-reveal targeting, selection/copy)", () => {
-    const h = loadBookWithMutationRemoved();
+  test("getContextTargetAt still resolves block/image/link/selection kinds (open link/image, source-reveal targeting, selection/copy)", () => {
+    const h = loadBook();
 
     const img = h.document.getElementById("img");
     h.document.elementFromPoint = () => img;
@@ -226,8 +223,8 @@ describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works
     expect(blockResult.range).toEqual([1, 2]);
   });
 
-  test("with beginBlockEdit/endBlockEdit deleted: setZoom and setViewMode (page controls) still work", () => {
-    const h = loadBookWithMutationRemoved();
+  test("setZoom and setViewMode (page controls) still work", () => {
+    const h = loadBook();
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 20, cmd: "setViewMode", args: ["single"] });
     expect(reply(h.posted, 20)?.ok).toBe(true);
     expect(h.document.body.classList.contains("view-single")).toBe(true);
@@ -237,16 +234,20 @@ describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works
     expect(h.document.documentElement.style.getPropertyValue("--gutterpress-zoom")).toBe("0.8");
   });
 
-  test("with beginBlockEdit/endBlockEdit deleted: those two commands themselves now fail closed (proves the removal is real, not merely untested)", () => {
-    const h = loadBookWithMutationRemoved();
+  test("beginBlockEdit/endBlockEdit command names now fail closed as unknown commands, end-to-end through the real bridge (proves the removal is real, not merely untested)", () => {
+    const h = loadBook();
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 30, cmd: "beginBlockEdit", args: [{}] });
-    expect(reply(h.posted, 30)?.ok).toBe(false);
+    const r30 = reply(h.posted, 30);
+    expect(r30?.ok).toBe(false);
+    expect(r30?.error).toBe("Unknown command: beginBlockEdit");
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 31, cmd: "endBlockEdit", args: [{}] });
-    expect(reply(h.posted, 31)?.ok).toBe(false);
+    const r31 = reply(h.posted, 31);
+    expect(r31?.ok).toBe(false);
+    expect(r31?.error).toBe("Unknown command: endBlockEdit");
   });
 
   test("across a whole session of navigation, the mutation event family never fires and no element ever gains contenteditable", () => {
-    const h = loadBookWithMutationRemoved();
+    const h = loadBook();
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 1, cmd: "getTotalPages", args: [] });
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 2, cmd: "goToPage", args: [2] });
     dispatchMessage(h.window, { type: "gutterpress:cmd", id: 3, cmd: "nextPage", args: [] });

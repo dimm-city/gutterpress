@@ -20,22 +20,13 @@ import { Window } from "happy-dom";
  *   - `packages/desktop/tests/preview-bridge.test.mjs` pins chapter-scoped
  *     scrollTo/getVisibleSource/getOutline/queryDom — also all in-process,
  *     also never through the bridge.
- *   - `packages/desktop/tests/preview-interface.test.mjs`'s own "bridge
- *     forwards protocol v8 edit events" section (its final block) DOES load
- *     the real preview-bridge.js, but only to prove the book→host EVENT
- *     direction (viewportChanged/blockEditRequested/blockEditFinished/
- *     blockEditStateChanged) forwards correctly. It stubs
- *     `previewAPI: {}` (an empty object) — the host→book COMMAND direction
- *     (`gutterpress:cmd` → `preview-bridge.js`'s `call()` → a REAL
- *     `previewAPI` method → `gutterpress:reply`) is never exercised there
- *     for ANY command, navigation or otherwise.
- *   - `packages/desktop/tests/editor/preview-mutation-protocol-characterization.test.ts`
- *     (SFE-P0a) pins preview-shell.js's host→book relay and its
- *     `beginBlockEdit`-only focus special case — but its "ordinary command"
- *     control case (`cmd: "getTotalPages"`) stubs the active book iframe as
- *     a bare `{ postMessage: (m) => forwarded.push(m) }` spy. It proves the
- *     MESSAGE reaches the iframe's `postMessage`; it does not prove a real
- *     book document RECEIVES and ANSWERS it.
+ *   - `packages/desktop/tests/preview-interface.test.mjs`'s own bridge-
+ *     forwarding block DOES load the real preview-bridge.js, but only to
+ *     prove the book→host EVENT direction (viewportChanged) forwards
+ *     correctly. It stubs `previewAPI: {}` (an empty object) — the host→book
+ *     COMMAND direction (`gutterpress:cmd` → `preview-bridge.js`'s `call()`
+ *     → a REAL `previewAPI` method → `gutterpress:reply`) is never exercised
+ *     there for ANY command, navigation or otherwise.
  *
  * GAP (this file closes it): no existing test proves that a host-initiated
  * NAVIGATION command completes a real round trip — `gutterpress:cmd` in,
@@ -45,9 +36,18 @@ import { Window } from "happy-dom";
  * full `preview-shell.js` (host relay) → `preview-bridge.js` (book dispatch)
  * → `preview-interface.js` (real command) → reply → `preview-shell.js`
  * (relay back) → host chain, using every real script together. That full
- * chain is exactly what P4 will still ship (D8: preview keeps navigation);
- * everything else in that chain (`beginBlockEdit`/`endBlockEdit` and the
- * shell's focus special case for them) is exactly what P4 deletes.
+ * chain is exactly what P4 kept (D8: preview keeps navigation).
+ *
+ * SFE-P4 update: in-flow block editing (`beginBlockEdit`/`endBlockEdit`, the
+ * three block-edit events, and preview-shell.js's focus special case for
+ * `beginBlockEdit`) is deleted. The former
+ * `packages/desktop/tests/editor/preview-mutation-protocol-characterization.test.ts`
+ * (SFE-P0a), which pinned that focus special case, was retired with it (its
+ * own header said it would die in P4). This file's "G-12 contrast" test
+ * below now asserts the post-deletion truth — no command triggers the focus
+ * special case, because the special case itself no longer exists — with a
+ * separate liveness check proving the `getFocusCalls()` spy can still
+ * register a nonzero count on its own.
  *
  * "Diagnostics" (the sixth D8 capability) is not exercised here: it is not
  * part of the preview-interface/bridge/shell protocol at all. It is the
@@ -365,11 +365,10 @@ describe("preview-shell.js + preview-bridge.js + preview-interface.js: the FULL 
     // task-queue tick), which would make preview-shell.js's
     // `active.contentWindow.postMessage(e.data, '*')` relay (the
     // shell→book/host→book direction) invisible to a synchronous assertion.
-    // Every other harness in this file/family (installBridge in
-    // preview-shell-regression.test.mjs, loadShell in
-    // preview-mutation-protocol-characterization.test.ts) sidesteps this the
-    // same way: replace postMessage with a synchronous direct dispatch so
-    // the relay is deterministic and test-observable without timer ticks.
+    // The other harness in this file/family (installBridge in
+    // preview-shell-regression.test.mjs) sidesteps this the same way:
+    // replace postMessage with a synchronous direct dispatch so the relay is
+    // deterministic and test-observable without timer ticks.
     frameWindow.postMessage = (message: unknown) => {
       const event = new frameWindow.Event("message");
       Object.defineProperties(event, { data: { value: message } });
@@ -385,8 +384,7 @@ describe("preview-shell.js + preview-bridge.js + preview-interface.js: the FULL 
 
     // preview-shell.js unconditionally wires a change-source at load time;
     // without these globals it falls through to a real WebSocket attempt
-    // this DOM cannot serve (same precondition
-    // preview-mutation-protocol-characterization.test.ts's loadShell uses).
+    // this DOM cannot serve.
     (outer as unknown as { __GUTTERPRESS_INSTANCE: string }).__GUTTERPRESS_INSTANCE = "cli";
     (outer as unknown as { __GUTTERPRESS_REVISION: number }).__GUTTERPRESS_REVISION = 0;
     (outer as unknown as { __GUTTERPRESS_CHANGE_SOURCE: unknown }).__GUTTERPRESS_CHANGE_SOURCE = {
@@ -427,7 +425,7 @@ describe("preview-shell.js + preview-bridge.js + preview-interface.js: the FULL 
     expect(r).toBeDefined();
     expect(r!.ok).toBe(true);
     expect(r!.result).toBe(2); // the real book's real page count, round-tripped through all three real scripts
-    expect(h.getFocusCalls()).toBe(0); // getTotalPages is not the beginBlockEdit special case
+    expect(h.getFocusCalls()).toBe(0); // no command triggers a focus special case any more (SFE-P4: deleted)
   });
 
   test("getContextTargetAt from the host round-trips the REAL resolved target through the full relay chain", () => {
@@ -447,9 +445,27 @@ describe("preview-shell.js + preview-bridge.js + preview-interface.js: the FULL 
     expect(h.getFocusCalls()).toBe(0);
   });
 
-  test("G-12 contrast: a beginBlockEdit command through the SAME harness DOES trigger the focus special case — proving getFocusCalls() is live, not stuck at 0", () => {
+  // SFE-P4: in-flow block editing is deleted, and with it preview-shell.js's
+  // ONLY `active.focus()` call site (the `beginBlockEdit`-only special case).
+  // This is the permanent post-deletion truth, replacing the old "G-12
+  // contrast" positive control: sending the exact command name the special
+  // case used to key on triggers nothing — `beginBlockEdit` is now just an
+  // unknown command name to the shell relay (previewAPI itself has no such
+  // method any more either; see preview-interface.test.mjs).
+  test("post-deletion: a beginBlockEdit command through the SAME harness no longer triggers ANY focus special case", () => {
     const h = loadShellWithBook();
     h.fromHost({ type: "gutterpress:cmd", id: 1, cmd: "beginBlockEdit", args: [{ chapter: "a.md", range: [0, 1], text: "x" }] });
+    expect(h.getFocusCalls()).toBe(0);
+  });
+
+  // G-12 liveness control for the assertion above: the `getFocusCalls()` spy
+  // itself is proven capable of a nonzero result by calling `active.focus()`
+  // directly, so "0" above is a genuine "nothing calls this" result and not
+  // a harness that is stuck at 0 no matter what happens.
+  test("G-12 liveness control: getFocusCalls() is not stuck at 0 — the spy increments when active.focus() is actually called", () => {
+    const h = loadShellWithBook();
+    const active = h.document.getElementById("gutterpress-active") as unknown as { focus(): void };
+    active.focus();
     expect(h.getFocusCalls()).toBe(1);
   });
 });
