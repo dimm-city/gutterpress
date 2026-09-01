@@ -1,4 +1,4 @@
-import { getHooks, handlePublishErrors, type LibPublishDestination } from '../../_hooks';
+import { getHooks, handlePublishErrors, resolveDestinationProvider, type LibPublishDestination } from '../../_hooks';
 import { defineRoute, requireProjectDir } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -28,18 +28,12 @@ export const POST: RequestHandler = defineRoute<
       if (!body.providerId) {
         throw new Error('publish:destinations:list requires { providerId }');
       }
-      const lib = await hooks.loadLib();
-      if (!lib.publishProviderFor || !lib.resolvePublishRequest) {
-        throw new Error('Publishing is not available in this version of the lib');
-      }
-      const provider = lib.publishProviderFor(body.providerId);
-      if (!provider.listDestinations) {
-        throw new Error(`${provider.info.label} has no folder picker.`);
-      }
-      const req = await lib.resolvePublishRequest(
-        { projectDir: body.projectDir, providerId: body.providerId },
-        { tokenStore: hooks.tokenStore },
+      const { provider, req } = await resolveDestinationProvider(
+        hooks,
+        body.projectDir,
+        body.providerId,
+        'listDestinations',
       );
-      return provider.listDestinations(req);
+      return provider.listDestinations!(req);
     }),
 });
