@@ -536,7 +536,7 @@
             },
             "folderId": {
               "type": "string",
-              "description": "Drive folder id to upload into, recorded automatically after the first publish so renaming the folder in Drive can never break publishing."
+              "description": "Stable Drive folder id to upload into, picker-set in the desktop app or hand-recorded from the CLI's post-publish tip. Takes precedence over folder when present and the folder still exists."
             },
             "credential": {
               "type": "string",
