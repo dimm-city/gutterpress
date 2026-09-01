@@ -75,7 +75,6 @@ import "./measurement-guard.btest.ts";
 const entryPath = resolve(import.meta.dir, "support/entry.ts");
 const CONTROL_WARMUP_KEYSTROKES = 5;
 const CONTROL_SAMPLE_KEYSTROKES = 15;
-const CONTROL_TOTAL_KEYSTROKES = CONTROL_WARMUP_KEYSTROKES + CONTROL_SAMPLE_KEYSTROKES;
 /** No realism-motivated pacing here (contrast `CADENCE_MS` in the real
  * sweep) — the busy-wait itself already dominates the per-keystroke
  * timeline, so added pacing would only slow this control down for no
@@ -99,61 +98,84 @@ afterAll(async () => {
 
 describe("D13 performance harness control (G-12/AP-20)", () => {
   test(
-    "a synchronous ~150ms per-keystroke busy-wait raises the 250 KiB p95 by roughly the injected delay (differential control)",
+    "a synchronous ~150ms per-keystroke busy-wait raises the 250 KiB p50 by roughly the injected delay (interleaved differential control)",
     async () => {
       const text = generateMarkdownCorpus(250 * KIB);
       const { selector } = await mountDocument(harness.page, text);
 
-      // Pass 1 — UNSLOWED baseline, same mount/session as the slowed pass
-      // below, measured first so the differential is immune to whatever
-      // this run's absolute baseline happens to be (see this file's header
-      // for why a fixed threshold cannot do this).
-      const unslowedAll = await typeAndMeasure(
+      // Warm-up — unslowed, discarded (first-keystroke JIT / first
+      // round-trip costs; same rationale as the real sweep's warm-up).
+      const warmup = await typeAndMeasure(
         harness.page,
         selector,
-        CONTROL_TOTAL_KEYSTROKES,
+        CONTROL_WARMUP_KEYSTROKES,
         CONTROL_CADENCE_MS,
         CONTROL_TYPING_PHRASE,
       );
-      // AP-21 liveness before either behavioral assertion.
-      expect(unslowedAll.length).toBe(CONTROL_TOTAL_KEYSTROKES);
-      const unslowedSummary = summarize(unslowedAll.slice(CONTROL_WARMUP_KEYSTROKES));
-      console.log(`[perf-control] 250 KiB, unslowed baseline: ${formatSummary(unslowedSummary)}`);
+      // AP-21 liveness before any behavioral assertion.
+      expect(warmup.length).toBe(CONTROL_WARMUP_KEYSTROKES);
 
-      // Pass 2 — SLOWED, same mount, same corpus (now with the unslowed
-      // pass's own keystrokes already appended -- an immaterial ~20 extra
-      // characters against a 250 KiB document).
-      await harness.page.evaluate((ms) => window.__gpPerf.enableSlowdown(ms), CONTROL_SLOWDOWN_MS);
-      let slowedAll: number[];
-      try {
-        slowedAll = await typeAndMeasure(
-          harness.page,
-          selector,
-          CONTROL_TOTAL_KEYSTROKES,
-          CONTROL_CADENCE_MS,
-          CONTROL_TYPING_PHRASE,
-        );
-      } finally {
-        await harness.page.evaluate(() => window.__gpPerf.disableSlowdown());
+      // INTERLEAVED sampling (repair round 3 of SFE-P3d-sweep+P3f — this
+      // control's third shape, each forced by real evidence). Round 1 made
+      // it differential (two sequential passes, slowed-minus-unslowed p95)
+      // after the fixed-threshold version proved vacuous. The gate run then
+      // showed the SEQUENTIAL differential is exposed to time-varying
+      // sandbox load: with the baseline pass inflated to p95=691.9ms by
+      // contention that eased before the slowed pass, the measured delta
+      // was 63.3ms of an injected 150ms — under the 75ms bar, a false
+      // negative from drift, not from any harness defect. Alternating the
+      // condition PER KEYSTROKE inside ONE run pairs the two conditions in
+      // time, so load drift hits both sample sets equally and cancels in
+      // the difference; comparing p50s (medians of the two interleaved
+      // sets) rather than p95s drops the tail sensitivity that made the
+      // old comparison noisy at small n. What the control PROVES is
+      // unchanged: the measurement pipeline observes a real injected
+      // per-keystroke cost, regardless of that day's absolute baseline.
+      const slowedSamples: number[] = [];
+      const unslowedSamples: number[] = [];
+      for (let i = 0; i < CONTROL_SAMPLE_KEYSTROKES * 2; i++) {
+        const slowed = i % 2 === 0;
+        if (slowed) {
+          await harness.page.evaluate((ms) => window.__gpPerf.enableSlowdown(ms), CONTROL_SLOWDOWN_MS);
+        }
+        try {
+          const measured = await typeAndMeasure(
+            harness.page,
+            selector,
+            1,
+            CONTROL_CADENCE_MS,
+            CONTROL_TYPING_PHRASE[i % CONTROL_TYPING_PHRASE.length]!,
+          );
+          expect(measured.length).toBe(1);
+          (slowed ? slowedSamples : unslowedSamples).push(measured[0]!);
+        } finally {
+          if (slowed) {
+            await harness.page.evaluate(() => window.__gpPerf.disableSlowdown());
+          }
+        }
       }
 
-      expect(slowedAll.length).toBe(CONTROL_TOTAL_KEYSTROKES);
-      const slowedSummary = summarize(slowedAll.slice(CONTROL_WARMUP_KEYSTROKES));
-      console.log(`[perf-control] 250 KiB, +${CONTROL_SLOWDOWN_MS}ms/keystroke: ${formatSummary(slowedSummary)}`);
-
-      // The control's whole purpose, made DIFFERENTIAL (SFE-P3d-sweep+P3f
-      // repair round 1 — see this file's header): the slowed run's p95
-      // must exceed THIS SAME SESSION's own unslowed p95 by roughly the
-      // injected delay. Fails the moment the harness stops observing the
-      // injected cost, regardless of the absolute baseline that day —
-      // unlike the fixed-threshold assertions this replaces, which were
-      // satisfied by this sandbox's ordinary (unslowed) baseline alone.
-      const delta = slowedSummary.p95 - unslowedSummary.p95;
+      expect(slowedSamples.length).toBe(CONTROL_SAMPLE_KEYSTROKES);
+      expect(unslowedSamples.length).toBe(CONTROL_SAMPLE_KEYSTROKES);
+      const slowedSummary = summarize(slowedSamples);
+      const unslowedSummary = summarize(unslowedSamples);
+      console.log(`[perf-control] 250 KiB, interleaved unslowed: ${formatSummary(unslowedSummary)}`);
       console.log(
-        `[perf-control] p95 delta: ${delta.toFixed(1)}ms (injected ${CONTROL_SLOWDOWN_MS}ms/keystroke)`,
+        `[perf-control] 250 KiB, interleaved +${CONTROL_SLOWDOWN_MS}ms/keystroke: ${formatSummary(slowedSummary)}`,
+      );
+
+      // The control's whole purpose: the slowed samples' MEDIAN must exceed
+      // the time-paired unslowed samples' median by roughly the injected
+      // delay. Fails the moment the harness stops observing the injected
+      // cost — if enableSlowdown became a no-op, the listener stopped being
+      // installed, or the busy-wait returned immediately, both medians
+      // would be equal and the delta would sit near zero.
+      const delta = slowedSummary.p50 - unslowedSummary.p50;
+      console.log(
+        `[perf-control] p50 delta: ${delta.toFixed(1)}ms (injected ${CONTROL_SLOWDOWN_MS}ms/keystroke)`,
       );
       expect(delta).toBeGreaterThan(CONTROL_SLOWDOWN_MS * 0.5);
     },
-    90_000,
+    120_000,
   );
 });
