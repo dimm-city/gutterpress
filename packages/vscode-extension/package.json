@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-vscode",
   "version": "0.11.0-experimental.0",
-  "description": "Gutterpress rich-editing custom text editor for VS Code (Experimental — SFE-P1a skeleton). See docs/plans/source-first-editor-enterprise-refactor.md.",
+  "description": "Gutterpress rich-editing custom text editor for VS Code (Experimental — SFE-P3c: host<->webview protocol, document gateway, build step). See docs/plans/source-first-editor-enterprise-refactor.md.",
   "private": true,
   "type": "commonjs",
   "publisher": "dimm-city",
@@ -32,7 +32,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bun test"
+    "test": "bun test",
+    "test:browser": "echo 'test:browser: no *.btest.ts suites exist yet under packages/vscode-extension/tests/webview/** (Lane C, SFE-P3c) — TODO: once Lane C lands its real-Chromium proofs (using the ./test-harness subpath this run adds to @dimm-city/gutterpress-editor per the run spec), wire them here the same way packages/editor/package.json chains its own test:browser command.' && exit 0",
+    "build": "bun scripts/build.mjs",
+    "test:host-fidelity": "node tests/host-fidelity/launch.mjs"
   },
   "dependencies": {
     "@dimm-city/gutterpress-editor": "workspace:*"
@@ -41,6 +44,7 @@
     "@types/bun": "1.3.14",
     "@types/node": "^22.0.0",
     "@types/vscode": "1.134.0",
+    "@vscode/test-electron": "^3.1.0",
     "typescript": "^5"
   }
 }

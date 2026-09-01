@@ -1,20 +1,19 @@
 // Unit tests for src/extension.ts (SFE-P1a behavior table: "Extension
-// skeleton" — "gutterpress.markdownEditor provider registered on
-// activation ... protocol version constant imported from
-// @dimm-city/gutterpress-editor").
+// skeleton"; extended SFE-P3c: activate() now also creates a shared
+// vscode.OutputChannel and registers the Lane B project-services stub).
 //
 // src/extension.ts imports `vscode` as a VALUE (it calls
-// `vscode.window.registerCustomEditorProvider`), and "vscode" is not a real
-// runtime module under `bun test` — see tests/support/vscode-mock.ts's
-// header. It must therefore be mocked via `mock.module` BEFORE the dynamic
-// `import()` of extension.ts below, mirroring
-// packages/desktop/tests/updater/electron-updater.test.ts's identical
-// `mock.module("electron", ...)`-before-dynamic-import pattern for
-// "electron".
+// `vscode.window.registerCustomEditorProvider`/`vscode.window.createOutputChannel`),
+// and "vscode" is not a real runtime module under `bun test` — see
+// tests/support/vscode-mock.ts's header. It must therefore be mocked via
+// `mock.module` BEFORE the dynamic `import()` of extension.ts below,
+// mirroring packages/desktop/tests/updater/electron-updater.test.ts's
+// identical `mock.module("electron", ...)`-before-dynamic-import pattern
+// for "electron".
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type * as vscode from "vscode";
-import { vscodeMock, type VscodeDisposableLike } from "./support/vscode-mock.ts";
+import { vscodeMock, type FakeOutputChannel, type VscodeDisposableLike } from "./support/vscode-mock.ts";
 
 interface RegisterCall {
   viewType: string;
@@ -24,6 +23,7 @@ interface RegisterCall {
 
 const registerCalls: RegisterCall[] = [];
 let disposeCallCount = 0;
+let createdOutputChannels: FakeOutputChannel[] = [];
 
 mock.module("vscode", () =>
   vscodeMock({
@@ -35,18 +35,30 @@ mock.module("vscode", () =>
         },
       };
     },
+    createOutputChannel: (name: string): FakeOutputChannel => {
+      const lines: string[] = [];
+      const channel: FakeOutputChannel = {
+        name,
+        lines,
+        appendLine: (v: string) => lines.push(v),
+        dispose: () => {},
+      };
+      createdOutputChannels.push(channel);
+      return channel;
+    },
   }),
 );
 
 const { activate, deactivate } = await import("../src/extension.ts");
 
 function fakeContext(): vscode.ExtensionContext {
-  return { subscriptions: [] } as unknown as vscode.ExtensionContext;
+  return { subscriptions: [], extensionUri: { toString: () => "fidelity://ext" } } as unknown as vscode.ExtensionContext;
 }
 
 beforeEach(() => {
   registerCalls.length = 0;
   disposeCallCount = 0;
+  createdOutputChannels = [];
 });
 
 describe("activate — gutterpress.markdownEditor registration (D9)", () => {
@@ -70,15 +82,23 @@ describe("activate — gutterpress.markdownEditor registration (D9)", () => {
     expect(typeof provider.resolveCustomTextEditor).toBe("function");
   });
 
-  test("pushes exactly the registration disposable onto context.subscriptions", () => {
+  test("pushes the registration, the output channel, and the project-services stub onto context.subscriptions", () => {
     const context = fakeContext();
     activate(context);
-    expect(context.subscriptions).toHaveLength(1);
+    expect(context.subscriptions).toHaveLength(3);
+  });
+});
+
+describe("activate — D15 output channel", () => {
+  test("creates exactly one 'Gutterpress' output channel", () => {
+    activate(fakeContext());
+    expect(createdOutputChannels).toHaveLength(1);
+    expect(createdOutputChannels[0]?.name).toBe("Gutterpress");
   });
 });
 
 describe("disposal", () => {
-  test("disposing the pushed registration does not throw, and reaches the underlying dispose", () => {
+  test("disposing every pushed subscription does not throw, and reaches the registration's underlying dispose", () => {
     const context = fakeContext();
     activate(context);
     expect(() => {

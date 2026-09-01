@@ -339,6 +339,97 @@ withFixture((root) => {
   check("packages/vscode-extension importing node:fs is allowed, exits 0", run(root).status, 0);
 });
 
+// --- Rule 4 (SFE-P3c extension): webview-purity subdirectories -------------
+// EXTENDS the existing packages/vscode-extension scan above (not a new
+// analyzer) — src/webview/**, src/protocol/**, and src/webview-host/**
+// additionally fail on 'vscode' or a Node builtin import; everywhere else
+// under packages/vscode-extension/src (e.g. src/host/**, src/provider.ts)
+// keeps importing both freely, exactly as the clean fixture above already
+// proves for a top-level src/extension.ts file.
+
+withFixture((root) => {
+  scaffoldClean(root);
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "protocol"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "protocol", "messages.ts"),
+    'import * as vscode from "vscode";\nexport const x = vscode;\n',
+  );
+  const r = run(root);
+  check("'vscode' import under src/protocol/** exits 1 (webview-purity)", r.status, 1);
+  check("webview-purity vscode-import failure names the file", r.stderr.includes("messages.ts"), true);
+  check("webview-purity vscode-import failure cites D9/D12", r.stderr.includes("D9") || r.stderr.includes("D12"), true);
+});
+
+withFixture((root) => {
+  scaffoldClean(root);
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "webview"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "webview", "entry.ts"),
+    'import type * as vscode from "vscode/index";\nexport const x: typeof vscode = undefined as never;\n',
+  );
+  check("a 'vscode/...' SUBPATH import under src/webview/** also exits 1 (webview-purity)", run(root).status, 1);
+});
+
+withFixture((root) => {
+  scaffoldClean(root);
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "webview-host"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "webview-host", "proxy-document-host.ts"),
+    'import { readFileSync } from "node:fs";\nexport const x = readFileSync;\n',
+  );
+  const r = run(root);
+  check("node:fs import under src/webview-host/** exits 1 (webview-purity)", r.status, 1);
+  check("webview-purity node-builtin failure names the specifier", r.stderr.includes("node:fs"), true);
+});
+
+withFixture((root) => {
+  scaffoldClean(root);
+  // A BARE (non-"node:"-prefixed) Node builtin, e.g. "crypto" — the same
+  // detection isNodeBuiltinSpecifier already uses for packages/editor.
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "webview"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "webview", "entry.ts"),
+    'import { randomUUID } from "crypto";\nexport const x = randomUUID;\n',
+  );
+  check("a BARE Node builtin (\"crypto\") under src/webview/** exits 1 (webview-purity)", run(root).status, 1);
+});
+
+withFixture((root) => {
+  scaffoldClean(root);
+  // Clean pass: webview-purity subdirectories with ORDINARY, allowed
+  // imports must still exit 0 — proving the rule does not over-refuse.
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "protocol"), { recursive: true });
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "webview-host"), { recursive: true });
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "webview"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "protocol", "messages.ts"),
+    'export interface Message { readonly type: string; }\n',
+  );
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "webview-host", "proxy-document-host.ts"),
+    'import type { Message } from "../protocol/messages.ts";\nexport const x: Message = { type: "y" };\n',
+  );
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "webview", "entry.ts"),
+    'document.getElementById("root");\nexport const y = 1;\n',
+  );
+  check("webview-purity subdirectories with clean imports exit 0", run(root).status, 0);
+});
+
+withFixture((root) => {
+  scaffoldClean(root);
+  // Outside the three purity subdirectories, 'vscode' and Node builtins
+  // remain fully allowed (D9: the extension host is a real Node process) —
+  // proves the extension did not accidentally widen scope to the whole
+  // package.
+  mkdirSync(join(root, "packages", "vscode-extension", "src", "host"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "vscode-extension", "src", "host", "document-gateway.ts"),
+    'import type * as vscode from "vscode";\nimport { randomUUID } from "node:crypto";\nexport const x: typeof vscode = undefined as never;\nexport const y = randomUUID;\n',
+  );
+  check("'vscode'/node: imports under src/host/** (outside the purity scope) still exit 0", run(root).status, 0);
+});
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);
   process.exit(1);

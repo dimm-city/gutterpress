@@ -82,6 +82,24 @@
       "entry": ["scripts/*.mjs", "tests/**/*.test.ts", "tests/**/*.btest.ts", "tests/**/support/*entry.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,mjs}"]
     },
+    "packages/vscode-extension": {
+      // SFE-P3c: this package gets its first real build step
+      // (scripts/build.mjs) and test suites this run. `entry` names
+      // src/extension.ts (the package.json "main" -> dist/extension.js
+      // source, loaded by the real VS Code extension host, not imported by
+      // anything else in this repo) and every test file explicitly.
+      // scripts/build.mjs and tests/host-fidelity/launch.mjs are NOT
+      // listed here (knip flags that as a redundant entry pattern): both
+      // are already package.json SCRIPT commands ("build", "test:host-
+      // fidelity"), which knip's own npm-script scanning already treats as
+      // reachable roots. tests/host-fidelity/run-in-host.js IS listed
+      // explicitly — it has no package.json script of its own; it is
+      // loaded only by a real VS Code extension host via
+      // @vscode/test-electron's `extensionTestsPath` contract (a runtime
+      // string path launch.mjs passes, invisible to knip's import graph).
+      "entry": ["src/extension.ts", "tests/**/*.test.ts", "tests/host-fidelity/run-in-host.js"],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"]
+    },
     "packages/desktop": {
       "entry": [
         // PWA-only; no in-repo importer by design (CLAUDE.md §8). P5a deletes

@@ -39,7 +39,17 @@
 //      packages/vscode-extension exist. Absent packages are SKIPPED, never
 //      failed. A present package with zero scannable `src` files is reported
 //      as a liveness warning (nothing to check yet is not the same as
-//      "checked and clean").
+//      "checked and clean"). SFE-P3c EXTENDS this rule's existing
+//      packages/vscode-extension scan (it is NOT a new analyzer): files
+//      under packages/vscode-extension/src/webview/**, src/protocol/**, and
+//      src/webview-host/** additionally fail on any 'vscode' import (bare
+//      or subpath) and any node:/bare-Node-builtin import — the D9/D12
+//      "webview has no filesystem or Node access" boundary, and the
+//      browser-safety this package's protocol module needs to be usable
+//      from both the extension host and the webview. Scoped to those three
+//      subdirectories only: src/host/**, src/provider.ts, and
+//      src/extension.ts legitimately run in the Node extension host and
+//      import both freely.
 //
 // Import/require specifiers are detected by string-scanning quoted literals
 // (import ... from "x", bare import "x", require("x"), dynamic import("x")) —
@@ -391,9 +401,27 @@ function checkFuturePackages(root) {
     return null;
   });
 
-  const vscodeExtResult = checkFuturePackageDir(root, "vscode-extension", (specifier) => {
+  // SFE-P3c webview-purity subdirectories (D9/D12): the webview has no
+  // filesystem or Node access, and the protocol module must stay usable
+  // from both sides of the host<->webview boundary. Computed once, outside
+  // the per-file callback, so `isInside` (already used elsewhere in this
+  // file) does the real path-containment check rather than a fragile
+  // string-prefix comparison.
+  const vscodeExtDir = join(root, "packages", "vscode-extension");
+  const webviewPurityDirs = ["webview", "protocol", "webview-host"].map((d) => join(vscodeExtDir, "src", d));
+
+  const vscodeExtResult = checkFuturePackageDir(root, "vscode-extension", (specifier, file) => {
     if (isBareOrSubpath(specifier, "@dimm-city/gutterpress-desktop")) return "desktop package import (packages/vscode-extension must not import the desktop shell)";
     if (isBareOrSubpath(specifier, "svelte")) return "svelte import (packages/vscode-extension must not import the desktop UI framework)";
+
+    if (webviewPurityDirs.some((dir) => isInside(file, dir))) {
+      if (specifier === "vscode" || specifier.startsWith("vscode/")) {
+        return "vscode import (webview-purity: src/webview, src/protocol, and src/webview-host must not import 'vscode' — D9/D12, no filesystem or Node access from the webview)";
+      }
+      if (isNodeBuiltinSpecifier(specifier)) {
+        return "Node builtin import (webview-purity: src/webview, src/protocol, and src/webview-host must stay browser-safe)";
+      }
+    }
     return null;
   });
 
