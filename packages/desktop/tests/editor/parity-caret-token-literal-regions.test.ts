@@ -499,3 +499,132 @@ describe("SFE-P3e round 2: occurrence counting is scoped per block, not per docu
     expect(real.value.match.href).toBe("h.html");
   });
 });
+
+/**
+ * SFE-P3e review round 3 (CONFIRMED finding): every table-cell case above
+ * (both the round-1 "images and links inside table cells" fix and every
+ * case elsewhere in this file) uses exactly ONE image/link per row, where
+ * the round-2 fix's block-scoped occurrence counting happens to work by
+ * coincidence — a table cell's `td_open`/`inline`/`td_close` triad carries
+ * no `.map` of its own, so the resolved container widens to the WHOLE ROW,
+ * and occurrence was counted against the row's raw text as if it were one
+ * `state.src` even though each cell is actually parsed against only its
+ * OWN content. With a single token per row that coincidence never surfaces;
+ * with two cells sharing byte-identical image/link syntax, or a code span
+ * in one cell and a real token in the next, it reproduces the SAME
+ * false-accept/false-refuse pair round 1 fixed, one level up:
+ *   - a code span in an earlier cell could false-ACCEPT against a real
+ *     token in a later cell of the SAME row (row-scoped counting made the
+ *     code span's own row position look like the real token's cell
+ *     position);
+ *   - a real token whose cell was not the row's first could false-REFUSE
+ *     (row-scoped counting never matched the stamp, which was computed
+ *     against only that cell's own content).
+ * This describe block pins both shapes, each asserting the SPECIFIC
+ * refusal reason (never just `ok === false`), reproduced directly against
+ * the pre-round-3 code before this fix (row-scoped counting accepted the
+ * code-span cases and refused the second identical-token cases below).
+ */
+describe("SFE-P3e round 3: occurrence counting is scoped per table CELL, not per row", () => {
+  test("image: two byte-identical images in the SAME row resolve independently, caret on each", () => {
+    const text = "| a | b |\n| - | - |\n| ![a](b.png) | ![a](b.png) |\n";
+    const firstCaret = text.indexOf("b.png");
+    const secondCaret = text.lastIndexOf("b.png");
+    expect(secondCaret).toBeGreaterThan(firstCaret);
+
+    const first = locateImageAtCaret(text, firstCaret);
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("unreachable");
+    expect(first.value.match.src).toBe("b.png");
+
+    const second = locateImageAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.src).toBe("b.png");
+  });
+
+  test("link: two byte-identical links in the SAME row resolve independently, caret on each", () => {
+    const text = "| a | b |\n| - | - |\n| [t](h.html) | [t](h.html) |\n";
+    const firstCaret = text.indexOf("h.html");
+    const secondCaret = text.lastIndexOf("h.html");
+    expect(secondCaret).toBeGreaterThan(firstCaret);
+
+    const first = locateLinkAtCaret(text, firstCaret);
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("unreachable");
+    expect(first.value.match.href).toBe("h.html");
+
+    const second = locateLinkAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.href).toBe("h.html");
+  });
+
+  test("image: a code span in cell 1 with a real image in cell 2 of the SAME row — the code span refuses, the real one resolves", () => {
+    const text = "| a | b |\n| - | - |\n| `![a](b.png)` | ![a](b.png) |\n";
+    const codeSpanCaret = text.indexOf("b.png");
+    const realCaret = text.lastIndexOf("b.png");
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("b.png");
+  });
+
+  test("link: a code span in cell 1 with a real link in cell 2 of the SAME row — the code span refuses, the real one resolves", () => {
+    const text = "| a | b |\n| - | - |\n| `[t](h.html)` | [t](h.html) |\n";
+    const codeSpanCaret = text.indexOf("h.html");
+    const realCaret = text.lastIndexOf("h.html");
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateLinkAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateLinkAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.href).toBe("h.html");
+  });
+
+  test("image: reverse order — a real image in cell 1 and a code-span literal sharing its src in cell 2 — still resolves/refuses correctly both ways", () => {
+    const text = "| a | b |\n| - | - |\n| ![a](b.png) | `![a](b.png)` |\n";
+    const realCaret = text.indexOf("b.png");
+    const codeSpanCaret = text.lastIndexOf("b.png");
+    expect(codeSpanCaret).toBeGreaterThan(realCaret);
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("b.png");
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+  });
+
+  test("link: reverse order — a real link in cell 1 and a code-span literal sharing its href in cell 2 — still resolves/refuses correctly both ways", () => {
+    const text = "| a | b |\n| - | - |\n| [t](h.html) | `[t](h.html)` |\n";
+    const realCaret = text.indexOf("h.html");
+    const codeSpanCaret = text.lastIndexOf("h.html");
+    expect(codeSpanCaret).toBeGreaterThan(realCaret);
+
+    const real = locateLinkAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.href).toBe("h.html");
+
+    const fake = locateLinkAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+  });
+});

@@ -243,9 +243,23 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 // point, since a stamped token never contains a newline (`inline-source.ts`
 // deliberately does not stamp one that does) and container sigils
 // (`>`, `-`, digits) cannot themselves spell `![`/`[…](`. See
-// `enclosingProseChildren`'s own header for the table-cell case, where the
-// resolved container widens to the whole row (no per-cell `.map`) rather
-// than narrowing to one cell.
+// `enclosingProseScopes`'s own header for the table-cell case this
+// block-scoped fix still left coarsened.
+//
+// SFE-P3e review round 3 (CONFIRMED finding): round 2's block-scoped fix
+// resolved the table-cell case to the WHOLE ROW rather than to one cell,
+// because a table cell's `td_open`/`inline`/`td_close` triad carries no
+// `.map` of its own — `enclosingProseChildren` (as it was then named) could
+// only find `tr_open`'s map, which covers every cell in the row. Counting
+// occurrence against the ROW's raw text conflated two DIFFERENT `state.src`
+// strings — each cell is parsed against only its OWN content, never the
+// row's — reproducing the SAME false-accept/false-refuse pattern round 1
+// fixed, now one level up: a code span in one cell could false-accept
+// against a real image in another cell, and a real image whose cell was
+// not the row's first could false-refuse. The fix resolves per-cell scopes
+// directly from data the real parser already produced — see
+// `enclosingProseScopes`'s own header for how — so each cell's occurrence
+// is now counted, and matched, against that cell's own content alone.
 //
 // The regex-based candidate finders (`findImageTokenAtOffset`/
 // `findLinkTokenAtOffset`, `context-menu-actions.ts`) are UNCHANGED and
@@ -304,19 +318,23 @@ function caretLineIsCodeBlock(tokens: readonly MarkdownToken[], line: number): b
   return false;
 }
 
-/** The result of resolving the caret's enclosing prose container: the real
- *  inline children it covers, plus the absolute char offset where THAT
- *  container's own first line begins — the scope
- *  {@link pipelineImageRefusal}/{@link pipelineLinkRefusal} count occurrence
- *  within (SFE-P3e review round 2; see "Real-parser literal-region
- *  evidence" above for why a line-start offset is enough, without needing
- *  to reconstruct the container's own inline `state.src`). */
-interface ProseScope {
+/** One inline-parsing scope resolved for occurrence-counting purposes: the
+ *  real inline children ONE `inline` block token produced, plus the
+ *  absolute char range in `text` — `[scopeFrom, scopeTo)` — where that
+ *  token's own content begins and ends. {@link pipelineImageRefusal}/
+ *  {@link pipelineLinkRefusal} use the range to decide WHICH scope a caret
+ *  candidate belongs to, then count occurrence within that scope alone
+ *  (SFE-P3e review rounds 2 and 3; see "Real-parser literal-region
+ *  evidence" above for why a line-start offset is enough for the
+ *  single-scope case, without needing to reconstruct the container's own
+ *  inline `state.src`). */
+interface InlineScope {
   readonly children: readonly MarkdownToken[];
   readonly scopeFrom: number;
+  readonly scopeTo: number;
 }
 
-/** The real inline children covering `line`, gathered from the INNERMOST
+/** The real inline scope(s) covering `line`, gathered from the INNERMOST
  *  map-bearing block token whose own `.map` range contains it — not from
  *  the `inline` token's OWN `.map`, the way this used to look it up.
  *
@@ -331,22 +349,51 @@ interface ProseScope {
  *  `inline` token nested between that pair's open and close (map-less table
  *  cells included, since nothing here requires the individual `inline`
  *  token to carry its own map), finds the right children whether or not the
- *  immediate container happens to carry one. For an ordinary paragraph,
- *  heading, or single-paragraph list item, that innermost container IS the
- *  one `inline` token itself (its own `paragraph_open`/`heading_open`
- *  carries a `.map` covering exactly its own lines and nothing wider), so
- *  {@link ProseScope.scopeFrom} below is exact per-inline-token scope; for a
- *  map-less table cell it widens to the whole ROW (one occurrence scope
- *  shared by every cell in that row, since markdown-it stamps each cell's
- *  occurrence independently but this module has no per-cell map to narrow
- *  further) — a known, documented coarsening that only matters for two
- *  cells of the SAME row sharing byte-identical image/link syntax, a shape
- *  none of this module's required behavior covers.
+ *  immediate container happens to carry one.
+ *
+ *  For an ordinary paragraph, heading, or single-paragraph list item, that
+ *  innermost container holds exactly ONE `inline` token (its own
+ *  `paragraph_open`/`heading_open` carries a `.map` covering exactly its
+ *  own lines and nothing wider), so the returned array has exactly one
+ *  entry: `scopeFrom` is that container's own line start and `scopeTo` is
+ *  intentionally unbounded (`text.length`), since `line` alone already
+ *  narrowed to the one container that can hold the caret — exact
+ *  per-inline-token scope, unchanged from before this fix.
+ *
+ *  SFE-P3e review round 3 (CONFIRMED finding): a map-less container that
+ *  holds MULTIPLE `inline` tokens — in practice, a table row, since
+ *  `tr_open` is the shallowest ancestor with a map once `td`/`inline`/`td`
+ *  are all map-less — used to be flattened into one scope spanning the
+ *  WHOLE ROW, with occurrence counted against the row's raw text. That
+ *  conflated two DIFFERENT `state.src` strings (each cell is parsed against
+ *  only its OWN content, never the row's) into one — see this file's
+ *  "Real-parser literal-region evidence" header for the false-accept/
+ *  false-refuse pair this produced. Recovering each cell's own scope needs
+ *  no hand-rolled pipe-splitting: `token.content` on each `inline` token IS
+ *  the exact `state.src` its stamp was computed against (markdown-it's own
+ *  `inline` core rule tokenizes every block's children against
+ *  `tok.content`), so locating each cell's `content` inside the
+ *  container's raw line span, left to right in parser order, with the
+ *  search cursor advancing past each match, recovers per-cell bounds from
+ *  data the real parser already produced — not from re-parsing table
+ *  syntax. A cell whose `content` cannot be located this way (an escaped
+ *  `\|` inside a cell shifts `content` out of literal alignment with the
+ *  raw line — the one case this technique does not cover) fails the WHOLE
+ *  container closed rather than risk a wrong per-cell match, matching the
+ *  fail-closed posture {@link pipelineImageRefusal}/
+ *  {@link pipelineLinkRefusal} already apply to every other ambiguous
+ *  shape.
  *
  *  `null` when no block covers `line` at all (a blank line, a top-level
  *  `html_block` with no wrapping container, or any other leaf with no
- *  inline content) — unchanged from before. */
-function enclosingProseChildren(tokens: readonly MarkdownToken[], starts: readonly number[], text: string, line: number): ProseScope | null {
+ *  inline content), or when a multi-scope container's per-scope bounds
+ *  could not be recovered. */
+function enclosingProseScopes(
+  tokens: readonly MarkdownToken[],
+  starts: readonly number[],
+  text: string,
+  line: number,
+): readonly InlineScope[] | null {
   let openIndex = -1;
   let closeIndex = -1;
   const openStack: number[] = [];
@@ -368,14 +415,50 @@ function enclosingProseChildren(tokens: readonly MarkdownToken[], starts: readon
     }
   }
   if (openIndex < 0 || closeIndex < 0) return null;
-  const children: MarkdownToken[] = [];
+  const inlineTokens: MarkdownToken[] = [];
   for (let i = openIndex + 1; i < closeIndex; i++) {
-    if (tokens[i]!.type === "inline") children.push(...(tokens[i]!.children ?? []));
+    if (tokens[i]!.type === "inline") inlineTokens.push(tokens[i]!);
   }
+  if (inlineTokens.length === 0) return null;
+
   // `tokens[openIndex]!.map` is non-null here: `openIndex` is only ever set
   // at a site that already checked `token.map` truthy, above.
-  const scopeFrom = offsetOfLine(starts, text, tokens[openIndex]!.map![0]);
-  return { children, scopeFrom };
+  const containerFrom = offsetOfLine(starts, text, tokens[openIndex]!.map![0]);
+
+  if (inlineTokens.length === 1) {
+    return [{ children: inlineTokens[0]!.children ?? [], scopeFrom: containerFrom, scopeTo: text.length }];
+  }
+
+  // Multiple inline tokens sharing one map-bearing container with no
+  // per-child map of their own — see this function's header for why this
+  // is a table row in practice and how per-scope bounds are recovered.
+  const containerTo = offsetOfLine(starts, text, tokens[openIndex]!.map![1]);
+  const containerText = text.slice(containerFrom, containerTo);
+  const scopes: InlineScope[] = [];
+  let cursor = 0;
+  for (const inlineToken of inlineTokens) {
+    const idx = containerText.indexOf(inlineToken.content, cursor);
+    if (idx < 0) return null;
+    const scopeFrom = containerFrom + idx;
+    scopes.push({ children: inlineToken.children ?? [], scopeFrom, scopeTo: scopeFrom + inlineToken.content.length });
+    cursor = idx + inlineToken.content.length;
+  }
+  return scopes;
+}
+
+/** The one {@link InlineScope} in `scopes` whose `[scopeFrom, scopeTo)`
+ *  span contains `offset` — "the cell whose td the caret falls in" when
+ *  `scopes` came from a multi-scope container, or simply the one scope
+ *  there is otherwise. `undefined` when `offset` lands in none of them
+ *  (only reachable for a multi-scope container: the single-scope case is
+ *  always unbounded above — see {@link enclosingProseScopes}). Restricting
+ *  the match to the ONE containing scope, rather than accepting a match in
+ *  ANY scope, is load-bearing: a candidate's occurrence computed against a
+ *  scope it does NOT belong to is meaningless coordinate arithmetic, not a
+ *  weaker signal, and could coincidentally collide with an unrelated real
+ *  token's stamp. */
+function scopeContaining(scopes: readonly InlineScope[], offset: number): InlineScope | undefined {
+  return scopes.find((scope) => offset >= scope.scopeFrom && offset < scope.scopeTo);
 }
 
 /**
@@ -388,18 +471,17 @@ function enclosingProseChildren(tokens: readonly MarkdownToken[], starts: readon
  * finding — see this file's "Real-parser literal-region evidence" header):
  * computes `candidate`'s own occurrence number the SAME way
  * `registerInlineSourceMetadata` computed it while parsing — scoped to the
- * SAME enclosing block, not to the whole document (SFE-P3e review round 2,
- * CONFIRMED finding: `sourceTokenOccurrenceAt` over the whole document
- * compared against a stamp scoped to one block's inline content agreed only
- * when that block started at document offset 0; see the header for the
- * full account and why scanning from the resolved container's own
- * `scopeFrom` — not `0` — reproduces the SAME count the stamp used) — then
- * requires a real `image` child stamped with that EXACT `{token,
- * occurrence}` pair, not merely a real image SOMEWHERE in the block sharing
- * a normalized `src`. A literal `` `![a](b.png)` `` code span and a real
- * `![a](b.png)` image in the same paragraph now resolve to DIFFERENT
- * occurrence numbers for the identical literal text, so the caret's own
- * candidate is judged on its own position, never on a sibling's.
+ * SAME inline-parsing scope, not to the whole document, the whole block, or
+ * (for a table row) the whole ROW (SFE-P3e review rounds 2 and 3,
+ * CONFIRMED findings — see {@link enclosingProseScopes}'s header for the
+ * full account of both) — then requires a real `image` child of THAT SAME
+ * scope stamped with that EXACT `{token, occurrence}` pair, not merely a
+ * real image SOMEWHERE in the container sharing a normalized `src`. A
+ * literal `` `![a](b.png)` `` code span and a real `![a](b.png)` image in
+ * the same paragraph — or in a neighboring cell of the same table row — now
+ * resolve to DIFFERENT scopes or DIFFERENT occurrence numbers for the
+ * identical literal text, so the caret's own candidate is judged on its own
+ * position, never on a sibling's.
  */
 function pipelineImageRefusal(
   text: string,
@@ -411,7 +493,9 @@ function pipelineImageRefusal(
   const starts = buildLineStarts(text);
   const line = lineNumberFor(starts, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const scope = enclosingProseChildren(tokens, starts, text, line);
+  const scopes = enclosingProseScopes(tokens, starts, text, line);
+  if (!scopes) return "no-token";
+  const scope = scopeContaining(scopes, candidate.start);
   if (!scope) return "no-token";
   const occurrence = sourceTokenOccurrenceAt(
     text.slice(scope.scopeFrom),
@@ -439,7 +523,9 @@ function pipelineLinkRefusal(
   const starts = buildLineStarts(text);
   const line = lineNumberFor(starts, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const scope = enclosingProseChildren(tokens, starts, text, line);
+  const scopes = enclosingProseScopes(tokens, starts, text, line);
+  if (!scopes) return "no-token";
+  const scope = scopeContaining(scopes, candidate.start);
   if (!scope) return "no-token";
   const occurrence = sourceTokenOccurrenceAt(
     text.slice(scope.scopeFrom),
