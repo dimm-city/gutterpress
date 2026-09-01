@@ -114,8 +114,14 @@ Picker). Consequences:
   sanctioned escape hatch for "grant access to an existing folder" and is
   listed as future work (§9), not v1.
 
-Also request `openid email` (non-sensitive) so the stored credential can be
-labeled "Google Drive — name@gmail.com" for the accounts picker.
+Request `drive.file` **alone**. The stored credential's label ("Google Drive
+— name@gmail.com", for the accounts picker) comes from Drive's own
+`about.get`, so no `openid`/`email` sign-in scope is needed — and requesting
+a second scope makes Google's consent screen granular, listing the Drive
+permission as a checkbox a user can leave unticked and still finish sign-in,
+which produced a "connected" account that answered 403 to every Drive call.
+(Amended 2026-09-01 after the 0.10.5 bring-up; the plan and spike originally
+requested `openid email` too. See ADR 0011.)
 
 ### D2 — Auth flow: loopback redirect + PKCE (system browser)
 
@@ -570,7 +576,7 @@ credentials is in **Appendix B**.
  Create the Cloud project; enable the Drive API;
 configure the OAuth consent screen (external) with app name, logo, homepage
 and privacy-policy URLs (the latter two must exist — flagging as a real
-prerequisite); scopes `drive.file`, `openid`, `email`; create a **Desktop
+prerequisite); scope `drive.file` only (see ADR 0011 for why not `openid`/`email`); create a **Desktop
 app** OAuth client; record id + "secret" as the embedded defaults. Publish
 the consent screen to **In production** and complete basic (brand)
 verification to clear the "unverified app" interstitial. Until then,

@@ -20,12 +20,14 @@
  *    re-registering the OAuth client without matching these breaks connect
  *    for every user) ──────────────────────────────────────────────────────
  *
- *   1. OAuth consent screen (External), scopes:
- *        https://www.googleapis.com/auth/drive.file, openid, email
+ *   1. OAuth consent screen (External), ONE scope:
+ *        https://www.googleapis.com/auth/drive.file
  *      `drive.file` is Google's *non-sensitive* tier (confirmed against a
  *      real account, docs/gdrive-publish-plan.md Appendix B P13) — no
- *      restricted-scope verification, no CASA assessment. `openid`+`email`
- *      let the stored credential be labeled with the account's email.
+ *      restricted-scope verification, no CASA assessment. Not `openid`/
+ *      `email` alongside it: the account email comes from Drive's about.get,
+ *      and a second scope makes the consent screen granular (see
+ *      GOOGLE_OAUTH_SCOPE below).
  *   2. OAuth client type: **Desktop app** (NOT "Web application"). Only a
  *      Desktop-app client accepts an un-registered ephemeral loopback
  *      `redirect_uri` (`http://127.0.0.1:<port>`) — a Web-application client
@@ -58,9 +60,17 @@ import { googleApiFailure, readGoogleApiError } from "./google-errors.ts";
 /** Logical TokenStore host key for the stored refresh-token credential. */
 export const GDRIVE_HOST = "gdrive";
 
-/** Scopes requested (D1): drive.file is Google's non-sensitive tier; openid
- * + email let the stored credential be labeled with the account's email. */
-const GOOGLE_OAUTH_SCOPE = "https://www.googleapis.com/auth/drive.file openid email";
+/**
+ * The ONE scope requested (D1): drive.file, Google's non-sensitive tier.
+ * Deliberately not `openid email` alongside it: the account email that labels
+ * the stored credential comes from Drive's own about.get (below), which needs
+ * no sign-in scope — and requesting more than one scope turns Google's
+ * consent screen granular, listing the Drive permission as a checkbox a user
+ * can leave unticked and still finish sign-in. That produced a "connected"
+ * account that answered 403 to every Drive call (0.10.5 bring-up). One scope
+ * leaves nothing to untick.
+ */
+const GOOGLE_OAUTH_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 const AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -137,6 +147,29 @@ export function requireGoogleClientCredentials(
 export const RECONNECT_MESSAGE =
   "Your Google Drive connection expired or was revoked. Connect Google Drive again.";
 
+/** The one scope the provider needs — and the only one it requests (D1). */
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+/**
+ * Backstop for a token issued without the Drive scope. With a single scope
+ * requested (see GOOGLE_OAUTH_SCOPE) Google's consent screen has nothing to
+ * partially grant, so this should not happen — but Google's own guidance is
+ * to read the token response's `scope` rather than assume, and a sign-in
+ * that "succeeds" without Drive access would otherwise surface only as a
+ * bare 403 on the author's first publish.
+ */
+export const DRIVE_PERMISSION_NOT_GRANTED_MESSAGE =
+  "Google sign-in finished, but it didn't include the Google Drive permission, so Gutterpress can't create or see any files. Connect Google Drive again and allow it.";
+
+/** Whether a token response's granted `scope` list includes `wanted`. An
+ * ABSENT field is treated as unknown (true): Google always sends it, and if
+ * it ever didn't, the about.get call right after connect still catches an
+ * insufficient grant with Google's own reason (see `fetchEmail`). */
+export function grantedScopesInclude(scope: string | undefined, wanted: string): boolean {
+  if (scope === undefined) return true;
+  return scope.split(/\s+/).includes(wanted);
+}
+
 /** Host-supplied callbacks for the interactive connect flow. There is no
  * "user code" to display (unlike the GitHub device flow) — just the URL the
  * browser was (or should be) sent to, and an optional cancellation signal. */
@@ -184,6 +217,9 @@ interface TokenResponse {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
+  /** Space-delimited scopes the user ACTUALLY granted — not necessarily what
+   * was requested (Google's granular consent lets each one be unticked). */
+  scope?: string;
   error?: string;
   error_description?: string;
 }
@@ -405,6 +441,14 @@ export class GoogleAuthProvider {
       throw new Error(
         "Google didn't return a refresh token. Try connecting again — if this keeps happening, revoke Gutterpress's access at myaccount.google.com/permissions and reconnect.",
       );
+    }
+    // A token without the Drive scope is a successful sign-in that can never
+    // publish. Refuse it here, before storing anything — and before the
+    // about.get below, which would only report it as a generic 403. Nothing
+    // is revoked: such a grant holds no Drive access, and prompt=consent
+    // re-asks in full on the next attempt.
+    if (!grantedScopesInclude(tokenBody.scope, DRIVE_FILE_SCOPE)) {
+      throw new Error(DRIVE_PERMISSION_NOT_GRANTED_MESSAGE);
     }
 
     const email = await this.fetchEmail(tokenBody.access_token);

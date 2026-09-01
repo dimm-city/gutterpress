@@ -191,6 +191,9 @@ test("handlePublishErrors passes every google-auth.ts author-facing message thro
     "Google sign-in was canceled.",
     "Google sign-in timed out waiting for the browser. Try again, or use GDRIVE_REFRESH_TOKEN for headless/CI use.",
     "Couldn't reach Google. Check your connection and try again.",
+    // A token issued without the Drive scope (google-auth.ts
+    // DRIVE_PERMISSION_NOT_GRANTED_MESSAGE).
+    "Google sign-in finished, but it didn't include the Google Drive permission, so Gutterpress can't create or see any files. Connect Google Drive again and allow it.",
   ];
   try {
     for (const msg of messages) {

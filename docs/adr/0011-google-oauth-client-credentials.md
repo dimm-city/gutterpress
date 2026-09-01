@@ -82,13 +82,23 @@ connect for every user of that build:
    connect fails fast on it rather than storing a credential that can never
    publish (`google-errors.ts`, `google-auth.ts`'s `fetchEmail`).
 2. **OAuth consent screen** (External), scopes:
-   `https://www.googleapis.com/auth/drive.file`, `openid`, `email`.
+   `https://www.googleapis.com/auth/drive.file` only.
    `drive.file` is Google's *non-sensitive* scope tier — confirmed against a
    real account (`docs/gdrive-publish-plan.md` Appendix B, spike **P13**:
    Cloud Console's Data Access page lists it under "Your non-sensitive
    scopes," with "Your sensitive scopes: No rows to display"). No restricted-
    scope verification, no CASA third-party security assessment, no annual
    re-audit — a `Testing`-mode app is enough for development.
+   **Register (and request) `drive.file` alone — not `openid`/`email` with
+   it.** The account email that labels a stored connection comes from
+   Drive's own `about.get`, which needs no sign-in scope. Requesting more
+   than one scope makes Google's consent screen granular: it lists the Drive
+   permission as a checkbox the user can leave unticked and still finish
+   sign-in, after which the token lacks `drive.file` and every Drive call
+   answers `403` while the connection looks fine (the 0.10.5 bring-up).
+   One scope leaves nothing to untick. The connect flow still reads the
+   token response's `scope` and refuses a token without `drive.file`
+   (`google-auth.ts`, `DRIVE_PERMISSION_NOT_GRANTED_MESSAGE`) as a backstop.
 3. **OAuth client type: Desktop app** — not "Web application." Only a
    Desktop-app client accepts an un-registered ephemeral loopback
    `redirect_uri` (`http://127.0.0.1:<OS-assigned port>`); a Web-application
