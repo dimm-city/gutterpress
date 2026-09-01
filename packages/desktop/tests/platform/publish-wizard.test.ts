@@ -81,7 +81,7 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain('stepKind === "preflight"');
     expect(wiz).toContain('"Preflight"');
     // Entered via the step-change handler (NOT $effect) and re-runnable.
-    expect(wiz).toContain("if (target === totalSteps - 2) runPreflightNow()");
+    expect(wiz).toContain("if (entersPreflightForward(direction, target, totalSteps)) runPreflightNow()");
     expect(wiz).toContain("controller.runPreflight(selectedCards.map((c) => c.id))");
     expect(wiz).toContain("onclick={runPreflightNow}");
     // Grouped, plain-language rows with a red/amber/green header.
@@ -190,20 +190,46 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain("controller.setPublishConfigDraft(card.id, field.key");
   });
   test("loading a setup step for a connected provider with destinations refreshes the picker (no $effect)", () => {
-    expect(wiz).toContain("function enterStep(target: number)");
+    expect(wiz).toContain('function enterStep(target: number, direction: "forward" | "back")');
     expect(wiz).toContain("card?.connected && card.destinations");
     expect(wiz).toContain("void controller.loadDestinations(card.id)");
+  });
+
+  // ── Backward navigation into Preflight must not rerun it (#221 C4) ───────
+  test("next() enters Preflight forward; back() enters it backward — only forward reruns", () => {
+    expect(wiz).toContain('enterStep(Math.min(stepIndex + 1, totalSteps - 1), "forward")');
+    expect(wiz).toContain('enterStep(Math.max(stepIndex - 1, 0), "back")');
+    expect(wiz).toContain("entersPreflightForward,");
   });
 
   // ── Format choice (#221 phase 3, D8 — gdrive PDF/Website) ────────────────
   test("renders a PDF/Website choice only for a provider that declares more than one format", () => {
     expect(wiz).toContain("card.formats && card.formats.length > 1");
     expect(wiz).toContain("controller.effectiveFormat(card)");
-    expect(wiz).toContain("controller.selectFormat(card.id, fmt)");
+    expect(wiz).toContain("chooseFormat(card, fmt)");
   });
   test("the format choice mentions Drive is file delivery, not a live website", () => {
     const idx = wiz.indexOf("card.formats && card.formats.length > 1");
     const region = wiz.slice(idx, idx + 1600);
     expect(region).toContain("Azure Static Web Apps");
+  });
+
+  // ── Radio `checked` state must re-derive from the controller after a
+  //    failed selectFormat(), not stay stuck on the clicked option (#221 C8) ─
+  test("the format radio's checked state is driven by an in-flight optimistic pick that ALWAYS clears once selectFormat settles", () => {
+    expect(wiz).toContain('import { displayedFormat } from "$lib/publish-format-choice"');
+    expect(wiz).toContain(
+      "{@const chosenFormat = displayedFormat(pendingFormat[card.id], controller.effectiveFormat(card))}",
+    );
+    expect(wiz).toContain("checked={chosenFormat === fmt}");
+    // chooseFormat sets the optimistic pick, then clears it in `finally` —
+    // i.e. on BOTH success and failure, never leaving a stale override.
+    const idx = wiz.indexOf("async function chooseFormat(");
+    expect(idx).toBeGreaterThan(-1);
+    const region = wiz.slice(idx, idx + 500);
+    expect(region).toContain("pendingFormat = { ...pendingFormat, [card.id]: fmt }");
+    expect(region).toContain("await controller.selectFormat(card.id, fmt)");
+    expect(region).toContain("} finally {");
+    expect(region).toContain("delete rest[card.id]");
   });
 });

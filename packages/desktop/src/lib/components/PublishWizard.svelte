@@ -29,11 +29,13 @@
     preflightHeaderLevel,
     preflightCounts,
     categoryLabel,
+    entersPreflightForward,
     type PreflightRow,
   } from "$lib/preflight";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { PublishProviderCard } from "$lib/platform/contract";
   import type { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
+  import { displayedFormat } from "$lib/publish-format-choice";
 
   let {
     controller,
@@ -62,6 +64,10 @@
   let addingAccount = $state<Record<string, boolean>>({});
   // Per-provider: is the inline "New folder…" name form open (#221 D9)?
   let addingFolder = $state<Record<string, boolean>>({});
+  // Per-provider in-flight optimistic format pick (#221 C8) — see
+  // `displayedFormat`'s doc comment for why this needs to be a real, directly-
+  // read $state rather than deriving `checked` from controller state alone.
+  let pendingFormat = $state<Record<string, "pdf" | "html">>({});
 
   const ADD = "__add_account__";
   const NEW_FOLDER = "__new_folder__";
@@ -76,6 +82,22 @@
       void controller.selectCredential(card.id, value);
     }
   }
+  /** Choose the format for a multi-format card (#221 C8). Sets the optimistic
+   *  pick immediately so the click feels instant, then ALWAYS clears it once
+   *  `selectFormat` settles — on success the controller's own format now
+   *  matches what was picked; on failure this is what stops the radio from
+   *  staying visually checked on an option that was never actually saved. */
+  async function chooseFormat(card: PublishProviderCard, fmt: "pdf" | "html") {
+    pendingFormat = { ...pendingFormat, [card.id]: fmt };
+    try {
+      await controller.selectFormat(card.id, fmt);
+    } finally {
+      const rest = { ...pendingFormat };
+      delete rest[card.id];
+      pendingFormat = rest;
+    }
+  }
+
   async function doConnect(card: PublishProviderCard) {
     await controller.connectPublish(card.id);
     // Collapse the add form only on success (keep it open, with the error, so
@@ -153,21 +175,25 @@
     onClose?.();
   }
   /** Entering a step may need to react (no $effect — driven by these
-   *  step-change event handlers, CLAUDE.md §8): the Preflight step runs its
-   *  checks; a connected setup step with a folder picker (#221 D9) loads it,
-   *  so revisiting the step after connecting (or coming back to it) shows
-   *  current folders without a manual refresh. */
-  function enterStep(target: number) {
+   *  step-change event handlers, CLAUDE.md §8): a FORWARD entry into the
+   *  Preflight step runs its checks; a connected setup step with a folder
+   *  picker (#221 D9) loads it, so revisiting the step after connecting (or
+   *  coming back to it) shows current folders without a manual refresh.
+   *  `direction` matters ONLY for the preflight rerun (C4 hardening) —
+   *  stepping BACK into Preflight from Publish must not re-run it and
+   *  silently clear an override the author already granted; see
+   *  `entersPreflightForward`'s doc comment for the full story. */
+  function enterStep(target: number, direction: "forward" | "back") {
     stepIndex = target;
-    if (target === totalSteps - 2) runPreflightNow();
+    if (entersPreflightForward(direction, target, totalSteps)) runPreflightNow();
     const card = selectedCards[target - 1];
     if (card?.connected && card.destinations) void controller.loadDestinations(card.id);
   }
   function next() {
-    enterStep(Math.min(stepIndex + 1, totalSteps - 1));
+    enterStep(Math.min(stepIndex + 1, totalSteps - 1), "forward");
   }
   function back() {
-    enterStep(Math.max(stepIndex - 1, 0));
+    enterStep(Math.max(stepIndex - 1, 0), "back");
   }
   function runPreflightNow() {
     // Re-running invalidates any prior "publish anyway" override.
@@ -276,7 +302,7 @@
       <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
 
       {#if card.formats && card.formats.length > 1}
-        {@const chosenFormat = controller.effectiveFormat(card)}
+        {@const chosenFormat = displayedFormat(pendingFormat[card.id], controller.effectiveFormat(card))}
         <fieldset class="field fmt-choice">
           <legend>What to publish</legend>
           <ul class="dest-list">
@@ -287,7 +313,7 @@
                     type="radio"
                     name={`pw-${card.id}-format`}
                     checked={chosenFormat === fmt}
-                    onchange={() => controller.selectFormat(card.id, fmt)}
+                    onchange={() => chooseFormat(card, fmt)}
                     disabled={busy}
                   />
                   <span class="dest-main">
@@ -410,7 +436,7 @@
             <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
           </div>
           {#if card.destinations}
-            {@const destBusy = controller.destinationsBusyId === card.id}
+            {@const destBusy = controller.destinationsBusyId[card.id] === true}
             {@const dests = controller.publishDestinations[card.id] ?? []}
             {@const currentFolderId = card.config.folderId ?? ""}
             <label class="field" for={`pw-${card.id}-folder`}>
@@ -442,7 +468,7 @@
                 <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
               </div>
             {/if}
-            {#if controller.destinationsError}<p class="error">{controller.destinationsError}</p>{/if}
+            {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
             <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
           {/if}
         {:else}
