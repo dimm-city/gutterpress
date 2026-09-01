@@ -14,6 +14,7 @@
 import { open } from "node:fs/promises";
 import { FriendlyHttpError, withFetchTimeout } from "../fetch-timeout.ts";
 import { RECONNECT_MESSAGE } from "./google-auth.ts";
+import { googleApiFailure, readGoogleApiError } from "./google-errors.ts";
 
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
@@ -41,6 +42,14 @@ async function driveFetch(
 
 function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
+}
+
+/** The error for a non-OK Drive answer: reads the body once and keeps
+ * Google's own `reason` and message (google-errors.ts) rather than reporting
+ * a bare status nobody can act on. `what` is the caller's "Couldn't …"
+ * phrase, and names Google Drive — the desktop allowlist depends on it. */
+async function driveFailure(res: Response, what: string): Promise<FriendlyHttpError> {
+  return googleApiFailure(what, await readGoogleApiError(res));
 }
 
 /**
@@ -120,9 +129,7 @@ export async function driveAbout(
     method: "GET",
     headers: authHeaders(accessToken),
   });
-  if (!res.ok) {
-    throw new FriendlyHttpError(`Couldn't read your Google Drive account info (HTTP ${res.status}).`);
-  }
+  if (!res.ok) throw await driveFailure(res, "Couldn't read your Google Drive account info");
   const body = (await res.json()) as {
     user?: { emailAddress?: string };
     storageQuota?: { limit?: string; usage?: string };
@@ -173,7 +180,7 @@ export async function listFolders(
       method: "GET",
       headers: authHeaders(accessToken),
     });
-    if (!res.ok) throw new FriendlyHttpError(`Couldn't list Google Drive folders (HTTP ${res.status}).`);
+    if (!res.ok) throw await driveFailure(res, "Couldn't list Google Drive folders");
     const body = (await res.json()) as { files?: DriveFolder[]; nextPageToken?: string };
     all.push(...(body.files ?? []));
     pageToken = body.nextPageToken;
@@ -193,7 +200,7 @@ export async function getFolderById(
     headers: authHeaders(accessToken),
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new FriendlyHttpError(`Couldn't look up the Drive folder (HTTP ${res.status}).`);
+  if (!res.ok) throw await driveFailure(res, "Couldn't look up the Google Drive folder");
   const body = (await res.json()) as { id: string; name: string; trashed?: boolean; mimeType?: string };
   if (body.trashed || body.mimeType !== FOLDER_MIME) return null;
   return { id: body.id, name: body.name };
@@ -210,7 +217,7 @@ export async function createFolder(
     headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
     body: JSON.stringify({ name, mimeType: FOLDER_MIME }),
   });
-  if (!res.ok) throw new FriendlyHttpError(`Couldn't create the Drive folder "${name}" (HTTP ${res.status}).`);
+  if (!res.ok) throw await driveFailure(res, `Couldn't create the Google Drive folder "${name}"`);
   return (await res.json()) as DriveFolder;
 }
 
@@ -236,7 +243,7 @@ async function findFolderByName(
     method: "GET",
     headers: authHeaders(accessToken),
   });
-  if (!res.ok) throw new FriendlyHttpError(`Couldn't look up the Drive folder "${name}" (HTTP ${res.status}).`);
+  if (!res.ok) throw await driveFailure(res, `Couldn't look up the Google Drive folder "${name}"`);
   const body = (await res.json()) as { files?: DriveFolder[] };
   return body.files?.[0] ?? null;
 }
@@ -278,7 +285,7 @@ export async function findFileInFolder(
     `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)&pageSize=1`,
     { method: "GET", headers: authHeaders(accessToken) },
   );
-  if (!res.ok) throw new FriendlyHttpError(`Couldn't search the Drive folder (HTTP ${res.status}).`);
+  if (!res.ok) throw await driveFailure(res, "Couldn't search the Google Drive folder");
   const body = (await res.json()) as { files?: DriveFile[] };
   return body.files?.[0] ?? null;
 }
@@ -336,9 +343,7 @@ async function startResumableSession(
     ),
   });
   const session = res.headers.get("location");
-  if (!res.ok || !session) {
-    throw new FriendlyHttpError(`Couldn't start the Google Drive upload (HTTP ${res.status}).`);
-  }
+  if (!res.ok || !session) throw await driveFailure(res, "Couldn't start the Google Drive upload");
   return session;
 }
 
@@ -449,7 +454,7 @@ async function putChunkWithRetry(
       await sleep(Number.isFinite(delayMs) && delayMs > 0 ? delayMs : RETRY_BASE_DELAY_MS);
       continue;
     }
-    throw new FriendlyHttpError(`Google Drive upload failed (HTTP ${res.status}).`);
+    throw await driveFailure(res, "Google Drive upload failed");
   }
 }
 

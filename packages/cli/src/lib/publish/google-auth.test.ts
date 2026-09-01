@@ -26,6 +26,8 @@ function scriptedProvider(
     tokenResponse?: unknown;
     tokenStatus?: number;
     aboutBody?: unknown;
+    /** HTTP status for the about.get answer (default 200). */
+    aboutStatus?: number;
     clientSecret?: string;
     timeoutMs?: number;
   } = {},
@@ -49,7 +51,10 @@ function scriptedProvider(
       );
     }
     if (u.includes("drive/v3/about")) {
-      return jsonResponse(opts.aboutBody ?? { user: { emailAddress: "author@example.com" } });
+      return jsonResponse(
+        opts.aboutBody ?? { user: { emailAddress: "author@example.com" } },
+        opts.aboutStatus ?? 200,
+      );
     }
     throw new Error(`unexpected url ${u}`);
   }) as unknown as typeof fetch;
@@ -279,6 +284,54 @@ test("a missing refresh_token in the token response is a hard failure (D4 requir
 
 test("email lookup failure is non-fatal — connect still succeeds without a labeled email", async () => {
   const { provider } = scriptedProvider({ aboutBody: {} });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBeUndefined();
+  expect(cred.label).toBe("Google Drive");
+});
+
+// The 0.10.5 bring-up: a fresh OAuth client in a Cloud project with the Drive
+// API disabled. about.get answered 403 accessNotConfigured, the best-effort
+// email lookup swallowed it, connect reported success — and every later Drive
+// call failed with a bare "HTTP 403" nobody could act on.
+
+test("a 403 from about.get during connect FAILS the connect with Google's reason — nothing is stored for a token that can't use Drive", async () => {
+  const { provider } = scriptedProvider({
+    aboutStatus: 403,
+    aboutBody: {
+      error: {
+        code: 403,
+        message:
+          "Google Drive API has not been used in project 1234 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=1234 then retry.",
+        errors: [{ domain: "usageLimits", reason: "accessNotConfigured", message: "Access Not Configured." }],
+      },
+    },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const err = await donePromise.then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toContain("Google Drive rejected the new connection (HTTP 403, accessNotConfigured).");
+  expect(err!.message).toMatch(/Drive API isn't enabled/);
+  expect(err!.message).toContain("drive.googleapis.com/overview?project=1234");
+  // Never a token value — the message is what the author sees and what the log keeps.
+  expect(err!.message).not.toContain("sensitive-refresh-value");
+  expect(err!.message).not.toContain("test-access-token");
+});
+
+test("a 5xx from about.get during connect stays non-fatal — connect succeeds without a labeled email", async () => {
+  const { provider } = scriptedProvider({ aboutStatus: 503, aboutBody: { error: { message: "backend" } } });
   const { authUrl, donePromise } = await captureAuthUrl(provider);
   const parsed = new URL(authUrl);
   const redirectUri = parsed.searchParams.get("redirect_uri")!;

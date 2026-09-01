@@ -53,6 +53,7 @@ import http from "node:http";
 import { FriendlyHttpError, withFetchTimeout } from "../fetch-timeout.ts";
 import { openPath } from "../open-path.ts";
 import type { HostCredential } from "../remote-auth/token-store.ts";
+import { googleApiFailure, readGoogleApiError } from "./google-errors.ts";
 
 /** Logical TokenStore host key for the stored refresh-token credential. */
 export const GDRIVE_HOST = "gdrive";
@@ -417,15 +418,34 @@ export class GoogleAuthProvider {
     };
   }
 
-  /** Best-effort email lookup after auth — failure is non-fatal (mirrors
-   * GitHubAuthProvider's fetchUsername precedent). */
+  /**
+   * Email lookup after auth, via Drive's `about.get` — which doubles as the
+   * first real Drive API call the new token makes. A 401/403 answer here is
+   * NOT best-effort: it means the token can't use the Drive API at all (the
+   * common case is `accessNotConfigured` — the Drive API isn't enabled for
+   * the OAuth client's Cloud project, ADR 0011), so storing the credential
+   * would only defer the failure to the author's first publish, as a bare
+   * "HTTP 403" with nothing to act on — exactly the trap the 0.10.5 bring-up
+   * hit. Fail connect right here, with Google's reason, and store nothing.
+   * Everything else (a network blip, a 5xx, a body without the field) stays
+   * non-fatal, mirroring GitHubAuthProvider's fetchUsername precedent: the
+   * email is only a label.
+   */
   private async fetchEmail(accessToken: string): Promise<string | undefined> {
+    let res: Response;
     try {
-      const res = await safeFetch(this.fetchImpl, DRIVE_ABOUT_URL, {
+      res = await safeFetch(this.fetchImpl, DRIVE_ABOUT_URL, {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!res.ok) return undefined;
+    } catch {
+      return undefined;
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw googleApiFailure("Google Drive rejected the new connection", await readGoogleApiError(res));
+    }
+    if (!res.ok) return undefined;
+    try {
       const body = (await res.json()) as { user?: { emailAddress?: string } };
       return body.user?.emailAddress;
     } catch {
