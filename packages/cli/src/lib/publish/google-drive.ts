@@ -149,20 +149,35 @@ export interface DriveFolder {
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 /** App-visible folders (drive.file scope: only ones this app created), most
- * recently modified first. */
+ * recently modified first. Follows `nextPageToken` and accumulates every
+ * page — an author with more than one page of app-created folders would
+ * otherwise see `ensureFolder`'s find-by-name search (and the destinations
+ * picker) silently miss folders past the first 100. */
 export async function listFolders(
   fetchImpl: typeof fetch,
   accessToken: string,
 ): Promise<DriveFolder[]> {
   const q = `mimeType='${FOLDER_MIME}' and trashed=false`;
-  const res = await driveFetch(
-    fetchImpl,
-    `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=modifiedTime desc&pageSize=100`,
-    { method: "GET", headers: authHeaders(accessToken) },
-  );
-  if (!res.ok) throw new FriendlyHttpError(`Couldn't list Google Drive folders (HTTP ${res.status}).`);
-  const body = (await res.json()) as { files?: DriveFolder[] };
-  return body.files ?? [];
+  const all: DriveFolder[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({
+      q,
+      fields: "nextPageToken,files(id,name)",
+      orderBy: "modifiedTime desc",
+      pageSize: "100",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await driveFetch(fetchImpl, `${DRIVE_API_BASE}/files?${params.toString()}`, {
+      method: "GET",
+      headers: authHeaders(accessToken),
+    });
+    if (!res.ok) throw new FriendlyHttpError(`Couldn't list Google Drive folders (HTTP ${res.status}).`);
+    const body = (await res.json()) as { files?: DriveFolder[]; nextPageToken?: string };
+    all.push(...(body.files ?? []));
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+  return all;
 }
 
 /** Look up one folder by id (for verifying a manifest-recorded `folderId`
@@ -299,6 +314,46 @@ async function startResumableSession(
 }
 
 /**
+ * Query a resumable upload session's real status with an empty PUT +
+ * `Content-Range: bytes *\/<total>` (per Drive's resumable-upload protocol):
+ * Drive answers with a `308` + `Range` header naming exactly what it has
+ * already received, or a `200`/`201` if the session actually completed.
+ * Used to recover the true resume point after a thrown network exception,
+ * where we don't know whether the dropped connection happened before or
+ * after Drive received the bytes. Returns `null` when the query itself
+ * can't be answered (network still down, unexpected status) so the caller
+ * can fall back to re-sending the same range.
+ */
+async function queryUploadStatus(
+  fetchImpl: typeof fetch,
+  sessionUrl: string,
+  total: number,
+): Promise<{ kind: "progress"; receivedBytes: number } | { kind: "done"; file: DriveFile } | null> {
+  let res: Response;
+  try {
+    res = await withFetchTimeout(
+      { timeoutMs: CHUNK_TIMEOUT_MS, offlineMessage: OFFLINE_MESSAGE },
+      (signal) =>
+        fetchImpl(sessionUrl, {
+          method: "PUT",
+          headers: { "Content-Range": `bytes */${total}` },
+          signal,
+        }),
+    );
+  } catch {
+    return null;
+  }
+  if (res.status === 308) {
+    const range = res.headers.get("range");
+    return { kind: "progress", receivedBytes: range ? Number(range.split("-")[1]) + 1 : 0 };
+  }
+  if (res.status === 200 || res.status === 201) {
+    return { kind: "done", file: (await res.json()) as DriveFile };
+  }
+  return null;
+}
+
+/**
  * Upload one chunk with retry/backoff on 429/5xx (honoring `Retry-After`),
  * returning either the next offset to resume from (a 308) or the final file.
  */
@@ -331,6 +386,23 @@ async function putChunkWithRetry(
     } catch (e) {
       if (attempt >= maxRetries) throw e;
       attempt++;
+      // A thrown exception (e.g. connection reset) means we don't know
+      // whether Drive received this chunk before the connection dropped.
+      // Query the session's real status instead of blindly re-sending the
+      // same byte range — this is the protocol-correct resume the explicit
+      // 308-response path below already implements.
+      const status = await queryUploadStatus(fetchImpl, sessionUrl, total);
+      if (status?.kind === "done") return { done: true, file: status.file };
+      if (status?.kind === "progress" && status.receivedBytes > start) {
+        const chunkEnd = start + buf.length;
+        if (status.receivedBytes >= chunkEnd) {
+          // Drive already has this whole chunk; resume the outer loop from
+          // the server-reported offset instead of re-sending anything.
+          return { done: false, nextOffset: status.receivedBytes };
+        }
+        buf = buf.subarray(status.receivedBytes - start);
+        start = status.receivedBytes;
+      }
       await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
       continue;
     }
@@ -377,7 +449,12 @@ export async function resumableUpload(
     for (;;) {
       const len = Math.min(chunkSize, opts.totalBytes - offset);
       const buf = Buffer.alloc(len);
-      await fh.read(buf, 0, len, offset);
+      const { bytesRead } = await fh.read(buf, 0, len, offset);
+      if (bytesRead !== len) {
+        throw new FriendlyHttpError(
+          `Couldn't read "${opts.filePath}" while uploading to Google Drive: expected ${len} bytes at offset ${offset} but only read ${bytesRead}. The file may have changed on disk during publish.`,
+        );
+      }
       const result = await putChunkWithRetry(
         fetchImpl,
         sessionUrl,

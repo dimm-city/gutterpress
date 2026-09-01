@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -156,6 +156,57 @@ test("ensureFolder finds an existing folder by name before creating one", async 
   const folder = await ensureFolder(fetchImpl, "at", "Gutterpress");
   expect(folder).toEqual({ id: "existing", name: "Gutterpress" });
   expect(createCalled).toBe(false);
+});
+
+// A3: listFolders must follow nextPageToken and accumulate every page — an
+// author with more than 100 app-created Drive folders would otherwise have
+// ensureFolder's find-by-name search (and the destinations picker) silently
+// miss folders past the first page.
+
+test("listFolders follows nextPageToken and returns folders from every page", async () => {
+  const pageTokensSeen: Array<string | null> = [];
+  const fetchImpl = (async (url: string | URL | Request) => {
+    const u = new URL(String(url));
+    const pageToken = u.searchParams.get("pageToken");
+    pageTokensSeen.push(pageToken);
+    if (!pageToken) {
+      return jsonResponse({ files: [{ id: "f1", name: "Page One A" }], nextPageToken: "page-2" });
+    }
+    if (pageToken === "page-2") {
+      return jsonResponse({ files: [{ id: "f2", name: "Page Two A" }] }); // no nextPageToken: last page
+    }
+    throw new Error(`unexpected pageToken ${pageToken}`);
+  }) as unknown as typeof fetch;
+
+  const folders = await listFolders(fetchImpl, "at");
+  expect(folders).toEqual([
+    { id: "f1", name: "Page One A" },
+    { id: "f2", name: "Page Two A" },
+  ]);
+  expect(pageTokensSeen).toEqual([null, "page-2"]);
+});
+
+test("ensureFolder finds a match that only exists on a later page", async () => {
+  let createCalled = false;
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = new URL(String(url));
+    if (init?.method === "POST") {
+      createCalled = true;
+      return jsonResponse({ id: "new", name: "Gutterpress" });
+    }
+    const pageToken = u.searchParams.get("pageToken");
+    if (!pageToken) {
+      return jsonResponse({
+        files: Array.from({ length: 100 }, (_, i) => ({ id: `filler-${i}`, name: `Filler ${i}` })),
+        nextPageToken: "page-2",
+      });
+    }
+    return jsonResponse({ files: [{ id: "real-match", name: "Gutterpress" }] });
+  }) as unknown as typeof fetch;
+
+  const folder = await ensureFolder(fetchImpl, "at", "Gutterpress");
+  expect(folder).toEqual({ id: "real-match", name: "Gutterpress" });
+  expect(createCalled).toBe(false); // the match on page 2 was found — no duplicate created
 });
 
 test("ensureFolder creates the folder at My Drive root when none matches by name", async () => {
@@ -426,6 +477,122 @@ test("resumableUpload never loads the whole file into memory — chunks are size
     });
     expect(bodyLengths.every((len) => len <= chunkSize)).toBe(true);
     expect(bodyLengths.length).toBe(5);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// A2: a short read (fewer bytes than requested) must abort the upload
+// rather than silently sending a zero-padded buffer as if it were real file
+// content. Simulated here via the real, narrow race the finding describes:
+// the artifact is truncated on disk between the initial stat() (whose
+// result the caller passes as totalBytes) and this chunk's read().
+
+test("resumableUpload aborts with a clear error instead of uploading a zero-padded buffer on a short read", async () => {
+  const chunkSize = 300;
+  const declaredTotal = chunkSize * 3; // 900 — what the caller believes the file is
+  const { dir, filePath } = await tempFile(declaredTotal);
+  try {
+    // Truncate the file out from under the upload after the caller's stat()
+    // — only the first chunk's worth of real bytes remains on disk.
+    await truncate(filePath, chunkSize);
+
+    let secondChunkPutSeen = false;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("uploadType=resumable")) {
+        return new Response(null, { status: 200, headers: { Location: "https://upload.example/session-short-read" } });
+      }
+      if (u === "https://upload.example/session-short-read" && init?.method === "PUT") {
+        const range = String((init.headers as Record<string, string>)["Content-Range"]);
+        if (range.startsWith(`bytes 0-${chunkSize - 1}/`)) {
+          // First chunk: the full chunkSize bytes really are on disk.
+          return new Response(null, { status: 308, headers: { Range: `bytes=0-${chunkSize - 1}` } });
+        }
+        secondChunkPutSeen = true;
+        return jsonResponse({ id: "should-not-happen", name: "book.pdf" });
+      }
+      throw new Error(`unexpected ${u} ${init?.method}`);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      resumableUpload(fetchImpl, "at", {
+        name: "book.pdf",
+        parentFolderId: "f1",
+        filePath,
+        totalBytes: declaredTotal,
+        chunkSize,
+      }),
+    ).rejects.toThrow(/expected 300 bytes.*only read 0/i);
+    // The short read must be caught BEFORE ever PUTting the under-read
+    // (zero-padded) chunk to Drive.
+    expect(secondChunkPutSeen).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// A4: a thrown network exception mid-upload (connection reset, etc.) must
+// not blindly re-send the same byte range — it must first query the
+// session's real status and resume from the server-reported offset.
+
+test("resumableUpload recovers from a thrown network exception by querying status and resuming from the reported offset", async () => {
+  const chunkSize = 150;
+  const total = chunkSize * 2; // 300 — exactly 2 chunks
+  const { dir, filePath } = await tempFile(total);
+  try {
+    let firstChunkAttempts = 0;
+    let statusQueries = 0;
+    const puts: Array<{ contentRange: string }> = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("uploadType=resumable")) {
+        return new Response(null, { status: 200, headers: { Location: "https://upload.example/session-netfail" } });
+      }
+      if (u === "https://upload.example/session-netfail" && init?.method === "PUT") {
+        const contentRange = String((init.headers as Record<string, string>)["Content-Range"]);
+        puts.push({ contentRange });
+        // The status-query probe: an empty PUT with `bytes */<total>`.
+        if (contentRange === `bytes */${total}`) {
+          statusQueries++;
+          // Drive reports the first chunk was actually fully received
+          // despite the dropped connection.
+          return new Response(null, { status: 308, headers: { Range: `bytes=0-${chunkSize - 1}` } });
+        }
+        if (contentRange === `bytes 0-${chunkSize - 1}/${total}`) {
+          firstChunkAttempts++;
+          // The very first attempt throws — a network exception, not an
+          // HTTP error response.
+          throw new TypeError("fetch failed: ECONNRESET");
+        }
+        if (contentRange === `bytes ${chunkSize}-${total - 1}/${total}`) {
+          return jsonResponse({ id: "f", name: "book.pdf", webViewLink: "https://drive.google.com/file/d/f/view" });
+        }
+        throw new Error(`unexpected Content-Range ${contentRange}`);
+      }
+      throw new Error(`unexpected ${u} ${init?.method}`);
+    }) as unknown as typeof fetch;
+
+    const file = await resumableUpload(fetchImpl, "at", {
+      name: "book.pdf",
+      parentFolderId: "f1",
+      filePath,
+      totalBytes: total,
+      chunkSize,
+      sleepImpl: async () => {},
+    });
+
+    expect(file.id).toBe("f");
+    expect(firstChunkAttempts).toBe(1); // never blindly re-sent bytes 0-149
+    expect(statusQueries).toBe(1);
+    // Exactly the PUTs we expect, in order: the failed attempt, the status
+    // query, then the SECOND chunk starting from the server-reported
+    // offset — never a duplicate resend of the first chunk's bytes.
+    expect(puts.map((p) => p.contentRange)).toEqual([
+      `bytes 0-${chunkSize - 1}/${total}`,
+      `bytes */${total}`,
+      `bytes ${chunkSize}-${total - 1}/${total}`,
+    ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
