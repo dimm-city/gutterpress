@@ -161,11 +161,17 @@
   function accountLabelFor(e: HostConnectionInfo): string {
     const idx = e.host.indexOf("#");
     if (idx > -1) return e.host.slice(idx + 1);
-    // The default (unnamed) credential — for oauth-connected providers
-    // (gdrive) the account IS the connected email (stored as `username` by
-    // connect-google.ts); show that instead of a bare "default" placeholder,
-    // since the raw store key never carries it. Token-based providers only
-    // set `username` on a NAMED credential, so this is a no-op for them.
+    // The default (unnamed) credential. For oauth-connected providers
+    // (gdrive) `username` is deliberately EMPTY on the default entry — the
+    // compound-key convention reserves `username` for a NAMED account's
+    // label, so the connected email lives only in `label`
+    // (e.g. "Google Drive — a@b.com", set by connect-google.ts). Recover it
+    // here for the badge instead of falling through to "default". Token-based
+    // providers never take this branch: their default entry's label is just
+    // the provider name, and the strip below would be a no-op anyway.
+    if (!e.username && e.kind === "google-oauth" && e.label) {
+      return e.label.replace(/^Google Drive\s*—\s*/, "");
+    }
     return e.username || "default";
   }
 

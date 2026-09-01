@@ -161,9 +161,14 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain("if (pubOauthInFlight) getPlatform().connectGoogleCancel().catch(() => {});");
   });
   test("the stored gdrive entry's default account shows its connected email, not a bare 'default' badge", () => {
-    // accountLabelFor falls back to the credential's `username` (the email,
-    // for an oauth default credential) instead of the literal "default".
-    expect(conn).toMatch(/return e\.username \|\| "default"/);
+    // #221 review fix: the default (unnamed) gdrive credential deliberately
+    // carries NO `username` (that slot is reserved for a NAMED account's
+    // label — see connect-google.ts) — its email lives only in `label`
+    // ("Google Drive — a@b.com"). accountLabelFor must recover it from
+    // there for google-oauth credentials, not fall straight to "default".
+    expect(conn).toMatch(/e\.kind === "google-oauth"/);
+    expect(conn).toMatch(/e\.label\.replace\(/);
+    expect(conn).toMatch(/return e\.username \|\| "default"/); // still the fallback for token providers
   });
 });
 

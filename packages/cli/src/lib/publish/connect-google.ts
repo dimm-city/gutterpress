@@ -21,6 +21,8 @@ export interface ConnectGoogleDriveOptions {
   /** Explicit client id/secret overrides (tests; advanced use). */
   clientId?: string;
   clientSecret?: string;
+  /** Override the system-browser opener (tests; advanced use). */
+  openBrowser?: (url: string) => Promise<void>;
 }
 
 export interface ConnectGoogleDriveResult {
@@ -41,17 +43,24 @@ export async function connectGoogleDrive(
     clientId: options.clientId,
     clientSecret: options.clientSecret,
     fetchImpl: deps.fetch,
+    ...(options.openBrowser ? { openBrowser: options.openBrowser } : {}),
   });
   const credential = await provider.connect(callbacks);
   const email = credential.username;
   const account = (options.account ?? "").trim();
   const key = publishCredentialKey(GDRIVE_HOST, account);
   // `username` carries the ACCOUNT LABEL for named credentials (the same
-  // convention `connect.ts` uses, and what `listPublishAccounts` reads) —
-  // when an account label is given it takes the username slot, but the
-  // email stays visible in `label` rather than being discarded.
+  // convention `connect.ts` uses, and what `listPublishAccounts` reads) — the
+  // default (unnamed) entry must have NONE, even though GoogleAuthProvider's
+  // own credential (mirroring GitHub's username=login convention) already
+  // carries the account's email in `username`. Destructure it out explicitly
+  // rather than spreading `...credential` and conditionally overriding —
+  // the conditional spread lets that email leak through as a false "account
+  // label" whenever `account` is empty, which broke the saved-accounts
+  // picker on every default connect (found in review, #221).
+  const { username: _accountEmailAsUsername, ...credentialWithoutUsername } = credential;
   await deps.tokenStore.set(key, {
-    ...credential,
+    ...credentialWithoutUsername,
     ...(account ? { username: account } : {}),
     label: account ? `${account} (${email ?? "Google Drive"})` : credential.label,
   });
