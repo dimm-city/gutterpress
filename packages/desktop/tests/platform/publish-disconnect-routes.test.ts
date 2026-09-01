@@ -185,6 +185,58 @@ describe("POST /api/remote/disconnect-host — C5 (revoke must not block the loc
   });
 });
 
+describe("both disconnect routes delegate to lib.disconnectPublishCredential when the lib provides it (#221 review)", () => {
+  test("publish:disconnect awaits disconnectPublishCredential and passes the resolved key + tokenStore", async () => {
+    const { api: tokenStore } = makeTokenStore({
+      "drive.google.com": { token: "rt", host: "drive.google.com", kind: "google-oauth", createdAt: 0 },
+    });
+    const calls: Array<{ key: string; sawTokenStore: boolean }> = [];
+    let settled = false;
+    registerHostServices({
+      ...makeHostServices(),
+      remote: {
+        ...remoteBase,
+        tokenStore,
+        loadLib: async () => ({
+          publishProviderFor: () => ({ info: { credential: { host: "drive.google.com" } } }),
+          disconnectPublishCredential: async (key: string, deps: { tokenStore: unknown }) => {
+            calls.push({ key, sawTokenStore: deps.tokenStore === tokenStore });
+            settled = true;
+          },
+        }),
+      } as never,
+    });
+
+    const res = await publishDisconnectRoute({ request: request({ providerId: "gdrive" }) } as never);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(calls).toEqual([{ key: "drive.google.com", sawTokenStore: true }]);
+    expect(settled).toBe(true); // the route genuinely awaited the call, not fire-and-forgot it
+  });
+
+  test("remote:disconnectHost awaits disconnectPublishCredential for a google-oauth host", async () => {
+    const { api: tokenStore } = makeTokenStore({
+      "drive.google.com": { token: "rt", host: "drive.google.com", kind: "google-oauth", createdAt: 0 },
+    });
+    const calls: string[] = [];
+    registerHostServices({
+      ...makeHostServices(),
+      remote: {
+        ...remoteBase,
+        tokenStore,
+        loadLib: async () => ({
+          disconnectPublishCredential: async (key: string) => {
+            calls.push(key);
+          },
+        }),
+      } as never,
+    });
+
+    const res = await remoteDisconnectHostRoute({ request: request({ host: "drive.google.com" }) } as never);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(calls).toEqual(["drive.google.com"]);
+  });
+});
+
 describe("POST /api/remote/disconnect-host — C6 (skip loadLib entirely for non-Google hosts)", () => {
   test("a github.com disconnect never calls loadLib", async () => {
     const { api: tokenStore, deleteCalls } = makeTokenStore({

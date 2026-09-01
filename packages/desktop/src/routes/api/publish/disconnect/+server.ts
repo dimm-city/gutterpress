@@ -25,19 +25,23 @@ export const POST: RequestHandler = defineRoute<
         account && lib.publishCredentialKey
           ? lib.publishCredentialKey(host, account)
           : host;
-      // Delete the local credential FIRST (#221 C5) — the "Remove this key"
-      // button must resolve immediately, even offline. The best-effort Google
-      // revoke carries its own ~10s network timeout and its result is never
-      // read, so it runs in the BACKGROUND after the response is decided
-      // instead of blocking it. revokeGoogleCredential is designed to never
-      // throw, so firing it un-awaited here is safe; its own errors are still
-      // swallowed/logged exactly as before. Mirrors the CLI's `--disconnect`
-      // branch (commands/publish.ts) for the local-delete step; the CLI has
-      // no button to keep responsive, so it can afford to await the revoke.
-      const existing = await hooks.tokenStore.get(key);
-      await hooks.tokenStore.delete(key);
-      if (existing?.kind === 'google-oauth' && lib.revokeGoogleCredential) {
-        void lib.revokeGoogleCredential(existing.token);
+      // disconnectPublishCredential (shared with remote:disconnectHost, and
+      // with the CLI's --disconnect via its own awaitRevoke:true) deletes the
+      // local credential FIRST (#221 C5), THEN starts a best-effort revoke at
+      // Google without awaiting it when the credential's kind supports one —
+      // so awaiting the call here still returns as soon as the local delete
+      // is done, exactly like the un-refactored code, while the revoke (its
+      // own ~10s network timeout) keeps running in the background.
+      if (lib.disconnectPublishCredential) {
+        await lib.disconnectPublishCredential(key, { tokenStore: hooks.tokenStore });
+      } else {
+        // Fallback for an older lib that predates the shared helper — same
+        // read/delete/revoke shape, just inlined.
+        const existing = await hooks.tokenStore.get(key);
+        await hooks.tokenStore.delete(key);
+        if (existing?.kind === 'google-oauth' && lib.revokeGoogleCredential) {
+          void lib.revokeGoogleCredential(existing.token);
+        }
       }
       return { ok: true };
     }),

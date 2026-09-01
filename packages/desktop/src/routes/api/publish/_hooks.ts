@@ -102,6 +102,15 @@ export interface PublishLibModule {
   /** Best-effort revoke at Google (never throws) — used by disconnect for
    *  `kind: "google-oauth"` credentials, mirroring the CLI's `--disconnect`. */
   revokeGoogleCredential?(refreshToken: string): Promise<void>;
+  /** Delete a stored credential by its TokenStore key, best-effort revoking
+   *  it first when its kind supports one (currently google-oauth) — the one
+   *  shared implementation behind this route AND remote:disconnectHost.
+   *  Never awaits the revoke itself (delete must resolve immediately, even
+   *  offline); falls back to a bare delete on an older lib without it. */
+  disconnectPublishCredential?(
+    key: string,
+    deps: Pick<PublishRouteDeps, 'tokenStore'>,
+  ): Promise<void>;
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
     deps: PublishRouteDeps,

@@ -33,6 +33,10 @@ export interface LibModule {
   /** Best-effort revoke at Google (never throws) — used by remote:disconnectHost
    *  for `kind: "google-oauth"` publish credentials (#221). */
   revokeGoogleCredential?(refreshToken: string): Promise<void>;
+  /** Delete a stored credential by its TokenStore key, best-effort revoking
+   *  it first when its kind supports one — shared with the publish:disconnect
+   *  route. Never awaits the revoke itself. */
+  disconnectPublishCredential?(key: string, deps: { tokenStore: TokenStore }): Promise<void>;
 }
 
 export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = TokenStore> {
