@@ -21,7 +21,7 @@
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | **Evidenced** (SFE-P3c: TextDocument/WorkspaceEdit gateway with native undo; stamped one-in-flight reconciliation passing the shared contract suite under latency/out-of-order replies; workspace-trust gate with loader spy-proof and a browser-proven trust-explanation banner; workspace-root-scoped plugin paths with a `../`-escape refusal fixture; CSP'd webview proven in real Chromium — 228 unit + 34 browser tests. Real-VS-Code activation remains a recorded deviation: @vscode/test-electron is scaffolded but network-blocked in this environment) |
 | AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | **Evidenced** (SFE-P3ab desktop surface; SFE-P3d-sweep: all twenty P3d scenarios audited with read citations, five gaps closed in real Chromium, two packaged-Electron scenarios pass under the driver's own xvfb fallback; three product facts pinned as-is — plain-text-only paste, no pointer-drag block movement, no slash menu — and two open a11y items recorded for the product owner) |
 | AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Evidenced for navigation (SFE-P3d-parity: D8 capability coverage audit, host-command round trips through the real bridge and shell, and a two-layer mutation-separability proof; the P4 deletion itself remains) |
-| AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | Pending |
+| AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | **Evidenced** (SFE-P4: eight-identifier search proofs pasted in the deletion ledger with exactly two ruled residual classes — one v9 version-history comment and absence-asserting test strings; protocol v8→v9; the characterization suites and the 1,047-line packaged E2E of the deleted feature removed; net −6,719 LOC) |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | Pending |
 | AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | Pending |
 | AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Pending |
@@ -623,5 +623,44 @@
   ],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "Checkpoint B is assembled in the run spec: fork decision, both hosts' behavior, parity/security/a11y evidence, and the corrected performance narrative. The review's defining catch: a fork patch that was fast but wrong — stale caret math for every block after an edit, invisible to 118 green browser tests — fixed soundly at the cost of the apparent win, with the withdrawal recorded in every document that had cited it. The D13 budget stays red with three ordered follow-ups; the parity gate that governs P4 is green and its designated blocker closed."
+}
+```
+
+### SFE-P4 — Delete preview editing and the mutation machinery
+
+```json
+{
+  "status": "complete",
+  "baseSha": "cf5dacda",
+  "headSha": "81b482c3",
+  "history": [
+    "731aee7e refactor(p4): delete the desktop side of preview editing (-4,172)",
+    "6080b4a4 refactor(p4): delete the book side — protocol v9 (-722)",
+    "781809b3 docs(p4): ledger totals, search proofs, doc statusing",
+    "0944088b / 81b482c3 fix(p4): address review findings (rounds 1-2, -1,825 more)"
+  ],
+  "confirmedFindings": [
+    "R1: a live 1,047-line Playwright E2E of the deleted feature survived untouched with its npm script and CI reference (deleted; mutation-inventory.md had explicitly required it be listed, not silently dropped)",
+    "R1: parity-matrix.md's block-edit row — the row authorizing this run's central deletion — cited a test this run deleted (surviving evidence named; preamble corrected)",
+    "R1: the ledger's survivor dependency proof was contradicted by its own quoted grep (real consumer set recorded with verbatim output)",
+    "R1: selection-search.ts (358 LOC) and its 433-line test were fully orphaned and left in the tree (deleted with search proof)",
+    "R1: the ledger's mutation-only-source-metadata row over-claimed DONE while data-gp-source-token/-occurrence are still emitted (downgraded to PARTIALLY DONE with exact files/lines and a named follow-up)",
+    "R1: stale present/future-tense comments describing the deleted flows as present (rewritten as history)",
+    "R1: a claimed doc-status edit the diff did not support (made real)",
+    "R2: the round-1 repair's own E2E deletion was missing from the ledger, leaving the headline LOC wrong by 1,034 lines (totals re-derived from git)"
+  ],
+  "advisories": [
+    "data-gp-source-token/-occurrence attribute emission survives with no consumer — small packages/cli follow-up, tracked in the ledger",
+    "The preview-shell test harness cannot exercise the double-rAF old-iframe removal (no requestAnimationFrame in its sandbox) — a pre-existing limitation the replacement swap test works within, recorded"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck (4 workspaces) / cli build + 1913:60 / editor 3038 + 104 browser + purity / vscode-extension 228 + 35 browser / desktop 5859:1 + check (893) + lint + build / architecture / generated-files (1329) / vendored / knip — all 17 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-13 evidenced"],
+  "deletionLedgerUpdates": ["Preview mutation protocol messages 5 → 0 (v9)", "InlineEditController, CommitEngine, context-menu mutation half, in-flow contenteditable path, inline-editing E2E, selection-search pair: deleted with SHAs", "Run net: −6,719 LOC"],
+  "checkpointSummary": "The preview no longer edits anything: the mutation half is gone on both sides of the bridge, the read-only D8 surface is pinned green, and the review twice corrected the run's own bookkeeping before approving — including catching a live E2E of the deleted feature and the matrix row that authorized the deletion citing evidence the deletion had removed."
 }
 ```

@@ -81,4 +81,45 @@ survives — it serves navigation, source reveal, and editor threading (ADR
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+Three batches over `cf5dacda..HEAD`, three rounds. Round 1: **7 CONFIRMED** —
+a live 1,047-line Playwright E2E of the deleted feature survived with its
+npm script and CI reference intact; parity-matrix.md's `block-edit` row (the
+row authorizing this run's central deletion) cited a test this run deleted;
+the ledger's survivor dependency proof was contradicted by its own quoted
+grep; `selection-search.ts` (358 LOC) and its 433-line test were fully
+orphaned and left in the tree; the ledger's "mutation-only source metadata
+DONE" over-claimed (`data-gp-source-token`/`-occurrence` are still emitted —
+honestly downgraded to PARTIALLY DONE with the exact files/lines and a named
+follow-up rather than closed out of scope); stale present-tense comments;
+and a doc-status claim the diff did not support. Round 2 caught the round-1
+repair's own bookkeeping gap (the E2E deletion missing from the ledger,
+leaving the headline LOC wrong by 1,034 lines). Round 3: **approve**, 0
+confirmed, 1 advisory.
+
+D15 residuals ruling: the reviewer accepted exactly two residual classes for
+the deleted names — the one v9 version-history comment, and literal
+command-name strings in tests that assert ABSENCE at runtime — and verified
+the ledger's residual list matches the greps exactly.
+
+## Gate
+
+PASS — all 17 commands exit 0: install (frozen); typecheck (4 workspaces);
+cli build + 1913:60; editor 3038 unit + 104 browser (9 suites) + purity;
+vscode-extension 228 + 35 browser; desktop 5859:1 + check (893 files) + lint
++ build (render purity, 145 files); architecture (4 rules); generated-files
+(1329 tracked); vendored (26 hashes / 33 files); knip.
+
+## Run result
+
+The paginated preview is read-only. Preview mutation protocol messages
+5 → 0 (bridge protocol v9); `InlineEditController`, `CommitEngine`, the
+context menu's mutation half, the in-flow `contenteditable` path, the
+1,047-line packaged E2E of the deleted feature, and the orphaned
+selection-search pair are gone. **Net −6,719 LOC** across the run
+(−4,172 desktop, −722 book side, −1,825 repair-round deletions). The D8
+read-only surface (navigation, selection/copy, open link/image, diagnostics,
+page controls, go-to-source) is pinned green, and `data-source-range`
+survives for navigation, source reveal, and editor threading (ADR 0009,
+statused). One recorded residual: the `data-gp-source-token`/`-occurrence`
+HTML attributes are still emitted with no consumer — a small
+`packages/cli/src/lib/markdown` follow-up, tracked in the ledger.
