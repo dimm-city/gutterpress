@@ -35,7 +35,6 @@
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { PublishProviderCard } from "$lib/platform/contract";
   import type { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { displayedFormat } from "$lib/publish-format-choice";
 
   let {
     controller,
@@ -64,9 +63,15 @@
   let addingAccount = $state<Record<string, boolean>>({});
   // Per-provider: is the inline "New folder…" name form open (#221 D9)?
   let addingFolder = $state<Record<string, boolean>>({});
-  // Per-provider in-flight optimistic format pick (#221 C8) — see
-  // `displayedFormat`'s doc comment for why this needs to be a real, directly-
-  // read $state rather than deriving `checked` from controller state alone.
+  // Per-provider in-flight optimistic format pick (#221 C8). A plain
+  // `checked={controller.effectiveFormat(card) === fmt}` binding never
+  // re-runs when `selectFormat()` throws — nothing it reads changes, so a
+  // save failure left the clicked radio visually checked even though the
+  // controller's real format never changed. This needs to be a real,
+  // directly-read $state (read inline in the `{@const chosenFormat = …}`
+  // below) so Svelte tracks it as a dependency and reapplies `checked` on
+  // every settle — success or failure alike (`chooseFormat` below always
+  // clears it once `selectFormat` settles).
   let pendingFormat = $state<Record<string, "pdf" | "html">>({});
 
   const ADD = "__add_account__";
@@ -302,7 +307,7 @@
       <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
 
       {#if card.formats && card.formats.length > 1}
-        {@const chosenFormat = displayedFormat(pendingFormat[card.id], controller.effectiveFormat(card))}
+        {@const chosenFormat = pendingFormat[card.id] ?? controller.effectiveFormat(card)}
         <fieldset class="field fmt-choice">
           <legend>What to publish</legend>
           <ul class="dest-list">

@@ -217,9 +217,11 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
   // ── Radio `checked` state must re-derive from the controller after a
   //    failed selectFormat(), not stay stuck on the clicked option (#221 C8) ─
   test("the format radio's checked state is driven by an in-flight optimistic pick that ALWAYS clears once selectFormat settles", () => {
-    expect(wiz).toContain('import { displayedFormat } from "$lib/publish-format-choice"');
+    // The `{@const}` reads pendingFormat directly (not through a wrapper
+    // function) so Svelte tracks it as a real dependency — see the
+    // `pendingFormat` declaration's comment for why that matters (#221 C8).
     expect(wiz).toContain(
-      "{@const chosenFormat = displayedFormat(pendingFormat[card.id], controller.effectiveFormat(card))}",
+      "{@const chosenFormat = pendingFormat[card.id] ?? controller.effectiveFormat(card)}",
     );
     expect(wiz).toContain("checked={chosenFormat === fmt}");
     // chooseFormat sets the optimistic pick, then clears it in `finally` —
