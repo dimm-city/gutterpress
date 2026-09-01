@@ -133,7 +133,7 @@ import {
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
-import { initAppLog, logAppEvent } from "./app-log";
+import { appendAppLog, initAppLog, logAppEvent } from "./app-log";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -932,6 +932,11 @@ const appHooksImpl: AppHooks = {
   },
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     safeSend(channel, ...args);
+  },
+  // The shared error filters already printed the line to the console; this
+  // puts it in the app log the Logs tab shows (file only, no double print).
+  logFailure: (line: string) => {
+    void appendAppLog(line);
   },
 };
 // Wire the PDF-export progress sender to the live main window (the export

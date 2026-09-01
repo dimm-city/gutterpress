@@ -3,6 +3,7 @@ import { mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  createFolder,
   driveAbout,
   ensureFolder,
   escapeDriveQueryValue,
@@ -595,4 +596,57 @@ test("resumableUpload recovers from a thrown network exception by querying statu
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// ── Google's reason is kept, not discarded (the 0.10.5 bring-up) ────────────
+//
+// A fresh OAuth client whose Cloud project had the Drive API disabled made
+// every call answer 403 accessNotConfigured — and the client reported only
+// "HTTP 403", with Google's enable-it link thrown away with the body.
+
+test("listFolders surfaces Google's reason and message on a 403 instead of a bare status", async () => {
+  const fetchImpl = (async () =>
+    jsonResponse(
+      {
+        error: {
+          code: 403,
+          message:
+            "Google Drive API has not been used in project 42 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=42 then retry.",
+          errors: [{ domain: "usageLimits", reason: "accessNotConfigured", message: "Access Not Configured." }],
+        },
+      },
+      403,
+    )) as unknown as typeof fetch;
+  const err = await listFolders(fetchImpl, "at").then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toStartWith("Couldn't list Google Drive folders (HTTP 403, accessNotConfigured). ");
+  expect(err!.message).toMatch(/Drive API isn't enabled/);
+  expect(err!.message).toContain("overview?project=42");
+});
+
+test("every Drive failure message names Google Drive as prose — the desktop allowlist depends on it", async () => {
+  // A non-JSON 403 (no reason, no message) is the leanest possible failure:
+  // the message must STILL name Google Drive, so friendly-errors.ts's
+  // `\bgoogle\b` allowlist passes it through instead of masking it behind
+  // "See the app log for details" — which is what "Couldn't create the Drive
+  // folder …" got before.
+  const fetchImpl = (async () => new Response("forbidden", { status: 403 })) as unknown as typeof fetch;
+  const failure = (p: Promise<unknown>) => p.then(() => "resolved", (e: Error) => e.message);
+  const messages = await Promise.all([
+    createFolder(fetchImpl, "at", "field-guide"),
+    ensureFolder(fetchImpl, "at", "field-guide"),
+    getFolderById(fetchImpl, "at", "f1"),
+    findFileInFolder(fetchImpl, "at", "f1", "book.pdf"),
+    driveAbout(fetchImpl, "at"),
+    listFolders(fetchImpl, "at"),
+  ].map(failure));
+  for (const m of messages) {
+    expect(m).toMatch(/\bGoogle\b/);
+    expect(m).toContain("(HTTP 403)");
+  }
+  expect(messages[0]).toBe('Couldn\'t create the Google Drive folder "field-guide" (HTTP 403).');
+  expect(messages[1]).toBe('Couldn\'t look up the Google Drive folder "field-guide" (HTTP 403).');
 });

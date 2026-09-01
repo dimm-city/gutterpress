@@ -72,27 +72,46 @@ defaults, exactly like `DEFAULT_GITHUB_CLIENT_ID`.**
 Re-registering the OAuth client without matching these breaks `gdrive`
 connect for every user of that build:
 
-1. **OAuth consent screen** (External), scopes:
-   `https://www.googleapis.com/auth/drive.file`, `openid`, `email`.
+1. **Enable the Google Drive API** (APIs & Services → Library → "Google
+   Drive API" → Enable) in the SAME Cloud project as the OAuth client. This
+   is separate from registering the client and from the consent screen, and
+   it is the step a fresh project silently lacks: without it every Drive
+   call — including the `about.get` the connect flow uses to label the
+   account — answers `403 accessNotConfigured`. The lib now reports that
+   reason (with Google's enable-it link) instead of a bare "HTTP 403", and
+   connect fails fast on it rather than storing a credential that can never
+   publish (`google-errors.ts`, `google-auth.ts`'s `fetchEmail`).
+2. **OAuth consent screen** (External), scopes:
+   `https://www.googleapis.com/auth/drive.file` only.
    `drive.file` is Google's *non-sensitive* scope tier — confirmed against a
    real account (`docs/gdrive-publish-plan.md` Appendix B, spike **P13**:
    Cloud Console's Data Access page lists it under "Your non-sensitive
    scopes," with "Your sensitive scopes: No rows to display"). No restricted-
    scope verification, no CASA third-party security assessment, no annual
    re-audit — a `Testing`-mode app is enough for development.
-2. **OAuth client type: Desktop app** — not "Web application." Only a
+   **Register (and request) `drive.file` alone — not `openid`/`email` with
+   it.** The account email that labels a stored connection comes from
+   Drive's own `about.get`, which needs no sign-in scope. Requesting more
+   than one scope makes Google's consent screen granular: it lists the Drive
+   permission as a checkbox the user can leave unticked and still finish
+   sign-in, after which the token lacks `drive.file` and every Drive call
+   answers `403` while the connection looks fine (the 0.10.5 bring-up).
+   One scope leaves nothing to untick. The connect flow still reads the
+   token response's `scope` and refuses a token without `drive.file`
+   (`google-auth.ts`, `DRIVE_PERMISSION_NOT_GRANTED_MESSAGE`) as a backstop.
+3. **OAuth client type: Desktop app** — not "Web application." Only a
    Desktop-app client accepts an un-registered ephemeral loopback
    `redirect_uri` (`http://127.0.0.1:<OS-assigned port>`); a Web-application
    client requires every redirect URI to be pre-registered, which an
    OS-assigned port can never satisfy. This is also *why* the client secret
    is required here in the first place — Google's Desktop-app client type
    does not support a secret-less (`none`) token-auth method.
-3. **Homepage + privacy policy URLs**, required before the consent screen
+4. **Homepage + privacy policy URLs**, required before the consent screen
    can be submitted for production review (D11 of the plan) — the existing
    project README as homepage, and a new `PRIVACY.md` (published via GitHub
    Pages) as the privacy policy, covering the `drive.file` scope, local-only
    token storage, and the absence of any Gutterpress server in the data path.
-4. **Publish the consent screen to *In production*** once basic (brand)
+5. **Publish the consent screen to *In production*** once basic (brand)
    verification clears the "unverified app" interstitial. Until then,
    `Testing` mode works for development with two caveats to plan around:
    refresh tokens expire after ~7 days, and only ~100 test users are

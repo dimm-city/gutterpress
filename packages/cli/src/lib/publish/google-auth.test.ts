@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import http from "node:http";
 import {
   GoogleAuthProvider,
+  grantedScopesInclude,
   pkceChallengeFromVerifier,
   GOOGLE_NOT_CONFIGURED_MESSAGE,
 } from "./google-auth";
@@ -26,6 +27,8 @@ function scriptedProvider(
     tokenResponse?: unknown;
     tokenStatus?: number;
     aboutBody?: unknown;
+    /** HTTP status for the about.get answer (default 200). */
+    aboutStatus?: number;
     clientSecret?: string;
     timeoutMs?: number;
   } = {},
@@ -44,12 +47,16 @@ function scriptedProvider(
           access_token: "test-access-token",
           refresh_token: "sensitive-refresh-value",
           expires_in: 3599,
+          scope: "https://www.googleapis.com/auth/drive.file",
         },
         opts.tokenStatus ?? 200,
       );
     }
     if (u.includes("drive/v3/about")) {
-      return jsonResponse(opts.aboutBody ?? { user: { emailAddress: "author@example.com" } });
+      return jsonResponse(
+        opts.aboutBody ?? { user: { emailAddress: "author@example.com" } },
+        opts.aboutStatus ?? 200,
+      );
     }
     throw new Error(`unexpected url ${u}`);
   }) as unknown as typeof fetch;
@@ -93,9 +100,10 @@ test("happy path: real loopback listener + real fetch redirect completes the flo
   expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
   expect(parsed.searchParams.get("access_type")).toBe("offline");
   expect(parsed.searchParams.get("prompt")).toBe("consent");
-  expect(parsed.searchParams.get("scope")).toBe(
-    "https://www.googleapis.com/auth/drive.file openid email",
-  );
+  // ONE scope, on purpose: more than one turns Google's consent screen
+  // granular (a Drive checkbox that can be left unticked); the account email
+  // comes from Drive's about.get, so no sign-in scope is needed.
+  expect(parsed.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/drive.file");
   const state = parsed.searchParams.get("state")!;
   const redirectUri = parsed.searchParams.get("redirect_uri")!;
   expect(redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
@@ -290,6 +298,54 @@ test("email lookup failure is non-fatal — connect still succeeds without a lab
   expect(cred.label).toBe("Google Drive");
 });
 
+// The 0.10.5 bring-up: a fresh OAuth client in a Cloud project with the Drive
+// API disabled. about.get answered 403 accessNotConfigured, the best-effort
+// email lookup swallowed it, connect reported success — and every later Drive
+// call failed with a bare "HTTP 403" nobody could act on.
+
+test("a 403 from about.get during connect FAILS the connect with Google's reason — nothing is stored for a token that can't use Drive", async () => {
+  const { provider } = scriptedProvider({
+    aboutStatus: 403,
+    aboutBody: {
+      error: {
+        code: 403,
+        message:
+          "Google Drive API has not been used in project 1234 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=1234 then retry.",
+        errors: [{ domain: "usageLimits", reason: "accessNotConfigured", message: "Access Not Configured." }],
+      },
+    },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const err = await donePromise.then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toContain("Google Drive rejected the new connection (HTTP 403, accessNotConfigured).");
+  expect(err!.message).toMatch(/Drive API isn't enabled/);
+  expect(err!.message).toContain("drive.googleapis.com/overview?project=1234");
+  // Never a token value — the message is what the author sees and what the log keeps.
+  expect(err!.message).not.toContain("sensitive-refresh-value");
+  expect(err!.message).not.toContain("test-access-token");
+});
+
+test("a 5xx from about.get during connect stays non-fatal — connect succeeds without a labeled email", async () => {
+  const { provider } = scriptedProvider({ aboutStatus: 503, aboutBody: { error: { message: "backend" } } });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBeUndefined();
+  expect(cred.label).toBe("Google Drive");
+});
+
 // A5: a request carrying neither "code" nor "error" (a browser
 // preconnect/speculative probe, or a stray manual hit on the loopback port)
 // must not be treated as the final OAuth answer — the flow keeps waiting.
@@ -368,4 +424,58 @@ test("a loopback bind failure rejects connect() promptly with a friendly message
   } finally {
     await new Promise<void>((resolve) => occupied.close(() => resolve()));
   }
+});
+
+// A token issued without the Drive scope is a sign-in that looks successful
+// and answers 403 to every Drive call. Requesting a single scope keeps
+// Google's consent screen from offering a partial grant (the 0.10.5 bring-up
+// hit exactly that with three scopes requested); this is the backstop.
+
+test("a token granted WITHOUT the drive.file scope fails connect before any Drive call, and stores nothing", async () => {
+  const { provider, requests } = scriptedProvider({
+    tokenResponse: {
+      access_token: "test-access-token",
+      refresh_token: "sensitive-refresh-value",
+      expires_in: 3599,
+      scope: "openid https://www.googleapis.com/auth/userinfo.email",
+    },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const err = await donePromise.then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toMatch(/didn't include the Google Drive permission/);
+  expect(err!.message).toMatch(/Connect Google Drive again/);
+  expect(err!.message).not.toContain("sensitive-refresh-value");
+  // Refused on the token response alone — Drive was never asked.
+  expect(requests.some((r) => r.url.includes("drive/v3/about"))).toBe(false);
+});
+
+test("a token response with no scope field at all is tolerated (about.get is the backstop)", async () => {
+  const { provider } = scriptedProvider({
+    tokenResponse: { access_token: "test-access-token", refresh_token: "sensitive-refresh-value", expires_in: 3599 },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBe("author@example.com");
+});
+
+test("grantedScopesInclude reads a space-delimited grant list and treats an absent one as unknown", () => {
+  const drive = "https://www.googleapis.com/auth/drive.file";
+  expect(grantedScopesInclude(`${drive} openid`, drive)).toBe(true);
+  expect(grantedScopesInclude(`openid  ${drive}`, drive)).toBe(true);
+  expect(grantedScopesInclude("openid https://www.googleapis.com/auth/userinfo.email", drive)).toBe(false);
+  expect(grantedScopesInclude("https://www.googleapis.com/auth/drive.file.readonly", drive)).toBe(false);
+  expect(grantedScopesInclude(undefined, drive)).toBe(true);
 });

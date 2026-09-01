@@ -23,9 +23,8 @@ Drive.
 ## What Gutterpress can see and do in your Google Drive
 
 Google Drive publishing requests exactly one OAuth scope,
-[`drive.file`](https://developers.google.com/identity/protocols/oauth2/scopes#drive),
-plus `openid` and `email`. This is Google's deliberately narrow,
-non-sensitive access tier:
+[`drive.file`](https://developers.google.com/identity/protocols/oauth2/scopes#drive).
+This is Google's deliberately narrow, non-sensitive access tier:
 
 - **`drive.file` grants access only to files and folders that Gutterpress
   itself creates** — typically a single folder (named "Gutterpress" by
@@ -35,10 +34,12 @@ non-sensitive access tier:
   anything a collaborator shared with you. This was verified against a real,
   populated Google account: a folder listing returned exactly the one folder
   Gutterpress had created, nothing else.
-- **`openid` and `email` are used only to label the connected account** —
-  so Gutterpress can show you "Google Drive — you@example.com" when you have
-  more than one account connected. This information is stored alongside
-  your credential (see below) and never transmitted anywhere else.
+- **Your account's email address is read once, from Drive's own account
+  information, only to label the connected account** — so Gutterpress can
+  show you "Google Drive — you@example.com" when you have more than one
+  account connected. No separate sign-in scope is requested for it. It is
+  stored alongside your credential (see below) and never transmitted
+  anywhere else.
 - **What gets uploaded is exactly what you publish**: the finished PDF, or a
   single zip of the HTML export, written to the folder described above.
   Gutterpress does not scan, index, or transmit any other content from your
