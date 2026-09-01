@@ -4,6 +4,8 @@ import {
   GoogleAuthProvider,
   grantedScopesInclude,
   pkceChallengeFromVerifier,
+  resolveGoogleClientId,
+  resolveGoogleClientSecret,
   GOOGLE_NOT_CONFIGURED_MESSAGE,
 } from "./google-auth";
 
@@ -478,4 +480,38 @@ test("grantedScopesInclude reads a space-delimited grant list and treats an abse
   expect(grantedScopesInclude("openid https://www.googleapis.com/auth/userinfo.email", drive)).toBe(false);
   expect(grantedScopesInclude("https://www.googleapis.com/auth/drive.file.readonly", drive)).toBe(false);
   expect(grantedScopesInclude(undefined, drive)).toBe(true);
+});
+
+// ADR 0011: the production client is embedded as the default. Resolution is
+// explicit option → env var → embedded default, where a PRESENT but empty
+// option or env var means "no client" (it does not fall through) — that is
+// how an unconfigured build, and the not-configured tests above, are
+// expressed now that the defaults are no longer blank.
+
+test("resolveGoogleClientId/Secret fall through to the embedded production client only when nothing is present", () => {
+  const savedId = process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+  const savedSecret = process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+  try {
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    // Absent everywhere → the embedded Desktop-app client (never blank now).
+    expect(resolveGoogleClientId()).toMatch(/\.apps\.googleusercontent\.com$/);
+    expect(resolveGoogleClientSecret()).not.toBe("");
+    // Explicit wins, including an explicit empty string.
+    expect(resolveGoogleClientId("explicit-id")).toBe("explicit-id");
+    expect(resolveGoogleClientId("")).toBe("");
+    expect(resolveGoogleClientSecret("")).toBe("");
+    // Env wins over the default, including a present-but-empty value.
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "env-id";
+    expect(resolveGoogleClientId()).toBe("env-id");
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "";
+    expect(resolveGoogleClientId()).toBe("");
+    // Explicit still beats env.
+    expect(resolveGoogleClientId("explicit-id")).toBe("explicit-id");
+  } finally {
+    if (savedId === undefined) delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    else process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = savedId;
+    if (savedSecret === undefined) delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    else process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = savedSecret;
+  }
 });

@@ -470,8 +470,11 @@ test("authenticate maps invalid_grant to the reconnect message", async () => {
 });
 
 test("authenticate fails with the not-configured message when no Google client is set up", async () => {
-  delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
-  delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+  // The package now embeds the production client (ADR 0011), so an ABSENT
+  // env var falls through to it; a PRESENT but empty one is how a build (or
+  // this test) says "no client at all" — see resolveGoogleClientId.
+  process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "";
+  process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = "";
   const dir = await tempProject(MANIFEST);
   try {
     const artifactPath = await fakeArtifact(dir);

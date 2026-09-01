@@ -57,15 +57,17 @@ defaults, exactly like `DEFAULT_GITHUB_CLIENT_ID`.**
   with standing privileges, a service-account key) must never enter this
   codebase, embedded or otherwise. This ADR authorizes exactly one thing: a
   Google **Desktop-app** OAuth client's public-by-design pair.
-- The defaults ship **blank** (`""`) until the production Cloud Console
-  client is registered and a maintainer deliberately fills them in — nobody
-  reviewing this ADR authorized picking or inventing a value, and an
-  automated coding session must not do so either. Until then, `gdrive`
-  connect fails immediately with a friendly, non-crashing message ("Google
+- The defaults shipped **blank** (`""`) until the production Cloud Console
+  client was registered; **the maintainer filled them in on 2026-09-01 for
+  the 0.10.5 beta.** Nobody may substitute an invented value or a
+  confidential one — only the registered Desktop-app client's own
+  public-by-design pair belongs there, and an automated coding session must
+  not pick one on its own. A build with both constants blanked fails
+  `gdrive` connect immediately with a friendly, non-crashing message ("Google
   Drive publishing isn't configured on this build yet…") rather than starting
   a loopback listener nobody can ever complete an exchange against. Every
   test injects its own fake id/secret via the explicit option or the env
-  vars, so this gap never blocks development or CI.
+  vars, so tests never depend on the embedded values.
 
 ## Cloud Console registration settings this decision depends on (release blocking)
 
