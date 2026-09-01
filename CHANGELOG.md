@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-09-01
+
 ### Added
 
 - **Publish straight to Google Drive** (#221). A new `gdrive` publish
