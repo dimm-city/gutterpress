@@ -99,6 +99,17 @@ export { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";
 // pattern is the same one already used above for shared-types.ts.
 export type { DiscoveredProject, ProjectClassification } from "../src/lib/platform/dtos";
 
+// SFE-P5c4: updater/recovery/doctor/lint IPC payload DTOs — the last route
+// group. `UpdaterStatus` already lives in shared-types.ts above (unaffected
+// by this run — only its transport changed); the four below were `dtos.ts`
+// request/response shapes a route returned, same relative-import pattern.
+export type {
+  RecoveryEntry,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
+} from "../src/lib/platform/dtos";
+
 // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
 // DTOs. All ~13 of these already lived in `dtos.ts` (the established home
 // for "plain request/response shapes a server route returns", per that

@@ -45,7 +45,7 @@
  * {@link reconcileExternalChange} that run before any I/O or session call.
  */
 import type { FileStat, FileWriteResult } from "$lib/platform/contract";
-import { api } from "$lib/api";
+import { writeRecovery, clearRecovery } from "$lib/recovery/recovery-capability";
 import {
   DocumentSession,
   type DocumentSessionPhase,
@@ -317,7 +317,7 @@ export class EditorBuffer {
     const filePath = this.filePath;
     if (!filePath || this.opts.recoveryEnabled === false || !this.isDirty) return;
     try {
-      await api.recovery.write(filePath, this.content, this.diskMtimeMs);
+      await writeRecovery(filePath, this.content, this.diskMtimeMs);
     } catch {
       // Recovery is best-effort; never surface as a hard error.
     }
@@ -371,7 +371,7 @@ export class EditorBuffer {
       const { mtimeMs } = await this.fs.writeFile(filePath, snapshot);
       this.opts.onSaved?.(filePath);
       if (this.opts.recoveryEnabled !== false) {
-        api.recovery.clear(filePath).catch(() => {});
+        clearRecovery(filePath).catch(() => {});
       }
       // The save may have completed after the author switched files. The old
       // file was written, but this buffer now represents another document, so
@@ -494,7 +494,7 @@ export class EditorBuffer {
       // conflict-banner "Reload" action from needing its own editor-sync call.
       this.opts.onContentReplaced?.(filePath, this.content);
       if (this.opts.recoveryEnabled !== false) {
-        api.recovery.clear(filePath).catch(() => {});
+        clearRecovery(filePath).catch(() => {});
       }
     }
   }

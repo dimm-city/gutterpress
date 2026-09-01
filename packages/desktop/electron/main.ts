@@ -72,6 +72,17 @@ import * as styleApi from "./api/style";
 // above. GitHub device-flow + clone-progress push stay exactly as they were.
 import * as remoteApi from "./api/remote";
 import * as publishApi from "./api/publish";
+// SFE-P5c4: updater/recovery/doctor/lint — the LAST four route groups —
+// moved from SvelteKit HTTP routes to typed IPC, taking the desktop HTTP
+// route count to zero. Same rationale as P5c1/P5c2/P5c3 above. The hooks
+// bags these four handler modules read from (`getUpdaterHooks`/
+// `getRecoveryHooks`/`getDoctorHooks`) are unchanged — the underlying
+// implementation functions imported below still populate them exactly as
+// they did for the deleted routes.
+import * as updaterApi from "./api/updater";
+import * as recoveryApi from "./api/recovery";
+import * as doctorApi from "./api/doctor";
+import * as lintApi from "./api/lint";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1056,8 +1067,8 @@ secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
-// Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
-// globalThis hooks — no IPC needed.
+// Exposed to `electron/api/recovery.ts`'s IPC handlers (SFE-P5c4) through
+// the collapsed host object below.
 const recoveryHooksImpl: RecoveryHooks = {
   write: (filePath: string, content: string, baseMtimeMs: number) =>
     writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
@@ -1226,6 +1237,31 @@ secureHandle("style:setActive", (_e, projectDir: unknown, paths: unknown) =>
   styleApi.styleSetActive(projectDir, paths),
 );
 
+// ── updater / recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST
+// route group) ─────────────────────────────────────────────────────────────
+// Replaces src/routes/api/{updater,recovery,doctor,lint}/**/+server.ts —
+// the desktop HTTP route count reaches zero after this block. applyNow was
+// already IPC (see the updater wiring further below); getStatus/check/
+// download join it here, collapsing updater-capability.ts's HTTP+IPC
+// fan-out to a single transport.
+
+secureHandle("updater:getStatus", () => updaterApi.updaterGetStatus());
+secureHandle("updater:check", () => updaterApi.updaterCheck());
+secureHandle("updater:download", () => updaterApi.updaterDownload());
+
+secureHandle("recovery:write", (_e, filePath: unknown, content: unknown, baseMtimeMs: unknown) =>
+  recoveryApi.recoveryWrite(filePath, content, baseMtimeMs),
+);
+secureHandle("recovery:clear", (_e, filePath: unknown) => recoveryApi.recoveryClear(filePath));
+secureHandle("recovery:list", (_e, projectDir: unknown) => recoveryApi.recoveryList(projectDir));
+
+secureHandle("doctor:getDiagnostics", () => doctorApi.doctorGetDiagnostics());
+
+secureHandle("lint:checkCss", (_e, cssPath: unknown, content: unknown) =>
+  lintApi.lintCheckCss(cssPath, content),
+);
+secureHandle("lint:project", (_e, projectDir: unknown) => lintApi.lintProject(projectDir));
+
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -1363,8 +1399,8 @@ const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectSt
   loadLib,
 };
 
-// Doctor-route hooks, exposed through the collapsed host object so the
-// SvelteKit handler never imports `electron` directly in the packaged app.
+// Doctor hooks, exposed through the collapsed host object to
+// `electron/api/doctor.ts`'s IPC handler (SFE-P5c4).
 const doctorHooksImpl: DoctorHooks = {
   getDesktopVersion: () => app.getVersion(),
 };
@@ -1708,16 +1744,15 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
 };
 
-// ── Updater status/check/download hooks (ARCH review #8) ────────────────────
+// ── Updater status/check/download hooks (ARCH review #8, SFE-P5c4) ─────────
 // getStatus/checkForUpdates/download (electron/updater.ts) are plain
 // functions with no main.ts-only state of their OWN — but electron/updater.ts
 // itself has main-bundle-only mutable state (phase/lastError/…) populated by
-// the one initUpdater() call below, so it can't be imported fresh from a
-// route's separate bundle (see updater-hooks.ts's doc comment). Bound here so
-// the routes reach THIS process's initialized instance through the same
-// collapsed host object as everything else. `check()` is always the
-// user-initiated (non-silent) form — the silent background recheck stays a
-// direct call inside main.ts, sharing the same underlying module state.
+// the one initUpdater() call below. `electron/api/updater.ts`'s IPC handlers
+// reach THIS process's initialized instance through the same collapsed host
+// object as everything else. `check()` is always the user-initiated
+// (non-silent) form — the silent background recheck stays a direct call
+// inside main.ts, sharing the same underlying module state.
 const updaterHooksImpl: UpdaterHooks = {
   getStatus: () => getUpdaterStatus(),
   check: () => checkForUpdates(),
@@ -1749,8 +1784,6 @@ registerHostServices({
   watch: watchHooksImpl,
   write: writeHooksImpl,
 });
-
-// (api:doctor handler removed — migrated to server route)
 
 // The preview-open pipeline (start server, detect source, recents upsert,
 // auto-sync arm/preflight, local-status emit) lives in
@@ -1857,13 +1890,12 @@ secureHandle(
 // "restart to update" banner after staging.
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
-// no push stream, no live-BrowserWindow need — so they're SvelteKit server
-// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
-// download from ./updater.ts directly (no hooks bag needed: they're already
-// plain exported functions with no main.ts-only state). applyNow stays on
-// IPC: it flushes the live renderer's unsaved buffer via
-// `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
-// §8 sanctions.
+// no push stream, no live-BrowserWindow need — but as of SFE-P5c4 they are
+// typed IPC (`updater:getStatus`/`updater:check`/`updater:download`,
+// registered above) like everything else, collapsing the HTTP+IPC fan-out
+// this comment used to document. applyNow was always IPC: it flushes the
+// live renderer's unsaved buffer via `mainWindow.webContents.send` before
+// quitting — a live-BrowserWindow call §8 sanctions.
 // ──────────────────────────────────────────────────────────────────────────
 
 function sendUpdaterEvent(event: UpdaterEventPayload) {

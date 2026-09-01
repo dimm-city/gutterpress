@@ -100,7 +100,7 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
     expect(src).not.toContain('content: "▾"');
   });
 
-  test("PWA-clean (§8): api access only through controllers/$lib/api, no host imports", () => {
+  test("PWA-clean (§8): host access only through controllers/capability modules, no host imports", () => {
     const src = view();
     expect(src).not.toMatch(/from\s+["']node:/);
     expect(src).not.toMatch(/from\s+["'](fs|path|url|child_process)["']/);

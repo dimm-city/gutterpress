@@ -412,7 +412,11 @@ try {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const after = read.getAttribute('aria-pressed');
     edit.click();
-    const status = await fetch('/api/status');
+    // SFE-P5c4 deleted the last desktop HTTP route (/api/status was the
+    // health-check probe this used) — the SPA's own index route proves the
+    // local host route still responds just as well, with no dependency on
+    // an api/** route surviving.
+    const status = await fetch('/');
     return { toggled: before !== after, status: status.status };
   })()`), 5000, "post-render UI responsiveness");
 } catch (error) {

@@ -3,9 +3,9 @@
  *
  * Extracted so the dedupe rule is unit-testable without a Svelte component
  * test harness (none exists in this repo — see CLAUDE.md test conventions).
- * `import type` only from `$lib/api`, so this stays PWA-clean (§8).
+ * `import type` only from `$lib/platform/dtos`, so this stays PWA-clean (§8).
  */
-import type { ThemeInfo } from "$lib/api";
+import type { ThemeInfo } from "$lib/platform/dtos";
 
 /**
  * The Appearance grid used to render BOTH the built-in card and the

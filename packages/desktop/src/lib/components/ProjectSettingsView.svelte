@@ -40,11 +40,11 @@
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
    * goes through `$lib/files/files-capability`'s / `$lib/project-config/
-   * project-config-capability`'s typed IPC (or the remaining `api.doctor()`
-   * HTTP route) inside the controllers.
+   * project-config-capability`'s / `$lib/doctor/doctor-capability`'s typed
+   * IPC inside the controllers.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
   import { readFile, writeFile, listDir } from "$lib/files/files-capability";
   import {
     projectListStyles,
@@ -151,15 +151,13 @@
         entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name),
       ),
     // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data the Help tab shows.
+    // diagnostics data the Help tab shows.
     listMissingPrintTools: () =>
-      api
-        .doctor()
-        .then((d) =>
-          (d.tools ?? [])
-            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-            .map((t) => t.id),
-        ),
+      getDoctorDiagnostics().then((d) =>
+        (d.tools ?? [])
+          .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+          .map((t) => t.id),
+      ),
     onSaved: () => toast?.success?.("Project details saved."),
     onError: (msg) => toast?.error?.(msg),
   });

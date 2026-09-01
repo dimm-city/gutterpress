@@ -85,6 +85,10 @@ import type {
   PreflightRow,
   CloneRepositoryArgs,
   SyncOutcome,
+  RecoveryEntry,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
 } from "./bridge-types";
 import type { CreateProjectResult } from "gutterpress";
 
@@ -101,10 +105,12 @@ declare global {
 
   type UpdaterEvent = UpdaterEventPayload;
 
-  // getStatus/check/download migrated to server routes (api.updater.*) —
-  // ARCH review #8: plain request/response, no push stream or
-  // live-BrowserWindow need. applyNow + onEvent stay on the bridge.
+  // getStatus/check/download joined applyNow/onEvent on typed IPC in
+  // SFE-P5c4 (ARCH review #8's HTTP+IPC fan-out is gone).
   interface ElectronUpdater {
+    getStatus(): Promise<UpdaterStatus>;
+    check(): Promise<UpdaterStatus>;
+    download(): Promise<UpdaterStatus>;
     applyNow(): Promise<{ applied: boolean; version?: string; error?: string }>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
@@ -235,6 +241,21 @@ declare global {
         setActive(projectDir: string, paths: string[]): Promise<string[]>;
       };
 
+      // ── recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST route
+      // group) ───────────────────────────────────────────────────────────
+      recovery: {
+        write(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }>;
+        clear(filePath: string): Promise<{ ok: boolean }>;
+        list(projectDir: string): Promise<RecoveryEntry[]>;
+      };
+      doctor: {
+        getDiagnostics(): Promise<DoctorDiagnostics>;
+      };
+      lint: {
+        checkCss(cssPath: string, content: string): Promise<PrintSafeWarning[]>;
+        project(projectDir: string): Promise<ProblemEntry[]>;
+      };
+
       // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
       // sensitive group) ────────────────────────────────────────────────
       remote: {
@@ -337,7 +358,6 @@ declare global {
         fingerprintPath?: string;
         diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
       }>;
-      // doctor migrated to server route (Phase 2C)
       // SFE-P3e: host-built, plugin-aware rich-editor projection. Resolves
       // to a discriminated EditorProjectionOutcome, never a `.code`-tagged
       // rejection (review round 2 — see electron/editor-projection.ts).
@@ -348,8 +368,8 @@ declare global {
       // same as every other payload type in this file.
       onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
       onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
-      // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-      // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
+      // writeRecovery/clearRecovery/listRecovery — the `recovery` member
+      // above (SFE-P5c4: typed IPC).
       // app:setDirtyState migrated to typed IPC (SFE-P5c1) — see the `app`
       // member above.
       onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;

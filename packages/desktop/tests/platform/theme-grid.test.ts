@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { visibleBuiltInThemes } from "../../src/lib/components/config/theme-grid";
-import type { ThemeInfo } from "../../src/lib/api";
+import type { ThemeInfo } from "../../src/lib/platform/dtos";
 
 function theme(kind: ThemeInfo["kind"], id: string, name = id): ThemeInfo {
   return { id, name, description: "", kind };

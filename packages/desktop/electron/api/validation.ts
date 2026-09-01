@@ -20,12 +20,15 @@
  * used, which is what preserves each caller's observable behavior across the
  * transport change (run rule 2).
  *
- * `_lib/route.ts`/`_lib/fs-guard.ts` themselves are NOT deleted or moved:
- * dozens of route groups outside this subrun (project, remote, vcs, publish,
- * plugin, theme, media, …) still import them, and moving a helper that not
- * every consumer migrates this subrun is exactly what the run specification
- * forbids ("move the helper to the main-process module tree IF all its
- * consumers migrate this subrun, else import it from its current home").
+ * `_lib/route.ts`/`_lib/fs-guard.ts` themselves were NOT deleted or moved by
+ * THIS (SFE-P5c1) port: dozens of route groups outside that subrun (project,
+ * remote, vcs, publish, plugin, theme, media, updater, recovery, doctor,
+ * lint, …) still imported them, and moving a helper that not every consumer
+ * migrates in the same subrun is exactly what the run specification
+ * forbids. SFE-P5c4 (the last subrun) migrated every remaining consumer and
+ * deleted `src/routes/api/**` wholesale, including `_lib/route.ts` and
+ * `_lib/fs-guard.ts` with it — this file (and `electron/api/lib-loader.ts`)
+ * is now the only place this logic lives.
  */
 import path from "node:path";
 import { getFsGuardHooks, isWithinAnyRootCanonical } from "../server-bridge/fs-guard";

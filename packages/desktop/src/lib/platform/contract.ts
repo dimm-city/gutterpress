@@ -132,6 +132,14 @@ import type {
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
+  // SFE-P5c4: recovery/doctor/lint IPC payload DTOs. These already lived in
+  // `./dtos` (the established home — see this file's own header) before
+  // this run; ElectronBridge just needs to reference them now that the
+  // transport under them is IPC.
+  RecoveryEntry,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
 } from "./dtos";
 
 // Shared IPC payload types — imported from the single source of truth.
@@ -497,11 +505,12 @@ export interface ElectronBridge {
   /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
   readonly apiVersion: number;
   /**
-   * ARCH review #8: getStatus/check/download migrated to server routes
-   * (api.updater.*) — the raw bridge only carries applyNow (quit + install,
-   * a live-BrowserWindow flush) and the onEvent push subscription.
+   * SFE-P5c4: getStatus/check/download rejoined applyNow (quit + install, a
+   * live-BrowserWindow flush) and the onEvent push subscription on typed
+   * IPC — the full `UpdaterApi` shape, collapsing ARCH review #8's
+   * HTTP+IPC fan-out to one transport.
    */
-  updater: Pick<UpdaterApi, "applyNow" | "onEvent">;
+  updater: UpdaterApi;
 
   // Native (OS) theme (#48) — push channel (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
@@ -658,7 +667,8 @@ export interface ElectronBridge {
   // style — typed IPC (SFE-P5c2) ────────────────────────────────────────
   // Replaces the deleted src/routes/api/{project,manifest,tpl,snip,media,
   // plugin,theme,vcs,style}/** +server.ts routes and their api.ts client
-  // methods. checkCss / lintProject stay server routes (lint:*, P5c4).
+  // methods. checkCss / lintProject moved to typed IPC too, but in SFE-P5c4
+  // — see the `lint` member further below.
 
   project: {
     listStyles(projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]>;
@@ -729,6 +739,26 @@ export interface ElectronBridge {
 
   style: {
     setActive(projectDir: string, paths: string[]): Promise<string[]>;
+  };
+
+  // ── recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST route
+  // group) ───────────────────────────────────────────────────────────────
+  // Replaces the deleted src/routes/api/{recovery,doctor,lint}/**
+  // +server.ts routes and their api.ts client methods.
+
+  recovery: {
+    write(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }>;
+    clear(filePath: string): Promise<{ ok: boolean }>;
+    list(projectDir: string): Promise<RecoveryEntry[]>;
+  };
+
+  doctor: {
+    getDiagnostics(): Promise<DoctorDiagnostics>;
+  };
+
+  lint: {
+    checkCss(cssPath: string, content: string): Promise<PrintSafeWarning[]>;
+    project(projectDir: string): Promise<ProblemEntry[]>;
   };
 
   // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-

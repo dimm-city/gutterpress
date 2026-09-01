@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   UpdaterEventPayload,
+  UpdaterStatus,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -54,6 +55,10 @@ import type {
   PreflightRow,
   CloneRepositoryArgs,
   SyncOutcome,
+  RecoveryEntry,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -81,7 +86,11 @@ import type {
 // sensitive group restored from SvelteKit HTTP routes to typed IPC in the
 // same run. connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus
 // were already on this bridge and are unchanged.
-const DESKTOP_API = 9;
+// 9 -> 10 (SFE-P5c4): added `updater.getStatus/check/download`, `recovery`,
+// `doctor`, `lint` -- the LAST four route groups, taking the desktop HTTP
+// route count to zero. `updater.applyNow`/`onEvent` were already on this
+// bridge and are unchanged.
+const DESKTOP_API = 10;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -166,13 +175,15 @@ contextBridge.exposeInMainWorld("electron", {
 
   // ──────────────────────────────────────────────────────────────────────
   // Desktop update surface (electron-updater + macOS check-only notifier)
-  // getStatus/check/download migrated to server routes (api.updater.*) —
-  // ARCH review #8: plain request/response, no push stream or
-  // live-BrowserWindow need. applyNow stays IPC: it flushes the live
-  // renderer's unsaved buffer via `mainWindow.webContents.send` before
-  // quitting — a live-BrowserWindow call §8 sanctions.
+  // getStatus/check/download joined applyNow/onEvent on typed IPC in
+  // SFE-P5c4 (ARCH review #8's HTTP+IPC fan-out is gone). applyNow flushes
+  // the live renderer's unsaved buffer via `mainWindow.webContents.send`
+  // before quitting — a live-BrowserWindow call §8 sanctions.
   // ──────────────────────────────────────────────────────────────────────
   updater: {
+    getStatus: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:getStatus"),
+    check: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:check"),
+    download: (): Promise<UpdaterStatus> => ipcRenderer.invoke("updater:download"),
     applyNow: (): Promise<{ applied: boolean; version?: string; error?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
@@ -182,7 +193,8 @@ contextBridge.exposeInMainWorld("electron", {
 
   // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ────────────────
   // media:* moved to typed IPC too, but in SFE-P5c2 — see the `media` block
-  // below. checkCss, lintProject stay server routes (lint:*, P5c4).
+  // below. checkCss/lintProject/doctor/recovery moved to typed IPC in
+  // SFE-P5c4 — see the `lint`/`doctor`/`recovery` blocks further below.
   fs: {
     readFile: (path: string): Promise<string> => ipcRenderer.invoke("fs:readFile", path),
     writeFile: (path: string, content: string): Promise<FileWriteResult> =>
@@ -263,7 +275,8 @@ contextBridge.exposeInMainWorld("electron", {
 
   // ── project / manifest / tpl / snip / media / plugin / theme / vcs / style
   // — typed IPC (SFE-P5c2) ──────────────────────────────────────────────────
-  // checkCss / lintProject stay server routes (lint:*, P5c4).
+  // checkCss / lintProject moved to typed IPC too, but in SFE-P5c4 — see
+  // the `lint` block further below.
 
   project: {
     listStyles: (projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]> =>
@@ -361,6 +374,25 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("style:setActive", projectDir, paths),
   },
 
+  // ── recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST route
+  // group) ───────────────────────────────────────────────────────────────
+  recovery: {
+    write: (filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
+    clear: (filePath: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("recovery:clear", filePath),
+    list: (projectDir: string): Promise<RecoveryEntry[]> => ipcRenderer.invoke("recovery:list", projectDir),
+  },
+
+  doctor: {
+    getDiagnostics: (): Promise<DoctorDiagnostics> => ipcRenderer.invoke("doctor:getDiagnostics"),
+  },
+
+  lint: {
+    checkCss: (cssPath: string, content: string): Promise<PrintSafeWarning[]> =>
+      ipcRenderer.invoke("lint:checkCss", cssPath, content),
+    project: (projectDir: string): Promise<ProblemEntry[]> => ipcRenderer.invoke("lint:project", projectDir),
+  },
+
   // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
   // sensitive group) ────────────────────────────────────────────────────────
   // connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus are the
@@ -444,7 +476,6 @@ contextBridge.exposeInMainWorld("electron", {
     };
   },
 
-  // getStatus migrated to server route (Phase 2C)
   // app:getLastProject has no route/IPC — never implemented as a distinct op.
 
   // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
@@ -519,7 +550,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:cancelExport", exportId),
   build: (args: RawBuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
-  // doctor migrated to server route (Phase 2C)
 
   // SFE-P3e: the desktop rich editor's plugin-aware projection, built
   // host-side (real manifest + real loaded plugins) — see
@@ -539,8 +569,8 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (data: UrlPreviewBlockedEvent) => void
   ): (() => void) => forwardPush("url-preview:blocked", cb),
 
-  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
+  // writeRecovery/clearRecovery/listRecovery — the `recovery` namespaced
+  // block above (SFE-P5c4: typed IPC).
 
   /**
    * Subscribe to main's request to flush before the window closes (#44). The

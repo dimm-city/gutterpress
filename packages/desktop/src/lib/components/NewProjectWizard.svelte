@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   import { isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
   import { tplListBuiltIn, tplListCustom, tplImportFromFolder } from "$lib/project-config/project-config-capability";
   import type { TemplateInfo } from "$lib/platform/dtos";
   import {
@@ -146,14 +146,14 @@
     checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
   }
 
-  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
-  // data the Help tab shows), for the can't-build-compliant-PDFs note below.
-  // Best-effort: a failed probe just shows no note.
+  // qpdf/Ghostscript availability on this computer (from the same
+  // diagnostics data the Help tab shows), for the can't-build-compliant-PDFs
+  // note below. Best-effort: a failed probe just shows no note.
   let missingTools = $state<string[]>([]);
   async function loadToolStatus(): Promise<void> {
     if (!isDesktop()) return;
     try {
-      const doctor = await api.doctor();
+      const doctor = await getDoctorDiagnostics();
       missingTools = (doctor.tools ?? [])
         .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
         .map((t) => t.id);

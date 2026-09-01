@@ -3,8 +3,9 @@
 //
 // NAMING MAP (UX review M38): "recovery" names TWO unrelated subsystems in
 // this codebase, and they must not be confused:
-//   1. CRASH-DRAFT recovery (THIS FILE + its `/api/recovery/*` routes +
-//      CrashRecoveryDialog.svelte) — an in-editor unsaved-changes sidecar.
+//   1. CRASH-DRAFT recovery (THIS FILE + its `recovery:*` IPC handlers
+//      (electron/api/recovery.ts) + CrashRecoveryDialog.svelte) — an
+//      in-editor unsaved-changes sidecar.
 //      Writer-facing vocabulary: "unsaved changes" only, never "recovery".
 //   2. SYNC-REPAIR recovery (recovery-bridge.ts + RecoveryOverlay /
 //      RecoveryConfirmDialog / RecoveryGuidanceDialog) — git-repair machinery

@@ -5,13 +5,13 @@
    *
    * Extracted from the retired HelpDialog modal (2026-07-30): help now lives
    * on the welcome screen's Help tab (WelcomeLanding), opened by the global
-   * help button. This component owns its own data load (api.doctor) on mount;
-   * the host passes only the update-check wiring.
+   * help button. This component owns its own data load (system diagnostics)
+   * on mount; the host passes only the update-check wiring.
    */
   import { isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
   import { openExternal } from "$lib/files/files-capability";
-  import type { DoctorDiagnostics } from "$lib/api";
+  import type { DoctorDiagnostics } from "$lib/platform/dtos";
   import Icon from "$lib/components/Icon.svelte";
   import type { UpdaterAvailableAction } from "$lib/platform";
 
@@ -43,7 +43,7 @@
         error = "Desktop system details are only available in the desktop app.";
         return;
       }
-      data = await api.doctor();
+      data = await getDoctorDiagnostics();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {

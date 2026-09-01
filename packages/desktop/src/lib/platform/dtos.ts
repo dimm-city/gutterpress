@@ -1,12 +1,15 @@
 /**
- * Desktop-facing DTOs (ARCH review #39) — plain data shapes returned by the
- * server routes under `src/routes/api/**`, plus a handful of app-local view
- * types (plugin manager, theme manager, style resolver, media panel, …).
+ * Desktop-facing DTOs (ARCH review #39) — plain data shapes the typed IPC
+ * capability modules (`$lib/*-capability.ts`) return, plus a handful of
+ * app-local view types (plugin manager, theme manager, style resolver,
+ * media panel, …).
  *
  * These are NOT part of the `HostServices`/`ElectronBridge`/`Platform` seam
  * (that lives in `./contract.ts`) — they are the request/response payload
- * shapes `$lib/api.ts` and its consumers use. Most mirror an equivalent type
- * in `gutterpress` (the lib) and are defined locally here so the SPA
+ * shapes the capability modules and their consumers use (through SFE-P5c,
+ * `src/routes/api/**`'s now-deleted `+server.ts` routes and `$lib/api.ts`'s
+ * typed fetch client returned these same shapes). Most mirror an equivalent
+ * type in `gutterpress` (the lib) and are defined locally here so the SPA
  * never value-imports the lib into the renderer bundle (§8 / ADR 0004).
  *
  * Pure type/interface/type-alias declarations ONLY — no runtime values, no

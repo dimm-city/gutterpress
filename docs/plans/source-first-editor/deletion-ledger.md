@@ -1637,3 +1637,258 @@ discards it — fixed the table entry, not the function);
 site" assertion counted the bare identifier `connectGenericHost`, which
 now also appears once in the SFE-P5c3 capability import line — fixed to
 count the call-site pattern `connectGenericHost(` instead.
+
+### SFE-P5c4 — 2026-09-01 — migrate `updater`/`recovery`/`doctor`/`lint` to typed IPC (the LAST route group — route ratchet reaches zero)
+
+Lane A (implementation). Base SHA `4616add1` (SFE-P5c1–P5c3's committed
+head). Head SHA: uncommitted at hand-off — the integrator records the real
+SHA at commit time per this row's own instruction.
+
+**What was deleted:**
+
+- All 10 remaining `+server.ts` routes under `src/routes/api/**`, plus the 3
+  `_lib` helpers with no consumer left to move to (`_lib/route.ts` —
+  `defineRoute`/`jsonRoute`/`loadLib`/`loadApiLib`; `_lib/handler.ts` —
+  `jsonRoute`/`requireAbsolute`; `_lib/fs-guard.ts` — the SvelteKit-status
+  outer shim over `isWithinAnyRootCanonical`): `updater` (3 —
+  `get-status`/`check`/`download`), `recovery` (3 —
+  `write`/`clear`/`list`), `doctor` (1), `lint` (2 —
+  `check-css`/`project`), `status` (1 — dead, see below). 13 files, all of
+  `src/routes/api/**`, deleted in one shot — `src/routes/api/` no longer
+  exists. Route count 10 → 0 (`tools/architecture-baseline.json`'s
+  `desktopHttpRoutes` re-baselined in the same commit); the ratchet target
+  P5c1 opened with (104) and every subrun since has driven toward is now
+  met.
+- **`status` was the one genuinely dead route in the whole P5c group.**
+  `api.ts`'s own comment already recorded this ("ARCH review #8 — this
+  wrapper had zero callers... the route itself is left in place... harmless
+  to keep reachable even with no current client"). Re-verified before
+  deletion: `grep -rn "api/status\|routes/api/status"` across
+  `packages/desktop/{src,electron,tests}` returned exactly one hit —
+  `api.ts`'s own comment, now gone with the file. No IPC replacement was
+  built for it; it is simply gone, with the search proof above as the "dead
+  route dies with proof" evidence the run brief required.
+- `src/lib/api.ts` (177 lines) — deleted outright, not reduced to a
+  tombstone. By the time this subrun started it was down to the `doctor`/
+  `lint`/`recovery`/`updater` namespaces plus a type-re-export barrel (the
+  `post`/`get` fetch helpers, `_post`/`_get`); once those four namespaces
+  moved to typed IPC, nothing in the file did any work a capability module
+  didn't already do better, and its type re-exports were the only reason
+  anything still imported it. Searched every `import ... from "$lib/api"` /
+  `"./api"` (type and value) across `src`/`tests` (18 files) and redirected
+  each to the DTO's real home (`$lib/platform/dtos` for the ~10 plain
+  request/response shapes it had been re-exporting from there, e.g.
+  `ThemeInfo`/`ProjectPluginEntry`/`ProjectConfigFields`/`DoctorDiagnostics`;
+  `$lib/platform/contract` for `SnapshotEntry`/`SyncOutcome`, which live in
+  `shared-types.ts` and are re-exported from `contract.ts` by name already)
+  — see "What was added" below for the one real straggler this search
+  caught. `fetch("/api/…")` plumbing (`post`/`get`) is now fully absent from
+  `packages/desktop/src` — the P5d search proof this run's own DETAILS
+  section named ("api.ts typed fetch client → absent") is satisfied now,
+  not deferred to P5d.
+- `electron/server-bridge/updater-hooks.ts` and
+  `electron/server-bridge/recovery-hooks.ts` were considered for the same
+  fan-out-collapse treatment `updater-capability.ts` got on the renderer
+  side, but were kept unchanged: both bags exist to reach state that lives
+  either inside a sibling module's own closures (`electron/updater.ts`'s
+  `phase`/`lastError`/`activeAutoUpdater`, populated once by `initUpdater()`)
+  or inside `main.ts`'s own local scope (`recoveryDir()`), and
+  `electron/api/*.ts` modules cannot import `main.ts` directly (main.ts
+  imports them — the same circular-dependency reason `vcs-hooks.ts`/
+  `remote-hooks.ts`/every other hooks bag in this codebase exists). Removing
+  them would have meant either duplicating that state inside
+  `electron/api/updater.ts`/`recovery.ts` (a second, un-synchronized copy)
+  or restructuring `main.ts`'s initialization order — out of this run's
+  "swap the transport, port the handler logic" scope. `DoctorHooks`/
+  `getDoctorHooks` (`host-hooks.ts`) were kept for the same reason
+  (`app.getVersion()` alone has no closure state, but the hooks bag already
+  existed and the deleted route never gated on it being present — see
+  `electron/api/doctor.ts`'s doc comment). `src/lib/server/host-hooks.ts`
+  and `src/lib/server/updater.ts` (the two `$lib/server/*` thin re-export
+  shims those hooks used to reach through) DID die: both existed solely for
+  the now-deleted `doctor`/`updater` routes (`grep -rln '\$lib/server'`
+  before deletion found no consumer outside those routes and the two shim
+  files themselves) — `src/lib/server/` is now empty and deleted with them.
+
+**What was added:**
+
+- `electron/api/updater.ts`, `electron/api/recovery.ts`,
+  `electron/api/doctor.ts`, `electron/api/lint.ts` — the main-process IPC
+  handler logic, ported from the four deleted route groups verbatim (same
+  hooks bag, same "hooks not registered" fail-closed check run BEFORE
+  validation where the deleted routes' `defineRoute({hooks, validate,
+  call})` order required it — recovery/updater; same graceful-degrade-to-
+  "unknown" where the deleted route never gated on the hooks bag at all —
+  doctor; same `requireProjectDir` project-scoping guard, reused not
+  re-derived, for `lint:project`), reusing `electron/api/validation.ts`
+  (P5c1) and `electron/api/lib-loader.ts` (P5c2) verbatim.
+- 9 `secureHandle` registrations in `electron/main.ts` (111 → 120):
+  `updater:getStatus`/`updater:check`/`updater:download` (joining the
+  pre-existing `updater:applyNow`), `recovery:write`/`recovery:clear`/
+  `recovery:list`, `doctor:getDiagnostics`, `lint:checkCss`/`lint:project`.
+- `src/lib/doctor/doctor-capability.ts`,
+  `src/lib/recovery/recovery-capability.ts`, `src/lib/lint/lint-capability.ts`
+  — three new, small capability modules (the contexts P5b's capability map
+  did not yet own a module for), each a handful of plain functions
+  forwarding to `bridge()`, no ceremony for what are largely single- or
+  two-consumer slices (D4/P5b's stated design constraint).
+  `src/lib/update/updater-capability.ts` (SFE-P5b) is REWRITTEN in place,
+  not replaced: its
+  header now records the fan-out collapse — `getStatus`/`check`/`download`
+  join `applyNow`/`onEvent` on the bridge, so all five members share one
+  transport for the first time since ARCH review #8 split them onto HTTP.
+- `ElectronBridge` (`contract.ts`) gained `recovery`/`doctor`/`lint`
+  members and its `updater` member widened from `Pick<UpdaterApi, "applyNow"
+  | "onEvent">` to the full `UpdaterApi` shape; `electron/preload.ts`/
+  `types.d.ts`/`bridge-types.ts` gained the mirrored ambient/re-export
+  shapes — the same three-way hand-maintained-mirror discipline P5c1–P5c3
+  established. `DESKTOP_API` bumped 9 → 10.
+- **The one real straggler the `$lib/api` import search caught, not
+  anticipated at design time:** `ProjectSettingsView.svelte`'s
+  `listMissingPrintTools` callback called `api.doctor()` with the method
+  call split across a line break (`api\n  .doctor()`), which an earlier
+  single-line grep for `api.doctor` inside this same review missed on a
+  first pass — found on a second, multiline-aware sweep before hand-off, not
+  after. Fixed the same way every other real call site was: swapped for
+  `getDoctorDiagnostics()` from the new capability module. Recorded here
+  because it is exactly the kind of caller-inventory miss the run's own
+  "enumerate api.ts methods and callers with the permissive multi-line
+  grep" instruction exists to catch, and because a lane that skipped it
+  would have shipped a component whose print-tool note silently stopped
+  updating (the `import { api }` binding would have gone dead, not
+  errored — `svelte-check`/`tsc` cannot catch a call site that still
+  resolves to something, only to nothing).
+- 4 new IPC-handler test files (following the `*-ipc.test.ts` naming
+  precedent P5c1–P5c3 established): `updater-ipc.test.ts` (replaces the
+  "updater server routes" describe block from the deleted
+  `migrated-ipc-routes.test.ts`, now exercising `electron/api/updater.ts`
+  directly — hooks-not-registered/host-disconnected plus pass-through
+  coverage for all three newly-IPC members), `recovery-ipc.test.ts` (new —
+  host-disconnected, path-invalid, field-validation, and success-path
+  coverage, plus a dedicated D7 test proving a real store-read failure
+  propagates as a rejection rather than resolving to `[]`),
+  `doctor-ipc.test.ts` (ports the deleted `doctor-route.test.ts` verbatim, including
+  its L10 Chromium-filtering regression case), `lint-ipc.test.ts` (ports
+  `lint:project`'s project-scoping-guard rows from the deleted
+  `route-scoping.test.ts` — outside/sibling-prefix/no-project-open/
+  repo-root/symlink-escape cases, `lint:project` having been the only route
+  left in that file's table — plus new `lint:checkCss` validation/success
+  coverage). `route-factory.test.ts`/`route-handler.test.ts` (unit tests of
+  `_lib/route.ts`'s `defineRoute` and `_lib/handler.ts`'s `jsonRoute`, both
+  now-deleted files with no IPC analog — `electron/api/*.ts` handlers call
+  their hooks bag and validation helpers directly, no declarative
+  route-factory layer), `route-scoping.test.ts` (its subject fully replaced
+  by `lint-ipc.test.ts`), `doctor-route.test.ts`, and
+  `migrated-ipc-routes.test.ts` are deleted — every assertion they carried
+  has a home in a still-green replacement file; none were dropped.
+  `tests/updater/updater-capability.test.ts` is rewritten in place to match
+  the collapsed transport (every member now delegates to a stubbed
+  `window.electron`, none to a stubbed `fetch`; a new test pins that the
+  three request/reply members throw SYNCHRONOUSLY without a desktop host,
+  matching `bridge()`'s documented "fail loudly, not partially" contract —
+  the same pattern `bridge.test.ts`/`build-preview-capability.test.ts`
+  already used for a direct, non-async `bridge()` caller).
+  `tests/editor/css-editor.test.ts` is rewritten to stub
+  `window.electron.lint.checkCss` (calling the real lib `checkCss`) instead
+  of intercepting `fetch("/api/lint/check-css")`.
+- One residual test fix outside the four owned groups, caused by this run's
+  own change: `tests/integration/editor-toggle-loads-module.pw.mjs`'s
+  post-render responsiveness probe fetched `/api/status` as a liveness check
+  for "the SPA, host route, toolbar, and preview bridge all still respond"
+  — replaced with a fetch of `/` (the SPA's own index route), which proves
+  the same thing (the local host server still answers) without depending on
+  an `api/**` route surviving. Out of `bun run test`'s scope (a Playwright
+  `.pw.mjs` script, not a `bun:test` file) but a real break this run
+  introduced, so fixed rather than left for a future subrun to discover.
+
+**Re-baseline:** `tools/architecture-baseline.json`'s `desktopHttpRoutes`
+10 → 0 (matches `find packages/desktop/src/routes/api -name "+server.ts"`
+returning nothing because the directory itself no longer exists) — the
+ratchet this run's own DETAILS section named as its finish line.
+
+**Net diffstat** (working tree at hand-off, `git diff --numstat` against
+base `4616add1`, new untracked files included via a stage/unstage round
+trip so the numbers cover the whole subrun):
+
+```
+production (packages/desktop/electron + packages/desktop/src): 44 files, +546 / −808  (net −262)
+tests (packages/desktop/tests):                                19 files, +501 / −830  (net −329)
+combined:                                                       64 files, +1,048 / −1,639  (net −591)
+```
+
+Same shape as every prior P5c subrun's own accounting, but net-NEGATIVE on
+both sides this time (unlike P5c3's mildly-positive production delta) — the
+group this run migrates is proportionally smaller (13 route/`_lib` files vs.
+P5c3's 24, and P5c4 additionally deletes `api.ts` outright rather than
+trimming two namespaces out of it), so the fixed cost of the new
+`electron/api/*.ts` handlers, the three-way bridge type mirror, and the
+`_lib/route.ts`/`_lib/handler.ts` handler-factory logic that has NO IPC
+replacement (nothing needs a declarative route factory once every consumer
+speaks IPC directly) do not offset the routes'/`api.ts`'s own deletion the
+way they did for the larger remote/publish surface. This is also the FIRST
+P5c subrun where every remaining consumer of the shared `_lib/*` helpers
+migrated in the same subrun, so — per rule 7 — nothing was "moved to
+electron/ with its last consumer"; the helpers simply had no consumer left
+and died with the routes.
+
+#### Search proofs (from repo root, against the working tree)
+
+```
+$ find packages/desktop/src/routes/api -name "+server.ts" | wc -l
+0
+
+$ ls packages/desktop/src/routes/api 2>&1
+ls: cannot access 'packages/desktop/src/routes/api': No such file or directory
+
+$ ls packages/desktop/src/lib/api.ts 2>&1
+ls: cannot access 'packages/desktop/src/lib/api.ts': No such file or directory
+
+$ grep -rn 'fetch("/api/\|fetch('"'"'/api/' packages/desktop/src
+(no output — exit 1)
+
+$ grep -rn 'from ["'"'"']\$lib/api["'"'"']' packages/desktop/src packages/desktop/tests
+(no output — exit 1)   # zero real import statements
+
+$ grep -rln '\$lib/api\b' packages/desktop/src packages/desktop/tests
+packages/desktop/src/lib/platform/dtos.ts
+packages/desktop/src/lib/errors.ts
+packages/desktop/tests/platform/friendly-publish-error.test.ts
+```
+
+The three prose hits above are pre-existing history/documentation
+sentences, not imports — `dtos.ts`'s "moved here from `$lib/api.ts`"
+provenance notes (accurate: they describe where a type used to live, and
+that move already happened in an earlier subrun) and `errors.ts`'s /
+`friendly-publish-error.test.ts`'s shared comment about the (still-live,
+P5c3-scoped) publish-error JSON-envelope unwrapping — unrelated to this
+run's four groups and outside its write ownership, left as a named,
+un-actioned residual rather than silently absorbed into this subrun's
+claim of a clean sweep.
+
+```
+$ grep -rn '\bapi\s*\.\s*\(doctor\|recovery\|lint\|updater\)' packages/desktop/src packages/desktop/tests
+→ 3 hits, all doc/JSDoc comments naming what was migrated (doctor-capability.ts:2,
+  lint-capability.ts:2, recovery-capability.ts:2) — zero real call sites
+```
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) |
+| `cd packages/desktop && bun run test` | 0 | 5888 pass, 1 skip, 0 fail, 15227 expect() calls across 162 files |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 688 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
+| `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity: OK` (143 files scanned in `build/client`, no forbidden host/node markers) |
+| `bun run check:architecture` (repo root) | 0 | route ratchet 0 == baseline 0; ProseMirror ban, D4 import direction, future-package rules all PASS |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged; one informational "Refine entry pattern" hint on `packages/desktop/knip.jsonc`'s now-stale `src/lib/api.ts` entry glob — a repo-root config file outside this lane's write ownership, left for the lane that owns it (not a failure; knip still exits 0) |
+| `cd packages/desktop && npm run electron:build` | 0 | main/preload bundles build and pass `node --check` (not in this run's required VERIFY list; run as an extra sanity check since `main.ts`/`preload.ts`/`types.d.ts` all changed) |
+
+One real defect was found and fixed before hand-off, by actually running the
+gate rather than by inspection: the first `updater-ipc-capability` test pass
+used `.rejects.toThrow` against `getUpdaterStatus()`/`checkForUpdate()`/
+`downloadUpdate()`, which now throw SYNCHRONOUSLY (these are plain, non-async
+forwarders to `bridge()`, which itself throws synchronously by design) rather
+than returning a rejected promise — `bun run test` caught the mismatch
+immediately; fixed to `expect(() => fn()).toThrow(...)`, matching
+`bridge.test.ts`'s own established pattern for a direct `bridge()` caller.

@@ -132,7 +132,9 @@
     openExternal as openExternalCapability,
     showInFolder as showInFolderCapability,
   } from "$lib/files/files-capability";
-  import { api } from "$lib/api";
+  import { listRecovery, clearRecovery } from "$lib/recovery/recovery-capability";
+  import { lintProject } from "$lib/lint/lint-capability";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -920,8 +922,8 @@
   const crashRecovery = new CrashRecoveryController({
     isDesktop: () => isDesktop(),
     crashRecoveryEnabled: () => settings.current.editor.crashRecovery,
-    listRecovery: (dir) => api.recovery.list(dir),
-    clearRecovery: (filePath) => api.recovery.clear(filePath),
+    listRecovery: (dir) => listRecovery(dir),
+    clearRecovery: (filePath) => clearRecovery(filePath),
     readRecoveryFile: (path) => readFileCapability(path),
     restoreIntoBuffer: (filePath, content) => restoreRecoveredFile(filePath, content),
     showEditor: () => {
@@ -2570,7 +2572,7 @@
     if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     const dir = lifecycle.currentDir;
     problemsLoading = true;
-    api.lint.project(dir)
+    lintProject(dir)
       .then((entries) => {
         // The project may have changed while the lint was in flight.
         if (lifecycle.currentDir === dir) {
@@ -2625,7 +2627,7 @@
   // calls client.injectStyles).
 
   onMount(() => {
-    api.doctor()
+    getDoctorDiagnostics()
       .then((data) => {
         diagnosticsTools = data.tools ?? [];
         appVersion = data.desktopVersion ?? null;

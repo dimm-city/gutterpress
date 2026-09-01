@@ -25,9 +25,13 @@
  * (its `remote` namespace is deleted, typed IPC) — imported directly from
  * `./platform/contract`, its canonical source, same as `DesktopPrefs`/
  * `ProjectState`/`CreateProjectResult` below.
+ *
+ * SFE-P5c4: `./api` (`src/lib/api.ts`) is deleted — its last namespace
+ * (`doctor`) moved to typed IPC. `DoctorT` below now pins
+ * `$lib/doctor/doctor-capability`'s `getDoctorDiagnostics` instead.
  */
-import type { api } from "./api";
 import type * as appLifecycleCapability from "./app-lifecycle/app-lifecycle-capability";
+import type * as doctorCapability from "./doctor/doctor-capability";
 import type { ProjectSource } from "./platform/shared-types";
 import type {
   DesktopPrefs,
@@ -101,5 +105,5 @@ export const _adoptFolderIsCreateProjectResult: AssertDto<
   CreateProjectResult
 > = true;
 
-type DoctorT = Awaited<ReturnType<typeof api.doctor>>;
+type DoctorT = Awaited<ReturnType<typeof doctorCapability.getDoctorDiagnostics>>;
 export const _doctorIsDoctorDiagnostics: AssertDto<DoctorT, DoctorDiagnostics> = true;
