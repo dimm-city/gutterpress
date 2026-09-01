@@ -46,7 +46,8 @@ against them.
 | Loopback bearer token/proxy | Secure local server | Server absent | P5d | symbol search | Removes attack/failure mode — **DONE (SFE-P5d, this run)**: `AUTH_HEADER`/`isAuthorizedRequest`/`withTokenAuth`/`skAuthToken` (the per-session `randomBytes(32)` token) and `buildProxyRequest`/the `fetch`-based proxy in `registerAppProtocol` all deleted with `sveltekit-host.ts`; the "app-host validation tied only to the proxy" (the pre-fix host check existed to gate what got proxied) is replaced by a new, differently-reasoned host check in `app-protocol.ts` that gates what gets served from disk (kept for origin-identity consistency with `APP_ORIGIN`, not proxy protection — see that file's header). Security-equivalence statement and the traversal-refusal proof are in this run's own section below. |
 | Route-only DTO duplication | HTTP transport shapes | Capability/IPC contracts | P5c/P5d | type search | Fewer models — **DONE (SFE-P5c)**: the HTTP-route-only DTO shapes were retired during the P5c migration itself (each subrun's rule 6 landed callers on the bounded context's capability module rather than a route-shaped type; `dtos.ts`'s surviving members carry "moved here from `$lib/api.ts`" provenance notes recording the consolidation). Nothing route-shaped remained for SFE-P5d to find or delete: `grep -rn "RouteOnly\|RouteResponse\|RouteRequest" packages/desktop/src packages/desktop/electron` → zero hits, and this run's `knip` pass (files/dependencies/unlisted/binaries — see the verification table below) flags no orphaned type module. |
 | Tracked generated directories | Build output in source | CI-generated only | P0b | git ls-files proof | Cleaner repository |
-| Stale ADR references/comments | Historical architecture drift | Current ADRs | P6c/P7 | doc link check | Discoverable rationale |
+| Stale ADR references/comments | Historical architecture drift | Current ADRs | P6c/P7 | doc link check | Discoverable rationale — **PARTIALLY DONE (SFE-P6c)**: the six plan-named ADRs (0011–0016) were added, and ADR 0009's own "Note on predecessors" was updated to point at ADR 0014/0016 for the platform-abstraction topic the missing "ADR 0004" used to cover. The dangling in-source "ADR 0004"/"ADR 0006" citations scattered through `packages/desktop/src/**` (frozen, outside this run's write ownership) are NOT edited — see the SFE-P6c section below for the search proof and why this is a documented decline, not an oversight. |
+| Duplicate local-file plugin loader (desktop) | `gutterpress/plugins` subpath was missing when `electron/editor-projection.ts` needed one | `gutterpress/plugins` (SFE-P3e) | P3e | import/symbol search | One loader — **DONE, already landed in SFE-P3e** (commit `7a5e9f8e`, well before this P6c run): `packages/cli/src/plugins.ts` re-exports the real `loadPlugins`/`loadPluginsWithCss`, and `electron/editor-projection.ts` imports from `gutterpress/plugins` with no local duplicate. SFE-P6c (this run) re-verified this is still true against the current tree (search proof below) rather than re-doing work already done — see the SFE-P6c section. |
 | Workflow logic in `+page.svelte` | Organic composition growth | Feature-owned controllers | P6a | responsibility review | Smaller composition root |
 | Workflow logic in Electron `main.ts` | Organic host growth | Bounded services | P6b | responsibility review | Smaller composition root |
 
@@ -2866,3 +2867,298 @@ instead of a quoted code sample; re-run above is clean. Recorded here per
 G-12 (a gate that can fail is worth more than one that can't) — this is
 exactly the kind of false positive a source-text regex gate is supposed to
 catch, and it did.
+
+### SFE-P6c — 2026-09-01 — public exports, export tests, ADRs, and boundary docs (Lane C)
+
+Objective (run `SFE-P6.md`'s P6c section): the justified `gutterpress`
+subpath exports, package export tests, `docs/ARCHITECTURE.md`, the six
+plan-named ADRs, and documented boundary ownership. This lane is almost
+entirely additive (docs + one test file) rather than a deletion run in its
+own right; it is recorded here because the plan's P6c deliverables include
+resolving the "Stale ADR references/comments" and "duplicate local-file
+plugin loader" rows above.
+
+#### `gutterpress/plugins` — found already done, not redone
+
+The run specification's item 1 ("add the export, swap the desktop's
+duplicate for the real loader, delete the duplicate") was already
+completely discharged in **SFE-P3e** (commit `7a5e9f8e`,
+`feat(p3): gutterpress/plugins subpath; the desktop host uses the one real
+loader`), well before this P6c run started. Re-verified against the
+current tree rather than trusting the commit message alone:
+
+```
+$ grep -n "gutterpress/plugins" packages/desktop/electron/editor-projection.ts
+95:import { loadPluginsWithCss } from "gutterpress/plugins";
+(plus doc-comment mentions in the file's own header, explaining the D11
+loader-boundary decision)
+
+$ grep -n "function loadLocalPlugin\|function loadPlugin\b" packages/desktop/electron/editor-projection.ts
+(no output — no local duplicate loader function exists in this file)
+```
+
+`packages/cli/src/plugins.ts` re-exports `loadPlugins`/`loadPluginsWithCss`
+(and the `LoadedPluginsWithCss` type) from
+`./lib/markdown/plugins` — the SAME loader the CLI's own build/preview path
+uses. `package.json`'s `exports` map already carries `"./plugins"` pointing
+at `dist/plugins.js`/`dist/plugins.d.ts`, and `build:library`'s entrypoint
+list already includes `src/plugins.ts` alongside `src/index.ts` and
+`src/api/index.ts` (the NODE-side entrypoints, correctly not part of the
+separate `render.ts` non-split graph). No code change was needed; this
+lane's job here was verification, not implementation. `packages/vscode-
+extension/src/project/projection.ts` is a second real consumer of this
+same export (confirmed by this run — not present when SFE-P3e landed).
+
+#### D11 subpath decisions (the run specification's item 2)
+
+| Subpath | Decision | Evidence |
+|---|---|---|
+| `gutterpress/plugins` | **Already added (SFE-P3e)** | See above |
+| `gutterpress/project` | **Declined** | Zero consumers repo-wide for the specifier `"gutterpress/project"`; every current caller (desktop `electron/api/*.ts` via `electron/api/lib-loader.ts`'s shared `loadLib()`, `packages/vscode-extension`) reaches project-config functions through the bare `gutterpress` import |
+| `gutterpress/build` | **Declined** | Same — zero consumers; `runBuild` is imported from bare `gutterpress` in `packages/vscode-extension/src/project/register.ts` (injected into `commands/build.ts`'s own `BuildCommandDeps`, which only takes a type-only `BuildRunnerFn`) |
+| `gutterpress/preview` | **Declined** | Same — zero consumers; `startPreviewServer` is imported from bare `gutterpress` in the same `packages/vscode-extension/src/project/register.ts` |
+| `gutterpress/publish` | **Declined** | Same — zero consumers anywhere |
+| `gutterpress/vcs` | **Declined** | Same — zero consumers anywhere |
+
+Search proof (repo-wide, excluding `node_modules`):
+
+```
+$ for sp in project build preview publish vcs; do
+    grep -rn "\"gutterpress/$sp\"\|'gutterpress/$sp'" . 2>/dev/null | grep -v node_modules
+  done
+(no output for any of the five — exit 1 on every grep)
+```
+
+The desktop's own design (`electron/api/lib-loader.ts`, SFE-P5c2) is a
+**deliberate** single shared `loadLib()` cache for the WHOLE library,
+documented in that file's own header as porting `_lib/route.ts`'s
+cache-once-per-process shape "so every `electron/api/*.ts` handler... [gets]
+ONE shared cache instead of many private copies" — not an oversight this
+run should correct by fragmenting it into five narrower imports. Per D11's
+own rule ("add narrower subpath exports only where current consumers
+justify them") and the run specification's explicit instruction ("add a
+subpath ONLY where a real consumer would import it TODAY; decline the rest
+with one line each in the report"), none of the five is added.
+
+#### Export tests (the run specification's item 3)
+
+New: `packages/cli/tests/integration/package-exports.test.ts` (163 lines).
+Reads `package.json#exports` directly (no hardcoded subpath list, so a
+future addition or removal is covered automatically) and proves, per
+declared subpath:
+
+1. **Resolves under Node** — spawns `node --input-type=module -e
+   "import('<specifier>')"` with `cwd` set to `packages/cli` itself, relying
+   on Node's package self-reference resolution (a package may import its
+   own name if the nearest ancestor `package.json`'s `name` matches) rather
+   than a fixture symlink — this is the same resolution mechanism a real
+   external consumer uses through its own `node_modules` symlink (verified
+   manually against `packages/desktop/node_modules/gutterpress ->
+   ../../cli`, which already exists from the workspace install, before
+   settling on the self-reference approach as the more portable, dependency-
+   free option for THIS test).
+2. **Resolves under Bun** — same shape, `bun -e "await import(...)"`.
+3. **`gutterpress/render` stays node-free** — invokes
+   `scripts/check-render-pure.mjs` directly as a subprocess and asserts a
+   clean exit, rather than re-implementing that gate's Node-builtin/
+   `createRequire`/relative-chunk checks a second time (the run
+   specification: "reference, don't duplicate").
+4. **Package-content**: spawns `npm pack --dry-run --json` and asserts every
+   subpath's declared `types` and `default` file (from the exports map) is
+   present in the packed file list — a subpath resolving locally in this
+   checkout does not by itself prove `package.json#files` actually ships it.
+
+Liveness assertions (G-12/AP-21) guard every describe block: a
+zero-subpath exports map, a missing `dist/index.js`, or a zero-file
+`npm pack` result each throw a specific, actionable error rather than
+letting the rest of the suite pass vacuously.
+
+**Sabotage-verified this gate can fail** (G-12), not merely asserted to:
+`mv dist/plugins.js dist/plugins.js.bak` before the built dist was restored
+turned 3 of 17 tests red (`node can import "gutterpress/plugins"`, `bun can
+import "gutterpress/plugins"`, `"./plugins" (default) — ./dist/plugins.js
+is packed`) with an actionable failure message naming the missing file;
+restoring the file returned the suite to 17/17 green. Full log kept in this
+lane's own working notes, not committed (the sabotage was never itself
+part of the committed test file).
+
+Final run: `cd packages/cli && bun test tests/integration/package-exports.test.ts`
+→ **17 pass, 0 fail, 9 expect() calls**.
+
+#### ADRs (the run specification's item 4)
+
+Six new records, `docs/adr/0011`–`0016` (continuing the existing
+0008/0009/0010 numbering), each following the established ADR
+0008/0009/0010 format (Date, Status, Context, Decision, Consequences,
+Alternatives rejected) and each citing the run(s) that implemented the
+decision it records, per the run specification's "STATUS Accepted, citing
+the run(s) that implemented it":
+
+| ADR | Title | Implemented by |
+|---|---|---|
+| 0011 | Source-first editor and sparse projection | SFE-P1a, P1c, P2a, P2b, P2c |
+| 0012 | Preview is read-only | SFE-P4 |
+| 0013 | Shared desktop/VS Code editor package (+ the fork decision) | SFE-P1a, P1b, P1b2, P3a, P3c |
+| 0014 | Future web product is a separate package | SFE-P5a |
+| 0015 | Electron single-IPC transport | SFE-P5c (P5c1–P5c4), P5d |
+| 0016 | Narrow feature-owned capabilities | SFE-P5b (+ SFE-P6b's parallel Electron-main-side split) |
+
+Line counts: 103 / 99 / 122 / 90 / 100 / 125 respectively (6 files,
+639 lines total) — each intentionally kept to roughly a page per the run
+specification's "tight (a page, not an essay)" instruction, given the
+underlying material (`pr158-lessons.md`, `capability-map.md`, the
+SFE-P1b/P1b2 decision record, and the SFE-P4/P5a/P5c/P5d ledger sections
+above) each ADR draws from and cites rather than restates.
+
+**Stale ADR reference resolved**: ADR 0009's own "Note on predecessors"
+(which already documented that `CLAUDE.md`/`docs/ux-design-contract.md`
+cite ADRs 0002/0004/0005/0006/0007, none present in this repository) is
+updated to record that ADR 0014 and ADR 0016 now carry the current record
+for the platform/host-portability topic the missing "ADR 0004" used to
+cover, and to correct its own file-count claim ("`docs/adr/` holds 0008,
+0009 and 0010" → "0008 through 0016").
+
+**Stale ADR references NOT resolved, and why**: a repo-wide search finds
+41 files / 63 occurrences of the literal strings "ADR 0004" or "ADR 0006"
+inside `packages/desktop/src/**` doc comments (`SnippetPicker.svelte`,
+`StatusBar.svelte`, `chapter-path.ts`, `source-range.ts`,
+`image-classes.ts`, and 36 others):
+
+```
+$ grep -rln "ADR 0004\|ADR 0006" packages/desktop/src --include="*.ts" --include="*.svelte" | wc -l
+41
+$ grep -rn "ADR 0004\|ADR 0006" packages/desktop/src --include="*.ts" --include="*.svelte" | wc -l
+63
+```
+
+`packages/desktop/src/**` is frozen (out of this lane's write ownership —
+"MUST NOT WRITE" per the run's lane assignment, "frozen post-P6a"). This is
+not a new defect this run introduces or fails to catch: SFE-P5a's own Lane C
+found and recorded the identical situation for ADR 0004 specifically
+("restoring or authoring an ADR is outside this lane's write ownership" —
+deletion ledger's SFE-P5a "ADR statusing" section) and left it unresolved
+for the same boundary reason. "ADR 0006" (a GitHub device-flow / Advanced
+Setup record) is a topic none of this run's six new ADRs cover, so there is
+no new ADR to redirect those citations to either — restoring or authoring
+ADR 0006 itself is out of this run's scope (the plan names six specific
+ADRs, not an open-ended backfill of every historically-deleted record).
+Recorded here, not silently left unmentioned, per this ledger's own
+standard of honesty about what was and was not fixed.
+
+#### `docs/ARCHITECTURE.md` (the run specification's item 5)
+
+Rewritten in the areas that had drifted furthest from the post-P6 tree,
+not wholesale: `git diff --numstat` shows 150 insertions / 9 deletions
+across the file's existing structure (959 lines total after this edit).
+Changes:
+
+- **"Monorepo structure" → "Monorepo packages"**: was "two packages"
+  (cli, desktop); now lists all six workspace packages
+  (`packages/*`) with a one-line description and doc/ADR pointers each,
+  including the two Experimental packages (`packages/editor`,
+  `packages/vscode-extension`) and the internal fork
+  (`packages/vscode-markdown-editor`) that did not exist when this section
+  was last written.
+- **New "Desktop Application Architecture" section**: the static-renderer/
+  typed-IPC transport (ADR 0015), the narrow capability-module seam (ADR
+  0016), and both composition roots (`electron/main.ts`'s registrar list,
+  `+page.svelte`'s ~16 feature controllers) as they exist after SFE-P6a/
+  P6b — this section did not exist before this run; the desktop app had no
+  architecture-document coverage of its post-P5/P6 shape at all.
+- **New "Public Package Exports" section**: the exports-map table and the
+  five-subpath decline rationale from above, plus a pointer to the new
+  export test.
+- **"Extension System" retitled** to "Extension System (markdown-it
+  plugins)" with a one-line disambiguation note, since "extension" now
+  also names the real VS Code extension package (`docs/vscode-extension.md`)
+  and the pre-existing heading was genuinely ambiguous once that package
+  existed.
+- Footer "Last Updated"/"Version" corrected to the real, checked package
+  versions (`packages/cli`/`packages/desktop` still 0.10.2 pending the
+  0.11.0 release; `packages/editor` 0.11.0-experimental.0) rather than
+  restating the stale 0.10.2-alpha.3 line, which predates every package
+  this run added to the monorepo-packages list.
+
+#### OWNERSHIP (the run specification's item 6)
+
+Confirmed no `CODEOWNERS` file and no GitHub teams exist against this
+repository before writing anything:
+
+```
+$ find . -iname "CODEOWNERS" -not -path "*/node_modules/*"
+(no output)
+$ ls .github/
+actions  workflows
+```
+
+New: `docs/OWNERSHIP.md` (108 lines), naming the four boundaries the run
+specification names (editor package, extension, renderer, Electron), each
+with its owned paths and a review-expectation paragraph grounded in a real
+risk for that boundary (cross-consumer reasoning for the editor package;
+workspace-trust regressions for the extension; the render-purity boundary
+for the renderer; CSP/navigation-policy/IPC-registration for Electron) —
+no fabricated GitHub team handles, per the run specification's explicit
+instruction.
+
+#### `docs/vscode-extension.md` (the run specification's item 7)
+
+New (140 lines): a real, checked doc, not a stub — Experimental status and
+what that concretely means (optional custom editor, not the Markdown
+default; no stability promise), what the extension does (custom editor,
+three commands, project detection), the host/webview ownership split (D9),
+the workspace-trust model (verified against the actual three call sites in
+`src/provider.ts`/`src/project/projection.ts`/`src/protocol/messages.ts`,
+not assumed from the plan text alone), the fork dependency and its named
+removal trigger (an upstream `renderCustomBlock`-equivalent hook shipping
+natively), and real build/test commands read from `package.json`'s own
+`scripts` block rather than invented.
+
+#### Verification run (this lane)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | Clean across all 4 workspace packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) |
+| `cd packages/cli && bun run build` | 0 | `dist/plugins.js`/`dist/plugins.d.ts` present alongside `dist/index.js`, `dist/api/index.js`, `dist/render.js`; `check-render-pure.mjs` passes as part of the build |
+| `cd packages/cli && bun run test` | 0 | 1930 pass, 60 skip (no Chromium in this environment — pre-existing, unrelated to this lane), 0 fail, 45,683 expect() calls across 156 files, including the new `tests/integration/package-exports.test.ts` (17/17) |
+| `cd packages/cli && bun run typecheck` | 0 | `tsc --noEmit`, targeted re-run for this lane's own package |
+| `cd packages/cli && bun test tests/integration/package-exports.test.ts` | 0 | 17 pass, 0 fail, 9 expect() calls — targeted re-run of the one file this lane added |
+| `cd packages/desktop && bun run test` | 0 | 5,911 pass, 1 skip, 0 fail, 15,277 expect() calls across 163 files — identical counts to SFE-P6b's own verification, confirming this lane's doc-only desktop-adjacent changes (none touch `packages/desktop/src` or `electron/main.ts`, both frozen) introduced no regression |
+| `cd packages/editor && bun run test` | 0 | 3,038 pass, 0 fail, 11,816 expect() calls across 26 files |
+| `bun run check:architecture` (repo root) | 0 | All 4 rules PASS (prosemirror-ban, desktop-route-ratchet at baseline 0, D4 import direction, future-package rules for `packages/editor`/`packages/vscode-extension`) |
+| `bun run check:generated-files` (repo root) | 0 | 1,258 tracked files scanned, no generated/output paths tracked |
+| `bun run knip` (repo root) | 0 | `--include files,dependencies,unlisted,binaries` — no violations reported |
+
+**Not run by this lane** (outside the run specification's VERIFY list for
+this lane; the full SFE-P6 gate — `check:vendored`, `packages/editor`'s
+`test:browser`, `packages/vscode-extension`'s `test`, and
+`packages/desktop`'s `check`/`lint`/`build`/`electron:build` — is the
+integrator's/gate agent's responsibility once every P6 lane has landed):
+none of this lane's changes touch any file those commands would exercise
+differently than the commands above already do (this lane wrote docs, one
+new ADR set, and one new CLI-package test file; it did not touch
+`packages/vscode-markdown-editor`, `packages/editor/src`,
+`packages/vscode-extension/src`, or any `packages/desktop` production
+file).
+
+#### Line counts (this lane, new + modified files)
+
+| File | Lines | Kind |
+|---|---:|---|
+| `packages/cli/tests/integration/package-exports.test.ts` | 163 | new |
+| `docs/adr/0011-source-first-editor-sparse-projection.md` | 103 | new |
+| `docs/adr/0012-preview-read-only.md` | 99 | new |
+| `docs/adr/0013-shared-editor-package-and-fork.md` | 122 | new |
+| `docs/adr/0014-future-web-product-is-a-separate-package.md` | 90 | new |
+| `docs/adr/0015-electron-single-ipc-transport.md` | 100 | new |
+| `docs/adr/0016-narrow-feature-owned-capabilities.md` | 125 | new |
+| `docs/OWNERSHIP.md` | 108 | new |
+| `docs/vscode-extension.md` | 140 | new |
+| `docs/ARCHITECTURE.md` | +156 / −11 | modified |
+| `docs/adr/0009-inline-editing-source-ranges.md` | +4 / −1 | modified |
+| `docs/plans/source-first-editor/deletion-ledger.md` | this section + the two "Planned deletions" row edits | modified |
+
+This lane adds documentation and one test file; it does not delete
+production code (the one deletion this run's report might otherwise
+imply — the desktop's duplicate plugin loader — was already deleted by
+SFE-P3e, not by this run). No production LOC change in `packages/cli/src`
+or `packages/desktop` is claimed or made by this lane.

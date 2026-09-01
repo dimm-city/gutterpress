@@ -42,7 +42,10 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
-> repository (`docs/adr/` holds 0008, 0009 and 0010). ADR 0005 in particular is
+> repository (`docs/adr/` holds 0008 through 0016 — 0002/0004/0005/0006/0007
+> remain absent; **updated 2026-09-01, SFE-P6c:** ADR 0014 and ADR 0016 now
+> carry the current record for the platform/host-portability topic ADR 0004
+> used to cover). ADR 0005 in particular is
 > cited as the home of the preview bridge protocol. Rather than amend a missing
 > document, this ADR records the v3 → v5 protocol delta self-containedly.
 
