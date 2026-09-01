@@ -216,14 +216,14 @@ gutterpress build [input-dir] [options]
 
 ### `gutterpress publish`
 
-Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI.
+Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
 
 ```sh
 gutterpress publish [project] [options]
 
-  --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify
+  --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
   --list               List providers and connection status
-  --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin)
+  --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin) — or, for gdrive, open the browser to connect
   --disconnect         Forget the stored key for --provider
   --account <label>    Named-credential label for --connect/--disconnect (keep several accounts per provider); omit for the default
   --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
@@ -241,6 +241,10 @@ gutterpress publish --list
 # Store an API key for itch.io, then publish
 gutterpress publish --provider itch --connect
 gutterpress publish --provider itch ./my-book
+
+# Google Drive connects via your browser, not a pasted key
+gutterpress publish --provider gdrive --connect
+gutterpress publish --provider gdrive ./my-book
 ```
 
 ### `gutterpress lint`

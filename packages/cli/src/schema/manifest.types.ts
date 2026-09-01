@@ -61,6 +61,26 @@ interface PublishSettings {
     /** Saved-credential label to use (see PublishSettings doc). */
     credential?: string;
   };
+  gdrive?: {
+    /** Display name of the target Drive folder; created at My Drive root if
+     * missing. Default when unset: "Gutterpress". */
+    folder?: string;
+    /** Stable Drive folder id (picker-set in the desktop app, or hand-recorded
+     * from the CLI's post-publish tip). Takes precedence over `folder` when
+     * present and the folder still exists. */
+    folderId?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
+    /**
+     * Which build output to publish (#221 phase 3, D8) — gdrive is the one
+     * provider that supports more than one. "pdf" (default when unset): the
+     * finished PDF. "html": the website export, zipped into one
+     * `<title>-website.zip` before upload (Drive is file delivery, not web
+     * hosting). An unrecognized value is ignored, not an error — see
+     * `run-publish.ts`'s `resolvePublishFormat`.
+     */
+    format?: "pdf" | "html";
+  };
 }
 
 export interface GutterpressManifest {

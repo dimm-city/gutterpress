@@ -218,6 +218,14 @@
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
+    // #221 D10 — oauth connect trio goes through getPlatform() (the narrow
+    // adapter seam for interactive OAuth connects), not api.publish.*.
+    connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
+    connectGoogleWait: () => getPlatform().connectGoogleWait(),
+    connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
+    // #221 D9 — provider-neutral destinations picker.
+    listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
+    createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
     pickPdfFile: () => api.dialog.pickPdfFile(),
     openDirectory: () => api.dialog.openDirectory(),

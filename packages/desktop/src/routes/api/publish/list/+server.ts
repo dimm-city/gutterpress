@@ -57,15 +57,26 @@ export const POST: RequestHandler = defineRoute<
             label: info.label,
             kind: info.kind,
             format: info.format,
+            // #221 phase 3, D8 — present only for a provider that supports
+            // more than one format (gdrive); the wizard renders a PDF/Website
+            // choice only when this is set.
+            ...(info.formats && info.formats.length > 1 ? { formats: info.formats } : {}),
             description: info.description,
             fields: info.configFields,
             credentialRequired: info.credential.required,
             ...(info.credential.tokenUrl ? { tokenUrl: info.credential.tokenUrl } : {}),
             ...(info.credential.hint ? { hint: info.credential.hint } : {}),
+            // #221 — "oauth" swaps the wizard's paste-a-key form for a
+            // Connect button; absent/"token" is every provider's existing
+            // paste-a-key behavior, unchanged.
+            ...(info.credential.connect === 'oauth' ? { connectKind: 'oauth' as const } : {}),
             connected: status.connected,
             config,
             savedAccounts,
             selectedAccount,
+            // #221 D9 — present only for providers with a folder/destination
+            // picker (gdrive); the wizard renders the picker only when this is set.
+            ...(info.destinations ? { destinations: info.destinations } : {}),
           };
         }),
       );

@@ -6,8 +6,8 @@ import { strToU8, zipSync } from "fflate";
 import { FileTokenStore } from "../remote-auth/token-store";
 import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths";
 import { listPublishProviders, publishProviderFor } from "./registry";
-import { runPublish, resolvePublishRequest } from "./run-publish";
-import { connectPublishProvider } from "./connect";
+import { runPublish, resolvePublishRequest, resolvePublishFormat } from "./run-publish";
+import { connectPublishProvider, disconnectPublishCredential } from "./connect";
 import { readPublishSettings, setPublishProviderConfig } from "./manifest-publish";
 import type {
   CommandResult,
@@ -21,6 +21,7 @@ import { shopifyProvider, shopifyLegacyId } from "./providers/shopify";
 import { drivethrurpgProvider } from "./providers/drivethrurpg";
 import { kdpProvider } from "./providers/kdp";
 import { azureSwaProvider } from "./providers/azure-swa";
+import { gdriveProvider } from "./providers/gdrive";
 import { butlerBrothChannel, butlerDownloadUrl, ensureButler } from "./butler";
 
 // ── test scaffolding ─────────────────────────────────────────────────────────
@@ -89,9 +90,9 @@ async function withPdfArtifact(dir: string, title = "Test Book"): Promise<string
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-test("registry lists all five providers and resolves by id", () => {
+test("registry lists all six providers and resolves by id", () => {
   const ids = listPublishProviders().map((p) => p.id);
-  expect(ids).toEqual(["itch", "drivethrurpg", "kdp", "azure-swa", "shopify"]);
+  expect(ids).toEqual(["itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]);
   expect(publishProviderFor("itch").info.label).toBe("itch.io");
   expect(() => publishProviderFor("nope")).toThrow(/Unknown publish provider/);
 });
@@ -116,6 +117,79 @@ test("every provider declares its author-editable config fields", () => {
   expect(
     publishProviderFor("shopify").info.configFields.map((f) => f.key),
   ).toContain("apiVersion");
+});
+
+// ── effective format resolution (#221 phase 3, D8) ──────────────────────────
+
+test("resolvePublishFormat defaults to info.format for every single-format provider, ignoring any publish.<id>.format value", () => {
+  // These providers declare no `formats` array at all — the plan's explicit
+  // regression guarantee: a mistake in effective-format computation must not
+  // silently change what they resolve to, no matter what a manifest sets.
+  for (const provider of [itchProvider, drivethrurpgProvider, kdpProvider, azureSwaProvider, shopifyProvider]) {
+    expect(provider.info.formats).toBeUndefined();
+    expect(resolvePublishFormat(provider.info, {})).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: "html" })).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: "pdf" })).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: 42 })).toBe(provider.info.format);
+  }
+});
+
+test("resolvePublishFormat: gdrive defaults to pdf when publish.gdrive.format is unset", () => {
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "html"]);
+  expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
+});
+
+test("resolvePublishFormat: gdrive honors a valid publish.gdrive.format", () => {
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "html" })).toBe("html");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "pdf" })).toBe("pdf");
+});
+
+test("resolvePublishFormat: an invalid/unrecognized publish.gdrive.format is IGNORED, not rejected — falls back to the default", () => {
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "epub" })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "  " })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: 7 })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
+});
+
+test("resolvePublishRequest: gdrive with no publish.gdrive.format set resolves the default PDF artifact path", async () => {
+  const dir = await tempProject("title: My Book\nauthors: [A]\n");
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("pdf");
+    expect(req.artifact.path).toBe(
+      path.join(resolveOutputDir(dir, "My Book"), artifactName("My Book", "pdf")),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolvePublishRequest: publish.gdrive.format: html switches the default artifact to the export DIRECTORY", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [A]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("html");
+    expect(req.artifact.path).toBe(resolveOutputDir(dir, "My Book"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolvePublishRequest: an invalid publish.gdrive.format falls back to the pdf default rather than blocking", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [A]\npublish:\n  gdrive:\n    format: epub\n",
+  );
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("pdf");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // ── credential resolution ───────────────────────────────────────────────────
@@ -759,6 +833,106 @@ test("connectPublishProvider refuses guided providers and empty tokens", async (
   }
 });
 
+test("connectPublishProvider rejects an oauth provider's pasted token (gdrive) — the old paste path can never store an unverifiable credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await expect(
+      connectPublishProvider(
+        { projectDir: dir, providerId: "gdrive", token: "some-refresh-token" },
+        deps,
+      ),
+    ).rejects.toThrow(/connects through your browser.*--connect/);
+    // Nothing was stored.
+    expect(await deps.tokenStore.get("gdrive")).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── disconnectPublishCredential — the shared disconnect implementation ──────
+// behind the CLI's --disconnect and the desktop's publish:disconnect +
+// remote:disconnectHost routes (#221 review: this logic was duplicated three
+// times with a genuine bug in one copy — see connect.ts's doc comment).
+
+test("disconnectPublishCredential deletes the local credential even when there's nothing to revoke", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t", createdAt: 1 });
+    await disconnectPublishCredential("itch.io", deps);
+    expect(await deps.tokenStore.get("itch.io")).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential deletes locally FIRST, then fires (but by default does not await) a revoke for a google-oauth credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "refresh-token-value", createdAt: 1 });
+    let revokeStarted = false;
+    let revokeTokenSeen: string | undefined;
+    let resolveRevoke!: () => void;
+    const revokeGate = new Promise<void>((res) => {
+      resolveRevoke = res;
+    });
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      revokeStarted = true;
+      revokeTokenSeen = new URLSearchParams(String(init?.body)).get("token") ?? undefined;
+      await revokeGate; // never resolves until the test lets it
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    // awaitRevoke defaults to false — the call must resolve WITHOUT waiting
+    // for the (deliberately hung) revoke fetch above.
+    await disconnectPublishCredential("gdrive", { ...deps, fetch: fetchImpl });
+    expect(await deps.tokenStore.get("gdrive")).toBeNull(); // deleted already
+    expect(revokeStarted).toBe(true); // revoke WAS fired…
+    expect(revokeTokenSeen).toBe("refresh-token-value"); // …with the right token
+    resolveRevoke(); // let the hung fetch settle so it doesn't leak into other tests
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential with awaitRevoke:true waits for the revoke to finish before resolving", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "refresh-token-value", createdAt: 1 });
+    let revokeCompleted = false;
+    const fetchImpl = (async () => {
+      revokeCompleted = true;
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await disconnectPublishCredential("gdrive", { ...deps, fetch: fetchImpl }, { awaitRevoke: true });
+    expect(revokeCompleted).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential never attempts a revoke for a token-kind credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t", createdAt: 1 });
+    let fetchCalled = false;
+    const fetchImpl = (async () => {
+      fetchCalled = true;
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await disconnectPublishCredential("itch.io", { ...deps, fetch: fetchImpl }, { awaitRevoke: true });
+    expect(fetchCalled).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("publishConnectionStatus is the one shared definition of connected", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-status-"));
   try {
@@ -842,6 +1016,52 @@ test("azure-swa preflight requires book.html and warns about extra dist content"
     expect(extras).toBeDefined();
     expect(extras!.message).toContain(artifactName("T", "pdf"));
     expect(extras!.message).toContain("build-fingerprint.json");
+    // #221 C9 — the warning's wording must not assume Azure's specific
+    // "deployed as a live site" behavior: gdrive shares this exact check for
+    // its zip-upload, which never makes the folder "publicly downloadable"
+    // the way a deployed static site would.
+    expect(extras!.message).not.toContain("publicly downloadable");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("gdrive (html format) shares the same html-dir-extras warning as azure-swa, worded accurately for BOTH (#221 C9)", async () => {
+  const dir = await tempProject(
+    "title: T\nauthors: [A]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const out = resolveOutputDir(dir, "T");
+    await mkdir(out, { recursive: true });
+    const deps = await depsFor(dir);
+
+    // Empty dir: no book.html → blocking error, same gate as azure-swa.
+    let result = await runPublish(
+      { projectDir: dir, providerId: "gdrive", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.id === "publish/html-export-missing")).toBe(true);
+
+    // Export present but a stray PDF + the build fingerprint sit next to it
+    // → the SAME warning id azure-swa gets, from the ONE shared check.
+    await writeFile(path.join(out, BOOK_HTML), "<html></html>");
+    await writeFile(path.join(out, artifactName("T", "pdf")), "%PDF");
+    await writeFile(path.join(out, "build-fingerprint.json"), "{}");
+    result = await runPublish(
+      { projectDir: dir, providerId: "gdrive", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+    const extras = result.issues.find(
+      (i) => i.id === "publish/html-dir-extras" && i.severity === "warning",
+    );
+    expect(extras).toBeDefined();
+    // Accurate for a zip-upload: nothing claims it becomes "publicly
+    // downloadable" (true only of a deployed static site, not a Drive zip),
+    // but the "gets bundled" wording still correctly warns the author.
+    expect(extras!.message).not.toContain("publicly downloadable");
+    expect(extras!.message).toContain("gets bundled and published");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

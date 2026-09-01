@@ -97,6 +97,40 @@ test("friendlyPublishError maps a Shopify product userErrors failure to a friend
   expect(result.details).toBe(raw);
 });
 
+// ── Google Drive (#221) ──────────────────────────────────────────────────
+
+test("friendlyPublishError maps a bare invalid_grant to the reconnect message", () => {
+  const result = friendlyPublishError("invalid_grant");
+  expect(result).toEqual({
+    summary: "Your Google Drive connection expired or was revoked. Connect Google Drive again.",
+  });
+});
+
+test("friendlyPublishError passes the lib's own reconnect message through unchanged", () => {
+  const msg = "Your Google Drive connection expired or was revoked. Connect Google Drive again.";
+  expect(friendlyPublishError(msg)).toEqual({ summary: msg });
+});
+
+test("friendlyPublishError passes the lib's Google Drive storage-quota message through unchanged", () => {
+  const msg = "Your Google Drive is full — this PDF needs 96 MB but only 12 MB is free.";
+  expect(friendlyPublishError(msg)).toEqual({ summary: msg });
+});
+
+test("friendlyPublishError maps a raw storageQuotaExceeded reason to a friendly summary with details", () => {
+  const raw = "Drive API error: storageQuotaExceeded";
+  const result = friendlyPublishError(raw);
+  expect(result.summary).toBe(
+    "Your Google Drive is full — free up space (or choose a different folder) and try again.",
+  );
+  expect(result.details).toBe(raw);
+});
+
+test("friendlyPublishError passes the lib's Drive folder-gone message through unchanged", () => {
+  const msg =
+    'The Drive folder recorded in publish.gdrive.folderId ("1fq156Yx") can\'t be found — it may have been trashed or the id copied wrong. Pick the folder again.';
+  expect(friendlyPublishError(msg)).toEqual({ summary: msg });
+});
+
 test("friendlyPublishError maps a network-level failure to a friendly summary with details", () => {
   const result = friendlyPublishError(new Error("Failed to fetch"));
   expect(result.summary).toBe(

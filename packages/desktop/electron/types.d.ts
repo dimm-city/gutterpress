@@ -18,6 +18,8 @@ import type {
   AppSettings,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -95,6 +97,11 @@ declare global {
       connectGitHubCancel(): Promise<{ ok: boolean }>;
       // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
       // listRepoBooks — migrated to server routes (Phase 2F).
+      // Google Drive publish connect (#221) — same two-phase shape as GitHub
+      // above; Start resolves with the auth URL (no user code to display).
+      connectGoogleStart(account?: string): Promise<GoogleConnectStartResult>;
+      connectGoogleWait(): Promise<GoogleConnectResult>;
+      connectGoogleCancel(): Promise<{ ok: boolean }>;
       // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
       // — ARCH review #8: plain request/response, no push stream involved itself.
       onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;

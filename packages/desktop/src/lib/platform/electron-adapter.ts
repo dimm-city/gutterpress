@@ -31,6 +31,8 @@ import type {
   SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
@@ -171,6 +173,19 @@ export class ElectronAdapter implements Platform {
 
   connectGitHubCancel(): Promise<{ ok: boolean }> {
     return bridge().connectGitHubCancel();
+  }
+
+  // ── Google Drive publish connect (#221) — delegate 1:1 to the bridge ──────
+  connectGoogleStart(account?: string): Promise<GoogleConnectStartResult> {
+    return bridge().connectGoogleStart(account);
+  }
+
+  connectGoogleWait(): Promise<GoogleConnectResult> {
+    return bridge().connectGoogleWait();
+  }
+
+  connectGoogleCancel(): Promise<{ ok: boolean }> {
+    return bridge().connectGoogleCancel();
   }
 
   // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
