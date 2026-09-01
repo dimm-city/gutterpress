@@ -9,6 +9,13 @@ import { generateMarkdownCorpus, KIB } from "./support/corpus.ts";
 import { mountDocument, typeAndMeasure } from "./support/drive.ts";
 import { formatSummary, summarize } from "./support/stats.ts";
 import { CONTROL_SLOWDOWN_MS, D13_BUDGET_MS } from "./support/constants.ts";
+// SFE-P3d-sweep Lane D — side-effect import wires `echo-guard.btest.ts`
+// (the D13 root-cause regression guard) into `bun run test:perf` without a
+// new package.json script line (`packages/editor/package.json` is outside
+// this lane's write ownership). Registers its own `describe`/`beforeAll`/
+// `afterAll` independently of this file's — see that file's own header for
+// what it guards and why.
+import "./echo-guard.btest.ts";
 
 /**
  * SFE-P3d-sweep Lane B — G-12/AP-20 control for `perf-sweep.btest.ts`'s

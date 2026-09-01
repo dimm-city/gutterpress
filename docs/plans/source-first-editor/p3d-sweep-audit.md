@@ -740,3 +740,386 @@ evidence above is unaffected by this gap; it affects only the separate
 | `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same, numbers consistent with invocation 1 |
 | `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — `tests/perf/**` correctly invisible to plain `bun test` (`.btest.ts` naming, matching the existing `test:browser` convention) |
 | `cd packages/editor && bun run test:browser` | 0 | 114 pass / 0 fail across the 8 existing suites — unaffected by this lane's changes |
+
+## Lane D
+
+Scope: find the root cause of the D13 budget miss Lane B measured (250 KiB
+p95 5.5-6.3x over budget, ~2.1 ms/KiB near-linear scaling 25 KiB->1 MiB),
+fix it at the root in the editor glue, re-measure. Write ownership:
+`packages/editor/src/vscode-adapter/**`, `packages/editor/src/web/**`,
+`packages/editor/tests/**`, this section.
+
+**Outcome up front:** the root cause is confirmed, with differential proof
+and source-level citation — and it is NOT in this lane's glue. It is inside
+`packages/vscode-markdown-editor` (the byte-pinned vendored fork), which
+this lane's write ownership explicitly forbids editing unilaterally. Per
+the run spec's own instruction for exactly this finding ("if the profile
+proves the cost is INSIDE the fork, report blocked with the evidence"),
+this lane reports **status: blocked** for the fix itself, while still
+delivering a permanent regression guard for the mechanism the amendment
+paragraph suspected (which turned out to already be correctly implemented,
+but is worth pinning against future regression) and a full re-measurement
+proving no drift and no silent regression.
+
+### Method: fast inner loop first
+
+Before touching anything, a temporary scratch harness (single 250 KiB
+document, 20 keystrokes, no inter-keystroke pacing, reusing
+`support/entry.ts`/`support/drive.ts`/`support/corpus.ts` unmodified)
+reproduced the signal in 14.8s wall time:
+
+```
+[scratch] mountMs 948.5
+[scratch] summary p50=543.2ms p95=636.9ms max=653.3ms min=506.2ms mean=558.3ms (n=20)
+```
+
+Consistent with Lane B's 554-632ms p95 band. This confirmed the signal
+reproduces in this sandbox before any instrumentation was added, and gave
+a ~15s (not ~6min) iteration loop for everything below. Deleted before this
+lane's changes were finalized (`git diff --stat` on
+`packages/editor/src/vscode-adapter/adapter.ts` shows zero lines changed
+from the committed baseline — see "What shipped" below).
+
+### Profile: the suspect chain, timed stage by stage
+
+The amendment named a concrete suspect chain: *keystroke -> fork model
+applies its own edit -> `onWillApplySourceEdit` -> convert -> host.applyEdit
+-> host subscribe notification (the echo of our own edit) -> the
+adapter/mount reacts to the notification*. Reading `adapter.ts` first
+(before instrumenting) showed the `host.subscribe` handler already
+converges by comparison: when `submittingOwnEdit` is true and the
+notification's `(version, text)` matches the predicted echo computed just
+before calling `host.applyEdit`, it returns without calling
+`model.replaceSourceText` — i.e. the exact "do nothing on our own echo"
+shape the amendment hypothesized was MISSING already appeared to be
+present. Profiling was still required to confirm this empirically rather
+than trust the reading.
+
+TEMPORARY `performance.mark`-style instrumentation (a
+`globalThis.__gpProfile?.(label)` no-op-when-absent hook) was added at four
+points in `adapter.ts`'s `onWillApplySourceEdit` handler — `handler-start`,
+`before-apply` (just before `host.applyEdit`), inside the `host.subscribe`
+echo branch (`subscribe-fired`, proving that branch actually runs), and
+`handler-end` (the accept-path return) — driven by a temporary entry file
+mounting the real `mountEditor` and recording `KeyboardEvent`-anchored
+deltas plus the first observed DOM mutation's timestamp (same
+`MutationObserver` primitive `support/entry.ts` uses). 8 single-keystroke
+samples against the 250 KiB corpus:
+
+| Stage | Range across 8 samples |
+|---|---:|
+| t0 (keydown) -> handler-start | 3.5-15.3 ms |
+| handler-start -> before-apply (D3 conversion, `stringEditToSourceEdit`) | 0.0-0.2 ms |
+| before-apply -> subscribe-fired (`host.applyEdit`'s splice + sync notify dispatch) | 0.0-0.2 ms |
+| subscribe-fired -> after-apply (adapter's echo-match branch: recognized, no-op) | 0.3-0.5 ms |
+| after-apply -> handler-end (`known = result.snapshot`, return) | 0.0-0.1 ms |
+| **handler-end -> DOM mutation observed** (the fork's OWN post-handler edit application + render, entirely outside this lane's code) | **506.8-669.4 ms** |
+| TOTAL t0 -> DOM mutation | 514.3-685.5 ms |
+
+`subscribe-fired` DID fire on every sample (confirming the host's
+synchronous accepted-edit notification reaches the adapter's listener
+exactly as designed), and the branch taken was the fast "matched echo,
+do nothing" one every time (near-zero cost in that window; no
+`replaceSourceText` call, confirmed by the sub-millisecond
+`subscribe-fired -> after-apply` delta — a redundant `replaceSourceText`
+call touching a 250 KiB document could not complete in 0.3-0.5 ms). This
+lane's own glue — the D3 conversion, `host.applyEdit`, and the echo
+check — accounts for **under 1 ms** of the ~510-670 ms total per keystroke.
+99.8%+ of the cost is on the far side of `handler-end`, in code this lane
+does not own.
+
+Also checked per the DETAILS: no projection/`needsRefresh` work exists on
+this path at all — `web/mount.ts` and `vscode-adapter/adapter.ts` have zero
+Gutterpress-projection imports or calls (`mountEditor` is the plain,
+non-projection surface, exactly as the run's own corpus comment states);
+there is nothing here to time because there is nothing here to run.
+
+### Differential proof: the floor (no host, no adapter) reproduces the SAME cost
+
+Per the DETAILS' instruction to measure "the fork's own internal apply in
+isolation by driving the model directly without our host round-trip," a
+temporary probe (`EditorModel`/`EditorView`/`EditorController` constructed
+directly, zero host, zero adapter — kept inside
+`src/vscode-adapter/_profile-direct.ts` only so the "no application code
+outside `src/vscode-adapter/` imports package internals" rule, D5, held
+even during this temporary window; deleted before finishing) was mounted
+against the identical 250 KiB corpus and typed into directly:
+
+| | min | median | max | n |
+|---|---:|---:|---:|---:|
+| Full stack (`mountEditor` + `MemoryDocumentHost` + adapter) | ~500 ms | ~520-545 ms | ~670 ms | 8-60 |
+| **Floor** (raw fork, zero host/adapter code in the loop) | **425.2 ms** | **451.5 ms** | **559.7 ms** | **15** |
+
+The floor — with literally none of this lane's code anywhere in the call
+path — reproduces the SAME order of magnitude as the full stack. This is
+the differential the METHOD section asked for, run in the direction the
+evidence actually pointed: disabling/removing the suspect (this lane's
+entire glue layer, not just the echo handler) does **not** collapse
+latency to a small floor; latency stays high with the suspect completely
+absent. That is proof BY ELIMINATION that the linear cost is not
+introduced by `packages/editor/src/vscode-adapter/**` or
+`packages/editor/src/web/**` — it is inherent to the fork itself.
+
+A second differential ruled out one more alternative mechanism (block
+COUNT, as opposed to raw document size, driving the cost — relevant
+because `_publishMeasurements`, below, loops once per block): the same
+~250 KiB, reshaped into 8 giant blocks instead of the corpus's ~800+ small
+ones, measured **539.9-617.7 ms** (min-max, n=12) at the floor — the same
+magnitude as the many-small-blocks floor, if anything slightly higher.
+Block count is not the driver; total rendered text/line count is (matches
+the source-level mechanism below exactly).
+
+### Root cause, with source citation
+
+`packages/vscode-markdown-editor` is `@dimm-city/vscode-markdown-editor@0.0.2-84.gp.1`
+(NOTICE: an internal fork of `@vscode/markdown-editor@0.0.2-84`), vendored
+as compiled `dist/*.js` — read-only to this lane, but readable, per the
+run's "read anything, write ONLY [owned paths]" rule. Line numbers below
+are from this package's current `dist/index.js`.
+
+1. **The parser IS incrementally wired correctly — this is not where the
+   cost is.** `EditorModel.document` (`dist/index.js:1770`) is a memoized
+   derived value: unchanged `sourceText` returns the cached parse
+   (`if (e && t === i.value) return e`), and on real text changes it reads
+   `this._pendingEdit` and, when `_pendingEdit` exactly bridges the
+   previous and current text, passes the real edit through to
+   `this._parser.parse(i, e, r)` for a genuine incremental reparse.
+   `_pendingEdit` is set correctly by `_applySourceEdit`
+   (`{baseText, newText, edit}`, computed from the model's OWN edit)
+   *before* `_emitWillApplySourceEdit` fires — i.e. before this lane's
+   `onWillApplySourceEdit` listener ever runs — so nothing this lane's
+   adapter does (or omits) can desync it. The amendment's "the fork's own
+   parser supports incremental `parse(text, previous, edit)`" is correct,
+   and it is honored on every ordinary keystroke regardless of this lane's
+   code.
+2. **The view's per-render MEASUREMENT pass is not incremental, and this is
+   where the cost is.** `EditorView._renderAutorun`
+   (`dist/index.js:6302`) runs on every accepted source-text change and
+   unconditionally calls `this._publishMeasurements(p)` for the freshly
+   rebuilt `DocumentViewNode p` — every time, regardless of how small the
+   edit was or how many blocks the parser was able to reuse by identity.
+   `_publishMeasurements` (`dist/index.js:6340`) then does, for **every
+   block in the entire mounted document** (`for (const r of e.blocks)`,
+   not just the edited one):
+   - `r.node.element.getBoundingClientRect()` — one geometry read per block;
+   - `getComputedStyle(a).overflowX` — one style read per block;
+   - `Pe.measure([...], ...)` (`Pe.measure` at `dist/index.js:2001`,
+     delegating to `mo()` at `dist/index.js:2301`), which walks **every
+     text leaf** in that block via `viewNode.forEachTextLeaf(...)` and, for
+     each, creates a DOM `Range` and calls `.getClientRects()` — which
+     returns one rect per WRAPPED VISUAL LINE for a multi-line text run.
+
+   Net: one keystroke re-measures the rect and full per-line visual
+   geometry of the WHOLE mounted document, via `Range.getClientRects()`
+   calls proportional to total wrapped line count — which is why the block-
+   count differential above came back flat (fewer, bigger blocks still
+   wrap into the same total number of visual lines as more, smaller ones
+   at the same byte size) and why cost scales with document size at a
+   roughly constant ms/KiB rather than with edit size.
+3. **No escape hatch exists in the package's public options.** Every field
+   of `EditorViewOptions`/`BlockViewOptions` (`dist/index.d.ts`) was read;
+   none of them gate, skip, debounce, or virtualize measurement — there is
+   no config this lane could pass through `mountEditor`'s/
+   `createVscodeEditorAdapter`'s existing options plumbing to avoid this
+   cost. A fix would have to change `_renderAutorun`/`_publishMeasurements`
+   itself (e.g. skip remeasuring blocks the parser reused by identity, or
+   virtualize measurement to on-screen blocks) — a real code change inside
+   the vendored fork.
+
+That is squarely `packages/vscode-markdown-editor/**` — this lane's write
+ownership lists it under MUST NOT WRITE with the explicit clause this
+finding satisfies: "the vendored fork is byte-pinned; a fork change is a
+PATCHES.md-governed event this lane may not do unilaterally — if the
+profile proves the cost is INSIDE the fork, report blocked with the
+evidence." `PATCHES.md` (this same package) documents what a real fork
+patch looks like here — a narrow, hunk-by-hunk, checksum-verified change
+authorized by its own run specification — which is exactly the process a
+future run would need for a real fix (e.g. threading a "was this block's
+identity reused by the parser" bit from `document`'s memoization through to
+`_publishMeasurements` so unchanged blocks are skipped, or virtualizing
+measurement to the visible viewport), not something this lane may do as a
+side effect of a D13 sweep.
+
+### What shipped
+
+Because the confirmed root cause is out of this lane's write ownership, no
+production file changed. `git diff` on every file under
+`packages/editor/src/vscode-adapter/**` and `packages/editor/src/web/**`
+is empty at the end of this lane's work (the temporary
+`__gpProfile` instrumentation added to `adapter.ts` during profiling, and
+the temporary `_profile-direct.ts` file, were both removed — confirmed by
+`git diff --stat packages/editor/src/vscode-adapter/adapter.ts` producing
+no output).
+
+What this lane DID add, inside its own write ownership
+(`packages/editor/tests/**`), is a permanent regression guard for the
+mechanism the amendment suspected — not because it is today's bottleneck
+(it demonstrably is not, see the profile above), but because a future
+regression there would make an already-bad number worse and would silently
+reintroduce the exact anti-pattern the amendment described:
+
+- `tests/perf/support/snapshot-call-counting-host.ts` — a test-only
+  `EditorDocumentHost` decorator counting `getSnapshot()` calls (its own
+  small file, not an edit to `tests/vscode-adapter/support/counting-host.ts`,
+  which belongs to another lane).
+- `tests/perf/support/echo-guard-entry.ts` — mounts the real `mountEditor`
+  against a counted host.
+- `tests/perf/echo-guard.btest.ts` — asserts the mechanism directly:
+  `createVscodeEditorAdapter` reads `host.getSnapshot()` exactly once, at
+  construction; every ordinary accepted edit updates the adapter's `known`
+  local straight from `applyEdit`'s return value, so `getSnapshot()` is
+  called again ONLY on the "genuinely external" branches (both deferred to
+  a microtask). Against a lone `MemoryDocumentHost` with no second writer
+  (this harness's whole scenario), every notification the adapter receives
+  IS the synchronous echo of an edit it just submitted — so for N ordinary
+  accepted keystrokes, the call count must stay at the single mount-time
+  read. AP-21 liveness is checked first (baseline == 1 before any
+  keystroke; a real edit is confirmed to have landed via the mounted
+  content's length, so a silently-dropped keystroke could not vacuously
+  pass). 100 KiB, 20 keystrokes — a correctness check, not a latency
+  percentile, so it does not need D13's 250 KiB size.
+- `tests/perf/perf-control.btest.ts` — one added line (a side-effect
+  `import "./echo-guard.btest.ts";`) to wire the new file into
+  `bun run test:perf`, since a new `test:perf` script line in
+  `packages/editor/package.json` is not available (outside this lane's
+  write ownership).
+
+**Sabotage (G-12/AP-21, pr158-lessons.md §11.2 — "may be performed locally
+and documented; it does not need to remain committed"):** locally changed
+`adapter.ts`'s echo-match condition to `if (false && ...)`, forcing every
+notification through the "genuinely external" `queueMicrotask` branch, and
+re-ran `echo-guard.btest.ts`:
+
+```
+Expected: 1
+Received: 21
+error: expect(received).toBe(expected)
+(fail) D13 root-cause regression guard ... [FAIL]
+```
+
+21 = baseline(1) + 20 keystrokes, exactly the predicted mechanism —
+confirming the assertion is live, not vacuous. Reverted immediately;
+`git diff --stat packages/editor/src/vscode-adapter/adapter.ts` confirmed
+zero lines changed after the revert, and the test was re-run clean (1
+pass) before this lane's work was considered done.
+
+### Before/after — all four sizes, both invocations
+
+No production code changed, so "after" is a fresh re-measurement, not a
+different number — reported in full per the run's own instruction ("the
+honest outcome matters more than a green gate"). Both invocations below
+include this lane's new `echo-guard.btest.ts` case (wired via
+`perf-control.btest.ts`'s side-effect import) — it passed both times
+(1 pass, part of the "2 pass" reported for that file).
+
+**This lane's invocation 1** — exit code 1 (250 KiB gate correctly still
+fails):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 270.0 ms | 59.4 ms | 72.6 ms | 78.1 ms | 52.0 ms | 61.2 ms | 60 |
+| 100 KiB | 367.7 ms | 223.3 ms | 250.7 ms | 284.8 ms | 199.0 ms | 226.0 ms | 60 |
+| 250 KiB (run 1/2) | 780.9 ms | 509.8 ms | **560.1 ms** | 572.2 ms | 470.2 ms | 513.6 ms | 60 |
+| 250 KiB (run 2/2) | 792.2 ms | 519.9 ms | **609.9 ms** | 634.5 ms | 473.8 ms | 525.2 ms | 60 |
+| 1 MiB | 2,882.9 ms | 2,179.1 ms | 2,402.3 ms | 2,652.0 ms | 1,996.7 ms | 2,203.6 ms | 60 |
+
+Control (250 KiB, +150 ms/keystroke sabotage): p50=661.1 ms p95=717.0 ms
+max=717.0 ms min=626.6 ms mean=661.1 ms (n=15) — PASS (p95 > 100 ms budget
+and > 75 ms sanity margin).
+
+**This lane's invocation 2** — exit code 1 (same):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 224.4 ms | 63.7 ms | 97.2 ms | 105.8 ms | 54.4 ms | 66.4 ms | 60 |
+| 100 KiB | 390.6 ms | 213.0 ms | 245.0 ms | 249.7 ms | 194.7 ms | 215.1 ms | 60 |
+| 250 KiB (run 1/2) | 757.6 ms | 516.9 ms | **565.3 ms** | 610.8 ms | 470.1 ms | 515.3 ms | 60 |
+| 250 KiB (run 2/2) | 786.9 ms | 524.5 ms | **593.7 ms** | 617.1 ms | 478.7 ms | 533.8 ms | 60 |
+| 1 MiB | 2,918.6 ms | 2,100.6 ms | 2,272.1 ms | 2,426.9 ms | 2,001.3 ms | 2,122.8 ms | 60 |
+
+Control: p50=687.0 ms p95=755.9 ms max=755.9 ms min=650.2 ms mean=690.9 ms
+(n=15) — PASS.
+
+**Comparison against Lane B's original numbers** (both 250 KiB p95, all
+four samples across Lane B's two invocations plus this lane's two):
+
+| Source | 250 KiB p95 samples |
+|---|---|
+| Lane B, invocation 1 | 631.7 ms, 571.1 ms |
+| Lane B, invocation 2 | 585.4 ms, 554.3 ms |
+| Lane D, invocation 1 (this lane) | 560.1 ms, 609.9 ms |
+| Lane D, invocation 2 (this lane) | 565.3 ms, 593.7 ms |
+
+All eight samples land in a 554-610 ms band — stable across sessions, no
+drift, no regression, no improvement (expected: no production code
+changed). This also re-confirms, independently, Lane B's own environment
+caveat: this sandbox is not the project's CI reference runner.
+
+### Budget verdict
+
+**FAIL — unchanged from Lane B, honestly re-confirmed, not tuned away.**
+D13's 250 KiB p95 < 100 ms gate is not met: measured p95 across this
+lane's own two fresh invocations ranges 560.1-609.9 ms, consistent with
+Lane B's original 554.3-631.7 ms. The root cause is confirmed (previous
+section) and is inside the byte-pinned vendored fork, outside every write-
+permitted path for this lane. No weakening of the measurement, the budget,
+or any test was made or considered.
+
+### Recommendation for the next run (not performed here — outside write ownership)
+
+A real fix belongs in `packages/vscode-markdown-editor` via the
+PATCHES.md-governed process, scoped as narrowly as Hunk 1-4 of the existing
+`renderCustomBlock` patch: `EditorView._renderAutorun`/
+`_publishMeasurements` would need to skip remeasuring a block whose
+`DocumentViewNode` entry the parser reused by IDENTITY (the same
+mechanism `document`'s memoization and "unchanged blocks keep their object
+identity across reparses" already rely on for the PARSE side — the render/
+measurement side does not currently consult it), or measurement would need
+to be scoped to the visible viewport instead of the whole document. Either
+is a genuine, evidenced, narrowly-scoped fork change — not something this
+lane's write ownership permits, and not something to attempt as a side
+effect of a performance sweep. This lane's profiling above (the exact
+call chain, line numbers, and both differentials) is the evidence such a
+run would start from.
+
+### What could not be fully explained
+
+The floor test's own spread (425.2-559.7 ms, n=15) is wide enough that a
+small residual gap against the full-stack numbers (500-670 ms across
+invocations) cannot be cleanly separated from ordinary Chromium/GC timing
+variance between separate mounts — the two ranges overlap substantially,
+and this lane's own glue was independently measured at under 1 ms of
+overhead (the stage-by-stage profile above), so no further residual is
+expected, but this lane did not run enough floor samples to state a tight
+confidence interval on that gap being exactly zero. This does not change
+the verdict (even the floor's own minimum, 425.2 ms, is 4.25x over the 100
+ms budget on its own) and was not pursued further given the smallest-
+design instruction and this lane's write ownership.
+
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | The tsconfig wiring gap Lane B recorded (`tests/perf` needing the DOM-aware program) is already closed — verified live: `packages/editor/tsconfig.json`'s `exclude` and `src/web.tsconfig.json`'s `include` both already list `tests/perf`; this lane's two new DOM-typed files (`echo-guard-entry.ts`, and `echo-guard.btest.ts`'s `page.evaluate(() => window...)` callbacks) typecheck clean under it |
+| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs (tsconfig.json / src/web.tsconfig.json / src/gutterpress/tsconfig.json), run directly |
+| `cd packages/editor && bun test ./tests/perf/echo-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (root cause confirmed out of scope, see above); this lane's new echo-guard case passed (2 pass in perf-control.btest.ts's run, 5 expect() calls = perf-control's 3 + echo-guard's 2); control passed; all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 and with Lane B's original numbers |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane B's own count; this lane's new files are `.btest.ts` (perf harness), correctly invisible to plain `bun test` |
+| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 8 existing suites (4 more than Lane B's 114 — other lanes' work landing between reports, not this lane's changes; this lane touched none of these files) |
+| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — no regression in the extension that consumes this adapter |
+| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files |
+| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files (console "disk full" lines are expected output from a deliberate fault-injection test, not failures) |
+
+### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
+
+`echo-guard.btest.ts` proves it can fail (see "Sabotage" above: 1->21 under
+local sabotage, reverted before commit). It does not itself carry a
+permanently-red control test the way `perf-control.btest.ts` does — a
+permanent sabotage control would need a test-level way to break
+`adapter.ts`'s echo comparison from OUTSIDE production code, and no such
+seam exists (the comparison is internal to the adapter, not parameterized)
+without adding one solely to support a control test, which would be
+machinery beyond what this fix needs (SFE-P3e's own ruling: "prefer
+deleting cleverness to guarding it"). The local-sabotage proof above,
+documented and reverted per pr158-lessons.md §11.2, was judged sufficient.
