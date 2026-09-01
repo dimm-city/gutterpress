@@ -34,13 +34,12 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<SettingsView");
 });
 
-test("snapshot, history enable, and sync IPC handlers / routes pass git identity from settings", () => {
-  // vcs:saveSnapshot / vcs:enableVersionHistory migrated from HTTP routes to
-  // typed IPC (SFE-P5c2) — `gitIdentityArgs()` (electron/api/
-  // git-identity-args.ts, shared with fs:delete's safety-snapshot path) is
-  // the call each handler spreads into its lib call now; `remote/sync`
-  // stays an HTTP route (out of this run's scope), still passing the
-  // fields by name.
+test("snapshot, history enable, and remote sync IPC handlers pass git identity from settings", () => {
+  // vcs:saveSnapshot / vcs:enableVersionHistory (SFE-P5c2) and remote:sync
+  // (SFE-P5c3) all migrated from HTTP routes to typed IPC —
+  // `gitIdentityArgs()` (electron/api/git-identity-args.ts, shared with
+  // fs:delete's safety-snapshot path) is the call each handler spreads into
+  // its lib call now.
   const vcs = read("electron/api/vcs.ts");
   const enableVersionHistoryBody = vcs.slice(
     vcs.indexOf("export async function vcsEnableVersionHistory("),
@@ -53,12 +52,15 @@ test("snapshot, history enable, and sync IPC handlers / routes pass git identity
   expect(enableVersionHistoryBody).toContain("...(await gitIdentityArgs())");
   expect(saveSnapshotBody).toContain("...(await gitIdentityArgs())");
 
-  const sync = read("src/routes/api/remote/sync/+server.ts");
-  expect(sync).toContain("authorName");
-  expect(sync).toContain("authorEmail");
+  const remote = read("electron/api/remote.ts");
+  const remoteSyncBody = remote.slice(
+    remote.indexOf("export async function remoteSync("),
+    remote.indexOf("export async function remoteCloneRepository("),
+  );
+  expect(remoteSyncBody).toContain("...(await gitIdentityArgs())");
 });
 
-test("gitIdentityArgs() falls back to the default identity when the settings read throws (EACCES/EIO), mirroring src/lib/server/settings.ts's own try/catch", async () => {
+test("gitIdentityArgs() falls back to the default identity when the settings read throws (EACCES/EIO)", async () => {
   // Host services are process-global — save/restore so this fixture never
   // leaks into a sibling test file.
   const saved: HostServices | null = getHostServices();

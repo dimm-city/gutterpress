@@ -76,9 +76,9 @@ describe("Settings panel — tabbed layout", () => {
 describe("Connections tab — central credential management", () => {
   const conn = read("src/lib/components/ConnectionsSettings.svelte");
   test("lists GitHub + Git servers + publishing accounts from redacted entries", () => {
-    expect(conn).toContain("api.remote.getRemoteConnection()");
-    expect(conn).toContain("api.remote.listHostConnections()");
-    expect(conn).toContain("api.publish.providers()");
+    expect(conn).toContain("getRemoteConnection()");
+    expect(conn).toContain("listHostConnections()");
+    expect(conn).toContain("fetchPublishProviders()");
     expect(conn).toContain("Publishing accounts");
     expect(conn).toContain("Git servers");
   });
@@ -109,7 +109,7 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain("publishHosts.has(baseHost(e.host))");
   });
   test("removal deletes by the RAW store key (works for named publish accounts)", () => {
-    expect(conn).toContain("api.remote.disconnectHost(key)");
+    expect(conn).toContain("disconnectHost(key)");
     // Two-step confirm before deleting a credential (the most painful thing
     // to re-acquire — same pattern as AdvancedSetupDialog's Disconnect).
     expect(conn).toContain("requestInlineConfirm");
@@ -132,7 +132,7 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain('pubToken = ""');
   });
   test("adding a publishing key uses verify-before-store and asks for an open project", () => {
-    expect(conn).toContain("api.publish.connect(projectDir, pubProviderId, pubToken");
+    expect(conn).toContain("connectPublishProvider(projectDir, pubProviderId, pubToken");
     expect(conn).toContain("Open a project to add a publishing key");
   });
   test("stays $effect-free (CLAUDE.md §8) — load happens onMount", () => {
@@ -152,13 +152,15 @@ describe("Advanced setup consolidated into the Connections tab (owner request 20
   });
 
   test("the Connections tab hosts ONE component with no duplicate connect form", () => {
-    // Exactly one connect-a-git-server call site remains, in ConnectionsSettings.
-    expect(conn.split("connectGenericHost").length - 1).toBe(1);
+    // Exactly one connect-a-git-server CALL site remains, in
+    // ConnectionsSettings — `connectGenericHost(` (not the bare identifier,
+    // which also appears once in the SFE-P5c3 capability import).
+    expect(conn.split("connectGenericHost(").length - 1).toBe(1);
     expect(view).toContain("<ConnectionsSettings {projectDir} />");
   });
 
   test("the token-URL helper moved onto the single Git-server form (debounced forge lookup)", () => {
-    expect(conn).toContain("api.remote");
+    expect(conn).toContain("$lib/remote/remote-capability");
     expect(conn).toContain("forgeTokenUrl");
     expect(conn).toMatch(/setTimeout\([\s\S]{0,200}forgeTokenUrl/);
   });
@@ -211,11 +213,15 @@ describe("Advanced setup consolidated into the Connections tab (owner request 20
   });
 });
 
-describe("publish:providers route — static metadata, no project required", () => {
-  const route = read("src/routes/api/publish/providers/+server.ts");
+describe("publish:providers IPC handler — static metadata, no project required", () => {
+  const handler = read("electron/api/publish.ts");
+  const body = handler.slice(
+    handler.indexOf("export async function publishProviders("),
+    handler.indexOf("export async function publishConnect("),
+  );
   test("returns id/label/credential host without touching a manifest", () => {
-    expect(route).toContain("listPublishProviders()");
-    expect(route).toContain("credentialHost");
-    expect(route).not.toContain("projectDir");
+    expect(body).toContain("listPublishProviders()");
+    expect(body).toContain("credentialHost");
+    expect(body).not.toContain("projectDir");
   });
 });

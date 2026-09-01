@@ -162,7 +162,7 @@ test("(c) run() snapshots with message + log path derived from basename", async 
 //
 // The automatic snapshot must be committed as the author, exactly like the
 // manual "Save a version" path (which goes through gitIdentityArgs() in
-// src/lib/server/settings.ts). Before this was wired, run() called
+// electron/api/git-identity-args.ts, SFE-P5c3). Before this was wired, run() called
 // provider.snapshot() with no author fields at all, so every automatic snapshot
 // was silently attributed to the lib's "Gutterpress <noreply@Gutterpress.local>"
 // default while manual saves carried the configured name/email.

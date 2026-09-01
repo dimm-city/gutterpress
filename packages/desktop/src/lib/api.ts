@@ -24,6 +24,13 @@
  * `api.project.*`/`api.manifest.*`/`api.tpl.*`/`api.snip.*`/`api.media.*`/
  * `api.plugin.*`/`api.theme.*`/`api.vcs.*`/`api.style.*`.
  *
+ * SFE-P5c3: `remote`, `sync`, and `publish` — the credentials-sensitive
+ * group — were likewise migrated to typed IPC — see
+ * `$lib/remote/remote-capability.ts` (remote/sync) and
+ * `$lib/publish/publish-capability.ts` (publish). Their routes
+ * (`src/routes/api/{remote,sync,publish}/**`) are deleted; call those
+ * modules' exports instead of `api.remote.*`/`api.sync.*`/`api.publish.*`.
+ *
  * All methods throw on non-OK responses (with the response body as the message).
  */
 
@@ -62,36 +69,10 @@ async function get<T>(url: string): Promise<T> {
 // keep resolving.
 export type {
   SnapshotEntry,
-  RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
-  RemoteAccessResult,
-  ProjectRemoteDiagnosis,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
-  SyncOutcome,
-  PublishProviderCard,
-  PublishIssue,
-  PublishOutcomeInfo,
-  PublishRunResult,
 } from './platform/contract';
 
 import type {
-  RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
-  RemoteAccessResult,
-  ProjectRemoteDiagnosis,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
-  SyncOutcome,
-  SyncStatus,
-  CloneRepositoryArgs,
   UpdaterStatus,
-  PublishProviderCard,
-  PublishRunResult,
 } from './platform/contract';
 
 export type {
@@ -119,26 +100,6 @@ import type {
   ProblemEntry,
   DoctorDiagnostics,
 } from './platform/dtos';
-
-// Publish-preflight row DTO (#105). Pure `$lib` module — type-only here so the
-// client bundle still never value-imports it through the api client.
-export type { PreflightRow } from './preflight';
-import type { PreflightRow } from './preflight';
-
-// ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
-
-/** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Connections tab to classify + label stored credentials. */
-export interface PublishProviderStaticInfo {
-  id: string;
-  label: string;
-  kind: 'api' | 'guided';
-  credentialRequired: boolean;
-  /** The TokenStore host this provider's credentials are keyed under. */
-  credentialHost: string | null;
-  tokenUrl: string | null;
-  hint: string | null;
-}
 
 // DirEntry/ProjectFileEntry moved to `$lib/files/files-capability.ts`
 // (SFE-P5c1) — the fs namespace's own DTOs now that fs moved off HTTP.
@@ -194,97 +155,11 @@ export const api = {
       post<RecoveryEntry[]>('/api/recovery/list', { projectDir }),
   },
 
-  sync: {
-    /**
-     * Enable or disable the auto-sync master switch (ARCH review #8 — was
-     * IPC despite being a pure settings write).
-     */
-    setAutoSync: (enabled: boolean) =>
-      post<{ ok: boolean; autoSync: boolean }>('/api/sync/set-auto-sync', { enabled }),
-    /**
-     * The last sync status the host emitted for a project, or null. The
-     * queryable counterpart to the fire-and-forget onSyncStatus push channel —
-     * the status pill seeds itself from this right after subscribing so a
-     * subscription that lands after an emit (project open racing the pill's
-     * mount; the one-shot "connect"/"local" states) never strands on
-     * blank/stale status.
-     */
-    getStatus: (projectDir: string) =>
-      post<SyncStatus | null>('/api/sync/status', { projectDir }),
-  },
+  // sync, remote deleted (SFE-P5c3) — migrated wholesale to typed IPC. See
+  // `$lib/remote/remote-capability.ts`.
 
   // vcs deleted (SFE-P5c2) — migrated wholesale to typed IPC. See
   // `$lib/vcs/vcs-capability.ts`.
-
-  remote: {
-    /** Forget the stored GitHub connection. */
-    disconnectGitHub: () => post<{ ok: boolean }>('/api/remote/disconnect-github'),
-
-    /**
-     * Redacted connection status for a host (default github.com).
-     * NEVER returns the token — only { connected, username?, label? }.
-     */
-    getRemoteConnection: (host?: string) =>
-      post<RemoteConnection>('/api/remote/get-connection', host ? { host } : {}),
-
-    /** Repositories the user granted the Gutterpress GitHub App. */
-    listRemoteRepositories: () =>
-      post<RemoteRepository[]>('/api/remote/list-repositories'),
-
-    /** Branches of a chosen repository. */
-    listRemoteBranches: (owner: string, repo: string) =>
-      post<RemoteBranch[]>('/api/remote/list-branches', { owner, repo }),
-
-    /** Book folders (manifest.yaml/.yml) inside a repository branch. */
-    listRepoBooks: (owner: string, repo: string, branch: string) =>
-      post<RepoBook[]>('/api/remote/list-repo-books', { owner, repo, branch }),
-
-    /** Classify the project's remote situation for the environment panel. */
-    diagnoseProjectRemote: (projectDir: string) =>
-      post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
-
-    /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
-    testRemoteAccess: (url: string) =>
-      post<RemoteAccessResult>('/api/remote/test-remote-access', { url }),
-
-    /**
-     * Validate + store a credential for any smart-HTTPS Git host.
-     * Response is redacted — never includes the token.
-     */
-    connectGenericHost: (args: ConnectGenericHostArgs) =>
-      post<{ connected: boolean; host: string; username?: string }>(
-        '/api/remote/connect-generic-host',
-        args,
-      ),
-
-    /** Forget the stored connection for a host. */
-    disconnectHost: (host: string) =>
-      post<{ ok: boolean }>('/api/remote/disconnect-host', { host }),
-
-    /** Redacted list of stored connections (host/username/label — no tokens). */
-    listHostConnections: () =>
-      post<HostConnectionInfo[]>('/api/remote/list-connections'),
-
-    /** Token-settings deep link for recognized forges; null when unknown. */
-    forgeTokenUrl: (host: string) =>
-      post<string | null>('/api/remote/forge-token-url', { host }),
-
-    /** Snapshot-first sync of the project to its online repository. */
-    syncChanges: (projectDir: string, message?: string) =>
-      post<SyncOutcome>('/api/remote/sync', {
-        projectDir,
-        ...(message ? { message } : {}),
-      }),
-
-    /**
-     * Download ("clone") a repository into a new local project folder
-     * (ARCH review #8 — was IPC despite being a plain request/response; the
-     * clone-progress push stays a separate `onCloneProgress` subscription).
-     */
-    cloneRepository: (args: CloneRepositoryArgs) =>
-      post<{ projectDir: string }>('/api/remote/clone-repository', args),
-
-  },
 
   /**
    * Desktop update surface (ARCH review #8 — getStatus/check/download were IPC
@@ -297,63 +172,6 @@ export const api = {
     download: () => post<UpdaterStatus>('/api/updater/download'),
   },
 
-  publish: {
-    /** Provider cards: static info + redacted connection status + manifest config. */
-    listProviders: (projectDir: string) =>
-      post<PublishProviderCard[]>('/api/publish/list', { projectDir }),
-
-    /** Static provider metadata — id/label/credential host. No project needed
-     *  (Settings → Connections classification + labels). */
-    providers: () => post<PublishProviderStaticInfo[]>('/api/publish/providers', {}),
-
-    /**
-     * Store + verify an API key for a provider. The token travels once, to the
-     * host; the response is redacted and the key never comes back. An optional
-     * `account` label stores a NAMED credential (a user can keep several per
-     * provider); empty stores the default.
-     */
-    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
-      post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
-        projectDir,
-        providerId,
-        token,
-        ...(account ? { account } : {}),
-      }),
-
-    /** Forget a stored key for a provider (the default, or a named `account`). */
-    disconnect: (providerId: string, account?: string) =>
-      post<{ ok: boolean }>('/api/publish/disconnect', {
-        providerId,
-        ...(account ? { account } : {}),
-      }),
-
-    /** Write NON-SECRET provider settings into the manifest's publish section. */
-    setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
-      post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
-        projectDir,
-        providerId,
-        values,
-      }),
-
-    /**
-     * Pre-build publish preflight (#105): run the SOURCE + ASSET checks (no PDF
-     * build) for a project, scoped to the selected destinations. Returns the
-     * plain-language rows the wizard's Preflight step renders + gates on.
-     */
-    preflight: (projectDir: string, providerIds: string[]) =>
-      post<PreflightRow[]>('/api/publish/preflight', { projectDir, providerIds }),
-
-    /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
-    run: (
-      projectDir: string,
-      providerId: string,
-      options?: { dryRun?: boolean; artifactPath?: string },
-    ) =>
-      post<PublishRunResult>('/api/publish/run', {
-        projectDir,
-        providerId,
-        ...(options?.dryRun ? { dryRun: true } : {}),
-        ...(options?.artifactPath ? { artifactPath: options.artifactPath } : {}),
-      }),
-  },
+  // publish deleted (SFE-P5c3) — migrated wholesale to typed IPC. See
+  // `$lib/publish/publish-capability.ts`.
 };

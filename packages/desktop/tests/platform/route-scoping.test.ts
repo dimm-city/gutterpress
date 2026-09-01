@@ -9,13 +9,10 @@
  * fetch inside the renderer (a preview XSS, a malicious plugin-injected
  * script, a compromised dependency — the threat model
  * `electron/server-bridge/fs-guard.ts` documents) could therefore drive real
- * filesystem work at ANY absolute path on disk:
- *
- *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
- *   - `publish/run` uploads a file to a configured provider
+ * filesystem work at ANY absolute path on disk.
  *
  * The table below pins the guard on every ROUTE that remains HTTP after
- * SFE-P5c2: outside → rejected, sibling directory with a shared string
+ * SFE-P5c3: outside → rejected, sibling directory with a shared string
  * prefix → rejected (the `/proj` vs `/proj2` regression), no project open →
  * rejected, and — the multi-project half of the contract — the enclosing
  * REPO ROOT is allowed, because `projectRoots()` is the opened book PLUS its
@@ -24,10 +21,14 @@
  *
  * SFE-P5c2 migrated `vcs`, `theme`, `style`, `project`, `manifest`,
  * `plugin`, `snip`, and `tpl` off these HTTP routes to typed IPC — their
- * scoping-guard coverage (the exact same cases this file pins, run against
- * `electron/api/*.ts` instead of a `+server.ts` handler) moved to
- * `project-config-ipc.test.ts` (project/manifest/tpl/snip/plugin/theme/
- * style) and `vcs-ipc.test.ts` (vcs).
+ * scoping-guard coverage moved to `project-config-ipc.test.ts` /
+ * `vcs-ipc.test.ts`. SFE-P5c3 migrated `remote` and `publish` (including
+ * `publish/run`'s CREDENTIALED upload — a config that used to run a
+ * credentialed push/pull or upload at any renderer-supplied path is exactly
+ * the risk this file's header describes) — that coverage, run against
+ * `electron/api/remote.ts`/`publish.ts` instead of a `+server.ts` handler,
+ * moved to `remote-ipc.test.ts` / `publish-ipc.test.ts`. `lint/project` is
+ * the only route left in this table (P5c4's territory, out of scope here).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
@@ -36,37 +37,24 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
-import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 
-import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
-import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
-import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
-import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
-import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
-import { POST as publishList } from "../../src/routes/api/publish/list/+server";
-import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
 import { POST as lintProject } from "../../src/routes/api/lint/project/+server";
 // shell/show-in-folder migrated to typed IPC (SFE-P5c1) — see shell-ipc.test.ts.
 // vcs/theme/style/project/manifest/plugin/snip/tpl migrated to typed IPC
 // (SFE-P5c2) — see project-config-ipc.test.ts / vcs-ipc.test.ts.
+// remote/publish migrated to typed IPC (SFE-P5c3) — see remote-ipc.test.ts /
+// publish-ipc.test.ts.
 
 type RouteHandler = (event: { request: Request }) => Promise<Response>;
 
 /**
  * Every route that takes a renderer-supplied `projectDir` and does real
- * filesystem (or git, or network-with-credentials) work with it. `body`
- * supplies whatever ELSE each route's validation requires, so a rejection can
- * only come from the path guard — never from a missing field.
+ * filesystem work with it. `body` supplies whatever ELSE each route's
+ * validation requires, so a rejection can only come from the path guard —
+ * never from a missing field.
  */
 const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) => unknown }> = [
-  { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "publish/run", handler: publishRun as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch" }) },
-  { name: "publish/set-config", handler: publishSetConfig as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", values: {} }) },
-  { name: "publish/connect", handler: publishConnect as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", token: "tok" }) },
-  { name: "publish/list", handler: publishList as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
   { name: "lint/project", handler: lintProject as RouteHandler, body: (d) => ({ projectDir: d }) },
 ];
 
@@ -164,9 +152,11 @@ for (const route of ROUTES) {
 // `siblingRepo` is `repoRoot + "2"`, so a bare `startsWith(root)` containment
 // test would accept it as "inside the repo". One representative route per
 // family (the whole set shares one guard, so this pins the guard's separator
-// handling without re-running every near-identical case).
+// handling without re-running every near-identical case) — the equivalent
+// `remote`/`publish` cases now run against `electron/api/*.ts` in
+// `remote-ipc.test.ts`/`publish-ipc.test.ts` (SFE-P5c3).
 
-const SIBLING_CASES = ["remote/sync", "publish/run"];
+const SIBLING_CASES = ["lint/project"];
 
 for (const name of SIBLING_CASES) {
   test(`${name}: a sibling REPO with a shared string prefix is rejected (403)`, async () => {
@@ -221,125 +211,9 @@ test("the enclosing REPO ROOT passes the guard on every route (multi-project ses
   }
 });
 
-// ── publish/run's artifactPath: the upload SOURCE, not just projectDir ────
-//
-// `artifactPath` is forwarded to `lib.runPublish`, which uploads that file to
-// the configured provider with the author's stored credential — so an
-// unchecked renderer-supplied value is a local-file-to-network exfiltration
-// primitive, not merely an out-of-project read. It cannot simply be confined
-// to the project either: desktop PDF exports go wherever the author chose in
-// the Save dialog, which is the documented common case. So an out-of-project
-// artifact must be a path a native picker actually returned — the same
-// one-time-capability model `media:importImage`/`fs:copyFile` use for `src`.
-
-function publishHost(roots: string[], picked: ReturnType<typeof createPickedFilesService>) {
-  registerHostServices(
-    makeHostServices({
-      desktop: { getUserDataPath: () => base },
-      fsGuard: { projectRoots: () => roots, readOnlyRoots: () => [] as string[] },
-      pickedFiles: picked,
-      remote: {
-        loadLib: async () => ({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) }),
-        tokenStore: {},
-        GITHUB_HOST: "github.com",
-      } as never,
-    }),
-  );
-}
-
-test("publish/run: an artifact inside the project is allowed", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const artifact = path.join(bookDir, "dist", "book.pdf");
-  await mkdir(path.dirname(artifact), { recursive: true });
-  await writeFile(artifact, "%PDF-1.4", "utf8");
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: artifact }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: an out-of-project artifact that was never picked is rejected (403)", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const secret = path.join(outsideDir, "id_rsa");
-  await writeFile(secret, "PRIVATE KEY", "utf8");
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: secret }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test("publish/run: an out-of-project artifact the native picker returned is allowed", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const exported = path.join(outsideDir, "book.pdf");
-  await writeFile(exported, "%PDF-1.4", "utf8");
-  picked.register([exported]); // what dialog/pick-pdf-file does with its result
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: a picked artifact survives the dry-run → publish sequence", async () => {
-  // The wizard's "Check readiness" (dryRun) and the real publish are two
-  // separate calls with the SAME artifactPath. A strictly one-time consume
-  // would 403 the second one.
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const exported = path.join(outsideDir, "book.pdf");
-  await writeFile(exported, "%PDF-1.4", "utf8");
-  picked.register([exported]);
-  const dry = await statusOf(
-    publishRun({
-      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported, dryRun: true }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(dry).not.toBe(403);
-  const real = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(real).not.toBe(403);
-});
-
-test("publish/run: a RELATIVE artifactPath resolves against the project, as the lib does", async () => {
-  // run-publish.ts does `path.resolve(projectDir, artifactPath)`, so a
-  // relative artifact is project-relative and must not need a picker.
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  await mkdir(path.join(bookDir, "dist"), { recursive: true });
-  await writeFile(path.join(bookDir, "dist", "book.pdf"), "%PDF-1.4", "utf8");
-  const status = await statusOf(
-    publishRun({
-      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: "dist/book.pdf" }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: a relative artifactPath cannot ../ its way out of the project", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir], picked); // book-only session, so the repo is outside
-  const status = await statusOf(
-    publishRun({
-      request: request({
-        projectDir: bookDir,
-        providerId: "itch",
-        artifactPath: path.join("..", "..", "..", "elsewhere", "id_rsa"),
-      }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(status).toBe(403);
-});
+// publish/run's artifactPath (the upload SOURCE, not just projectDir) —
+// CREDENTIALED upload primitive coverage moved to publish-ipc.test.ts
+// (SFE-P5c3: migrated to typed IPC).
 
 // shell/show-in-folder's project + read-only-roots + picked-path-reveal
 // coverage moved to shell-ipc.test.ts (SFE-P5c1: migrated to typed IPC).
@@ -355,9 +229,9 @@ test.skipIf(!canSymlink)(
     const alias = path.join(bookDir, "alias");
     await symlink(outsideDir, alias, "dir");
     const status = await statusOf(
-      remoteDiagnoseProject({
+      lintProject({
         request: request({ projectDir: alias }),
-      } as Parameters<typeof remoteDiagnoseProject>[0]),
+      } as Parameters<typeof lintProject>[0]),
     );
     expect(status).toBe(403);
   },

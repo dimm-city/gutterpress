@@ -20,11 +20,21 @@
  * off `api.app.*` (deleted, HTTP) to
  * `$lib/app-lifecycle/app-lifecycle-capability` (typed IPC) — the same
  * regression guard now pins those functions' return types instead.
+ *
+ * SFE-P5c3: `ProjectRemoteDiagnosis` no longer re-exports through `./api`
+ * (its `remote` namespace is deleted, typed IPC) — imported directly from
+ * `./platform/contract`, its canonical source, same as `DesktopPrefs`/
+ * `ProjectState`/`CreateProjectResult` below.
  */
-import type { api, ProjectRemoteDiagnosis } from "./api";
+import type { api } from "./api";
 import type * as appLifecycleCapability from "./app-lifecycle/app-lifecycle-capability";
 import type { ProjectSource } from "./platform/shared-types";
-import type { DesktopPrefs, ProjectState, CreateProjectResult } from "./platform/contract";
+import type {
+  DesktopPrefs,
+  ProjectState,
+  CreateProjectResult,
+  ProjectRemoteDiagnosis,
+} from "./platform/contract";
 import type { ProjectClassification, DoctorDiagnostics } from "./platform/dtos";
 
 /** Resolves to `true` only for the `any` type. */

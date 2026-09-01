@@ -119,7 +119,8 @@
     setDesktopProjectState as setDesktopProjectStateCapability,
     setDirtyState as setDirtyStateCapability,
   } from "$lib/app-lifecycle/app-lifecycle-capability";
-  import { onSyncStatus } from "$lib/remote/remote-capability";
+  import { diagnoseProjectRemote, onSyncStatus, syncChanges } from "$lib/remote/remote-capability";
+  import * as publish from "$lib/publish/publish-capability";
   import {
     readFile as readFileCapability,
     writeFile as writeFileCapability,
@@ -291,17 +292,17 @@
   // used to live in ProjectConfigPanel's "crammed at the bottom" Publish
   // section now drives the front-and-centre PublishWizard opened from the
   // toolbar. Constructed here so the wizard and the toolbar button share one
-  // instance. Host coupling injected (§8) — api.publish.* /
+  // instance. Host coupling injected (§8) — the publish capability module /
   // $lib/files/files-capability's dialog/shell functions; toast/lifecycle
   // are safe forward-referenced closures.
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
-    listProviders: (dir) => api.publish.listProviders(dir),
-    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
-    setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
-    disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
-    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
+    listProviders: (dir) => publish.listProviders(dir),
+    preflight: (dir, providerIds) => publish.preflight(dir, providerIds),
+    setConfig: (dir, providerId, values) => publish.setConfig(dir, providerId, values),
+    connect: (dir, providerId, token, account) => publish.connect(dir, providerId, token, account),
+    disconnect: (providerId, account) => publish.disconnect(providerId, account),
+    run: (dir, providerId, options) => publish.run(dir, providerId, options),
     pickPdfFile: () => pickPdfFileCapability(),
     openDirectory: () => openDirectoryCapability(),
     openExternal: (url) => openExternalCapability(url),
@@ -546,8 +547,8 @@
   // stay component methods (they touch toast + activityViewRef.refreshHistory
   // + buffer).
   const syncController = new SyncController({
-    syncChanges: (dir) => api.remote.syncChanges(dir),
-    diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
+    syncChanges: (dir) => syncChanges(dir),
+    diagnose: (dir) => diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
     toast: () => toast,
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>

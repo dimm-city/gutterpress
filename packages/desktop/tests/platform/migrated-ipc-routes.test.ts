@@ -1,18 +1,22 @@
 /**
  * ARCH review #8 — "narrow IPC bridge" cleanup:
  *
- *  1. sync:setAutoSync, remote:cloneRepository, remote:resolveSyncConflicts,
- *     updater:getStatus/check/download were plain request/response IPC
- *     channels despite their remote: and updater: siblings already being
- *     server routes. These tests exercise the ROUTE versions (factory-level:
+ *  1. updater:getStatus/check/download were plain request/response IPC
+ *     channels despite their remote:/sync: siblings already being server
+ *     routes. These tests exercise the ROUTE versions (factory-level:
  *     validate() + hooks wiring + the 503/400 envelopes), not electron/main.ts
- *     directly.
+ *     directly. sync:setAutoSync and remote:cloneRepository were the same
+ *     kind of exception — SFE-P5c3 reversed that framing (D10: converge on
+ *     typed IPC) and restored the WHOLE `remote`/`sync`/`publish` group to
+ *     IPC; their route-level coverage moved to `remote-ipc.test.ts`/
+ *     `publish-ipc.test.ts`, which exercise `electron/api/remote.ts`/
+ *     `publish.ts` directly (the routes themselves are deleted).
  *  2. fs:watchFolder's dead route + the dead api.fs.watchFolder/unwatchFolder,
  *     api.app.flushDone, and api.status() client wrappers are gone — grep
  *     assertions lock that (the IPC path stays the live one for watchFolder;
  *     app:flushDone stays IPC for the reason documented at its call site).
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
@@ -21,8 +25,6 @@ import {
   type HostServices,
 } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
-import { POST as setAutoSyncRoute } from "../../src/routes/api/sync/set-auto-sync/+server";
-import { POST as cloneRepositoryRoute } from "../../src/routes/api/remote/clone-repository/+server";
 import { GET as updaterGetStatusRoute } from "../../src/routes/api/updater/get-status/+server";
 import { POST as updaterCheckRoute } from "../../src/routes/api/updater/check/+server";
 import { POST as updaterDownloadRoute } from "../../src/routes/api/updater/download/+server";
@@ -48,25 +50,13 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 }
 
 /**
- * The shared base fake, with remote/sync/updater defaulting to "not
- * registered" (undefined) — each describe block below overrides the ONE it's
- * testing per-test; the 503 tests rely on this default.
- *
- * `fsGuard` models an OPEN project at `/abs/project`: `remote/*` routes now
- * confine their `projectDir` to the host-owned `projectRoots()` allow-list
- * (2026-07-29 audit), so these tests have to say which project is open before
- * they can exercise anything downstream of that check. The containment check
- * canonicalizes lexically for a path that doesn't exist on disk, so the
- * synthetic `/abs/project` works without touching the filesystem.
- * Out-of-project rejection itself is covered in route-scoping.test.ts.
+ * The shared base fake, with updater defaulting to "not registered"
+ * (undefined) — the 503 test relies on this default. remote/sync route-level
+ * coverage moved to `remote-ipc.test.ts`/`publish-ipc.test.ts` (SFE-P5c3:
+ * those routes are deleted, restored to IPC).
  */
 function baseServices(): HostServices {
-  return makeHostServices({
-    remote: undefined,
-    sync: undefined,
-    updater: undefined,
-    fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
-  });
+  return makeHostServices({ updater: undefined });
 }
 
 afterEach(() => {
@@ -77,118 +67,6 @@ afterEach(() => {
   // host-services.test.ts's "returns null before registration" assertion
   // if that file happens to run after this one.
   registerHostServices(undefined as unknown as HostServices);
-});
-
-// ── sync/set-auto-sync ───────────────────────────────────────────────────────
-
-describe("POST /api/sync/set-auto-sync", () => {
-  test("400 when enabled is not a boolean", async () => {
-    registerHostServices({ ...baseServices(), sync: { setAutoSync: async () => ({ ok: true, autoSync: true }) } });
-    const { status, message } = await caught(setAutoSyncRoute({ request: request({ enabled: "yes" }) } as never));
-    expect(status).toBe(400);
-    expect(message).toBe("sync:setAutoSync requires a boolean");
-  });
-
-  test("503 when sync hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(setAutoSyncRoute({ request: request({ enabled: true }) } as never));
-    expect(status).toBe(503);
-    expect(message).toBe("Sync settings hooks not registered");
-  });
-
-  test("calls hooks.setAutoSync with the validated boolean and returns its result", async () => {
-    const calls: boolean[] = [];
-    registerHostServices({
-      ...baseServices(),
-      sync: {
-        setAutoSync: async (enabled: boolean) => {
-          calls.push(enabled);
-          return { ok: true, autoSync: enabled };
-        },
-      },
-    });
-    const res = await setAutoSyncRoute({ request: request({ enabled: false }) } as never);
-    expect(await res.json()).toEqual({ ok: true, autoSync: false });
-    expect(calls).toEqual([false]);
-  });
-});
-
-// ── remote/clone-repository ──────────────────────────────────────────────────
-
-describe("POST /api/remote/clone-repository", () => {
-  const remoteBase = { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" };
-
-  test("400 when url is missing", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: { ...remoteBase, cloneRepository: async () => ({ projectDir: "/x" }), resolveSyncConflicts: async () => { throw new Error("unused"); } } as never,
-    });
-    const { status, message } = await caught(
-      cloneRepositoryRoute({ request: request({ parentDir: "/abs" }) } as never),
-    );
-    expect(status).toBe(400);
-    expect(message).toBe("remote:cloneRepository requires { url, parentDir, folderName }");
-  });
-
-  test("400 when parentDir is relative", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: { ...remoteBase, cloneRepository: async () => ({ projectDir: "/x" }), resolveSyncConflicts: async () => { throw new Error("unused"); } } as never,
-    });
-    const { status } = await caught(
-      cloneRepositoryRoute({ request: request({ url: "https://x/y.git", parentDir: "rel" }) } as never),
-    );
-    expect(status).toBe(400);
-  });
-
-  test("503 when remote hooks are not registered", async () => {
-    registerHostServices(baseServices());
-    const { status, message } = await caught(
-      cloneRepositoryRoute({ request: request({ url: "https://x/y.git", parentDir: "/abs" }) } as never),
-    );
-    expect(status).toBe(503);
-    expect(message).toBe("Remote hooks not available");
-  });
-
-  test("calls hooks.cloneRepository with the validated body and returns its result", async () => {
-    const calls: unknown[] = [];
-    registerHostServices({
-      ...baseServices(),
-      remote: {
-        ...remoteBase,
-        cloneRepository: async (args: unknown) => {
-          calls.push(args);
-          return { projectDir: "/abs/my-repo" };
-        },
-        resolveSyncConflicts: async () => { throw new Error("unused"); },
-      } as never,
-    });
-    const res = await cloneRepositoryRoute({
-      request: request({ url: "https://x/y.git", parentDir: "/abs", folderName: "my-repo" }),
-    } as never);
-    expect(await res.json()).toEqual({ projectDir: "/abs/my-repo" });
-    expect(calls).toEqual([{ url: "https://x/y.git", parentDir: "/abs", folderName: "my-repo" }]);
-  });
-
-  test("a hooks.cloneRepository rejection is sanitized (handleRemoteErrors), not left raw", async () => {
-    registerHostServices({
-      ...baseServices(),
-      remote: {
-        ...remoteBase,
-        cloneRepository: async () => {
-          throw new Error("some internal isomorphic-git stack trace detail");
-        },
-        resolveSyncConflicts: async () => { throw new Error("unused"); },
-      } as never,
-    });
-    const { status, message } = await caught(
-      cloneRepositoryRoute({ request: request({ url: "https://x/y.git", parentDir: "/abs" }) } as never),
-    );
-    expect(status).toBe(500);
-    expect(message).toBe(
-      "The online repository operation could not be completed. See the app log for details.",
-    );
-  });
 });
 
 // ── updater/get-status, updater/check, updater/download ─────────────────────
@@ -262,10 +140,10 @@ describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
     // proving the earlier cleanup wasn't a wholesale deletion") is gone from
     // api.ts NOW, on purpose, along with the rest of those five namespaces.
     // See migrated-ipc-routes.test.ts's own header for the ARCH review #8
-    // scope this describe block still covers (sync/remote/updater); the
-    // fs/dialog/shell/log/app IPC migration itself is covered by
-    // fs-capability.test.ts / dialog-capability.test.ts /
-    // app-lifecycle-capability.test.ts.
+    // scope this describe block still covers (updater, the last plain
+    // request/response exception); the fs/dialog/shell/log/app IPC
+    // migration itself is covered by fs-capability.test.ts /
+    // dialog-capability.test.ts / app-lifecycle-capability.test.ts.
     expect(src).not.toMatch(/statFile:\s*\(/);
     expect(src).not.toContain("dialog: {");
     expect(src).not.toContain("shell: {");
@@ -300,14 +178,13 @@ describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
     }
   });
 
-  test("preload.ts no longer registers the migrated IPC channels", async () => {
+  test("preload.ts no longer registers the migrated (still-HTTP) IPC channels", async () => {
     const src = await readFile(path.resolve(__dirname, "../../electron/preload.ts"), "utf-8");
     for (const channel of [
       '"updater:getStatus"',
       '"updater:check"',
       '"updater:download"',
-      '"sync:setAutoSync"',
-      '"remote:cloneRepository"',
+      // Dead — removed before this run (sync always converges); never on IPC.
       '"remote:resolveSyncConflicts"',
     ]) {
       expect(src).not.toContain(channel);
@@ -316,16 +193,18 @@ describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
     expect(src).toContain('"updater:applyNow"');
     expect(src).toContain('"remote:cloneProgress"');
     expect(src).toContain('"sync:status"');
+    // sync:setAutoSync / remote:cloneRepository — SFE-P5c3: restored to IPC
+    // (the whole remote/sync/publish group), so these ARE present again.
+    expect(src).toContain('"sync:setAutoSync"');
+    expect(src).toContain('"remote:cloneRepository"');
   });
 
-  test("main.ts no longer registers secureHandle for the migrated channels", async () => {
+  test("main.ts no longer registers secureHandle for updater (still HTTP) or dead channels", async () => {
     const src = await readFile(path.resolve(__dirname, "../../electron/main.ts"), "utf-8");
     for (const channel of [
       'secureHandle("updater:getStatus"',
       'secureHandle("updater:check"',
       'secureHandle("updater:download"',
-      'secureHandle("sync:setAutoSync"',
-      'secureHandle("remote:cloneRepository"',
       'secureHandle("remote:resolveSyncConflicts"',
     ]) {
       expect(src).not.toContain(channel);
@@ -334,5 +213,8 @@ describe("dead fs:watchFolder route + dead client wrappers are gone", () => {
     expect(src).toContain('secureHandle("fs:watchFolder"');
     expect(src).toContain('secureHandle("fs:unwatchFolder"');
     expect(src).toContain('secureHandle("updater:applyNow"');
+    // sync:setAutoSync / remote:cloneRepository — SFE-P5c3: restored to IPC.
+    expect(src).toContain('secureHandle("sync:setAutoSync"');
+    expect(src).toContain('secureHandle("remote:cloneRepository"');
   });
 });

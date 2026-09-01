@@ -44,6 +44,16 @@ import type {
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  PublishProviderCard,
+  PublishRunResult,
+  PublishProviderStaticInfo,
+  PreflightRow,
+  CloneRepositoryArgs,
+  SyncOutcome,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -67,7 +77,11 @@ import type {
 // 7 -> 8 (SFE-P5c2): added `project`, `manifest`, `tpl`, `snip`, `media`,
 // `plugin`, `theme`, `vcs`, `style` -- the nine route groups migrated from
 // SvelteKit HTTP routes to typed IPC in the same run.
-const DESKTOP_API = 8;
+// 8 -> 9 (SFE-P5c3): added `remote`, `sync`, `publish` -- the credentials-
+// sensitive group restored from SvelteKit HTTP routes to typed IPC in the
+// same run. connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus
+// were already on this bridge and are unchanged.
+const DESKTOP_API = 9;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -347,6 +361,75 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("style:setActive", projectDir, paths),
   },
 
+  // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
+  // sensitive group) ────────────────────────────────────────────────────────
+  // connectGitHubStart/Wait/Cancel, onCloneProgress, onSyncStatus are the
+  // top-level flat members further below (predate the namespaced-object
+  // convention P5c1/P5c2 established) — unchanged by this run.
+
+  remote: {
+    disconnectGitHub: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("remote:disconnectGitHub"),
+    getConnection: (host?: string): Promise<{ connected: boolean; username?: string; label?: string }> =>
+      ipcRenderer.invoke("remote:getConnection", host),
+    listRepositories: (): Promise<RemoteRepository[]> => ipcRenderer.invoke("remote:listRepositories"),
+    listBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
+      ipcRenderer.invoke("remote:listBranches", owner, repo),
+    listRepoBooks: (owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
+      ipcRenderer.invoke("remote:listRepoBooks", owner, repo, branch),
+    diagnoseProject: (projectDir: string): Promise<ProjectRemoteDiagnosis> =>
+      ipcRenderer.invoke("remote:diagnoseProject", projectDir),
+    testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
+      ipcRenderer.invoke("remote:testRemoteAccess", url),
+    connectGenericHost: (
+      args: ConnectGenericHostArgs,
+    ): Promise<{ connected: boolean; host: string; username?: string }> =>
+      ipcRenderer.invoke("remote:connectGenericHost", args),
+    disconnectHost: (host: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("remote:disconnectHost", host),
+    listConnections: (): Promise<HostConnectionInfo[]> => ipcRenderer.invoke("remote:listConnections"),
+    forgeTokenUrl: (host: string): Promise<string | null> => ipcRenderer.invoke("remote:forgeTokenUrl", host),
+    sync: (projectDir: string, message?: string): Promise<SyncOutcome> =>
+      ipcRenderer.invoke("remote:sync", projectDir, message),
+    cloneRepository: (args: CloneRepositoryArgs): Promise<{ projectDir: string }> =>
+      ipcRenderer.invoke("remote:cloneRepository", args),
+  },
+
+  sync: {
+    setAutoSync: (enabled: boolean): Promise<{ ok: boolean; autoSync: boolean }> =>
+      ipcRenderer.invoke("sync:setAutoSync", enabled),
+    /** The last "sync:status" payload emitted for `projectDir`, or null. */
+    getStatus: (projectDir: string): Promise<object | null> => ipcRenderer.invoke("sync:getStatus", projectDir),
+  },
+
+  publish: {
+    listProviders: (projectDir: string): Promise<PublishProviderCard[]> =>
+      ipcRenderer.invoke("publish:list", projectDir),
+    providers: (): Promise<PublishProviderStaticInfo[]> => ipcRenderer.invoke("publish:providers"),
+    connect: (
+      projectDir: string,
+      providerId: string,
+      token: string,
+      account?: string,
+    ): Promise<{ connected: boolean; providerId: string }> =>
+      ipcRenderer.invoke("publish:connect", projectDir, providerId, token, account),
+    disconnect: (providerId: string, account?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("publish:disconnect", providerId, account),
+    setConfig: (
+      projectDir: string,
+      providerId: string,
+      values: Record<string, string>,
+    ): Promise<Record<string, Record<string, unknown>>> =>
+      ipcRenderer.invoke("publish:setConfig", projectDir, providerId, values),
+    preflight: (projectDir: string, providerIds: string[]): Promise<PreflightRow[]> =>
+      ipcRenderer.invoke("publish:preflight", projectDir, providerIds),
+    run: (
+      projectDir: string,
+      providerId: string,
+      options?: { dryRun?: boolean; artifactPath?: string },
+    ): Promise<PublishRunResult> =>
+      ipcRenderer.invoke("publish:run", projectDir, providerId, options?.artifactPath, options?.dryRun),
+  },
+
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
@@ -405,33 +488,28 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubWait"),
   connectGitHubCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("remote:connectGitHubCancel"),
-  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
-  // listRepoBooks — migrated to server routes (Phase 2F).
-  // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
-  // — ARCH review #8: plain request/response, no push stream involved itself.
+  // disconnectGitHub, getConnection, listRepositories, listBranches,
+  // listRepoBooks, diagnoseProject, testRemoteAccess, connectGenericHost,
+  // disconnectHost, listConnections, forgeTokenUrl, sync, cloneRepository —
+  // SFE-P5c3: restored to typed IPC on the `remote` namespaced block above
+  // (request/reply operations only — the push channel below is unaffected,
+  // run rule 8).
   /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),
 
-  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
-  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
-
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
   // transitions. The renderer subscribes via onSyncStatus to drive the ambient
-  // pill without polling. setAutoSync migrated to server route
-  // (api.sync.setAutoSync) — ARCH review #8: a pure settings write, no push
-  // stream or live-BrowserWindow need.
+  // pill without polling. setAutoSync/getStatus are the `sync` namespaced
+  // block above (SFE-P5c3: restored to typed IPC).
 
   /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
 
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
-
-  // syncChanges — migrated to server route (Phase 2F).
-  // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
-  // — ARCH review #8: plain request/response.
+  // resolveSyncConflicts — dead (removed before this run; sync always converges).
 
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),

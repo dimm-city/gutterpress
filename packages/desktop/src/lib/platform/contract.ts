@@ -300,6 +300,30 @@ export type { SharedDesktopPrefs as DesktopPrefs, LeftPanelPrefs };
 /** Environment status for the Advanced Setup panel — re-exported from shared-types. */
 export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 
+// ── Publishing (#35 / #105) ───────────────────────────────────────────────────
+//
+// PublishProviderCard/PublishIssue/PublishOutcomeInfo/PublishRunResult are
+// imported from shared-types above (re-exported at the top of this file).
+
+/**
+ * Static publish-provider metadata (no project needed) — used by Settings →
+ * Connections to classify + label stored credentials. Referenced by
+ * `ElectronBridge.publish.providers()` directly, so it stays here rather than
+ * moving to `$lib/publish/publish-capability` (the same "referenced by
+ * ElectronBridge directly" reasoning documented at the top of this file for
+ * `FolderRef`/`PreviewStartArgs`/etc.) — no canonical twin in the lib.
+ */
+export interface PublishProviderStaticInfo {
+  id: string;
+  label: string;
+  kind: "api" | "guided";
+  credentialRequired: boolean;
+  /** The TokenStore host this provider's credentials are keyed under. */
+  credentialHost: string | null;
+  tokenUrl: string | null;
+  hint: string | null;
+}
+
 // ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
 //
 // Defined locally here — decoupled from the lib — so the SPA never
@@ -509,15 +533,15 @@ export interface ElectronBridge {
   connectGitHubCancel(): Promise<{ ok: boolean }>;
 
   /** Subscribe to clone progress events. Returns an unsubscribe fn. (`cloneRemoteRepository`
-   *  itself moved to a server route — api.remote.cloneRepository — ARCH review #8.) */
+   *  itself is the `remote.cloneRepository` member below — SFE-P5c3: restored to IPC.) */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
   //
   // The host auto-sync orchestrator (electron/main.ts) emits `sync:status`
   // events whenever its state machine transitions. The renderer subscribes here
-  // to drive the ambient status pill without polling. (`setAutoSync` itself
-  // moved to a server route — api.sync.setAutoSync — ARCH review #8.)
+  // to drive the ambient status pill without polling. (`setAutoSync` itself is
+  // the `sync.setAutoSync` member below — SFE-P5c3: restored to IPC.)
 
   /**
    * Subscribe to ambient sync-status updates from the host orchestrator.
@@ -705,5 +729,74 @@ export interface ElectronBridge {
 
   style: {
     setActive(projectDir: string, paths: string[]): Promise<string[]>;
+  };
+
+  // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
+  // sensitive group) ────────────────────────────────────────────────────────
+  // Replaces the deleted src/routes/api/{remote,sync,publish}/** +server.ts
+  // routes and their api.ts client methods. connectGitHubStart/Wait/Cancel/
+  // onCloneProgress/onSyncStatus (above) are unchanged by this run.
+
+  remote: {
+    disconnectGitHub(): Promise<{ ok: boolean }>;
+    getConnection(host?: string): Promise<{ connected: boolean; username?: string; label?: string }>;
+    listRepositories(): Promise<RemoteRepository[]>;
+    listBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+    listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+    diagnoseProject(projectDir: string): Promise<SharedProjectRemoteDiagnosis>;
+    testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+    connectGenericHost(
+      args: ConnectGenericHostArgs,
+    ): Promise<{ connected: boolean; host: string; username?: string }>;
+    disconnectHost(host: string): Promise<{ ok: boolean }>;
+    listConnections(): Promise<HostConnectionInfo[]>;
+    forgeTokenUrl(host: string): Promise<string | null>;
+    sync(projectDir: string, message?: string): Promise<SyncOutcome>;
+    cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+  };
+
+  sync: {
+    setAutoSync(enabled: boolean): Promise<{ ok: boolean; autoSync: boolean }>;
+    /**
+     * The last sync status the host emitted for a project, or null. Typed
+     * loosely at this raw-bridge layer (same documented drift `onSyncStatus`
+     * already carries, capability-map.md §"ElectronBridge parity") — the
+     * capability module casts to {@link SyncStatus}.
+     */
+    getStatus(projectDir: string): Promise<object | null>;
+  };
+
+  publish: {
+    listProviders(projectDir: string): Promise<PublishProviderCard[]>;
+    providers(): Promise<PublishProviderStaticInfo[]>;
+    connect(
+      projectDir: string,
+      providerId: string,
+      token: string,
+      account?: string,
+    ): Promise<{ connected: boolean; providerId: string }>;
+    disconnect(providerId: string, account?: string): Promise<{ ok: boolean }>;
+    setConfig(
+      projectDir: string,
+      providerId: string,
+      values: Record<string, string>,
+    ): Promise<Record<string, Record<string, unknown>>>;
+    /**
+     * Typed loosely at this raw-bridge layer (same documented reason
+     * `sync.getStatus` is): `PreflightRow` lives in `$lib/preflight.ts`,
+     * which itself imports `$lib/problems.ts` via the `$lib` alias — a
+     * specifier `tsc -p electron/tsconfig.json` cannot resolve (no `$lib`
+     * alias configured there; see `files-capability.ts`'s header for the
+     * same landmine). Importing that chain into `contract.ts` would pull it
+     * into the electron program via `persistence-failures.ts`. The
+     * `publish-capability.ts` module (never reached by that program) casts
+     * to {@link PreflightRow} for its own typed `preflight()` export.
+     */
+    preflight(projectDir: string, providerIds: string[]): Promise<unknown[]>;
+    run(
+      projectDir: string,
+      providerId: string,
+      options?: { dryRun?: boolean; artifactPath?: string },
+    ): Promise<PublishRunResult>;
   };
 }

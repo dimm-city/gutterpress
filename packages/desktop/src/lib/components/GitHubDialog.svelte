@@ -14,9 +14,13 @@
     connectGitHubCancel,
     connectGitHubStart,
     connectGitHubWait,
+    disconnectGitHub as disconnectGitHubRemote,
+    getRemoteConnection,
+    listRemoteBranches,
+    listRemoteRepositories,
+    listRepoBooks as listRemoteRepoBooks,
     onCloneProgress,
   } from "$lib/remote/remote-capability";
-  import { api } from "$lib/api";
   import { openDirectory, openExternal } from "$lib/files/files-capability";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
@@ -109,7 +113,7 @@
   async function init() {
     if (!isDesktop()) return;
     try {
-      const conn = await api.remote.getRemoteConnection();
+      const conn = await getRemoteConnection();
       if (conn.connected) {
         username = conn.username ?? null;
         await loadRepos();
@@ -135,10 +139,11 @@
       // The user may have closed the dialog mid-flow — only surface errors
       // while it is still open.
       if (open) {
-        // This path is IPC-bridged (remote-capability → ipcRenderer.invoke), so
-        // unlike the api.remote.* fetch routes (sanitized host-side) the raw
-        // "Error invoking remote method '…':" transport prefix can reach here
-        // unscrubbed (L11) — scrub it before it reaches the writer.
+        // remote-capability's functions already scrub the Electron IPC
+        // transport prefix (SFE-P5c3) — this is a harmless defense-in-depth
+        // second pass (a caught, already-scrubbed message doesn't match the
+        // prefix pattern again), kept so this catch reads the same as every
+        // other error surface in this file.
         error = friendlyHostError(e instanceof Error ? e.message : String(e));
         step = "connect";
       }
@@ -160,7 +165,7 @@
     await tick();
     dialogEl?.focus();
     try {
-      repos = await api.remote.listRemoteRepositories() as RemoteRepository[];
+      repos = await listRemoteRepositories();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -189,10 +194,9 @@
     destination = null;
     step = "configure";
     // Branch list loads in the background; the default is already selected.
-    api.remote
-      .listRemoteBranches(repo.owner, repo.name)
+    listRemoteBranches(repo.owner, repo.name)
       .then((list) => {
-        if (list.length > 0) branches = list as RemoteBranch[];
+        if (list.length > 0) branches = list;
       })
       .catch(() => {});
   }
@@ -218,11 +222,11 @@
     const gen = ++loadGen;
     let found: RepoBook[] = [];
     try {
-      found = await api.remote.listRepoBooks(
+      found = await listRemoteRepoBooks(
         selectedRepo.owner,
         selectedRepo.name,
         branch,
-      ) as RepoBook[];
+      );
     } catch {
       // Book discovery is best-effort — fall back to the repository root.
       found = [];
@@ -280,7 +284,7 @@
 
   async function disconnect() {
     try {
-      await api.remote.disconnectGitHub();
+      await disconnectGitHubRemote();
     } catch {
       /* non-fatal */
     }

@@ -1346,3 +1346,294 @@ ApplyThemeTarget)` failed `bun run typecheck` with a type mismatch against
 the lib's own stricter `ApplyThemeTarget`. Fixed by importing the real type
 from `dtos.ts` instead of hand-declaring a loose local one (the same fix
 class as reusing an existing DTO rather than inventing a parallel shape).
+
+### SFE-P5c3 — 2026-09-01 — migrate `remote`/`sync`/`publish` to typed IPC (the credentials-sensitive group)
+
+Lane A (implementation). Base SHA `b77a6524` (SFE-P5c1+P5c2's committed
+review-repair head, per the P5c2 section above). Head SHA: uncommitted at
+hand-off — the integrator records the real SHA at commit time per this
+row's own instruction.
+
+**What was deleted:**
+
+- 22 `+server.ts` routes under `src/routes/api/{remote,sync,publish}/**`:
+  `remote` (13 — `clone-repository`/`connect-generic-host`/
+  `diagnose-project`/`disconnect-github`/`disconnect-host`/
+  `forge-token-url`/`get-connection`/`list-branches`/`list-connections`/
+  `list-repo-books`/`list-repositories`/`sync`/`test-remote-access`),
+  `sync` (2 — `set-auto-sync`/`status`), `publish` (7 — `connect`/
+  `disconnect`/`list`/`preflight`/`providers`/`run`/`set-config`), plus
+  their `_hooks.ts` shared helpers (`remote/_hooks.ts`, `publish/_hooks.ts`
+  — SvelteKit-route-specific re-exports over `electron/server-bridge/
+  remote-hooks.ts`/`friendly-errors.ts`, superseded by direct imports in
+  the new `electron/api/*.ts` modules). Route count 32 → 10
+  (`tools/architecture-baseline.json`'s `desktopHttpRoutes` re-baselined in
+  the same commit).
+- **No routes were confirmed dead.** All 22 had a real caller enumerated
+  before migration (`ConnectionsSettings.svelte`, `GitHubDialog.svelte`,
+  `ProjectConnectionsSection.svelte`, `SyncStatusPill.svelte`,
+  `+page.svelte`, `publish-section-controller.svelte.ts`).
+- `src/lib/api.ts`'s `remote`/`sync`/`publish` namespaces (22 methods, net
+  −280 lines: +9/−289) and the now-orphaned `PublishProviderStaticInfo`
+  local interface (moved to `platform/contract.ts` — see below) and unused
+  type imports (`RemoteConnection`/`RemoteRepository`/`RemoteBranch`/
+  `RepoBook`/`RemoteAccessResult`/`ProjectRemoteDiagnosis`/
+  `ConnectGenericHostArgs`/`HostConnectionInfo`/`SyncOutcome`/`SyncStatus`/
+  `CloneRepositoryArgs`/`PublishProviderCard`/`PublishIssue`/
+  `PublishOutcomeInfo`/`PublishRunResult`/`PreflightRow`). `SnapshotEntry`
+  (a pre-existing, already-orphaned re-export unrelated to this subrun's
+  three namespaces) is left untouched — out of this run's write ownership
+  ("api.ts ONLY to delete migrated namespaces").
+- `src/lib/server/settings.ts` (26 lines) — a route-only `gitIdentityArgs()`
+  twin whose ONLY real caller was the deleted `remote/sync` route (its
+  mentions elsewhere, in `electron/git-identity.ts`'s and
+  `electron/api/git-identity-args.ts`'s doc comments, were prose, not
+  imports). `bun run knip` caught this as an unused file after the route
+  deletion; not anticipated at design time, found by actually running the
+  gate. Deleted, with the four comment references to it corrected in place
+  (`electron/git-identity.ts`, `electron/api/git-identity-args.ts` ×2,
+  `git-identity-and-activity.test.ts`, `auto-snapshot-scheduler.test.ts`).
+
+**What was added:**
+
+- `electron/api/remote.ts` (327 lines) and `electron/api/publish.ts` (372
+  lines) — the main-process IPC handler logic, ported from the deleted
+  routes verbatim (same validation, same `handleRemoteErrors`/
+  `handlePublishErrors` wrapping — including the ordering-load-bearing
+  detail of which checks run BEFORE vs. INSIDE those wrappers, since that
+  ordering decides whether a message survives verbatim or gets genericized;
+  reproduced exactly, not "fixed"), reusing `electron/api/validation.ts`
+  (P5c1) and `electron/api/git-identity-args.ts` (P5c2) verbatim — no
+  path-validation or identity logic re-derived. `remoteCloneRepository` and
+  `syncSetAutoSync`/`syncGetStatus` call straight through to the SAME
+  `remoteHooksImpl.cloneRepository`/`syncSettingsHooksImpl` closures
+  `electron/main.ts` already built (unchanged) — `cloneRepository` in
+  particular needs live `mainWindow`/`safeSend` access for its
+  `remote:cloneProgress` push, which only a closure built inside `main.ts`
+  can reach; the new handler module reuses it through `getRemoteHooks()`
+  rather than re-deriving it. `publishPreflight` alone needs no hooks bag
+  (matching the deleted route, which never touched one) and reaches the
+  real lib through `electron/api/lib-loader.ts`'s process-cached
+  `loadLib()`.
+- 22 `secureHandle` registrations in `electron/main.ts`, reusing the
+  channel names the routes' own `handleRemoteErrors`/`handlePublishErrors`
+  call-site labels already used (`remote:diagnoseProject`,
+  `publish:setConfig`, …) — and, for `sync:setAutoSync` /
+  `remote:cloneRepository`, the exact channel names those two carried
+  before ARCH review #8 moved them to HTTP (this run reverses that framing
+  for the whole group, D10).
+- `src/lib/publish/publish-capability.ts` (100 lines, new module) — the
+  smallest-honest-shape decision named in this run's own brief: publishing
+  does NOT join `$lib/export/build-preview-capability.ts` (D10's "build/
+  preview/export" context owns only the live preview/build pipeline —
+  `ExportController`/`ProjectLifecycleController` — a different caller set
+  from publishing's `ConnectionsSettings.svelte`/`PublishWizard.svelte`/
+  `+page.svelte`, and folding in 7 credential-adjacent members would mix
+  two concerns that only share a word). It gets its own small file instead,
+  matching the `vcs-capability.ts` precedent (own module despite being
+  adjacent to another named D10 context).
+- `src/lib/remote/remote-capability.ts` gained 14 new functions
+  (`disconnectGitHub`/`getRemoteConnection`/`listRemoteRepositories`/
+  `listRemoteBranches`/`listRepoBooks`/`diagnoseProjectRemote`/
+  `testRemoteAccess`/`connectGenericHost`/`disconnectHost`/
+  `listHostConnections`/`forgeTokenUrl`/`syncChanges`/`getSyncStatus`, plus
+  `cloneRemoteRepository`/`setAutoSync` REWIRED from the HTTP client onto
+  the bridge) — every one wrapped in the module's own `call()` helper
+  (`friendlyHostError`-scrubbed), the same discipline `files-capability.ts`/
+  `vcs-capability.ts` established; the pre-existing
+  `connectGitHubStart`/`Wait`/`Cancel`/`onCloneProgress`/`onSyncStatus`
+  members are untouched.
+- `ElectronBridge` (`contract.ts`) gained `remote`/`sync`/`publish` members
+  (+96 lines); `electron/preload.ts`/`types.d.ts`/`bridge-types.ts` gained
+  the mirrored ambient/re-export shapes — the same three-way
+  hand-maintained-mirror discipline P5c1/P5c2 established. `DESKTOP_API`
+  bumped 8 → 9. `PublishProviderStaticInfo` moved from `api.ts`'s
+  "genuinely api-local shapes" section to `contract.ts` proper (referenced
+  by `ElectronBridge.publish.providers()` directly — the same "stays in
+  contract.ts, referenced by ElectronBridge" reasoning already documented
+  there for `FolderRef`/`PreviewStartArgs`/etc.), NOT a type-only
+  back-import from `publish-capability.ts` — see the next paragraph for why
+  that specific shape matters.
+- **A landmine this lane hit and fixed, not anticipated at design time:**
+  `publish.preflight()`'s natural return type is `$lib/preflight.ts`'s
+  `PreflightRow[]`, but that module value-imports `./problems.ts`, which
+  imported `ProblemEntry` via the `$lib/platform/dtos` ALIAS — unresolvable
+  under `tsc -p electron/tsconfig.json` (no `$lib` alias configured there;
+  the exact landmine `files-capability.ts`'s header already documents for
+  the same reason). Reached for the first time this run because
+  `electron/api/publish.ts` is the first `electron/api/*.ts` module to
+  reuse `$lib/preflight.ts`'s pure shaping logic. Fixed two ways: (1)
+  `problems.ts`'s `ProblemEntry` import changed from the `$lib` alias to a
+  relative path (`./platform/dtos` — a type-only import, zero runtime
+  change, resolves identically under both tsconfigs); (2)
+  `ElectronBridge.publish.preflight()`'s raw-bridge-layer return type is
+  `Promise<unknown[]>`, not `Promise<PreflightRow[]>` — the same
+  loose-bridge/richly-typed-capability split `sync.getStatus` already
+  carries for the analogous reason (documented inline at both sites) —
+  `publish-capability.ts`'s own `preflight()` export casts to the real
+  type for its callers.
+- 2 new IPC-handler test files (816 lines): `remote-ipc.test.ts` (461
+  lines) and `publish-ipc.test.ts` (355 lines), replacing the deleted
+  route-level tests (`remote-path-validation.test.ts`, deleted outright;
+  the `remote`/`publish` rows of `route-scoping.test.ts`'s `ROUTES` table;
+  the `sync`/`remote` describe blocks of `migrated-ipc-routes.test.ts`).
+  Each covers, per function: hooks-not-registered ("host disconnected"),
+  validation that stays literal (outside `handleRemoteErrors`/
+  `handlePublishErrors`) vs. genericized (inside — preserved verbatim, both
+  directions, across the transport change), success paths asserting the
+  exact lib/hooks call made, a dedicated "no token in response" describe
+  block (see below), and the ported project-scoping table (outside/
+  sibling-prefix/no-project-open/repo-root/symlink-escape cases, now
+  asserting a thrown `Error`'s message instead of an HTTP status) plus
+  `publishRun`'s artifactPath picked-vs-not-picked/relative/`../`-escape
+  cases. `route-scoping.test.ts` and `migrated-ipc-routes.test.ts` are
+  trimmed in place (not deleted) — `lint/project` and the updater describe
+  block are still-HTTP, out of this subrun's scope. 6 pre-existing
+  source-string test files updated to the new call-site text
+  (`settings-connections.test.ts`, `publish-wizard.test.ts`,
+  `ux-writer-friendly.test.ts`, `remote-capability.test.ts` — rewritten to
+  assert bridge delegation instead of `fetch` for `cloneRemoteRepository`/
+  `setAutoSync`, plus new delegation+scrub coverage for the 13 functions
+  that joined the module this run — `git-identity-and-activity.test.ts`,
+  `auto-snapshot-scheduler.test.ts`).
+
+**SECURITY (D12) — secret-isolation proof:** every new IPC channel's
+response shape was grepped for token-bearing fields
+(`packages/desktop/electron/api/{remote,publish}.ts`). Three shapes touch
+credential material and each is provably redaction-safe:
+
+1. `remoteConnectGenericHost` receives a raw token and gets a FULL
+   credential object back from `lib.connectGenericHost` (including
+   `token`) — the handler builds a NEW literal `{ connected, host,
+   username? }` return value rather than forwarding the lib's object, so
+   the token can never reach the return path. Proven by a dedicated test
+   (`remote-ipc.test.ts`) that stubs the lib to return a real-looking
+   secret string and asserts `JSON.stringify(result)` never contains it.
+2. `publishConnect` receives a raw token and returns exactly what
+   `lib.connectPublishProvider` resolves to — that function's own
+   TypeScript contract types its result as `{ connected, providerId }`
+   (no token field), so there is no token-shaped value to accidentally
+   forward; proven the same way (`publish-ipc.test.ts`).
+3. `remoteGetConnection`/`remoteListConnections`/`publishListProviders`
+   forward `TokenStore.status()`/`listRedacted()`'s OWN return values
+   unchanged — that interface's contract (`electron/server-bridge/
+   remote-hooks.ts`) already excludes `token` by construction, unchanged by
+   this run; a defense-in-depth test proves the actual forwarded values
+   never carry a probe secret string either.
+4. `remoteSync`/`remoteCloneRepository`/`publishRun` pass the `TokenStore`
+   object BY REFERENCE into the lib (never a raw token string) and return
+   the lib's own sync/clone/publish outcome shapes, none of which are
+   typed to carry credential material.
+
+No channel returns a raw token. `remote:getConnection`'s comment
+("NEVER returns the token") and `publish:connect`'s ("Response is
+redacted") are the same invariants the deleted routes documented,
+preserved verbatim.
+
+**The merge/checkout rollback guarantee:** `remoteSync` calls
+`lib.syncProject(...)` with the identical argument shape
+(`projectDir`/`tokenStore`/`authorName?`/`authorEmail?`/`message?`) the
+deleted route always used — the pull-dies-between-merge-and-checkout
+rollback mechanism itself lives entirely inside
+`packages/cli/src/lib/remote-auth/converge-merge.ts` (out of this lane's
+write ownership) and is untouched by this transport change. Re-ran its
+test suite directly as evidence it still exercises the real mechanism:
+`cd packages/cli && bun test src/lib/remote-auth/converge-merge.test.ts` →
+3 pass, 0 fail.
+
+**Publish progress-shape finding:** `publish/run` never polled and never
+used a push channel — the deleted route called `lib.runPublish(options, {
+tokenStore, onProgress })`, where `onProgress` appended each butler/swa
+output line into a local `string[]` (capped at 500 lines), and the route
+returned `{ ...result, log }` in ONE response once the run finished.
+`publishRun` (`electron/api/publish.ts`) reproduces this exactly — same
+callback shape, same cap, same one-shot response — so no new stream was
+invented; the "check readiness" dry-run and the real publish are each
+still a single request/reply IPC call, matching run rule 3's guidance
+("if a publish route polled for status, the IPC replacement may keep the
+same request/reply polling — do not invent a new stream") for the case
+that was actually true here (no polling either). Proven by
+`publish-ipc.test.ts`'s "collects progress lines into a bounded log" test.
+
+**Re-baseline:** `tools/architecture-baseline.json`'s `desktopHttpRoutes`
+32 → 10 (matches `find packages/desktop/src/routes/api -name "+server.ts"
+| wc -l` exactly — the 5 route dirs left, `{doctor,lint,recovery,status,
+updater}`, are P5c4's territory).
+
+**Net diffstat** (working tree at hand-off, `git diff --numstat` against
+base `b77a6524`, new untracked files included via a stage/unstage round
+trip so the numbers cover the whole subrun):
+
+```
+production (packages/desktop/electron + packages/desktop/src): +1,370 / −1,269  (net +101)
+tests (packages/desktop/tests):                                   +996 / −462  (net +534)
+combined:                                                       58 files changed, +2,366 / −1,731
+```
+
+Same shape as P5c1/P5c2's own accounting: production is close to flat
+(net +101, smaller than either prior subrun's positive delta) because this
+is a transport migration carrying real security-load-bearing logic
+(credential redaction, the three-way bridge type mirror, the
+`handleRemoteErrors`/`handlePublishErrors` ordering) rather than a feature
+deletion — the 22 deleted routes' validation/lib-call logic moves into
+`electron/api/{remote,publish}.ts` almost 1:1, plus the two new capability
+modules and the IPC channel/type plumbing the transport change requires.
+The route+api.ts side alone is net-negative (routes losslessly deleted,
+`api.ts` net −280, `src/lib/server/settings.ts` −26 = well over −1,000
+combined), consistent with rule 9's "route files + fetch plumbing die;
+validation moves rather than grows" holding on that specific slice even
+though the run-wide production sum is mildly positive; the success
+criterion's net-LOC requirement is scoped to the combined P4–P6 phases,
+not each P5 subrun individually (same scoping precedent P5c1/P5c2 cite).
+Tests are net-positive (+534) for the same reason P5c1/P5c2's own test
+suites were: `remote-ipc.test.ts`/`publish-ipc.test.ts` add real
+per-function validation-ordering, no-token-in-response, and scoping
+coverage that route-level tests did not carry at the same density.
+
+#### Search proofs (from repo root, against the working tree)
+
+```
+$ find packages/desktop/src/routes/api/{remote,sync,publish} -maxdepth 0
+(all three: No such file or directory — route directories deleted)
+
+$ find packages/desktop/src/routes/api -name "+server.ts" | wc -l
+10   (matches the re-baselined tools/architecture-baseline.json exactly)
+
+$ grep -rn "api\.remote\.\|api\.sync\.\|api\.publish\." packages/desktop/src packages/desktop/tests
+→ 5 hits, all doc/JSDoc comments describing the migration (SyncStatusPill.svelte,
+  api.ts, publish-capability.ts, remote-capability.ts,
+  remote-capability.test.ts) — zero real call sites
+```
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && bun run test` | 0 | 5898 pass, 1 skip, 0 fail |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 711 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean |
+| `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity` (142 files scanned, no forbidden host/node markers) clean |
+| `bun run check:architecture` (repo root) | 0 | route ratchet 10 == baseline 10; ProseMirror ban, D4 import direction, future-package rules all PASS |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged |
+
+Two defects were found and fixed before hand-off, by actually running the
+gate rather than by inspection:
+
+1. `src/lib/server/settings.ts` went orphaned once `remote/sync` (its only
+   real caller) was deleted — `bun run knip` caught it; see "What was
+   deleted" above.
+2. `electron/api/publish.ts` reusing `$lib/preflight.ts` pulled
+   `$lib/problems.ts`'s aliased `$lib/platform/dtos` import into
+   `tsc -p electron/tsconfig.json`'s program for the first time — `bun run
+   typecheck` caught it; see the "landmine" paragraph above.
+
+Two test-suite failures surfaced by an initial `bun run test` pass and were
+fixed before hand-off: `remote-capability.test.ts`'s generic
+delegation-table test wrongly expected `setAutoSync`'s bridge result back
+(that function's own pre-existing signature is `Promise<void>` and
+discards it — fixed the table entry, not the function);
+`settings-connections.test.ts`'s "exactly one connect-a-git-server call
+site" assertion counted the bare identifier `connectGenericHost`, which
+now also appears once in the SFE-P5c3 capability import line — fixed to
+count the call-site pattern `connectGenericHost(` instead.

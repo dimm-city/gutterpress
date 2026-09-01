@@ -67,6 +67,11 @@ import * as pluginApi from "./api/plugin";
 import * as themeApi from "./api/theme";
 import * as vcsApi from "./api/vcs";
 import * as styleApi from "./api/style";
+// SFE-P5c3: remote/sync/publish moved from SvelteKit HTTP routes back to
+// typed IPC (the credentials-sensitive group) — same rationale as P5c1/P5c2
+// above. GitHub device-flow + clone-progress push stay exactly as they were.
+import * as remoteApi from "./api/remote";
+import * as publishApi from "./api/publish";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1544,12 +1549,73 @@ function sanitizeBookSubPath(subPath: unknown): string {
   return segments.join("/");
 }
 
-// remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
-// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository — migrated to SvelteKit server routes
-// (Phase 2F / ARCH review #8: src/routes/api/remote/*). cloneRepository is a
-// bound closure on remoteHooksImpl above (it needs mainWindow, which the
-// route's separate Vite bundle can't reach directly).
+// remote:disconnectGitHub, remote:getConnection, remote:listRepositories,
+// remote:listBranches, remote:listRepoBooks, remote:diagnoseProject,
+// remote:testRemoteAccess, remote:connectGenericHost, remote:disconnectHost,
+// remote:listConnections, remote:forgeTokenUrl, remote:sync,
+// remote:cloneRepository — SFE-P5c3, restored from SvelteKit server routes
+// to typed IPC (the credentials-sensitive group). Every handler lives in
+// electron/api/remote.ts and reuses remoteHooksImpl (below `registerHostServices`
+// call further down still supplies it) through getRemoteHooks() —
+// cloneRepository stays the bound closure on remoteHooksImpl it always was
+// (it needs mainWindow for the clone-progress push, which a plain function
+// module cannot reach), unchanged by this run.
+secureHandle("remote:disconnectGitHub", () => remoteApi.remoteDisconnectGitHub());
+secureHandle("remote:getConnection", (_e, host?: unknown) => remoteApi.remoteGetConnection(host));
+secureHandle("remote:listRepositories", () => remoteApi.remoteListRepositories());
+secureHandle("remote:listBranches", (_e, owner: unknown, repo: unknown) =>
+  remoteApi.remoteListBranches(owner, repo),
+);
+secureHandle("remote:listRepoBooks", (_e, owner: unknown, repo: unknown, branch: unknown) =>
+  remoteApi.remoteListRepoBooks(owner, repo, branch),
+);
+secureHandle("remote:diagnoseProject", (_e, projectDir: unknown) =>
+  remoteApi.remoteDiagnoseProject(projectDir),
+);
+secureHandle("remote:testRemoteAccess", (_e, url: unknown) => remoteApi.remoteTestRemoteAccess(url));
+secureHandle("remote:connectGenericHost", (_e, args: unknown) =>
+  remoteApi.remoteConnectGenericHost(args),
+);
+secureHandle("remote:disconnectHost", (_e, host: unknown) => remoteApi.remoteDisconnectHost(host));
+secureHandle("remote:listConnections", () => remoteApi.remoteListConnections());
+secureHandle("remote:forgeTokenUrl", (_e, host: unknown) => remoteApi.remoteForgeTokenUrl(host));
+secureHandle("remote:sync", (_e, projectDir: unknown, message?: unknown) =>
+  remoteApi.remoteSync(projectDir, message),
+);
+secureHandle("remote:cloneRepository", (_e, args: unknown) => remoteApi.remoteCloneRepository(args));
+
+// sync:setAutoSync, sync:getStatus — SFE-P5c3, restored to typed IPC (same
+// group; sync/remote/GitHub is one bounded context, D10).
+secureHandle("sync:setAutoSync", (_e, enabled: unknown) => remoteApi.syncSetAutoSync(enabled));
+secureHandle("sync:getStatus", (_e, projectDir: unknown) => remoteApi.syncGetStatus(projectDir));
+
+// publish:list, publish:providers, publish:connect, publish:disconnect,
+// publish:setConfig, publish:preflight, publish:run — SFE-P5c3, restored to
+// typed IPC. Publishing shares the remote hooks bag (electron/api/publish.ts's
+// own header explains why) rather than a parallel registration.
+secureHandle("publish:list", (_e, projectDir: unknown) => publishApi.publishListProviders(projectDir));
+secureHandle("publish:providers", () => publishApi.publishProviders());
+secureHandle(
+  "publish:connect",
+  (_e, projectDir: unknown, providerId: unknown, token: unknown, account?: unknown) =>
+    publishApi.publishConnect(projectDir, providerId, token, account),
+);
+secureHandle("publish:disconnect", (_e, providerId: unknown, account?: unknown) =>
+  publishApi.publishDisconnect(providerId, account),
+);
+secureHandle(
+  "publish:setConfig",
+  (_e, projectDir: unknown, providerId: unknown, values: unknown) =>
+    publishApi.publishSetConfig(projectDir, providerId, values),
+);
+secureHandle("publish:preflight", (_e, projectDir: unknown, providerIds: unknown) =>
+  publishApi.publishPreflight(projectDir, providerIds),
+);
+secureHandle(
+  "publish:run",
+  (_e, projectDir: unknown, providerId: unknown, artifactPath?: unknown, dryRun?: unknown) =>
+    publishApi.publishRun(projectDir, providerId, artifactPath, dryRun),
+);
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this

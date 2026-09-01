@@ -13,13 +13,12 @@
    * No Git jargon in any string (transparent-sync plan §5.1, copy discipline).
    * No counts (§3.5 — counts require history walks).
    * PWA-clean: host work via the remote capability's onSyncStatus() (the
-   * push-stream seam) plus an api.sync.getStatus() seed fetch (CLAUDE.md §8
-   * / ADR 0004).
+   * push-stream seam) plus a getSyncStatus() seed fetch (CLAUDE.md §8 / ADR
+   * 0004; SFE-P5c3: sync moved off `api.sync.*` HTTP routes to typed IPC).
    */
   import { onMount } from "svelte";
   import { isDesktop } from "$lib/platform";
-  import { onSyncStatus } from "$lib/remote/remote-capability";
-  import { api } from "$lib/api";
+  import { getSyncStatus, onSyncStatus } from "$lib/remote/remote-capability";
   import type { SyncStatus, SyncState } from "$lib/platform/contract";
 
   let {
@@ -109,8 +108,7 @@
     // otherwise be lost and the pill would sit blank/stale until the next
     // periodic tick. A push that lands first wins — the seed is older by
     // definition, so it never overwrites a live event.
-    void api.sync
-      .getStatus(projectDir)
+    void getSyncStatus(projectDir)
       .then((status) => {
         if (!receivedLive && status) applyStatus(status);
       })

@@ -66,6 +66,18 @@ export type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  // SFE-P5c3: remote/sync/publish IPC payload types — already lived in
+  // shared-types.ts (routes never stopped being typed there while `remote`/
+  // `sync`/`publish` were HTTP), just not re-exported here until the bridge
+  // itself needed them.
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  PublishProviderCard,
+  PublishIssue,
+  PublishOutcomeInfo,
+  PublishRunResult,
 } from "../src/lib/platform/shared-types";
 
 // SFE-P5c2: local version history (vcs:*) IPC payload types — already lived
@@ -124,3 +136,8 @@ export type {
 // editor-projection.ts above).
 export type { DirEntry, FileStat, FileWriteResult, ProjectFileEntry } from "./api/fs";
 export type { LogFileEntry } from "./api/log";
+
+// SFE-P5c3: publish's own electron-owned DTO (same same-directory re-export
+// pattern as fs/log above) plus the PWA-clean preflight row shape.
+export type { PublishProviderStaticInfo } from "./api/publish";
+export type { PreflightRow } from "../src/lib/preflight";

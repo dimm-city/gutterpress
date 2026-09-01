@@ -1,4 +1,4 @@
 {
   "README": "Consumed only by tools/check-architecture.mjs (SFE-P0b, plan rule D10). desktopHttpRoutes is the maximum allowed count of packages/desktop/src/routes/api/**/+server.ts files: the ratchet fails a build that exceeds it and only ever moves DOWN. When a run deletes desktop HTTP routes (e.g. P5c), lower this number in the same run that deletes them.",
-  "desktopHttpRoutes": 32
+  "desktopHttpRoutes": 10
 }

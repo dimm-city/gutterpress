@@ -75,6 +75,16 @@ import type {
   MediaImageEntry,
   MediaImageDetails,
   LastFlushFailure,
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  PublishProviderCard,
+  PublishRunResult,
+  PublishProviderStaticInfo,
+  PreflightRow,
+  CloneRepositoryArgs,
+  SyncOutcome,
 } from "./bridge-types";
 import type { CreateProjectResult } from "gutterpress";
 
@@ -225,6 +235,52 @@ declare global {
         setActive(projectDir: string, paths: string[]): Promise<string[]>;
       };
 
+      // ── remote / sync / publish — typed IPC (SFE-P5c3, the credentials-
+      // sensitive group) ────────────────────────────────────────────────
+      remote: {
+        disconnectGitHub(): Promise<{ ok: boolean }>;
+        getConnection(host?: string): Promise<{ connected: boolean; username?: string; label?: string }>;
+        listRepositories(): Promise<RemoteRepository[]>;
+        listBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+        listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+        diagnoseProject(projectDir: string): Promise<ProjectRemoteDiagnosis>;
+        testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+        connectGenericHost(
+          args: ConnectGenericHostArgs,
+        ): Promise<{ connected: boolean; host: string; username?: string }>;
+        disconnectHost(host: string): Promise<{ ok: boolean }>;
+        listConnections(): Promise<HostConnectionInfo[]>;
+        forgeTokenUrl(host: string): Promise<string | null>;
+        sync(projectDir: string, message?: string): Promise<SyncOutcome>;
+        cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+      };
+      sync: {
+        setAutoSync(enabled: boolean): Promise<{ ok: boolean; autoSync: boolean }>;
+        getStatus(projectDir: string): Promise<object | null>;
+      };
+      publish: {
+        listProviders(projectDir: string): Promise<PublishProviderCard[]>;
+        providers(): Promise<PublishProviderStaticInfo[]>;
+        connect(
+          projectDir: string,
+          providerId: string,
+          token: string,
+          account?: string,
+        ): Promise<{ connected: boolean; providerId: string }>;
+        disconnect(providerId: string, account?: string): Promise<{ ok: boolean }>;
+        setConfig(
+          projectDir: string,
+          providerId: string,
+          values: Record<string, string>,
+        ): Promise<Record<string, Record<string, unknown>>>;
+        preflight(projectDir: string, providerIds: string[]): Promise<PreflightRow[]>;
+        run(
+          projectDir: string,
+          providerId: string,
+          options?: { dryRun?: boolean; artifactPath?: string },
+        ): Promise<PublishRunResult>;
+      };
+
       // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
       onNativeThemeUpdated(
         cb: (data: { shouldUseDarkColors: boolean }) => void
@@ -245,24 +301,19 @@ declare global {
       connectGitHubStart(): Promise<DeviceCodeInfo>;
       connectGitHubWait(): Promise<RemoteConnection>;
       connectGitHubCancel(): Promise<{ ok: boolean }>;
-      // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
-      // listRepoBooks — migrated to server routes (Phase 2F).
-      // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
-      // — ARCH review #8: plain request/response, no push stream involved itself.
+      // disconnectGitHub, getConnection, listRepositories, listBranches,
+      // listRepoBooks, diagnoseProject, testRemoteAccess, connectGenericHost,
+      // disconnectHost, listConnections, forgeTokenUrl, sync, cloneRepository
+      // — SFE-P5c3: restored to typed IPC on the `remote` member above.
       onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
-      // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
-      // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
       // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
       /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.
        *  Note: data may carry a `message` field when state is 'error'. */
       onSyncStatus(cb: (data: unknown) => void): () => void;
-      // setAutoSync migrated to server route (api.sync.setAutoSync) — ARCH
-      // review #8: a pure settings write, no push stream or live-BrowserWindow
-      // need.
+      // setAutoSync/getStatus — SFE-P5c3: restored to typed IPC on the `sync`
+      // member above.
       // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
-      // syncChanges — migrated to server route (Phase 2F)
-      // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
-      // — ARCH review #8: plain request/response.
+      // resolveSyncConflicts — dead (removed before this run; sync always converges).
       startPreview(args: { input: string }): Promise<PreviewStartResult>;
       stopPreview(): Promise<{ stopped: boolean }>;
       cancelExport(exportId: string): Promise<{ canceled: boolean }>;

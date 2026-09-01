@@ -30,14 +30,26 @@
    * providers needs the open project's manifest — so that form asks for an
    * open project when none is.
    *
-   * PWA-clean (§8): api.* routes + the remote and files capability modules only.
+   * PWA-clean (§8): the remote/publish/files capability modules only
+   * (SFE-P5c3: remote/sync/publish moved off `api.*` HTTP routes to typed IPC).
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api, type PublishProviderStaticInfo } from "$lib/api";
   import { openExternal } from "$lib/files/files-capability";
   import { isDesktop } from "$lib/platform";
-  import { connectGitHubCancel, connectGitHubStart, connectGitHubWait } from "$lib/remote/remote-capability";
+  import {
+    connectGenericHost,
+    connectGitHubCancel,
+    connectGitHubStart,
+    connectGitHubWait,
+    diagnoseProjectRemote,
+    disconnectGitHub as disconnectGitHubRemote,
+    disconnectHost,
+    forgeTokenUrl,
+    getRemoteConnection,
+    listHostConnections,
+  } from "$lib/remote/remote-capability";
+  import { connect as connectPublishProvider, providers as fetchPublishProviders, type PublishProviderStaticInfo } from "$lib/publish/publish-capability";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -106,12 +118,10 @@
     loadError = null;
     try {
       const [conn, list, provs, d] = await Promise.all([
-        api.remote.getRemoteConnection().catch(() => null),
-        api.remote.listHostConnections().catch(() => [] as HostConnectionInfo[]),
-        api.publish.providers().catch(() => [] as PublishProviderStaticInfo[]),
-        projectDir
-          ? (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => null)
-          : Promise.resolve(null),
+        getRemoteConnection().catch(() => null),
+        listHostConnections().catch(() => [] as HostConnectionInfo[]),
+        fetchPublishProviders().catch(() => [] as PublishProviderStaticInfo[]),
+        projectDir ? diagnoseProjectRemote(projectDir).catch(() => null) : Promise.resolve(null),
       ]);
       github = conn;
       entries = list as HostConnectionInfo[];
@@ -134,7 +144,7 @@
 
   async function refreshDiag() {
     if (!projectDir) return;
-    diag = await (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>).catch(() => diag);
+    diag = await diagnoseProjectRemote(projectDir).catch(() => diag);
   }
 
   // ── Classification: publishing accounts vs Git servers ─────────────────────
@@ -181,7 +191,7 @@
 
   async function disconnectGitHub() {
     try {
-      await api.remote.disconnectGitHub();
+      await disconnectGitHubRemote();
       await load();
     } catch (e) {
       removeError = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -203,8 +213,7 @@
       return;
     }
     serverInputTimer = setTimeout(() => {
-      api.remote
-        .forgeTokenUrl(value)
+      forgeTokenUrl(value)
         .then((url) => {
           if (serverInput.trim() === value) tokenUrl = url;
         })
@@ -224,7 +233,7 @@
     serverError = null;
     serverNotice = null;
     try {
-      const result = await api.remote.connectGenericHost({
+      const result = await connectGenericHost({
         host: serverInput,
         ...(serverUser.trim() ? { username: serverUser.trim() } : {}),
         token: serverToken,
@@ -254,7 +263,7 @@
     pubError = null;
     pubNotice = null;
     try {
-      await api.publish.connect(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
+      await connectPublishProvider(projectDir, pubProviderId, pubToken, pubAccount.trim() || undefined);
       pubToken = "";
       pubAccount = "";
       const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
@@ -281,7 +290,7 @@
     removing = key;
     removeError = null;
     try {
-      await api.remote.disconnectHost(key);
+      await disconnectHost(key);
       entries = entries.filter((c) => c.host !== key);
       // A removed server credential changes the project's sync readiness.
       await refreshDiag();
