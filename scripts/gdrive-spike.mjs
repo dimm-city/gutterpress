@@ -52,7 +52,12 @@ import path from "node:path";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim();
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET?.trim();
-const SCOPES = "https://www.googleapis.com/auth/drive.file openid email";
+// Override with GDRIVE_SPIKE_SCOPES to re-check the consent screen for a
+// different request — e.g. `drive.file` alone, which the app requests after
+// the 0.10.5 bring-up (a second scope makes Google's consent screen granular,
+// and an unticked Drive box yields a token that answers 403 everywhere).
+// Default unchanged: the request the original Phase 0 run used.
+const SCOPES = process.env.GDRIVE_SPIKE_SCOPES?.trim() || "https://www.googleapis.com/auth/drive.file openid email";
 const FOLDER_NAME = "Gutterpress";
 // Deliberately the 256 KiB minimum so even a ~1 MB file produces several
 // chunks and genuinely exercises the 308-resume path.
@@ -237,6 +242,17 @@ step("P3  Refresh token issued with access_type=offline&prompt=consent  (D4)");
 refreshToken
   ? pass("P3", "refresh_token present", `access token expires in ${expiresIn}s; refresh_token len=${refreshToken.length} (this is the durable secret we store)`)
   : fail("P3", "NO refresh_token returned", "D4's storage model assumes one. Check access_type/prompt.");
+
+// ── P15: what Google ACTUALLY granted — granular consent can drop a scope ────
+// The token response's `scope` is the truth, not the request. With more than
+// one scope requested, Google's consent screen lists the Drive permission as
+// a checkbox the user can leave unticked and still finish sign-in; the token
+// then lacks drive.file and every Drive call answers 403 (0.10.5 bring-up).
+step("P15 Granted scopes include drive.file  (token response `scope`, not the request)");
+const grantedScopes = String(tok.body.scope ?? "");
+grantedScopes.split(/\s+/).includes("https://www.googleapis.com/auth/drive.file")
+  ? pass("P15", "drive.file granted", `requested: ${SCOPES}\n       granted:   ${grantedScopes}`)
+  : fail("P15", "drive.file NOT granted", `requested: ${SCOPES}\n       granted:   ${grantedScopes || "(no scope field)"} — every Drive call will answer 403`);
 
 // ── P4: about.get — email + quota ───────────────────────────────────────────
 step("P4  about.get → account email + storageQuota  (D4 label, quota fail-fast)");
