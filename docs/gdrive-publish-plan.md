@@ -574,25 +574,25 @@ Deliverables beyond the registration itself: **ADR 0011** (the D3 ruling +
 the release-blocking registration settings) and **`PRIVACY.md` published via
 GitHub Pages** (D11) — the consent screen cannot be submitted without it.
 
-**Phase 1 — lib + CLI (PDF golden path).**
+- [x] **Phase 1 — lib + CLI (PDF golden path).**
 `google-auth.ts`, `google-drive.ts`, `connect-google.ts`,
 `providers/gdrive.ts`, registry/type/union changes (§4.1–2, 4.5–4.9),
 exports, CLI `--connect` interactive branch. Tests (bun, fake fetch/store,
 mirroring `publish.test.ts` / `github-auth.test.ts` style):
-- auth: PKCE/state correctness, state-mismatch rejected, cancel/timeout,
+- [x] auth: PKCE/state correctness, state-mismatch rejected, cancel/timeout,
   error-param path, no secret in any thrown message; loopback exercised with
   real `fetch` against the ephemeral port.
-- drive client: refresh (incl. `invalid_grant` mapping), resumable chunk
+- [x] drive client: refresh (incl. `invalid_grant` mapping), resumable chunk
   sequencing with `308`/`Range` resume, chunk retry/backoff, quote-escaping
   in `q`.
-- provider: folderId-vs-name-vs-create resolution, update-vs-create, quota
+- [x] provider: folderId-vs-name-vs-create resolution, update-vs-create, quota
   fail-fast, env-credential override, named-account compound keys
   (`named-credentials.test.ts`), `connectPublishProvider` rejection (§4.8).
-- `readme-drift.test.ts` + README provider list.
+- [x] `readme-drift.test.ts` + README provider list.
 Milestone: `gutterpress publish --provider gdrive` works end-to-end against a
 real account.
 
-**Phase 2 — desktop.**
+- [x] **Phase 2 — desktop.**
 `google-connect-flow.ts` + IPC trio + §8(B) checklist (D10); credential-store
 union (§4.2); destinations routes + `api.ts` (D9); wizard oauth branch +
 folder picker (§5); `ConnectionsSettings`; revoking disconnect; friendly
@@ -601,11 +601,11 @@ errors. Tests: `google-connect-flow.test.ts` (mirror
 `settings-connections.test.ts`, `friendly-publish-error.test.ts`,
 `route-scoping.test.ts` additions.
 
-**Phase 3 — HTML export.** `formats` contract extension +
+- [x] **Phase 3 — HTML export.** `formats` contract extension +
 `publish.gdrive.format` + wizard format choice + ZIP packaging via `fflate`
 (D8), with its own upload tests.
 
-**Phase 4 — docs + polish.** User guide `08-publishing.md` (a Google Drive
+- [x] **Phase 4 — docs + polish.** User guide `08-publishing.md` (a Google Drive
 section written for the non-technical reader: connect once, pick a folder,
 links stay stable, move the folder freely in Drive, sharing stays yours);
 README; release notes. Future-work backlog: §9.
