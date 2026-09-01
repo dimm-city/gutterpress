@@ -70,6 +70,18 @@ deliverable — it becomes Checkpoint B's parity-evidence appendix.
 | B | `packages/editor/tests/perf/**`, `docs/plans/source-first-editor/p3d-sweep-audit.md` (§B) | production source, other lanes' files | The four size runs + the 250 KiB p95 budget, with a slowed control |
 | C | `packages/desktop/tests/**`, `docs/plans/source-first-editor/p3d-sweep-audit.md` (§C) | production source, `packages/editor/**`, `packages/vscode-extension/**` | A11y audit + gaps (11), desktop-level scenarios (14, 15), and the packaged-driver probe |
 | Integrator | `bun.lock`, wiring, commits, Checkpoint B | — | Verification, commits, the Checkpoint B report |
+| D | `packages/editor/src/vscode-adapter/**`, `packages/editor/src/web/**`, `packages/editor/tests/**` (perf + regression), `docs/plans/source-first-editor/p3d-sweep-audit.md` (§D) | `packages/cli/**`, `packages/desktop/**`, `packages/vscode-extension/**`, `packages/editor/src/core/**`, `src/gutterpress/**` | D13 budget root cause: find why edit-to-paint scales linearly with document size, fix it at the root, re-measure |
+
+**Lane D was added after lanes A–C reported** (spec amended before it runs).
+Cause: Lane B's measurement is a real product finding — the 250 KiB p95 is
+5.5–6.3× over D13's budget, and edit-to-paint is near-linear in document size
+(~2.1 ms/KiB across 25 KiB→1 MiB), the signature of a whole-document cost on
+every keystroke. The fork's own parser supports incremental
+`parse(text, previous, edit)`, so the linearity most plausibly lives in OUR
+adapter/mount glue (e.g. the host-echo path replacing the entire model text on
+every accepted edit). Per the product-owner ruling this is fixed at the root,
+not recorded and walked past; per D13, never by weakening validation or
+safety.
 
 All three lanes append to ONE audit document, each in its own labeled
 section — no shared lines.
