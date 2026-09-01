@@ -225,9 +225,23 @@ Proposed refinements:
 
 ### 1b. Inline editing in the preview
 
-**Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
+**Status: SHIPPED in 0.10.0, then PARTIALLY REMOVED in 0.11 (SFE-P4,
+2026-09-01).** Originally tracked by **#135** Tier 0 and **#136** Tier 1;
 implementation plan `docs/inline-editing-plan.md`, rationale
-`docs/adr/0009-inline-editing-source-ranges.md`).
+`docs/adr/0009-inline-editing-source-ranges.md`.
+**Correction 2026-09-01:** the source-mutating half of this section —
+the context menu's mutation items (image properties/unwrap, link edit,
+marker/page-marker edit, block-break before/after, selection formatting,
+make-link) and the "Block overlay" ("Edit this block", double-click-to-edit)
+described below — was **deleted** in SFE-P4; see the deletion ledger
+(`docs/plans/source-first-editor/deletion-ledger.md`, "SFE-P4" entry) for
+the measured proof. The preview is now **read-only**: navigation
+(click-to-source), selection/copy, open link/image, diagnostics, page
+controls, and source reveal only (plan D8). Those mutation affordances'
+replacements live in the source and shared rich editor commands, not the
+preview. The rest of this section (click-to-source, the read-only context
+menu items) remains current; do not treat the mutation items or the block
+overlay below as live product behavior.
 
 The paginated preview is an editing surface, not only a viewer. This does
 **not** supersede the opt-in WYSIWYG rule above: these are explicit,

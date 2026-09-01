@@ -11,6 +11,22 @@
 >
 > Background and the decisions that survive: [ADR 0009](./adr/0009-inline-editing-source-ranges.md)
 > (revised 2026-08-24).
+>
+> **Removed 2026-09-01 (0.11, SFE-P4).** The in-flow/preview-mutation design
+> this document records — `InlineEditController`, `CommitEngine`, the
+> `beginBlockEdit`/`endBlockEdit` bridge protocol (v8) and its three events,
+> the context menu's "Edit this block" item and double-click-to-edit, and the
+> `contenteditable` authoring path in `preview-interface.js` — was deleted in
+> full (commits `731aee7e` desktop-side, `6080b4a4` book-side; protocol
+> v8 → v9). It is superseded by the source-first rich editor per
+> [`docs/plans/source-first-editor-enterprise-refactor.md`](./plans/source-first-editor-enterprise-refactor.md)
+> (D8: the preview is read-only past P4 — navigation, selection/copy, open
+> link/image, diagnostics, page controls, and source reveal only). Everything
+> below this line is kept as a historical record of the shipped-then-removed
+> design and is **not** current behavior; do not treat any code reference
+> below as live. See the deletion ledger
+> ([`docs/plans/source-first-editor/deletion-ledger.md`](./plans/source-first-editor/deletion-ledger.md),
+> "SFE-P4" entry) for the measured deletion proof.
 
 ## 1. Why editing happens in the page
 
