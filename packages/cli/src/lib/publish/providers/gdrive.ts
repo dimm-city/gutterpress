@@ -1,15 +1,22 @@
 /**
  * Google Drive publish provider (#221, docs/gdrive-publish-plan.md).
  *
- * Uploads the finished PDF to a folder in the author's Google Drive.
+ * Uploads the finished PDF — or, when the manifest selects the HTML format
+ * (phase 3, D8), the website export packaged as a single ZIP — to a folder
+ * in the author's Google Drive. Drive dropped site hosting in 2016, so it is
+ * file delivery, not web hosting: Azure Static Web Apps remains the "publish
+ * a website" provider, and the HTML outcome's follow-up copy says so.
  * Connects via browser OAuth consent (`google-auth.ts` — no pasted key);
  * uploads via the plain-fetch resumable protocol (`google-drive.ts`, D7).
  * Publishing again finds the previous file by name in the target folder and
  * updates it in place (D6), so a shared `webViewLink` stays valid across
  * republishes.
  */
-import { stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { zipSync, type Zippable } from "fflate";
+import { bookSlug } from "../../output-paths.ts";
 import {
   GDRIVE_HOST,
   requireGoogleClientCredentials,
@@ -49,8 +56,12 @@ const info: PublishProviderInfo = {
   label: "Google Drive",
   kind: "api",
   format: "pdf",
+  // #221 phase 3, D8: gdrive is the one provider that can publish either
+  // build output. `format` above stays the default (PDF) so an unset
+  // publish.gdrive.format keeps every existing book's behavior unchanged.
+  formats: ["pdf", "html"],
   description:
-    "Upload the finished PDF to a folder in your Google Drive — publishing again updates the same file, so shared links stay current.",
+    "Upload the finished PDF (or the website export, zipped) to a folder in your Google Drive — publishing again updates the same file, so shared links stay current. Drive delivers files, not live websites; use Azure Static Web Apps to publish the HTML export as a site.",
   configFields: [{ key: "folder", label: "Drive folder", placeholder: DEFAULT_FOLDER_NAME }],
   credential: {
     required: true,
@@ -124,6 +135,61 @@ function toDestination(folder: DriveFolder): PublishProduct {
   return { id: folder.id, title: folder.name, url: folderUrl(folder.id) };
 }
 
+/** What actually gets uploaded: a local file path + the Drive-visible name.
+ * For the PDF format this IS the artifact; for HTML (D8) it's the zipped
+ * export, in a temp file `cleanup` removes once the upload finishes (or
+ * fails) — the upload path itself doesn't care which one it got. */
+interface UploadSource {
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  cleanup: () => Promise<void>;
+}
+
+/** Recursively collect every FILE under `dir` into `out`, keyed by its path
+ * relative to `root` with forward slashes (the zip-entry name Drive/most
+ * unzip tools expect regardless of host OS). */
+async function collectZipEntries(
+  root: string,
+  dir: string,
+  out: Zippable,
+): Promise<void> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await collectZipEntries(root, full, out);
+    } else if (entry.isFile()) {
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      out[rel] = await readFile(full);
+    }
+  }
+}
+
+/**
+ * Package the HTML export directory into a single ZIP (D8: Drive is file
+ * delivery, not web hosting — no N-file folder mirroring). Built with
+ * fflate (already a dependency, see theme-import.ts for the sibling
+ * unzip-side usage), written to a temp file so the existing file-based
+ * `resumableUpload` (google-drive.ts) can read it incrementally like any
+ * other artifact — never held whole in memory alongside the network layer.
+ */
+async function zipHtmlExport(exportDir: string, title: string): Promise<UploadSource> {
+  const entries: Zippable = {};
+  await collectZipEntries(exportDir, exportDir, entries);
+  const zipped = zipSync(entries, { level: 6 });
+  const fileName = `${bookSlug(title)}-website.zip`;
+  const tmpRoot = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-"));
+  const filePath = path.join(tmpRoot, fileName);
+  await writeFile(filePath, zipped);
+  return {
+    filePath,
+    fileName,
+    mimeType: "application/zip",
+    cleanup: () => rm(tmpRoot, { recursive: true, force: true }),
+  };
+}
+
 export const gdriveProvider: PublishProvider = {
   info,
 
@@ -164,57 +230,78 @@ export const gdriveProvider: PublishProvider = {
     const fetchImpl = req.deps.fetch ?? globalThis.fetch;
     const cfg = readConfig(req);
     const { accessToken } = await getAccessToken(req);
+    const isHtml = req.artifact.format === "html";
 
-    // Quota fail-fast BEFORE any bytes move (D7).
-    const artifactStat = await stat(req.artifact.path);
-    const about = await driveAbout(fetchImpl, accessToken);
-    if (about.quota.limitBytes != null && about.quota.freeBytes != null) {
-      if (artifactStat.size > about.quota.freeBytes) {
-        throw new Error(
-          `Your Google Drive is full — this PDF needs ${formatBytes(artifactStat.size)} but only ${formatBytes(about.quota.freeBytes)} is free.`,
-        );
-      }
-    }
+    // HTML exports are a whole directory; Drive is file delivery, not web
+    // hosting (D8), so package it into ONE zip before anything else — the
+    // quota check right below must see the zip's size, not the export
+    // directory's (which stat() can't even give a meaningful total for).
+    const source: UploadSource = isHtml
+      ? await zipHtmlExport(req.artifact.path, req.project.title)
+      : {
+          filePath: req.artifact.path,
+          fileName: path.basename(req.artifact.path),
+          mimeType: "application/pdf",
+          cleanup: async () => {},
+        };
 
-    req.deps.onProgress?.("Resolving the Drive folder…");
-    const folder = await resolveFolder(fetchImpl, accessToken, cfg);
-
-    const fileName = path.basename(req.artifact.path);
-    const existing = await findFileInFolder(fetchImpl, accessToken, folder.id, fileName);
-
-    req.deps.onProgress?.(
-      existing ? `Updating "${fileName}" in "${folder.name}"…` : `Uploading "${fileName}" to "${folder.name}"…`,
-    );
-
-    let lastReported = -1;
-    const file = await resumableUpload(fetchImpl, accessToken, {
-      ...(existing ? { fileId: existing.id } : {}),
-      name: fileName,
-      parentFolderId: folder.id,
-      filePath: req.artifact.path,
-      totalBytes: artifactStat.size,
-      mimeType: "application/pdf",
-      onProgress: (uploaded, total) => {
-        // Throttle to whole percent so a fast connection doesn't spam
-        // onProgress once per 8 MiB chunk boundary at 100% granularity.
-        const pct = total > 0 ? Math.floor((uploaded / total) * 100) : 100;
-        if (pct !== lastReported) {
-          lastReported = pct;
-          req.deps.onProgress?.(`Uploaded ${formatBytes(uploaded)} of ${formatBytes(total)} (${pct}%)…`);
+    try {
+      // Quota fail-fast BEFORE any bytes move (D7).
+      const artifactStat = await stat(source.filePath);
+      const about = await driveAbout(fetchImpl, accessToken);
+      if (about.quota.limitBytes != null && about.quota.freeBytes != null) {
+        if (artifactStat.size > about.quota.freeBytes) {
+          throw new Error(
+            `Your Google Drive is full — this ${isHtml ? "website export" : "PDF"} needs ${formatBytes(artifactStat.size)} but only ${formatBytes(about.quota.freeBytes)} is free.`,
+          );
         }
-      },
-    });
+      }
 
-    return {
-      kind: "published",
-      url: file.webViewLink,
-      detail: `Uploaded "${fileName}" to the "${folder.name}" folder in your Google Drive${existing ? " (updated the existing file)" : ""}.`,
-      followUp: [
-        "To share it, open it in Drive and use the Share button — Gutterpress never changes who can see your files.",
-        cfg.folderId
-          ? undefined
-          : `Tip (CLI): record the folder id in the manifest (publish.gdrive.folderId: "${folder.id}") so renaming the folder in Drive can never break publishing.`,
-      ].filter((s): s is string => !!s),
-    };
+      req.deps.onProgress?.("Resolving the Drive folder…");
+      const folder = await resolveFolder(fetchImpl, accessToken, cfg);
+
+      const fileName = source.fileName;
+      const existing = await findFileInFolder(fetchImpl, accessToken, folder.id, fileName);
+
+      req.deps.onProgress?.(
+        existing ? `Updating "${fileName}" in "${folder.name}"…` : `Uploading "${fileName}" to "${folder.name}"…`,
+      );
+
+      let lastReported = -1;
+      const file = await resumableUpload(fetchImpl, accessToken, {
+        ...(existing ? { fileId: existing.id } : {}),
+        name: fileName,
+        parentFolderId: folder.id,
+        filePath: source.filePath,
+        totalBytes: artifactStat.size,
+        mimeType: source.mimeType,
+        onProgress: (uploaded, total) => {
+          // Throttle to whole percent so a fast connection doesn't spam
+          // onProgress once per 8 MiB chunk boundary at 100% granularity.
+          const pct = total > 0 ? Math.floor((uploaded / total) * 100) : 100;
+          if (pct !== lastReported) {
+            lastReported = pct;
+            req.deps.onProgress?.(`Uploaded ${formatBytes(uploaded)} of ${formatBytes(total)} (${pct}%)…`);
+          }
+        },
+      });
+
+      return {
+        kind: "published",
+        url: file.webViewLink,
+        detail: `Uploaded "${fileName}" to the "${folder.name}" folder in your Google Drive${existing ? " (updated the existing file)" : ""}.`,
+        followUp: [
+          "To share it, open it in Drive and use the Share button — Gutterpress never changes who can see your files.",
+          isHtml
+            ? "Google Drive stores files, not live websites — download and unzip it to view the export, or publish it as a real site with the Azure Static Web Apps provider."
+            : undefined,
+          cfg.folderId
+            ? undefined
+            : `Tip (CLI): record the folder id in the manifest (publish.gdrive.folderId: "${folder.id}") so renaming the folder in Drive can never break publishing.`,
+        ].filter((s): s is string => !!s),
+      };
+    } finally {
+      await source.cleanup();
+    }
   },
 };

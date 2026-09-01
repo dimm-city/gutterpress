@@ -6,7 +6,7 @@ import { strToU8, zipSync } from "fflate";
 import { FileTokenStore } from "../remote-auth/token-store";
 import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths";
 import { listPublishProviders, publishProviderFor } from "./registry";
-import { runPublish, resolvePublishRequest } from "./run-publish";
+import { runPublish, resolvePublishRequest, resolvePublishFormat } from "./run-publish";
 import { connectPublishProvider } from "./connect";
 import { readPublishSettings, setPublishProviderConfig } from "./manifest-publish";
 import type {
@@ -21,6 +21,7 @@ import { shopifyProvider, shopifyLegacyId } from "./providers/shopify";
 import { drivethrurpgProvider } from "./providers/drivethrurpg";
 import { kdpProvider } from "./providers/kdp";
 import { azureSwaProvider } from "./providers/azure-swa";
+import { gdriveProvider } from "./providers/gdrive";
 import { butlerBrothChannel, butlerDownloadUrl, ensureButler } from "./butler";
 
 // ── test scaffolding ─────────────────────────────────────────────────────────
@@ -116,6 +117,79 @@ test("every provider declares its author-editable config fields", () => {
   expect(
     publishProviderFor("shopify").info.configFields.map((f) => f.key),
   ).toContain("apiVersion");
+});
+
+// ── effective format resolution (#221 phase 3, D8) ──────────────────────────
+
+test("resolvePublishFormat defaults to info.format for every single-format provider, ignoring any publish.<id>.format value", () => {
+  // These providers declare no `formats` array at all — the plan's explicit
+  // regression guarantee: a mistake in effective-format computation must not
+  // silently change what they resolve to, no matter what a manifest sets.
+  for (const provider of [itchProvider, drivethrurpgProvider, kdpProvider, azureSwaProvider, shopifyProvider]) {
+    expect(provider.info.formats).toBeUndefined();
+    expect(resolvePublishFormat(provider.info, {})).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: "html" })).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: "pdf" })).toBe(provider.info.format);
+    expect(resolvePublishFormat(provider.info, { format: 42 })).toBe(provider.info.format);
+  }
+});
+
+test("resolvePublishFormat: gdrive defaults to pdf when publish.gdrive.format is unset", () => {
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "html"]);
+  expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
+});
+
+test("resolvePublishFormat: gdrive honors a valid publish.gdrive.format", () => {
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "html" })).toBe("html");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "pdf" })).toBe("pdf");
+});
+
+test("resolvePublishFormat: an invalid/unrecognized publish.gdrive.format is IGNORED, not rejected — falls back to the default", () => {
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "epub" })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: "  " })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, { format: 7 })).toBe("pdf");
+  expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
+});
+
+test("resolvePublishRequest: gdrive with no publish.gdrive.format set resolves the default PDF artifact path", async () => {
+  const dir = await tempProject("title: My Book\nauthors: [A]\n");
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("pdf");
+    expect(req.artifact.path).toBe(
+      path.join(resolveOutputDir(dir, "My Book"), artifactName("My Book", "pdf")),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolvePublishRequest: publish.gdrive.format: html switches the default artifact to the export DIRECTORY", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [A]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("html");
+    expect(req.artifact.path).toBe(resolveOutputDir(dir, "My Book"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolvePublishRequest: an invalid publish.gdrive.format falls back to the pdf default rather than blocking", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [A]\npublish:\n  gdrive:\n    format: epub\n",
+  );
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "gdrive", deps);
+    expect(req.artifact.format).toBe("pdf");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // ── credential resolution ───────────────────────────────────────────────────

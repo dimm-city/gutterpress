@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { unzipSync } from "fflate";
 import { FileTokenStore } from "../../remote-auth/token-store";
+import { BOOK_HTML } from "../../output-paths";
 import { resolvePublishRequest } from "../run-publish";
 import { publishCredentialKey, type PublishDeps, type PublishRequest } from "../types";
 import { gdriveProvider } from "./gdrive";
@@ -65,12 +67,16 @@ interface Script {
 
 /** One fake fetch covering every Drive/oauth endpoint the provider touches. */
 function fakeFetch(script: Script = {}) {
-  const calls: Array<{ url: string; method: string; body?: string }> = [];
+  const calls: Array<{ url: string; method: string; body?: string; bodyBytes?: Uint8Array }> = [];
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     const method = init?.method ?? "GET";
     const body = init?.body !== undefined ? String(init.body) : undefined;
-    calls.push({ url: u, method, body });
+    // The resumable chunk PUT sends a Buffer (a zip's bytes for the HTML
+    // format), which `String()` would mangle — capture the raw bytes too so
+    // tests can unzip and check the actual content sent over the wire.
+    const bodyBytes = init?.body instanceof Uint8Array ? new Uint8Array(init.body) : undefined;
+    calls.push({ url: u, method, body, bodyBytes });
 
     if (u.includes("oauth2.googleapis.com/token")) {
       const params = new URLSearchParams(body ?? "");
@@ -494,6 +500,95 @@ test("createDestination creates a folder and returns it as a PublishProduct", as
   }
 });
 
+// ── HTML export: zip-then-upload (#221 phase 3, D8) ─────────────────────────
+
+test("upload zips the HTML export directory into '<title>-website.zip' and sends exactly the export's files", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [Author]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const exportDir = path.join(dir, "site-export");
+    await mkdir(path.join(exportDir, "assets"), { recursive: true });
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html><body>hi</body></html>");
+    await writeFile(path.join(exportDir, "assets", "style.css"), "body{color:red}");
+
+    const deps = await depsFor(dir, {});
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "rt", createdAt: 1 });
+    const { fetchImpl, calls } = fakeFetch({
+      folders: [{ id: "f1", name: "Gutterpress" }],
+      uploadFileResult: {
+        id: "zip-file-id",
+        name: "my-book-website.zip",
+        webViewLink: "https://drive.google.com/file/d/zip-file-id/view",
+      },
+    });
+    deps.fetch = fetchImpl;
+    const req = await requestFor(dir, deps, exportDir);
+    expect(req.artifact.format).toBe("html"); // sanity: the format DID resolve to html
+
+    const outcome = await gdriveProvider.upload(req);
+    if (outcome.kind !== "published") throw new Error("expected published outcome");
+    expect(outcome.detail).toContain('"my-book-website.zip"');
+    expect(outcome.followUp?.some((s) => /Azure Static Web Apps/i.test(s))).toBe(true);
+
+    // The resumable session was started for the ZIP name, not the export
+    // directory's own basename.
+    const sessionStart = calls.find((c) => c.url.includes("uploadType=resumable"));
+    expect(sessionStart).toBeDefined();
+    expect(sessionStart!.method).toBe("POST"); // no existing file with that name yet
+
+    // Reconstruct exactly what was actually PUT over the wire and confirm it
+    // is a valid zip containing precisely the export directory's files.
+    const chunkPut = calls.find((c) => c.url === "https://upload.example/session" && c.method === "PUT");
+    expect(chunkPut?.bodyBytes).toBeDefined();
+    const unzipped = unzipSync(chunkPut!.bodyBytes!);
+    expect(Object.keys(unzipped).sort()).toEqual([BOOK_HTML, "assets/style.css"].sort());
+    expect(Buffer.from(unzipped[BOOK_HTML]!).toString("utf8")).toBe("<html><body>hi</body></html>");
+    expect(Buffer.from(unzipped["assets/style.css"]!).toString("utf8")).toBe("body{color:red}");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("upload reuses the exact same update-in-place resumable flow for an HTML export as for a PDF", async () => {
+  const dir = await tempProject(
+    "title: My Book\nauthors: [Author]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const exportDir = path.join(dir, "site-export");
+    await mkdir(exportDir, { recursive: true });
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+
+    const deps = await depsFor(dir, {});
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "rt", createdAt: 1 });
+    const { fetchImpl, calls } = fakeFetch({
+      folders: [{ id: "f1", name: "Gutterpress" }],
+      existingFile: {
+        id: "same-zip-id",
+        name: "my-book-website.zip",
+        webViewLink: "https://drive.google.com/file/d/same-zip-id/view",
+      },
+      uploadFileResult: {
+        id: "same-zip-id",
+        name: "my-book-website.zip",
+        webViewLink: "https://drive.google.com/file/d/same-zip-id/view",
+      },
+    });
+    deps.fetch = fetchImpl;
+    const req = await requestFor(dir, deps, exportDir);
+
+    const outcome = await gdriveProvider.upload(req);
+    if (outcome.kind !== "published") throw new Error("expected published outcome");
+    expect(outcome.url).toBe("https://drive.google.com/file/d/same-zip-id/view");
+    expect(outcome.detail).toContain("updated the existing file");
+    const sessionStart = calls.find((c) => c.url.includes("uploadType=resumable"));
+    expect(sessionStart!.url).toContain("/files/same-zip-id?");
+    expect(sessionStart!.method).toBe("PATCH");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 // ── provider metadata ────────────────────────────────────────────────────────
 
 test("gdrive provider declares an oauth connect kind and a folder destination picker", () => {
@@ -501,4 +596,5 @@ test("gdrive provider declares an oauth connect kind and a folder destination pi
   expect(gdriveProvider.info.credential.required).toBe(true);
   expect(gdriveProvider.info.destinations).toEqual({ label: "Folder", canCreate: true });
   expect(gdriveProvider.info.format).toBe("pdf");
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "html"]);
 });
