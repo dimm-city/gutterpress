@@ -35,7 +35,7 @@ gutterpress-user-guide/
 ├── 05-plugins.md          # Adding, writing, and loading plugins
 ├── 06-validation.md       # Validation system, CLI, best practices
 ├── 07-system-setup.md     # External tools, install, troubleshooting
-└── 08-publishing.md       # Sending your book to itch.io, DriveThruRPG, KDP, Azure, Shopify
+└── 08-publishing.md       # Sending your book to itch.io, DriveThruRPG, KDP, Azure, Shopify, Google Drive
 ```
 
 ## Chapters
