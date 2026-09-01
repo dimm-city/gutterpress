@@ -97,7 +97,8 @@ were collected.
 
 If this policy changes, the update will be published at this same URL with a
 new effective date. Material changes affecting how Google account data is
-handled will be called out in the project's [changelog](./CHANGELOG.md).
+handled will be called out in the project's
+[changelog](https://github.com/dimm-city/gutterpress/blob/main/CHANGELOG.md).
 
 ## Contact
 
