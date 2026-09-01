@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
@@ -7,7 +7,7 @@ import { FileTokenStore } from "../../remote-auth/token-store";
 import { BOOK_HTML } from "../../output-paths";
 import { resolvePublishRequest } from "../run-publish";
 import { publishCredentialKey, type PublishDeps, type PublishRequest } from "../types";
-import { gdriveProvider } from "./gdrive";
+import { gdriveProvider, zipHtmlExport } from "./gdrive";
 
 // requireGoogleClientCredentials() (called by providers/gdrive.ts with no
 // explicit override) resolves via GUTTERPRESS_GOOGLE_CLIENT_ID/_SECRET env
@@ -586,6 +586,112 @@ test("upload reuses the exact same update-in-place resumable flow for an HTML ex
     expect(sessionStart!.method).toBe("PATCH");
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── zipHtmlExport: async zip build, temp-dir cleanup, symlink handling ──────
+
+test("zipHtmlExport (A7) builds via fflate's async zip() and produces correct, complete output", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await mkdir(path.join(exportDir, "assets"), { recursive: true });
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html><body>async zip</body></html>");
+    await writeFile(path.join(exportDir, "assets", "style.css"), "body{color:blue}");
+
+    const source = await zipHtmlExport(exportDir, "Async Zip Book");
+    try {
+      expect(source.fileName).toBe("async-zip-book-website.zip");
+      expect(source.mimeType).toBe("application/zip");
+      const zipped = await readFile(source.filePath);
+      const unzipped = unzipSync(zipped);
+      expect(Object.keys(unzipped).sort()).toEqual([BOOK_HTML, "assets/style.css"].sort());
+      expect(Buffer.from(unzipped[BOOK_HTML]!).toString("utf8")).toBe("<html><body>async zip</body></html>");
+      expect(Buffer.from(unzipped["assets/style.css"]!).toString("utf8")).toBe("body{color:blue}");
+    } finally {
+      await source.cleanup();
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+});
+
+test("zipHtmlExport (A8) removes the temp directory it created when the write step fails", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+
+    const before = new Set(
+      (await readdir(tmpdir())).filter((n) => n.startsWith("gutterpress-gdrive-")),
+    );
+
+    await expect(
+      zipHtmlExport(exportDir, "Failing Book", undefined, async () => {
+        throw new Error("simulated disk-full write failure");
+      }),
+    ).rejects.toThrow(/simulated disk-full write failure/);
+
+    const after = new Set(
+      (await readdir(tmpdir())).filter((n) => n.startsWith("gutterpress-gdrive-")),
+    );
+    // No new gutterpress-gdrive-* temp directory survives the failure.
+    const leaked = [...after].filter((n) => !before.has(n));
+    expect(leaked).toEqual([]);
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+});
+
+test("zipHtmlExport (A9) follows a symlinked file in the export directory instead of silently dropping it", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+    const realAssetDir = path.join(exportDir, "real-assets");
+    await mkdir(realAssetDir, { recursive: true });
+    await writeFile(path.join(realAssetDir, "logo.png"), "fake-png-bytes");
+    // A symlink INSIDE the export dir pointing at the real file — the shape
+    // finding A9 describes ("a symlinked asset inside the HTML export
+    // directory").
+    await symlink(path.join(realAssetDir, "logo.png"), path.join(exportDir, "logo-link.png"));
+
+    const warnings: string[] = [];
+    const source = await zipHtmlExport(exportDir, "Symlink Book", (msg) => warnings.push(msg));
+    try {
+      const zipped = await readFile(source.filePath);
+      const unzipped = unzipSync(zipped);
+      // Either the symlink was followed and included in the zip, or it was
+      // explicitly warned about — never silently dropped with no signal.
+      const included = "logo-link.png" in unzipped;
+      const warnedAboutIt = warnings.some((w) => w.includes("logo-link.png"));
+      expect(included || warnedAboutIt).toBe(true);
+      if (included) {
+        expect(Buffer.from(unzipped["logo-link.png"]!).toString("utf8")).toBe("fake-png-bytes");
+      }
+    } finally {
+      await source.cleanup();
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+});
+
+test("zipHtmlExport (A9) warns (not throws) on a broken symlink rather than dropping it silently", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+    await symlink(path.join(exportDir, "does-not-exist.png"), path.join(exportDir, "broken-link.png"));
+
+    const warnings: string[] = [];
+    const source = await zipHtmlExport(exportDir, "Broken Symlink Book", (msg) => warnings.push(msg));
+    try {
+      expect(warnings.some((w) => w.includes("broken-link.png"))).toBe(true);
+      const zipped = await readFile(source.filePath);
+      const unzipped = unzipSync(zipped);
+      expect("broken-link.png" in unzipped).toBe(false);
+    } finally {
+      await source.cleanup();
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
   }
 });
 

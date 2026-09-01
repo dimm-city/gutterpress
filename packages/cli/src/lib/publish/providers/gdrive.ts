@@ -15,7 +15,7 @@
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { zipSync, type Zippable } from "fflate";
+import { zip as zipAsyncCb, type AsyncZipOptions, type FlateError, type Zippable } from "fflate";
 import { bookSlug } from "../../output-paths.ts";
 import {
   GDRIVE_HOST,
@@ -146,22 +146,55 @@ interface UploadSource {
   cleanup: () => Promise<void>;
 }
 
+/** Promisified wrapper over fflate's callback-based async `zip()`. Unlike
+ * `zipSync()`, this does not block the Node event loop for the archive's
+ * full build duration — load-bearing when this code runs inside the
+ * Electron MAIN process (desktop publish), where a synchronous zip of a
+ * large website export would freeze the whole app UI and stall the
+ * `onProgress` stream for as long as the archive takes to build. */
+function zipAsync(data: Zippable, opts: AsyncZipOptions): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    zipAsyncCb(data, opts, (err: FlateError | null, zipped: Uint8Array) => {
+      if (err) reject(err);
+      else resolve(zipped);
+    });
+  });
+}
+
 /** Recursively collect every FILE under `dir` into `out`, keyed by its path
  * relative to `root` with forward slashes (the zip-entry name Drive/most
- * unzip tools expect regardless of host OS). */
+ * unzip tools expect regardless of host OS). A symlink's `Dirent` reports
+ * neither `isFile()` nor `isDirectory()` (those reflect the link itself,
+ * not its target), so it's resolved explicitly via `stat()` and followed —
+ * a symlinked asset inside the export directory must not silently vanish
+ * from the zip. A broken symlink, or any other non-file/dir/symlink entry
+ * (socket, fifo, …), is skipped with a warning rather than silently. */
 async function collectZipEntries(
   root: string,
   dir: string,
   out: Zippable,
+  onWarn?: (message: string) => void,
 ): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      await collectZipEntries(root, full, out);
+      await collectZipEntries(root, full, out, onWarn);
     } else if (entry.isFile()) {
       const rel = path.relative(root, full).split(path.sep).join("/");
       out[rel] = await readFile(full);
+    } else if (entry.isSymbolicLink()) {
+      const resolved = await stat(full).catch(() => null);
+      if (resolved?.isFile()) {
+        const rel = path.relative(root, full).split(path.sep).join("/");
+        out[rel] = await readFile(full);
+      } else if (resolved?.isDirectory()) {
+        await collectZipEntries(root, full, out, onWarn);
+      } else {
+        onWarn?.(`Skipped "${path.relative(root, full)}" in the website export — it's a broken symlink.`);
+      }
+    } else {
+      onWarn?.(`Skipped "${path.relative(root, full)}" in the website export — not a file, folder, or symlink.`);
     }
   }
 }
@@ -169,25 +202,44 @@ async function collectZipEntries(
 /**
  * Package the HTML export directory into a single ZIP (D8: Drive is file
  * delivery, not web hosting — no N-file folder mirroring). Built with
- * fflate (already a dependency, see theme-import.ts for the sibling
- * unzip-side usage), written to a temp file so the existing file-based
+ * fflate's async `zip()` (already a dependency, see theme-import.ts for the
+ * sibling unzip-side usage) so building the archive doesn't block the event
+ * loop, then written to a temp file so the existing file-based
  * `resumableUpload` (google-drive.ts) can read it incrementally like any
- * other artifact — never held whole in memory alongside the network layer.
+ * other artifact. Note this is true only of the UPLOAD step — the ZIP-BUILD
+ * step above necessarily holds the whole compressed archive in memory via
+ * fflate's in-memory `zip()` API before it's written out below.
  */
-async function zipHtmlExport(exportDir: string, title: string): Promise<UploadSource> {
+export async function zipHtmlExport(
+  exportDir: string,
+  title: string,
+  onWarn?: (message: string) => void,
+  // Test-only seam (same DI convention as google-drive.ts's fetchImpl/
+  // sleepImpl): lets a test force a failure in the write step, after
+  // mkdtemp, without touching the real filesystem's failure modes.
+  writeArchiveImpl: (filePath: string, data: Uint8Array) => Promise<void> = writeFile,
+): Promise<UploadSource> {
   const entries: Zippable = {};
-  await collectZipEntries(exportDir, exportDir, entries);
-  const zipped = zipSync(entries, { level: 6 });
+  await collectZipEntries(exportDir, exportDir, entries, onWarn);
   const fileName = `${bookSlug(title)}-website.zip`;
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-"));
-  const filePath = path.join(tmpRoot, fileName);
-  await writeFile(filePath, zipped);
-  return {
-    filePath,
-    fileName,
-    mimeType: "application/zip",
-    cleanup: () => rm(tmpRoot, { recursive: true, force: true }),
-  };
+  try {
+    const filePath = path.join(tmpRoot, fileName);
+    const zipped = await zipAsync(entries, { level: 6 });
+    await writeArchiveImpl(filePath, zipped);
+    return {
+      filePath,
+      fileName,
+      mimeType: "application/zip",
+      cleanup: () => rm(tmpRoot, { recursive: true, force: true }),
+    };
+  } catch (e) {
+    // mkdtemp() ran inside this function, before the caller's own
+    // try/finally that owns `source.cleanup()` — a failure anywhere below
+    // this point must not leak the temp directory it created.
+    await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+    throw e;
+  }
 }
 
 export const gdriveProvider: PublishProvider = {
@@ -237,7 +289,7 @@ export const gdriveProvider: PublishProvider = {
     // quota check right below must see the zip's size, not the export
     // directory's (which stat() can't even give a meaningful total for).
     const source: UploadSource = isHtml
-      ? await zipHtmlExport(req.artifact.path, req.project.title)
+      ? await zipHtmlExport(req.artifact.path, req.project.title, (msg) => req.deps.onProgress?.(msg))
       : {
           filePath: req.artifact.path,
           fileName: path.basename(req.artifact.path),
