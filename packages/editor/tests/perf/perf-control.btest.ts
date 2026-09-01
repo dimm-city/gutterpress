@@ -16,6 +16,12 @@ import { CONTROL_SLOWDOWN_MS, D13_BUDGET_MS } from "./support/constants.ts";
 // `afterAll` independently of this file's — see that file's own header for
 // what it guards and why.
 import "./echo-guard.btest.ts";
+// SFE-P3f Lane A — the same technique, for the same reason, wiring in this
+// run's own mechanism-pinning regression guard: per-keystroke
+// document.createRange() calls stay O(changed), not O(document), through
+// the vendored fork's measurement pass this run patched. See that file's
+// own header for the full mechanism and evidence.
+import "./measurement-guard.btest.ts";
 
 /**
  * SFE-P3d-sweep Lane B — G-12/AP-20 control for `perf-sweep.btest.ts`'s

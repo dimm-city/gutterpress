@@ -1,12 +1,20 @@
-# PATCHES.md — the `renderCustomBlock` seam
+# PATCHES.md — the vendored `@vscode/markdown-editor` fork's patches
 
-This fork applies exactly one feature patch — the `renderCustomBlock` seam
-specified by `docs/plans/source-first-editor/runs/SFE-P1b.md` and ratified in
-`SFE-P1b-decision.md` — on top of the unmodified, published
-`@vscode/markdown-editor@0.0.2-84` artifact. Every hunk below is additive
-(no reformatting, no renaming, no unrelated edits) and marked in the source
-with `/* gp-fork: renderCustomBlock */`. Only two files are touched:
-`dist/index.js` and `dist/index.d.ts`. `scripts/verify-vendored.mjs` checks
+This fork applies two patches on top of the unmodified, published
+`@vscode/markdown-editor@0.0.2-84` artifact:
+
+1. **`renderCustomBlock`** (Hunks 1-7 below) — the custom-block-rendering
+   seam specified by `docs/plans/source-first-editor/runs/SFE-P1b.md` and
+   ratified in `SFE-P1b-decision.md`. Marked `/* gp-fork: renderCustomBlock */`.
+2. **`measurement`** (Hunks 8-10, "## Patch 2" below) — the per-keystroke
+   geometry-remeasurement fix specified by
+   `docs/plans/source-first-editor/runs/SFE-P3f.md`. Marked
+   `/* gp-fork: measurement */`.
+
+Every hunk in both patches is additive (no reformatting, no renaming, no
+unrelated edits). Only two files are touched: `dist/index.js` and
+`dist/index.d.ts` (Patch 2 touches only `dist/index.js`).
+`scripts/verify-vendored.mjs` checks
 two independent things: (1) every OTHER vendored file — everything in
 `checksums.json`'s `unpatched` map — still byte-matches the hash recorded at
 vendor time from the published tarball, AND every git-tracked file in this
@@ -448,7 +456,7 @@ the runtime shape Hunk 1 introduced, for anyone reading the file.
   responsibility, per the run spec's "Segments decision" requirement. Lane
   A's patch supports both the plain-`dom` and `segments` shapes equally.
 
-## Upstreaming / removal trigger
+## Patch 1 upstreaming / removal trigger
 
 Delete this fork, and switch `packages/editor` back to the plain
 `@vscode/markdown-editor` registry dependency, when EITHER:
@@ -463,4 +471,468 @@ Delete this fork, and switch `packages/editor` back to the plain
 Per CLAUDE.md's design-for-deletion rule and `SFE-P1b.md`'s provenance
 constraint, an upstream feature request/PR for this seam is the preferred
 end state; this fork is deliberately as small and as generic as possible so
-that day's diff is trivial.
+that day's diff is trivial. (This trigger covers Patch 1 only — see Patch
+2's own trigger below.)
+
+---
+
+## Patch 2 — measurement (SFE-P3f — the D13 fix)
+
+**Decision record.** `docs/plans/source-first-editor/runs/SFE-P3f.md`,
+building on SFE-P3d-sweep Lane D's differential proof
+(`docs/plans/source-first-editor/p3d-sweep-audit.md`, "## Lane D"): the D13
+250 KiB p95 budget miss is inherent to this vendored fork —
+`EditorView._renderAutorun -> _publishMeasurements` unconditionally
+remeasures every mounted block's DOM geometry on every render, regardless
+of how much of the document a keystroke actually changed. D5's fork
+governance permits a minimal, hunk-documented, checksum-verified patch for
+exactly this kind of finding; this is that patch.
+
+### Consumer map (SFE-P3f METHOD step 1)
+
+`_publishMeasurements` is the ONLY producer of `MeasuredLayoutModel`'s
+(`wo`, `dist/index.js`) published state — `_measurements` (one
+`BlockMeasurement` per top-level block: `block`, `absoluteStart`, `height`,
+`rect`, `viewportClip`, `visualLineMap`, `viewNode`) and `_virtualLines`
+(the pending-paragraph cursor line, untouched by this patch — see below).
+Every consumer reads through `EditorView.measuredLayout.measurements` or
+`.visualLineMap` (the latter a DERIVED observable, `wo.visualLineMap`, that
+concatenates every block's `visualLineMap.lines` — its own doc comment
+already states the load-bearing invariant this patch relies on: "every
+per-block map uses the SAME editor-local coordinate space, so concatenation
+is well-formed WITHOUT TRANSLATION OR RE-SORTING"). Grepping every read site
+of `measuredLayout.measurements`/`measuredLayout.visualLineMap` in
+`dist/index.js` gives the complete consumer list:
+
+| Consumer | Call site | What it reads | When |
+|---|---|---|---|
+| `resolveOffsetFromPoint` (pointer -> offset, drag selection) | `dist/index.js:~6233` | `visualLineMap.get()` -> `offsetAtPoint` | event-time (pointer move/click) |
+| `_resolveTableCellOffset` (empty-cell disambiguation) | `~6262` | `visualLineMap.get().lines` (run-overlap check) | event-time |
+| `_selectionBlocksObs` (which blocks the current selection spans) | `~5985` | `measurements.read(e)` (`.rect`/`.viewNode`) | reactive, render-time |
+| `_revealRange` (caret-reveal / scroll-into-view) | `~6403,6412,6451` | `measurements.get()`, `visualLineMap.get()` | after an accepted edit |
+| `_selectionView`/`_cursorView`/`_gutterMarkersView` overlays | `~5892,5896,5900` | `visualLineMap` (observable) | reactive, render-time |
+| Selection/decoration measurement passthrough | `~6661` | `measurements.read(r)` | reactive |
+| Find-widget match-rect painting (`rangeRects`-style tiling) | `~6699,6733` | `visualLineMap.get()` (per-run rects, the same tiling the `renderCustomBlock` segment seam depends on) | `requestAnimationFrame`-scheduled paint |
+| A line-map handoff (comment widget / similar positioning) | `~7735` | `visualLineMap.get()` | event-time |
+| `_paint()` line/offset math elsewhere in the same class | `~6525,6560` | `visualLineMap.get()`, `measurements.get()` | event/paint-time |
+
+**Disposition, all consumers:** every row above reads the CURRENT value of
+an observable that `_publishMeasurements` populates, in full, exactly once
+per call, via `MeasuredLayoutModel.setMeasurements(e, t)` (`te((s) => {...})`
+— a single transactional update, unmodified by this patch). This patch does
+not defer, skip, or partially publish any block's measurement: EVERY block
+in `e.blocks` still gets a complete `BlockMeasurement` entry on every
+`_publishMeasurements(p, true)` call, published at the exact same point in
+the render cycle as before this patch. The only thing this patch changes is
+HOW that entry's `visualLineMap` is computed for a block whose rendered
+subtree is provably unchanged (translate a cached, correct map instead of
+re-walking the DOM) — never WHETHER or WHEN it is published. There is
+therefore no "stale/unmeasured" state for any consumer above to observe;
+the honesty requirement in SFE-P3f.md's binding constraints ("every
+consumer that could read a deferred value must either trigger measurement
+on demand or provably never be reached for an unmeasured block") is met by
+construction — there is no deferred value, only a cheaper-to-produce one
+that this patch proves is exact (see "Why the translate is exact," below).
+
+The pending-paragraph path (`_virtualLines`, `e.pendingParagraph` in
+`_publishMeasurements`) is untouched: it is measured unconditionally,
+directly from the live DOM, in the SAME unmodified code this patch left in
+place after the per-block loop.
+
+### Strategy chosen, and the prototype that chose it (SFE-P3f METHOD step 2)
+
+SFE-P3f.md's preference order was: (1) skip remeasuring blocks whose view
+nodes were reused by identity; (2) viewport-scoped measurement with lazy
+fill. A throwaway harness (single 250 KiB document, 20 keystrokes, no
+inter-keystroke pacing, reusing `tests/perf/support/entry.ts`/`drive.ts`/
+`corpus.ts` unmodified — the same fast ~15s inner loop Lane D's own
+prototyping used) reproduced the baseline signal first (p50=536.8ms
+p95=610.2ms, matching Lane D's 554-632ms band), then measured strategy (1):
+
+- **Strategy (1) alone, sound implementation:** p50=274.9ms p95=333.0ms —
+  roughly a 46% p95 reduction, but still 3.3x over the 100ms budget.
+- **A stage-by-stage timing breakdown inside `_renderAutorun`** (temporary
+  `globalThis.__gpProf` marks at each stage, removed before finishing;
+  method identical in spirit to Lane D's own `__gpProfile` hook) showed
+  `_renderAutorun`'s OWN synchronous cost, with strategy (1) applied, drops
+  to ~21ms total per keystroke at 250 KiB (`ni()` ~0.5ms, `sn.create()`
+  ~3.8ms, `_publishMeasurements` ~14-16ms) — i.e. strategy (1) fully
+  eliminates the O(document) cost Lane D located INSIDE
+  `_publishMeasurements`. The REMAINING ~250-270ms lives entirely OUTSIDE
+  `_renderAutorun`, between the raw `keydown` event and `_renderAutorun`
+  even starting — confirmed unaffected by this patch either way (measured
+  at ~251ms mean with the patch active, ~269ms mean with strategy (1)
+  forced off/full-remeasure, i.e. present in the UNPATCHED fork too, not
+  introduced or worsened by this patch).
+- **Locating that remaining cost:** it is not inside the adapter (Lane D
+  already showed that stage-by-stage, sub-millisecond) and not inside
+  `_publishMeasurements` bookkeeping (a deliberately UNSOUND experiment —
+  skipping even the cheap per-block `getBoundingClientRect`/
+  `getComputedStyle` reads entirely for cache-eligible blocks, discarded
+  before finishing — barely moved the number, and a 4-size sweep with that
+  same unsound experiment showed the residual cost scales near-linearly
+  with TOTAL mounted document size even when the loop body does almost
+  nothing: 10 KiB~15ms, 25 KiB~31ms, 100 KiB~113ms, 250 KiB~271ms p50). The
+  likely mechanism, located by reading (not further instrumented, and not
+  patched): `EditorView`'s keyboard controller (`class wl`,
+  `dist/index.js:~7600`) wires `EditContext.addEventListener("textupdate",
+  this._handleTextUpdate)` — ordinary character input on this fork is
+  driven by the BROWSER's native `EditContext` `textupdate` event, not
+  synchronously inside the `keydown` handler; `this.editContext`'s own text
+  buffer mirrors the FULL document (`editContext.updateText(0,
+  editContext.text.length, s)`, `_renderAutorun`'s first lines). This is
+  consistent with `contain`/`content-visibility` being absent everywhere in
+  `src/view/editor.css` EXCEPT one unrelated decorative spinner
+  (`.monaco-pixel-spinner`) — nothing scopes layout/paint to a sub-region of
+  the document, so the browser's own native EditContext/layout pipeline for
+  a large mounted DOM is the plausible remaining cost, not a JS-level loop
+  this patch's candidate strategies can shrink further.
+- **Verifying strategy (2) would not help either:** the SAME unsound
+  "skip everything for cache-eligible blocks" experiment above IS,
+  functionally, most of what viewport-scoped measurement would achieve for
+  a keystroke typed at the end of a document (nearly every block is
+  cache-eligible and untouched) — it barely moved the number. Since the
+  dominant remaining cost sits OUTSIDE `_publishMeasurements` entirely (the
+  no-op experiment below), no reduction in how many blocks
+  `_publishMeasurements` touches — by identity-skip OR by viewport
+  scoping — can reach it. A THIRD experiment made `_publishMeasurements`
+  return immediately (a complete no-op) whenever called incrementally,
+  isolating cost outside it entirely: 250 KiB p50 stayed at 255.2ms (vs
+  274.9ms with the real, sound patch) — confirming `_publishMeasurements`,
+  even fully disabled, is responsible for only ~20ms of the total, and that
+  ANY strategy scoped to `_publishMeasurements` (1 or 2) tops out at
+  roughly the same ceiling. Per SFE-P3f.md's own instruction ("Pick the
+  SMALLEST that empirically lands the budget; do not build both"), and
+  since strategy (1) captures effectively all of what a measurement-pass
+  fix can capture, strategy (2) was not built.
+
+**Conclusion:** strategy (1), soundly implemented, is the correct and
+sufficient measurement-pass fix — it does not reach the 100ms budget alone,
+but the remaining gap is a separate, pre-existing mechanism outside
+`_publishMeasurements`/`_renderAutorun` (and, on the CSS evidence above,
+plausibly outside anything a JS-level patch to the measurement pass could
+fix at all). See "Budget verdict" in this run's `p3d-sweep-audit.md` "##
+Lane E (P3f)" section for the honest final numbers and the explicit
+non-recommendation to chase this further inside this patch's scope.
+
+### Why the translate is exact, not approximate
+
+`Y(n, e, t)` (`dist/index.js:~3780`, unmodified by this patch) already
+implements block-level DOM/view-node reuse: `if (t instanceof T) { if
+(t.canReuse(n, e)) return t; }`, where `T.canReuse(e) { return this.data ===
+e; }` — a REFERENCE check against the block's `ViewData`. The ViewData
+builder (`Se()`/`M()`, unmodified) already preserves ViewData identity only
+when a block's ENTIRE subtree — ast, `showMarkup` (active/inactive), and
+every nested mark's own visibility — is unchanged (this is the SAME
+identity the existing `renderCustomBlock` patch's Hunk 1-2 threads
+`showMarkup` through, and the SAME identity `EditorModel.document`'s own
+memoization already relies on for the parse side — see that class's doc
+comment: "unchanged blocks keep their object identity across reparses").
+So: `r.node` being the SAME object as the entry this loop measured last
+render, for the SAME array position, already means (by an invariant this
+renderer's OWN DOM-reuse correctness already depends on, not one this patch
+introduces) that block's rendered DOM — and therefore its INTERNAL geometry
+(line wraps, run positions relative to the block's own top-left) — did not
+change. The `className` equality check adds a second, independent,
+CHEAP guard against any block-level presentation state (e.g.
+`md-block-active`/`md-markers-hidden`, `md-diff-added`) this reasoning did
+not anticipate; `src/view/editor.css`'s only layout-relevant rule gated by
+such a class (`.md-table.md-block-active td { position: relative }`) sits
+inside a table whose own active-state change already invalidates ViewData
+identity for that block, so it can never surface on a
+`gpReusable`-eligible node — the `className` check is defense-in-depth, not
+load-bearing on its own.
+
+What CAN change between two renders of an unchanged block is only its
+POSITION — a sibling before it in document order grew or shrank. This
+patch re-reads that position for EVERY block, every render, via the SAME
+cheap `getBoundingClientRect()` call the unpatched code already made (never
+skipped — see "Why the cheap read is never skipped," below), and applies
+the OBSERVED delta (`c.x - gpCache.rect.x`, `c.y - gpCache.rect.y` — real
+numbers from a real, fresh DOM read, never modeled/assumed via margin or
+gap arithmetic) to the cached map via `C.prototype.translate` (unmodified,
+pre-existing on the rect class). Because the block's own internal layout is
+provably unchanged (previous paragraph) and its coordinate space is shared
+document-wide (`wo.visualLineMap`'s own stated invariant, above), a uniform
+translation of every line/run rect by that SAME observed delta is exactly
+what a fresh `Pe.measure()` call would have computed — not an
+approximation of it.
+
+### Why the cheap read is never skipped
+
+An earlier, UNSOUND experiment (discarded — see "Strategy chosen," above)
+tried skipping the per-block `getBoundingClientRect()`/`getComputedStyle()`
+reads too, relying on a "nothing shifted above me" arithmetic assumption
+instead. That was rejected even though it measured the same speed: making
+it SOUND would require reasoning about CSS margin collapsing and gap
+behavior between blocks — real complexity this patch has no need to take
+on, because the cheap reads were already shown NOT to be the bottleneck
+(Lane D's own block-count-invariant differential, reconfirmed by this
+patch's own experiments above). This patch always re-reads the block's own
+position fresh from the DOM and only ever trusts a TRANSLATION of already-
+correct cached geometry, never an assumption about what did not move.
+
+### Why the `ResizeObserver` and scroll call sites are excluded
+
+`_publishMeasurements` has three call sites in this class:
+`_renderAutorun` (`~6346`, the one this patch marks `incremental`), a
+`ResizeObserver` callback (`~5859`, fires when the editor's own container
+box changes size), and a `scroll` listener (`~5866`, debounced via
+`requestAnimationFrame`). Both of the latter two keep calling
+`_publishMeasurements(u)`/`_publishMeasurements(l)` with a single argument
+— `n` is `undefined` there, so `gpReusable` is `false` `n ? ... : void 0`
+short-circuits `gpCache` to `void 0` — every block is fully remeasured on
+those paths, byte-for-byte as before this patch. A container resize can
+change every block's available width (text can rewrap — the ONE case this
+patch's identity invariant does not cover, since AST/`showMarkup` identity
+says nothing about container width) and is exactly the shape of change
+`ResizeObserver` exists to catch; a `contain`/`content-visibility`-free
+document scrolling is preserved as a full remeasure because this fork's own
+author chose to remeasure on scroll (this patch does not know or need to
+know why — see "Strategy chosen," above, on why that choice was left alone
+rather than second-guessed) and neither path is on the D13 per-keystroke
+path this patch targets.
+
+### Hunk 8 — `gpTranslateVisualLineMap`, a new helper
+
+**File:** `dist/index.js`, placed immediately after `mo()`'s existing
+helper functions (`go`/`Rs`/`po`/`_o`/`mt`/`vo`), before `class wo`
+(`MeasuredLayoutModel`) — co-located with the geometry primitives it
+complements.
+
+**Why:** a pure, standalone translation of a previously computed `Pe`
+(visual-line map) by a fixed `(dx, dy)`, built entirely from EXISTING,
+UNMODIFIED primitives: `C.prototype.translate` (already defined on the rect
+class), and the `Pe`/`ot`/`me` constructors (already used this way, fresh
+each time, by `mo()` itself — see "Why the translate is exact," above, for
+the correctness argument).
+
+Added (new function; no "before" — this is a pure addition):
+
+```js
+/**
+ * gp-fork: measurement (SFE-P3f — the D13 fix). Translates a previously
+ * computed Pe (a block's visual-line map, see mo() above) by a fixed
+ * (dx, dy), using C's own unmodified translate(). Every line's rect and
+ * every run's rect move by the same amount; sourceRange/source/
+ * isVisualLineAnchor are carried over untouched, so offset<->rect mapping
+ * stays exact — only WHERE on screen the (unchanged) mapping lands moves.
+ * See PATCHES.md for why this is sound (Y()'s existing identity-reuse
+ * contract) and for the one call site that uses it.
+ */
+function gpTranslateVisualLineMap(n, e, t) {
+  return e === 0 && t === 0 ? n : new Pe(n.lines.map((s) => new ot(
+    s.rect.translate(e, t),
+    s.runs.map((i) => new me(i.sourceRange, i.rect.translate(e, t), i.source, i.isVisualLineAnchor)),
+    s.virtualCursorLine
+  )));
+}
+```
+
+`e === 0 && t === 0` short-circuits to the SAME `Pe` instance (no
+allocation) for the common case of a block that has not shifted at all —
+typing at the end of a document, or below the edit point but above nothing
+that changed height. `virtualCursorLine` is carried through unchanged
+(`mo()` never constructs an `ot.virtual(...)` line inside a per-block `Pe`
+— that sentinel is built separately, only for the pending-paragraph path —
+so it is always `undefined` here; preserving it generically costs nothing).
+
+### Hunk 9 — `_publishMeasurements` gains an `incremental` parameter
+
+**File:** `dist/index.js`, the `EditorView` class (`gl`),
+`_publishMeasurements` method.
+
+Before:
+
+```js
+  /**
+   * Measure each mounted block's rect and per-block visual line map, then
+   * publish the result into the {@link MeasuredLayoutModel}. The model
+   * is not read here, so there is no feedback loop into the render autorun.
+   */
+  _publishMeasurements(e) {
+    const t = this.coordinateSpace.capture(), s = [];
+    for (const r of e.blocks) {
+      const c = t.toLocalRect(r.node.element.getBoundingClientRect());
+      r.node.recordMeasuredHeight(c.height);
+      const a = r.node.scrollElement;
+      let l;
+      const d = getComputedStyle(a).overflowX;
+      if ((d === "auto" || d === "scroll" || d === "hidden" || d === "clip") && a.scrollWidth > a.clientWidth + 1) {
+        const m = t.toLocalRect(a.getBoundingClientRect()).left + a.clientLeft;
+        l = { left: m, right: m + a.clientWidth };
+      }
+      const h = Pe.measure([{
+        absoluteStart: r.absoluteStart,
+        viewNode: r.node
+      }], this.coordinateSpace, t);
+      s.push({
+        block: r.node.block,
+        absoluteStart: r.absoluteStart,
+        height: c.height,
+        rect: c,
+        viewportClip: l,
+        isMeasured: !0,
+        visualLineMap: h,
+        viewNode: r.node
+      });
+    }
+```
+
+After:
+
+```js
+  /**
+   * Measure each mounted block's rect and per-block visual line map, then
+   * publish the result into the {@link MeasuredLayoutModel}. The model
+   * is not read here, so there is no feedback loop into the render autorun.
+   *
+   * gp-fork: measurement (SFE-P3f — the D13 fix). `n` (new, optional):
+   * true ONLY from the per-keystroke _renderAutorun call site below. The
+   * two other call sites in this class — the ResizeObserver callback and
+   * the scroll listener, both above in this constructor — keep calling
+   * this with a single argument, so `n` is `undefined` there and every
+   * block is always fully remeasured on those paths, byte-for-byte as
+   * before this patch: a container resize or a scroll can move or rewrap
+   * ANY block without touching a single view node's identity, so neither
+   * path is safe to shortcut this way, and neither is on the D13 budget's
+   * per-keystroke path this patch targets. See PATCHES.md for the full
+   * consumer trace and why gating on `n` this way is sound.
+   */
+  _publishMeasurements(e, n) {
+    const t = this.coordinateSpace.capture(), s = [];
+    for (const r of e.blocks) {
+      const c = t.toLocalRect(r.node.element.getBoundingClientRect());
+      r.node.recordMeasuredHeight(c.height);
+      const a = r.node.scrollElement;
+      let l;
+      const d = getComputedStyle(a).overflowX;
+      if ((d === "auto" || d === "scroll" || d === "hidden" || d === "clip") && a.scrollWidth > a.clientWidth + 1) {
+        const m = t.toLocalRect(a.getBoundingClientRect()).left + a.clientLeft;
+        l = { left: m, right: m + a.clientWidth };
+      }
+      /* gp-fork: measurement — r.node is the exact same object as the
+       * entry this loop measured last render at this position iff Y()
+       * (the view-node factory) reused it by identity, which happens only
+       * when nothing in its ast/showMarkup/active-state subtree differs —
+       * i.e. only when its rendered DOM, and therefore its internal
+       * geometry, is provably unchanged since __gpCache below was
+       * recorded (see PATCHES.md's consumer-map rationale). className is
+       * compared too, as a cheap, generic guard against any block-level
+       * class this reasoning did not anticipate. When both hold, the
+       * expensive per-text-leaf walk (Pe.measure() -> mo(): one DOM Range
+       * + getClientRects() per text leaf) is skipped and replaced by
+       * translating the cached map by this block's freshly (and cheaply)
+       * remeasured position delta — exact, not approximate, under that
+       * same identity invariant, since translate() only ever moves rects
+       * by the block's OWN observed shift. */
+      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className;
+      const h = gpReusable
+        ? gpTranslateVisualLineMap(gpCache.visualLineMap, c.x - gpCache.rect.x, c.y - gpCache.rect.y)
+        : Pe.measure([{
+          absoluteStart: r.absoluteStart,
+          viewNode: r.node
+        }], this.coordinateSpace, t);
+      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className };
+      s.push({
+        block: r.node.block,
+        absoluteStart: r.absoluteStart,
+        height: c.height,
+        rect: c,
+        viewportClip: l,
+        isMeasured: !0,
+        visualLineMap: h,
+        viewNode: r.node
+      });
+    }
+```
+
+Design notes:
+
+- **`__gpCache`.** A plain own-property stashed directly on the block's
+  `ViewNode` instance (`T` and its subclasses use ordinary, unfrozen
+  instance fields throughout — confirmed by inspection, no
+  `Object.freeze`/`Object.seal` anywhere in this file). No separate
+  `Map`/`WeakMap` is needed: since `r.node` is only ever the SAME object
+  across renders when `Y()` genuinely reused it, the cache and its
+  eligibility check share one identity by construction, and a discarded
+  node's cache is reclaimed with it — no cleanup pass required, no
+  unbounded growth.
+- **Always writes `__gpCache`, on every path.** Whether a block was
+  reused (translated) or fully remeasured, the fresh, verified-correct
+  result is stashed for next time — including on the FULL-remeasure
+  `ResizeObserver`/scroll paths, so a resize or scroll leaves the cache
+  maximally fresh for the very next keystroke, rather than only ever
+  updating it from the incremental path.
+- **`recordMeasuredHeight`/`viewportClip` are computed exactly as before,
+  unconditionally, for every block.** This patch does not attempt to skip
+  these — Lane D's own block-count-invariant differential, reconfirmed by
+  this patch's own experiments (see "Strategy chosen," above), already
+  showed these are not the cost; only the per-text-leaf walk is.
+
+### Hunk 10 — the `_renderAutorun` call site
+
+**File:** `dist/index.js`, `EditorView._renderAutorun`, the final line.
+
+Before:
+
+```js
+    this._document.set(p, void 0), this._publishMeasurements(p), l ? this._paintDiff(p, l.insertedRanges) : this._clearDiff();
+```
+
+After:
+
+```js
+    this._document.set(p, void 0), this._publishMeasurements(p, !0), l ? this._paintDiff(p, l.insertedRanges) : this._clearDiff();
+```
+
+The ONLY call site that opts into the incremental path — see Hunk 9's
+design notes and "Why the `ResizeObserver` and scroll call sites are
+excluded," above, for why the other two call sites are deliberately
+untouched.
+
+### What Patch 2 did NOT do
+
+- Did not touch the `ResizeObserver` callback or the scroll listener's own
+  call to `_publishMeasurements` — both keep calling it with one argument,
+  so both remain byte-for-byte full remeasures.
+- Did not attempt viewport-scoped measurement (candidate strategy 2) —
+  measured, and rejected, as not reaching the budget either, for a
+  documented reason (see "Strategy chosen," above), consistent with "pick
+  the smallest that empirically lands the budget; do not build both."
+- Did not skip, cache, or otherwise change `recordMeasuredHeight`'s
+  per-block call, `viewportClip`'s computation, `e.pendingParagraph`'s
+  handling, or `MeasuredLayoutModel.setMeasurements`'s transactional
+  update — all untouched, all still run on every block, every render.
+- Did not add any escape hatch, option, or public API surface — `n` is an
+  internal parameter of a private (`_`-prefixed) method, not exposed via
+  `BlockViewOptions`/`EditorViewOptions` or any other public contract in
+  `dist/index.d.ts` (this patch touches only `dist/index.js`).
+- Did not attempt to locate or patch the SEPARATE, larger remaining cost
+  this patch's own investigation surfaced (the `EditContext`
+  `textupdate`-driven latency between `keydown` and `_renderAutorun`
+  starting) — out of SFE-P3f.md's scope (which names the measurement pass
+  specifically), plausibly not fixable by any JS-level patch at all (see
+  "Strategy chosen," above), and squarely in the input/IME-handling
+  territory where "Correctness outranks the budget" applies most strongly.
+  Reported, not patched — see this run's `p3d-sweep-audit.md` "## Lane E
+  (P3f)" section and the upstream-issue companion document.
+
+### Patch 2 upstreaming / removal trigger
+
+Delete this patch, and let `_publishMeasurements` remeasure every block
+unconditionally again, when EITHER:
+
+1. Upstream ships an equivalent incremental-measurement optimization inside
+   `_publishMeasurements`/`_renderAutorun` itself (matching or subsuming
+   this patch's behavior), or
+2. This exact optimization — skip re-walking a block's visual-line geometry
+   when its view node was reused by identity, translating cached geometry
+   by the block's observed position delta instead — is upstreamed as an
+   accepted PR against `microsoft/vscode-packages` (directory
+   `vscode-team-tools/packages/markdown-editor`).
+
+Per CLAUDE.md's design-for-deletion rule, an upstream fix is the preferred
+end state here too; this patch changes nothing about `_publishMeasurements`'s
+OBSERVABLE output (see "Consumer map," above) so its removal, once upstream
+subsumes it, is a pure performance no-op for every consumer.

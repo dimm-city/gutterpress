@@ -2,7 +2,7 @@
   "$schema": "verify-vendored checksum manifest — see scripts/verify-vendored.mjs",
   "algorithm": "sha256",
   "generatedFrom": "@vscode/markdown-editor@0.0.2-84 (registry tarball, sha512 verified against dist.integrity — see PATCHES.md / gutterpressFork metadata in package.json)",
-  "note": "unpatched: sha256 of each vendored file AS EXTRACTED FROM THE PUBLISHED TARBALL, computed before any patch was applied (proves ongoing byte-identity to upstream). patched: sha256 of dist/index.js and dist/index.d.ts AFTER the gp-fork renderCustomBlock patch (proves no undocumented drift from the reviewed patch state). upstreamBaseline: sha256 of dist/index.js and dist/index.d.ts AS EXTRACTED FROM THE PUBLISHED TARBALL, i.e. their value BEFORE the patch — re-derived by re-fetching and re-verifying the tarball (see 'generatedFrom' above), so the two-file diff between upstreamBaseline and patched can be confirmed by any future reader without refetching it themselves. package.json, NOTICE, PATCHES.md, checksums.json, and scripts/verify-vendored.mjs are gutterpress-authored files, not vendored, and are intentionally NOT in this manifest. scripts/verify-vendored.mjs also runs a completeness pass: every git-tracked file in this package outside that same gutterpress-authored allowlist (plus scripts/ generally) must appear as a key in 'unpatched' or 'patched' — a file added on disk, or a manifest entry silently removed, fails the check instead of passing vacuously.",
+  "note": "unpatched: sha256 of each vendored file AS EXTRACTED FROM THE PUBLISHED TARBALL, computed before any patch was applied (proves ongoing byte-identity to upstream). patched: sha256 of dist/index.js and dist/index.d.ts AFTER the gp-fork patches — renderCustomBlock (SFE-P1b) and measurement (SFE-P3f) — currently applied on top of each other (proves no undocumented drift from the reviewed patch state; see PATCHES.md for both). upstreamBaseline: sha256 of dist/index.js and dist/index.d.ts AS EXTRACTED FROM THE PUBLISHED TARBALL, i.e. their value BEFORE any patch — re-derived by re-fetching and re-verifying the tarball (see 'generatedFrom' above), so the two-file diff between upstreamBaseline and patched can be confirmed by any future reader without refetching it themselves. package.json, NOTICE, PATCHES.md, checksums.json, and scripts/verify-vendored.mjs are gutterpress-authored files, not vendored, and are intentionally NOT in this manifest. scripts/verify-vendored.mjs also runs a completeness pass: every git-tracked file in this package outside that same gutterpress-authored allowlist (plus scripts/ generally) must appear as a key in 'unpatched' or 'patched' — a file added on disk, or a manifest entry silently removed, fails the check instead of passing vacuously.",
   "unpatched": {
     "UPSTREAM-README.md": "6a819718fabb2638c47c69a28e3f6c50145c9699d51cb43ba1e7c82026ee333c",
     "dist/commands.d.ts": "39a0d3420ff924a19a93e241423232152113929e04de0cf5cafa4dfcca94ad30",
@@ -30,7 +30,7 @@
     "src/view/themes/vscode-github.css": "8b857d871cdd157e95fbde4bb3e23717bc638d72666fd6301af2b4dc787b453f"
   },
   "patched": {
-    "dist/index.js": "395ea5ef807bcddaaa164e79581cc03e29764ee8c2b3cb11dc9c82a5a2b7d1af",
+    "dist/index.js": "dadad4003ca520fe99e6d6b8e84f626315ee8702bb116dcd3c84cbb3fd482d8f",
     "dist/index.d.ts": "bb7107a3eb4d2bfeaedd34a25bb69fcabf784bf8f63c6060e1aa68a0b2103858"
   },
   "upstreamBaseline": {

@@ -1096,6 +1096,215 @@ the verdict (even the floor's own minimum, 425.2 ms, is 4.25x over the 100
 ms budget on its own) and was not pursued further given the smallest-
 design instruction and this lane's write ownership.
 
+## Lane E (P3f)
+
+Scope: patch the vendored fork's whole-document per-keystroke measurement
+down toward O(changed/visible), per `docs/plans/source-first-editor/runs/SFE-P3f.md`,
+building directly on this document's own "## Lane D" section above (same
+root cause: `EditorView._renderAutorun -> _publishMeasurements`
+unconditionally remeasuring every block via `Pe.measure()`/`mo()`'s
+per-text-leaf `Range.getClientRects()` walk). Write ownership:
+`packages/vscode-markdown-editor/dist/index.js`, `PATCHES.md`,
+`checksums.json`, `packages/editor/tests/perf/**` (mechanism-pinning
+guard only), this section, and the upstream-issue draft.
+
+**Outcome up front:** the named mechanism is fixed — Hunk 9/10 in
+`PATCHES.md`'s "## Patch 2" section skip the expensive per-leaf walk for a
+block whose view node the fork's own `Y()` factory already reused by
+identity (unchanged AST/`showMarkup`/active-state, an invariant this
+renderer's own DOM-reuse correctness already depends on), translating its
+previously computed geometry by the block's freshly (cheaply) remeasured
+position delta instead. Every caret/selection/drag/segment/custom-view
+browser proof in `packages/editor` and `packages/vscode-extension` passes
+unmodified (exact counts below) and a new mechanism-pinning regression test
+(`packages/editor/tests/perf/measurement-guard.btest.ts`) proves the fix's
+own mechanism directly, with a live sabotage demonstration. **The D13 250
+KiB p95 < 100 ms budget still fails** — honestly, not tuned away — because
+this lane's own investigation (full method in `PATCHES.md`'s "Strategy
+chosen" subsection) found a SEPARATE, comparably large, pre-existing cost
+living entirely outside `_renderAutorun`/`_publishMeasurements` (between
+the raw `keydown` event and `_renderAutorun` starting, plausibly the
+fork's `EditContext` `textupdate`-driven native input pipeline processing
+a full-document-sized text buffer), which is out of this run's named scope
+and not something either candidate measurement-pass strategy can reach.
+See `PATCHES.md`'s "## Patch 2" section for the full consumer map,
+prototype numbers, correctness argument, and the three hunks; this section
+covers the before/after evidence and verification only.
+
+### What shipped
+
+`PATCHES.md`'s "## Patch 2 — measurement (SFE-P3f — the D13 fix)" section,
+in full: Hunk 8 (a new, pure `gpTranslateVisualLineMap` helper — reuses
+`C.prototype.translate` and the `Pe`/`ot`/`me` constructors unmodified),
+Hunk 9 (`_publishMeasurements` gains an `incremental` parameter and the
+identity+className-gated skip), Hunk 10 (the one-line `_renderAutorun`
+call site opting in). `checksums.json`'s `patched.dist/index.js` hash is
+updated to `dadad4003ca520fe99e6d6b8e84f626315ee8702bb116dcd3c84cbb3fd482d8f`;
+`dist/index.d.ts` is untouched (no type change was needed), so its hash and
+`upstreamBaseline` are unchanged. `bun run check:vendored` is green against
+the new manifest (below).
+
+The `ResizeObserver` callback and scroll listener's own calls to
+`_publishMeasurements` are byte-for-byte untouched (they keep calling it
+with one argument, so the new `n` parameter is `undefined` there and every
+block is always fully remeasured on those paths) — see PATCHES.md's "Why
+the `ResizeObserver` and scroll call sites are excluded" for why.
+
+**New regression guard**, inside this lane's `tests/perf/**` write
+ownership: `packages/editor/tests/perf/support/measurement-guard-entry.ts`
+(monkey-patches the global `document.createRange` to count calls — a
+test-side observation of the real global the fork already calls, no
+production hook added) and `packages/editor/tests/perf/measurement-guard.btest.ts`
+(mounts a 250 KiB document — the same size D13's own gate uses — types 20
+ordinary appended keystrokes, and asserts total `createRange()` calls stay
+under `20 * 60 = 1200`, several orders of magnitude below what an
+O(document) walk over ~800 blocks would cost for even one keystroke).
+Wired into `bun run test:perf` via `perf-control.btest.ts`'s side-effect
+import, the same technique Lane D's own `echo-guard.btest.ts` already uses
+for the identical reason (no new `package.json` script line available
+inside this lane's write ownership).
+
+**Sabotage (G-12/AP-21):** locally forced `_publishMeasurements`'s
+`gpReusable` local to `false` unconditionally (the exact pre-patch "always
+remeasure everything" shape) and re-ran `measurement-guard.btest.ts`:
+
+```
+Expected: < 1200
+Received: 72137
+(fail) D13 measurement-pass regression guard ... [FAIL]
+```
+
+72,137 calls across 20 keystrokes (~3,607/keystroke) against a ~60x-over
+budget — confirming the assertion is live, not vacuous, and cleanly
+distinguishes O(document) from O(changed) at this document size. Reverted
+immediately; `diff` against the pre-sabotage file showed zero drift, and
+`node --check dist/index.js` plus a clean rerun (2 pass) confirmed the file
+was restored before this lane's work was considered done.
+
+### Before/after — all four sizes, both invocations
+
+Both invocations below include the new `measurement-guard.btest.ts` case
+(wired via `perf-control.btest.ts`'s side-effect import, alongside Lane D's
+`echo-guard.btest.ts`) — both passed both times (3 pass in
+`perf-control.btest.ts`'s run each time: control + echo-guard +
+measurement-guard).
+
+**This lane's invocation 1** — exit code 1 (250 KiB gate correctly still
+fails):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 223.4 ms | 32.4 ms | 44.0 ms | 62.6 ms | 28.1 ms | 34.3 ms | 60 |
+| 100 KiB | 358.3 ms | 111.4 ms | 135.2 ms | 149.9 ms | 101.2 ms | 114.1 ms | 60 |
+| 250 KiB (run 1/2) | 757.8 ms | 277.1 ms | **318.1 ms** | 341.5 ms | 252.1 ms | 283.0 ms | 60 |
+| 250 KiB (run 2/2) | 835.3 ms | 276.3 ms | **339.7 ms** | 430.8 ms | 249.8 ms | 287.9 ms | 60 |
+| 1 MiB | 3,052.3 ms | 1,099.0 ms | 1,174.6 ms | 1,306.1 ms | 1,044.8 ms | 1,107.9 ms | 60 |
+
+Control (250 KiB, +150 ms/keystroke sabotage): p50=432.3 ms p95=465.1 ms
+max=465.1 ms min=406.6 ms mean=432.9 ms (n=15) — PASS (p95 > 100 ms budget
+and > 75 ms sanity margin).
+
+**This lane's invocation 2** — exit code 1 (same):
+
+| Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25 KiB | 224.5 ms | 32.3 ms | 43.9 ms | 47.8 ms | 28.5 ms | 33.8 ms | 60 |
+| 100 KiB | 351.7 ms | 105.1 ms | 132.8 ms | 171.2 ms | 99.0 ms | 109.7 ms | 60 |
+| 250 KiB (run 1/2) | 773.2 ms | 266.1 ms | **290.3 ms** | 317.3 ms | 245.7 ms | 267.5 ms | 60 |
+| 250 KiB (run 2/2) | 785.4 ms | 268.2 ms | **317.3 ms** | 337.3 ms | 249.3 ms | 273.7 ms | 60 |
+| 1 MiB | 2,771.6 ms | 1,137.6 ms | 1,235.0 ms | 1,291.5 ms | 1,034.5 ms | 1,141.7 ms | 60 |
+
+Control: p50=428.4 ms p95=479.6 ms max=479.6 ms min=416.1 ms mean=435.9 ms
+(n=15) — PASS.
+
+**Comparison against the pre-patch baseline** (Lane B and Lane D, this same
+document's earlier sections — same sandbox, same 250 KiB corpus, all p95):
+
+| Source | 250 KiB p95 samples | Patched? |
+|---|---|---|
+| Lane B, invocation 1 | 631.7 ms, 571.1 ms | no |
+| Lane B, invocation 2 | 585.4 ms, 554.3 ms | no |
+| Lane D, invocation 1 | 560.1 ms, 609.9 ms | no (confirmed unchanged from Lane B) |
+| Lane D, invocation 2 | 565.3 ms, 593.7 ms | no |
+| **Lane E, invocation 1** | **318.1 ms, 339.7 ms** | **yes** |
+| **Lane E, invocation 2** | **290.3 ms, 317.3 ms** | **yes** |
+
+Pre-patch band: 554-632 ms (8 samples, four invocations, two lanes,
+consistent — no drift, per Lane D). Post-patch band: 290-340 ms (8 samples,
+two invocations, this lane) — roughly a **44-50% p95 reduction**, using the
+same sandbox, same corpus, same harness. 100 KiB and 25 KiB numbers are
+consistent with Lane B's own recorded bands (both invocations), confirming
+this patch has no effect at sizes where the per-leaf walk was already
+cheap in absolute terms. 1 MiB is likewise consistent in relative
+reduction (roughly comparable proportion) though Lane B did not record a
+1 MiB comparison band explicitly in this document.
+
+### Budget verdict
+
+**FAIL — honestly re-confirmed, real improvement, not sufficient alone.**
+D13's 250 KiB p95 < 100 ms gate is not met: measured p95 across this
+lane's own two fresh invocations ranges 290.3-339.7 ms, down from the
+pre-patch 554.3-631.7 ms band (Lane B/Lane D) — a genuine, verified ~46%
+reduction, achieved by fully eliminating the O(document) mechanism this
+run named (confirmed directly via a stage-by-stage timing breakdown: with
+this patch, `_renderAutorun`'s own synchronous cost at 250 KiB drops to
+roughly 21 ms total, `_publishMeasurements` itself to roughly 14-16 ms —
+see `PATCHES.md`'s "Strategy chosen" subsection). The remaining ~250-300 ms
+lives in a SEPARATE mechanism, confirmed (via a deliberately unsound
+"disable `_publishMeasurements` entirely" experiment, discarded before
+finishing) to sit entirely OUTSIDE `_renderAutorun`, unaffected by this
+patch in either direction (measured at a statistically indistinguishable
+~250-270 ms whether the patch is active or forced off), and out of this
+run's authorized scope to patch. No weakening of the measurement, the
+budget, or any test was made or considered.
+
+### Recommendation for the next run (not performed here — outside this
+run's scope)
+
+The companion upstream-issue document
+(`docs/plans/source-first-editor/upstream-issue-measurement.md`) names the
+suspect mechanism this lane located but did not patch: `EditorView`'s
+keyboard controller (`class wl`, `dist/index.js:~7600`) wires ordinary
+character input through the browser's native `EditContext`
+`addEventListener("textupdate", ...)` path rather than synchronously inside
+`keydown`, and `this.editContext`'s own text buffer mirrors the FULL
+document on every render (`editContext.updateText(0,
+editContext.text.length, s)`). A future run investigating this would need
+to determine whether the latency is genuinely inside the browser's own
+`EditContext` implementation processing a large buffer (in which case no
+JS-level patch can fix it — the buffer itself would need to shrink, a much
+larger redesign of the input architecture) or whether `_handleTextUpdate`
+does avoidable synchronous work of its own before handing off to the
+model — this lane did not instrument inside that handler and is reporting
+a located, plausible suspect, not a proven second root cause.
+
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | All four packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) exit 0 |
+| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs, run directly; the two new files (`measurement-guard-entry.ts`, `measurement-guard.btest.ts`) typecheck clean |
+| `cd packages/editor && bun test ./tests/perf/measurement-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane D's own count |
+| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 9 existing suites — unchanged from Lane D's own count; every caret/drag/selection/segment/custom-view proof this run's binding constraints name is green, unmodified |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (separate mechanism, out of scope, see above); this lane's new measurement-guard case passed; control passed; all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 |
+| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — unchanged from Lane D's own count |
+| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files — unchanged from Lane D's own count |
+| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files — unchanged from Lane D's own count (the "disk full" console lines are the same pre-existing, expected fault-injection test output Lane D already noted) |
+| `bun run check:vendored` | 0 | `[verify-vendored] OK — 24 unpatched file(s) ... 2 patched file(s) match the reviewed patch state (26 hash(es) checked), 33 tracked file(s) all accounted for` — against the updated `checksums.json` |
+| `bun run check:architecture` | 0 | All four rules PASS, including `desktop-route-ratchet` at its unchanged baseline (this lane added no desktop route) |
+| `bun run knip` | 0 | Clean |
+
+### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
+
+`measurement-guard.btest.ts` proves it can fail (see "Sabotage," above:
+1200-budget vs 72137-actual under local sabotage, reverted before
+finishing). Its liveness check (`mountCount` > 0 before the reset) confirms
+the counting hook observes the real mechanism rather than silently never
+firing, so a broken/unwired counter could not vacuously pass the
+post-keystroke budget assertion.
+
 ### Verification run by this lane
 
 | Command | Exit code | Note |

@@ -2415,6 +2415,23 @@ function vo(n, e, t, s) {
     C.fromPointSize(r.x, r.y, r.width, r.height)
   ));
 }
+/**
+ * gp-fork: measurement (SFE-P3f — the D13 fix). Translates a previously
+ * computed Pe (a block's visual-line map, see mo() above) by a fixed
+ * (dx, dy), using C's own unmodified translate(). Every line's rect and
+ * every run's rect move by the same amount; sourceRange/source/
+ * isVisualLineAnchor are carried over untouched, so offset<->rect mapping
+ * stays exact — only WHERE on screen the (unchanged) mapping lands moves.
+ * See PATCHES.md for why this is sound (Y()'s existing identity-reuse
+ * contract) and for the one call site that uses it.
+ */
+function gpTranslateVisualLineMap(n, e, t) {
+  return e === 0 && t === 0 ? n : new Pe(n.lines.map((s) => new ot(
+    s.rect.translate(e, t),
+    s.runs.map((i) => new me(i.sourceRange, i.rect.translate(e, t), i.source, i.isVisualLineAnchor)),
+    s.virtualCursorLine
+  )));
+}
 class wo {
   _measurements = x(this, []);
   measurements = this._measurements;
@@ -6326,7 +6343,7 @@ class gl extends H {
         throw new Error("DocumentViewNode.contentDomNode must be stable across rebuilds");
     } else
       this._contentContainer.insertBefore(p.contentDomNode, this._selectionView.element), this._resizeObserver.observe(p.contentDomNode);
-    this._document.set(p, void 0), this._publishMeasurements(p), l ? this._paintDiff(p, l.insertedRanges) : this._clearDiff();
+    this._document.set(p, void 0), this._publishMeasurements(p, !0), l ? this._paintDiff(p, l.insertedRanges) : this._clearDiff();
   };
   /** Current mounted blocks, or empty before the first render. */
   get _blocks() {
@@ -6336,8 +6353,20 @@ class gl extends H {
    * Measure each mounted block's rect and per-block visual line map, then
    * publish the result into the {@link MeasuredLayoutModel}. The model
    * is not read here, so there is no feedback loop into the render autorun.
+   *
+   * gp-fork: measurement (SFE-P3f — the D13 fix). `n` (new, optional):
+   * true ONLY from the per-keystroke _renderAutorun call site below. The
+   * two other call sites in this class — the ResizeObserver callback and
+   * the scroll listener, both above in this constructor — keep calling
+   * this with a single argument, so `n` is `undefined` there and every
+   * block is always fully remeasured on those paths, byte-for-byte as
+   * before this patch: a container resize or a scroll can move or rewrap
+   * ANY block without touching a single view node's identity, so neither
+   * path is safe to shortcut this way, and neither is on the D13 budget's
+   * per-keystroke path this patch targets. See PATCHES.md for the full
+   * consumer trace and why gating on `n` this way is sound.
    */
-  _publishMeasurements(e) {
+  _publishMeasurements(e, n) {
     const t = this.coordinateSpace.capture(), s = [];
     for (const r of e.blocks) {
       const c = t.toLocalRect(r.node.element.getBoundingClientRect());
@@ -6349,10 +6378,29 @@ class gl extends H {
         const m = t.toLocalRect(a.getBoundingClientRect()).left + a.clientLeft;
         l = { left: m, right: m + a.clientWidth };
       }
-      const h = Pe.measure([{
-        absoluteStart: r.absoluteStart,
-        viewNode: r.node
-      }], this.coordinateSpace, t);
+      /* gp-fork: measurement — r.node is the exact same object as the
+       * entry this loop measured last render at this position iff Y()
+       * (the view-node factory) reused it by identity, which happens only
+       * when nothing in its ast/showMarkup/active-state subtree differs —
+       * i.e. only when its rendered DOM, and therefore its internal
+       * geometry, is provably unchanged since __gpCache below was
+       * recorded (see PATCHES.md's consumer-map rationale). className is
+       * compared too, as a cheap, generic guard against any block-level
+       * class this reasoning did not anticipate. When both hold, the
+       * expensive per-text-leaf walk (Pe.measure() -> mo(): one DOM Range
+       * + getClientRects() per text leaf) is skipped and replaced by
+       * translating the cached map by this block's freshly (and cheaply)
+       * remeasured position delta — exact, not approximate, under that
+       * same identity invariant, since translate() only ever moves rects
+       * by the block's OWN observed shift. */
+      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className;
+      const h = gpReusable
+        ? gpTranslateVisualLineMap(gpCache.visualLineMap, c.x - gpCache.rect.x, c.y - gpCache.rect.y)
+        : Pe.measure([{
+          absoluteStart: r.absoluteStart,
+          viewNode: r.node
+        }], this.coordinateSpace, t);
+      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className };
       s.push({
         block: r.node.block,
         absoluteStart: r.absoluteStart,
