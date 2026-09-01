@@ -933,6 +933,52 @@ test("azure-swa preflight requires book.html and warns about extra dist content"
     expect(extras).toBeDefined();
     expect(extras!.message).toContain(artifactName("T", "pdf"));
     expect(extras!.message).toContain("build-fingerprint.json");
+    // #221 C9 — the warning's wording must not assume Azure's specific
+    // "deployed as a live site" behavior: gdrive shares this exact check for
+    // its zip-upload, which never makes the folder "publicly downloadable"
+    // the way a deployed static site would.
+    expect(extras!.message).not.toContain("publicly downloadable");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("gdrive (html format) shares the same html-dir-extras warning as azure-swa, worded accurately for BOTH (#221 C9)", async () => {
+  const dir = await tempProject(
+    "title: T\nauthors: [A]\npublish:\n  gdrive:\n    format: html\n",
+  );
+  try {
+    const out = resolveOutputDir(dir, "T");
+    await mkdir(out, { recursive: true });
+    const deps = await depsFor(dir);
+
+    // Empty dir: no book.html → blocking error, same gate as azure-swa.
+    let result = await runPublish(
+      { projectDir: dir, providerId: "gdrive", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.id === "publish/html-export-missing")).toBe(true);
+
+    // Export present but a stray PDF + the build fingerprint sit next to it
+    // → the SAME warning id azure-swa gets, from the ONE shared check.
+    await writeFile(path.join(out, BOOK_HTML), "<html></html>");
+    await writeFile(path.join(out, artifactName("T", "pdf")), "%PDF");
+    await writeFile(path.join(out, "build-fingerprint.json"), "{}");
+    result = await runPublish(
+      { projectDir: dir, providerId: "gdrive", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+    const extras = result.issues.find(
+      (i) => i.id === "publish/html-dir-extras" && i.severity === "warning",
+    );
+    expect(extras).toBeDefined();
+    // Accurate for a zip-upload: nothing claims it becomes "publicly
+    // downloadable" (true only of a deployed static site, not a Drive zip),
+    // but the "gets bundled" wording still correctly warns the author.
+    expect(extras!.message).not.toContain("publicly downloadable");
+    expect(extras!.message).toContain("gets bundled and published");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
