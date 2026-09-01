@@ -45,7 +45,7 @@ import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
-import { handleRemoteErrors } from "./server-bridge/friendly-errors";
+import { handleRemoteErrors, handlePublishErrors } from "./server-bridge/friendly-errors";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
@@ -1372,11 +1372,11 @@ const googleConnectFlow = new GoogleConnectFlow({
 });
 
 secureHandle("publish:connectGoogleStart", (_e, account?: string) =>
-  handleRemoteErrors("publish:connectGoogleStart", () => googleConnectFlow.start(account)),
+  handlePublishErrors("publish:connectGoogleStart", () => googleConnectFlow.start(account)),
 );
 
 secureHandle("publish:connectGoogleWait", () =>
-  handleRemoteErrors("publish:connectGoogleWait", () => googleConnectFlow.wait()),
+  handlePublishErrors("publish:connectGoogleWait", () => googleConnectFlow.wait()),
 );
 
 secureHandle("publish:connectGoogleCancel", async () => googleConnectFlow.cancel());
