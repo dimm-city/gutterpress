@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 /**
  * gdrive-spike.mjs — Phase 0 validation spike for the Google Drive publish
- * provider (issue #221). THROWAWAY: delete this file once
- * packages/cli/src/lib/publish/providers/gdrive.ts exists and its tests pass.
+ * provider (issue #221).
+ *
+ * REMOVAL: the plan's ORIGINAL trigger — "delete this file once
+ * packages/cli/src/lib/publish/providers/gdrive.ts exists and its tests
+ * pass" — has already fired; both exist. This file is being kept PAST that
+ * trigger deliberately, ONLY for the two still-open manual follow-ups that
+ * have no other home: P12 (folder-move survival — re-run with --folder-id)
+ * and P14 (Testing-mode 7-day refresh-token expiry — re-run with
+ * --refresh-only). Once the product owner confirms both P12 and P14 are
+ * done, delete this file; do not let it linger past that as dead weight.
  *
  * Purpose: prove the DESIGN against real Google before writing production
  * code. Every assumption in the plan that depends on Google's actual behavior
