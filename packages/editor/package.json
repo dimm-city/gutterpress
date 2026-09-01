@@ -15,7 +15,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json && tsc --noEmit -p src/gutterpress/tsconfig.json",
     "test": "bun test",
-    "test:browser": "bun test ./tests/vscode-adapter/browser.cases.btest.ts && bun test ./tests/vscode-adapter/input-a11y/input-a11y.btest.ts && bun test ./tests/vscode-adapter/custom-view/probe.btest.ts && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts && bun test ./tests/web/mount.btest.ts && bun test ./tests/gutterpress/gutterpress.btest.ts && bun test ./tests/gutterpress/limits.btest.ts && bun test ./tests/gutterpress/plugin-region.btest.ts",
+    "test:browser": "bun test ./tests/vscode-adapter/browser.cases.btest.ts && bun test ./tests/vscode-adapter/input-a11y/input-a11y.btest.ts && bun test ./tests/vscode-adapter/custom-view/probe.btest.ts && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts && bun test ./tests/vscode-adapter/table-editing.btest.ts && bun test ./tests/web/mount.btest.ts && bun test ./tests/gutterpress/gutterpress.btest.ts && bun test ./tests/gutterpress/limits.btest.ts && bun test ./tests/gutterpress/plugin-region.btest.ts",
+    "test:perf": "bun test ./tests/perf/perf-control.btest.ts && bun test ./tests/perf/perf-sweep.btest.ts",
     "check:browser-purity": "node scripts/check-browser-purity.mjs"
   },
   "engines": {

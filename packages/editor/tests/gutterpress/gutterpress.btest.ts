@@ -526,6 +526,108 @@ describe("getSelection over a gutterpress-projected mount reports offsets into t
   });
 });
 
+// ---------------------------------------------------------------------------
+// SFE-P3d-sweep Lane A gap closure -- scenario 8 ("edit near generated
+// content"). The "generated chapter-opener preview" suite above proves the
+// generated view itself is read-only and never focusable. What it does NOT
+// prove -- and what this suite closes -- is the adjacent case: editing an
+// ORDINARY paragraph immediately touching (before AND after) the marker
+// block that anchors a generated view. This fixture puts a plain paragraph
+// on both sides of the page marker so both directions of adjacency are
+// provable from ONE mount.
+// ---------------------------------------------------------------------------
+
+describe("editing paragraphs immediately adjacent to a generated-view-anchoring marker (SFE-P3d-sweep gap closure, scenario 8)", () => {
+  const ADJACENT_CHAPTER_LABEL = "C.01";
+  // Block order: 0 chapter (chip, no generated view of its own), 1 "Lead
+  // text." (ordinary, immediately AFTER the chapter marker and immediately
+  // BEFORE the page marker), 2 the page marker (chip, anchors the generated
+  // chapter-opener preview), 3 "Trail text." (ordinary, immediately AFTER
+  // the generated-view-anchoring chip).
+  const ADJACENT_SOURCE =
+    [`@chapter ${ADJACENT_CHAPTER_LABEL}`, "", "Lead text.", "", "@page splash", "", "Trail text."].join(
+      "\n",
+    ) + "\n";
+  const ADJACENT_GENERATED_HTML = `<div class="chapter-opener" data-chapter-label="${ADJACENT_CHAPTER_LABEL}">${ADJACENT_CHAPTER_LABEL}</div>\n`;
+  const LEAD_BLOCK_INDEX = 1;
+  const PAGE_CHIP_ADJACENT_INDEX = 2;
+  const TRAIL_ADJACENT_INDEX = 3;
+  // The page marker is the SECOND chip in document order (chapter is the
+  // first, and carries no generated preview of its own -- proven above by
+  // "the chapter chip itself has NO generated preview").
+  const PAGE_CHIP_INDEX_IN_CHIP_ORDER = 1;
+
+  test("typing into the paragraph immediately BEFORE the generated-view-anchoring marker is a byte-exact local edit; the marker line (the generated view's own anchor) and the generated preview itself are completely untouched", async () => {
+    const selector = await mount(ADJACENT_SOURCE);
+    await requireCounts(4, 2);
+
+    // AP-21 liveness: the generated view is really there, with the exact
+    // expected content, before the adjacent-edit assertion below relies on
+    // it staying that way.
+    expect(await generatedPreviewText(PAGE_CHIP_INDEX_IN_CHIP_ORDER)).toBe(ADJACENT_GENERATED_HTML);
+
+    const leadOffset = ADJACENT_SOURCE.indexOf("Lead text.");
+    const withinBlock = 4; // lands between "Lead" and " text."
+
+    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${LEAD_BLOCK_INDEX + 1})`);
+    await harness.page.keyboard.press("Home");
+    for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
+    await harness.page.keyboard.type("Z");
+    await harness.page.waitForTimeout(50);
+
+    const expectedOffset = leadOffset + withinBlock;
+    const expectedText =
+      ADJACENT_SOURCE.slice(0, expectedOffset) + "Z" + ADJACENT_SOURCE.slice(expectedOffset);
+    const after = await hostText();
+    expect(after).toBe(expectedText);
+    expect(after).toContain("LeadZ text.");
+    expect(await hostVersion()).toBe(1);
+
+    // The marker line the generated view is anchored to -- part of the
+    // untouched prefix above, restated explicitly -- and the generated
+    // preview's own rendered content are both completely unaffected by an
+    // edit in the NEIGHBORING ordinary paragraph.
+    expect(after).toContain("@page splash");
+    expect(await generatedPreviewText(PAGE_CHIP_INDEX_IN_CHIP_ORDER)).toBe(ADJACENT_GENERATED_HTML);
+    // Both chips (chapter and page) are still standing -- an edit to an
+    // UNRELATED ordinary block between them does not blank either one, and
+    // the page chip specifically is still rendered as a chip at its own
+    // (unmoved) block position.
+    expect(await chipCount()).toBe(2);
+    expect(await blockClassName(PAGE_CHIP_ADJACENT_INDEX)).toContain("gp-block-chip--page");
+  });
+
+  test("typing into the paragraph immediately AFTER the generated-view-anchoring marker is likewise a byte-exact local edit, with the generated preview still intact", async () => {
+    const selector = await mount(ADJACENT_SOURCE);
+    await requireCounts(4, 2);
+    expect(await generatedPreviewText(PAGE_CHIP_INDEX_IN_CHIP_ORDER)).toBe(ADJACENT_GENERATED_HTML);
+
+    const trailOffset = ADJACENT_SOURCE.indexOf("Trail text.");
+    const withinBlock = 3; // lands between "Tra" and "il text."
+
+    await harness.page.click(
+      `${selector} .md-document > .md-block:nth-child(${TRAIL_ADJACENT_INDEX + 1})`,
+    );
+    await harness.page.keyboard.press("Home");
+    for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
+    await harness.page.keyboard.type("Q");
+    await harness.page.waitForTimeout(50);
+
+    const expectedOffset = trailOffset + withinBlock;
+    const expectedText =
+      ADJACENT_SOURCE.slice(0, expectedOffset) + "Q" + ADJACENT_SOURCE.slice(expectedOffset);
+    const after = await hostText();
+    expect(after).toBe(expectedText);
+    expect(after).toContain("TraQil text.");
+    expect(await hostVersion()).toBe(1);
+
+    expect(after).toContain("@page splash");
+    expect(await generatedPreviewText(PAGE_CHIP_INDEX_IN_CHIP_ORDER)).toBe(ADJACENT_GENERATED_HTML);
+    expect(await chipCount()).toBe(2);
+    expect(await blockClassName(PAGE_CHIP_ADJACENT_INDEX)).toContain("gp-block-chip--page");
+  });
+});
+
 describe("harness liveness", () => {
   test("no console or page errors across every case above", () => {
     expect(harness.consoleErrors).toEqual([]);

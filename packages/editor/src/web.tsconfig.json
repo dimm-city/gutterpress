@@ -55,7 +55,7 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   // Paths are relative to THIS file's directory (packages/editor/src/).
-  "include": ["web", "../tests/web", "vscode-adapter", "../tests/vscode-adapter", "../tests/browser-harness"],
+  "include": ["web", "../tests/web", "vscode-adapter", "../tests/vscode-adapter", "../tests/browser-harness", "../tests/perf"],
   // Explicit empty "exclude" mirrors
   // packages/cli/src/engine/browser.tsconfig.json's own override: nothing to
   // cancel out today (../tsconfig.json declares no "exclude"), but this

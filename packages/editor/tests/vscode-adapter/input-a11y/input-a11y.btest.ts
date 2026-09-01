@@ -673,6 +673,107 @@ describe("case 8 — disposal", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// SFE-P3d-sweep Lane A gap closure -- scenario 9 ("paste rich/plain text").
+// Case 8's clipboard suite above proves plain-text copy/paste round-trips
+// byte-exactly. It does NOT prove what happens with HTML-flavored (rich)
+// clipboard content -- this file's own header already records the source
+// evidence (verified against the real, pinned fork's `dist/index.js`): the
+// paste handler is `const c = r.clipboardData?.getData("text/plain"); c &&
+// e.insertText(c);` -- a plain grep for "text/html" against that same bundle
+// returns ZERO matches anywhere in the package. This suite turns that static
+// evidence into a live, behavioral proof and PINS the real, current result
+// rather than an aspirational one: pasting HTML never produces any HTML- or
+// Markdown-derived content -- when a plain-text flavor also exists on the
+// clipboard (the common real-world case: copying from a browser or word
+// processor always sets both), only that plain flavor lands; when the
+// clipboard carries ONLY an HTML flavor, pasting is a complete no-op.
+//
+// Constructed, not real-OS, clipboard data (`new DataTransfer()` +
+// `ClipboardEvent`) -- same honest limitation this file's IME suite already
+// documents for synthetic input. This is a STRONGER proof here than for IME,
+// though: the package's own paste handler reads `event.clipboardData`
+// directly off whatever event reaches it, trusted or not, so a
+// script-dispatched `ClipboardEvent` carrying a real `DataTransfer` drives
+// the exact same code path a real OS-level paste would.
+// ---------------------------------------------------------------------------
+
+describe("case 8 — paste: HTML-flavored clipboard content (pinned behavior)", () => {
+  test("both text/html and text/plain present: only the plain-text flavor is inserted -- never the HTML, and never any markdown-ified derivative of it", async () => {
+    const original = "paste target:";
+    const selector = await mount("html-plain", original);
+    await requireDocumentText(selector);
+
+    await focusEditor(selector);
+    await harness.page.keyboard.press("End");
+
+    const callsBefore = await applyEditCallCount("html-plain");
+    const dispatchResult = await harness.page.evaluate((sel: string) => {
+      const el = document.querySelector(`${sel} .md-editor`) as HTMLElement;
+      const dt = new DataTransfer();
+      dt.setData("text/html", "<strong>BOLDHTML</strong>");
+      dt.setData("text/plain", "PLAINFALLBACK");
+      const evt = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
+      return el.dispatchEvent(evt);
+    }, selector);
+    await harness.page.waitForTimeout(80);
+
+    // AP-21 liveness: `dispatchEvent` returning `false` here means the
+    // handler called `preventDefault()` on a cancelable event -- proof the
+    // package's real paste listener genuinely intercepted this event, not
+    // that it silently bubbled past unhandled.
+    expect(dispatchResult).toBe(false);
+    expect(await applyEditCallCount("html-plain")).toBe(callsBefore + 1);
+
+    const expectedText = `${original}PLAINFALLBACK`;
+    expect(await hostText("html-plain")).toBe(expectedText);
+    // The decisive negative proof: no trace of the HTML content, its tag,
+    // or a markdown-ified rendering of it (e.g. "**BOLDHTML**") anywhere in
+    // the result.
+    expect(await hostText("html-plain")).not.toContain("BOLDHTML");
+    expect(await hostText("html-plain")).not.toContain("<strong>");
+    expect(await hostText("html-plain")).not.toContain("**");
+
+    const edit = await lastSubmittedEdit("html-plain");
+    expect(edit).toEqual({
+      from: original.length,
+      to: original.length,
+      insert: "PLAINFALLBACK",
+      expectedVersion: 0,
+    });
+
+    await dispose("html-plain");
+  });
+
+  test("ONLY text/html present (no text/plain flavor at all): pasting is a complete no-op -- no edit is submitted and the document is byte-identical", async () => {
+    const original = "paste target:";
+    const selector = await mount("html-only", original);
+    await requireDocumentText(selector);
+
+    await focusEditor(selector);
+    await harness.page.keyboard.press("End");
+
+    const callsBefore = await applyEditCallCount("html-only");
+    const dispatchResult = await harness.page.evaluate((sel: string) => {
+      const el = document.querySelector(`${sel} .md-editor`) as HTMLElement;
+      const dt = new DataTransfer();
+      dt.setData("text/html", "<strong>ONLYHTML</strong>");
+      const evt = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
+      return el.dispatchEvent(evt);
+    }, selector);
+    await harness.page.waitForTimeout(80);
+
+    // The handler still ran (same liveness signal as the case above) --
+    // this is a genuine no-op, not an event that never reached the package.
+    expect(dispatchResult).toBe(false);
+    expect(await applyEditCallCount("html-only")).toBe(callsBefore);
+    expect(await hostText("html-only")).toBe(original);
+    expect(await requireDocumentText(selector)).toBe(original);
+
+    await dispose("html-only");
+  });
+});
+
 describe("harness liveness", () => {
   test("the shared session produced no unexpected console or page errors across every case above", () => {
     expect(harness.pageErrors).toEqual([]);

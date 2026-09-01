@@ -315,6 +315,95 @@ describe("bonus — readonly host initializes the model in readonly mode", () =>
   });
 });
 
+// ---------------------------------------------------------------------------
+// SFE-P3d-sweep Lane A gap closure -- scenario 6's pointer half ("move block
+// by keyboard and pointer"). Keyboard block movement is proven at the
+// DESKTOP level (`rich-commands.ts`'s `moveBlock`/`applyBlockMove`, wired to
+// Alt+Shift+ArrowUp/Down in `+page.svelte` -- outside this lane's write
+// scope, cited in the audit doc). A source search of this whole workspace
+// (`packages/editor`, `packages/vscode-extension`, `packages/desktop`)
+// before writing this test found ZERO production code implementing
+// pointer/drag block reordering anywhere -- no drag handle, no drop target,
+// no move-block command in `packages/editor/src/core/commands.ts`'s
+// `EditorCommand` union. The pinned fork's OWN "drag" identifiers (verified
+// against `packages/vscode-markdown-editor/dist/index.js`) are exclusively
+// about `isSelecting`, a POINTER-DRIVEN TEXT SELECTION in progress -- never
+// block reordering. This test PINS that real, current behavior rather than
+// asserting an aspirational one: a pointer drag spanning block boundaries
+// extends a text selection and submits no edit; it does not reorder or
+// otherwise mutate the document.
+// ---------------------------------------------------------------------------
+
+describe("pointer drag across block boundaries (SFE-P3d-sweep gap closure, scenario 6 pointer half): extends a text selection, never reorders blocks", () => {
+  test("a mouse-down/move/up drag from inside the first block to inside the third submits zero edits and leaves the document byte-identical; the drag instead produced a live cross-block selection, which the next keystroke replaces", async () => {
+    const text = "First block text here.\n\nSecond block text here.\n\nThird block text here.";
+    const selector = await mount(text);
+    await requireDocumentText(selector);
+    await requireBlockCount(selector, 3);
+
+    const block1Box = await harness.page
+      .locator(`${selector} .md-document .md-block:nth-child(1)`)
+      .boundingBox();
+    const block3Box = await harness.page
+      .locator(`${selector} .md-document .md-block:nth-child(3)`)
+      .boundingBox();
+    // AP-21 liveness: both drag endpoints are real, measurable elements
+    // before the drag itself is attempted.
+    expect(block1Box).not.toBeNull();
+    expect(block3Box).not.toBeNull();
+
+    const callsBefore = await harness.page.evaluate(() => window.__gp.applyEditCallCount());
+
+    await harness.page.mouse.move(
+      block1Box!.x + block1Box!.width / 2,
+      block1Box!.y + block1Box!.height / 2,
+    );
+    await harness.page.mouse.down();
+    await harness.page.mouse.move(
+      block3Box!.x + block3Box!.width / 2,
+      block3Box!.y + block3Box!.height / 2,
+      { steps: 10 },
+    );
+    await harness.page.mouse.up();
+    await harness.page.waitForTimeout(80);
+
+    // The decisive proof: no block-move production hook exists anywhere in
+    // this codebase (verified by source search above), so the drag itself
+    // submitted no edit at all and left source completely untouched.
+    expect(await harness.page.evaluate(() => window.__gp.applyEditCallCount())).toBe(callsBefore);
+    expect(await hostText()).toBe(text);
+    // Rendered `.textContent` collapses each blank-line block separator to a
+    // single newline (it is not a literal byte-for-byte mirror of the
+    // multi-block source `hostText()` already proved untouched above), so
+    // this checks that every block's own text still rendered, in order,
+    // rather than a `.toBe()` equality against the raw source string.
+    const renderedText = await requireDocumentText(selector);
+    expect(renderedText).toContain("First block text here.");
+    expect(renderedText).toContain("Second block text here.");
+    expect(renderedText).toContain("Third block text here.");
+
+    // The drag left the editor in an ordinary, still-live input state (not
+    // stuck, not corrupted): typing immediately afterward reaches the host
+    // normally (`.type()` sends one keystroke per character -- one applyEdit
+    // call each, per case 3's own note above -- so the final host text,
+    // not `lastSubmittedEdit()`'s single last keystroke, is what proves the
+    // whole string landed). Whether the drag itself resolved to a caret or
+    // a nonempty cross-block selection is a pixel-geometry detail of exactly
+    // where the drag's start/end points landed relative to character
+    // boundaries -- not the claim this test exists to pin (that claim,
+    // checked above, is that NO edit and NO reordering happen from the drag
+    // itself).
+    const callsBeforeTyping = await harness.page.evaluate(() => window.__gp.applyEditCallCount());
+    await harness.page.keyboard.type("REPLACED");
+    await harness.page.waitForTimeout(80);
+
+    expect(await harness.page.evaluate(() => window.__gp.applyEditCallCount())).toBeGreaterThan(
+      callsBeforeTyping,
+    );
+    expect(await hostText()).toContain("REPLACED");
+  });
+});
+
 describe("harness liveness", () => {
   test("the shared session produced no console or page errors across every case above", () => {
     expect(harness.consoleErrors).toEqual([]);

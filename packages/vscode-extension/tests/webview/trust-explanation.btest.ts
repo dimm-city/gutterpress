@@ -90,6 +90,14 @@ async function chipCount(): Promise<number> {
   return harness.page.evaluate(() => window.__gpWebview.chipCount());
 }
 
+async function documentText(): Promise<string | null> {
+  return harness.page.evaluate(() => window.__gpWebview.documentText());
+}
+
+async function recordedEditCount(): Promise<number> {
+  return harness.page.evaluate(() => window.__gpWebview.applyEditCount());
+}
+
 /**
  * Mounts a fresh untrusted session over `text`, then sends the
  * diagnostic-carrying `presentation-input` resend a real, untrusted
@@ -184,6 +192,75 @@ describe("D9 trust explanation: an untrusted project's withheld plugins show a v
     });
     expect(await noticeBannerHidden()).toBe(true);
     expect(await noticeCategories()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SFE-P3d-sweep Lane A gap closure -- scenario 18 ("untrusted VS Code
+// workspace fallback"). Every case above proves the trust GATE: the notice
+// banner appears with the right message/category and clears through both
+// its independent mechanisms. None of them ever click into the mounted
+// editor and type -- so D9's actual requirement ("standard Markdown rich
+// editing remains available" in an untrusted workspace) was proven only for
+// the NOTICE half, never the EDITING half. This closes that gap: a real
+// keystroke, typed while the untrusted notice is genuinely showing on
+// screen, must still reach the host.
+// ---------------------------------------------------------------------------
+
+describe("D9 untrusted workspace: standard rich editing keeps working while the trust notice is showing (SFE-P3d-sweep gap closure, scenario 18)", () => {
+  test("a real keystroke typed into the mounted, untrusted-projection editor reaches the host, byte-exact, with the notice banner still visible throughout", async () => {
+    const text = "@page splash\n\nHello world.\n";
+    await mountWithUntrustedNotice(text);
+
+    // AP-21 liveness: the untrusted notice is genuinely showing (not merely
+    // "trusted: false" was passed at construction) before this test relies
+    // on that being the state editing happens under.
+    expect(await noticeBannerHidden()).toBe(false);
+    expect(await noticeCategories()).toEqual(["EDITOR_PLUGIN_UNTRUSTED"]);
+    expect(await chipCount()).toBeGreaterThan(0);
+
+    const editsBefore = await recordedEditCount();
+    const helloOffset = text.indexOf("Hello world.");
+    const withinBlock = "Hello world.".length; // caret lands at the end of the paragraph
+
+    // The paragraph block is the SECOND rendered block (the "@page splash"
+    // marker/chip is the first) -- same nth-child convention every other
+    // btest.ts file in this workspace uses. `#gp-editor-root` is this
+    // package's fixed container id (`support/entry.ts`'s own
+    // `CONTAINER_ID`/`containerSelector`), not returned by
+    // `mountWithUntrustedNotice` (it resolves to the sent `Diagnostic`) --
+    // hardcoded the same way `edit-version-reconciliation.btest.ts` and
+    // `disposal.btest.ts` both assert it verbatim.
+    await harness.page.click("#gp-editor-root .md-document > .md-block:nth-child(2)");
+    await harness.page.keyboard.press("Home");
+    for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
+    await harness.page.keyboard.type("!");
+    await harness.page.waitForTimeout(120);
+
+    // Byte-exact proof via the fake host's own RECORDED wire message (mirrors
+    // `edit-version-reconciliation.btest.ts`'s own technique) -- more precise
+    // than comparing rendered `.md-document` text, which (for a
+    // Gutterpress-projected mount) also carries the chip's own kind-label
+    // and attribute badge text, not a byte-mirror of the raw source.
+    const expectedOffset = helloOffset + withinBlock;
+    const edits = await harness.page.evaluate(() => window.__gpWebview.recordedEdits());
+    expect(edits.length).toBe(editsBefore + 1);
+    expect(edits[edits.length - 1]).toEqual({
+      from: expectedOffset,
+      to: expectedOffset,
+      insert: "!",
+      expectedVersion: expect.any(Number),
+    });
+    expect(await recordedEditCount()).toBe(editsBefore + 1);
+    // Sanity check on the rendered side too: the typed text is visibly
+    // present (not asserting exact equality -- the chip's own label/badge
+    // text is also part of `.md-document`'s textContent).
+    expect(await documentText()).toContain("Hello world.!");
+
+    // The notice is still showing throughout -- editing did not silently
+    // grant trust, and the trust gate did not silently block editing either.
+    expect(await noticeBannerHidden()).toBe(false);
+    expect(await noticeCategories()).toEqual(["EDITOR_PLUGIN_UNTRUSTED"]);
   });
 });
 
