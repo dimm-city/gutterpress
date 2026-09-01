@@ -13,6 +13,7 @@ Publish section.
 | Amazon KDP | `kdp` | **Guided** | PDF | Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
 | Azure Static Web Apps | `azure-swa` | **API** | HTML | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
 | Shopify | `shopify` | **API** (partial) | PDF | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
+| Google Drive | `gdrive` | **API** | PDF or HTML (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, `docs/gdrive-publish-plan.md`). Re-publishing updates the same file in place, so a shared link stays valid. |
 
 "Guided" providers still do real work: they validate the artifact, stage an
 upload package (`<output dir>/publish/<provider>/` with the PDF and a
@@ -30,6 +31,10 @@ gutterpress publish --list
 # working key untouched).
 gutterpress publish --provider itch --connect --token <key>
 echo "$KEY" | gutterpress publish --provider shopify --connect   # or via stdin
+
+# Google Drive has no key to paste — --connect opens the system browser for a
+# Google OAuth consent instead, and stores the refresh token it gets back.
+gutterpress publish --provider gdrive --connect
 
 # Publish (uses the manifest's output location by default)
 gutterpress build && gutterpress publish --provider itch
@@ -54,6 +59,7 @@ credential file:
 | itch.io | `BUTLER_API_KEY` |
 | Azure SWA | `SWA_CLI_DEPLOYMENT_TOKEN` |
 | Shopify | `SHOPIFY_ADMIN_TOKEN` |
+| Google Drive | `GDRIVE_REFRESH_TOKEN` (a refresh token minted by an interactive `--connect` on a workstation) |
 
 ## Configuration
 
@@ -74,6 +80,10 @@ publish:
     shop: my-store.myshopify.com  # must be the myshopify.com domain — the token is only ever sent there
     productId: gid://shopify/Product/…   # optional, update instead of create
     apiVersion: "2026-04"                # optional
+  gdrive:
+    folder: My Books              # display name; created at My Drive root if missing (default: "Gutterpress")
+    folderId: 1AbC…               # stable id, takes precedence over `folder` — picker-set, or hand-recorded from the CLI's post-publish tip
+    format: pdf                   # pdf (default) | html — the zipped website export
 ```
 
 Sections are keyed by the provider id — the same spelling as
@@ -81,7 +91,8 @@ Sections are keyed by the provider id — the same spelling as
 (`PublishProviderInfo.configFields`), which is what the desktop app's
 settings form renders — adding a provider needs no UI changes.
 
-**Secrets never live in the project.** API keys are stored:
+**Secrets never live in the project.** API keys (and Google Drive's refresh
+token — the same store, `kind: "google-oauth"`) are stored:
 
 - **CLI** — `credentials.json` (`0600`) under the Gutterpress user config dir
   (`$GUTTERPRESS_CONFIG_DIR` → `%APPDATA%/gutterpress` → `~/.config/gutterpress`), the
@@ -91,7 +102,8 @@ settings form renders — adding a provider needs no UI changes.
 
 Token values are never logged, never echoed in errors or host responses, and
 never passed on a child-process command line (butler and the SWA CLI receive
-them via environment variables).
+them via environment variables; Google Drive's client makes its own `fetch`
+calls, no child process at all).
 
 ## Architecture
 
@@ -107,10 +119,15 @@ lib/publish/
   manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip)
   command-runner.ts  injectable child-process seam (secrets via env only)
   butler.ts          butler acquisition (BUTLER_PATH → PATH → cache → download)
-  providers/         itch, drivethrurpg, kdp, azure-swa, shopify
+  google-auth.ts     GoogleAuthProvider: loopback-redirect + PKCE OAuth connect, client id/secret resolution
+  google-drive.ts    plain-fetch Drive REST client: refresh, about.get, list/create folder, resumable upload
+  connect-google.ts  connectGoogleDrive(): runs the OAuth flow, then stores the refresh token like any credential
+  providers/         itch, drivethrurpg, kdp, azure-swa, shopify, gdrive
 ```
 
-`PublishProvider` (issue #35's interface, adapted):
+`PublishProvider` (issue #35's interface, adapted; `listDestinations`/
+`createDestination` added for #221 so a provider-neutral folder/place picker
+works for any provider that has one — currently just Google Drive):
 
 ```ts
 interface PublishProvider {
@@ -120,6 +137,8 @@ interface PublishProvider {
   upload(req): Promise<PublishOutcome>;         // "published" | "guided"
   listProducts?(req): Promise<PublishProduct[]>;      // API providers
   updateListing?(req, id, metadata): Promise<PublishProduct>;
+  listDestinations?(req): Promise<PublishProduct[]>;  // gdrive: app-visible Drive folders
+  createDestination?(req, name): Promise<PublishProduct>;  // gdrive: create a folder
 }
 ```
 
