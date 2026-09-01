@@ -60,8 +60,20 @@ export interface PublishProviderInfo {
   /** Human name ("itch.io"). */
   label: string;
   kind: PublishProviderKind;
-  /** The artifact format this provider publishes. */
+  /** The artifact format this provider publishes BY DEFAULT — and, for every
+   * provider except those declaring {@link formats}, the ONLY one it ever
+   * publishes. */
   format: PublishArtifactFormat;
+  /**
+   * Formats this provider can ALSO publish, when it supports more than one
+   * (#221 phase 3, D8 — currently only gdrive: `["pdf", "html"]`). Absent for
+   * every other provider, which keeps them on the single fixed `format`
+   * above with no behavior change. When present, the author's manifest
+   * `publish.<id>.format` (validated against this list) picks the EFFECTIVE
+   * format for one publish request — see `run-publish.ts`'s
+   * `resolvePublishFormat`.
+   */
+  formats?: PublishArtifactFormat[];
   /** One-line author-facing description of what publishing here does. */
   description: string;
   /** The provider's author-editable manifest settings. */

@@ -19,8 +19,10 @@ import { publishProviderFor } from "./registry.ts";
 import type {
   PreflightIssue,
   PublishArtifact,
+  PublishArtifactFormat,
   PublishDeps,
   PublishOutcome,
+  PublishProviderInfo,
   PublishRequest,
 } from "./types.ts";
 
@@ -45,6 +47,32 @@ export interface RunPublishResult {
   outcome?: PublishOutcome;
   /** Friendly failure summary when `ok` is false. */
   error?: string;
+}
+
+/**
+ * Compute the EFFECTIVE artifact format for a publish request (#221 phase 3,
+ * D8). Every provider except gdrive declares only a single fixed
+ * `info.format` and has no `info.formats` array — for those, this function
+ * always returns `info.format`, so their behavior is byte-for-byte
+ * unaffected by this change. For a provider that DOES declare `formats`
+ * (currently only gdrive: `["pdf", "html"]`), the author's manifest
+ * `publish.<id>.format` selects the effective one — but only when it's a
+ * value the provider actually declares; an unset, invalid, or typo'd value
+ * is IGNORED and falls back to `info.format` rather than blocking publish
+ * with a preflight error over one bad manifest field.
+ */
+export function resolvePublishFormat(
+  info: PublishProviderInfo,
+  providerConfig: Record<string, unknown>,
+): PublishArtifactFormat {
+  if (info.formats && info.formats.length > 0) {
+    const configured =
+      typeof providerConfig.format === "string" ? providerConfig.format.trim() : "";
+    if (configured && info.formats.includes(configured as PublishArtifactFormat)) {
+      return configured as PublishArtifactFormat;
+    }
+  }
+  return info.format;
 }
 
 /**
@@ -90,15 +118,16 @@ export async function resolvePublishRequest(
   // the project positional (e.g. a shared manifest one level up) and left
   // publish preflight looking for an artifact in the wrong directory.
   const outDir = resolveOutputDir(manifestDir, config.title);
+  const effectiveFormat = resolvePublishFormat(provider.info, providerConfig);
   const defaultArtifact =
-    provider.info.format === "pdf"
+    effectiveFormat === "pdf"
       ? path.join(outDir, artifactName(config.title, "pdf"))
       : outDir;
   const artifact: PublishArtifact = {
     path: options.artifactPath
       ? path.resolve(options.projectDir, options.artifactPath)
       : defaultArtifact,
-    format: provider.info.format,
+    format: effectiveFormat,
   };
 
   return {
