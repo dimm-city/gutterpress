@@ -647,7 +647,7 @@ export interface ElectronBridge {
 
   tpl: {
     listBuiltIn(): Promise<TemplateInfo[]>;
-    listCustom(templatesRoot?: string): Promise<TemplateInfo[]>;
+    listCustom(): Promise<TemplateInfo[]>;
     saveAsTemplate(opts: {
       projectDir: string;
       name: string;

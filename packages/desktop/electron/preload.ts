@@ -264,8 +264,7 @@ contextBridge.exposeInMainWorld("electron", {
 
   tpl: {
     listBuiltIn: (): Promise<TemplateInfo[]> => ipcRenderer.invoke("tpl:listBuiltIn"),
-    listCustom: (templatesRoot?: string): Promise<TemplateInfo[]> =>
-      ipcRenderer.invoke("tpl:listCustom", templatesRoot),
+    listCustom: (): Promise<TemplateInfo[]> => ipcRenderer.invoke("tpl:listCustom"),
     saveAsTemplate: (opts: {
       projectDir: string;
       name: string;

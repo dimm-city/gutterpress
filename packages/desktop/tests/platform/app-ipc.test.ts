@@ -9,7 +9,7 @@
  * route-level security tests beyond what `electron/api/app.ts`'s own
  * validation reuse already proves — see the run report.
  */
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { appDiscoverProjects, appAcknowledgeFlushFailure, appRecordFlushFailure } from "../../electron/api/app";
@@ -22,6 +22,15 @@ async function caught(p: Promise<unknown>): Promise<{ message: string }> {
     return { message: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// Host services are process-global. Reset to "unregistered" BEFORE each test
+// (not just after) so this file's host-disconnected case is self-contained —
+// it must fail the same way regardless of which suite ran immediately before
+// it, not merely because alphabetical file order happens to put this file
+// first.
+beforeEach(() => {
+  registerHostServices(undefined as unknown as HostServices);
+});
 
 afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);

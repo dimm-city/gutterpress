@@ -12,7 +12,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 import { shellOpenExternal, shellShowInFolder } from "../../electron/api/shell";
@@ -29,7 +29,15 @@ async function caught(p: Promise<unknown>): Promise<{ message: string }> {
 // ── shell:openExternal — http(s)-only gate (audit C1) ───────────────────────
 
 let openedUrls: string[];
+// Host services are process-global — save/restore so this file's fixture
+// never leaks into a sibling test file (and never depends on leftover
+// state from one that ran before it). This is the FIRST of the file's two
+// top-level `beforeEach` blocks (both run before every test here), so it is
+// the right place to snapshot the pre-test state; the single `afterEach`
+// below restores it.
+let savedHostServices: HostServices | null;
 beforeEach(() => {
+  savedHostServices = getHostServices();
   openedUrls = [];
   registerHostServices(
     makeHostServices({
@@ -87,6 +95,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
+  registerHostServices(savedHostServices as HostServices);
 });
 
 function revealHost(picked: ReturnType<typeof createPickedFilesService>, revealed: string[]): void {

@@ -11,14 +11,17 @@
  * Save Version action instead), and it carries its own weight worth keeping
  * separate — see the crash-safety note below.
  *
- * SPECIAL WEIGHT (run note — the checkout-journal crash-safety guarantee):
+ * SPECIAL WEIGHT (run note — the snapshot-before-restore safety guarantee):
  * `restoreSnapshot` calls the exact same host function
  * (`electron/api/vcs.ts`'s `vcsRestoreSnapshot`, which in turn calls the
- * lib's `restoreVersionWithBackup`) the deleted route called — a pull that
- * dies between merge and checkout must not publish a wholesale revert. That
- * guarantee's implementation and unit tests live in `packages/cli` (outside
- * this lane's write ownership); this module's job is only to keep the
- * desktop entry point wired unchanged across the transport change.
+ * lib's `restoreVersionWithBackup`,
+ * `packages/cli/src/lib/source-provider.ts`) the deleted route called — a
+ * restore first snapshots the CURRENT dirty working tree, so it can never
+ * lose in-progress author work. That guarantee's implementation and unit
+ * tests (`source-provider.test.ts`'s `restoreVersionWithBackup` cases) live
+ * in `packages/cli` (outside this lane's write ownership); this module's
+ * job is only to keep the desktop entry point wired unchanged across the
+ * transport change.
  *
  * Error semantics (run rule 2): every function scrubs the Electron IPC
  * transport prefix (`friendlyHostError`) off a rejection's message before

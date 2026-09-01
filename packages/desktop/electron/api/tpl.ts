@@ -1,10 +1,16 @@
 /**
  * Template IPC handlers for the "project-config" capability (SFE-P5c2).
  * Ports `src/routes/api/tpl/{built-in,custom,import-from-folder,
- * save-as-template}/+server.ts` verbatim, including `tpl:custom`'s lazy
- * `getDesktopHooks()` resolution (only reached when the caller omits
- * `templatesRoot`, so a caller that always passes one never depends on
- * desktop hooks being registered).
+ * save-as-template}/+server.ts`, with one deliberate narrowing: the deleted
+ * `tpl/custom` route accepted an optional caller-supplied `templatesRoot`
+ * verbatim (a straight port of equally-unvalidated route code, not a
+ * regression). Migration review (SFE-P5c2 round 1) found it had zero real
+ * callers — `NewProjectWizard.svelte` is the only call site and always
+ * calls `tplListCustom()` with no argument — and, unvalidated, it let a
+ * caller enumerate any absolute directory on disk. Rather than add
+ * containment validation for a parameter nothing exercises, it is dropped:
+ * `tplListCustom` always computes the templates root host-side, the same
+ * way `tplImportFromFolder`/`tplSaveAsTemplate` below already do.
  */
 import { join } from "node:path";
 import { getDesktopHooks } from "../server-bridge/host-hooks";
@@ -18,15 +24,10 @@ export async function tplListBuiltIn(): Promise<unknown> {
 }
 
 /** List the user's saved/imported custom templates. */
-export async function tplListCustom(rawTemplatesRoot?: unknown): Promise<unknown> {
-  let templatesRoot: string;
-  if (typeof rawTemplatesRoot === "string") {
-    templatesRoot = rawTemplatesRoot;
-  } else {
-    const hooks = getDesktopHooks();
-    if (!hooks) throw new Error("Desktop hooks not registered");
-    templatesRoot = join(hooks.getUserDataPath(), "templates");
-  }
+export async function tplListCustom(): Promise<unknown> {
+  const hooks = getDesktopHooks();
+  if (!hooks) throw new Error("Desktop hooks not registered");
+  const templatesRoot = join(hooks.getUserDataPath(), "templates");
   const lib = await loadLib();
   return lib.listCustomTemplates(templatesRoot);
 }

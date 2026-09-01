@@ -10,7 +10,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { logRead, logList } from "../../electron/api/log";
 
@@ -26,8 +26,14 @@ async function caught(p: Promise<unknown>): Promise<{ message: string }> {
 let base: string;
 let recoveryDir: string;
 let outsideDir: string;
+let savedHostServices: HostServices | null;
 
 beforeEach(async () => {
+  // Host services are process-global — save/restore so this file's fixture
+  // never leaks into a sibling test file (and never depends on leftover
+  // state from one that ran before it).
+  savedHostServices = getHostServices();
+
   base = await mkdtemp(path.join(tmpdir(), "gutterpress-log-ipc-"));
   recoveryDir = path.join(base, "recovery");
   outsideDir = path.join(base, "elsewhere");
@@ -42,6 +48,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
+  registerHostServices(savedHostServices as HostServices);
 });
 
 test("log:read: a path under the read-only root (operation logs / recovery) is allowed", async () => {

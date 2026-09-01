@@ -93,8 +93,8 @@ export async function tplListBuiltIn(): Promise<TemplateInfo[]> {
 }
 
 /** List the user's saved/imported custom templates. */
-export async function tplListCustom(templatesRoot?: string): Promise<TemplateInfo[]> {
-  return call(bridge().tpl.listCustom(templatesRoot));
+export async function tplListCustom(): Promise<TemplateInfo[]> {
+  return call(bridge().tpl.listCustom());
 }
 
 /**

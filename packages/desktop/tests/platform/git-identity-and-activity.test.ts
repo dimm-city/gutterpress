@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
+import { gitIdentityArgs } from "../../electron/api/git-identity-args";
 
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
@@ -50,12 +53,34 @@ test("snapshot, history enable, and sync IPC handlers / routes pass git identity
   expect(enableVersionHistoryBody).toContain("...(await gitIdentityArgs())");
   expect(saveSnapshotBody).toContain("...(await gitIdentityArgs())");
 
-  const gitIdentityArgsModule = read("electron/api/git-identity-args.ts");
-  expect(gitIdentityArgsModule).toContain("gitIdentityFrom");
-
   const sync = read("src/routes/api/remote/sync/+server.ts");
   expect(sync).toContain("authorName");
   expect(sync).toContain("authorEmail");
+});
+
+test("gitIdentityArgs() falls back to the default identity when the settings read throws (EACCES/EIO), mirroring src/lib/server/settings.ts's own try/catch", async () => {
+  // Host services are process-global — save/restore so this fixture never
+  // leaks into a sibling test file.
+  const saved: HostServices | null = getHostServices();
+  try {
+    registerHostServices(
+      makeHostServices({
+        prefs: {
+          readSettings: async () => {
+            const err = new Error("permission denied") as NodeJS.ErrnoException;
+            err.code = "EACCES";
+            throw err;
+          },
+        },
+      }),
+    );
+    // A transient read failure must never reject the caller (fs:delete's
+    // safety snapshot, every vcs:* write) — it falls back to the default
+    // (empty) identity, same as the route-side helper's own catch.
+    await expect(gitIdentityArgs()).resolves.toEqual({});
+  } finally {
+    registerHostServices(saved as HostServices);
+  }
 });
 
 test("source provider supports author email and existing git config fallback", () => {

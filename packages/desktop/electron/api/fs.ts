@@ -195,34 +195,38 @@ interface DeleteLibModule {
  * that safety snapshot fails, mirroring restoreSnapshot's discipline.
  */
 export async function fsDeletePath(rawPath: unknown, rawProjectDir: unknown): Promise<{ ok: true }> {
+  // Hooks-availability is checked BEFORE validation, matching the deleted
+  // route's `defineRoute({ hooks, validate, call })` order exactly (same
+  // fail-closed discipline as vcs.ts's vcsSaveSnapshot) — with no VCS hooks
+  // registered there is no safety snapshot, so nothing is deleted.
+  const vcs = getVcsHooks<DeleteLibModule>() as VcsHooks<DeleteLibModule> | null;
+  if (!vcs) throw new Error("VCS hooks not registered");
+
   const projectDir = await requireWithinProjectRoot(requireAbsolute(rawProjectDir, "fs:delete"), "fs:delete");
   const target = await requireWithinProjectRoot(requireAbsolute(rawPath, "fs:delete"), "fs:delete");
   if (path.resolve(target) === path.resolve(projectDir)) {
     throw new Error("fs:delete cannot delete the project root");
   }
 
-  const vcs = getVcsHooks<DeleteLibModule>() as VcsHooks<DeleteLibModule> | null;
-  if (vcs) {
-    const lib = await vcs.loadLib();
-    try {
-      const source = await lib.detectProjectSource(projectDir);
-      if (lib.capabilitiesFor(source).canSnapshot) {
-        const repoRoot = lib.repoRootForSource(source, projectDir);
-        await lib.providerFor(source).snapshot({
-          projectDir,
-          message: `Before deleting ${path.basename(target)}`,
-          ...(await gitIdentityArgs()),
-          logFile: vcs.operationLogPath(path.basename(repoRoot)),
-        });
-      }
-    } catch (e) {
-      if (!lib.isNoChangesError(e)) {
-        throw new Error(
-          `Could not save a safety snapshot before deleting — nothing was deleted. (${
-            e instanceof Error ? e.message : String(e)
-          })`,
-        );
-      }
+  const lib = await vcs.loadLib();
+  try {
+    const source = await lib.detectProjectSource(projectDir);
+    if (lib.capabilitiesFor(source).canSnapshot) {
+      const repoRoot = lib.repoRootForSource(source, projectDir);
+      await lib.providerFor(source).snapshot({
+        projectDir,
+        message: `Before deleting ${path.basename(target)}`,
+        ...(await gitIdentityArgs()),
+        logFile: vcs.operationLogPath(path.basename(repoRoot)),
+      });
+    }
+  } catch (e) {
+    if (!lib.isNoChangesError(e)) {
+      throw new Error(
+        `Could not save a safety snapshot before deleting — nothing was deleted. (${
+          e instanceof Error ? e.message : String(e)
+        })`,
+      );
     }
   }
 

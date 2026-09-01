@@ -9,17 +9,18 @@
  * only ever read the message text — see `electron/api/validation.ts`'s
  * header for the same rationale applied to `fs:*`).
  *
- * SPECIAL WEIGHT (run note — the checkout-journal crash-safety guarantee):
+ * SPECIAL WEIGHT (run note — the snapshot-before-restore safety guarantee):
  * `vcs:restoreSnapshot` delegates to the lib's `restoreVersionWithBackup`
- * exactly as the route did — a pull/restore that dies between merge and
- * checkout must not publish a wholesale revert. That guarantee is
- * implemented and unit-tested inside `packages/cli` (out of this lane's
- * write ownership); this handler's job is only to keep calling it with the
- * same arguments the route always did, so the guarantee's desktop entry
- * point stays wired. `vcs-ipc.test.ts` pins the ONE thing that lives on
- * this side of the boundary: a malformed/partial snapshot id is rejected
- * BEFORE it can reach the lib's checkout at all (same 40-hex-char guard the
- * route used).
+ * (`packages/cli/src/lib/source-provider.ts`) exactly as the route did — a
+ * restore first snapshots the CURRENT dirty working tree, so it can never
+ * lose in-progress author work. That guarantee is implemented and
+ * unit-tested inside `packages/cli` (out of this lane's write ownership;
+ * see `source-provider.test.ts`'s `restoreVersionWithBackup` cases); this
+ * handler's job is only to keep calling it with the same arguments the
+ * route always did, so the guarantee's desktop entry point stays wired.
+ * `vcs-ipc.test.ts` pins the ONE thing that lives on this side of the
+ * boundary: a malformed/partial snapshot id is rejected BEFORE it can reach
+ * the lib's checkout at all (same 40-hex-char guard the route used).
  */
 import { basename } from "node:path";
 import { friendlyVcsError } from "../server-bridge/friendly-errors";

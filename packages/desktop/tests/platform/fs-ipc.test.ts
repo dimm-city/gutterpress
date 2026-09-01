@@ -27,7 +27,7 @@ import { mkdtemp, rm, writeFile, mkdir, readFile, stat, symlink } from "node:fs/
 import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices, type HostServicesOverrides } from "../support/host-services-fake";
 import {
@@ -82,6 +82,7 @@ let siblingDir: string;
 let outsideDir: string;
 let recoveryDir: string;
 let aliasPath: string;
+let savedHostServices: HostServices | null;
 
 async function createAlias(): Promise<string> {
   await symlink(outsideDir, aliasPath, "dir");
@@ -89,6 +90,11 @@ async function createAlias(): Promise<string> {
 }
 
 beforeEach(async () => {
+  // Host services are process-global — save/restore so this file's fixture
+  // never leaks into a sibling test file (and never depends on leftover
+  // state from one that ran before it).
+  savedHostServices = getHostServices();
+
   const base = await mkdtemp(path.join(tmpdir(), "gutterpress-fs-ipc-"));
   projectDir = path.join(base, "proj");
   siblingDir = path.join(base, "proj2");
@@ -114,6 +120,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(path.dirname(projectDir), { recursive: true, force: true });
+  registerHostServices(savedHostServices as HostServices);
 });
 
 test("fs:readFile: a path inside the open project is allowed", async () => {
@@ -262,6 +269,7 @@ describe("fs:createFile/createFolder/rename/delete CRUD", () => {
 let crudProjectDir: string;
 let crudSiblingDir: string;
 let crudOutsideDir: string;
+let savedCrudHostServices: HostServices | null;
 
 function baseServices(overrides: HostServicesOverrides = {}): HostServices {
   return makeHostServices({
@@ -280,6 +288,11 @@ function baseServices(overrides: HostServicesOverrides = {}): HostServices {
 }
 
 beforeEach(async () => {
+  // Host services are process-global — save/restore so this file's fixture
+  // never leaks into a sibling test file (and never depends on leftover
+  // state from one that ran before it).
+  savedCrudHostServices = getHostServices();
+
   const base = await mkdtemp(path.join(tmpdir(), "gutterpress-fs-ipc-crud-"));
   crudProjectDir = path.join(base, "proj");
   crudSiblingDir = path.join(base, "proj2");
@@ -404,6 +417,18 @@ test("fs:delete: cannot delete the project root itself", async () => {
   expect(await exists(crudProjectDir)).toBe(true);
 });
 
+// ── fs:delete's own hooks-unavailable path (checked BEFORE validation,
+// matching the deleted route's `defineRoute({ hooks, validate, call })` order,
+// same fail-closed discipline as vcs:saveSnapshot's own test) ──
+
+test("fs:delete: rejects with 'VCS hooks not registered' and deletes nothing when hooks are absent", async () => {
+  registerHostServices(baseServices({ vcs: undefined }));
+  const target = path.join(crudProjectDir, "chapter-01.md");
+  const { message } = await caught(fsDeletePath(target, crudProjectDir));
+  expect(message).toBe("VCS hooks not registered");
+  expect(await exists(target)).toBe(true);
+});
+
 test("fs:delete: with version history, snapshots the working tree BEFORE deleting", async () => {
   const snapshotCalls: Array<{ projectDir: string; message: string }> = [];
   registerHostServices(
@@ -518,6 +543,7 @@ test("fs:delete: end-to-end against a REAL git repo — the deleted file's conte
 
 afterEach(async () => {
   await rm(path.dirname(crudProjectDir), { recursive: true, force: true }).catch(() => {});
+  registerHostServices(savedCrudHostServices as HostServices);
 });
 
 }); // end describe: create/rename/delete CRUD

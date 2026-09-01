@@ -1155,7 +1155,7 @@ secureHandle("manifest:setFields", (_e, projectDir: unknown, updates: unknown) =
 );
 
 secureHandle("tpl:listBuiltIn", () => tplApi.tplListBuiltIn());
-secureHandle("tpl:listCustom", (_e, templatesRoot?: unknown) => tplApi.tplListCustom(templatesRoot));
+secureHandle("tpl:listCustom", () => tplApi.tplListCustom());
 secureHandle("tpl:importFromFolder", () => tplApi.tplImportFromFolder());
 secureHandle("tpl:saveAsTemplate", (_e, projectDir: unknown, name: unknown, sharedRefs?: unknown) =>
   tplApi.tplSaveAsTemplate(projectDir, name, sharedRefs),

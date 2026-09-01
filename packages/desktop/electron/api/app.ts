@@ -26,6 +26,7 @@ import type {
   ProjectClassificationBook,
 } from "../../src/lib/platform/dtos";
 import type { DesktopPrefs, LastFlushFailure, ProjectState } from "../../src/lib/platform/shared-types";
+import { createLastFlushFailure } from "../../src/lib/persistence-failures";
 
 function prefsHooks(): PrefsHooks {
   const h = getPrefsHooks();
@@ -256,10 +257,6 @@ export async function appAdoptFolder(rawOptions: unknown): Promise<unknown> {
 export function appSetDirtyState(dirty: unknown): { ok: true } {
   getAppHooks()?.setRendererDirty(Boolean(dirty));
   return { ok: true };
-}
-
-function createLastFlushFailure(projectDir: string | null, now = new Date()): LastFlushFailure {
-  return { failedAt: now.toISOString(), ...(projectDir ? { projectDir } : {}) };
 }
 
 /** Persist a failed editor-buffer flush marker in the atomic prefs store. */

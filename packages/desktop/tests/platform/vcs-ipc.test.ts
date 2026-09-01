@@ -7,12 +7,14 @@
  *  1. Project-scoping guard coverage, ported from the deleted
  *     `route-scoping.test.ts`'s `vcs/*` rows (2026-07-29 file-operations
  *     audit, Theme 1) — same cases, calling `electron/api/vcs.ts` directly.
- *  2. SPECIAL WEIGHT (run note — the checkout-journal crash-safety
+ *  2. SPECIAL WEIGHT (run note — the snapshot-before-restore safety
  *     guarantee): `vcsRestoreSnapshot` delegates to the lib's
- *     `restoreVersionWithBackup` exactly as the deleted route did. That
- *     guarantee itself (a pull/restore that dies between merge and checkout
- *     must not publish a wholesale revert) is implemented and unit-tested
- *     inside `packages/cli` (outside this lane's write ownership) — what
+ *     `restoreVersionWithBackup` (`packages/cli/src/lib/source-provider.ts`)
+ *     exactly as the deleted route did. That guarantee itself (a restore
+ *     first snapshots the CURRENT dirty working tree, so it can never lose
+ *     in-progress author work) is implemented and unit-tested inside
+ *     `packages/cli` (outside this lane's write ownership — see
+ *     `source-provider.test.ts`'s `restoreVersionWithBackup` cases) — what
  *     lives on THIS side of the boundary, and what this file pins, is that
  *     a malformed/partial snapshot id is rejected BEFORE it can reach the
  *     lib's checkout at all, so a bad IPC payload can never become a

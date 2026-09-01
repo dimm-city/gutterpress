@@ -74,7 +74,9 @@ import type {
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
+  LastFlushFailure,
 } from "./bridge-types";
+import type { CreateProjectResult } from "gutterpress";
 
 declare global {
   // UpdaterStatus is re-used by ElectronUpdater below.
@@ -146,10 +148,10 @@ declare global {
         removeRecent(path: string): Promise<{ ok: true }>;
         discoverProjects(): Promise<DiscoveredProject[]>;
         classifyProject(projectDir: string): Promise<ProjectClassification>;
-        createProject(options: Record<string, unknown>): Promise<unknown>;
-        adoptFolder(options: Record<string, unknown>): Promise<unknown>;
+        createProject(options: Record<string, unknown>): Promise<CreateProjectResult>;
+        adoptFolder(options: Record<string, unknown>): Promise<CreateProjectResult>;
         setDirtyState(dirty: boolean): Promise<{ ok: true }>;
-        recordFlushFailure(projectDir: string | null): Promise<{ failedAt: string; projectDir?: string }>;
+        recordFlushFailure(projectDir: string | null): Promise<LastFlushFailure>;
         acknowledgeFlushFailure(failedAt: string): Promise<{ acknowledged: boolean }>;
         appImageIntegration: {
           getStatus(): Promise<AppImageStatus>;
@@ -169,7 +171,7 @@ declare global {
       };
       tpl: {
         listBuiltIn(): Promise<TemplateInfo[]>;
-        listCustom(templatesRoot?: string): Promise<TemplateInfo[]>;
+        listCustom(): Promise<TemplateInfo[]>;
         saveAsTemplate(opts: {
           projectDir: string;
           name: string;
@@ -228,6 +230,11 @@ declare global {
         cb: (data: { shouldUseDarkColors: boolean }) => void
       ): () => void;
       onOpenMarkdownFile(cb: (data: MarkdownFileLaunchEvent) => void): () => void;
+      /**
+       * Raw folder-watch IPC (#44). Subscribes to change events for `path`
+       * and returns an unsubscribe fn.
+       */
+      watchFolder(path: string, cb: () => void): () => void;
       // tpl:*, snip:*, plugin:*, theme:*, project:listStyles, and local
       // version history (#13 — enableVersionHistory, listSnapshotsPage,
       // restoreSnapshot, saveSnapshot) round-tripped through SvelteKit

@@ -16,7 +16,7 @@ against them.
 | Metric | Baseline | Current | Delta |
 |---|---:|---:|---:|
 | Desktop HTTP routes (`+server.ts`) | 104 | 32 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, ratchet re-baselined 104→69; SFE-P5c2 `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` migrated — 37 more deleted, ratchet re-baselined 69→32; remaining groups migrate in P5c3–P5c4) | −72 |
-| IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
+| IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | 89 (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`, every match a real registration — the generic function's own declaration, `function secureHandle<Args …>(`, does not match the literal substring) — the deliberate counterpart of the routes row above: baseline 12 → 13 before this run started (`feat(p3): plugin-aware rich-editor projection`, SFE-P3e's multi-line `api:editorProjection` registration, main.ts:1779 — outside this ledger row's P5c write ownership), then SFE-P5c1 added 39 (`fs`/`dialog`/`shell`/`log`/`app`, 13→52) and SFE-P5c2 added 37 (`project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style`, 52→89); remaining route groups migrate in P5c3–P5c4 and will grow this row further before P5d deletes the server and both this row and the routes row converge on the true net concept count | +77 |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
 | `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
 | Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
@@ -806,9 +806,11 @@ new file, corrected before hand-off, not a production defect).
 
 ### SFE-P5c1 — 2026-09-01 — migrate `fs`/`dialog`/`shell`/`log`/`app` to typed IPC
 
-Lane A (implementation). Uncommitted at hand-off — the integrator commits
-after review, per the run's protocol. Base SHA is `f45d7961` (SFE-P5b's
-committed head, per that section above).
+Lane A (implementation). Base SHA `dc900e96` (SFE-P5c's run-specification
+commit — three docs-only commits, `aee8d2d3`/`7f369ad2`/`a0e1e97e`/`dc900e96`,
+landed after SFE-P5b's `f45d7961` head and before this subrun's own work
+began; the diffstats below are measured against `dc900e96`, not `f45d7961`,
+so they reproduce exactly). Head SHA `f6a6bb2d`.
 
 **What was deleted:**
 
@@ -873,8 +875,14 @@ committed head, per that section above).
   `app:getDesktopPrefs`, `app:appImageIntegrationStatus`, …) — alongside 4
   PRE-EXISTING `fs:`/`app:`-prefixed channels this run did not touch
   (`fs:watchFolder`/`fs:unwatchFolder`/`app:flushDone`/
-  `app:openMarkdownFileReady`, all already IPC before this run), for 43
-  total `secureHandle("fs:` / `"app:` registrations verifiable by grep.
+  `app:openMarkdownFileReady`, all already IPC before this run) — 34 total
+  `secureHandle("fs:`/`"app:` registrations verifiable by grep (`grep -c
+  'secureHandle("fs:\|secureHandle("app:' packages/desktop/electron/main.ts`:
+  11 `fs:` + 23 `app:`, i.e. 9 new + 2 pre-existing `fs:*` and 21 new + 2
+  pre-existing `app:*`). The earlier "43" double-counted: it added all 39
+  new channels across all five namespaces to the 4 pre-existing ones, but
+  only the `fs:*`/`app:*`-prefixed ones (30 new + 4 pre-existing = 34)
+  actually match that grep — `dialog:*`/`shell:*`/`log:*` do not.
 - `src/lib/files/files-capability.ts` (167 lines, new module — D10's
   "files/dialog" bounded context had none yet per SFE-P5b) — `fs`/
   `dialog`/`shell` (grouped per the capability map's own read: "shell |
@@ -928,29 +936,16 @@ claim requires search proof, dependency proof, and passing behavior
 tests") — this is the passing-behavior-tests proof for a deletion claim
 that did NOT hold up, caught before hand-off rather than after.
 
-**Net diffstat** (reproduced against the uncommitted working tree; this
-lane's own numbers — the integrator's commit range will reproduce them
-exactly per D15, same caveat SFE-P5b's own section notes about hand-off
-figures vs. committed-range figures):
+**Net diffstat** (reproduced against the committed range `dc900e96..f6a6bb2d`):
 
 ```
-$ git diff --numstat -- packages/desktop/src packages/desktop/electron   (tracked files only)
-→ +730 / −1484
-
-$ wc -l packages/desktop/electron/api/*.ts packages/desktop/src/lib/files/*.ts   (new, untracked files)
-→ 1,025 lines added
-
-Production total: +1,755 / −1,484  (net +271)
+$ git diff --numstat dc900e96..f6a6bb2d -- packages/desktop/src packages/desktop/electron
+→ +1,755 / −1,484  (net +271)
 ```
 
 ```
-$ git diff --numstat -- packages/desktop/tests   (tracked files only)
-→ +133 / −1509
-
-$ wc -l <6 new *-ipc.test.ts / media-routes-scoping.test.ts files>   (new, untracked files)
-→ 1,105 lines added
-
-Test total: +1,238 / −1,509  (net −271)
+$ git diff --numstat dc900e96..f6a6bb2d -- packages/desktop/tests
+→ +1,238 / −1,509  (net −271)
 ```
 
 Production is net-positive (+271) despite deleting 1,119 route lines +
@@ -1040,9 +1035,8 @@ the gate rather than by inspection:
 
 ### SFE-P5c2 — 2026-09-01 — migrate `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` to typed IPC
 
-Lane A (implementation). Uncommitted at hand-off — the integrator commits
-after review, per the run's protocol. Base SHA is P5c1's committed head
-(this lane's working tree — see that section above).
+Lane A (implementation). Base SHA `f6a6bb2d` (SFE-P5c1's committed head, per
+that section above). Head SHA `c90ac668`.
 
 **Scoping note:** the plan's own P5c subrun table
 (`docs/plans/source-first-editor/runs/SFE-P5c.md`) assigns `media` to P5c2,
@@ -1127,16 +1121,26 @@ this run.
   hard `api.plugin.*` dependency, so only their construction site in
   `ProjectSettingsView.svelte` needed a name swap).
 - **VCS (SPECIAL WEIGHT):** `electron/api/vcs.ts`'s `vcsRestoreSnapshot`
-  calls the exact same `lib.restoreVersionWithBackup` the deleted route
-  called — the checkout-journal crash-safety guarantee itself
-  (a pull/restore that dies between merge and checkout must not publish a
-  wholesale revert) lives and is tested inside `packages/cli` (outside
-  this lane's write ownership; untouched). What this lane owns and tests
-  (`vcs-ipc.test.ts`) is the desktop-side entry point staying wired
-  unchanged: the 40-hex-char snapshot-id format guard (and the
-  `list-snapshots-page` continuation-cursor guard) still rejects a
-  malformed value BEFORE it can reach the lib's checkout, exactly as the
-  deleted routes' own `error(400, …)` validation did.
+  calls the exact same `lib.restoreVersionWithBackup`
+  (`packages/cli/src/lib/source-provider.ts`) the deleted route called, with
+  the same arguments — this is a snapshot-BEFORE-restore contract (a restore
+  first snapshots the dirty working tree, so a restore can never lose
+  in-progress author work), not a merge/checkout rollback: there is no merge
+  step here. It is unit-tested in
+  `packages/cli/src/lib/source-provider.test.ts` (outside this lane's write
+  ownership; untouched) — "restoreVersionWithBackup snapshots dirty state
+  before restoring", "restoreVersionWithBackup skips the backup when the
+  tree is clean", and "restore failure after a backup snapshot reports the
+  backup in the error". (The actual merge-then-checkout rollback guarantee —
+  a pull that dies between merge and checkout must not publish a wholesale
+  revert — is `packages/cli/src/lib/remote-auth/converge-merge.ts`'s
+  `tipBeforeMerge`/`CheckoutConflictError`; that is the sync/pull path,
+  P5c3's `remote`/`sync` scope, and unrelated to `vcs:restoreSnapshot`.)
+  What this lane owns and tests (`vcs-ipc.test.ts`) is the desktop-side
+  entry point staying wired unchanged: the 40-hex-char snapshot-id format
+  guard (and the `list-snapshots-page` continuation-cursor guard) still
+  rejects a malformed value BEFORE it can reach the lib's checkout, exactly
+  as the deleted routes' own `error(400, …)` validation did.
 - **Media payload shape (run note):** none of the four media routes ever
   moved raw image bytes as an upload — `media:importImage`'s `src` is
   always an absolute HOST PATH (from a native dialog or already on disk);
@@ -1250,28 +1254,33 @@ pair (`picked-files-capability.test.ts`'s own established convention) to
 `manifest-style-ipc.test.ts`, and `media-ipc.test.ts`'s
 `withScopingFixture` helper. Full suite: 2 failures → 0.
 
-**Net diffstat** (against the uncommitted working tree; this lane's own
-numbers):
+**Net diffstat** (reproduced against the committed range `f6a6bb2d..c90ac668`):
 
 ```
-$ git diff --numstat -- packages/desktop/src packages/desktop/electron   (tracked files only)
-→ +629 / −1375
-
-$ wc -l <13 new electron/api/*.ts + src/lib/{project-config,vcs}/*.ts files>   (new, untracked files)
-→ 1,236 lines added
-
-Production total: +1,865 / −1,375  (net +490)
+$ git diff --numstat f6a6bb2d..c90ac668 -- packages/desktop/src packages/desktop/electron
+→ +1,865 / −1,375  (net +490)
 ```
 
 ```
-$ git diff --numstat -- packages/desktop/tests   (tracked files only, incl. 2 renames)
-→ +95 / −856
+$ git diff --numstat f6a6bb2d..c90ac668 -- packages/desktop/tests   (committed range, incl. 2 renames)
+→ +850 / −730  (net +120)
 
-$ wc -l <3 new *-ipc.test.ts files>   (new, untracked files)
-→ 700 lines added
+$ git diff --no-renames --numstat f6a6bb2d..c90ac668 -- packages/desktop/tests
+→ +976 / −856  (net +120, same)
 
-Test total: +795 / −856  (net −61)
+Test total: +850 / −730  (net +120)
 ```
+
+(An earlier draft of this section measured `+95/−856` — net −61 — against
+the uncommitted working tree while `plugin-ipc.test.ts` and
+`manifest-style-ipc.test.ts`, both git-detected RENAMES of pre-existing
+files once committed, were still untracked; their combined content (93 + 88
+= 181 lines, per `git diff --no-renames --numstat` on each file above)
+never reached that numstat while untracked, and was not counted in the "3
+new *-ipc.test.ts files, 700 lines" bullet either — that bullet named only
+the three genuinely new files (`vcs-ipc.test.ts`, `media-ipc.test.ts`,
+`project-config-ipc.test.ts`). −61 + 181 = +120, matching the committed-range
+figure above exactly.)
 
 Same shape as P5c1's own accounting: production is net-positive (+490)
 because this is a transport migration, not a feature deletion — the
@@ -1284,11 +1293,16 @@ side specifically (routes −1,058, `api.ts` net −187, dtos.ts local-type
 moves net neutral = −1,245 combined) even though the run-wide sum is
 positive; the success-criterion net-LOC requirement is scoped to the
 combined P4–P6 phases, not each P5 subrun (same scoping P5c1's own section
-cites). The test suite IS net-negative this subrun (−61) despite five new
-IPC-handler files, because the route-level suites this run replaced carried
-SvelteKit request/response plumbing (HTTP `Request`/`Response` construction,
-`isHttpError` status assertions) per test that direct function calls don't
-need.
+cites). The test suite is net-POSITIVE this subrun (+120), unlike P5c1's
+own test accounting: five new IPC-handler test files (`vcs-ipc.test.ts`,
+`media-ipc.test.ts`, `project-config-ipc.test.ts`, and the renamed
+`plugin-ipc.test.ts`/`manifest-style-ipc.test.ts`) add real per-namespace
+scoping and SPECIAL WEIGHT coverage (the plugin trust-prompt ordering case,
+the vcs snapshot-id format guards, the vcs hooks-not-registered-before-
+validation case) that the route-level suites they replace did not carry at
+the same density, and the deleted route-level plumbing they DO remove
+(SvelteKit `Request`/`Response` construction, `isHttpError` status
+assertions) is smaller per-test than P5c1's own routes were.
 
 #### Search proofs (from repo root, against the working tree)
 
