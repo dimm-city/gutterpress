@@ -28,22 +28,56 @@
  *   run (capability-map.md §"ElectronBridge parity") — the one drift found
  *   (a stale `saveSnapshot` member that was never really on the bridge) is
  *   fixed below.
- * - `UpdaterApi` — still typed here: `ElectronBridge.updater` is
- *   `Pick<UpdaterApi, "applyNow" | "onEvent">`, and
- *   `$lib/update/updater-capability` imports the full shape's per-method
- *   return types.
+ * - `UpdaterApi` — still typed here, but NOT because `updater-capability.ts`
+ *   needs the full shape: that module imports only `UpdaterEvent`/
+ *   `UpdaterStatus` (its five functions are typed by their own return
+ *   values, not by `UpdaterApi` itself). The real reason is
+ *   `ElectronBridge.updater: Pick<UpdaterApi, "applyNow" | "onEvent">` below
+ *   — `UpdaterApi` has zero consumers outside this file and the (now
+ *   trimmed, see `./index.ts`) barrel re-export it used to have.
+ * - `EditorProjectionArgs`/`EditorProjectionOutcome`/
+ *   `EditorProjectionPluginError` (and their two supporting shapes) moved
+ *   OUT to `$lib/editor-host/editor-projection-capability` (SFE-P5b review
+ *   round 1) — that module is this run's one declared exception to "pure
+ *   forwarding dies" (capability-map.md §3), and once a capability module
+ *   is kept as a deliberate exception its DTOs move with it. `ElectronBridge`
+ *   below imports them back with a type-only import: a circular *module*
+ *   reference (that file also imports the value `bridge` from `./bridge`,
+ *   which imports the type `ElectronBridge` from here) but not a circular
+ *   *runtime* one — `import type` is erased before bundling.
+ * - `PlatformCapabilities` moved OUT to
+ *   `$lib/export/build-preview-capability` (SFE-P5b review round 1) — it
+ *   was never actually referenced by `ElectronBridge` (`capabilities()` was
+ *   never a bridge member; `getPlatformCapabilities()` is a local
+ *   synthesis, not an IPC call — see that function's own doc comment), so
+ *   the "cycle" justification below never applied to it; it simply had not
+ *   been moved yet.
  * - Every other type below (`FolderRef`/`FileRef`, `PreviewStartArgs`/
- *   `BuildArgs`, `EditorProjection*`, `PlatformCapabilities`,
- *   `NativeThemeState`, `FolderChangedEvent`, `SyncState`/`SyncStatus`, the
- *   re-exported IPC payload types) stays here rather than moving to its
- *   consuming capability module: each is either referenced by
- *   `ElectronBridge` directly (so moving it would make this file import back
- *   from a capability module that itself imports the bridge accessor FROM
- *   here — a cycle), or has real consumers outside this run's write
- *   ownership (e.g. `LeftPanel.svelte`'s `ProjectCapabilities`, `api.ts`'s
- *   `FileStat`/`FileWriteResult`) that this run may not edit. This file
- *   remains the one shared IPC-DTO module those genuinely cross-cutting
- *   types live in — see the capability map for the per-type justification.
+ *   `BuildArgs`, `NativeThemeState`, `FolderChangedEvent`,
+ *   `SyncState`/`SyncStatus`, `DesktopPrefs`, `UpdaterApi`, the re-exported
+ *   IPC payload types) stays here rather than moving to its consuming
+ *   capability module. Two different reasons, not one blanket claim:
+ *     - `FolderRef`/`PreviewStartArgs`/`BuildArgs`/`NativeThemeState`/
+ *       `FolderChangedEvent`/`UpdaterApi` are referenced by `ElectronBridge`
+ *       directly, so moving them would create the same type-only cycle
+ *       described above for the editor-projection types — technically safe
+ *       (type-only cycles are erased at build, as that move proves), but
+ *       this run judged spreading that pattern across every capability
+ *       module a bigger readability cost than the one deliberate exception
+ *       justifies, and deferred it. Not moved this run; a candidate for
+ *       P5c to revisit per-module as it takes ownership of the surrounding
+ *       `api.ts` surface.
+ *     - `FileRef`/`DesktopPrefs`/`SyncState`/`SyncStatus` and the
+ *       re-exported IPC payload types have real consumers outside this
+ *       run's write ownership (e.g. `LeftPanel.svelte`'s
+ *       `ProjectCapabilities`, `api.ts`'s `FileStat`/`FileWriteResult`) that
+ *       this run may not edit, so they stay in the one shared IPC-DTO
+ *       module those genuinely cross-cutting types already lived in.
+ *   The run specification's "DTOs move to their owning capability"
+ *   constraint is therefore only PARTIALLY met this run (the
+ *   editor-projection and `PlatformCapabilities` moves); the rest is a
+ *   deliberate, recorded deferral, not a completed relocation — see the
+ *   capability map for the per-type accounting.
  *
  * Plain request/response DTOs the seam does NOT reference — the ~30 shapes
  * server routes return (plugin manager, theme manager, style resolver, media
@@ -62,12 +96,11 @@ import type {
   AdoptFolderOptions,
   CreateProjectResult,
 } from "gutterpress";
-// SFE-P3e — CAVEAT (mirrors the ProjectSource/ProjectCapabilities caveat
-// below): the desktop rich editor's projection wraps D6's own
-// `GutterpressProjection` shape, so this file type-imports it straight from
-// the render subpath rather than hand-mirroring it into shared-types.ts (§8-
-// safe: `import type` is erased at build, never a runtime SPA import).
-import type { GutterpressProjection } from "gutterpress/render";
+// SFE-P3e's `GutterpressProjection` type-import (D6's projection shape) moved
+// with `EditorProjectionResult` to `$lib/editor-host/editor-projection-capability`
+// (SFE-P5b review round 1) — that module is the one place this file's
+// EditorProjection* types now live; see this file's header.
+import type { EditorProjectionArgs, EditorProjectionOutcome } from "../editor-host/editor-projection-capability";
 
 // Shared IPC payload types — imported from the single source of truth.
 // Both electron/bridge-types.ts and this file reference shared-types.ts,
@@ -156,7 +189,7 @@ export type {
 
 /**
  * Payload of an `onFolderChanged` event (#44) — the changed entry's basename.
- * Defined here (not `./dtos`) because `HostServices.onFolderChanged`
+ * Defined here (not `./dtos`) because `ElectronBridge.onFolderChanged`
  * references it directly. Other DTOs — e.g. `ProjectClassification` — live
  * only in `./dtos`; import from there directly.
  */
@@ -240,7 +273,7 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 // Defined locally here — decoupled from the lib — so the SPA never
 // value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
 // this payload; the renderer drives the ambient status pill from it. Kept
-// alongside HostServices (rather than in ./dtos) because `onSyncStatus`
+// alongside `ElectronBridge` (rather than in ./dtos) because `onSyncStatus`
 // references this cluster directly.
 
 /**
@@ -365,71 +398,9 @@ export interface BuildArgs {
   allowShrink?: boolean;
 }
 
-/** Arguments for {@link HostServices.buildEditorProjection} (SFE-P3e). No
- *  FolderRef translation is needed here (unlike {@link PreviewStartArgs}/
- *  {@link BuildArgs}) — `projectDir` is a plain path string on both sides;
- *  the host validates it against its own open-workspace state. */
-export interface EditorProjectionArgs {
-  readonly projectDir: string;
-  readonly content: string;
-  readonly sourceVersion: number;
-}
-
-/** One project plugin that failed to load (D14 `EDITOR_PLUGIN_LOAD_FAILED`), degrade-and-report style. */
-export interface EditorProjectionPluginError {
-  readonly pluginRef: string;
-  readonly message: string;
-}
-
-/** Result of {@link HostServices.buildEditorProjection}. */
-export interface EditorProjectionResult {
-  readonly projection: GutterpressProjection;
-  readonly pluginCss: string;
-  readonly pluginErrors: readonly EditorProjectionPluginError[];
-}
-
-/** D14 classification codes {@link HostServices.buildEditorProjection} can
- *  resolve with instead of succeeding. */
-export type EditorProjectionFailureCode = "EDITOR_FILE_TOO_LARGE" | "EDITOR_PLUGIN_LOAD_FAILED";
-
-/**
- * {@link HostServices.buildEditorProjection}'s actual return shape (SFE-P3e
- * review round 2, CONFIRMED finding): a RESOLVED discriminated union, never
- * a rejection carrying the failure classification. Electron's IPC boundary
- * serializes a rejected `ipcMain.handle` error by stringifying it — the
- * renderer's `ipcRenderer.invoke` rejection carries a reconstructed `Error`
- * with only `message`/`stack`, never a custom own-property such as `.code`
- * — so `EDITOR_FILE_TOO_LARGE`/`EDITOR_PLUGIN_LOAD_FAILED` could never have
- * reached a caller that branched on a thrown error's `.code`, which is
- * exactly the shape this used to be before this fix. Local to this file
- * (D4: renderer types are decoupled from the lib/host, defined here rather
- * than imported from `electron/editor-projection.ts`'s own
- * `EditorProjectionOutcome` — this is that same shape's renderer-side
- * mirror, kept structurally in sync by hand like `EditorProjectionResult`
- * above already is). */
-export type EditorProjectionOutcome =
-  | ({ readonly ok: true } & EditorProjectionResult)
-  | { readonly ok: false; readonly code: EditorProjectionFailureCode; readonly message: string };
-
 /** OS appearance state (#48). Resolved against "system" theme mode. */
 export interface NativeThemeState {
   shouldUseDarkColors: boolean;
-}
-
-/**
- * Coarse host capability flags (#49) so the UI can degrade gracefully without
- * branching on the platform discriminant directly. Electron (the only host
- * this desktop package runs on — SFE-P5a/D10) returns all-true; synthesised
- * locally by `$lib/export/build-preview-capability`'s `getPlatformCapabilities()`
- * (no IPC call — see that module).
- */
-export interface PlatformCapabilities {
-  /** The host can write build output to a real, user-chosen filesystem path. */
-  nativeSavePath: boolean;
-  /** The host can reveal a file/folder in the OS file manager. */
-  showInFolder: boolean;
-  /** The host can persist a folder handle across sessions. */
-  persistentFolderAccess: boolean;
 }
 
 // NOTE (SFE-P5b): the broad `HostServices`/`Platform` service-locator

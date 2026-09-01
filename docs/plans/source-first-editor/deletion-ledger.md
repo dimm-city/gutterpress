@@ -18,7 +18,7 @@ against them.
 | Desktop HTTP routes (`+server.ts`) | 104 | — | — |
 | IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
-| `Platform`/`HostServices` methods | 30 (9 `PlatformAdapter` + 21 `HostServices`, combined with one override; platform-inventory.md §1–§2) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 30 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers). Full accounting: `capability-map.md` §2. | −30 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 30 still reachable, 9 gone (5 dead + 4 collapsed-but-still-reachable through their consumer, so 5 true behavior deletions) |
+| `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
 | Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
 | Test LOC | 316 files / 76,861 lines (at baseline SHA; see baseline.md §4.6) | — | — |
 | Dependencies (workspace, prod) | 41 (summed across packages: cli 28, desktop 13, open-design-plugin 0; see baseline.md §4.7) | — | — |
@@ -669,25 +669,34 @@ excluded).
 
 ### SFE-P5b — 2026-09-01 — replace the broad `Platform` with narrow capabilities
 
-Lane A (implementation). Uncommitted at hand-off — the integrator commits
-after review, per the run's protocol. Working-tree diff, not a SHA range.
+Lane A (implementation). Base SHA `951623d7` (`docs(p5): specify run
+SFE-P5b`) / head SHA `f45d7961` (`refactor(p5): replace the Platform service
+locator with feature-owned capabilities`) — D15 requires both on every run;
+the section originally substituted "uncommitted at hand-off" for them, which
+this review-round-1 fix corrects. Review round 1's own fixes (this pass) are
+uncommitted on top of `f45d7961` at hand-off; the integrator commits after
+review, per the run's protocol.
 
 **What was deleted:**
 
 - `packages/desktop/src/lib/platform/electron-adapter.ts` (253 lines) —
-  every one of its 30 forwarding members either moved to a capability module
-  (20), collapsed into its sole consumer (4), or died as dead surface (5,
-  with `apiVersion` kept only as an unused-but-real `ElectronBridge` type
-  field — see capability-map.md §2 for the full accounting).
+  every one of its 31 forwarding members either moved to a capability module
+  (20), collapsed into its sole consumer (4), died as dead surface (5), or
+  was dropped with the class itself (1, the `platform: "electron"`
+  discriminant), with `apiVersion` kept only as an unused-but-real
+  `ElectronBridge` type field — see capability-map.md §2 for the full
+  accounting.
 - `Platform`/`HostServices` interfaces and `getPlatform()`/`__resetPlatform()`
   (`packages/desktop/src/lib/platform/contract.ts`/`index.ts`) — the
   service-locator surface itself.
 - `packages/desktop/tests/platform/adapter.test.ts` (166 lines) — its target
   (`ElectronAdapter`) no longer exists. Real per-member delegation assertions
   moved to the new capability modules' own test files (not dropped); the
-  fail-loudly host-selection tests moved to the new `bridge.test.ts`, per the
-  run specification's own instruction ("adapter.test.ts's fail-loudly
-  selection test moves to the bridge accessor").
+  fail-loudly host-selection tests moved to the new `bridge.test.ts`; the
+  `onNativeThemeUpdated` delegation test moved to `theme.svelte.ts`'s own
+  test file (added in this run's review-fix pass, matching its inline
+  collapse — see capability-map.md §3). Every assertion the deleted file
+  carried has a home in a still-green test file; none were dropped.
 - 5 dead `Platform`/`HostServices` members, with search proof each had zero
   real desktop consumers: `saveSnapshot` (real callers already used
   `api.vcs.saveSnapshot` directly; the type was never even really on the
@@ -708,22 +717,37 @@ after review, per the run's protocol. Working-tree diff, not a SHA range.
   `editor-host/editor-projection-capability.ts`) + 1 shared bridge accessor
   (`platform/bridge.ts`, moved out of `platform/index.ts`) — plain module
   functions, no classes, no injection framework, per the design constraint.
-- 6 new test files covering the capability modules
+- 7 new test files covering the capability modules and the inline collapse
   (`tests/platform/bridge.test.ts`,
   `tests/updater/updater-capability.test.ts`,
   `tests/platform/remote-capability.test.ts`,
   `tests/platform/build-preview-capability.test.ts`,
   `tests/platform/app-lifecycle-capability.test.ts`,
-  `tests/editor/editor-projection-capability.test.ts`).
+  `tests/editor/editor-projection-capability.test.ts`,
+  `tests/platform/theme.test.ts` — added in review round 1, replacing
+  `onNativeThemeUpdated`'s lost delegation test with a real subscribe +
+  OS-appearance-flip assertion against the collapsed `initTheme()` call
+  site).
 
-**Net diffstat** (`git diff --cached --numstat`, this lane's own working
-tree, `packages/desktop/{src,tests}` only — see capability-map.md §8 for the
-full reasoning):
+**Net diffstat**, reproduced against the recorded SHA range (review round
+1 — D15 requires reproducible evidence, not a working-tree snapshot; see
+capability-map.md §8 for the full reasoning):
 
 ```
-production (src):   21 files, +583 / -531  (net +52)
-tests:               11 files, +487 / -207  (net +280)
+$ git diff --numstat 951623d7..f45d7961 -- packages/desktop/src
+→ 21 files, +580 / -531  (net +49)
+
+$ git diff --numstat 951623d7..f45d7961 -- packages/desktop/tests
+→ 11 files, +487 / -207  (net +280)
 ```
+
+The original hand-off recorded production as `+583 / -531 (net +52)` from
+`git diff --cached --numstat` inside the lane's own working tree at the
+time; the committed range reproduces 3 fewer insertions (`+580`). The file
+count and every other figure (tests included) match exactly. This does not
+change any conclusion drawn from the diffstat (production is still
+near-flat, tests are still the expected net-positive kind) — recorded here
+so the range-based figure is the one future runs can reproduce, per D15.
 
 Production is near-flat despite the 253-line class deletion because the 5
 new capability modules carry deliberate doc-comment explanation of the

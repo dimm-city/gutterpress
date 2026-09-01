@@ -6,9 +6,15 @@
  *
  * All four members are real 1:1 delegation to the preload bridge (push
  * subscriptions / a request+push pair) — grouped into one module because
- * `onFolderChanged` has three real consumers sharing the same "why we need
- * the bridge" reasoning, and the other three are the same file-lifecycle
- * bounded context.
+ * they share D10's one named bounded context ("app lifecycle (flush/close,
+ * folder events, file launch)") across three consumer files
+ * (`FileTree.svelte`, `MediaPanel.svelte`, `+page.svelte`): `onFolderChanged`
+ * has two real consumers (`FileTree.svelte`, `MediaPanel.svelte`) that share
+ * the same "why we need the bridge" reasoning, and the module's other three
+ * members (`onFlushBeforeClose`, `onOpenMarkdownFile`, `watchFolder`) are
+ * consumed by `+page.svelte` — one module writes that reasoning down once
+ * for the whole bounded context instead of scattering it across four
+ * call-site files.
  */
 import { bridge } from "$lib/platform/bridge";
 import type { FolderChangedEvent, MarkdownFileLaunchEvent } from "$lib/platform/contract";

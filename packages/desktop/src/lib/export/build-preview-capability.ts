@@ -14,11 +14,28 @@ import type {
   BuildArgs,
   BuildResult,
   ExportProgressEvent,
-  PlatformCapabilities,
   PreviewStartArgs,
   PreviewStartResult,
   UrlPreviewBlockedEvent,
 } from "$lib/platform/contract";
+
+/**
+ * Coarse host capability flags (#49) so the UI can degrade gracefully
+ * without branching on a platform discriminant directly. Moved here from
+ * `platform/contract.ts` (SFE-P5b review round 1) — `capabilities()` is not
+ * an `ElectronBridge` member (it was always a local synthesis, never a
+ * bridge call — see {@link getPlatformCapabilities}'s own doc comment), so
+ * nothing about it required staying in the shared IPC-DTO file; this is its
+ * one real owning capability.
+ */
+export interface PlatformCapabilities {
+  /** The host can write build output to a real, user-chosen filesystem path. */
+  nativeSavePath: boolean;
+  /** The host can reveal a file/folder in the OS file manager. */
+  showInFolder: boolean;
+  /** The host can persist a folder handle across sessions. */
+  persistentFolderAccess: boolean;
+}
 
 export function onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {
   return bridge().onBuildProgress(cb);

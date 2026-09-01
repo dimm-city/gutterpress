@@ -91,9 +91,6 @@
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
-  // SFE-P3e — the desktop rich editor's host-built projection call and its
-  // degrade-and-report plugin-error payload shape.
-  import type { EditorProjectionPluginError } from "$lib/platform";
   import {
     build,
     cancelExport,
@@ -103,7 +100,10 @@
     startPreview,
     stopPreview,
   } from "$lib/export/build-preview-capability";
-  import { buildEditorProjection } from "$lib/editor-host/editor-projection-capability";
+  // SFE-P3e — the desktop rich editor's host-built projection call and its
+  // degrade-and-report plugin-error payload shape (both now owned by this
+  // module — SFE-P5b review round 1).
+  import { buildEditorProjection, type EditorProjectionPluginError } from "$lib/editor-host/editor-projection-capability";
   import {
     onFlushBeforeClose,
     onOpenMarkdownFile,
@@ -1384,7 +1384,8 @@
    *  delivers (a rejected `ipcMain.handle` handler is serialized to
    *  `message`/`stack` only — custom own-properties do not survive), so
    *  this branch was STILL unreachable after round 1 — see
-   *  `EditorProjectionOutcome`'s own doc comment (`platform/contract.ts`)
+   *  `EditorProjectionOutcome`'s own doc comment
+   *  (`editor-host/editor-projection-capability.ts`)
    *  for the full account and the fix: classification now travels in a
    *  RESOLVED value. Unlike {@link RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC}
    *  below, switching to source mode IS a real fix here (the document keeps
@@ -1444,7 +1445,8 @@
         // which Electron's IPC boundary strips — `outcome.code` here is a
         // field on a RESOLVED value instead, which does survive (see
         // `EditorProjectionOutcome`'s own doc comment in
-        // `platform/contract.ts`). Classified by `outcome.code`, so this
+        // `editor-host/editor-projection-capability.ts`). Classified by
+        // `outcome.code`, so this
         // branches on data, not on English prose (D14: "generic 'failed'
         // errors at a boundary are a confirmed review finding unless no
         // more specific classification is possible"). Either
