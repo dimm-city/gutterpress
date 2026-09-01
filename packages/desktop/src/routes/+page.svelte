@@ -80,11 +80,9 @@
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import { InlineEditController } from "$lib/routes/inline-edit-controller.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "$lib/editor/image-classes";
-  import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
@@ -1040,7 +1038,6 @@
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     richSnippetCapture = captureRichSelection();
     snippetPickerRef?.show();
   }
@@ -1064,7 +1061,6 @@
       return;
     }
     contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     projectSettingsOpen = true;
   }
 
@@ -1542,30 +1538,34 @@
    * The CURRENT rebuild's in-flight publication, or `null` once nothing is
    * pending — SFE-P3e review round 2 (CONFIRMED finding). Deferring
    * `richDocHost`'s publication (round 1, directly below) reopened the
-   * exact bug its own fix targeted: `CommitEngine`'s cross-chapter path is
-   * a SYNCHRONOUS continuation of `EditorFileSession.select` ->
-   * `onActivate` -> `showEditorContent` -> `rebuildRichDocHost`, with no
-   * `await` of its own between that call and `selectEditorFile`'s wrapper
-   * (below) returning — so by the time `CommitEngine` went on to check the
-   * `richSurfaceActive` seam (the "editorHasFile"/"applyRangeEdit" wiring
-   * near the engine's construction), the host projection round trip
-   * (`buildRichProjection` — a real IPC round trip, not a microtask) could
-   * not possibly have resolved yet: `richDocHost` was still the PRE-switch
-   * value (or `null`), so the seam fell through to `buf.edit(...)` —
-   * precisely the stale-rich-surface bug that seam's own long comment
-   * (where `commitEngine` is constructed) documents as fixed. `EditorBuffer
-   * .edit()` does not report through `onContentReplaced`, so the committed
-   * write was invisible to the rich host; the in-flight rebuild then
-   * published `nextHost` built from the PRE-commit content, silently
-   * REVERTING the commit on the very next rich-mode edit. Not a narrow
-   * race — the window is a full IPC round trip, so it reproduced every
-   * time. Rather than widen `richSurfaceActive`'s seam to tolerate a
-   * not-yet-published host (which would just move the staleness elsewhere),
-   * `selectEditorFile` (below) awaits THIS promise before resolving, so
-   * every one of its callers — `CommitEngine` included — only sees
+   * exact bug its own fix targeted: the (now-deleted) preview commit-write
+   * engine's cross-chapter path was a SYNCHRONOUS continuation of
+   * `EditorFileSession.select` -> `onActivate` -> `showEditorContent` ->
+   * `rebuildRichDocHost`, with no `await` of its own between that call and
+   * `selectEditorFile`'s wrapper (below) returning — so by the time that
+   * engine went on to check the `richSurfaceActive` seam (the
+   * "editorHasFile"/"applyRangeEdit" wiring near where it used to be
+   * constructed), the host projection round trip (`buildRichProjection` — a
+   * real IPC round trip, not a microtask) could not possibly have resolved
+   * yet: `richDocHost` was still the PRE-switch value (or `null`), so the
+   * seam fell through to `buf.edit(...)` — precisely the stale-rich-surface
+   * bug that seam's own long comment (at its former construction site)
+   * documented as fixed. `EditorBuffer.edit()` does not report through
+   * `onContentReplaced`, so the committed write was invisible to the rich
+   * host; the in-flight rebuild then published `nextHost` built from the
+   * PRE-commit content, silently REVERTING the commit on the very next
+   * rich-mode edit. Not a narrow race — the window is a full IPC round
+   * trip, so it reproduced every time. Rather than widen
+   * `richSurfaceActive`'s seam to tolerate a not-yet-published host (which
+   * would just move the staleness elsewhere), `selectEditorFile` (below)
+   * awaits THIS promise before resolving, so every caller only sees
    * `editorFiles.select()` complete once any rich-mode rebuild it triggered
-   * has ALSO published. Callers outside rich mode, or a rebuild the current
-   * file switch didn't touch, see this stay `null` and pay nothing extra.
+   * has ALSO published (SFE-P4: the cross-chapter commit path that
+   * originally surfaced this bug was itself deleted along with
+   * preview-originated source mutation entirely — the mechanism below is
+   * general and still guards every remaining caller).
+   * Callers outside rich mode, or a rebuild the current file switch didn't
+   * touch, see this stay `null` and pay nothing extra.
    * Not `$state` — same reasoning as `richDocHostEpoch` above. */
   let richDocHostPending: Promise<void> | null = null;
 
@@ -2272,16 +2272,15 @@
    * `richDocHostPending` before returning — `editorFiles.select` invokes
    * `onActivate` -> `showEditorContent` -> `rebuildRichDocHost`
    * SYNCHRONOUSLY, but publishing the rebuilt `richDocHost` is itself async
-   * (see `richDocHostPending`'s own doc comment). `CommitEngine`'s
-   * cross-chapter commit path calls this function and then IMMEDIATELY
-   * checks the `richSurfaceActive` seam (`editorHasFile`/`applyRangeEdit`,
-   * where `commitEngine` is constructed) with no `await` of its own in
-   * between — without this, that seam would still see the PRE-switch
-   * `richDocHost` and silently fall through to the buffer-only write path
-   * in rich mode. Every other caller of `selectEditorFile` pays nothing
-   * extra: `richDocHostPending` is `null` whenever rich mode did not just
-   * start a rebuild (source mode active, a non-markdown file, or nothing
-   * changed), so the `await` resolves immediately.
+   * (see `richDocHostPending`'s own doc comment). The bug this fixed was
+   * originally found through the now-deleted preview commit-write engine's
+   * cross-chapter commit path (SFE-P4 removed preview-originated source
+   * mutation entirely — see that doc comment for the historical detail); the
+   * `await` remains because it is a general guard every caller of
+   * `selectEditorFile` needs. Every caller pays nothing extra:
+   * `richDocHostPending` is `null` whenever rich mode did not just start a
+   * rebuild (source mode active, a non-markdown file, or nothing changed),
+   * so the `await` resolves immediately.
    */
   async function selectEditorFile(
     path: string,
@@ -2730,51 +2729,6 @@
     return () => off?.();
   });
 
-  // ----------------------------------------------------------------
-  // Commit engine — the single write path for context-menu AND in-flow
-  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
-  // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
-  // that, exactly like every other write path in the app).
-  //
-  // SFE-P3ab review round 1 (CONFIRMED finding): `editorHasFile`/
-  // `applyRangeEdit` are SURFACE-AWARE — when the rich surface is the one
-  // actually live for the target file, the edit routes through
-  // `richDocHost.applyEdit` (the SAME seam every other rich-mode command in
-  // this file uses, `rich-commands.ts`'s header), not `editorRef` (which is
-  // always `null` in rich mode, since `MarkdownEditor` is unmounted). Before
-  // this fix `editorHasFile` was permanently `false` whenever rich mode was
-  // active, so the engine fell through to `buf.edit(...)` directly — a
-  // write `EditorBuffer.edit()` does NOT report through
-  // `onContentReplaced` (that callback is for EXTERNAL replacements only),
-  // so the mounted rich host never learned about it and kept showing the
-  // pre-commit text. The very next rich-mode command then read that STALE
-  // snapshot, applied its own edit on top of it, and pushed the whole
-  // stale-plus-new text back through `richDocHost`'s `subscribe` ->
-  // `onEditorChange` -> `buffer.edit(...)`, silently REVERTING the
-  // preview's committed change. Routing through `richDocHost.applyEdit`
-  // here closes that gap: its `subscribe` callback (`rebuildRichDocHost`
-  // above) already forwards every accepted edit into `onEditorChange` ->
-  // `buffer.edit(...)`, so the buffer, the rich host, and disk all agree
-  // immediately — there is no second, silently-diverging writer.
-  // ----------------------------------------------------------------
-  const commitEngine = new CommitEngine({
-    currentDir: () => lifecycle.currentDir,
-    rendering: () => lifecycle.rendering,
-    buffer: () => buffer,
-    // reveal:false — a committed menu action must not also scroll the author's
-    // editor to the top of the chapter it happened to touch.
-    selectEditorFile: (path) => selectEditorFile(path),
-    editorHasFile: (path) =>
-      richSurfaceActive ? richDocHost !== null && editorFilePath === path : (editorRef?.hasFile(path) ?? false),
-    applyRangeEdit: (path, from, to, insert) => {
-      if (richSurfaceActive && richDocHost) {
-        richDocHost.applyEdit({ from, to, insert, expectedVersion: richDocHost.getSnapshot().version });
-        return;
-      }
-      editorRef?.applyRangeEditIn(path, from, to, insert);
-    },
-  });
-
   let textPrompt = $state<{
     title: string;
     label: string;
@@ -2833,39 +2787,19 @@
   }
 
   // ----------------------------------------------------------------
-  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
-  // Two entry points, both landing here: the "Edit this block" context-menu
-  // item (below) and double-click in the preview (which arrives as the
-  // blockEditRequested event on the controller's own subscription).
-  //
-  // No geometry deps: the editing surface is the block's own element inside
-  // the book iframe, so there is no panel to position over it.
-  // ----------------------------------------------------------------
-  const inlineEdit = new InlineEditController({
-    client: () => client,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
-    commitEngine,
-    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
-    toastError: (message) => toast?.error(message),
-    toastInfo: (message) => toast?.info?.(message),
-  });
-
-  // ----------------------------------------------------------------
   // Preview right-click / Shift+F10 context menu (inline-editing plan
   // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
   // listener — separate from previewEvents' switch below (PR 0 already owns
-  // the elementActivated case there).
+  // the elementActivated case there). SFE-P4: read-only — go-to-source,
+  // selection-copy, link-copy, image-reveal. The mutation half (and with it
+  // the commit-write engine and "start an in-flow edit" callback as
+  // constructor dependencies) was deleted; see
+  // context-menu-controller.svelte.ts's own header.
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
-    commitEngine,
     getIframeOrigin: () => {
       const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
       return rect ? { left: rect.left, top: rect.top } : null;
@@ -2875,14 +2809,9 @@
       const rect = workspaceEl.getBoundingClientRect();
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     },
-    promptText,
-    promptImageProperties,
     goToSource,
     openMediaPanel,
     copyToClipboard,
-    toastSuccess: (message) => toast?.success(message),
-    toastError: (message) => toast?.error(message),
-    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -2948,7 +2877,6 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
-    inlineEdit.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -3731,8 +3659,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); void inlineEdit.endActive(true); githubOpen = true; } : undefined}
-      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); githubOpen = true; } : undefined}
+      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
       onShowWelcome={() => {
         contextMenu.close();
         landingRef?.showTab("projects");

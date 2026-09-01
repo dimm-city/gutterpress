@@ -21,13 +21,14 @@
  *
  * Preview (D8's third surface) is NOT part of this invariant — it may be
  * visible alongside either editing surface, and only source vs. rich are
- * mutually exclusive. It is NOT a read-only pane yet, either: until P4
- * deletes preview source-mutation (D8's own "In-flow `contenteditable`,
- * preview block-edit requests, preview source mutation ... are deleted in
- * P4"), its context-menu and in-flow edit paths still write source through
- * `commit-engine.ts` — see this file's "What this controller is NOT"
- * section below for how that write is kept from silently diverging from
- * whichever surface is actually mounted.
+ * mutually exclusive. SFE-P4 made it a genuinely read-only pane: preview
+ * source-mutation (D8's own "In-flow `contenteditable`, preview block-edit
+ * requests, preview source mutation ... are deleted in P4"), the context
+ * menu's mutation half, and the single-write-path/in-flow-editor classes
+ * that applied their edits are all gone — see this file's "What this
+ * controller is NOT" section below for how the historical write-through
+ * hazard it once described was closed by deleting that second writer
+ * entirely, not by widening this controller's own invariant.
  *
  * ## Undo epoch (D7)
  *
@@ -63,16 +64,19 @@
  * DISTINCT objects while rich mode is active. Convergence between them is
  * explicit, not structural: `richDocHost.subscribe` forwards every accepted
  * rich-mode edit into `buffer.edit(...)` (`+page.svelte`'s
- * `rebuildRichDocHost`), and every OTHER writer of `buffer.content` while
- * rich mode is the live surface — today, `commit-engine.ts`'s preview-
- * originated writes — must route back THROUGH `richDocHost.applyEdit`
- * (`+page.svelte`'s `CommitEngine` construction) rather than writing
- * `buffer` directly, or the rich host silently goes stale and the next
- * rich-mode command can revert whatever the other writer just committed
- * (a CONFIRMED review finding, SFE-P3ab round 1 — see the commit-engine
- * wiring's own comment in `+page.svelte` for the full failure mode this
- * fixes). Any FUTURE writer of buffer/session state must be reviewed
- * against this same requirement; it is not enforced by the type system.
+ * `rebuildRichDocHost`). SFE-P3ab round 1 (CONFIRMED finding) found that any
+ * OTHER writer of `buffer.content` while rich mode is the live surface had
+ * to route back THROUGH `richDocHost.applyEdit` or the rich host would
+ * silently go stale and the next rich-mode command could revert whatever
+ * the other writer just committed — at the time, the (now-deleted)
+ * `commit-engine.ts` module's preview-originated writes were exactly that
+ * other writer, and `+page.svelte`'s construction of it carried the fix.
+ * SFE-P4 deleted that module and every preview-originated write entirely,
+ * which closes the hazard by removing the second writer rather than by
+ * widening this seam — `richDocHost.subscribe -> buffer.edit(...)` is once
+ * again the ONLY writer of `buffer.content` while rich mode is active. Any
+ * FUTURE writer of buffer/session state must be reviewed against this same
+ * requirement; it is not enforced by the type system.
  */
 
 export type EditorSurface = "source" | "rich";

@@ -30,12 +30,14 @@
  * buildRichProjection result can tell whether it is still wanted").
  *
  * `commit-engine.test.ts`'s "SFE-P3e round 2: cross-chapter commit vs. an
- * in-flight rich-host publish" suite (read in full for this audit) proves
- * the ADJACENT half of this mechanism — that `selectEditorFile` awaits
- * `richDocHostPending` so a commit issued immediately after a cross-chapter
- * switch is never silently dropped. It exercises exactly ONE in-flight
- * build at a time and never triggers a SECOND switch while the first is
- * still pending, so it does not exercise the epoch guard's own job at all.
+ * in-flight rich-host publish" suite (read in full for this audit; the file
+ * itself was deleted by SFE-P4 along with `CommitEngine` — see git history)
+ * proved the ADJACENT half of this mechanism — that `selectEditorFile`
+ * awaited `richDocHostPending` so a commit issued immediately after a
+ * cross-chapter switch was never silently dropped. It exercised exactly ONE
+ * in-flight build at a time and never triggered a SECOND switch while the
+ * first was still pending, so it did not exercise the epoch guard's own
+ * job at all.
  * `rich-mode.test.ts`'s file-switch describe block proves `RichModeController`
  * (mode/epoch bookkeeping one layer up, unrelated to `richDocHostEpoch`)
  * bumps its OWN epoch and preserves the current mode across `onFileSwitch`
@@ -49,11 +51,11 @@
  * closure state inside `+page.svelte` — a large Svelte SFC `bun:test`
  * cannot compile or import directly, the same limitation
  * `file-tree-open-file-rename-delete.test.ts`'s "Wiring check" section and
- * `commit-engine.test.ts`'s own "SFE-P3e round 2" header both document for
- * this identical file. `commit-engine.test.ts` works around that limit by
- * modeling the exact seam with fakes, toggling ONE behavior under test
- * (`awaitPending`) so the same harness proves both the pre-fix defect and
- * the fix. This file follows that established precedent: `RichDocHostHarness`
+ * the now-deleted `commit-engine.test.ts`'s own "SFE-P3e round 2" header
+ * both documented for this identical file. `commit-engine.test.ts` worked
+ * around that limit by modeling the exact seam with fakes, toggling ONE
+ * behavior under test (`awaitPending`) so the same harness proved both the
+ * pre-fix defect and the fix. This file follows that established precedent: `RichDocHostHarness`
  * below is a faithful, line-verified model of `rebuildRichDocHost`'s epoch
  * algorithm (guardEnabled toggles exactly the `if (epoch !== richDocHostEpoch)
  * return;` line quoted above), not a re-description of it — every assertion

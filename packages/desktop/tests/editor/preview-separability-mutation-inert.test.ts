@@ -287,35 +287,26 @@ describe("Layer 1 — preview-interface.js + preview-bridge.js: navigation works
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// LAYER 2 — ContextMenuController: the FOUR read-only items D8 keeps
-// (go-to-source, selection-copy, link-copy, image-reveal) never invoke
-// CommitEngine.commitRangePatch (the write path) or openInlineEdit (the
-// InlineEditController entry point), even when both are wired in as
-// required, non-optional constructor dependencies.
+// LAYER 2 — ContextMenuController: the FOUR items D8 keeps (go-to-source,
+// selection-copy, link-copy, image-reveal) work correctly.
 //
-// WHAT THIS ESTABLISHES: for THESE FOUR items specifically, `run()` never
-// reaches either mutation dependency — proven by making both throw and
-// running the items to completion without a throw.
-//
-// WHAT THIS DOES NOT ESTABLISH — precision matters here, since P4 will act
-// on this claim: `ContextMenuController.buildItems()` reads
-// `commitEngine.generation` UNCONDITIONALLY for every image/link/marker/
-// block-kind target (context-menu-controller.svelte.ts:363), even when the
-// eventual item set is read-only — this is a structural constant-time
-// coupling to `CommitEngine`'s presence, not a per-item one, and it is NOT
-// removed by this proof (a `generation` getter is still provided below, and
-// is expected to be read). Cross-block selections (`crossBlockSelectionItems`)
-// are the one target kind with ZERO CommitEngine coupling, not even a
-// `generation` read (context-menu-controller.svelte.ts:358-360 returns
-// before line 363). ContextMenuController ALSO still requires `openInlineEdit`
-// and `commitEngine` as non-optional constructor dependencies today — this
-// proof shows the four read-only items never CALL them, not that the class
-// could be constructed without them; removing that requirement is P4's own
-// signature change, out of this lane's write ownership
-// (context-menu-controller.svelte.ts is off-limits here). This proof is
-// therefore evidence that P4's rewrite of ContextMenuController can keep
-// these four items' bodies unchanged; it does not itself perform or
-// pre-approve that rewrite.
+// SFE-P4 UPDATE (post-deletion truth): this describe block used to poison
+// `CommitEngine.commitRangePatch`/`openInlineEdit` and prove the four
+// read-only items never reached either — including two POSITIVE controls
+// (`block-edit`, `block-break-before`) that proved the poison itself would
+// catch a real violation. P4 deleted `CommitEngine`, `InlineEditController`,
+// and every mutation item (`block-edit`, `block-break-before` included) —
+// see `context-menu-controller.svelte.ts`'s own header. `commitEngine` and
+// `openInlineEdit` are no longer constructor dependencies at all (this is
+// the exact signature change this proof's original header named as P4's to
+// make), so there is nothing left to poison and no mutation item left to
+// run a positive control against: the separability question this layer
+// asked ("do the read-only items ever reach the mutation dependencies?")
+// is now vacuously true by construction — those dependencies do not exist.
+// What remains meaningful, and is what this section now proves, is the
+// FOUR ITEMS' OWN BEHAVIOR: `ContextMenuController`, constructed with only
+// its post-P4 dependencies, still resolves and runs go-to-source,
+// selection-copy, link-copy, and image-reveal correctly.
 // ─────────────────────────────────────────────────────────────────────────
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
@@ -343,25 +334,6 @@ class FakeClient {
   }
 }
 
-/** `commitRangePatch` and `noteRenderingComplete` are the two CommitEngine
- *  members the controller touches. `commitRangePatch` is the actual WRITE
- *  path — poisoned. `generation` (read at every image/link/marker/block menu
- *  build, per the header comment above) is left real so menu construction
- *  itself does not spuriously fail; `noteRenderingComplete` is a harmless
- *  generation-counter bump the controller calls on every render regardless
- *  of mutation activity, also left real. */
-class PoisonedCommitEngine {
-  generation = 0;
-  commitRangePatchCalls: unknown[] = [];
-  noteRenderingComplete(): void {
-    this.generation++;
-  }
-  commitRangePatch(patch: unknown): never {
-    this.commitRangePatchCalls.push(patch);
-    throw new Error("SEPARABILITY VIOLATION: a read-only item invoked CommitEngine.commitRangePatch");
-  }
-}
-
 function detail(over: Record<string, unknown> = {}): PreviewEventLike {
   return {
     kind: "block",
@@ -385,85 +357,57 @@ interface Harness {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctrl: any;
   client: FakeClient;
-  commitEngine: PoisonedCommitEngine;
   goToSourceCalls: Array<[string, number]>;
   copyToClipboardCalls: string[];
   openMediaPanelCalls: number;
-  openInlineEditCalls: unknown[];
 }
 
-function makeHarness(readFileMap: Record<string, string> = { "/proj/ch1.md": "a\nb\nc\nd\n" }): Harness {
+function makeHarness(): Harness {
   const client = new FakeClient();
-  const commitEngine = new PoisonedCommitEngine();
   const h: Harness = {
     ctrl: undefined,
     client,
-    commitEngine,
     goToSourceCalls: [],
     copyToClipboardCalls: [],
     openMediaPanelCalls: 0,
-    openInlineEditCalls: [],
   };
   const deps: ContextMenuDeps = {
     client: () => client,
     enabled: () => true,
     rendering: () => false,
-    currentDir: () => "/proj",
-    openContent: () => null,
-    readFile: async (p: string) => {
-      if (p in readFileMap) return readFileMap[p]!;
-      throw new Error(`not found: ${p}`);
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    commitEngine: commitEngine as any,
     getIframeOrigin: () => ({ left: 0, top: 0 }),
     getWorkspaceRect: () => ({ left: 0, top: 0, width: 1000, height: 800 }),
-    promptText: async () => null,
-    promptImageProperties: async () => null,
     goToSource: (chapter: string, line: number) => h.goToSourceCalls.push([chapter, line]),
     openMediaPanel: () => h.openMediaPanelCalls++,
     copyToClipboard: async (text: string) => {
       h.copyToClipboardCalls.push(text);
     },
-    toastSuccess: () => {},
-    toastError: () => {},
-    openInlineEdit: (...args: unknown[]) => {
-      h.openInlineEditCalls.push(args);
-      throw new Error("SEPARABILITY VIOLATION: a read-only item invoked openInlineEdit");
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
+  };
   h.ctrl = new ContextMenuController(deps);
   h.ctrl.subscribe(client);
   return h;
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
-
-describe("Layer 2 — ContextMenuController: the four read-only items never reach CommitEngine.commitRangePatch or openInlineEdit", () => {
-  test("liveness: the poisoned deps really are wired in and the menu really opens with real items", async () => {
+describe("Layer 2 — ContextMenuController: the four D8 read-only items work with no mutation dependencies in the constructor at all", () => {
+  test("liveness: the menu really opens with real items", () => {
     const h = makeHarness();
     h.client.emit({ name: "contextMenuRequested", detail: detail() });
-    await flush();
     expect(h.ctrl.open).toBe(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(h.ctrl.items.map((i: any) => i.id)).toContain("go-to-source");
   });
 
-  test("go-to-source (block target): navigates, never touches either mutation dependency", async () => {
+  test("go-to-source (block target): navigates", () => {
     const h = makeHarness();
     h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block" }) });
-    await flush();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const item = h.ctrl.items.find((i: any) => i.id === "go-to-source");
     expect(item).toBeDefined();
     expect(() => item.run()).not.toThrow();
     expect(h.goToSourceCalls).toEqual([["ch1.md", 3]]);
-    expect(h.commitEngine.commitRangePatchCalls).toEqual([]);
-    expect(h.openInlineEditCalls).toEqual([]);
   });
 
-  test("link-copy (link target): copies the href, never touches either mutation dependency", async () => {
+  test("link-copy (link target): copies the href", async () => {
     const h = makeHarness();
     h.client.emit({
       name: "contextMenuRequested",
@@ -472,17 +416,14 @@ describe("Layer 2 — ContextMenuController: the four read-only items never reac
         link: { href: "https://example.com/x", text: "link text", source: { token: "[link text](https://example.com/x)", occurrence: 0 } },
       }),
     });
-    await flush();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const item = h.ctrl.items.find((i: any) => i.id === "link-copy");
     expect(item).toBeDefined();
     await expect(item.run()).resolves.toBeUndefined();
     expect(h.copyToClipboardCalls).toEqual(["https://example.com/x"]);
-    expect(h.commitEngine.commitRangePatchCalls).toEqual([]);
-    expect(h.openInlineEditCalls).toEqual([]);
   });
 
-  test("image-reveal (image target): opens the Media panel, never touches either mutation dependency", async () => {
+  test("image-reveal (image target): opens the Media panel", () => {
     const h = makeHarness();
     h.client.emit({
       name: "contextMenuRequested",
@@ -491,17 +432,14 @@ describe("Layer 2 — ContextMenuController: the four read-only items never reac
         image: { src: "art.jpg", alt: "Art", source: { token: "![Art](art.jpg)", occurrence: 0 } },
       }),
     });
-    await flush();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const item = h.ctrl.items.find((i: any) => i.id === "image-reveal");
     expect(item).toBeDefined();
     expect(() => item.run()).not.toThrow();
     expect(h.openMediaPanelCalls).toBe(1);
-    expect(h.commitEngine.commitRangePatchCalls).toEqual([]);
-    expect(h.openInlineEditCalls).toEqual([]);
   });
 
-  test("selection-copy (cross-block selection target): copies the text, never even READS commitEngine.generation (the one item with zero CommitEngine coupling)", async () => {
+  test("selection-copy (cross-block selection target): copies the text", async () => {
     const h = makeHarness();
     h.client.emit({
       name: "contextMenuRequested",
@@ -513,37 +451,10 @@ describe("Layer 2 — ContextMenuController: the four read-only items never reac
         selection: { text: "spans two blocks", withinSingleBlock: false, range: null, chapter: null },
       }),
     });
-    await flush();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const item = h.ctrl.items.find((i: any) => i.id === "selection-copy");
     expect(item).toBeDefined();
     await expect(item.run()).resolves.toBeUndefined();
     expect(h.copyToClipboardCalls).toEqual(["spans two blocks"]);
-    expect(h.commitEngine.commitRangePatchCalls).toEqual([]);
-    expect(h.openInlineEditCalls).toEqual([]);
-  });
-
-  describe("G-12: the poison actually works — a mutation item, given the SAME poisoned deps, DOES throw", () => {
-    test("positive control: block-edit throws through the poisoned openInlineEdit", async () => {
-      const h = makeHarness();
-      h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block" }) });
-      await flush();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const item = h.ctrl.items.find((i: any) => i.id === "block-edit");
-      expect(item).toBeDefined();
-      expect(() => item.run()).toThrow(/SEPARABILITY VIOLATION.*openInlineEdit/);
-      expect(h.openInlineEditCalls.length).toBe(1);
-    });
-
-    test("positive control: block-break-before throws through the poisoned commitRangePatch", async () => {
-      const h = makeHarness();
-      h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block" }) });
-      await flush();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const item = h.ctrl.items.find((i: any) => i.id === "block-break-before");
-      expect(item).toBeDefined();
-      await expect(item.run()).rejects.toThrow(/SEPARABILITY VIOLATION.*commitRangePatch/);
-      expect(h.commitEngine.commitRangePatchCalls.length).toBe(1);
-    });
   });
 });

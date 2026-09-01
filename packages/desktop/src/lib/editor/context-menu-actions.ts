@@ -1,25 +1,29 @@
 /**
- * Pure source-token helpers for preview context-menu edits.
+ * Pure source-token helpers for image/link authoring commands.
  *
- * SFE-P3d-parity, Lane D: also the home of the CARET-based counterparts to
- * this file's original preview-driven finders. `findImageToken`/
- * `resolveLinkToken` locate an ALREADY-KNOWN token — the preview hands them
- * the rendered element's own alt/src/href plus an `InlineSourceToken`
- * (exact literal text + occurrence index) resolved from `data-source-range`
- * threading. There is no such rendered element in source/rich mode: the
- * only input available there is a raw caret OFFSET into the live document
- * text. `findImageTokenAtOffset`/`findLinkTokenAtOffset` below fill that
- * gap — given `(text, offset)`, they scan for a well-formed inline image/
- * link token whose span contains `offset`, using the SAME lexical
- * primitives (`scanBracket`/`scanDestination`/`scanAttrs`) the preview-driven
- * finders already use to verify a token's shape, so both entry points agree
- * on what counts as a real token. They additionally DECODE alt/destination
- * text (there is no rendered DOM to read a plain-text value from) — see
- * `unescapeMarkdownText`/`decodeDestination`. This decode is an escape-only
- * reversal (not a full CommonMark inline parse — no caller here needs one):
- * exact for ordinary author-written images/links, and a value round-trips
- * unchanged whenever a caller does not edit it, because `rewriteImageToken`/
- * `rewriteLinkToken` only re-escape a field that actually changed.
+ * SFE-P4: this module used to also hold the preview context menu's own
+ * PREVIEW-DRIVEN finders (`findImageToken`/`resolveLinkToken`, which located
+ * an already-known token from the rendered element's own alt/src/href plus
+ * an `InlineSourceToken` resolved from `data-source-range` threading). P4
+ * deleted the context menu's mutation half (image-properties/image-unwrap/
+ * link-edit) along with the single-write-path class that applied their
+ * edits, which was those finders' only consumer — see
+ * docs/plans/source-first-editor/mutation-inventory.md §1.5 and
+ * parity-matrix.md's `image-properties`/`image-unwrap`/`link-edit` rows
+ * for the replacement commands. What remains is the CARET-based half added
+ * by SFE-P3d-parity, Lane D, which those replacement commands use: given
+ * `(text, offset)` — the only input source/rich mode has, since there is no
+ * rendered preview element there — `findImageTokenAtOffset`/
+ * `findLinkTokenAtOffset` scan for a well-formed inline image/link token
+ * whose span contains `offset`, using the lexical primitives
+ * (`scanBracket`/`scanDestination`/`scanAttrs`) the deleted finders also
+ * used. They additionally DECODE alt/destination text (there is no rendered
+ * DOM to read a plain-text value from) — see `unescapeMarkdownText`/
+ * `decodeDestination`. This decode is an escape-only reversal (not a full
+ * CommonMark inline parse — no caller here needs one): exact for ordinary
+ * author-written images/links, and a value round-trips unchanged whenever a
+ * caller does not edit it, because `rewriteImageToken`/`rewriteLinkToken`
+ * only re-escape a field that actually changed.
  *
  * Known limitation, stated rather than silently assumed away (matches this
  * module's existing posture): this is a lexical scanner, not a CommonMark
@@ -30,8 +34,6 @@
  * a defensible default for the caret-driven UI this feeds, not a claim of
  * full CommonMark fidelity.
  */
-
-import type { InlineSourceToken } from "$lib/preview-client";
 
 export interface ImageTokenMatch {
   start: number;
@@ -69,18 +71,6 @@ function isEscaped(text: string, index: number): boolean {
   let slashes = 0;
   for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) slashes++;
   return slashes % 2 === 1;
-}
-
-function findOccurrence(text: string, source: InlineSourceToken): number {
-  if (!source.token || !Number.isInteger(source.occurrence) || source.occurrence < 0) return -1;
-  let from = 0;
-  for (let current = 0; current <= source.occurrence; current++) {
-    const found = text.indexOf(source.token, from);
-    if (found < 0) return -1;
-    if (current === source.occurrence) return found;
-    from = found + source.token.length;
-  }
-  return -1;
 }
 
 function scanBracket(text: string, open: number): { close: number } | null {
@@ -180,78 +170,8 @@ function scanAttrs(text: string, open: number): { raw: string; end: number } {
   return { raw: text.slice(open, end), end };
 }
 
-export function findImageToken(
-  blockSlice: string,
-  image: { src: string | null; alt: string | null; source: InlineSourceToken | null },
-): ImageTokenMatch | null {
-  if (!image.source) return null;
-  const start = findOccurrence(blockSlice, image.source);
-  if (start < 0) return null;
-  const tokenRaw = image.source.token;
-  if (!tokenRaw.startsWith("![")) return null;
-  const label = scanBracket(tokenRaw, 1);
-  if (!label || tokenRaw[label.close + 1] !== "(") return null;
-  const destination = scanDestination(tokenRaw, label.close + 1);
-  if (!destination || destination.close !== tokenRaw.length - 1) return null;
-  const attrs = scanAttrs(blockSlice, start + tokenRaw.length);
-  return {
-    start,
-    end: attrs.end,
-    alt: image.alt ?? "",
-    src: image.src ?? "",
-    tokenRaw,
-    attrsRaw: attrs.raw,
-    altStart: 2,
-    altEnd: label.close,
-    destinationStart: destination.start,
-    destinationEnd: destination.end,
-  };
-}
-
-export type LinkResolution =
-  | { kind: "found"; match: LinkTokenMatch }
-  | { kind: "reference-style" }
-  | { kind: "linkified" }
-  | { kind: "not-found" };
-
-export function resolveLinkToken(
-  blockSlice: string,
-  link: { href: string | null; text: string; source: InlineSourceToken | null },
-): LinkResolution {
-  if (!link.source) {
-    return link.href && blockSlice.includes(link.href) ? { kind: "linkified" } : { kind: "not-found" };
-  }
-  const start = findOccurrence(blockSlice, link.source);
-  if (start < 0) return { kind: "not-found" };
-  const tokenRaw = link.source.token;
-  const label = scanBracket(tokenRaw, 0);
-  if (!label || tokenRaw[label.close + 1] !== "(") return { kind: "reference-style" };
-  const destination = scanDestination(tokenRaw, label.close + 1);
-  if (!destination || destination.close !== tokenRaw.length - 1) return { kind: "not-found" };
-  return {
-    kind: "found",
-    match: {
-      start,
-      end: start + tokenRaw.length,
-      href: link.href ?? "",
-      tokenRaw,
-      destinationStart: destination.start,
-      destinationEnd: destination.end,
-    },
-  };
-}
-
 export function spliceToken(text: string, start: number, end: number, insert: string): string {
   return text.slice(0, start) + insert + text.slice(end);
-}
-
-function escapeLabel(value: string): string {
-  let escaped = "";
-  for (const char of value) {
-    if (char === "\\" || char === "[" || char === "]") escaped += "\\";
-    escaped += char;
-  }
-  return escaped;
 }
 
 /** CommonMark's backslash-escapable ASCII punctuation set — shared by
@@ -317,10 +237,6 @@ function serializeDestination(value: string): string {
   return `<${escaped}>`;
 }
 
-export function makeLinkToken(label: string, href: string): string {
-  return `[${escapeLabel(label)}](${serializeDestination(href)})`;
-}
-
 export function rewriteImageToken(
   image: ImageTokenMatch,
   changes: { alt?: string; src?: string; attrsRaw?: string },
@@ -360,8 +276,7 @@ export function findImageWrapper(
 }
 
 // ── Caret-based finders (SFE-P3d-parity, Lane D) ────────────────────────────
-// See this file's header for why these exist alongside findImageToken/
-// resolveLinkToken rather than reusing them: there is no rendered preview
+// See this file's header for why these exist: there is no rendered preview
 // element in source/rich mode, only a raw caret offset into the live text.
 
 /**
@@ -369,8 +284,7 @@ export function findImageWrapper(
  * `offset` — inclusive of both edges, so a caret sitting exactly at the
  * token's own start or end still counts as "on" it. `null` when no
  * well-formed image token's span contains `offset` (including when `offset`
- * sits on a bare `<img>` — raw HTML has no Markdown token to address, same
- * as {@link findImageToken}'s own raw-HTML case).
+ * sits on a bare `<img>` — raw HTML has no Markdown token to address).
  */
 export function findImageTokenAtOffset(text: string, offset: number): ImageTokenMatch | null {
   for (let i = 0; i < text.length - 1; i++) {
@@ -406,10 +320,10 @@ export function findImageTokenAtOffset(text: string, offset: number): ImageToken
  * not a link — {@link findImageTokenAtOffset}'s territory). `null` for a
  * reference-style link (`[text][ref]`/`[text][]`, no `(` immediately after
  * the label), a "linkified" bare URL (no Markdown link syntax at all), or
- * genuinely no link here — callers that need to tell those apart for a
- * disabled-item TOOLTIP (the preview context menu's `linkDisabledReason`)
- * already have their own resolution path; this caret-driven entry point
- * only needs "editable, or not" (see this module's header on scope).
+ * genuinely no link here — this caret-driven entry point only needs
+ * "editable, or not" (see this module's header on scope); its callers
+ * (`toolbar-actions.ts#locateLinkEditAtCaret` and its rich-mode counterpart)
+ * report a single not-editable diagnostic rather than distinguishing why.
  */
 export function findLinkTokenAtOffset(text: string, offset: number): LinkTokenMatch | null {
   for (let i = 0; i < text.length; i++) {
