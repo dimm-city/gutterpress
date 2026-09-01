@@ -16,6 +16,8 @@
  */
 import { getUpdaterHooks } from "../server-bridge/updater-hooks";
 import type { UpdaterStatus } from "../../src/lib/platform/shared-types";
+import { installNow } from "../updater";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function requireHooks() {
   const hooks = getUpdaterHooks();
@@ -36,4 +38,18 @@ export async function updaterCheck(): Promise<UpdaterStatus> {
 /** Download the update, or open its GitHub page on check-only macOS. */
 export async function updaterDownload(): Promise<UpdaterStatus> {
   return requireHooks().download();
+}
+
+/**
+ * Register the updater:* IPC channels (SFE-P6b). `updater:applyNow` calls
+ * `installNow()` (electron/updater.ts) directly rather than through
+ * `UpdaterHooks` — it has no main.ts-only state of its own to reach through
+ * the collapsed host object, unlike getStatus/check/download (see that
+ * module's header on `initUpdater()`'s process-wide state).
+ */
+export function registerUpdaterHandlers(secureHandle: SecureHandle): void {
+  secureHandle("updater:getStatus", () => updaterGetStatus());
+  secureHandle("updater:check", () => updaterCheck());
+  secureHandle("updater:download", () => updaterDownload());
+  secureHandle("updater:applyNow", () => installNow());
 }

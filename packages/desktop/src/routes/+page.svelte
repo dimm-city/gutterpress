@@ -29,6 +29,10 @@
   // rich-mode.svelte.ts's own header for the mode-selection contract.
   import { createRichModeController, trackSurfaceMount } from "$lib/editor/rich-mode.svelte";
   import { DesktopDocumentHost } from "$lib/editor-host/desktop-document-host";
+  // SFE-P6a — the rich-mode document-host + D6 projection lifecycle (owns
+  // what used to be this page's own richDocHost/richProjection/richPluginCss
+  // state and its rebuild/dispose functions). See that module's own header.
+  import { RichDocHostController } from "$lib/editor/rich-doc-host-controller.svelte";
   // SFE-P3ab, Lane B — the adapter that lets the shared P2a command
   // vocabulary drive the rich surface (rich-commands.ts's own header has
   // the full design, including the confirmed-missing selection accessor).
@@ -87,6 +91,7 @@
   import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
+  import { ProblemsController } from "$lib/routes/problems-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { isDesktop } from "$lib/platform";
@@ -262,7 +267,7 @@
         // fills the panel. Held separately (see `buildProblems`) so the next
         // lint refresh — any file save — does not wipe them.
         .then((result) => {
-          buildProblemEntries = buildProblems(result.diagnostics ?? []);
+          problemsController.recordBuildEntries(buildProblems(result.diagnostics ?? []));
           return result;
         }),
     buildHtml: (input) => build({ input, format: "html" }),
@@ -510,7 +515,7 @@
    * re-check for print problems, since a restore can rewrite many files. */
   function onSnapshotRestored(): void {
     void buffer?.reconcileExternalChange();
-    refreshProblems();
+    problemsController.refresh();
   }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
   // editable styles or version history. When the OPENED folder has no manifest,
@@ -621,10 +626,7 @@
     dismissLanding: (runPendingRecoveryScan) => dismissLanding(runPendingRecoveryScan),
     toast: () => toast,
     clearStaleProjectState: () => {
-      problems = [];
-      buildProblemEntries = [];
-      problemsLoading = false;
-      problemsError = null;
+      problemsController.reset();
       logFilePath = null;
     },
     resetExtras: () => {
@@ -642,10 +644,7 @@
       resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
-      problems = [];
-      buildProblemEntries = [];
-      problemsLoading = false;
-      problemsError = null;
+      problemsController.reset();
       problemsOpen = false;
     },
   });
@@ -938,7 +937,7 @@
 
   function onSyncFilesChanged() {
     void buffer?.reconcileExternalChange();
-    refreshProblems();
+    problemsController.refresh();
   }
 
   // Sync completed. Online changes may land on disk even when the final outcome
@@ -1254,7 +1253,7 @@
    * for every document"; the plan's own out-of-scope note keeps CSS/YAML/
    * JS/plugin/manifest editing CodeMirror-only). SFE-P3ab review round 1
    * (CONFIRMED finding): `showEditorContent`/`setRichMode` used to rebuild
-   * `richDocHost` — and the template used to mount the rich surface — for
+   * `richDocHostCtrl.host` — and the template used to mount the rich surface — for
    * ANY open file while `richMode.mode === "rich"`, so a CSS file clicked
    * from the tree opened silently inside the Markdown rich surface with no
    * visible way back (the toolbar's mode toggle only renders for markdown
@@ -1312,91 +1311,25 @@
     loadRichEditorModule();
   }
 
-  // The `EditorDocumentHost` (D3/D7) rich mode mounts against. NOT
-  // live-patched across a file switch or an external replacement — rebuilt
-  // fresh from the buffer's CURRENT content instead (D7: "File switches and
-  // external full replacements are not undoable into the prior file", so a
-  // fresh host/undo-stack is the spec-sanctioned response). `{#key
-  // richDocHost}` below turns each rebuild into a fresh RichEditor
-  // mount/dispose cycle — a real new undo epoch, not a simulated one.
-  //
-  // This also sidesteps a forwarding-loop hazard entirely: because a
-  // snapshot is never pushed back into an already-mounted host from
-  // outside, `subscribe` below can safely assume every snapshot it
-  // observes originated from THIS host's own mounted adapter (a real user
-  // edit), and forwards it straight into the SAME `onEditorChange` call
-  // MarkdownEditor's `onChange` already makes — one implementation of
-  // "a rich-mode edit reached the shared session", not a second copy.
-  let richDocHost = $state<DesktopDocumentHost | null>(null);
-  let richDocHostUnsub: (() => void) | null = null;
-
-  /**
-   * The D6 sparse projection for `richDocHost`'s document — built once per
-   * `{#key richDocHost}` mount cycle, in lockstep with `richDocHost` itself
-   * (`rebuildRichDocHost`/`disposeRichDocHost` below), never live-refreshed
-   * on every keystroke: `mountGutterpressEditor`'s own contract
-   * (`needsRefresh()`'s doc comment, `@dimm-city/gutterpress-editor/
-   * gutterpress`) is explicit that a stale projection is "the caller's cue
-   * to build a fresh projection and remount, not a live-updating property"
-   * — chips fall through to the plain view once the host's version moves
-   * past `sourceVersion`, which is graceful, not broken. `null` exactly
-   * when `richDocHost` is `null`.
-   *
-   * SFE-P3ab review round 1 (CONFIRMED finding): this page never built a
-   * projection at all, so `RichEditor.svelte` always mounted the plain
-   * standard-Markdown surface (`mountEditor`) and `mountGutterpressEditor`
-   * — the whole point of P2b/P2c's projection work — was dead code. With a
-   * desktop project open, SFE-P3e replaced that local build with the
-   * host-side, plugin-aware one (`buildRichProjection` below) — a
-   * project's OWN plugin regions render as real chips there, loaded by the
-   * real manifest/plugin pipeline. With no project open (a plain file),
-   * this stays the local, plugin-less `gutterpress/render` build (D4):
-   * every CORE marker/raw-html/generated-view block is still projected, but
-   * there are no plugin regions to render either way.
-   */
-  let richProjection = $state<GutterpressProjection | null>(null);
-
-  /**
-   * SFE-P3e — plugin CSS from the host-built projection (electron/editor-
-   * projection.ts's `pluginCss`), wired into `RichEditorComponent`'s
-   * `extraCss` prop below. `undefined` on the local (no-project) path,
-   * matching `richProjection`'s own null-when-absent style. Built in
-   * lockstep with `richProjection` — see `rebuildRichDocHost` below.
-   */
-  let richPluginCss = $state<string | undefined>(undefined);
-
-  /**
-   * SFE-P3e — the root-cause fix the run's product-owner ruling names
-   * directly: with a desktop project open, the projection is built HOST-SIDE
-   * (real manifest, real loaded plugins, `trusted: true`) via
-   * `buildEditorProjection` — the `api:editorProjection` IPC
-   * call (`electron/editor-projection.ts`). With no project open (a plain
-   * file), the existing local, plugin-less
-   * `createEditorProjection(content, { sourceVersion })` path is UNCHANGED —
-   * D10's "one renderer path": no third path, no cache layer, no speculative
-   * invalidation.
-   *
-   * The host call is async, so `rebuildRichDocHost` below does NOT publish
-   * `richDocHost` (or `richProjection`/`richPluginCss`) until this resolves
-   * — SFE-P3e review round 1 (CONFIRMED finding): the first cut published
-   * `richDocHost` synchronously and patched in the projection later, but
-   * Svelte flushes that synchronous assignment (and the template's `{#key
-   * richDocHost}` mount it drives) in a microtask, well before this IPC
-   * round trip can return — so the mount always ran on a null projection
-   * and took the plain `mountEditor` branch, and `RichEditor.svelte`
-   * deliberately has no watcher to correct that later ($effect is banned;
-   * it reads `projection` once in `onMount`), so nothing ever remounted it.
-   * Publishing all three together, only once resolved, is what actually
-   * reaches `mountGutterpressEditor`; the existing "Loading rich editor…"
-   * branch (already there for the module-load race) covers the brief gap
-   * for free. Guarded by a rebuild epoch (G-11), not host identity — see
-   * `rebuildRichDocHost`'s own comment.
-   *
-   * Each `pluginErrors` entry (a plugin that failed to load, degrade-and-
-   * report — never fatal to the projection as a whole) is surfaced through
-   * the SAME `onDiagnostic` path every other rich-mode diagnostic in this
-   * file uses (`showRichDiagnostic`), as `EDITOR_PLUGIN_LOAD_FAILED`.
-   */
+  // `RichDocHostController` (SFE-P6a) owns the `DesktopDocumentHost` + D6
+  // projection lifecycle for rich mode (construction, the epoch-guarded
+  // async publish, and the `whenSettled()` seam `selectEditorFile` below
+  // needs) — extracted from this page's own former rich-mode document-host
+  // state and rebuild/dispose functions (SFE-P3ab Lane A; hardened across
+  // SFE-P3e review rounds 1-2).
+  // See that module's header for the full history this page used to carry
+  // inline — why publication is deferred until the projection resolves, why
+  // every publish is epoch-guarded, and why `whenSettled()` exists.
+  // `buildRichProjection`/`onEditorChange` below are hoisted function
+  // declarations, so referencing them here (before their own textual
+  // definition) is safe — both exist by the time either closure actually
+  // runs. `{#key richDocHostCtrl.host}` in the template turns each rebuild
+  // into a fresh RichEditor mount/dispose cycle — a real new undo epoch, not
+  // a simulated one.
+  const richDocHostCtrl = new RichDocHostController({
+    buildProjection: buildRichProjection,
+    onSnapshotChange: onEditorChange,
+  });
 
   /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
    *  shown when the resolved `EditorProjectionOutcome` names this code
@@ -1502,7 +1435,7 @@
   }
 
   // SFE-P3ab, Lane A — the mounted RichEditor component instance, bound the
-  // same way `editorRef` binds MarkdownEditor above: `{#key richDocHost}`
+  // same way `editorRef` binds MarkdownEditor above: `{#key richDocHostCtrl.host}`
   // means a host rebuild destroys and recreates RichEditorComponent, so
   // Svelte resets this to `null` on unmount and repopulates it on the next
   // mount — no manual bookkeeping needed here. Read ONLY for its
@@ -1529,7 +1462,7 @@
    *  captures `richLiveSelection()` and then `await`s something (a dialog)
    *  before applying an edit must be able to tell whether the document
    *  changed underneath it (an external reload landed, rebuilding
-   *  `richDocHost` at a fresh version 0 with different text) — a captured
+   *  `richDocHostCtrl.host` at a fresh version 0 with different text) — a captured
    *  offset with no identity attached was silently re-applied to whatever
    *  document happened to be live when the dialog resolved. */
   interface RichSelectionCapture {
@@ -1538,21 +1471,22 @@
     readonly selection: { readonly from: number; readonly to: number } | undefined;
   }
 
-  /** Captures {@link richLiveSelection} together with `richDocHost` and its
+  /** Captures {@link richLiveSelection} together with `richDocHostCtrl.host` and its
    *  CURRENT version. `undefined` when there is no rich document open at
    *  all (no host to capture identity from). */
   function captureRichSelection(): RichSelectionCapture | undefined {
-    if (!richDocHost) return undefined;
-    return { host: richDocHost, version: richDocHost.getSnapshot().version, selection: richLiveSelection() };
+    const host = richDocHostCtrl.host;
+    if (!host) return undefined;
+    return { host, version: host.getSnapshot().version, selection: richLiveSelection() };
   }
 
   /** Whether `capture` (from {@link captureRichSelection}) is still valid
-   *  against the CURRENT `richDocHost` — false once the document identity
+   *  against the CURRENT `richDocHostCtrl.host` — false once the document identity
    *  was replaced (a rebuild) or any edit landed since capture, either of
    *  which makes the captured offsets meaningless (see that function's own
    *  header). */
   function isRichSelectionCaptureFresh(capture: RichSelectionCapture): boolean {
-    return richDocHost === capture.host && richDocHost.getSnapshot().version === capture.version;
+    return richDocHostCtrl.host === capture.host && richDocHostCtrl.host.getSnapshot().version === capture.version;
   }
 
   /** D14 diagnostic for a caret-relative rich command invoked with NO live
@@ -1571,116 +1505,9 @@
     message: "Place the cursor in the document, then try that again.",
   };
 
-  /**
-   * Bumped on every rebuild/dispose so an in-flight `buildRichProjection`
-   * result can tell whether it is still wanted — SFE-P3e review round 1
-   * (CONFIRMED finding): the prior guard compared `richDocHost !== nextHost`,
-   * which only worked because `richDocHost` was assigned `nextHost`
-   * SYNCHRONOUSLY; now that publishing is deferred until the projection is
-   * in hand (below), there is no published value yet to compare against, so
-   * an explicit epoch takes its place (G-11: "every async ... result must
-   * carry enough identity to reject stale responses"). Not `$state` — never
-   * read by the template, only by the guard checks below. */
-  let richDocHostEpoch = 0;
-
-  /**
-   * The CURRENT rebuild's in-flight publication, or `null` once nothing is
-   * pending — SFE-P3e review round 2 (CONFIRMED finding). Deferring
-   * `richDocHost`'s publication (round 1, directly below) reopened the
-   * exact bug its own fix targeted: the (now-deleted) preview commit-write
-   * engine's cross-chapter path was a SYNCHRONOUS continuation of
-   * `EditorFileSession.select` -> `onActivate` -> `showEditorContent` ->
-   * `rebuildRichDocHost`, with no `await` of its own between that call and
-   * `selectEditorFile`'s wrapper (below) returning — so by the time that
-   * engine went on to check the `richSurfaceActive` seam (the
-   * "editorHasFile"/"applyRangeEdit" wiring near where it used to be
-   * constructed), the host projection round trip (`buildRichProjection` — a
-   * real IPC round trip, not a microtask) could not possibly have resolved
-   * yet: `richDocHost` was still the PRE-switch value (or `null`), so the
-   * seam fell through to `buf.edit(...)` — precisely the stale-rich-surface
-   * bug that seam's own long comment (at its former construction site)
-   * documented as fixed. `EditorBuffer.edit()` does not report through
-   * `onContentReplaced`, so the committed write was invisible to the rich
-   * host; the in-flight rebuild then published `nextHost` built from the
-   * PRE-commit content, silently REVERTING the commit on the very next
-   * rich-mode edit. Not a narrow race — the window is a full IPC round
-   * trip, so it reproduced every time. Rather than widen
-   * `richSurfaceActive`'s seam to tolerate a not-yet-published host (which
-   * would just move the staleness elsewhere), `selectEditorFile` (below)
-   * awaits THIS promise before resolving, so every caller only sees
-   * `editorFiles.select()` complete once any rich-mode rebuild it triggered
-   * has ALSO published (SFE-P4: the cross-chapter commit path that
-   * originally surfaced this bug was itself deleted along with
-   * preview-originated source mutation entirely — the mechanism below is
-   * general and still guards every remaining caller).
-   * Callers outside rich mode, or a rebuild the current file switch didn't
-   * touch, see this stay `null` and pay nothing extra.
-   * Not `$state` — same reasoning as `richDocHostEpoch` above. */
-  let richDocHostPending: Promise<void> | null = null;
-
-  function rebuildRichDocHost(path: string | null, content: string): void {
-    richDocHostUnsub?.();
-    richDocHostUnsub = null;
-    richDocHostEpoch += 1;
-    const epoch = richDocHostEpoch;
-    if (!path) {
-      richDocHost = null;
-      richProjection = null;
-      richPluginCss = undefined;
-      richDocHostPending = null;
-      return;
-    }
-    const nextHost = new DesktopDocumentHost(content, { documentId: path });
-    richDocHostUnsub = nextHost.subscribe((snapshot) => onEditorChange(snapshot.text));
-    // SFE-P3e review round 1 (CONFIRMED finding): do NOT publish
-    // `richDocHost` until its projection is in hand. The prior code assigned
-    // `richDocHost = nextHost` here, synchronously, then patched in
-    // `richProjection`/`richPluginCss` once the host round trip resolved —
-    // but Svelte flushes that synchronous assignment (and the template's
-    // `{#key richDocHost}` mount it drives) in a microtask, well before the
-    // IPC round trip can return, so the mount always ran on a null
-    // projection and took the plain `mountEditor` branch. `RichEditor.svelte`
-    // deliberately has no watcher to correct that later ($effect is banned;
-    // it reads `projection` once in `onMount`), so nothing ever remounted
-    // it — every later assignment of richProjection/richPluginCss was dead
-    // state. Publishing all three together, only once the projection
-    // resolves, is what actually reaches `mountGutterpressEditor`. The
-    // template's existing "Loading rich editor…" branch (already there for
-    // the module-load race) covers the brief gap for free — no new UI state
-    // needed. Guarded by the epoch above, not host identity, since there is
-    // no published `richDocHost` yet to compare against; `disposeRichDocHost`
-    // also bumps it, so a rebuild superseded by leaving rich mode entirely
-    // is discarded too, not just one superseded by a later rebuild.
-    //
-    // SFE-P3e review round 2 (CONFIRMED finding): deferring publication
-    // reopened the committed-preview-edit divergence `richDocHostPending`'s
-    // own doc comment above describes — `richDocHostPending` closes that
-    // window by giving `selectEditorFile` something to await.
-    richDocHostPending = buildRichProjection(content, nextHost.getSnapshot().version)
-      .then((result) => {
-        if (epoch !== richDocHostEpoch) return;
-        richProjection = result.projection;
-        richPluginCss = result.pluginCss;
-        richDocHost = nextHost;
-      })
-      .finally(() => {
-        if (epoch === richDocHostEpoch) richDocHostPending = null;
-      });
-  }
-
-  function disposeRichDocHost(): void {
-    richDocHostUnsub?.();
-    richDocHostUnsub = null;
-    richDocHostEpoch += 1;
-    richDocHost = null;
-    richProjection = null;
-    richPluginCss = undefined;
-    richDocHostPending = null;
-  }
-
   /** The one place rich mode is entered/exited (today: the hidden keyboard
    * shortcut below; a visible toggle is chrome for another lane to add).
-   * Keeps `richDocHost` in lockstep with `richMode.mode` so it is never
+   * Keeps `richDocHostCtrl.host` in lockstep with `richMode.mode` so it is never
    * stale while `"rich"` is selected, and never lingers once it is not.
    * SFE-P3ab review round 1 (CONFIRMED finding): only builds the host for a
    * MARKDOWN file (`isMarkdownPath`) — rich mode has no surface for
@@ -1692,21 +1519,21 @@
     if (next === "rich") {
       loadRichEditorModule();
       if (isMarkdownPath(editorFilePath)) {
-        rebuildRichDocHost(editorFilePath, editorContent);
+        richDocHostCtrl.rebuild(editorFilePath, editorContent);
       } else if (editorFilePath) {
         showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
       }
     }
     richMode.switchTo(next);
     if (next === "source") {
-      disposeRichDocHost();
+      richDocHostCtrl.dispose();
     }
   }
 
   // ── Rich-mode command wiring (SFE-P3ab, Lane B) ──────────────────────────
   //
   // Diagnostics reaching this app from rich mode come from two places: an
-  // edit THIS page pushes through `richDocHost.applyEdit` directly (a
+  // edit THIS page pushes through `richDocHostCtrl.host.applyEdit` directly (a
   // rejected/refused `RichCommandOutcome` from `rich-commands.ts`), and one
   // the mounted adapter reports on its own via `RichEditor`'s `onDiagnostic`
   // prop below (a typed rejection from the live view, or a P2c projection
@@ -1784,7 +1611,8 @@
    * has the full rationale, including why image insertion is exempt).
    */
   function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
-    if (!richDocHost || action === "image") return;
+    const host = richDocHostCtrl.host;
+    if (!host || action === "image") return;
     const route = routeToolbarAction(action, payload);
     const live = richLiveSelection();
     if (!live) {
@@ -1792,9 +1620,9 @@
       return;
     }
     if (route.kind === "command") {
-      reportRichOutcome(applyRichCommand(richDocHost, route.command, live));
+      reportRichOutcome(applyRichCommand(host, route.command, live));
     } else if (route.kind === "layout") {
-      reportRichOutcome(applyRichLayoutBlock(richDocHost, route.layout, live));
+      reportRichOutcome(applyRichLayoutBlock(host, route.layout, live));
     }
     // "unsupported" ("snippet"/"focus-mode") never reaches here — the
     // toolbar's onAction below special-cases both before routing.
@@ -1810,7 +1638,7 @@
    * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
    * TOGETHER with the document identity it was read against
    * (`captureRichSelection`) — the dialog's `await` gives an external
-   * reload (or a file switch) time to rebuild `richDocHost` entirely, and a
+   * reload (or a file switch) time to rebuild `richDocHostCtrl.host` entirely, and a
    * captured offset with no identity attached used to be silently applied
    * to whatever document happened to be live once the dialog resolved. A
    * missing LIVE CARET at capture time is left to `applyRichImageInsert`'s
@@ -1861,7 +1689,7 @@
   // reachable from BOTH editing surfaces via the CURRENT CARET, instead of
   // only from the preview context menu SFE-P4 deleted. The actual per-surface
   // commands live in `toolbar-actions.ts` (source — takes the live
-  // `EditorView`) and `rich-commands.ts` (rich — takes `richDocHost` +
+  // `EditorView`) and `rich-commands.ts` (rich — takes `richDocHostCtrl.host` +
   // `live: LiveSelection`); this page's only job is routing to whichever
   // surface is active, reading what each command needs from it, and
   // reporting a refusal — the SAME shape `handleRichToolbarAction`/
@@ -1875,7 +1703,7 @@
    * document-identity staleness guard `openRichImageProperties` above
    * already relies on for its own `promptImageProperties` await, not a
    * second mechanism — because `locateRichImagePropertiesAtCaret`'s result
-   * is only safe to apply against the EXACT `richDocHost` it was read from;
+   * is only safe to apply against the EXACT `richDocHostCtrl.host` it was read from;
    * source mode's `applyImagePropertiesEdit` re-verifies its own span
    * directly against the live `view` instead (see its own doc comment for
    * why the two surfaces' staleness guards differ).
@@ -1938,13 +1766,14 @@
    *  intervening staleness window on either surface. */
   function handleImageUnwrapAtCaret(): void {
     if (richSurfaceActive) {
-      if (!richDocHost) return;
+      const host = richDocHostCtrl.host;
+      if (!host) return;
       const live = richLiveSelection();
       if (!live) {
         showRichDiagnostic(NO_LIVE_CARET_DIAGNOSTIC);
         return;
       }
-      reportRichOutcome(applyRichImageUnwrapAtCaret(richDocHost, live));
+      reportRichOutcome(applyRichImageUnwrapAtCaret(host, live));
       return;
     }
     void (async () => {
@@ -2030,10 +1859,10 @@
     let tries = 0;
     const tryInsert = () => {
       if (richSurfaceActive) {
-        if (richDocHost) {
+        if (richDocHostCtrl.host) {
           reportRichOutcome(
             applyRichCommand(
-              richDocHost,
+              richDocHostCtrl.host,
               { kind: "insert-image", src: payload.src, alt: payload.alt },
               richLiveSelection(),
             ),
@@ -2112,9 +1941,9 @@
       // on the source surface, and any stale host from a PRIOR markdown
       // file is dropped rather than left mounted over the wrong content.
       if (isMarkdownPath(path)) {
-        rebuildRichDocHost(path, content);
+        richDocHostCtrl.rebuild(path, content);
       } else {
-        disposeRichDocHost();
+        richDocHostCtrl.dispose();
         showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
       }
     }
@@ -2320,25 +2149,25 @@
    * performs one atomic handoff after any required flush succeeds.
    *
    * SFE-P3e review round 2 (CONFIRMED finding): also awaits
-   * `richDocHostPending` before returning — `editorFiles.select` invokes
-   * `onActivate` -> `showEditorContent` -> `rebuildRichDocHost`
-   * SYNCHRONOUSLY, but publishing the rebuilt `richDocHost` is itself async
-   * (see `richDocHostPending`'s own doc comment). The bug this fixed was
-   * originally found through the now-deleted preview commit-write engine's
-   * cross-chapter commit path (SFE-P4 removed preview-originated source
-   * mutation entirely — see that doc comment for the historical detail); the
-   * `await` remains because it is a general guard every caller of
-   * `selectEditorFile` needs. Every caller pays nothing extra:
-   * `richDocHostPending` is `null` whenever rich mode did not just start a
-   * rebuild (source mode active, a non-markdown file, or nothing changed),
-   * so the `await` resolves immediately.
+   * `richDocHostCtrl.whenSettled()` before returning — `editorFiles.select`
+   * invokes `onActivate` -> `showEditorContent` -> `richDocHostCtrl.rebuild`
+   * SYNCHRONOUSLY, but publishing the rebuilt host is itself async (see
+   * `RichDocHostController`'s own header, "Why `whenSettled()` exists"). The
+   * bug this fixed was originally found through the now-deleted preview
+   * commit-write engine's cross-chapter commit path (SFE-P4 removed
+   * preview-originated source mutation entirely — see that doc comment for
+   * the historical detail); the `await` remains because it is a general
+   * guard every caller of `selectEditorFile` needs. Every caller pays
+   * nothing extra: `whenSettled()` resolves immediately whenever rich mode
+   * did not just start a rebuild (source mode active, a non-markdown file,
+   * or nothing changed).
    */
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
     if (!isDesktop()) return false;
     const ok = await editorFiles.select(path);
-    if (richDocHostPending) await richDocHostPending;
+    await richDocHostCtrl.whenSettled();
     return ok;
   }
 
@@ -2535,16 +2364,19 @@
   // Lint findings for the open project, refreshed after every live-preview
   // rebuild (the renderingComplete event — which fires for the initial render
   // AND every watcher-triggered re-render). The toggle button lives in the
-  // toolbar with an errors+warnings count badge.
+  // toolbar with an errors+warnings count badge. The findings themselves
+  // (SFE-P6a) live on `problemsController` (ProblemsController) — this page
+  // keeps only the panel's open/closed UI toggle (two-way bound to
+  // StatusBar) and the cross-feature composition its own header explains
+  // stays at the root: merging findings with `lifecycle.previewError` (a
+  // DIFFERENT feature's state) and navigating the editor to a finding.
   let problemsOpen = $state(false);
-  let problems = $state<ProblemEntry[]>([]);
-  /** Findings from the last export (see the `buildPdf` wrapper above). */
-  let buildProblemEntries = $state<ProblemEntry[]>([]);
-  let problemsLoading = $state(false);
-  // M5: distinct from "problems === [] because the project is clean" — set
-  // when the lint API call itself failed, so the panel can render a neutral
-  // "we couldn't check" row instead of a false green all-clear.
-  let problemsError = $state<string | null>(null);
+  const problemsController = new ProblemsController({
+    isDesktop: () => isDesktop(),
+    currentDir: () => lifecycle.currentDir,
+    sourceMode: () => lifecycle.sourceMode,
+    lintProject: (dir) => lintProject(dir),
+  });
   let previewErrorDisplay = $derived(
     lifecycle.previewError ? friendlyPreviewError(lifecycle.previewError) : null,
   );
@@ -2556,45 +2388,16 @@
             message: `${previewErrorDisplay.title} ${previewErrorDisplay.message}`,
             source: "desktop.preview",
           },
-          ...problems,
-          ...buildProblemEntries,
+          ...problemsController.entries,
+          ...problemsController.buildEntries,
         ]
-      : [...problems, ...buildProblemEntries],
+      : [...problemsController.entries, ...problemsController.buildEntries],
   );
   let problemBadge = $derived(problemCounts(displayedProblems).badge);
 
   function showPreviewFiles(): void {
     leftPanelOpen = true;
     leftPanelTab = "files";
-  }
-
-  function refreshProblems() {
-    if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    const dir = lifecycle.currentDir;
-    problemsLoading = true;
-    lintProject(dir)
-      .then((entries) => {
-        // The project may have changed while the lint was in flight.
-        if (lifecycle.currentDir === dir) {
-          problems = entries;
-          problemsError = null;
-        }
-      })
-      .catch(() => {
-        // Lint failing must never break the preview, but it must also never
-        // present as a false "no problems found" all-clear (M5) — surface a
-        // distinct error state instead of silently clearing to [].
-        if (lifecycle.currentDir === dir) {
-          problems = [];
-          problemsError = "We couldn't check your project this time.";
-        }
-      })
-      .finally(() => {
-        // M5: without this guard, a stale in-flight lint from a project the
-        // author has since navigated away from can clear the NEW project's
-        // loading indicator out from under it.
-        if (lifecycle.currentDir === dir) problemsLoading = false;
-      });
   }
 
   // Problems are cleared in stopPreview() and openUrl() — no reactive effect needed.
@@ -2900,7 +2703,7 @@
       return restore;
     },
     refreshOutline: () => refreshOutline(),
-    refreshProblems: () => refreshProblems(),
+    refreshProblems: () => problemsController.refresh(),
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     scheduleMicrotask: (fn) => queueMicrotask(fn),
@@ -3039,14 +2842,15 @@
         (e.key === "ArrowUp" || e.key === "ArrowDown")
       ) {
         e.preventDefault();
-        if (richDocHost) {
+        const blockMoveHost = richDocHostCtrl.host;
+        if (blockMoveHost) {
           const live = richLiveSelection();
           const blockIndex = live
-            ? blockIndexAtOffset(richDocHost.getSnapshot().text, live.from)
+            ? blockIndexAtOffset(blockMoveHost.getSnapshot().text, live.from)
             : undefined;
           if (blockIndex !== undefined) {
             reportRichOutcome(
-              applyBlockMove(richDocHost, blockIndex, e.key === "ArrowUp" ? "up" : "down"),
+              applyBlockMove(blockMoveHost, blockIndex, e.key === "ArrowUp" ? "up" : "down"),
             );
           }
         }
@@ -3840,16 +3644,16 @@
                   <div class="editor-loading" role="status" aria-live="polite">
                     Select a file from the list to start editing.
                   </div>
-                {:else if RichEditorComponent && richDocHost}
+                {:else if RichEditorComponent && richDocHostCtrl.host}
                   <!-- Keyed on the host itself: a fresh host means a fresh
                        mount/dispose cycle — a real new undo epoch, not a
-                       simulated one (see richDocHost's own comment above). -->
-                  {#key richDocHost}
+                       simulated one (see richDocHostCtrl.host's own comment above). -->
+                  {#key richDocHostCtrl.host}
                     <RichEditorComponent
                       bind:this={richEditorRef}
-                      host={richDocHost}
-                      projection={richProjection ?? undefined}
-                      extraCss={richPluginCss}
+                      host={richDocHostCtrl.host}
+                      projection={richDocHostCtrl.projection ?? undefined}
+                      extraCss={richDocHostCtrl.pluginCss}
                       onDiagnostic={showRichDiagnostic}
                     />
                   {/key}
@@ -4024,8 +3828,8 @@
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
     problems={displayedProblems}
-    problemsLoading={problemsLoading}
-    {problemsError}
+    problemsLoading={problemsController.loading}
+    problemsError={problemsController.error}
     bind:problemsOpen={problemsOpen}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}

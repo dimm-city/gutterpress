@@ -297,8 +297,9 @@ test("+page delegates file selection and default loading to the behavior-tested 
   // SFE-P3e review round 2: `selectEditorFile` no longer directly returns
   // `editorFiles.select(path)` — it awaits it, then ALSO awaits any pending
   // rich-mode host rebuild that selection just triggered
-  // (`richDocHostPending`), before returning the same result — closing the
-  // cross-chapter commit race that finding describes. Still delegates the
+  // (`RichDocHostController.whenSettled()`, SFE-P6a — formerly this page's
+  // own `richDocHostPending`), before returning the same result — closing
+  // the cross-chapter commit race that finding describes. Still delegates the
   // actual selection decision entirely to `editorFiles.select`, which is
   // what this test's own name asserts; only the "and await the pending rich
   // publish, too" wrapper is new, so the assertion checks for the awaited

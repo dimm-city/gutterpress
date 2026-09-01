@@ -8,6 +8,7 @@ import { readdir, stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { getFsGuardHooks } from "../server-bridge/fs-guard";
 import { requireWithinProjectRoot } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 export interface LogFileEntry {
   name: string;
@@ -54,4 +55,10 @@ export async function logRead(rawLogPath: unknown): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Register the log:* IPC channels (SFE-P6b). */
+export function registerLogHandlers(secureHandle: SecureHandle): void {
+  secureHandle("log:read", (_e, logPath: unknown) => logRead(logPath));
+  secureHandle("log:list", () => logList());
 }

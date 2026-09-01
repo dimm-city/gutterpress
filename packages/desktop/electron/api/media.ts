@@ -28,6 +28,7 @@ import { getPickedFilesHooks } from "../server-bridge/picked-files";
 import type { MediaImageDetails, MediaImageEntry } from "../../src/lib/platform/dtos";
 import { loadLib } from "./lib-loader";
 import { requireAbsolute, requireWithinProjectRoot } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** Image extensions surfaced in the Media panel (lowercase, no dot). */
 const MEDIA_IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff", "avif"]);
@@ -257,4 +258,14 @@ export async function mediaImportImage(rawProjectDir: unknown, rawSrc: unknown):
   await requireWithinProjectRoot(destPath, "media:importImage");
   await copyFile(srcResolved, destPath);
   return { src: `${destName}/${uniqueName}`, copied: true };
+}
+
+/** Register the media:* IPC channels (SFE-P6b). */
+export function registerMediaHandlers(secureHandle: SecureHandle): void {
+  secureHandle("media:listImages", (_e, projectDir: unknown) => mediaListImages(projectDir));
+  secureHandle("media:thumbnail", (_e, imagePath: unknown) => mediaThumbnail(imagePath));
+  secureHandle("media:inspect", (_e, imagePath: unknown) => mediaInspect(imagePath));
+  secureHandle("media:importImage", (_e, projectDir: unknown, src: unknown) =>
+    mediaImportImage(projectDir, src),
+  );
 }

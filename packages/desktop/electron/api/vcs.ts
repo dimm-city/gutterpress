@@ -28,6 +28,7 @@ import { getVcsHooks, type VcsHooks } from "../server-bridge/vcs-hooks";
 import { gitIdentityArgs } from "./git-identity-args";
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 const SNAPSHOT_ID_RE = /^[0-9a-f]{40}$/i;
 
@@ -162,4 +163,20 @@ export async function vcsListSnapshotsPage(
   } catch (e) {
     throw new Error(friendlyVcsError(e, "listSnapshotsPage", "vcs/list-snapshots-page").message);
   }
+}
+
+/** Register the vcs:* IPC channels (SFE-P6b). */
+export function registerVcsHandlers(secureHandle: SecureHandle): void {
+  secureHandle("vcs:enableVersionHistory", (_e, projectDir: unknown) =>
+    vcsEnableVersionHistory(projectDir),
+  );
+  secureHandle("vcs:listSnapshotsPage", (_e, projectDir: unknown, limit?: unknown, before?: unknown) =>
+    vcsListSnapshotsPage(projectDir, limit, before),
+  );
+  secureHandle("vcs:restoreSnapshot", (_e, projectDir: unknown, id: unknown) =>
+    vcsRestoreSnapshot(projectDir, id),
+  );
+  secureHandle("vcs:saveSnapshot", (_e, projectDir: unknown, message?: unknown) =>
+    vcsSaveSnapshot(projectDir, message),
+  );
 }

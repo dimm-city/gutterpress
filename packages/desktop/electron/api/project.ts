@@ -6,6 +6,7 @@
  */
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /**
  * The project's editable stylesheets for the Design panel's picker.
@@ -26,4 +27,11 @@ export async function projectListStyles(
       : undefined;
   const lib = await loadLib();
   return lib.listProjectStyles(projectDir, repoRoot ? { repoRoot } : {});
+}
+
+/** Register the project:* IPC channels (SFE-P6b). */
+export function registerProjectHandlers(secureHandle: SecureHandle): void {
+  secureHandle("project:listStyles", (_e, projectDir: unknown, repoRoot?: unknown) =>
+    projectListStyles(projectDir, repoRoot),
+  );
 }

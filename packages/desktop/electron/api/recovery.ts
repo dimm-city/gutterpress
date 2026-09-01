@@ -20,6 +20,7 @@
 import { getRecoveryHooks } from "../server-bridge/recovery-hooks";
 import { requireAbsolute } from "./validation";
 import type { RecoveryEntry } from "../../src/lib/platform/dtos";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function requireHooks() {
   const hooks = getRecoveryHooks();
@@ -52,4 +53,13 @@ export async function recoveryList(rawProjectDir: unknown): Promise<RecoveryEntr
   const hooks = requireHooks();
   const projectDir = requireAbsolute(rawProjectDir, "recovery:list");
   return hooks.list(projectDir);
+}
+
+/** Register the recovery:* IPC channels (SFE-P6b). */
+export function registerRecoveryHandlers(secureHandle: SecureHandle): void {
+  secureHandle("recovery:write", (_e, filePath: unknown, content: unknown, baseMtimeMs: unknown) =>
+    recoveryWrite(filePath, content, baseMtimeMs),
+  );
+  secureHandle("recovery:clear", (_e, filePath: unknown) => recoveryClear(filePath));
+  secureHandle("recovery:list", (_e, projectDir: unknown) => recoveryList(projectDir));
 }

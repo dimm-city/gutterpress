@@ -17,6 +17,7 @@ import { getVcsHooks, type VcsHooks } from "../server-bridge/vcs-hooks";
 import { notifyPreviewSettledWrite, scheduleAutoWriteEffects } from "../server-bridge/write-hooks";
 import { gitIdentityArgs } from "./git-identity-args";
 import { requireAbsolute, requireSegment, requireWithinProjectRoot } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 export interface DirEntry {
   name: string;
@@ -233,4 +234,30 @@ export async function fsDeletePath(rawPath: unknown, rawProjectDir: unknown): Pr
   await rm(target, { recursive: true, force: false });
   scheduleAutoWriteEffects(target);
   return { ok: true };
+}
+
+/**
+ * Register the plain fs:* IPC channels (SFE-P6b) — extracted from
+ * electron/main.ts's P5c1 block, which called these same functions under an
+ * `fsApi.` namespace import. `fs:watchFolder`/`fs:unwatchFolder` are NOT
+ * here: they need live workspace/watcher state (`activeWorkspaceRoot`,
+ * `folderWatch`) main.ts owns, so they have their own registrar —
+ * see ./fs-watch.ts.
+ */
+export function registerFsHandlers(secureHandle: SecureHandle): void {
+  secureHandle("fs:readFile", (_e, filePath: unknown) => fsReadFile(filePath));
+  secureHandle("fs:writeFile", (_e, filePath: unknown, content: unknown) =>
+    fsWriteFile(filePath, content),
+  );
+  secureHandle("fs:statFile", (_e, filePath: unknown) => fsStatFile(filePath));
+  secureHandle("fs:listDir", (_e, dirPath: unknown) => fsListDir(dirPath));
+  secureHandle("fs:listProjectFiles", (_e, projectDir: unknown) => fsListProjectFiles(projectDir));
+  secureHandle("fs:createFile", (_e, dir: unknown, name: unknown, content: unknown) =>
+    fsCreateFile(dir, name, content),
+  );
+  secureHandle("fs:createFolder", (_e, dir: unknown, name: unknown) => fsCreateFolder(dir, name));
+  secureHandle("fs:rename", (_e, filePath: unknown, newName: unknown) => fsRename(filePath, newName));
+  secureHandle("fs:delete", (_e, filePath: unknown, projectDir: unknown) =>
+    fsDeletePath(filePath, projectDir),
+  );
 }

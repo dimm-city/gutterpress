@@ -43,6 +43,11 @@ import { makeHostServices } from "../support/host-services-fake";
 import { fsReadFile } from "../../electron/api/fs";
 
 const main = await readFile(path.resolve(import.meta.dir, "../../electron/main.ts"), "utf8");
+// SFE-P6b: the `fs:watchFolder` handler itself (test (c) below) moved out of
+// main.ts into its own registrar — electron/api/fs-watch.ts — so its
+// source-text assertion reads that file instead. `fsGuardImpl` (test (a))
+// stayed in main.ts (service composition), so it keeps reading `main`.
+const fsWatch = await readFile(path.resolve(import.meta.dir, "../../electron/api/fs-watch.ts"), "utf8");
 
 async function caught(p: Promise<unknown>): Promise<{ message: unknown }> {
   try {
@@ -119,18 +124,19 @@ test("(b) fs:readFile: a directory merely watched outside the active workspace i
 // ── (c) fs:watchFolder rejects a dirPath that isn't the active preview ─────
 
 test("(c) fs:watchFolder rejects any dirPath that does not match the active workspace", () => {
-  const handlerStart = main.indexOf('secureHandle("fs:watchFolder"');
+  const handlerStart = fsWatch.indexOf('secureHandle("fs:watchFolder"');
   expect(handlerStart).toBeGreaterThan(-1);
-  const handlerEnd = main.indexOf("});", handlerStart);
+  const handlerEnd = fsWatch.indexOf("});", handlerStart);
   expect(handlerEnd).toBeGreaterThan(handlerStart);
-  const handlerBody = main.slice(handlerStart, handlerEnd);
+  const handlerBody = fsWatch.slice(handlerStart, handlerEnd);
 
-  // Must consult the host-set activeWorkspaceRoot — the pre-fix handler's only
-  // check was `path.isAbsolute(dirPath)`, which any absolute path passes.
-  expect(handlerBody).toContain("activeWorkspaceRoot");
+  // Must consult the host-set active workspace root (main.ts's
+  // `activeWorkspaceRoot`, passed in as `deps.getActiveWorkspaceRoot()`) —
+  // the pre-fix handler's only check was `path.isAbsolute(dirPath)`, which
+  // any absolute path passes.
+  expect(handlerBody).toContain("deps.getActiveWorkspaceRoot()");
   expect(handlerBody).toMatch(/!activeWorkspaceRoot/);
   expect(handlerBody).toContain("path.resolve(dirPath)");
-  expect(handlerBody).toContain("activeWorkspaceRoot");
   // And it must actually throw on mismatch/no-active-preview, not just log.
   expect(handlerBody).toContain("throw new Error(");
 });

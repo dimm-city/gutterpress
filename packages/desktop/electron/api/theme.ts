@@ -8,6 +8,7 @@ import { getDesktopHooks } from "../server-bridge/host-hooks";
 import type { ApplyThemeTarget } from "../../src/lib/platform/dtos";
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** List all built-in themes (static metadata). */
 export async function themeListBuiltIn(): Promise<unknown> {
@@ -109,4 +110,23 @@ export async function themeRevert(rawProjectDir: unknown): Promise<unknown> {
   const projectDir = await requireProjectDir(rawProjectDir, "theme:revert");
   const lib = await loadLib();
   return lib.revertTheme(projectDir);
+}
+
+/** Register the theme:* IPC channels (SFE-P6b). */
+export function registerThemeHandlers(secureHandle: SecureHandle): void {
+  secureHandle("theme:listBuiltIn", () => themeListBuiltIn());
+  secureHandle("theme:listProject", (_e, projectDir: unknown) => themeListProject(projectDir));
+  secureHandle("theme:getActive", (_e, projectDir: unknown) => themeGetActive(projectDir));
+  secureHandle("theme:apply", (_e, projectDir: unknown, target: unknown) => themeApply(projectDir, target));
+  secureHandle("theme:importFromFolder", (_e, projectDir: unknown) => themeImportFromFolder(projectDir));
+  secureHandle("theme:importFromFile", (_e, projectDir: unknown) => themeImportFromFile(projectDir));
+  secureHandle("theme:importFromUrl", (_e, projectDir: unknown, url: unknown) =>
+    themeImportFromUrl(projectDir, url),
+  );
+  secureHandle("theme:readCss", (_e, projectDir: unknown, source: unknown) =>
+    themeReadCss(projectDir, source),
+  );
+  secureHandle("theme:remove", (_e, projectDir: unknown, id: unknown) => themeRemove(projectDir, id));
+  secureHandle("theme:getPrevious", (_e, projectDir: unknown) => themeGetPrevious(projectDir));
+  secureHandle("theme:revert", (_e, projectDir: unknown) => themeRevert(projectDir));
 }

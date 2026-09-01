@@ -11,6 +11,7 @@
  */
 import { getDesktopHooks } from "../server-bridge/host-hooks";
 import { getPickedFilesHooks, getSavePathsHooks } from "../server-bridge/picked-files";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function hooks() {
   const h = getDesktopHooks();
@@ -79,4 +80,13 @@ export async function dialogPickImageFiles(): Promise<string[]> {
   if (res.canceled || res.filePaths.length === 0) return [];
   getPickedFilesHooks()?.register(res.filePaths);
   return res.filePaths;
+}
+
+/** Register the dialog:* IPC channels (SFE-P6b). */
+export function registerDialogHandlers(secureHandle: SecureHandle): void {
+  secureHandle("dialog:openDirectory", () => dialogOpenDirectory());
+  secureHandle("dialog:savePdf", (_e, defaultName?: unknown) => dialogSavePdf(defaultName));
+  secureHandle("dialog:pickImageFile", () => dialogPickImageFile());
+  secureHandle("dialog:pickPdfFile", () => dialogPickPdfFile());
+  secureHandle("dialog:pickImageFiles", () => dialogPickImageFiles());
 }

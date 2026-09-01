@@ -2467,3 +2467,402 @@ instructions — not a full `bun run test`):
 | `bun test tests/platform/app-protocol.test.ts` (packages/desktop) | 0 | 23 pass, 0 fail, 36 expect() calls |
 | `node tools/check-render-purity.test.mjs` (repo root) | 0 | all cases pass, including the reframed Case 5 |
 | `node tools/check-render-purity.mjs` (repo root, no argument — exercises the fixed default) | 0 | `check-render-purity: OK — scanned 144 file(s) in .../packages/desktop/build` |
+
+### SFE-P6a — 2026-09-01 — `+page.svelte` composition-root reduction (Lane A)
+
+Objective (run `SFE-P6.md`): move the REMAINING owned workflow logic in
+`+page.svelte` to its obvious feature owner, under the P3e ruling's
+discipline — extract only where responsibility and owner are clear, no
+event bus, no generic controllers, no one-class-per-file. Zero behavior
+change; every extraction is a mechanical move with host coupling injected,
+matching the file's own established `*-controller.svelte.ts` pattern (18
+such modules already existed under `src/lib/routes/` and `src/lib/editor/`
+before this run).
+
+#### Ownership map (method step 1) — OWNS vs COMPOSES, by the plan's nine feature boundaries
+
+The file already delegates most of its nine feature boundaries to
+controller/capability modules instantiated at the top of the script
+(`ExportController`, `PublishSectionController`, `PageNavController`,
+`ZoomViewController`, `EditorPreviewSyncController`, `SyncController`,
+`ProjectSessionController`, `ProjectLifecycleController`,
+`CrashRecoveryController`, `StartupController`, `ContextMenuController`,
+`PreviewEventController`, `UpdateController`, `EditorFileSession`,
+`EditorBuffer`, `RichModeController`) plus ~20 capability modules under
+`$lib/*/*-capability.ts`. Reading the file end to end (script: lines 1–3553
+of the pre-run 4,739-line file; template+style: 3555–4739) found the
+residue fell into three shapes:
+
+1. **A self-contained state machine with a clear single owner, buried
+   inline** — the rich-mode document-host lifecycle (construction, the
+   epoch-guarded async projection publish, the `whenSettled()` seam
+   `selectEditorFile` needs): `richDocHost`/`richProjection`/
+   `richPluginCss`/`richDocHostEpoch`/`richDocHostPending` state plus
+   `rebuildRichDocHost`/`disposeRichDocHost` (~290 lines including their
+   own extensive review-history doc comments, SFE-P3ab Lane A / SFE-P3e
+   review rounds 1–2). Owner: document/editor. No existing controller
+   module fit (`rich-mode.svelte.ts`'s own header explicitly disclaims
+   owning "an `EditorDocumentHost`, a projection, or any document
+   content" — extending it would have violated that documented
+   boundary), so this created the missing module.
+2. **A bounded fetch-state slice with a clear owner, mixed into
+   cross-feature coordination** — the Problems panel's lint findings
+   (`problems`/`buildProblemEntries`/`problemsLoading`/`problemsError`,
+   `refreshProblems`). Owner: diagnostics/problems. What did NOT move:
+   `openProblem` (navigates the editor pane to a finding) and
+   `showPreviewFiles` (opens the left panel) stay in the root — cross-
+   feature coordination D4 keeps explicit; `displayedProblems`/
+   `problemBadge` also stay, since they merge the controller's findings
+   with `lifecycle.previewError` (preview's own state) — root-owned
+   composition, not diagnostics logic.
+3. **Cross-feature coordination that is root-owned by design, not
+   residue** — global keyboard routing (`onGlobalKey`/`onPreviewNavKey`,
+   dispatches into 6+ different controllers), the rich/source command
+   router (`handleRichToolbarAction`/`handleImagePropertiesAtCaret`/
+   `handleImageUnwrapAtCaret`/`handleLinkEditAtCaret`, which reads BOTH
+   surfaces — `richDocHostCtrl` and `sourceEditorHostEl` via
+   `findMountedSourceView` — plus shared dialog helpers `promptText`/
+   `promptImageProperties`), and the markdown-file-launch handler
+   (coordinates project-open + editor-file-selection + pane layout).
+   These were identified and deliberately LEFT — see "What was left, and
+   why" below.
+
+#### Extractions (method step 2)
+
+| Extraction | Owner feature | Target module (new) | What moved |
+|---|---|---|---|
+| Rich-mode document-host lifecycle | document/editor | `src/lib/editor/rich-doc-host-controller.svelte.ts` (`RichDocHostController`, 156 lines) | `host`/`projection`/`pluginCss` `$state`, the epoch-guarded `rebuild(path, content)`/`dispose()`, and `whenSettled()` (renamed from the page's own `richDocHostPending` await). `buildRichProjection` (the host-vs-local build DECISION, which reads `lifecycle.currentDir`/`isDesktop()` and reports D14 diagnostics via `toast`) and `onEditorChange` (the shared-session convergence sink) stay in the root and are injected as `deps.buildProjection`/`deps.onSnapshotChange` — this is the SAME host-coupling-injected pattern every other controller in the file already uses, not a new one. |
+| Problems panel findings | diagnostics/problems | `src/lib/routes/problems-controller.svelte.ts` (`ProblemsController`, 105 lines) | `entries`/`buildEntries`/`loading`/`error` `$state` and the `currentDir`-guarded, staleness-safe `refresh()` (M5: a stale in-flight lint from a project the author navigated away from must not clobber the new project's state) plus `recordBuildEntries()`/`reset()`. |
+
+Both new modules follow the file's own established pattern exactly:
+constructor-injected `Deps` interface (no ambient lookup, no service
+locator — D4), `$state` fields read directly by the template/root
+`$derived`s, zero Svelte/Electron/`node:*` imports (PWA-clean, §8).
+
+#### What was left, and why (method step 3 — stop where ownership is unclear)
+
+- **Rich/source command routing** (`handleRichToolbarAction`,
+  `handleImagePropertiesAtCaret`/`handleImageUnwrapAtCaret`/
+  `handleLinkEditAtCaret`, `openRichImageProperties`,
+  `insertImageIntoChapter`, `captureRichSelection`/
+  `isRichSelectionCaptureFresh`, the block-move keyboard handler) reads
+  BOTH editing surfaces (rich via the new controller, source via
+  `findMountedSourceView(sourceEditorHostEl)` — another lane's file,
+  `source-editor-access.ts`) plus root-owned dialog state (`promptText`/
+  `promptImageProperties`) and `toast`. There is no single feature that
+  owns "decide which of two surfaces is active and route to it" other
+  than the composition root itself — D4's "cross-feature coordination
+  stays explicit in the root — no event bus" names this shape directly.
+  Moving it would also have crossed into `rich-commands.ts`/
+  `toolbar-actions.ts` (SFE-P3ab/P3d-parity Lanes B/D's files, outside
+  this lane's write ownership) to keep the split coherent.
+- **Global keyboard shortcut routing** (`onGlobalKey`/`onPreviewNavKey`)
+  dispatches into `pageNav`, `zoomView`, `contextMenu`, `exportController`,
+  `richDocHostCtrl`, and page-local UI state depending on which shortcut
+  fired — genuinely cross-feature, and already reads every controller
+  through its own accessor rather than owning any feature's state.
+- **Markdown-file-launch handling** (`handleMarkdownFileLaunch`) sequences
+  a project open (`openProjectPath`), an editor file selection
+  (`selectEditorFile`), and pane-layout decisions (`isNarrow`/`paneMode`/
+  `openEditorPane`) in response to one OS event — no single one of
+  project/document/preview owns that sequence; it is the composition
+  root's own startup-adjacent orchestration, parallel to why `startup`
+  (`StartupController`) itself stays root-driven.
+- **`onSaveVersion`'s inline handler** (StatusBar's save-a-version button:
+  `vcsSaveSnapshot` + toast + `activityViewRef?.refreshHistory()`, 8
+  lines) was considered for a VCS/version-history controller; left as a
+  named inline handler — at 8 lines with two dependencies already
+  root-owned (`toast`, `activityViewRef`), a new module would be ceremony
+  around a small function, not a responsibility with an obvious separate
+  owner (P3e ruling: "prefer deleting cleverness to guarding it" cuts
+  both ways — it also argues against a controller with one caller and no
+  state).
+
+#### Tests (method step 4)
+
+- **Moved, not weakened**: `tests/editor/rich-doc-host-rebuild-race.test.ts`
+  (a hand-modeled harness proving the epoch-guard algorithm, plus a
+  source-text "structural pin" against `+page.svelte`'s own
+  `rebuildRichDocHost`/`richDocHostEpoch`) is DELETED and replaced by
+  `tests/editor/rich-doc-host-controller.test.ts`, which proves the SAME
+  race scenarios (single build, two-in-flight both resolution orders,
+  three-in-flight, `dispose()` mid-flight, `whenSettled()`) directly
+  against the REAL `RichDocHostController` class instead of a model of
+  it (bun:test can import a `.svelte.ts` module with the same `$state`
+  shim `rich-mode.test.ts` already uses — it could not import the old
+  4,739-line `.svelte` file), plus a new edit-forwarding suite the old
+  file's model couldn't exercise (no real `DesktopDocumentHost` in a
+  hand-rolled harness). Its own structural pin now checks that
+  `+page.svelte` DELEGATES to the controller (imports it, instantiates
+  it, calls `.rebuild()`/`.dispose()`/`.whenSettled()`) rather than
+  having reintroduced the algorithm inline — the same protective intent,
+  retargeted at the code's new location. One deliberate reduction: the
+  old file's explicit "guardEnabled: false" sabotage variant (AP-21/G-12,
+  proving the hand-rolled MODEL's assertions were not vacuous) has no
+  counterpart here, because there is no model to distrust any more — the
+  suite calls the real implementation directly, and G-12's concern
+  (discriminating power) is satisfied by the tests' own tight final-state
+  assertions rather than by a second guard-disabled run.
+- **Unchanged, updated only where they pinned the moved text**:
+  `tests/platform/history-seam-retirement.test.ts`'s
+  `onSnapshotRestored` structural-pin assertion (`toContain("refreshProblems()")`
+  → `toContain("problemsController.refresh()")`) and
+  `tests/editor/file-tree-open-file-rename-delete.test.ts`'s comment
+  referencing `richDocHostPending` (updated to name
+  `RichDocHostController.whenSettled()`; its own assertion —
+  `toContain("await editorFiles.select(path)")` — was already unaffected,
+  since only the SECOND line of `selectEditorFile`'s body changed).
+- **New, for logic that had no isolated test before** (buried in the
+  root, only reachable indirectly): `tests/platform/problems-controller.test.ts`
+  — starting state, every `refresh()` guard (off-desktop, no project, url
+  mode), success/failure publication, the M5 stale-in-flight-lint
+  non-clobber case (had no isolated test at all pre-extraction — only
+  reachable by driving the whole page), `recordBuildEntries`, `reset`.
+
+#### Line counts
+
+| | Before (run start) | After | Delta |
+|---|---:|---:|---:|
+| `packages/desktop/src/routes/+page.svelte` | 4,739 | 4,543 | −196 |
+| `packages/desktop/src/lib/editor/rich-doc-host-controller.svelte.ts` (new) | 0 | 156 | +156 |
+| `packages/desktop/src/lib/routes/problems-controller.svelte.ts` (new) | 0 | 105 | +105 |
+| `packages/desktop/tests/editor/rich-doc-host-rebuild-race.test.ts` (deleted) | 276 | 0 | −276 |
+| `packages/desktop/tests/editor/rich-doc-host-controller.test.ts` (new) | 0 | 333 | +333 |
+| `packages/desktop/tests/platform/problems-controller.test.ts` (new) | 0 | 169 | +169 |
+
+`+page.svelte`'s net −196 lines is a real reduction, not merely
+displacement: `git diff --stat -- packages/desktop/src/routes/+page.svelte`
+shows 97 insertions / 293 deletions inside the file itself (the surviving
+insertions are call-site delegation lines and shortened, pointer-style
+comments — the full review-history doc comments that used to live inline
+moved to the new controllers' own headers, not duplicated in both places).
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages (desktop's `typecheck` script is `tsc -p electron/tsconfig.json` — Lane B's file, untouched by this lane) |
+| `cd packages/desktop && bun run test` | 0 | 5,911 pass, 1 skip, 0 fail, 15,274+ expect() calls across 163 files (re-run after Lane B's concurrent `electron/main.ts` work settled — see note below) |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 693 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
+| `cd packages/desktop && bun run build` | 0 | production build via adapter-static; `check-render-purity: OK — scanned 144 file(s) in build, no forbidden host/node markers` |
+| `bun test tests/editor/rich-doc-host-controller.test.ts tests/platform/problems-controller.test.ts tests/platform/history-seam-retirement.test.ts tests/editor/file-tree-open-file-rename-delete.test.ts tests/editor/rich-mode.test.ts tests/editor/rich-commands.test.ts tests/editor/desktop-document-host.test.ts` (packages/desktop, targeted) | 0 | 206 pass, 0 fail, 488 expect() calls |
+
+**Note on transient failures during this lane's own verification runs:**
+`packages/desktop/electron/main.ts` and its `tests/platform/*.test.ts`
+structural pins are Lane B's concurrent SFE-P6b work (same run, disjoint
+write ownership — this lane never wrote to `electron/**`). Two intermediate
+`bun run test` runs during this lane's own work-in-progress observed 5–7
+failures, all in `tests/platform/{unsynced-status,watch-folder-scoping,
+preload-surface,github-storage-notice}.test.ts` (none of them files this
+lane touched) — a live race against Lane B's own commits landing in the
+same working tree mid-run, not a regression this lane introduced. The final
+re-run above, after Lane B's work settled, is clean.
+
+### SFE-P6b — 2026-09-01 — `electron/main.ts` composition-root reduction (Lane B)
+
+Objective (run `SFE-P6.md`): `main.ts` keeps lifecycle, windows, OS
+integration, security policy, and service composition; the ~120
+`secureHandle` registration blocks move into explicit per-context
+registration modules. Zero behavior change. Started from the clean
+committed tree at `b7242a71` (a prior attempt at this lane was killed by a
+container restart mid-flight and its partial work was discarded — nothing
+of it survived into this run).
+
+#### STAYS vs MOVES map (method step 1)
+
+**STAYS in `main.ts`** — genuinely lifecycle/window/security/OS-integration,
+or service composition (constructing an instance / hook object from live
+main-process resources and handing it to a registrar or to
+`registerHostServices`):
+
+- App lifecycle: single-instance lock, `open-file`/`second-instance`,
+  `before-quit` closing-log write, `app.whenReady()` boot sequence,
+  `window-all-closed`, `activate`, the online-poller and `powerMonitor`
+  resume handler, the renderer-backgrounding command-line switches.
+- Window management: `createWindow()` in full (webPreferences/security
+  settings, `will-navigate`/`setWindowOpenHandler` policy, the editable-field
+  context menu, `did-fail-load`/`render-process-gone`/`console-message`
+  surfacing, the close gate, `safeSend`), `mainWindow`/`appShellReady`
+  module state.
+- Security policy: `originPolicyConfig()`, `registerUrlPreviewHeaderWatch`/
+  `cspFrameAncestorsBlocksEmbedding`/`extractHeader`, the `app://` protocol
+  scheme registration and `registerAppProtocol(buildDir)` call, the
+  static-build-validity dialog.
+- OS integration: the folder watcher (`FolderWatcher` instance,
+  `startFolderWatch`/`stopFolderWatch`), `appIconPath`, `slog` startup
+  timing, the AppImage integration instance, prefs/settings stores.
+- Service composition (stayed — these build the live objects a registrar or
+  `registerHostServices` consumes, they are not registration plumbing
+  themselves): `autoSnapshot`/`autoSync` construction and their
+  `onCredentialChange`/`onSnapshotFailed` wiring, every `*HooksImpl` object
+  (`writeHooksImpl`, `watchHooksImpl`, `appHooksImpl`, `desktopHooksImpl`,
+  `mediaHooksImpl`, `recoveryHooksImpl`, `prefsHooksImpl`, `doctorHooksImpl`,
+  `appImageHooksImpl`, `vcsHooksImpl`, `remoteHooksImpl`,
+  `syncSettingsHooksImpl`, `updaterHooksImpl`), `fsGuardImpl`,
+  `pickedFilesImpl`/`savePathsImpl`, the single `registerHostServices({...})`
+  call, `previewOpen`/`exportController`/`githubDeviceFlow` construction,
+  `initPdfExport`/`initUpdater` wiring, `sanitizeBookSubPath` (a validation
+  helper `remoteHooksImpl.cloneRepository`'s closure needs).
+- Two `secureHandle(...)` registrations that are intrinsic window/lifecycle
+  machinery, not per-context API plumbing, and so stayed inline: `app:flushDone`
+  (resolves the live `RendererFlushSession` the close gate owns) and
+  `app:openMarkdownFileReady` (the file-launch consumer-ready handshake, tied
+  to `markdownFileLaunchQueue`, itself app-lifecycle state).
+- The `secureHandle` machinery's origin-policy composition: `const
+  secureHandle = createSecureHandle(originPolicyConfig);` — main.ts still
+  builds the one shared function every registrar receives; only the
+  generic wrapper body moved (see registrar list below).
+
+**MOVES out of `main.ts`** — every other `secureHandle(...)` registration
+call, per the run spec's explicit guidance ("dependencies the handlers need
+— `activeWorkspaceRoot`, `mainWindow`, hooks bags — flow as explicit
+registrar arguments"). Every hook OBJECT construction that already existed
+stayed put (above); only the channel-registration call itself moved, into a
+`register*Handlers(secureHandle, ...)` function colocated with the
+handler logic it registers.
+
+#### Registrar list (method step 1 cont'd)
+
+| Registrar | Location | Channels | Extra deps beyond `secureHandle` |
+|---|---|---:|---|
+| `createSecureHandle` (the shared machinery itself, not a registrar) | `electron/server-bridge/secure-handle.ts` (new) | — | `getOriginPolicyConfig` getter |
+| `registerFsHandlers` | `electron/api/fs.ts` | 9 (`fs:readFile`…`fs:delete`) | none |
+| `registerFsWatchHandlers` | `electron/api/fs-watch.ts` (new) | 2 (`fs:watchFolder`, `fs:unwatchFolder`) | `getActiveWorkspaceRoot`, `startFolderWatch`, `stopFolderWatch`, `getWatchedDir`, `armSyncInterval` |
+| `registerDialogHandlers` | `electron/api/dialog.ts` | 5 | none |
+| `registerShellHandlers` | `electron/api/shell.ts` | 2 | none |
+| `registerLogHandlers` | `electron/api/log.ts` | 2 | none |
+| `registerAppHandlers` | `electron/api/app.ts` | 21 | none |
+| `registerProjectHandlers` | `electron/api/project.ts` | 1 | none |
+| `registerManifestHandlers` | `electron/api/manifest.ts` | 2 | none |
+| `registerTplHandlers` | `electron/api/tpl.ts` | 4 | none |
+| `registerSnipHandlers` | `electron/api/snip.ts` | 4 | none |
+| `registerMediaHandlers` | `electron/api/media.ts` | 4 | none |
+| `registerPluginHandlers` | `electron/api/plugin.ts` | 6 | none |
+| `registerThemeHandlers` | `electron/api/theme.ts` | 11 | none |
+| `registerVcsHandlers` | `electron/api/vcs.ts` | 4 | none |
+| `registerStyleHandlers` | `electron/api/style.ts` | 1 | none |
+| `registerUpdaterHandlers` | `electron/api/updater.ts` | 4 (`getStatus`/`check`/`download`/`applyNow` — `applyNow` joins the other three here, was previously registered separately much later in `main.ts`) | none (`applyNow` imports `installNow` from `../updater` directly) |
+| `registerRecoveryHandlers` | `electron/api/recovery.ts` | 3 | none |
+| `registerDoctorHandlers` | `electron/api/doctor.ts` | 1 | none |
+| `registerLintHandlers` | `electron/api/lint.ts` | 2 | none |
+| `registerRemoteHandlers` | `electron/api/remote.ts` | 15 (13 `remote:*` + 2 `sync:*`) | none |
+| `registerPublishHandlers` | `electron/api/publish.ts` | 7 | none |
+| `registerGitHubDeviceFlowHandlers` | `electron/github-device-flow-registrar.ts` (new) | 3 (`remote:connectGitHubStart/Wait/Cancel`) | `githubDeviceFlow` instance, `showLinuxCredentialStorageNoticeOnce` |
+| `registerPdfExportHandlers` | `electron/pdf-export.ts` | 1 (`api:cancelExport`) | none (operates on that module's own active-session state) |
+| `registerExportHandlers` | `electron/export/controller.ts` | 1 (`api:build`) | `exportController` instance |
+| `registerPreviewHandlers` | `electron/preview/controller.ts` | 2 (`api:preview`, `api:stopPreview`) | `previewOpen` instance |
+| `registerEditorProjectionHandlers` | `electron/editor-projection.ts` | 1 (`api:editorProjection`) | `getActiveWorkspaceRoot` getter |
+
+Total channels registered by these calls: 9+2+5+2+2+21+1+2+4+4+4+6+11+4+1+4+3+1+2+15+7+3+1+1+2+1 = 118, plus the 2 that stayed inline in `main.ts` (`app:flushDone`, `app:openMarkdownFileReady`) = 120 — matching the ledger's pre-run baseline count exactly (`grep -c 'secureHandle(' packages/desktop/electron/main.ts` was 120 before this run); this move changes WHERE each registration lives, not how many channels exist or what any of them do.
+
+#### Boot-order preservation evidence (method step 2)
+
+The app-lifecycle sequence in `main.ts` is untouched byte-for-byte apart
+from the registrar-call substitutions documented above:
+`protocol.registerSchemesAsPrivileged` → `registerHostServices(...)` (hook
+objects built as before) → `previewOpen`/`exportController`/`githubDeviceFlow`
+construction → `initUpdater(...)` → the renderer-backgrounding switches →
+the single-instance-lock branch (`open-file`/`second-instance`/`before-quit`
+listeners) → `app.whenReady().then(...)` (static-build check →
+`registerAppProtocol` → `registerUrlPreviewHeaderWatch` → `createWindow()` →
+background update check → lib pre-warm → `activate`/online-poller/
+`powerMonitor` listeners) → `window-all-closed`. Every one of these blocks
+is either completely unchanged or has only had its interior
+`secureHandle(...)` calls replaced by a `register*Handlers(...)` call at
+the exact same point in the sequence — no block was reordered relative to
+another. Registration ORDER among the ~118 moved channels themselves is not
+behavior (each is registered against a distinct string key with
+`ipcMain.handle`; nothing reads or invokes a channel until the renderer is
+loaded, which happens only after every registrar call above has already
+run synchronously at module-evaluation time), so the registrar calls were
+grouped by bounded context in the new file rather than preserving their
+old scattered interleaving with hook-object construction — this is the one
+place "boot order" and "file layout" diverge, and per the run's own
+instruction ("the boot ORDER is the behavior; the file layout is not") the
+file layout was the part free to change.
+
+Two tests source-grepped the exact former text of the moved handlers and
+were updated to grep their new location honestly, not weakened
+(`tests/platform/watch-folder-scoping.test.ts` test (c),
+`tests/platform/unsynced-status.test.ts`'s "fs:watchFolder arms the
+periodic interval" test, `tests/platform/github-storage-notice.test.ts` —
+now reading `electron/api/fs-watch.ts` /
+`electron/github-device-flow-registrar.ts` instead of `main.ts` for the
+handler bodies that moved there; `tests/platform/preload-surface.test.ts`
+was generalized to scan every `.ts` file under `electron/` instead of
+`main.ts` alone, so it keeps proving the same "every preload invoke has a
+registration, every registration has a preload invoke" contract regardless
+of which registrar module a channel lives in). `main-boot-and-splash.test.ts`
+needed no changes — every string it pins (`staticBuildLooksValid`,
+`dialog.showErrorBox`, `resolveDevServerUrl`, `originPolicyConfig`,
+`mainWindow.loadURL`) lives in code that stayed in `main.ts` verbatim.
+
+#### Line counts
+
+| | Before (run start, `b7242a71`) | After | Delta |
+|---|---:|---:|---:|
+| `packages/desktop/electron/main.ts` | 2,188 | 1,957 | −231 |
+| `packages/desktop/electron/server-bridge/secure-handle.ts` (new) | 0 | 57 | +57 |
+| `packages/desktop/electron/api/fs-watch.ts` (new) | 0 | 78 | +78 |
+| `packages/desktop/electron/github-device-flow-registrar.ts` (new) | 0 | 42 | +42 |
+| `packages/desktop/electron/api/{fs,dialog,shell,log,app,project,manifest,tpl,snip,media,plugin,theme,vcs,style,updater,recovery,doctor,lint,remote,publish}.ts` (20 files, registrar functions appended) | — | — | +310 combined (312 insertions / 2 deletions — the 2 deletions are `remote.ts`'s header comment reword, see below; every other file is pure addition) |
+| `packages/desktop/electron/{pdf-export,export/controller,preview/controller,editor-projection}.ts` (registrar functions + honesty comment updates) | — | — | +56 combined (68 insertions / 12 deletions — the deletions are comment rewording in `editor-projection.ts`, documented in that file's own header, not code removal) |
+
+`git diff --numstat -- packages/desktop/electron/main.ts`: 129 insertions,
+360 deletions (net −231, matching the line-count table). Across every file
+this lane touched (`electron/**`, including the 3 new files — `git diff`
+alone omits untracked new files' content, so their full line counts are
+added in by hand — plus the four `tests/platform/*.test.ts` files updated
+above): 765 insertions, 408 deletions — a net +357 across the whole lane,
+NOT a reduction, because moving a registration call out of `main.ts` into
+its own module costs a function signature, a JSDoc header, and (for the
+seven bespoke registrars) an explicit deps interface — the same cost every
+extraction in this codebase's established `*-controller`/`*-capability`
+pattern pays (see Lane A's own `RichDocHostController`/`ProblemsController`
+line counts above, which show the identical shape: the composition root
+shrinks, the total system grows slightly). This run's mandate was
+`main.ts`'s own size specifically ("slim the 2,188-line main.ts") —
+achieved, −231 lines, −10.6% — not a whole-lane net reduction; the plan's
+whole-phase non-positive-production-LOC requirement (D15 / success
+criterion 22) applies across the combined P4–P6 simplification phases, not
+to this one sub-run in isolation.
+
+`secureHandle(...)` call-site count is unchanged at 120 (`grep -rn
+'secureHandle(' packages/desktop/electron --include='*.ts' | grep -vE
+'^\S+:[0-9]+:\s*(//|\*|/\*)'` — excluding both `//` and JSDoc `*`-prefixed
+comment lines, since several registrar headers now describe their own
+`secureHandle("channel", ...)` call in prose — finds 120 real registration
+call sites across the whole `electron/` tree, matching the pre-run baseline
+exactly: none were duplicated, none were dropped, and the shared
+`secureHandle` wrapper's own declaration inside
+`server-bridge/secure-handle.ts` does not itself match the call-site
+pattern, same discipline the original baseline note used for `main.ts`
+alone).
+
+#### Verification run (this lane)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) |
+| `cd packages/desktop && bun run test` | 0 | 5,911 pass, 1 skip, 0 fail, 15,277 expect() calls across 163 files |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 693 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint (`src/**/*.svelte`, `src/**/*.svelte.ts`) + app-token check clean — this lane's changes are entirely under `electron/`, outside this script's glob; `electron/`'s own gate is `bun run typecheck` (`tsc -p electron/tsconfig.json`), run above |
+| `cd packages/desktop && bun run build` | 0 | production build via adapter-static; `check-render-purity: OK — scanned 144 file(s) in build, no forbidden host/node markers` |
+| `cd packages/desktop && bun run electron:build` | 0 | `electron-vite build` + `node --check out/main/main.js` + `node --check out/preload/preload.cjs` — both bundles parse cleanly |
+| `node packages/desktop/tests/integration/editor-toggle-loads-module.pw.mjs` | 0 | packaged-Electron smoke: SPA boots, project opens, Edit mode toggles, `Ctrl+S` writes source through the real IPC bridge, preview updates (108ms) — proves the registrar restructuring didn't break the real boot path, not just its unit tests |
+| `bun test tests/platform/preload-surface.test.ts tests/platform/watch-folder-scoping.test.ts tests/platform/unsynced-status.test.ts tests/platform/github-storage-notice.test.ts tests/platform/main-boot-and-splash.test.ts` (packages/desktop, targeted) | 0 | 26 pass, 0 fail |
+
+A repair round during this lane's own work: the first draft of the
+`SFE-P6b` import-block comment in `main.ts` literally spelled
+`secureHandle("channel", (_e, args) => xApi.fn(args))` as a code example
+inside a `//` comment — `preload-surface.test.ts`'s regex-based channel
+scan (which reads raw file text, not parsed AST, so it cannot distinguish
+a comment from real code) picked up `"channel"` as a phantom 121st
+registration with no matching `preload.ts` invoke call, failing "every
+secureHandle registration under electron/ has a preload.ts invoke call
+site". Fixed by rewording the comment to describe the pattern in prose
+instead of a quoted code sample; re-run above is clean. Recorded here per
+G-12 (a gate that can fail is worth more than one that can't) — this is
+exactly the kind of false positive a source-text regex gate is supposed to
+catch, and it did.

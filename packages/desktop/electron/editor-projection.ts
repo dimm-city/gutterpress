@@ -16,10 +16,12 @@
  * plain strings, returns plain data, and never touches `ipcMain` — see
  * `tests/editor/editor-projection-host.test.ts`, which calls
  * {@link buildHostEditorProjection} directly, the exact function
- * `main.ts`'s `api:editorProjection` handler calls. All IPC-boundary
- * concerns (sender validation, argument shape/size/range checks) live in
- * `main.ts` itself, matching the existing `fs:watchFolder` precedent — this
- * module assumes its caller already validated `args`.
+ * `resolveEditorProjection` (this file) calls. Sender validation lives in
+ * the shared `secureHandle` wrapper (electron/server-bridge/secure-handle.ts)
+ * every registrar — including this file's own `registerEditorProjectionHandlers`,
+ * below — is built from; `main.ts` composes that wrapper but no longer
+ * registers the channel itself (SFE-P6b moved the registration here,
+ * matching `fs:watchFolder`'s registrar in electron/api/fs-watch.ts).
  *
  * NO CACHING: per the run's binding decision ("no cache layers, no
  * speculative invalidation machinery"), every call re-resolves the manifest
@@ -59,10 +61,10 @@
  * for the two named hard-failure shapes returns `{ ok: false, code,
  * message }` instead of throwing — a plain, structured-cloneable value that
  * crosses `ipcMain.handle`/`ipcRenderer.invoke` intact, the same as any
- * other resolved IPC result. `main.ts`'s `api:editorProjection` handler
- * calls this function directly and returns its result unchanged (no
- * try/catch of its own needed there) — moved here, rather than kept in
- * `main.ts`, so it is unit-testable the same way {@link buildHostEditorProjection}
+ * other resolved IPC result. The `api:editorProjection` handler (this
+ * file's own `registerEditorProjectionHandlers`, below) calls this function
+ * directly and returns its result unchanged (no try/catch of its own needed
+ * there) — kept here, not in `main.ts`, so it is unit-testable the same way {@link buildHostEditorProjection}
  * already is (this module's own "PURE ENOUGH TO UNIT TEST DIRECTLY" header
  * note, now extended to the validation/classification step too) without
  * needing to import `main.ts` itself, which has Electron-`app`-lifecycle
@@ -91,6 +93,7 @@ import {
 } from "gutterpress/render";
 import { loadManifestWithPath, resolveConfig } from "gutterpress";
 import { loadPluginsWithCss } from "gutterpress/plugins";
+import type { SecureHandle } from "./server-bridge/secure-handle";
 
 /** One plugin that failed to load, degrade-and-report style (D14 `EDITOR_PLUGIN_LOAD_FAILED`). */
 export interface EditorProjectionPluginError {
@@ -182,8 +185,8 @@ export class EditorProjectionTooLargeError extends Error {}
  * Runtime-validates `args` at the IPC boundary (D10: "runtime validation is
  * required at every IPC request boundary") and returns the validated,
  * host-authoritative arguments — never the caller's own unresolved
- * `projectDir` string. Mirrors `fs:watchFolder`'s existing pattern in
- * `main.ts`: `projectDir` must equal the host's OWN open workspace root
+ * `projectDir` string. Mirrors `fs:watchFolder`'s existing pattern
+ * (electron/api/fs-watch.ts): `projectDir` must equal the host's OWN open workspace root
  * (passed in as `activeWorkspaceRoot`, not read from module-scoped state —
  * see the module header), so a compromised or buggy renderer cannot point
  * this handler at an arbitrary directory. Throws a distinct, descriptive
@@ -250,8 +253,9 @@ export type EditorProjectionOutcome =
  * classifying the two named hard-failure shapes into a resolved
  * {@link EditorProjectionOutcome} instead of letting them reject (see the
  * module header for why a rejection cannot carry `.code` across IPC).
- * `main.ts`'s `secureHandle("api:editorProjection", ...)` registration
- * calls this directly and returns its result unchanged.
+ * `registerEditorProjectionHandlers`'s `secureHandle("api:editorProjection",
+ * ...)` registration (below) calls this directly and returns its result
+ * unchanged.
  *
  * Still THROWS (rejects) for a validation failure other than the size
  * ceiling — a malformed `args` shape or a `projectDir` that does not match
@@ -282,4 +286,22 @@ export async function resolveEditorProjection(
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, code: "EDITOR_PLUGIN_LOAD_FAILED", message };
   }
+}
+
+/**
+ * Register `api:editorProjection` (SFE-P6b, extracted from electron/main.ts).
+ * `getActiveWorkspaceRoot` is a getter, not a snapshot value, so each
+ * invocation reads main.ts's CURRENT open workspace at call time — matching
+ * the pre-extraction inline handler, which read the same module-scoped
+ * `activeWorkspaceRoot` variable directly.
+ */
+export function registerEditorProjectionHandlers(
+  secureHandle: SecureHandle,
+  getActiveWorkspaceRoot: () => string | null,
+): void {
+  secureHandle(
+    "api:editorProjection",
+    (_e, args: unknown): Promise<EditorProjectionOutcome> =>
+      resolveEditorProjection(args, getActiveWorkspaceRoot()),
+  );
 }

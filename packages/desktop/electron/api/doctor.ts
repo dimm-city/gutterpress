@@ -12,6 +12,7 @@
 import { getDoctorHooks } from "../server-bridge/host-hooks";
 import { loadLib } from "./lib-loader";
 import type { DoctorDiagnostics, DoctorToolStatus } from "../../src/lib/platform/dtos";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 interface LibSystemDiagnostics {
   libVersion: string;
@@ -56,4 +57,9 @@ export async function doctorGetDiagnostics(): Promise<DoctorDiagnostics> {
     electronVersion: process.versions.electron,
     chromeVersion: process.versions.chrome,
   };
+}
+
+/** Register the doctor:* IPC channels (SFE-P6b). */
+export function registerDoctorHandlers(secureHandle: SecureHandle): void {
+  secureHandle("doctor:getDiagnostics", () => doctorGetDiagnostics());
 }

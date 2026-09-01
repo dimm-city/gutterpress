@@ -15,6 +15,7 @@ import path from "node:path";
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
 import type { PrintSafeWarning, ProblemEntry } from "../../src/lib/platform/dtos";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** Run CSS print-safety lint on the given CSS content. */
 export async function lintCheckCss(rawCssPath: unknown, rawContent: unknown): Promise<PrintSafeWarning[]> {
@@ -52,4 +53,12 @@ export async function lintProject(rawProjectDir: unknown): Promise<ProblemEntry[
       source: r.checkId,
     };
   });
+}
+
+/** Register the lint:* IPC channels (SFE-P6b). */
+export function registerLintHandlers(secureHandle: SecureHandle): void {
+  secureHandle("lint:checkCss", (_e, cssPath: unknown, content: unknown) =>
+    lintCheckCss(cssPath, content),
+  );
+  secureHandle("lint:project", (_e, projectDir: unknown) => lintProject(projectDir));
 }

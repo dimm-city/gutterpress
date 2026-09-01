@@ -7,6 +7,7 @@
 import { getDesktopHooks } from "../server-bridge/host-hooks";
 import { isHttpUrl } from "../navigation-policy";
 import { requireAbsolute, requireContainedOrPicked } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function hooks() {
   const h = getDesktopHooks();
@@ -34,4 +35,10 @@ export async function shellShowInFolder(rawFilePath: unknown): Promise<{ ok: tru
   await requireContainedOrPicked(filePath, "shell:showInFolder", { includeReadOnlyRoots: true });
   hooks().showItemInFolder(filePath);
   return { ok: true };
+}
+
+/** Register the shell:* IPC channels (SFE-P6b). */
+export function registerShellHandlers(secureHandle: SecureHandle): void {
+  secureHandle("shell:openExternal", (_e, url: unknown) => shellOpenExternal(url));
+  secureHandle("shell:showInFolder", (_e, filePath: unknown) => shellShowInFolder(filePath));
 }

@@ -4,6 +4,7 @@
  */
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function requireString(value: unknown, message: string): string {
   if (typeof value !== "string") throw new Error(message);
@@ -41,4 +42,16 @@ export async function snipDelete(rawProjectDir: unknown, rawFileName: unknown): 
   const lib = await loadLib();
   await lib.deleteSnippet(projectDir, fileName);
   return { ok: true };
+}
+
+/** Register the snip:* IPC channels (SFE-P6b). */
+export function registerSnipHandlers(secureHandle: SecureHandle): void {
+  secureHandle("snip:list", (_e, projectDir: unknown) => snipList(projectDir));
+  secureHandle("snip:read", (_e, projectDir: unknown, fileName: unknown) => snipRead(projectDir, fileName));
+  secureHandle("snip:save", (_e, projectDir: unknown, name: unknown, body: unknown) =>
+    snipSave(projectDir, name, body),
+  );
+  secureHandle("snip:delete", (_e, projectDir: unknown, fileName: unknown) =>
+    snipDelete(projectDir, fileName),
+  );
 }

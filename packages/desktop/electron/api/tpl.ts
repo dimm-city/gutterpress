@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { getDesktopHooks } from "../server-bridge/host-hooks";
 import { loadLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** List the built-in starter templates (static metadata). */
 export async function tplListBuiltIn(): Promise<unknown> {
@@ -72,4 +73,14 @@ export async function tplSaveAsTemplate(
     templatesRoot,
     sharedRefs,
   });
+}
+
+/** Register the tpl:* IPC channels (SFE-P6b). */
+export function registerTplHandlers(secureHandle: SecureHandle): void {
+  secureHandle("tpl:listBuiltIn", () => tplListBuiltIn());
+  secureHandle("tpl:listCustom", () => tplListCustom());
+  secureHandle("tpl:importFromFolder", () => tplImportFromFolder());
+  secureHandle("tpl:saveAsTemplate", (_e, projectDir: unknown, name: unknown, sharedRefs?: unknown) =>
+    tplSaveAsTemplate(projectDir, name, sharedRefs),
+  );
 }

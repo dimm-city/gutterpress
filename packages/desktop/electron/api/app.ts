@@ -15,6 +15,7 @@ import { getAppImageHooks, getDesktopHooks } from "../server-bridge/host-hooks";
 import { getPrefsHooks, type PrefsHooks } from "../server-bridge/prefs-hooks";
 import { friendlyAppImageError } from "../server-bridge/friendly-errors";
 import { requireAbsolute } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 import type {
   AppImageInstallResult,
   AppImageRemoveResult,
@@ -325,4 +326,41 @@ export async function appImageIntegrationInstall(): Promise<AppImageInstallResul
 export async function appImageIntegrationRemove(): Promise<AppImageRemoveResult> {
   const hooks = appImageHooks();
   return withFriendlyAppImageError("app/appimage-integration", () => hooks.remove());
+}
+
+/** Register the app:* IPC channels (SFE-P6b). */
+export function registerAppHandlers(secureHandle: SecureHandle): void {
+  secureHandle("app:getDesktopPrefs", () => appGetDesktopPrefs());
+  secureHandle("app:setDesktopPrefs", (_e, prefs: unknown) =>
+    appSetDesktopPrefs(prefs as Record<string, unknown>),
+  );
+  secureHandle("app:getDesktopProjectState", (_e, projectDir: unknown) =>
+    appGetDesktopProjectState(projectDir),
+  );
+  secureHandle("app:setDesktopProjectState", (_e, projectDir: unknown, state: unknown) =>
+    appSetDesktopProjectState(projectDir, state),
+  );
+  secureHandle("app:getSettings", () => appGetSettings());
+  secureHandle("app:setSettings", (_e, settings: unknown) =>
+    appSetSettings(settings as Record<string, unknown>),
+  );
+  secureHandle("app:getNativeTheme", () => appGetNativeTheme());
+  secureHandle("app:getRecentFolders", () => appGetRecentFolders());
+  secureHandle("app:getFavorites", () => appGetFavorites());
+  secureHandle("app:toggleFavorite", (_e, path: unknown, title: unknown) =>
+    appToggleFavorite(path, title),
+  );
+  secureHandle("app:removeRecent", (_e, path: unknown) => appRemoveRecent(path));
+  secureHandle("app:discoverProjects", () => appDiscoverProjects());
+  secureHandle("app:classifyProject", (_e, projectDir: unknown) => appClassifyProject(projectDir));
+  secureHandle("app:createProject", (_e, options: unknown) => appCreateProject(options));
+  secureHandle("app:adoptFolder", (_e, options: unknown) => appAdoptFolder(options));
+  secureHandle("app:setDirtyState", (_e, dirty: unknown) => appSetDirtyState(dirty));
+  secureHandle("app:recordFlushFailure", (_e, projectDir: unknown) => appRecordFlushFailure(projectDir));
+  secureHandle("app:acknowledgeFlushFailure", (_e, failedAt: unknown) =>
+    appAcknowledgeFlushFailure(failedAt),
+  );
+  secureHandle("app:appImageIntegrationStatus", () => appImageIntegrationStatus());
+  secureHandle("app:appImageIntegrationInstall", () => appImageIntegrationInstall());
+  secureHandle("app:appImageIntegrationRemove", () => appImageIntegrationRemove());
 }

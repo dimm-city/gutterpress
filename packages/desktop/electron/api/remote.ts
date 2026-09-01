@@ -44,6 +44,7 @@ import { handleRemoteErrors } from "../server-bridge/friendly-errors";
 import { gitIdentityArgs } from "./git-identity-args";
 import { requireAbsolute, requireProjectDir } from "./validation";
 import type { CloneRepositoryArgs } from "../bridge-types";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function getHooks(): RemoteHooks<RemoteLibModule, TokenStore> | null {
   return getRemoteHooks<RemoteLibModule, TokenStore>();
@@ -63,8 +64,11 @@ function requireSyncHooks(): SyncSettingsHooks {
 
 // ── Managed GitHub integration (#15, ADR 0006) ──────────────────────────────
 // connectGitHubStart/Wait/Cancel and the cloneProgress push stay exactly as
-// they are (electron/main.ts's own secureHandle registrations) — untouched
-// by this run (rule 8: push streams stay IPC as they are).
+// they are — untouched by this run (rule 8: push streams stay IPC as they
+// are). SFE-P6b moved their `secureHandle` registrations out of
+// electron/main.ts into ../github-device-flow-registrar.ts (they close over
+// a `GitHubDeviceFlow` instance and the Linux-keyring notice dialog, both
+// main.ts-composed, not this module's `getRemoteHooks()` pattern).
 
 /** Forget the stored GitHub connection. */
 export async function remoteDisconnectGitHub(): Promise<{ ok: boolean }> {
@@ -334,4 +338,40 @@ export async function syncGetStatus(rawProjectDir: unknown): Promise<object | nu
     throw new Error("sync:status requires a projectDir");
   }
   return hooks.getStatus(rawProjectDir);
+}
+
+/**
+ * Register the remote:* and sync:* IPC channels (SFE-P6b). NOT included:
+ * remote:connectGitHubStart/Wait/Cancel — see this module's header and
+ * ../github-device-flow-registrar.ts.
+ */
+export function registerRemoteHandlers(secureHandle: SecureHandle): void {
+  secureHandle("remote:disconnectGitHub", () => remoteDisconnectGitHub());
+  secureHandle("remote:getConnection", (_e, host?: unknown) => remoteGetConnection(host));
+  secureHandle("remote:listRepositories", () => remoteListRepositories());
+  secureHandle("remote:listBranches", (_e, owner: unknown, repo: unknown) =>
+    remoteListBranches(owner, repo),
+  );
+  secureHandle("remote:listRepoBooks", (_e, owner: unknown, repo: unknown, branch: unknown) =>
+    remoteListRepoBooks(owner, repo, branch),
+  );
+  secureHandle("remote:diagnoseProject", (_e, projectDir: unknown) =>
+    remoteDiagnoseProject(projectDir),
+  );
+  secureHandle("remote:testRemoteAccess", (_e, url: unknown) => remoteTestRemoteAccess(url));
+  secureHandle("remote:connectGenericHost", (_e, args: unknown) =>
+    remoteConnectGenericHost(args),
+  );
+  secureHandle("remote:disconnectHost", (_e, host: unknown) => remoteDisconnectHost(host));
+  secureHandle("remote:listConnections", () => remoteListConnections());
+  secureHandle("remote:forgeTokenUrl", (_e, host: unknown) => remoteForgeTokenUrl(host));
+  secureHandle("remote:sync", (_e, projectDir: unknown, message?: unknown) =>
+    remoteSync(projectDir, message),
+  );
+  secureHandle("remote:cloneRepository", (_e, args: unknown) => remoteCloneRepository(args));
+
+  // sync:setAutoSync, sync:getStatus — same group; sync/remote/GitHub is one
+  // bounded context, D10.
+  secureHandle("sync:setAutoSync", (_e, enabled: unknown) => syncSetAutoSync(enabled));
+  secureHandle("sync:getStatus", (_e, projectDir: unknown) => syncGetStatus(projectDir));
 }

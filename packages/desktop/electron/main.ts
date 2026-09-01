@@ -2,7 +2,6 @@ import {
   app,
   BrowserWindow,
   dialog,
-  ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
@@ -44,44 +43,52 @@ import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
-import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
+import { createSecureHandle } from "./server-bridge/secure-handle";
+import { registerGitHubDeviceFlowHandlers } from "./github-device-flow-registrar";
 // SFE-P5c1: fs/dialog/shell/log/app moved from SvelteKit HTTP routes to typed
 // IPC. Each module below is the main-process logic the deleted +server.ts
 // handlers used to run — see electron/api/*.ts's own header comments.
-import * as fsApi from "./api/fs";
-import * as dialogApi from "./api/dialog";
-import * as shellApi from "./api/shell";
-import * as logApi from "./api/log";
-import * as appApi from "./api/app";
+// SFE-P6b: main.ts no longer calls these functions directly — it imports
+// each module's own `register*Handlers(secureHandle)` and calls that once,
+// in the "IPC handler registration" section below, replacing the inline
+// per-channel secureHandle registration blocks this file used to carry for
+// every one of the ~120 channels.
+import { registerFsHandlers } from "./api/fs";
+import { registerFsWatchHandlers } from "./api/fs-watch";
+import { registerDialogHandlers } from "./api/dialog";
+import { registerShellHandlers } from "./api/shell";
+import { registerLogHandlers } from "./api/log";
+import { registerAppHandlers } from "./api/app";
 // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/vcs/style moved
 // from SvelteKit HTTP routes to typed IPC — same rationale as P5c1 above.
-import * as projectApi from "./api/project";
-import * as manifestApi from "./api/manifest";
-import * as tplApi from "./api/tpl";
-import * as snipApi from "./api/snip";
-import * as mediaApi from "./api/media";
-import * as pluginApi from "./api/plugin";
-import * as themeApi from "./api/theme";
-import * as vcsApi from "./api/vcs";
-import * as styleApi from "./api/style";
+import { registerProjectHandlers } from "./api/project";
+import { registerManifestHandlers } from "./api/manifest";
+import { registerTplHandlers } from "./api/tpl";
+import { registerSnipHandlers } from "./api/snip";
+import { registerMediaHandlers } from "./api/media";
+import { registerPluginHandlers } from "./api/plugin";
+import { registerThemeHandlers } from "./api/theme";
+import { registerVcsHandlers } from "./api/vcs";
+import { registerStyleHandlers } from "./api/style";
 // SFE-P5c3: remote/sync/publish moved from SvelteKit HTTP routes back to
 // typed IPC (the credentials-sensitive group) — same rationale as P5c1/P5c2
-// above. GitHub device-flow + clone-progress push stay exactly as they were.
-import * as remoteApi from "./api/remote";
-import * as publishApi from "./api/publish";
+// above. GitHub device-flow + clone-progress push stay exactly as they were
+// (registered via ./github-device-flow-registrar — see that module's header).
+import { registerRemoteHandlers } from "./api/remote";
+import { registerPublishHandlers } from "./api/publish";
 // SFE-P5c4: updater/recovery/doctor/lint — the LAST four route groups —
 // moved from SvelteKit HTTP routes to typed IPC, taking the desktop HTTP
 // route count to zero. Same rationale as P5c1/P5c2/P5c3 above. The hooks
 // bags these four handler modules read from (`getUpdaterHooks`/
 // `getRecoveryHooks`/`getDoctorHooks`) are unchanged — the underlying
-// implementation functions imported below still populate them exactly as
-// they did for the deleted routes.
-import * as updaterApi from "./api/updater";
-import * as recoveryApi from "./api/recovery";
-import * as doctorApi from "./api/doctor";
-import * as lintApi from "./api/lint";
+// implementation functions still populate them exactly as they did for the
+// deleted routes.
+import { registerUpdaterHandlers } from "./api/updater";
+import { registerRecoveryHandlers } from "./api/recovery";
+import { registerDoctorHandlers } from "./api/doctor";
+import { registerLintHandlers } from "./api/lint";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -92,7 +99,6 @@ import {
   updaterSupported,
   checkForUpdates,
   download as downloadUpdate,
-  installNow,
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
@@ -118,12 +124,9 @@ import {
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
 import { unsyncedStateFor } from "./auto-sync/unsynced-status";
-import {
-  ExportController,
-  type ExportBuildArgs,
-} from "./export/controller";
-import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
-import { resolveEditorProjection, type EditorProjectionOutcome } from "./editor-projection";
+import { ExportController, registerExportHandlers } from "./export/controller";
+import { PreviewOpenController, registerPreviewHandlers, type PreviewHandle } from "./preview/controller";
+import { registerEditorProjectionHandlers } from "./editor-projection";
 import { GitHubDeviceFlow } from "./github-device-flow";
 import {
   MarkdownFileLaunchQueue,
@@ -172,6 +175,7 @@ import {
   ExportCanceledError,
   getActiveExportSession,
   initPdfExport,
+  registerPdfExportHandlers,
   sendExportProgress,
   setActiveExportSession,
   throwIfExportCanceled,
@@ -188,7 +192,6 @@ import {
   decideNavigation,
   decideWindowOpen,
   isHttpUrl,
-  isTrustedIpcSender,
   resolveDevServerUrl,
   type OriginPolicyConfig,
 } from "./navigation-policy";
@@ -1014,64 +1017,30 @@ function originPolicyConfig(): OriginPolicyConfig {
 }
 
 /**
- * Drop-in replacement for `ipcMain.handle` that rejects any invocation whose
+ * The shared, sender-validating replacement for `ipcMain.handle` (SFE-P6b:
+ * the machinery itself now lives in server-bridge/secure-handle.ts, shared
+ * by every registrar below) — rejects any invocation whose
  * `event.senderFrame.url` isn't the trusted app origin (or the dev server
  * origin, in dev) before calling `listener`. One mechanism applied to every
- * channel, instead of a sender check duplicated into 18 handlers.
+ * channel, instead of a sender check duplicated into each handler.
  */
-function secureHandle<Args extends unknown[], R>(
-  channel: string,
-  listener: (event: Electron.IpcMainInvokeEvent, ...args: Args) => R,
-): void {
-  ipcMain.handle(channel, (event, ...args: Args) => {
-    if (!isTrustedIpcSender(event.senderFrame?.url, originPolicyConfig())) {
-      console.warn(
-        `[ipc] blocked "${channel}" from untrusted sender: ${event.senderFrame?.url ?? "unknown"}`,
-      );
-      throw new Error(`Blocked: untrusted sender for "${channel}"`);
-    }
-    return listener(event, ...args);
-  });
-}
+const secureHandle = createSecureHandle(originPolicyConfig);
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
 // Backs external-edit detection: a shallow fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
-// project is open at a time, so subscribing replaces any prior watch.
-secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
-  if (!path.isAbsolute(dirPath)) {
-    throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
-  }
-  // P1 review (PR #98): this call used to accept ANY absolute path from the
-  // renderer, and fsGuardImpl.projectRoots() (below) trusted whatever
-  // directory ended up watched — so a same-origin script could call
-  // fs:watchFolder("/home/user/.ssh") and turn an arbitrary directory into an
-  // authorized fs-route root (direct reads, copy-file's "inside project"
-  // shortcut, …). The watcher exists ONLY to watch the already-open project,
-  // so it is now gated on the host-set `activeWorkspaceRoot`, never on
-  // renderer-supplied input — matching projectRoots()'s sole authorization
-  // source.
-  if (!activeWorkspaceRoot || path.resolve(dirPath) !== activeWorkspaceRoot) {
-    throw new Error(
-      `fs:watchFolder: dirPath must be the active workspace directory (got: ${dirPath})`,
-    );
-  }
-  startFolderWatch(dirPath);
-  // Arm the periodic safety-sync interval NOW — the watcher is live, so
-  // armInterval's watched-dir guard finally holds. The open-time arm
-  // (PreviewOpenController.runOpen → armSyncInterval) fires BEFORE the
-  // renderer calls fs:watchFolder, so its guard saw the previous project (or
-  // null) and silently no-opped; and even a lucky arm was wiped by
-  // FolderWatcher.start()'s stop() → onStop → autoSync.cancelAll() just now.
-  // Net effect pre-fix: a view-only session NEVER pulled teammate changes —
-  // the interval only ever started after the first local edit. (Reopening the
-  // SAME dir skipped the wipe, which is why sync seemed intermittent.)
-  void autoSync.armInterval(folderWatch.getWatchedDir() ?? path.resolve(dirPath));
-});
-
-secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
-  const normalized = path.resolve(dirPath);
-  if (folderWatch.getWatchedDir() === normalized) stopFolderWatch();
+// project is open at a time, so subscribing replaces any prior watch. The
+// handlers (SFE-P6b: registered in electron/api/fs-watch.ts — see that
+// module's header, which carries the P1 review / PR #98 fix this comment
+// used to document inline) need the live workspace/watcher state below, so
+// main.ts passes it in explicitly rather than the registrar reaching back
+// into main.ts's private scope.
+registerFsWatchHandlers(secureHandle, {
+  getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+  startFolderWatch,
+  stopFolderWatch,
+  getWatchedDir: () => folderWatch.getWatchedDir(),
+  armSyncInterval: (dir) => autoSync.armInterval(dir),
 });
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
@@ -1096,180 +1065,49 @@ secureHandle("app:flushDone", async (event, flushed: boolean): Promise<void> => 
 
 // ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ──────────────────
 // Replaces src/routes/api/{fs,dialog,shell,log,app}/**/+server.ts. Each
-// handler below runs a plain function from electron/api/*.ts — the same
-// validation and hook calls the deleted routes used, ported verbatim (see
-// each module's own header). A thrown Error's message is exactly the message
-// the HTTP route used to send as its response body; ipcMain.handle surfaces
-// it to ipcRenderer.invoke's rejection the same way for every channel here,
-// so callers keep reading `e.message` (via `friendlyHostError`) as before.
-
-secureHandle("fs:readFile", (_e, filePath: unknown) => fsApi.fsReadFile(filePath));
-secureHandle("fs:writeFile", (_e, filePath: unknown, content: unknown) =>
-  fsApi.fsWriteFile(filePath, content),
-);
-secureHandle("fs:statFile", (_e, filePath: unknown) => fsApi.fsStatFile(filePath));
-secureHandle("fs:listDir", (_e, dirPath: unknown) => fsApi.fsListDir(dirPath));
-secureHandle("fs:listProjectFiles", (_e, projectDir: unknown) => fsApi.fsListProjectFiles(projectDir));
-secureHandle("fs:createFile", (_e, dir: unknown, name: unknown, content: unknown) =>
-  fsApi.fsCreateFile(dir, name, content),
-);
-secureHandle("fs:createFolder", (_e, dir: unknown, name: unknown) => fsApi.fsCreateFolder(dir, name));
-secureHandle("fs:rename", (_e, filePath: unknown, newName: unknown) => fsApi.fsRename(filePath, newName));
-secureHandle("fs:delete", (_e, filePath: unknown, projectDir: unknown) =>
-  fsApi.fsDeletePath(filePath, projectDir),
-);
-
-secureHandle("dialog:openDirectory", () => dialogApi.dialogOpenDirectory());
-secureHandle("dialog:savePdf", (_e, defaultName?: unknown) => dialogApi.dialogSavePdf(defaultName));
-secureHandle("dialog:pickImageFile", () => dialogApi.dialogPickImageFile());
-secureHandle("dialog:pickPdfFile", () => dialogApi.dialogPickPdfFile());
-secureHandle("dialog:pickImageFiles", () => dialogApi.dialogPickImageFiles());
-
-secureHandle("shell:openExternal", (_e, url: unknown) => shellApi.shellOpenExternal(url));
-secureHandle("shell:showInFolder", (_e, filePath: unknown) => shellApi.shellShowInFolder(filePath));
-
-secureHandle("log:read", (_e, logPath: unknown) => logApi.logRead(logPath));
-secureHandle("log:list", () => logApi.logList());
-
-secureHandle("app:getDesktopPrefs", () => appApi.appGetDesktopPrefs());
-secureHandle("app:setDesktopPrefs", (_e, prefs: unknown) =>
-  appApi.appSetDesktopPrefs(prefs as Record<string, unknown>),
-);
-secureHandle("app:getDesktopProjectState", (_e, projectDir: unknown) =>
-  appApi.appGetDesktopProjectState(projectDir),
-);
-secureHandle("app:setDesktopProjectState", (_e, projectDir: unknown, state: unknown) =>
-  appApi.appSetDesktopProjectState(projectDir, state),
-);
-secureHandle("app:getSettings", () => appApi.appGetSettings());
-secureHandle("app:setSettings", (_e, settings: unknown) =>
-  appApi.appSetSettings(settings as Record<string, unknown>),
-);
-secureHandle("app:getNativeTheme", () => appApi.appGetNativeTheme());
-secureHandle("app:getRecentFolders", () => appApi.appGetRecentFolders());
-secureHandle("app:getFavorites", () => appApi.appGetFavorites());
-secureHandle("app:toggleFavorite", (_e, path: unknown, title: unknown) =>
-  appApi.appToggleFavorite(path, title),
-);
-secureHandle("app:removeRecent", (_e, path: unknown) => appApi.appRemoveRecent(path));
-secureHandle("app:discoverProjects", () => appApi.appDiscoverProjects());
-secureHandle("app:classifyProject", (_e, projectDir: unknown) => appApi.appClassifyProject(projectDir));
-secureHandle("app:createProject", (_e, options: unknown) => appApi.appCreateProject(options));
-secureHandle("app:adoptFolder", (_e, options: unknown) => appApi.appAdoptFolder(options));
-secureHandle("app:setDirtyState", (_e, dirty: unknown) => appApi.appSetDirtyState(dirty));
-secureHandle("app:recordFlushFailure", (_e, projectDir: unknown) => appApi.appRecordFlushFailure(projectDir));
-secureHandle("app:acknowledgeFlushFailure", (_e, failedAt: unknown) =>
-  appApi.appAcknowledgeFlushFailure(failedAt),
-);
-secureHandle("app:appImageIntegrationStatus", () => appApi.appImageIntegrationStatus());
-secureHandle("app:appImageIntegrationInstall", () => appApi.appImageIntegrationInstall());
-secureHandle("app:appImageIntegrationRemove", () => appApi.appImageIntegrationRemove());
+// registrar below (SFE-P6b: electron/api/*.ts's own `register*Handlers`,
+// joining the handler logic those modules already held) runs a plain
+// function from electron/api/*.ts — the same validation and hook calls the
+// deleted routes used, ported verbatim (see each module's own header). A
+// thrown Error's message is exactly the message the HTTP route used to send
+// as its response body; ipcMain.handle surfaces it to ipcRenderer.invoke's
+// rejection the same way for every channel here, so callers keep reading
+// `e.message` (via `friendlyHostError`) as before.
+registerFsHandlers(secureHandle);
+registerDialogHandlers(secureHandle);
+registerShellHandlers(secureHandle);
+registerLogHandlers(secureHandle);
+registerAppHandlers(secureHandle);
 
 // ── project / manifest / tpl / snip / media / plugin / theme / vcs / style —
 // typed IPC (SFE-P5c2) ───────────────────────────────────────────────────
 // Replaces src/routes/api/{project,manifest,tpl,snip,media,plugin,theme,
 // vcs,style}/**/+server.ts. Same porting discipline as the P5c1 block above.
-
-secureHandle("project:listStyles", (_e, projectDir: unknown, repoRoot?: unknown) =>
-  projectApi.projectListStyles(projectDir, repoRoot),
-);
-
-secureHandle("manifest:read", (_e, projectDir: unknown) => manifestApi.manifestRead(projectDir));
-secureHandle("manifest:setFields", (_e, projectDir: unknown, updates: unknown) =>
-  manifestApi.manifestSetFields(projectDir, updates),
-);
-
-secureHandle("tpl:listBuiltIn", () => tplApi.tplListBuiltIn());
-secureHandle("tpl:listCustom", () => tplApi.tplListCustom());
-secureHandle("tpl:importFromFolder", () => tplApi.tplImportFromFolder());
-secureHandle("tpl:saveAsTemplate", (_e, projectDir: unknown, name: unknown, sharedRefs?: unknown) =>
-  tplApi.tplSaveAsTemplate(projectDir, name, sharedRefs),
-);
-
-secureHandle("snip:list", (_e, projectDir: unknown) => snipApi.snipList(projectDir));
-secureHandle("snip:read", (_e, projectDir: unknown, fileName: unknown) => snipApi.snipRead(projectDir, fileName));
-secureHandle("snip:save", (_e, projectDir: unknown, name: unknown, body: unknown) =>
-  snipApi.snipSave(projectDir, name, body),
-);
-secureHandle("snip:delete", (_e, projectDir: unknown, fileName: unknown) =>
-  snipApi.snipDelete(projectDir, fileName),
-);
-
-secureHandle("media:listImages", (_e, projectDir: unknown) => mediaApi.mediaListImages(projectDir));
-secureHandle("media:thumbnail", (_e, imagePath: unknown) => mediaApi.mediaThumbnail(imagePath));
-secureHandle("media:inspect", (_e, imagePath: unknown) => mediaApi.mediaInspect(imagePath));
-secureHandle("media:importImage", (_e, projectDir: unknown, src: unknown) =>
-  mediaApi.mediaImportImage(projectDir, src),
-);
-
-secureHandle("plugin:list", (_e, projectDir: unknown) => pluginApi.pluginList(projectDir));
-secureHandle("plugin:setEnabled", (_e, projectDir: unknown, ref: unknown, enabled: unknown) =>
-  pluginApi.pluginSetEnabled(projectDir, ref, enabled),
-);
-secureHandle("plugin:addNpm", (_e, projectDir: unknown, packageName: unknown, exportName?: unknown) =>
-  pluginApi.pluginAddNpm(projectDir, packageName, exportName),
-);
-secureHandle("plugin:addLocal", (_e, projectDir: unknown) => pluginApi.pluginAddLocal(projectDir));
-secureHandle("plugin:validate", (_e, projectDir: unknown) => pluginApi.pluginValidate(projectDir));
-secureHandle("plugin:recommended", () => pluginApi.pluginRecommended());
-
-secureHandle("theme:listBuiltIn", () => themeApi.themeListBuiltIn());
-secureHandle("theme:listProject", (_e, projectDir: unknown) => themeApi.themeListProject(projectDir));
-secureHandle("theme:getActive", (_e, projectDir: unknown) => themeApi.themeGetActive(projectDir));
-secureHandle("theme:apply", (_e, projectDir: unknown, target: unknown) => themeApi.themeApply(projectDir, target));
-secureHandle("theme:importFromFolder", (_e, projectDir: unknown) => themeApi.themeImportFromFolder(projectDir));
-secureHandle("theme:importFromFile", (_e, projectDir: unknown) => themeApi.themeImportFromFile(projectDir));
-secureHandle("theme:importFromUrl", (_e, projectDir: unknown, url: unknown) =>
-  themeApi.themeImportFromUrl(projectDir, url),
-);
-secureHandle("theme:readCss", (_e, projectDir: unknown, source: unknown) =>
-  themeApi.themeReadCss(projectDir, source),
-);
-secureHandle("theme:remove", (_e, projectDir: unknown, id: unknown) => themeApi.themeRemove(projectDir, id));
-secureHandle("theme:getPrevious", (_e, projectDir: unknown) => themeApi.themeGetPrevious(projectDir));
-secureHandle("theme:revert", (_e, projectDir: unknown) => themeApi.themeRevert(projectDir));
-
-secureHandle("vcs:enableVersionHistory", (_e, projectDir: unknown) =>
-  vcsApi.vcsEnableVersionHistory(projectDir),
-);
-secureHandle("vcs:listSnapshotsPage", (_e, projectDir: unknown, limit?: unknown, before?: unknown) =>
-  vcsApi.vcsListSnapshotsPage(projectDir, limit, before),
-);
-secureHandle("vcs:restoreSnapshot", (_e, projectDir: unknown, id: unknown) =>
-  vcsApi.vcsRestoreSnapshot(projectDir, id),
-);
-secureHandle("vcs:saveSnapshot", (_e, projectDir: unknown, message?: unknown) =>
-  vcsApi.vcsSaveSnapshot(projectDir, message),
-);
-
-secureHandle("style:setActive", (_e, projectDir: unknown, paths: unknown) =>
-  styleApi.styleSetActive(projectDir, paths),
-);
+registerProjectHandlers(secureHandle);
+registerManifestHandlers(secureHandle);
+registerTplHandlers(secureHandle);
+registerSnipHandlers(secureHandle);
+registerMediaHandlers(secureHandle);
+registerPluginHandlers(secureHandle);
+registerThemeHandlers(secureHandle);
+registerVcsHandlers(secureHandle);
+registerStyleHandlers(secureHandle);
 
 // ── updater / recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST
 // route group) ─────────────────────────────────────────────────────────────
 // Replaces src/routes/api/{updater,recovery,doctor,lint}/**/+server.ts —
-// the desktop HTTP route count reaches zero after this block. applyNow was
-// already IPC (see the updater wiring further below); getStatus/check/
-// download join it here, collapsing updater-capability.ts's HTTP+IPC
-// fan-out to a single transport.
-
-secureHandle("updater:getStatus", () => updaterApi.updaterGetStatus());
-secureHandle("updater:check", () => updaterApi.updaterCheck());
-secureHandle("updater:download", () => updaterApi.updaterDownload());
-
-secureHandle("recovery:write", (_e, filePath: unknown, content: unknown, baseMtimeMs: unknown) =>
-  recoveryApi.recoveryWrite(filePath, content, baseMtimeMs),
-);
-secureHandle("recovery:clear", (_e, filePath: unknown) => recoveryApi.recoveryClear(filePath));
-secureHandle("recovery:list", (_e, projectDir: unknown) => recoveryApi.recoveryList(projectDir));
-
-secureHandle("doctor:getDiagnostics", () => doctorApi.doctorGetDiagnostics());
-
-secureHandle("lint:checkCss", (_e, cssPath: unknown, content: unknown) =>
-  lintApi.lintCheckCss(cssPath, content),
-);
-secureHandle("lint:project", (_e, projectDir: unknown) => lintApi.lintProject(projectDir));
+// the desktop HTTP route count reaches zero after this block. applyNow
+// (electron/updater.ts's `installNow`) is registered alongside getStatus/
+// check/download by the SAME `registerUpdaterHandlers` call — collapsing
+// updater-capability.ts's HTTP+IPC fan-out to a single transport, and (SFE-
+// P6b) the four separately-timed `secureHandle` calls this file used to
+// carry for the group into one registrar call, called here rather than
+// later next to `initUpdater()` (registration order across independent
+// channels does not affect behavior — see this run's ledger note).
+registerUpdaterHandlers(secureHandle);
+registerRecoveryHandlers(secureHandle);
+registerDoctorHandlers(secureHandle);
+registerLintHandlers(secureHandle);
 
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {
@@ -1574,19 +1412,15 @@ async function showLinuxCredentialStorageNoticeOnce(): Promise<void> {
   }
 }
 
-secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", async () => {
-    const info = await githubDeviceFlow.start();
-    await showLinuxCredentialStorageNoticeOnce();
-    return info;
-  }),
-);
-
-secureHandle("remote:connectGitHubWait", () =>
-  handleRemoteErrors("remote:connectGitHubWait", () => githubDeviceFlow.wait()),
-);
-
-secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel());
+// remote:connectGitHubStart/Wait/Cancel — the one part of the GitHub/remote
+// surface that isn't a plain `getRemoteHooks()` delegate (it closes over the
+// live `githubDeviceFlow` instance and the Linux-keyring notice above, both
+// main.ts-composed) — registered by its own thin registrar (SFE-P6b:
+// electron/github-device-flow-registrar.ts).
+registerGitHubDeviceFlowHandlers(secureHandle, {
+  githubDeviceFlow,
+  showLinuxCredentialStorageNoticeOnce,
+});
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
@@ -1607,69 +1441,23 @@ function sanitizeBookSubPath(subPath: unknown): string {
 // remote:listBranches, remote:listRepoBooks, remote:diagnoseProject,
 // remote:testRemoteAccess, remote:connectGenericHost, remote:disconnectHost,
 // remote:listConnections, remote:forgeTokenUrl, remote:sync,
-// remote:cloneRepository — SFE-P5c3, restored from SvelteKit server routes
-// to typed IPC (the credentials-sensitive group). Every handler lives in
-// electron/api/remote.ts and reuses remoteHooksImpl (below `registerHostServices`
-// call further down still supplies it) through getRemoteHooks() —
-// cloneRepository stays the bound closure on remoteHooksImpl it always was
-// (it needs mainWindow for the clone-progress push, which a plain function
-// module cannot reach), unchanged by this run.
-secureHandle("remote:disconnectGitHub", () => remoteApi.remoteDisconnectGitHub());
-secureHandle("remote:getConnection", (_e, host?: unknown) => remoteApi.remoteGetConnection(host));
-secureHandle("remote:listRepositories", () => remoteApi.remoteListRepositories());
-secureHandle("remote:listBranches", (_e, owner: unknown, repo: unknown) =>
-  remoteApi.remoteListBranches(owner, repo),
-);
-secureHandle("remote:listRepoBooks", (_e, owner: unknown, repo: unknown, branch: unknown) =>
-  remoteApi.remoteListRepoBooks(owner, repo, branch),
-);
-secureHandle("remote:diagnoseProject", (_e, projectDir: unknown) =>
-  remoteApi.remoteDiagnoseProject(projectDir),
-);
-secureHandle("remote:testRemoteAccess", (_e, url: unknown) => remoteApi.remoteTestRemoteAccess(url));
-secureHandle("remote:connectGenericHost", (_e, args: unknown) =>
-  remoteApi.remoteConnectGenericHost(args),
-);
-secureHandle("remote:disconnectHost", (_e, host: unknown) => remoteApi.remoteDisconnectHost(host));
-secureHandle("remote:listConnections", () => remoteApi.remoteListConnections());
-secureHandle("remote:forgeTokenUrl", (_e, host: unknown) => remoteApi.remoteForgeTokenUrl(host));
-secureHandle("remote:sync", (_e, projectDir: unknown, message?: unknown) =>
-  remoteApi.remoteSync(projectDir, message),
-);
-secureHandle("remote:cloneRepository", (_e, args: unknown) => remoteApi.remoteCloneRepository(args));
-
-// sync:setAutoSync, sync:getStatus — SFE-P5c3, restored to typed IPC (same
-// group; sync/remote/GitHub is one bounded context, D10).
-secureHandle("sync:setAutoSync", (_e, enabled: unknown) => remoteApi.syncSetAutoSync(enabled));
-secureHandle("sync:getStatus", (_e, projectDir: unknown) => remoteApi.syncGetStatus(projectDir));
+// remote:cloneRepository, sync:setAutoSync, sync:getStatus — SFE-P5c3,
+// restored from SvelteKit server routes to typed IPC (the
+// credentials-sensitive group). Every handler lives in electron/api/remote.ts
+// and reuses remoteHooksImpl (below `registerHostServices` call further down
+// still supplies it) through getRemoteHooks() — cloneRepository stays the
+// bound closure on remoteHooksImpl it always was (it needs mainWindow for
+// the clone-progress push, which a plain function module cannot reach).
+// SFE-P6b moved the `secureHandle` registrations themselves into that same
+// module's `registerRemoteHandlers` — see its header for what stays out
+// (connectGitHubStart/Wait/Cancel, just above).
+registerRemoteHandlers(secureHandle);
 
 // publish:list, publish:providers, publish:connect, publish:disconnect,
 // publish:setConfig, publish:preflight, publish:run — SFE-P5c3, restored to
 // typed IPC. Publishing shares the remote hooks bag (electron/api/publish.ts's
 // own header explains why) rather than a parallel registration.
-secureHandle("publish:list", (_e, projectDir: unknown) => publishApi.publishListProviders(projectDir));
-secureHandle("publish:providers", () => publishApi.publishProviders());
-secureHandle(
-  "publish:connect",
-  (_e, projectDir: unknown, providerId: unknown, token: unknown, account?: unknown) =>
-    publishApi.publishConnect(projectDir, providerId, token, account),
-);
-secureHandle("publish:disconnect", (_e, providerId: unknown, account?: unknown) =>
-  publishApi.publishDisconnect(providerId, account),
-);
-secureHandle(
-  "publish:setConfig",
-  (_e, projectDir: unknown, providerId: unknown, values: unknown) =>
-    publishApi.publishSetConfig(projectDir, providerId, values),
-);
-secureHandle("publish:preflight", (_e, projectDir: unknown, providerIds: unknown) =>
-  publishApi.publishPreflight(projectDir, providerIds),
-);
-secureHandle(
-  "publish:run",
-  (_e, projectDir: unknown, providerId: unknown, artifactPath?: unknown, dryRun?: unknown) =>
-    publishApi.publishRun(projectDir, providerId, artifactPath, dryRun),
-);
+registerPublishHandlers(secureHandle);
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
@@ -1834,26 +1622,20 @@ const previewOpen = new PreviewOpenController({
   setTimeout: (cb, ms) => setTimeout(cb, ms),
 });
 
-secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
+// api:preview / api:stopPreview registered by PreviewOpenController's own
+// registrar (SFE-P6b: electron/preview/controller.ts's registerPreviewHandlers).
+registerPreviewHandlers(secureHandle, previewOpen);
 
-secureHandle("api:stopPreview", () => previewOpen.stop());
-
-secureHandle("api:cancelExport", async (_e, exportId: string) => {
-  const session = getActiveExportSession();
-  if (!session || session.id !== exportId) {
-    return { canceled: false };
-  }
-  session.canceled = true;
-  const exportWin = session.win;
-  if (exportWin && !exportWin.isDestroyed()) {
-    exportWin.destroy();
-  }
-  return { canceled: true };
-});
+// api:cancelExport registered by pdf-export.ts's own registrar (SFE-P6b) —
+// it only touches that module's active-export-session state, no
+// main.ts-composed dependency.
+registerPdfExportHandlers(secureHandle);
 
 // The api:build export pipeline lives in electron/export/controller.ts as an
 // injected-deps class (unit-tested in tests/platform/export-controller.test.ts).
-// main.ts wires the live host touch-points and keeps a thin delegating handler.
+// main.ts wires the live host touch-points; the `api:build` `secureHandle`
+// registration itself is that same module's own `registerExportHandlers`
+// (SFE-P6b).
 const exportController = new ExportController({
   loadLib,
   tokenStore: electronTokenStore,
@@ -1872,7 +1654,7 @@ const exportController = new ExportController({
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
-secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+registerExportHandlers(secureHandle, exportController);
 
 // ── Rich-editor plugin-aware projection (SFE-P3e) ───────────────────────────
 //
@@ -1880,23 +1662,10 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 // OPEN project's manifest + real loaded plugins, build a plugin-aware,
 // trusted `GutterpressProjection` for whatever source the renderer is
 // currently editing. See electron/editor-projection.ts for the pure,
-// unit-tested implementation this handler validates arguments for and then
-// calls unchanged.
-//
-// SFE-P3e review round 2 (CONFIRMED finding): argument validation and D14
-// classification moved into `editor-projection.ts`'s `resolveEditorProjection`
-// — a rejected `ipcMain.handle` promise cannot carry a custom `.code`
-// property across Electron's IPC boundary (only `message`/`stack` survive
-// serialization), so the classification a caller needs to distinguish
-// `EDITOR_FILE_TOO_LARGE` from `EDITOR_PLUGIN_LOAD_FAILED` must travel in a
-// RESOLVED value instead. See that module's own header for the full
-// account. This handler is now a thin delegate, matching the `api:build`/
-// `ExportController` precedent just above.
-
-secureHandle(
-  "api:editorProjection",
-  (_e, args: unknown): Promise<EditorProjectionOutcome> => resolveEditorProjection(args, activeWorkspaceRoot),
-);
+// unit-tested implementation, its own `registerEditorProjectionHandlers`
+// (SFE-P6b), and the argument validation/D14 classification
+// (`resolveEditorProjection`) that handler calls.
+registerEditorProjectionHandlers(secureHandle, () => activeWorkspaceRoot);
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)
@@ -1910,10 +1679,12 @@ secureHandle(
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — but as of SFE-P5c4 they are
 // typed IPC (`updater:getStatus`/`updater:check`/`updater:download`,
-// registered above) like everything else, collapsing the HTTP+IPC fan-out
-// this comment used to document. applyNow was always IPC: it flushes the
-// live renderer's unsaved buffer via `mainWindow.webContents.send` before
-// quitting — a live-BrowserWindow call §8 sanctions.
+// registered by `registerUpdaterHandlers` above) like everything else,
+// collapsing the HTTP+IPC fan-out this comment used to document. applyNow
+// (registered by that same call) was always IPC: `prepareToInstall` below
+// flushes the live renderer's unsaved buffer via
+// `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
+// §8 sanctions.
 // ──────────────────────────────────────────────────────────────────────────
 
 function sendUpdaterEvent(event: UpdaterEventPayload) {
@@ -1936,8 +1707,6 @@ initUpdater(sendUpdaterEvent, {
     return true;
   },
 });
-
-secureHandle("updater:applyNow", () => installNow());
 
 // ──────────────────────────────────────────────────────────────────────────
 // App lifecycle

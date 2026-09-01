@@ -18,6 +18,7 @@
  */
 import { getDesktopHooks } from "../server-bridge/host-hooks";
 import { loadLib } from "./lib-loader";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 import { requireAbsolute, requireProjectDir, requireWithinProjectRoot } from "./validation";
 
 /** List the open project's configured plugins. */
@@ -99,4 +100,18 @@ export async function pluginValidate(rawProjectDir: unknown): Promise<unknown> {
 export async function pluginRecommended(): Promise<unknown> {
   const lib = await loadLib();
   return lib.RECOMMENDED_PLUGINS;
+}
+
+/** Register the plugin:* IPC channels (SFE-P6b). */
+export function registerPluginHandlers(secureHandle: SecureHandle): void {
+  secureHandle("plugin:list", (_e, projectDir: unknown) => pluginList(projectDir));
+  secureHandle("plugin:setEnabled", (_e, projectDir: unknown, ref: unknown, enabled: unknown) =>
+    pluginSetEnabled(projectDir, ref, enabled),
+  );
+  secureHandle("plugin:addNpm", (_e, projectDir: unknown, packageName: unknown, exportName?: unknown) =>
+    pluginAddNpm(projectDir, packageName, exportName),
+  );
+  secureHandle("plugin:addLocal", (_e, projectDir: unknown) => pluginAddLocal(projectDir));
+  secureHandle("plugin:validate", (_e, projectDir: unknown) => pluginValidate(projectDir));
+  secureHandle("plugin:recommended", () => pluginRecommended());
 }

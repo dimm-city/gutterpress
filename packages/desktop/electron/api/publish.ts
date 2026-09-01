@@ -47,6 +47,7 @@ import {
   type PreflightRow,
   type PreflightSeverity,
 } from "../../src/lib/preflight";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** Lib provider description (mirrors the lib's PublishProviderInfo). */
 export interface LibPublishProviderInfo {
@@ -377,4 +378,31 @@ export async function publishRun(
     );
     return { ...result, log };
   });
+}
+
+/** Register the publish:* IPC channels (SFE-P6b). */
+export function registerPublishHandlers(secureHandle: SecureHandle): void {
+  secureHandle("publish:list", (_e, projectDir: unknown) => publishListProviders(projectDir));
+  secureHandle("publish:providers", () => publishProviders());
+  secureHandle(
+    "publish:connect",
+    (_e, projectDir: unknown, providerId: unknown, token: unknown, account?: unknown) =>
+      publishConnect(projectDir, providerId, token, account),
+  );
+  secureHandle("publish:disconnect", (_e, providerId: unknown, account?: unknown) =>
+    publishDisconnect(providerId, account),
+  );
+  secureHandle(
+    "publish:setConfig",
+    (_e, projectDir: unknown, providerId: unknown, values: unknown) =>
+      publishSetConfig(projectDir, providerId, values),
+  );
+  secureHandle("publish:preflight", (_e, projectDir: unknown, providerIds: unknown) =>
+    publishPreflight(projectDir, providerIds),
+  );
+  secureHandle(
+    "publish:run",
+    (_e, projectDir: unknown, providerId: unknown, artifactPath?: unknown, dryRun?: unknown) =>
+      publishRun(projectDir, providerId, artifactPath, dryRun),
+  );
 }

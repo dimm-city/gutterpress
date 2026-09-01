@@ -6,6 +6,7 @@
  */
 import { loadApiLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** Read the author-facing manifest subset for the Config view's Details section. */
 export async function manifestRead(rawProjectDir: unknown): Promise<unknown> {
@@ -22,4 +23,12 @@ export async function manifestSetFields(rawProjectDir: unknown, rawUpdates: unkn
   }
   const lib = await loadApiLib();
   return lib.setManifestFields(projectDir, rawUpdates as Parameters<typeof lib.setManifestFields>[1]);
+}
+
+/** Register the manifest:* IPC channels (SFE-P6b). */
+export function registerManifestHandlers(secureHandle: SecureHandle): void {
+  secureHandle("manifest:read", (_e, projectDir: unknown) => manifestRead(projectDir));
+  secureHandle("manifest:setFields", (_e, projectDir: unknown, updates: unknown) =>
+    manifestSetFields(projectDir, updates),
+  );
 }

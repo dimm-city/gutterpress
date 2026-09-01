@@ -8,6 +8,7 @@
  */
 import { loadApiLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 /** Replace the manifest's active `styles:` list (reorder + toggle). */
 export async function styleSetActive(rawProjectDir: unknown, rawPaths: unknown): Promise<unknown> {
@@ -17,4 +18,11 @@ export async function styleSetActive(rawProjectDir: unknown, rawPaths: unknown):
   }
   const lib = await loadApiLib();
   return lib.setActiveStyles(projectDir, rawPaths as string[]);
+}
+
+/** Register the style:* IPC channels (SFE-P6b). */
+export function registerStyleHandlers(secureHandle: SecureHandle): void {
+  secureHandle("style:setActive", (_e, projectDir: unknown, paths: unknown) =>
+    styleSetActive(projectDir, paths),
+  );
 }
