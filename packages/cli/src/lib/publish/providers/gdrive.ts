@@ -15,7 +15,7 @@
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { zip as zipAsyncCb, type AsyncZipOptions, type FlateError, type Zippable } from "fflate";
+import { Zip, ZipDeflate, type DeflateOptions, type FlateError } from "fflate";
 import { bookSlug } from "../../output-paths.ts";
 import {
   GDRIVE_HOST,
@@ -146,17 +146,101 @@ interface UploadSource {
   cleanup: () => Promise<void>;
 }
 
-/** Promisified wrapper over fflate's callback-based async `zip()`. Unlike
- * `zipSync()`, this does not block the Node event loop for the archive's
- * full build duration — load-bearing when this code runs inside the
- * Electron MAIN process (desktop publish), where a synchronous zip of a
- * large website export would freeze the whole app UI and stall the
- * `onProgress` stream for as long as the archive takes to build. */
-function zipAsync(data: Zippable, opts: AsyncZipOptions): Promise<Uint8Array> {
+/** Bytes pushed into fflate's streaming `ZipDeflate` per `push()` call (see
+ * `zipEntriesNonBlocking` below) — small enough that no single push blocks
+ * the event loop for long, large enough not to dominate runtime with
+ * per-chunk overhead. */
+const ZIP_CHUNK_BYTES = 64 * 1024;
+
+/** Yield one turn of the event loop. A `setImmediate` macrotask, not a
+ * microtask (`queueMicrotask`/bare `await`) — a microtask-only yield still
+ * starves timers/I/O and the WebSocket `onProgress` stream this exists to
+ * keep alive. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Build a ZIP archive from `entries` without blocking the event loop for the
+ * archive's whole build time — and WITHOUT ever touching fflate's
+ * worker-based async API.
+ *
+ * This replaced a call to fflate's async `zip()` after a review finding
+ * (#221 group A, A7 follow-up) showed that API is non-blocking only because
+ * it hands any entry >= ~156 KB (`size < 160000` in fflate's own source) off
+ * to a `worker_threads` Worker running an eval'd copy of fflate's source
+ * (fflate's `wrk()`/`astrmify`, `node-worker.cjs`). That works under plain
+ * Node, but under both `bun` and a `bun build --compile` binary — this
+ * project's actual shipped artifact, see CLAUDE.md "What Gutterpress ships"
+ * — the eval'd worker throws `TypeError: undefined is not an object
+ * (evaluating 'dat.length')` for any such entry. Every real book's
+ * `book.html` exceeds that threshold, so gdrive's HTML publish was broken in
+ * the shipped CLI binary despite being claimed fixed. `zipSync()` doesn't
+ * hit this — it never spawns a worker — but it blocks the event loop for the
+ * archive's whole build, which is what non-blocking exists to avoid in the
+ * first place (Electron MAIN process, desktop publish: a synchronous zip of
+ * a large website export freezes the app UI and stalls the `onProgress`
+ * stream for as long as the archive takes to build).
+ *
+ * The fix streams each entry through fflate's fully SYNCHRONOUS `ZipDeflate`
+ * (backed by fflate's in-thread `Deflate` stream — no worker, ever, at any
+ * size) in `ZIP_CHUNK_BYTES` pieces, yielding one event-loop turn between
+ * chunks. That keeps the event loop responsive — the same goal the worker
+ * API existed for — using only fflate code paths that run in-thread and are
+ * therefore correct under `bun build --compile`.
+ */
+function zipEntriesNonBlocking(
+  entries: Record<string, Uint8Array>,
+  opts: DeflateOptions,
+): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    zipAsyncCb(data, opts, (err: FlateError | null, zipped: Uint8Array) => {
-      if (err) reject(err);
-      else resolve(zipped);
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let settled = false;
+
+    const archive = new Zip((err: FlateError | null, chunk: Uint8Array | null, final: boolean | undefined) => {
+      if (settled) return;
+      if (err) {
+        settled = true;
+        reject(err);
+        return;
+      }
+      if (chunk) {
+        chunks.push(chunk);
+        total += chunk.length;
+      }
+      if (final) {
+        settled = true;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          out.set(c, offset);
+          offset += c.length;
+        }
+        resolve(out);
+      }
+    });
+
+    (async () => {
+      for (const [name, data] of Object.entries(entries)) {
+        const stream = new ZipDeflate(name, opts);
+        archive.add(stream);
+        if (data.length === 0) {
+          stream.push(new Uint8Array(0), true);
+          continue;
+        }
+        for (let offset = 0; offset < data.length; offset += ZIP_CHUNK_BYTES) {
+          const end = Math.min(offset + ZIP_CHUNK_BYTES, data.length);
+          stream.push(data.subarray(offset, end), end >= data.length);
+          await yieldToEventLoop();
+        }
+      }
+      archive.end();
+    })().catch((e) => {
+      if (!settled) {
+        settled = true;
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
     });
   });
 }
@@ -172,7 +256,7 @@ function zipAsync(data: Zippable, opts: AsyncZipOptions): Promise<Uint8Array> {
 async function collectZipEntries(
   root: string,
   dir: string,
-  out: Zippable,
+  out: Record<string, Uint8Array>,
   onWarn?: (message: string) => void,
 ): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -201,14 +285,14 @@ async function collectZipEntries(
 
 /**
  * Package the HTML export directory into a single ZIP (D8: Drive is file
- * delivery, not web hosting — no N-file folder mirroring). Built with
- * fflate's async `zip()` (already a dependency, see theme-import.ts for the
- * sibling unzip-side usage) so building the archive doesn't block the event
- * loop, then written to a temp file so the existing file-based
- * `resumableUpload` (google-drive.ts) can read it incrementally like any
- * other artifact. Note this is true only of the UPLOAD step — the ZIP-BUILD
- * step above necessarily holds the whole compressed archive in memory via
- * fflate's in-memory `zip()` API before it's written out below.
+ * delivery, not web hosting — no N-file folder mirroring). Built via
+ * `zipEntriesNonBlocking` (fflate is already a dependency, see
+ * theme-import.ts for the sibling unzip-side usage) so building the archive
+ * doesn't block the event loop, then written to a temp file so the existing
+ * file-based `resumableUpload` (google-drive.ts) can read it incrementally
+ * like any other artifact. Note this is true only of the UPLOAD step — the
+ * ZIP-BUILD step above necessarily holds the whole compressed archive in
+ * memory before it's written out below.
  */
 export async function zipHtmlExport(
   exportDir: string,
@@ -219,13 +303,13 @@ export async function zipHtmlExport(
   // mkdtemp, without touching the real filesystem's failure modes.
   writeArchiveImpl: (filePath: string, data: Uint8Array) => Promise<void> = writeFile,
 ): Promise<UploadSource> {
-  const entries: Zippable = {};
+  const entries: Record<string, Uint8Array> = {};
   await collectZipEntries(exportDir, exportDir, entries, onWarn);
   const fileName = `${bookSlug(title)}-website.zip`;
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-"));
   try {
     const filePath = path.join(tmpRoot, fileName);
-    const zipped = await zipAsync(entries, { level: 6 });
+    const zipped = await zipEntriesNonBlocking(entries, { level: 6 });
     await writeArchiveImpl(filePath, zipped);
     return {
       filePath,

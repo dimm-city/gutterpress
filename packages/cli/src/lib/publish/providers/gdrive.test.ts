@@ -591,7 +591,73 @@ test("upload reuses the exact same update-in-place resumable flow for an HTML ex
 
 // ── zipHtmlExport: async zip build, temp-dir cleanup, symlink handling ──────
 
-test("zipHtmlExport (A7) builds via fflate's async zip() and produces correct, complete output", async () => {
+/** Runs `fn`, counting `setImmediate` turns the event loop got while it was
+ * pending — used below to prove `zipHtmlExport` actually yields during a
+ * large entry's compression rather than blocking the event loop for the
+ * whole build (the property the A7 fix exists for). */
+async function countEventLoopTicks<T>(fn: () => Promise<T>): Promise<{ result: T; ticks: number }> {
+  let ticks = 0;
+  let running = true;
+  const loop = () => {
+    if (!running) return;
+    ticks++;
+    setImmediate(loop);
+  };
+  setImmediate(loop);
+  try {
+    const result = await fn();
+    return { result, ticks };
+  } finally {
+    running = false;
+  }
+}
+
+test("zipHtmlExport (A7 fix) stays non-blocking and correct across fflate's 160KB worker-dispatch threshold under bun", async () => {
+  // Review finding: fflate's async zip() only avoids blocking by handing any
+  // entry >= ~156 KB (fflate's own `size < 160000` inline-vs-worker check)
+  // off to a worker_threads Worker running an eval'd copy of fflate's
+  // source. That throws under both `bun` (this test's own runtime) and a
+  // `bun build --compile` binary — the previous A7 fix's own tests never
+  // crossed the threshold, so they stayed green while gdrive HTML publish
+  // was broken for every real book. This fixture deliberately crosses it.
+  const smallDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  const bigDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await writeFile(path.join(smallDir, BOOK_HTML), "<html></html>");
+    const bigContent = `<html><body>${"a".repeat(300_000)}</body></html>`; // > 160000-byte threshold
+    await writeFile(path.join(bigDir, BOOK_HTML), bigContent);
+
+    const { result: smallSource, ticks: smallTicks } = await countEventLoopTicks(() =>
+      zipHtmlExport(smallDir, "Small Book"),
+    );
+    const { result: bigSource, ticks: bigTicks } = await countEventLoopTicks(() =>
+      zipHtmlExport(bigDir, "Big Book"),
+    );
+    try {
+      // Correctness across the threshold: this is exactly the call that
+      // threw `TypeError: undefined is not an object (evaluating
+      // 'dat.length')` under bun before this fix.
+      const zipped = await readFile(bigSource.filePath);
+      const unzipped = unzipSync(zipped);
+      expect(Buffer.from(unzipped[BOOK_HTML]!).toString("utf8")).toBe(bigContent);
+
+      // Non-blocking: the big entry is chunked into multiple ZIP_CHUNK_BYTES
+      // pushes, each yielding one event-loop turn, so it must produce
+      // noticeably more ticks than the tiny entry (well under one chunk).
+      // A reversion to a fully synchronous build (e.g. zipSync) would show
+      // no such gap, since nothing would yield mid-compression.
+      expect(bigTicks).toBeGreaterThan(smallTicks + 2);
+    } finally {
+      await smallSource.cleanup();
+      await bigSource.cleanup();
+    }
+  } finally {
+    await rm(smallDir, { recursive: true, force: true });
+    await rm(bigDir, { recursive: true, force: true });
+  }
+});
+
+test("zipHtmlExport (A7) builds via a streaming, non-blocking zip and produces correct, complete output", async () => {
   const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
   try {
     await mkdir(path.join(exportDir, "assets"), { recursive: true });
