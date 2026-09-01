@@ -42,6 +42,7 @@ import {
   type PublishProviderInfo,
   type PublishRequest,
 } from "../types.ts";
+import type { HostCredential } from "../../remote-auth/token-store.ts";
 
 /** Default folder name when the manifest sets neither `folder` nor
  * `folderId` (D5, ratified: one shared "Gutterpress" folder, not
@@ -91,20 +92,36 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Mint a fresh access token for this operation (D4: refresh-on-demand, never
- * persisted). Throws a friendly, token-free error when there's no stored
- * credential or no client configured. */
+/** Exchange an already-resolved credential's refresh token for a fresh access
+ * token (D4: refresh-on-demand, never persisted). Split out from
+ * {@link getAccessToken} so `authenticate` — the one caller that also needs
+ * `source` available on a LATER failure (refresh/driveAbout), not just on
+ * success — can resolve the credential once itself and mint from that,
+ * instead of paying for a second `resolvePublishCredential` (a token-store
+ * read) inside `getAccessToken`. */
+async function mintAccessToken(
+  resolved: { credential: HostCredential; source: "env" | "store" },
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  const { clientId, clientSecret } = requireGoogleClientCredentials();
+  const { accessToken } = await refreshAccessToken(fetchImpl, {
+    clientId,
+    clientSecret,
+    refreshToken: resolved.credential.token,
+  });
+  return accessToken;
+}
+
+/** Mint a fresh access token for this operation. Throws a friendly,
+ * token-free error when there's no stored credential or no client
+ * configured. For callers (listDestinations/createDestination/upload) that
+ * only need the token, not `source` on a failure path. */
 async function getAccessToken(
   req: PublishRequest,
 ): Promise<{ accessToken: string; source: "env" | "store" }> {
   const resolved = await resolvePublishCredential(info, req.deps);
   if (!resolved) throw new Error(NOT_CONNECTED_MESSAGE);
-  const { clientId, clientSecret } = requireGoogleClientCredentials();
-  const { accessToken } = await refreshAccessToken(req.deps.fetch ?? globalThis.fetch, {
-    clientId,
-    clientSecret,
-    refreshToken: resolved.credential.token,
-  });
+  const accessToken = await mintAccessToken(resolved, req.deps.fetch ?? globalThis.fetch);
   return { accessToken, source: resolved.source };
 }
 
@@ -330,10 +347,14 @@ export const gdriveProvider: PublishProvider = {
   info,
 
   async authenticate(req): Promise<PublishAuthStatus> {
+    // Resolved ONCE here (not via getAccessToken, which would re-resolve) —
+    // `source` needs to be available for the catch below too, on a failure
+    // that happens after a credential was found (an expired refresh token,
+    // an offline driveAbout), not just on success.
     const resolved = await resolvePublishCredential(info, req.deps);
     if (!resolved) return { ok: false, message: NOT_CONNECTED_MESSAGE };
     try {
-      const { accessToken } = await getAccessToken(req);
+      const accessToken = await mintAccessToken(resolved, req.deps.fetch ?? globalThis.fetch);
       // Confirms the token actually works (not just present) — mirrors
       // shopify.ts's authenticate, which makes one real API call.
       await driveAbout(req.deps.fetch ?? globalThis.fetch, accessToken);

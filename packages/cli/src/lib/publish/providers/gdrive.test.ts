@@ -356,6 +356,31 @@ test("GDRIVE_REFRESH_TOKEN env var wins over a stored credential", async () => {
   }
 });
 
+test("authenticate reads the credential store exactly once (no redundant re-resolve before minting the access token)", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const artifactPath = await fakeArtifact(dir);
+    const deps = await depsFor(dir, {});
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "stored-rt", createdAt: 1 });
+    let getCalls = 0;
+    const innerGet = deps.tokenStore.get.bind(deps.tokenStore);
+    deps.tokenStore.get = (host: string) => {
+      getCalls++;
+      return innerGet(host);
+    };
+    const { fetchImpl } = fakeFetch({ folders: [] });
+    deps.fetch = fetchImpl;
+    const req = await requestFor(dir, deps, artifactPath);
+    req.config = {};
+
+    const auth = await gdriveProvider.authenticate(req);
+    expect(auth.ok).toBe(true);
+    expect(getCalls).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("named-account compound key: authenticate resolves the account-specific credential, not the default", async () => {
   const dir = await tempProject(MANIFEST);
   try {
