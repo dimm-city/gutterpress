@@ -719,17 +719,37 @@ SFE-P3d-sweep+P3f's repair round considered two equally-sound fixes for the
 missing `absoluteStart` check: (a) fall back to a full `Pe.measure()`
 whenever `absoluteStart` changed (what shipped), or (b) keep translating
 but additionally shift every cached `sourceRange` by the observed
-`absoluteStart` delta, avoiding the remeasure. (a) was chosen: it is the
+`absoluteStart` delta, avoiding the remeasure. (a) was chosen on
+correctness/simplicity grounds despite a real, measured cost: it is the
 smaller, more obviously correct change (one added comparison, no new
-arithmetic on `sourceRange`), it cannot silently miscompute a shift the way
-a `dOff`-arithmetic bug could, and D13's own budget numbers this run
-recorded were produced by an APPEND-ONLY typing workload where NO block's
-`absoluteStart` ever changes mid-benchmark except the actively-edited
-block's own (which never qualified for `gpReusable` regardless, since its
-view-node identity changes too) — so the fallback costs nothing measurable
-on the exact benchmark D13 gates, while being strictly safer for every
-other edit shape. See `p3d-sweep-audit.md`'s "## Lane E (P3f)" section for
-the re-measured numbers confirming this.
+arithmetic on `sourceRange`), and it cannot silently miscompute a shift the
+way a `dOff`-arithmetic bug could. But the D13 benchmark harness
+(`packages/editor/tests/perf/support/drive.ts`) does not exercise an
+append-only workload — its `page.click(selector)` + `press("End")` lands
+the caret at character ~937 of 256,018, under 1% into the document, so
+nearly every block's `absoluteStart` shifts on nearly every keystroke.
+Against that (unfixed) navigation, (a) forfeits the entire apparent win:
+the re-measured p95 across this repair round's two clean invocations is
+560.2-577.0 ms, statistically indistinguishable from the unpatched
+554.3-631.7 ms band (Lane B/Lane D) — roughly 240 ms of the originally
+reported 290.3-339.7 ms p95 evaporates once the `absoluteStart` fix makes
+`gpReusable` correctly fall through to a full remeasure for those blocks.
+A throwaway diagnostic navigating with `Control+End` (a genuine
+end-of-document edit, where every earlier block's `absoluteStart` is
+legitimately unchanged) confirmed the mechanism itself is real and
+correctly gated: 4 `document.createRange()` calls per keystroke, matching
+the design intent. So (a)'s cost is real only on the benchmark's current
+(broken) navigation, not on the workload this patch targets — but the D13
+gate measures the former, not the latter, and reports it that way. Option
+(b) — shifting cached `sourceRange`s instead of falling back — is left
+open for a future run once `drive.ts`'s navigation is fixed and the actual
+end-of-document workload can be measured; it was not taken up this round
+because it adds `sourceRange` arithmetic that is exactly the kind of
+subtle-bug surface the `absoluteStart` fix was written to close, and doing
+that safely deserves a run of its own. See `p3d-sweep-audit.md`'s "## Lane
+E (P3f)" section, in particular its "Repair round 1 correction" box and
+"Before/after — all four sizes (SFE-P3d-sweep+P3f repair round 1:
+RE-MEASURED)" table, for the full measured record.
 
 ### Why the cheap read is never skipped
 
