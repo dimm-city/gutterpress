@@ -1,16 +1,11 @@
 # Inline editing plan
 
-> **Status 2026-08-24: SHIPPED.** The original 1128-line plan shipped in full
-> over six PRs — click-to-source, `data-source-range`, the bridge protocol, the
+> **Status: SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.11, SFE-P4) —
+> historical record.** The original 1128-line plan shipped in full over six
+> PRs — click-to-source, `data-source-range`, the bridge protocol, the
 > commit engine, the right-click menu, selection formatting, and the
 > click-to-edit block overlay. **In-flow editing then replaced the overlay**
-> (bridge protocol v8). This document records that design as built.
->
-> Entry points: the context menu's "Edit this block" **and** double-click on any
-> annotated block. Both land on the same host handler.
->
-> Background and the decisions that survive: [ADR 0009](./adr/0009-inline-editing-source-ranges.md)
-> (revised 2026-08-24).
+> (bridge protocol v8). This document recorded that design as built.
 >
 > **Removed 2026-09-01 (0.11, SFE-P4).** The in-flow/preview-mutation design
 > this document records — `InlineEditController`, `CommitEngine`, the
@@ -27,6 +22,13 @@
 > below as live. See the deletion ledger
 > ([`docs/plans/source-first-editor/deletion-ledger.md`](./plans/source-first-editor/deletion-ledger.md),
 > "SFE-P4" entry) for the measured deletion proof.
+>
+> Entry points (historical, before removal): the context menu's "Edit this
+> block" **and** double-click on any annotated block. Both landed on the
+> same host handler.
+>
+> Background and the decisions that survive: [ADR 0009](./adr/0009-inline-editing-source-ranges.md)
+> (revised 2026-08-24).
 
 ## 1. Why editing happens in the page
 

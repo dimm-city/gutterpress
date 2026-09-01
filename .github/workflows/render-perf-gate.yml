@@ -4,8 +4,8 @@ name: Gutterpress desktop app gates
 # Two jobs, one per gate class, because they cannot share a runner (see
 # "── Why two jobs" below). Both build the desktop app the same way and then
 # launch it; neither can be reduced below that. The file keeps its
-# render-perf-gate.yml name because tests/perf/render-gate.mjs and
-# tests/integration/inline-editing.pw.mjs cite it by path.
+# render-perf-gate.yml name because tests/perf/render-gate.mjs cites it by
+# path.
 #
 # ── Why two jobs ────────────────────────────────────────────────────────────
 # Every step in both classes launches Electron and leaks it on exit, and
@@ -69,16 +69,9 @@ name: Gutterpress desktop app gates
 #   (checks/source/local-refs.ts). The product was right, the assertion was
 #   stale, and it is fixed. Now gated.
 #
-#   inline-editing stays excluded, but for a NEW and narrower reason. Its
-#   stale selector (summary[aria-label="Edit or read"], renamed to "Edit, read
-#   or focus" by f01d64b in 0.10.1) is fixed and it is 16/16 on a real display
-#   — but under xvfb it is deterministically 15/16: check 4, "Shift+F10 opens
-#   the context menu (keyboard path)", times out at 10s. Confirmed on two
-#   consecutive CI runs of the same commit. The keyboard context-menu key is
-#   not delivered under this xvfb setup; the other 15 checks pass. Fixing that
-#   check's key path (or proving the key reaches the window) is what unblocks
-#   the most valuable drive we have — it is the one that caught the 0.10.1
-#   inline-edit regression.
+#   inline-editing (packages/desktop/tests/integration/inline-editing.pw.mjs)
+#   drove the deleted preview-editing feature (removed 0.11, SFE-P4) and was
+#   deleted with it — it is no longer excluded, it is gone.
 #
 #   excluded — needs an electron-builder AppImage, which this job does not
 #   build (passes 3/3 against a locally packaged 0.10.1 AppImage, so it is

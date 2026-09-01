@@ -32,10 +32,38 @@ test jobs — `bun run test` in `packages/desktop` for every citation except
 test job — they are
 what actually proves each replacement works. This table is the map from the
 deleted preview surface to that evidence, not a second proof of it.
+**Exception, recorded 2026-09-01 (SFE-P4):** the `block-edit` row's first
+citation was retired that run — see the "SFE-P4 status note" below the
+table's introduction for the surviving evidence.
 
 The rows and their test citations are kept exactly as SFE-P3d-parity Lane D
 verified them — not renumbered or reworded — because they are the evidence
 this record exists to preserve.
+
+## SFE-P4 status note (2026-09-01)
+
+The rows below are kept verbatim, per the note above, as the point-in-time
+record SFE-P3d-parity produced. One citation in the `block-edit` row no
+longer resolves: `packages/desktop/tests/editor/rich-mode-commit-integration.test.ts`
+was deleted in SFE-P4 (`731aee7e`, "refactor(p4): delete the desktop side of
+preview editing") along with `CommitEngine`, the mechanism it tested. This
+does not weaken the `block-edit` mapping — the capability it proved
+(exact-bytes/locality writes through `DesktopDocumentHost.applyEdit`, the
+same D3 seam every source/rich command in this matrix uses) is still
+exercised end-to-end, now by:
+
+- `packages/desktop/tests/editor/parity-caret-token-wrappers.test.ts` — the
+  exact-bytes/locality proof through the same `applyEdit` seam, and
+- `packages/desktop/tests/editor/parity-replacements.test.ts` (the row's
+  surviving second citation) — the multi-line block-replacement case that
+  was `rich-mode-commit-integration.test.ts`'s one addition beyond the
+  shared seam.
+
+`row 44`'s text is left unedited by design (see "The rows and their test
+citations are kept exactly..." above); this note is the correction of
+record. `parity-replacements.test.ts` was also fixed this run so its own
+header/comments cite this surviving evidence directly instead of deferring
+to the deleted file.
 
 ## Mapped actions
 

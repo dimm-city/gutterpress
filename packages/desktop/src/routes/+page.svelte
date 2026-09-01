@@ -999,12 +999,19 @@
      * the buffer's open file changes; MarkdownEditor has no reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
-    /** Whether the live document is this file
-     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
+    /** Whether the live document is this file. Originally added for
+     * `CommitEngine` (inline-editing plan §4.7 Step 4, removed 0.11
+     * SFE-P4); its surviving callers are the `updateContent`/`revealLine`
+     * gates below, which still need to confirm the editor is showing the
+     * right file before acting on it. */
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
-     * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
-     * Offsets are into THAT FILE, not into the document. */
+     * undoable transaction. Offsets are into THAT FILE, not into the
+     * document. Added for `CommitEngine` (inline-editing plan §4.7 Step 4);
+     * `CommitEngine` was removed in 0.11 (SFE-P4) and no other caller has
+     * taken this over — kept on the exported surface as a documented,
+     * currently-unused capability rather than deleted, since removing it is
+     * outside a comment-only fix. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
   } | null>(null);
   /** The DOM node wrapping the mounted `MarkdownEditor` (SFE-P3d-parity,
@@ -1754,8 +1761,9 @@
   /**
    * "Insert image" while rich mode is active (G-10/AP-17): opens the SAME
    * `ImagePropertiesDialog` the preview context menu's "Set properties…"
-   * uses, seeded blank (a brand-new image has no existing token set to
-   * seed from), and applies the confirmed value at the document end.
+   * used before SFE-P4 deleted that context menu item, seeded blank (a
+   * brand-new image has no existing token set to seed from), and applies
+   * the confirmed value at the document end.
    *
    * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
    * TOGETHER with the document identity it was read against
@@ -1809,7 +1817,7 @@
   // computation (`caret-token-commands.ts`, built on the pre-existing,
   // tested `context-menu-actions.ts`/`image-classes.ts` primitives)
   // reachable from BOTH editing surfaces via the CURRENT CARET, instead of
-  // only from the preview context menu P4 deletes. The actual per-surface
+  // only from the preview context menu SFE-P4 deleted. The actual per-surface
   // commands live in `toolbar-actions.ts` (source — takes the live
   // `EditorView`) and `rich-commands.ts` (rich — takes `richDocHost` +
   // `live: LiveSelection`); this page's only job is routing to whichever
@@ -1819,8 +1827,8 @@
 
   /**
    * "Image properties…" — edits an EXISTING image's attrs/src/alt at the
-   * caret, via the SAME `ImagePropertiesDialog` the (soon-deleted) preview
-   * context menu's "Set properties…" uses. Rich mode reuses
+   * caret, via the SAME `ImagePropertiesDialog` the preview context menu's
+   * "Set properties…" used before SFE-P4 deleted that item. Rich mode reuses
    * `captureRichSelection`/`isRichSelectionCaptureFresh` — the SAME
    * document-identity staleness guard `openRichImageProperties` above
    * already relies on for its own `promptImageProperties` await, not a
@@ -1909,7 +1917,8 @@
   }
 
   /** "Edit link…" — edits an EXISTING link's target at the caret, via the
-   *  same `promptText` flow the preview context menu's "Edit link…" uses.
+   *  same `promptText` flow the preview context menu's "Edit link…" used
+   *  before SFE-P4 deleted that item.
    *  Same staleness-guard split as `handleImagePropertiesAtCaret` above. */
   function handleLinkEditAtCaret(): void {
     if (richSurfaceActive) {

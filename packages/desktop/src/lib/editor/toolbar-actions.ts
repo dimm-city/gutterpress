@@ -531,10 +531,10 @@ export function applyTable(view: EditorView, cols: number): void {
  * set). Position/size inputs are canonicalized through the option tables,
  * so a caller still holding a removed legacy name ("full-bleed") writes the
  * live gp-* class, never a dead one. Extracted out of `applyImage` below
- * (inline-editing plan §4.4) so the context menu's image actions can share
- * the exact same suffix rule — though for EXISTING tokens they go through
- * image-classes' tokenize → set-facet → serialize instead, which preserves
- * attrs this builder doesn't know about.
+ * (inline-editing plan §4.4) so the preview context menu's image actions
+ * (deleted in SFE-P4) could share the exact same suffix rule — though for
+ * EXISTING tokens they went through image-classes' tokenize → set-facet →
+ * serialize instead, which preserves attrs this builder doesn't know about.
  */
 export function buildImageAttrsString(
   width?: string,
@@ -741,18 +741,18 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
 // ── Image properties / unwrap / link edit at the caret (SFE-P3d-parity, Lane D) ──
 //
 // Closes the parity-matrix's former `image-properties`/`image-unwrap`/
-// `link-edit` waiver rows: before this run, no command in either surface
-// edited an EXISTING image or link in place — `applyImage` above and
+// `link-edit` waiver rows: before SFE-P3d-parity, no command in either
+// surface edited an EXISTING image or link in place — `applyImage` above and
 // `applyLink` only ever INSERT a new one. The ONE path that edited an
-// existing image/link was the preview context menu (soon deleted by P4).
+// existing image/link was the preview context menu, deleted in SFE-P4.
 //
 // Each function below resolves its target from the CURRENT CARET
 // (`mainSel(view).from`) rather than a payload, delegating the entire
 // locate/compute decision to `caret-token-commands.ts`'s pure functions
-// (the same ones `context-menu-controller.svelte.ts`'s "Set properties…"/
-// "Unwrap image"/"Edit link…" logic is built from — see that module's
-// header) — this file only supplies the CodeMirror read/dispatch, matching
-// every other function above's `(view: EditorView, …)` shape.
+// (the same ones the preview context menu's "Set properties…"/"Unwrap
+// image"/"Edit link…" logic, deleted in SFE-P4, used to be built from) —
+// this file only supplies the CodeMirror read/dispatch, matching every
+// other function above's `(view: EditorView, …)` shape.
 //
 // image-properties and link-edit are each split into a LOCATE step and an
 // APPLY step, rather than one function owning an internal
@@ -1185,7 +1185,9 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     desktopOnly: true,
   },
   // SFE-P3d-parity, Lane D: replacements for the preview context menu's
-  // "Set properties…"/"Unwrap image"/"Edit link…" — each resolves its
+  // "Set properties…"/"Unwrap image"/"Edit link…" (that context menu was
+  // itself deleted in SFE-P4; these toolbar items are the surviving
+  // replacements) — each resolves its
   // target from the CURRENT CARET (place the cursor on an existing image or
   // link first) rather than a dialog-collected payload, so — like every
   // other `kind: "action"` item — no bespoke template branch is needed in

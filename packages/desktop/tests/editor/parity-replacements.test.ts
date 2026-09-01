@@ -20,10 +20,12 @@
  * What this file DOES add, because no existing test proves it:
  *   1. marker-edit / page-marker-edit's replacement — "source mode: select
  *      the marker's own line and replace it" — using the SAME line-boundary
- *      helpers (`buildLineStarts`/`charRange`) `ContextMenuController` and
- *      `InlineEditController` both already depend on, applied through
- *      `DesktopDocumentHost.applyEdit` (the same D3 seam every source/rich
- *      command uses — see `rich-mode-commit-integration.test.ts`'s header).
+ *      helpers (`buildLineStarts`/`charRange`) `ContextMenuController`
+ *      depends on, applied through `DesktopDocumentHost.applyEdit` (the
+ *      same D3 seam every source/rich command uses — exact-bytes/locality
+ *      through that seam is exercised directly by
+ *      `parity-caret-token-wrappers.test.ts`; `InlineEditController`, which
+ *      also used this seam, was retired with `CommitEngine` in SFE-P4).
  *      No prior test in this file's neighborhood exercises a whole-LINE
  *      replacement through that exact seam with a locality assertion.
  *   2. block-break-before's caret-placement story — the context menu's
@@ -180,16 +182,17 @@ describe("block-break-before replacement — rich mode: applyRichLayoutBlock('pa
 
 // ── block-edit ───────────────────────────────────────────────────────────────
 //
-// `InlineEditController`'s free-form block edit has no per-token
-// vocabulary to preserve — it replaces an arbitrary source range with
-// author-typed text. `rich-mode-commit-integration.test.ts` already proves
-// this exact mechanism (`DesktopDocumentHost.applyEdit`, an explicit
-// `[from, to)` range replacement, exact resulting bytes, locality against
-// the rest of the document) end-to-end for a real commit path; this is
-// cited directly from the matrix rather than duplicated. This block adds
-// only the one case that file's own scenario does not: a MULTI-line block
-// replacement (the shape `InlineEditController.commit()` actually applies
-// — a whole block's text, not a single word).
+// The deleted `InlineEditController`'s free-form block edit had no
+// per-token vocabulary to preserve — it replaced an arbitrary source range
+// with author-typed text, through `DesktopDocumentHost.applyEdit` (the same
+// D3 seam every source/rich command in this suite uses). That mechanism's
+// exact-bytes/locality behavior through `applyEdit` is proven directly by
+// `parity-caret-token-wrappers.test.ts` (SFE-P4 retired
+// `rich-mode-commit-integration.test.ts`, which previously carried this
+// citation, along with `CommitEngine`). This block adds the one case
+// neither of those files covers: a MULTI-line block replacement (the shape
+// `InlineEditController.commit()` used to apply — a whole block's text, not
+// a single word).
 describe("block-edit replacement — direct range replacement via DesktopDocumentHost.applyEdit (multi-line block body)", () => {
   test("replacing a whole paragraph block's text changes exactly that block and nothing else", () => {
     const text = "before\n\nold line one\nold line two\n\nafter\n";
