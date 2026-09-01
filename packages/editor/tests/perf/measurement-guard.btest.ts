@@ -99,7 +99,26 @@ describe("D13 measurement-pass regression guard — per-keystroke Range creation
 
       const selector = await harness.page.evaluate(() => window.__gpMeasurementGuard.containerSelector);
       await harness.page.click(selector);
-      await harness.page.keyboard.press("End");
+      // SFE-P3d-sweep+P3f repair round 1: `Control+End` (this fork's
+      // document-end navigation — see
+      // `vscode-adapter/custom-view/fork-hook.btest.ts`'s "case 6 (re-run,
+      // first proof)" full-document-selection tests) is used here, not a
+      // plain `End`.
+      // `End` alone moves the caret to the end of whatever LINE the
+      // preceding coarse `.click()` landed on — for this container's own
+      // (huge, unscrolled) bounding box, that lands well under 1% into the
+      // document, not at its end. Confirmed live: the same click+End this
+      // test used to use lands a typed marker at character ~937 of 256,018
+      // in a 250 KiB document. This test's own name and header comment are
+      // explicit that it measures "N ordinary APPENDED keystrokes" against
+      // an "otherwise-untouched document" — i.e. genuine end-of-document
+      // typing, where every block BEFORE the caret is untouched (both DOM
+      // and absoluteStart) and only the LAST block's own DOM changes. Typing
+      // near the START instead touches every block's absoluteStart on every
+      // keystroke, which is a different (and, for this patch's chosen
+      // strategy, much more expensive) shape entirely — not the mechanism
+      // this test exists to pin.
+      await harness.page.keyboard.press("Control+End");
 
       // AP-21 liveness: mounting and settling this document must itself have
       // exercised document.createRange() (the initial full render measures

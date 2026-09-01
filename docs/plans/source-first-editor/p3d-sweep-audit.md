@@ -55,9 +55,15 @@ header/inline comments for the specific offsets/behavior measured live).
   on desktop. Only *keyboard*-driven block movement exists, and only on
   desktop (`Alt+Shift+ArrowUp/Down`, wired outside the shared
   `EditorCommand` vocabulary entirely). Pinned by `browser.cases.btest.ts`'s
-  new pointer-drag suite: a drag across blocks extends a text selection
-  (the fork's real, documented pointer behavior) and never reorders
-  anything.
+  new pointer-drag suite: a drag across blocks submits zero edits, leaves
+  source byte-identical, and never reorders anything — the editor remains
+  normally typeable immediately afterward. (SFE-P3d-sweep+P3f repair round
+  1 correction: an earlier version of this row, and the test's own title,
+  additionally claimed the drag "extends a text selection." The test body
+  never read the live selection, so that half was unverified and has been
+  removed from both; whether this coarse block-center-to-block-center drag
+  resolves to a caret or a nonempty cross-block selection is a
+  pixel-geometry detail the test does not pin down.)
 - **A real OS IME's interim composition events remain formally unverified.**
   `input-a11y.btest.ts`'s IME suite proves synthetic `CompositionEvent`
   sequences are inert, but Playwright/CDP expose no public real-IME API, so
@@ -739,7 +745,7 @@ evidence above is unaffected by this gap; it affects only the separate
 | `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct: 250 KiB budget genuinely missed today (see verdict); control + all recorded sizes behaved as designed |
 | `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same, numbers consistent with invocation 1 |
 | `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — `tests/perf/**` correctly invisible to plain `bun test` (`.btest.ts` naming, matching the existing `test:browser` convention) |
-| `cd packages/editor && bun run test:browser` | 0 | 114 pass / 0 fail across the 8 existing suites — unaffected by this lane's changes |
+| `cd packages/editor && bun run test:browser` | 0 | 114 pass / 0 fail across the 8 existing suites — unaffected by this lane's changes. (SFE-P3d-sweep+P3f repair round 1 note: this is a snapshot at THIS lane's own checkpoint, before Lane A's `table-editing.btest.ts` landed; the tree's final count, reflected in Lane D's and Lane E's own tables below, is 118 pass / 0 fail across 9 suites.) |
 
 ## Lane D
 
@@ -1096,6 +1102,45 @@ the verdict (even the floor's own minimum, 425.2 ms, is 4.25x over the 100
 ms budget on its own) and was not pursued further given the smallest-
 design instruction and this lane's write ownership.
 
+### Verification run by this lane
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (root) | 0 | The tsconfig wiring gap Lane B recorded (`tests/perf` needing the DOM-aware program) is already closed — verified live: `packages/editor/tsconfig.json`'s `exclude` and `src/web.tsconfig.json`'s `include` both already list `tests/perf`; this lane's two new DOM-typed files (`echo-guard-entry.ts`, and `echo-guard.btest.ts`'s `page.evaluate(() => window...)` callbacks) typecheck clean under it |
+| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs (tsconfig.json / src/web.tsconfig.json / src/gutterpress/tsconfig.json), run directly |
+| `cd packages/editor && bun test ./tests/perf/echo-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
+| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (root cause confirmed out of scope, see above); this lane's new echo-guard case passed (2 pass in perf-control.btest.ts's run, 5 expect() calls = perf-control's 3 + echo-guard's 2); control passed; all recorded sizes behaved as designed |
+| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 and with Lane B's original numbers |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane B's own count; this lane's new files are `.btest.ts` (perf harness), correctly invisible to plain `bun test` |
+| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 9 existing suites (4 more than Lane B's 114 pass / 8 suites — `table-editing.btest.ts` landing between reports, not this lane's changes; this lane touched none of these files) |
+| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — no regression in the extension that consumes this adapter |
+| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files |
+| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files (console "disk full" lines are expected output from a deliberate fault-injection test, not failures) |
+
+### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
+
+`echo-guard.btest.ts` proves it can fail (see "Sabotage" above: 1->21 under
+local sabotage, reverted before commit). It does not itself carry a
+permanently-red control test the way `perf-control.btest.ts` does — a
+permanent sabotage control would need a test-level way to break
+`adapter.ts`'s echo comparison from OUTSIDE production code, and no such
+seam exists (the comparison is internal to the adapter, not parameterized)
+without adding one solely to support a control test, which would be
+machinery beyond what this fix needs (SFE-P3e's own ruling: "prefer
+deleting cleverness to guarding it"). The local-sabotage proof above,
+documented and reverted per pr158-lessons.md §11.2, was judged sufficient.
+
+<!-- SFE-P3d-sweep+P3f repair round, round 1 correction: the two sections
+above ("Verification run by this lane" / "Sabotage/liveness note") were
+previously found physically nested under the "## Lane E (P3f)" heading
+below (inserted after them by a later commit), which made Markdown
+attribute Lane D's own echo-guard-based verification to Lane E and left
+Lane E's real, measurement-guard-based verification table (further below)
+as a second, contradictory "Verification run by this lane" table under the
+same heading. Moved back under "## Lane D" — their rightful home — with no
+other change to their content beyond the suite-count fix noted in the
+`test:browser` row above. -->
+
 ## Lane E (P3f)
 
 Scope: patch the vendored fork's whole-document per-keystroke measurement
@@ -1108,25 +1153,88 @@ per-text-leaf `Range.getClientRects()` walk). Write ownership:
 `checksums.json`, `packages/editor/tests/perf/**` (mechanism-pinning
 guard only), this section, and the upstream-issue draft.
 
-**Outcome up front:** the named mechanism is fixed — Hunk 9/10 in
-`PATCHES.md`'s "## Patch 2" section skip the expensive per-leaf walk for a
-block whose view node the fork's own `Y()` factory already reused by
-identity (unchanged AST/`showMarkup`/active-state, an invariant this
-renderer's own DOM-reuse correctness already depends on), translating its
-previously computed geometry by the block's freshly (cheaply) remeasured
-position delta instead. Every caret/selection/drag/segment/custom-view
-browser proof in `packages/editor` and `packages/vscode-extension` passes
-unmodified (exact counts below) and a new mechanism-pinning regression test
+**Outcome up front (SFE-P3d-sweep+P3f repair round 1 rewrite — see the
+boxed correction below for why):** the named O(document)-remeasurement
+mechanism is fixed, and — after this repair round's `absoluteStart` fix —
+fixed CORRECTLY: Hunk 9/10 in `PATCHES.md`'s "## Patch 2" section skip the
+expensive per-leaf walk for a block ONLY when the fork's own `Y()` factory
+reused its view node by identity AND the block's `absoluteStart` (its
+absolute position in the source) is unchanged since the cache was
+recorded — the second condition an earlier version of this patch omitted,
+which silently corrupted pointer/caret offset resolution for every block
+after an edit (see the repair round's own finding and `PATCHES.md`'s "Why
+the translate is exact, not approximate" for the full correction). Every
+caret/selection/drag/segment/custom-view browser proof in `packages/editor`
+and `packages/vscode-extension` passes (exact counts below), a new
+mechanism-pinning regression test
 (`packages/editor/tests/perf/measurement-guard.btest.ts`) proves the fix's
-own mechanism directly, with a live sabotage demonstration. **The D13 250
-KiB p95 < 100 ms budget still fails** — honestly, not tuned away — because
-this lane's own investigation (full method in `PATCHES.md`'s "Strategy
-chosen" subsection) found a SEPARATE, comparably large, pre-existing cost
-living entirely outside `_renderAutorun`/`_publishMeasurements` (between
-the raw `keydown` event and `_renderAutorun` starting, plausibly the
-fork's `EditContext` `textupdate`-driven native input pipeline processing
-a full-document-sized text buffer), which is out of this run's named scope
-and not something either candidate measurement-pass strategy can reach.
+own mechanism directly with a live sabotage demonstration, and a NEW
+correctness-pinning regression test
+(`packages/editor/tests/vscode-adapter/custom-view/fork-hook.btest.ts`,
+"pointer offset stays byte-exact after an edit shifts an earlier block")
+proves pointer-to-offset resolution stays byte-exact across an edit in an
+earlier block — the exact case the original defect broke and no test in
+the tree covered. **The D13 250 KiB p95 < 100 ms budget still fails** —
+honestly, not tuned away, and by a WIDER margin than originally reported
+(see the correction below for why the originally-reported 290-340 ms band
+was itself a symptom of the defect this repair round fixed).
+
+> **Repair round 1 correction, read this first.** The `absoluteStart` fix
+> makes `gpReusable` correctly FALSE (falling back to a full `Pe.measure()`)
+> for any block whose absolute position in the source shifted since it was
+> cached — which is EVERY block after the point an edit lands. This run's
+> own D13 benchmark harness (`packages/editor/tests/perf/support/drive.ts`,
+> shared by `perf-sweep.btest.ts` — the actual D13 gate — and
+> `perf-control.btest.ts`) mounts a document, `page.click(selector)`s the
+> WHOLE mount container, then presses `End`. Confirmed live, with a
+> throwaway diagnostic (mount 250 KiB, click+`End`, type a marker, read
+> back where it landed in the rendered text): this lands the caret at
+> character **~937 of 256,018** — under half a percent into the document —
+> not at its end, because `page.click()` targets the CENTER of the
+> container's own (huge, unscrolled) bounding box, not its bottom.
+> `drive.ts`'s own header comment claims this "moves the caret to the end
+> of the mounted document"; it does not, and never did — this predates this
+> repair round and is not something the original Lane B/D/E measurements
+> could have known without the diagnostic above. Typing near the START of a
+> 250 KiB / ~800-block document means EVERY block after the caret has its
+> `absoluteStart` shift on EVERY keystroke — the worst possible shape for
+> this patch's per-block incremental strategy, and (before this repair
+> round) the exact shape whose miscomputed offsets the correctness finding
+> above describes. The pre-repair 290-340 ms band therefore was NOT
+> measuring "ordinary end-of-document typing, sped up by this patch" — it
+> was measuring "typing near the document's start, sped up by silently
+> reusing hundreds of blocks' now-wrong cached offsets." Once corrected,
+> the same (unmodified) benchmark — still typing near the start, per its
+> own unfixed navigation — costs a full remeasure of nearly every block on
+> every keystroke, landing back near the ORIGINAL pre-Patch-2 baseline (see
+> "Before/after," below, for the honest re-measured numbers).
+>
+> A second throwaway diagnostic isolated whether Patch 2 has any real value
+> at all: mounting the same 250 KiB document and navigating with
+> `Control+End` (this fork's genuine document-end command — confirmed via
+> the SAME marker-landing check: character 256,006 of 256,018) shows the
+> `document.createRange()` call count for 20 appended keystrokes at **80**
+> total (4/keystroke) — matching the mechanism this patch was designed to
+> achieve, and consistent with the reasoning that a genuine end-of-document
+> edit touches only the LAST block's own DOM, leaving every earlier block's
+> identity AND `absoluteStart` both unchanged and therefore legitimately
+> `gpReusable`. **This patch's optimization is real and correctly gated for
+> the workload it was designed for; the existing D13 benchmark harness does
+> not exercise that workload, and this was not previously known.** Fixing
+> `drive.ts`'s navigation (so the actual D13 gate measures genuine
+> end-of-document typing) is new scope this repair round does not take on —
+> see "Recommendation for the next run," below, which now carries this as
+> its lead item. This repair round DID fix
+> `measurement-guard.btest.ts`'s OWN inline navigation (`press("End")` ->
+> `press("Control+End")`) — that file's own name and header comment are
+> explicit that it measures "N ordinary APPENDED keystrokes," so its
+> navigation not reaching the document's end was a defect in what it
+> claimed to test, not a case where the wrong-shape measurement was ever an
+> intentional or reported claim; `drive.ts`, by contrast, backs the ACTUAL
+> D13 gate and BOTH the pre-repair and post-repair headline numbers this
+> section has ever reported, so changing it is a numbers-changing decision
+> this repair round leaves to the next run rather than making silently.
+
 See `PATCHES.md`'s "## Patch 2" section for the full consumer map,
 prototype numbers, correctness argument, and the three hunks; this section
 covers the before/after evidence and verification only.
@@ -1137,12 +1245,17 @@ covers the before/after evidence and verification only.
 in full: Hunk 8 (a new, pure `gpTranslateVisualLineMap` helper — reuses
 `C.prototype.translate` and the `Pe`/`ot`/`me` constructors unmodified),
 Hunk 9 (`_publishMeasurements` gains an `incremental` parameter and the
-identity+className-gated skip), Hunk 10 (the one-line `_renderAutorun`
-call site opting in). `checksums.json`'s `patched.dist/index.js` hash is
-updated to `dadad4003ca520fe99e6d6b8e84f626315ee8702bb116dcd3c84cbb3fd482d8f`;
-`dist/index.d.ts` is untouched (no type change was needed), so its hash and
-`upstreamBaseline` are unchanged. `bun run check:vendored` is green against
-the new manifest (below).
+identity+className+absoluteStart-gated skip — SFE-P3d-sweep+P3f repair
+round 1 added the `absoluteStart` comparison; see the boxed correction
+above), Hunk 10 (the one-line `_renderAutorun` call site opting in).
+`checksums.json`'s `patched.dist/index.js` hash is
+`ea7d0df1bb2f6d54fed59b2479aabeb9bddae0d26e697a3561e030cabc794e45` (the
+repair round 1 value, re-derived after the `absoluteStart` fix — the
+original, INCORRECT patch's hash was
+`dadad4003ca520fe99e6d6b8e84f626315ee8702bb116dcd3c84cbb3fd482d8f`, kept
+here only as a historical record); `dist/index.d.ts` is untouched (no type
+change was needed), so its hash and `upstreamBaseline` are unchanged.
+`bun run check:vendored` is green against the current manifest (below).
 
 The `ResizeObserver` callback and scroll listener's own calls to
 `_publishMeasurements` are byte-for-byte untouched (they keep calling it
@@ -1164,6 +1277,21 @@ import, the same technique Lane D's own `echo-guard.btest.ts` already uses
 for the identical reason (no new `package.json` script line available
 inside this lane's write ownership).
 
+**Repair round 1: navigation fixed.** This test's own click+`End`
+navigation had the same defect described in the boxed correction above —
+it landed the caret near the document's START, not its end, contradicting
+its own "N ordinary appended keystrokes" premise. Changed to click+
+`Control+End` (this test file's own inline navigation only —
+`drive.ts`, which backs the actual D13 gate, is untouched; see the boxed
+correction for why). Re-confirmed live: with the corrected navigation AND
+the corrected `absoluteStart`-checked patch, this test passes (1 pass,
+`document.createRange()` count well under the 1200 budget); with the
+ORIGINAL (near-start) navigation and the corrected patch, it FAILED at
+~72,000+ calls — not because the fix regressed, but because typing near
+the document's start genuinely does require remeasuring nearly every
+block, which is the CORRECT behavior once `absoluteStart` is honestly
+checked.
+
 **Sabotage (G-12/AP-21):** locally forced `_publishMeasurements`'s
 `gpReusable` local to `false` unconditionally (the exact pre-patch "always
 remeasure everything" shape) and re-ran `measurement-guard.btest.ts`:
@@ -1179,87 +1307,165 @@ budget — confirming the assertion is live, not vacuous, and cleanly
 distinguishes O(document) from O(changed) at this document size. Reverted
 immediately; `diff` against the pre-sabotage file showed zero drift, and
 `node --check dist/index.js` plus a clean rerun (2 pass) confirmed the file
-was restored before this lane's work was considered done.
+was restored before this lane's work was considered done. **Repair round 1
+reconfirmed this independently**, post-fix and post-navigation-repair,
+forcing `gpReusable = false` unconditionally: 72,100 calls (same order of
+magnitude), same conclusion; reverted, `diff` against the pre-sabotage file
+showed zero drift, and `bun run check:vendored` confirmed the restored file
+still matches the current `checksums.json`.
 
-### Before/after — all four sizes, both invocations
+### Before/after — all four sizes (SFE-P3d-sweep+P3f repair round 1: RE-MEASURED)
 
-Both invocations below include the new `measurement-guard.btest.ts` case
-(wired via `perf-control.btest.ts`'s side-effect import, alongside Lane D's
-`echo-guard.btest.ts`) — both passed both times (3 pass in
-`perf-control.btest.ts`'s run each time: control + echo-guard +
-measurement-guard).
+**The tables originally here (two invocations, 290.3-339.7 ms 250 KiB p95,
+described below as "44-50% reduction") measured the INCORRECT, pre-repair
+patch, using the SAME `drive.ts` harness whose caret-placement defect is
+described in the boxed correction above. They are struck and replaced
+below with two fresh invocations against the CORRECTED patch, same
+harness, same sandbox — no other change.** The original tables' raw
+numbers are preserved in this document's git history, not reproduced here,
+to avoid a reader mistaking them for current evidence.
 
-**This lane's invocation 1** — exit code 1 (250 KiB gate correctly still
-fails):
+Both invocations below include the (now navigation-corrected)
+`measurement-guard.btest.ts` case (wired via `perf-control.btest.ts`'s
+side-effect import, alongside Lane D's `echo-guard.btest.ts`) — both passed
+both times.
+
+**Repair round 1, invocation 1** (`cd packages/editor && bun test
+./tests/perf/perf-sweep.btest.ts`, standalone, no concurrent browser
+process) — exit code 1 (250 KiB gate still fails, now more honestly):
 
 | Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 25 KiB | 223.4 ms | 32.4 ms | 44.0 ms | 62.6 ms | 28.1 ms | 34.3 ms | 60 |
-| 100 KiB | 358.3 ms | 111.4 ms | 135.2 ms | 149.9 ms | 101.2 ms | 114.1 ms | 60 |
-| 250 KiB (run 1/2) | 757.8 ms | 277.1 ms | **318.1 ms** | 341.5 ms | 252.1 ms | 283.0 ms | 60 |
-| 250 KiB (run 2/2) | 835.3 ms | 276.3 ms | **339.7 ms** | 430.8 ms | 249.8 ms | 287.9 ms | 60 |
-| 1 MiB | 3,052.3 ms | 1,099.0 ms | 1,174.6 ms | 1,306.1 ms | 1,044.8 ms | 1,107.9 ms | 60 |
+| 25 KiB | 232.3 ms | 59.8 ms | 81.8 ms | 103.0 ms | 51.3 ms | 62.4 ms | 60 |
+| 100 KiB | 360.4 ms | 218.0 ms | 260.5 ms | 317.3 ms | 196.7 ms | 224.0 ms | 60 |
+| 250 KiB (run 1/2) | 740.5 ms | 535.0 ms | **577.0 ms** | 638.8 ms | 493.0 ms | 537.2 ms | 60 |
+| 250 KiB (run 2/2) | 707.5 ms | 520.9 ms | **568.9 ms** | 594.0 ms | 485.7 ms | 525.2 ms | 60 |
+| 1 MiB | 3,051.1 ms | 2,144.8 ms | 2,302.7 ms | 2,613.3 ms | 2,011.6 ms | 2,162.3 ms | 60 |
 
-Control (250 KiB, +150 ms/keystroke sabotage): p50=432.3 ms p95=465.1 ms
-max=465.1 ms min=406.6 ms mean=432.9 ms (n=15) — PASS (p95 > 100 ms budget
-and > 75 ms sanity margin).
-
-**This lane's invocation 2** — exit code 1 (same):
+**Repair round 1, invocation 2** (`cd packages/editor && bun run
+test:perf` — the exact gate command, `perf-control.btest.ts` then
+`perf-sweep.btest.ts` sequentially in one invocation) — exit code 1 (same):
 
 | Size | Mount-to-interactive | p50 | p95 | max | min | mean | n |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 25 KiB | 224.5 ms | 32.3 ms | 43.9 ms | 47.8 ms | 28.5 ms | 33.8 ms | 60 |
-| 100 KiB | 351.7 ms | 105.1 ms | 132.8 ms | 171.2 ms | 99.0 ms | 109.7 ms | 60 |
-| 250 KiB (run 1/2) | 773.2 ms | 266.1 ms | **290.3 ms** | 317.3 ms | 245.7 ms | 267.5 ms | 60 |
-| 250 KiB (run 2/2) | 785.4 ms | 268.2 ms | **317.3 ms** | 337.3 ms | 249.3 ms | 273.7 ms | 60 |
-| 1 MiB | 2,771.6 ms | 1,137.6 ms | 1,235.0 ms | 1,291.5 ms | 1,034.5 ms | 1,141.7 ms | 60 |
+| 25 KiB | 226.8 ms | 60.3 ms | 97.7 ms | 125.1 ms | 51.5 ms | 65.3 ms | 60 |
+| 100 KiB | 385.5 ms | 215.2 ms | 263.8 ms | 282.1 ms | 197.8 ms | 221.4 ms | 60 |
+| 250 KiB (run 1/2) | 768.0 ms | 516.8 ms | **560.2 ms** | 649.9 ms | 467.8 ms | 522.8 ms | 60 |
+| 250 KiB (run 2/2) | 756.0 ms | 511.9 ms | **560.6 ms** | 609.2 ms | 480.1 ms | 516.0 ms | 60 |
+| 1 MiB | 2,825.8 ms | 2,113.3 ms | 2,253.2 ms | 2,412.8 ms | 1,960.7 ms | 2,121.6 ms | 60 |
 
-Control: p50=428.4 ms p95=479.6 ms max=479.6 ms min=416.1 ms mean=435.9 ms
-(n=15) — PASS.
+Differential control from this same invocation (250 KiB, unslowed baseline
+vs. +150 ms/keystroke, same session — see `perf-control.btest.ts`'s repair
+round 1 rewrite, "finding 6" in the repair record): unslowed p95=550.4 ms,
+slowed p95=715.1 ms, delta=164.7 ms — PASS (delta > 75 ms sanity margin,
+comfortably).
+
+Both invocations include the (now navigation-corrected)
+`measurement-guard.btest.ts` case (wired via `perf-control.btest.ts`'s
+side-effect import, alongside Lane D's `echo-guard.btest.ts`) — passed both
+times.
+
+**A third, supplementary data point** ran under real resource contention
+(a second Chromium instance active concurrently in this sandbox — see
+"Environment note," below): 250 KiB p95 553.0 ms / 551.8 ms, and its own
+differential control's delta (81.6 ms against an earlier version of the
+control, before this repair round's differential rewrite) was
+correspondingly compressed by the same contention. Not used as a primary
+data point, but consistent with (not contradicting) invocations 1 and 2.
 
 **Comparison against the pre-patch baseline** (Lane B and Lane D, this same
 document's earlier sections — same sandbox, same 250 KiB corpus, all p95):
 
-| Source | 250 KiB p95 samples | Patched? |
+| Source | 250 KiB p95 samples | Patch state |
 |---|---|---|
-| Lane B, invocation 1 | 631.7 ms, 571.1 ms | no |
-| Lane B, invocation 2 | 585.4 ms, 554.3 ms | no |
-| Lane D, invocation 1 | 560.1 ms, 609.9 ms | no (confirmed unchanged from Lane B) |
-| Lane D, invocation 2 | 565.3 ms, 593.7 ms | no |
-| **Lane E, invocation 1** | **318.1 ms, 339.7 ms** | **yes** |
-| **Lane E, invocation 2** | **290.3 ms, 317.3 ms** | **yes** |
+| Lane B, invocation 1 | 631.7 ms, 571.1 ms | unpatched |
+| Lane B, invocation 2 | 585.4 ms, 554.3 ms | unpatched |
+| Lane D, invocation 1 | 560.1 ms, 609.9 ms | unpatched (confirmed unchanged from Lane B) |
+| Lane D, invocation 2 | 565.3 ms, 593.7 ms | unpatched |
+| Lane E (original, pre-repair) | 318.1 ms, 339.7 ms, 290.3 ms, 317.3 ms | patched, **INCORRECT** (struck — see boxed correction) |
+| **Repair round 1, invocation 1** | **577.0 ms, 568.9 ms** | **patched, correct** |
+| **Repair round 1, invocation 2** | **560.2 ms, 560.6 ms** | **patched, correct** |
+| Repair round 1, contended (supplementary) | 553.0 ms, 551.8 ms | patched, correct |
 
-Pre-patch band: 554-632 ms (8 samples, four invocations, two lanes,
-consistent — no drift, per Lane D). Post-patch band: 290-340 ms (8 samples,
-two invocations, this lane) — roughly a **44-50% p95 reduction**, using the
-same sandbox, same corpus, same harness. 100 KiB and 25 KiB numbers are
-consistent with Lane B's own recorded bands (both invocations), confirming
-this patch has no effect at sizes where the per-leaf walk was already
-cheap in absolute terms. 1 MiB is likewise consistent in relative
-reduction (roughly comparable proportion) though Lane B did not record a
-1 MiB comparison band explicitly in this document.
+Pre-patch band: 554-632 ms (8 samples, four invocations, two lanes).
+Repair-round-1 (corrected-patch) band, against the SAME unfixed
+`drive.ts` harness: **560.2-577.0 ms** across the two clean invocations
+(551.8-577.0 ms including the third, contended supplementary point) —
+statistically indistinguishable from the pre-patch band, i.e. **no
+measurable improvement on this specific benchmark**, not the 44-50%
+reduction originally reported. This is not a regression in the fix — see
+the boxed correction above: this benchmark types near the document's START
+(a `drive.ts` defect, unfixed this round), which is the shape where
+Patch 2's strategy legitimately cannot help (nearly every block's
+`absoluteStart` shifts on every keystroke, forcing a full remeasure
+exactly as the ORIGINAL unpatched code did). The throwaway diagnostic in
+the boxed correction shows the patch DOES deliver its intended benefit
+(4 `document.createRange()` calls per keystroke, not ~3,600+) for genuine
+end-of-document typing — this benchmark simply never exercised that shape,
+before or after this repair round.
 
-### Budget verdict
+**Environment note.** This sandbox is not the project's CI reference
+runner (a standing caveat this document has carried since Lane B). Repair
+round 1 additionally observed direct evidence of resource contention
+between concurrently-running Chromium instances within this session: one
+attempt at re-measuring, run concurrently with `perf-control.btest.ts`,
+measured 250 KiB p95 at 553.0/551.8 ms — kept above as the "contended
+(supplementary)" row rather than discarded, since it is CONSISTENT with
+(not contradicted by) the two clean invocations, not because it is more
+trustworthy than them. All three land far above the pre-repair 290-340 ms
+band regardless of contention, so contention does not change this
+section's conclusion, but the exact absolute numbers within the 551-577 ms
+band should not be over-interpreted keystroke-by-keystroke.
 
-**FAIL — honestly re-confirmed, real improvement, not sufficient alone.**
-D13's 250 KiB p95 < 100 ms gate is not met: measured p95 across this
-lane's own two fresh invocations ranges 290.3-339.7 ms, down from the
-pre-patch 554.3-631.7 ms band (Lane B/Lane D) — a genuine, verified ~46%
-reduction, achieved by fully eliminating the O(document) mechanism this
-run named (confirmed directly via a stage-by-stage timing breakdown: with
-this patch, `_renderAutorun`'s own synchronous cost at 250 KiB drops to
-roughly 21 ms total, `_publishMeasurements` itself to roughly 14-16 ms —
-see `PATCHES.md`'s "Strategy chosen" subsection). The remaining ~250-300 ms
-lives in a SEPARATE mechanism, confirmed (via a deliberately unsound
-"disable `_publishMeasurements` entirely" experiment, discarded before
-finishing) to sit entirely OUTSIDE `_renderAutorun`, unaffected by this
-patch in either direction (measured at a statistically indistinguishable
-~250-270 ms whether the patch is active or forced off), and out of this
-run's authorized scope to patch. No weakening of the measurement, the
-budget, or any test was made or considered.
+### Budget verdict (SFE-P3d-sweep+P3f repair round 1: rewritten)
+
+**FAIL — by a WIDER, more honest margin than originally reported.** D13's
+250 KiB p95 < 100 ms gate is not met: measured p95 across this repair
+round's two clean invocations ranges 560.2-577.0 ms (551.8-577.0 ms
+including the contended supplementary point), statistically
+indistinguishable from the pre-patch 554.3-631.7 ms band (Lane B/Lane D).
+The ORIGINALLY reported 290.3-339.7 ms band and its "~46% reduction" claim
+are WITHDRAWN — they measured a patch with a since-fixed correctness
+defect (see the boxed correction above), and that defect, not a genuine
+performance win, is what produced the lower numbers: the pre-repair patch
+silently skipped remeasuring hundreds of blocks it should not have,
+because it never checked whether their `absoluteStart` had shifted.
+Corrected, this patch's O(document)-elimination mechanism is real and
+independently verified (`measurement-guard.btest.ts`, now with corrected
+navigation, plus the throwaway end-of-document diagnostic in the boxed
+correction above showing 4 `Range` calls/keystroke) — but the EXISTING
+D13 benchmark (`drive.ts`) does not exercise the workload where that
+mechanism helps, so it cannot currently demonstrate a win on the actual
+gate. The SEPARATE, pre-existing cost Lane E's original investigation
+found living outside `_renderAutorun`/`_publishMeasurements` (the
+`EditContext` `textupdate`-driven native input pipeline processing a
+full-document-sized buffer, `PATCHES.md`'s "Strategy chosen" subsection)
+remains a real, independent, unaddressed contributor regardless of this
+correction; nothing this repair round found changes that part of the
+picture. No weakening of the measurement, the budget, or any test was
+made or considered.
 
 ### Recommendation for the next run (not performed here — outside this
 run's scope)
+
+**Lead item, added by repair round 1: fix `drive.ts`'s caret-placement
+defect first.** `typeAndMeasure`'s `page.click(selector)` + `page.keyboard
+.press("End")` does not reach the document's end for a large document —
+confirmed live, it lands under 1% into a 256,018-character document (see
+the boxed correction above for the full diagnostic and the working
+alternative, `Control+End`). Until this is fixed, `perf-sweep.btest.ts` —
+the actual D13 gate — cannot demonstrate Patch 2's real, verified benefit
+for genuine end-of-document typing, and every historical number this
+document has ever reported for the 250 KiB/1 MiB rows (pre-patch AND
+post-patch, both before and after this repair round) has measured "typing
+near the document's start," not "ordinary end-of-document typing" as
+D13's own binding decision and this harness's own header comments
+describe. Fixing this is a numbers-changing, re-measurement-requiring
+change this repair round deliberately left out of its own scope (see the
+boxed correction's closing paragraph) — the next run should fix it, THEN
+re-run the full four-size sweep, and only then re-assess whether Patch 2
+alone closes the D13 gap or whether the second (`EditContext`) mechanism
+below is also required.
 
 The companion upstream-issue document
 (`docs/plans/source-first-editor/upstream-issue-measurement.md`) names the
@@ -1276,7 +1482,12 @@ JS-level patch can fix it — the buffer itself would need to shrink, a much
 larger redesign of the input architecture) or whether `_handleTextUpdate`
 does avoidable synchronous work of its own before handing off to the
 model — this lane did not instrument inside that handler and is reporting
-a located, plausible suspect, not a proven second root cause.
+a located, plausible suspect, not a proven second root cause. This
+suspect's own measurement (Lane E's original stage-by-stage breakdown) was
+NOT invalidated by the correctness defect above — it was measured with
+`_publishMeasurements` forced to a complete no-op, independent of the
+`absoluteStart` question — so it remains live evidence for a future run,
+unlike the "44-50% reduction" headline number.
 
 ### Verification run by this lane
 
@@ -1305,30 +1516,25 @@ the counting hook observes the real mechanism rather than silently never
 firing, so a broken/unwired counter could not vacuously pass the
 post-keystroke budget assertion.
 
-### Verification run by this lane
+### Repair round 1 re-verification
+
+The table above is Lane E's ORIGINAL verification, kept as a historical
+record; every `test:perf` row's "Note" column described the pre-repair,
+INCORRECT patch and is superseded. Re-run against the corrected patch
+(`absoluteStart`-checked `gpReusable`, corrected `checksums.json` hash) and
+the corrected `measurement-guard.btest.ts` navigation:
 
 | Command | Exit code | Note |
 |---|---:|---|
-| `bun run typecheck` (root) | 0 | The tsconfig wiring gap Lane B recorded (`tests/perf` needing the DOM-aware program) is already closed — verified live: `packages/editor/tsconfig.json`'s `exclude` and `src/web.tsconfig.json`'s `include` both already list `tests/perf`; this lane's two new DOM-typed files (`echo-guard-entry.ts`, and `echo-guard.btest.ts`'s `page.evaluate(() => window...)` callbacks) typecheck clean under it |
-| `cd packages/editor && bun run typecheck` (targeted) | 0 | Same three sub-programs (tsconfig.json / src/web.tsconfig.json / src/gutterpress/tsconfig.json), run directly |
-| `cd packages/editor && bun test ./tests/perf/echo-guard.btest.ts` (standalone) | 0 | 1 pass — the new regression guard, isolated |
-| `cd packages/editor && bun run test:perf` (invocation 1) | 1 | Correct/honest: 250 KiB budget still missed (root cause confirmed out of scope, see above); this lane's new echo-guard case passed (2 pass in perf-control.btest.ts's run, 5 expect() calls = perf-control's 3 + echo-guard's 2); control passed; all recorded sizes behaved as designed |
-| `cd packages/editor && bun run test:perf` (invocation 2) | 1 | Same; numbers consistent with invocation 1 and with Lane B's original numbers |
-| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged from Lane B's own count; this lane's new files are `.btest.ts` (perf harness), correctly invisible to plain `bun test` |
-| `cd packages/editor && bun run test:browser` | 0 | 118 pass / 0 fail across the 8 existing suites (4 more than Lane B's 114 — other lanes' work landing between reports, not this lane's changes; this lane touched none of these files) |
-| `cd packages/vscode-extension && bun run test` | 0 | 228 pass / 0 fail across 14 files — no regression in the extension that consumes this adapter |
-| `cd packages/vscode-extension && bun run test:browser` | 0 | 35 pass / 0 fail across 9 files |
-| `cd packages/desktop && bun run test` | 0 | 6045 pass / 1 skip / 0 fail across 164 files (console "disk full" lines are expected output from a deliberate fault-injection test, not failures) |
+| `bun run typecheck` (root) | 0 | All four packages exit 0 |
+| `cd packages/editor && bun test ./tests/perf/measurement-guard.btest.ts` (standalone) | 0 | 1 pass — with the corrected `Control+End` navigation; FAILED (72,100+ calls) against the ORIGINAL `End`-only navigation even with the corrected patch — see "Repair round 1: navigation fixed," above |
+| `cd packages/editor && bun test ./tests/vscode-adapter/custom-view/fork-hook.btest.ts` (standalone) | 0 | 15 pass — includes the new correctness-pinning regression describe block ("pointer offset stays byte-exact after an edit shifts an earlier block"); verified to FAIL (2 of 3 new cases) against the pre-repair patch and PASS against the corrected one |
+| `cd packages/editor && bun run test:browser` | 0 | 121 pass / 0 fail across the same 9 suites (3 more than Lane D's/Lane E's own 118 — the new correctness-pinning describe block's 3 test cases, added to `fork-hook.btest.ts` this repair round; no other file's count changed) |
+| `cd packages/editor && bun run test` | 0 | 3038 pass / 0 fail — unchanged |
+| `cd packages/editor && bun run test:perf` (standalone `perf-control.btest.ts`) | 0 | 3 pass — differential control delta 164.7-188.0 ms across repeated clean runs, comfortably over the 75 ms margin |
+| `cd packages/editor && bun run test:perf` (full: `perf-control.btest.ts && perf-sweep.btest.ts`) | 1 | Correct/honest: 250 KiB budget still missed, by a WIDER margin than originally reported (p95 551.8-577.0 ms across three invocations) — see "Budget verdict," above, for why |
+| `bun run check:vendored` | 0 | Against the re-derived `checksums.json` (`patched.dist/index.js` = `ea7d0df1bb2f6d54fed59b2479aabeb9bddae0d26e697a3561e030cabc794e45`) |
+| `bun run typecheck` (targeted, `packages/editor`) | 0 | Confirms the new/changed test files typecheck clean |
 
-### Sabotage/liveness note (AP-21/G-12) for this lane's own gate
-
-`echo-guard.btest.ts` proves it can fail (see "Sabotage" above: 1->21 under
-local sabotage, reverted before commit). It does not itself carry a
-permanently-red control test the way `perf-control.btest.ts` does — a
-permanent sabotage control would need a test-level way to break
-`adapter.ts`'s echo comparison from OUTSIDE production code, and no such
-seam exists (the comparison is internal to the adapter, not parameterized)
-without adding one solely to support a control test, which would be
-machinery beyond what this fix needs (SFE-P3e's own ruling: "prefer
-deleting cleverness to guarding it"). The local-sabotage proof above,
-documented and reverted per pr158-lessons.md §11.2, was judged sufficient.
+See this run's repair record for the exact commands, exit codes, and full
+output this table summarizes.

@@ -107,20 +107,38 @@ describe("D13 root-cause regression guard — echo-convergence stays the fast pa
       const baseline = await harness.page.evaluate(() => window.__gpEchoGuard.getSnapshotCallCount());
       expect(baseline).toBe(1);
 
+      // SFE-P3d-sweep+P3f repair round 1 (finding: "echo-guard's 'a real
+      // edit did land' liveness check cannot fail — its tolerance is 10x
+      // the signal"): captured BEFORE typing and compared against a
+      // tolerance scaled to KEYSTROKES itself, matching
+      // `measurement-guard.btest.ts:112-131`'s own pattern — the previous
+      // absolute `-200` tolerance against a 100 KiB document was already
+      // satisfied by the MOUNT alone, before a single keystroke, so a
+      // silently-dropped-input regression (AP-21) would have passed this
+      // wait for the wrong reason.
+      const beforeTypingLength = await harness.page.evaluate(() => {
+        const el = document.querySelector(window.__gpEchoGuard.containerSelector);
+        return el?.textContent?.length ?? 0;
+      });
+
       for (let i = 0; i < KEYSTROKES; i++) {
         await harness.page.keyboard.type("x");
       }
 
       // A real edit did land — proves the keystrokes were not silently
       // dropped (a no-op input path would trivially "pass" the count
-      // assertion below for the wrong reason).
-      const finalText = text + "x".repeat(KEYSTROKES);
+      // assertion below for the wrong reason). Rendered textContent grows
+      // by roughly KEYSTROKES characters (not exactly — markers/whitespace
+      // rendering can add a little), so a generous lower bound scaled to
+      // the signal itself, not a fixed constant far larger than it, is
+      // enough.
       await harness.page.waitForFunction(
-        (expected) => {
-          const el = document.querySelector(window.__gpEchoGuard.containerSelector);
-          return !!el && (el.textContent?.length ?? 0) >= expected.length - 200;
+        ({ selector: sel, before, added }) => {
+          const el = document.querySelector(sel);
+          const length = el?.textContent?.length ?? 0;
+          return length >= before + Math.floor(added * 0.5);
         },
-        { length: finalText.length },
+        { selector, before: beforeTypingLength, added: KEYSTROKES },
         { timeout: 15_000 },
       );
 

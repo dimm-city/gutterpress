@@ -334,8 +334,19 @@ describe("bonus — readonly host initializes the model in readonly mode", () =>
 // otherwise mutate the document.
 // ---------------------------------------------------------------------------
 
-describe("pointer drag across block boundaries (SFE-P3d-sweep gap closure, scenario 6 pointer half): extends a text selection, never reorders blocks", () => {
-  test("a mouse-down/move/up drag from inside the first block to inside the third submits zero edits and leaves the document byte-identical; the drag instead produced a live cross-block selection, which the next keystroke replaces", async () => {
+describe("pointer drag across block boundaries (SFE-P3d-sweep gap closure, scenario 6 pointer half): never reorders blocks", () => {
+  // SFE-P3d-sweep+P3f repair round, round 1 (finding — title/audit row
+  // asserted more than the body verified): this test proves the drag
+  // submits zero edits and leaves source byte-identical, and that the
+  // editor remains normally typeable immediately afterward. It does NOT
+  // read the live selection or assert the dragged-over text was replaced
+  // (as opposed to a caret insert) -- whether this coarse block-center-to-
+  // block-center drag resolves to a caret or a nonempty cross-block
+  // selection is a pixel-geometry detail of exactly where the drag's
+  // start/end points land relative to character boundaries, which this
+  // test does not pin down and must not claim to. See
+  // `p3d-sweep-audit.md`'s matching row for the same correction.
+  test("a mouse-down/move/up drag from inside the first block to inside the third submits zero edits and leaves the document byte-identical; the editor remains normally typeable afterward", async () => {
     const text = "First block text here.\n\nSecond block text here.\n\nThird block text here.";
     const selector = await mount(text);
     await requireDocumentText(selector);

@@ -115,6 +115,13 @@ async function segmentCharacterCenter(index: number, charIndex: number) {
   );
 }
 
+async function characterCenter(index: number, charOffset: number) {
+  return harness.page.evaluate(
+    ({ i, c }) => window.__gpc.characterCenter(i, c),
+    { i: index, c: charOffset },
+  );
+}
+
 async function offsetAtClientPoint(x: number, y: number): Promise<number> {
   return harness.page.evaluate(({ x, y }) => window.__gpc.offsetAtClientPoint(x, y), { x, y });
 }
@@ -629,6 +636,154 @@ describe("case 6 (re-run, first proof) — Shift+ArrowDown crossing the active p
     const slice = await sourceSlice(finalSel!.start, finalSel!.endExclusive);
     expect(slice).toContain("@page splash");
     expect(finalSel!.start).toBeLessThanOrEqual(leadBlock.absoluteStart + leadBlock.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SFE-P3d-sweep+P3f repair round, round 1 (finding 1 / finding 2) —
+// pointer->offset resolution for a block whose absoluteStart shifted
+// because an EARLIER block was edited. `dist/index.js`'s per-keystroke
+// measurement-cache (`PATCHES.md` "Patch 2") reuses a block's cached
+// `visualLineMap` (which bakes in ABSOLUTE source offsets, see mo()) by
+// DOM/view-node identity alone; a block whose own AST is untouched keeps
+// that identity even though every later block's `absoluteStart` shifted by
+// the length of an edit landing earlier in the document. Before this
+// repair round's fix (requiring the cache's own `absoluteStart` to match
+// the block's CURRENT `absoluteStart`), this test fails: the resolved
+// offset for a character in the LATE block stays pinned to its PRE-edit
+// value instead of shifting by the edit's length. Uses NO new harness —
+// the same shared `support/entry.ts` session/mount every case in this file
+// already uses, and `offsetAtClientPoint` (added for SFE-P1b2's drag
+// cross-check) reads through the EXACT mechanism this bug lives in
+// (`EditorView.measuredLayout.visualLineMap.get().offsetAtPoint`).
+// ---------------------------------------------------------------------------
+
+describe("SFE-P3d-sweep+P3f repair round 1 — pointer offset stays byte-exact after an edit shifts an earlier block", () => {
+  const FOUR_BLOCK_TEXT = "aaaa\n\nbbbb\n\ncccc\n\ndddd";
+  const LATE_BLOCK_INDEX = 3; // "dddd"
+  const LATE_CHAR_OFFSET = 2; // the third 'd'
+  // Clicking a single character's rect center resolves to its TRAILING
+  // edge (same empirically-verified behavior this file's "segments
+  // decision" describe block above documents and relies on) -- so the
+  // landing offset one past a block's own absoluteStart + charOffset.
+  const CLICK_LANDS_PAST_CHAR = 1;
+
+  test("baseline (no edit yet): pointer resolves to the block's own un-shifted absoluteStart + charOffset", async () => {
+    await mount(FOUR_BLOCK_TEXT);
+    await requireBlockCount(4);
+
+    const lateBlock = await block(LATE_BLOCK_INDEX);
+    expect(lateBlock.absoluteStart).toBe(FOUR_BLOCK_TEXT.indexOf("dddd"));
+
+    const pt = await characterCenter(LATE_BLOCK_INDEX, LATE_CHAR_OFFSET);
+    expect(await offsetAtClientPoint(pt.x, pt.y)).toBe(
+      lateBlock.absoluteStart + LATE_CHAR_OFFSET + CLICK_LANDS_PAST_CHAR,
+    );
+  });
+
+  test("INSERTING characters into an earlier block shifts the resolved pointer offset in a later block by the exact insert length, and the next keystroke lands there", async () => {
+    await mount(FOUR_BLOCK_TEXT);
+    await requireBlockCount(4);
+
+    const originalLateAbsoluteStart = (await block(LATE_BLOCK_INDEX)).absoluteStart;
+
+    // Real keystroke-by-keystroke input in the FIRST block, nowhere near
+    // the block under test -- exactly the shape of edit finding 1's own
+    // repro used ("click block 1, Home, type XXXXX, then click block 4").
+    // A PRECISE click (not a coarse block click + Home/End) is used because
+    // this fork's own paragraph blocks include their trailing blank line in
+    // the block's DOM (confirmed live: `block(0).length` is 6, covering
+    // "aaaa\n\n", not just "aaaa") -- coarse click + Home/End is a second,
+    // unrelated source of caret-placement uncertainty this test does not
+    // need to take on. Clicking character index 0 ('a') lands the caret ONE
+    // PAST it (the same trailing-edge behavior `CLICK_LANDS_PAST_CHAR`
+    // documents above), i.e. absolute offset 1 -- still well inside block0,
+    // still shifts every later block's absoluteStart by INSERT.length.
+    const insertPt = await characterCenter(0, 0);
+    await harness.page.mouse.click(insertPt.x, insertPt.y);
+    await harness.page.waitForTimeout(50);
+    const INSERT = "XXXXX";
+    await harness.page.keyboard.type(INSERT);
+    await harness.page.waitForTimeout(80);
+
+    const textAfterInsertEdit = FOUR_BLOCK_TEXT.slice(0, 1) + INSERT + FOUR_BLOCK_TEXT.slice(1);
+    expect(await hostText()).toBe(textAfterInsertEdit);
+
+    // Ground truth, read from the view's own parsed AST (`viewData`), NOT
+    // from the measurement pass under test -- genuinely independent of the
+    // bug this test pins.
+    const lateBlockAfterEdit = await block(LATE_BLOCK_INDEX);
+    expect(lateBlockAfterEdit.absoluteStart).toBe(originalLateAbsoluteStart + INSERT.length);
+    const expectedOffset = lateBlockAfterEdit.absoluteStart + LATE_CHAR_OFFSET + CLICK_LANDS_PAST_CHAR;
+
+    const pt = await characterCenter(LATE_BLOCK_INDEX, LATE_CHAR_OFFSET);
+    // The mechanism assertion: a STALE (pre-fix) cache resolves this to
+    // originalLateAbsoluteStart + LATE_CHAR_OFFSET + CLICK_LANDS_PAST_CHAR
+    // instead -- off by exactly INSERT.length, reproducing finding 1's
+    // off-by-N mechanism directly.
+    expect(await offsetAtClientPoint(pt.x, pt.y)).toBe(expectedOffset);
+
+    // Behavioral proof, not just the geometry query: a real pointer click
+    // followed by a real keystroke lands the new character at the correct
+    // byte offset in the HOST's own text.
+    await harness.page.mouse.click(pt.x, pt.y);
+    await harness.page.waitForTimeout(50);
+    await harness.page.keyboard.type("!");
+    await harness.page.waitForTimeout(50);
+
+    const expectedFinalText =
+      textAfterInsertEdit.slice(0, expectedOffset) + "!" + textAfterInsertEdit.slice(expectedOffset);
+    expect(await hostText()).toBe(expectedFinalText);
+  });
+
+  test("DELETING characters from an earlier block shifts the resolved pointer offset in a later block DOWN by the exact delete length, and the next keystroke lands there", async () => {
+    await mount(FOUR_BLOCK_TEXT);
+    await requireBlockCount(4);
+
+    const originalLateAbsoluteStart = (await block(LATE_BLOCK_INDEX)).absoluteStart;
+
+    // Precise click at character index 3 (the last 'a' of "aaaa") lands the
+    // caret ONE PAST it -- absolute offset 4, i.e. exactly at the end of
+    // "aaaa" and before its trailing blank line (see the INSERT case's
+    // comment above for why a precise click is used instead of End, which
+    // this fork resolves to a DIFFERENT position for a block whose own DOM
+    // spans a trailing blank line). Two Backspaces from there delete
+    // "aaaa"'s last two characters, leaving "aa".
+    const deletePt = await characterCenter(0, 3);
+    await harness.page.mouse.click(deletePt.x, deletePt.y);
+    await harness.page.waitForTimeout(50);
+    const DELETE_COUNT = 2;
+    for (let i = 0; i < DELETE_COUNT; i++) {
+      const before = await hostText();
+      await harness.page.keyboard.press("Backspace");
+      await harness.page.waitForFunction(
+        (beforeLen) => window.__gpc.getHostText().length < beforeLen,
+        before.length,
+        { timeout: 5_000 },
+      );
+    }
+    await harness.page.waitForTimeout(50);
+
+    // "aaaa" (indices 0-3) loses its last DELETE_COUNT characters; every
+    // byte from index 4 onward ("\n\nbbbb...") is untouched.
+    const textAfterDeleteEdit = FOUR_BLOCK_TEXT.slice(0, 4 - DELETE_COUNT) + FOUR_BLOCK_TEXT.slice(4);
+    expect(await hostText()).toBe(textAfterDeleteEdit);
+
+    const lateBlockAfterEdit = await block(LATE_BLOCK_INDEX);
+    expect(lateBlockAfterEdit.absoluteStart).toBe(originalLateAbsoluteStart - DELETE_COUNT);
+    const expectedOffset = lateBlockAfterEdit.absoluteStart + LATE_CHAR_OFFSET + CLICK_LANDS_PAST_CHAR;
+
+    const pt = await characterCenter(LATE_BLOCK_INDEX, LATE_CHAR_OFFSET);
+    expect(await offsetAtClientPoint(pt.x, pt.y)).toBe(expectedOffset);
+
+    await harness.page.mouse.click(pt.x, pt.y);
+    await harness.page.waitForTimeout(50);
+    await harness.page.keyboard.type("!");
+    await harness.page.waitForTimeout(50);
+
+    const expectedFinalText =
+      textAfterDeleteEdit.slice(0, expectedOffset) + "!" + textAfterDeleteEdit.slice(expectedOffset);
+    expect(await hostText()).toBe(expectedFinalText);
   });
 });
 

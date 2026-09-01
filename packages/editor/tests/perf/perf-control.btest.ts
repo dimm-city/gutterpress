@@ -8,7 +8,7 @@ import {
 import { generateMarkdownCorpus, KIB } from "./support/corpus.ts";
 import { mountDocument, typeAndMeasure } from "./support/drive.ts";
 import { formatSummary, summarize } from "./support/stats.ts";
-import { CONTROL_SLOWDOWN_MS, D13_BUDGET_MS } from "./support/constants.ts";
+import { CONTROL_SLOWDOWN_MS } from "./support/constants.ts";
 // SFE-P3d-sweep Lane D — side-effect import wires `echo-guard.btest.ts`
 // (the D13 root-cause regression guard) into `bun run test:perf` without a
 // new package.json script line (`packages/editor/package.json` is outside
@@ -31,36 +31,45 @@ import "./measurement-guard.btest.ts";
  * and explicit result counts" — a measurement that can only ever pass is
  * indistinguishable from a measurement that measures nothing.
  *
- * This test mounts the SAME 250 KiB corpus the real gate uses, enables a
- * synchronous ~150ms busy-wait on every keydown (`support/entry.ts`'s
- * `enableSlowdown` — a listener added by THIS test file, at the test
- * level; no production file is touched, per this run's DETAILS), runs the
- * identical mount/type/measure path, and asserts the resulting p95
- * EXCEEDS the D13 budget. If this ever measured a p95 UNDER the budget
- * while the busy-wait was active, that would mean the harness had stopped
- * observing the real edit-to-paint path — the same failure mode AP-20
- * names ("a gate that exists but is never invoked" is operationally
- * identical to a gate that runs but cannot detect the defect it exists
- * to catch).
+ * This test mounts the SAME 250 KiB corpus the real gate uses, measures an
+ * UNSLOWED baseline pass, then enables a synchronous ~150ms busy-wait on
+ * every keydown (`support/entry.ts`'s `enableSlowdown` — a listener added
+ * by THIS test file, at the test level; no production file is touched, per
+ * this run's DETAILS) and measures a SECOND, slowed pass over the same
+ * mount, and asserts the SLOWED run's p95 exceeds the UNSLOWED run's own
+ * p95 — measured in the same session — by roughly the injected delay.
  *
- * This test itself is ALWAYS expected to pass — it asserts p95 IS worse
- * than the budget, not that it meets it — the "permanently-green control"
- * pattern already used elsewhere in this repo (e.g.
+ * SFE-P3d-sweep+P3f repair round 1 (finding: "the G-12/AP-20 measurement
+ * control is vacuous"): an earlier version of this test asserted only
+ * `p95 > D13_BUDGET_MS` (100ms) and `p95 > CONTROL_SLOWDOWN_MS * 0.5`
+ * (75ms) against the SLOWED run alone. Both are true at every point this
+ * project has been in so far — this sandbox's real, UNSLOWED 250 KiB p95
+ * already runs 290-630ms across every recorded invocation (see the audit
+ * doc's Lane B/D/E sections), i.e. well above both thresholds with ZERO
+ * injected slowdown. A fixed absolute threshold is therefore unfalsifiable
+ * against any baseline this project has ever measured: if `enableSlowdown`
+ * silently became a no-op, if the capture-phase keydown listener stopped
+ * being installed, or if the busy-wait returned immediately, this test
+ * would still have passed. Comparing the SLOWED run's p95 against this
+ * SAME session's own UNSLOWED p95 — not a fixed constant — is immune to
+ * that: the delta can only be large when the busy-wait actually ran.
+ *
+ * This test itself is ALWAYS expected to pass — it asserts the slowed run
+ * IS worse than the unslowed one by roughly the injected amount, not that
+ * either meets the budget — the "permanently-green control" pattern
+ * already used elsewhere in this repo (e.g.
  * `packages/editor/scripts/check-browser-purity.test.mjs`'s per-specifier
  * sabotage fixtures). A future change that accidentally weakens the
  * measurement (e.g. resolving on an unrelated mutation, or losing the
  * `KeyboardEvent.timeStamp` anchor) is exactly the kind of regression this
- * test is positioned to catch: it would start passing for the wrong
- * reason (silently), or, in this design, would need the busy-wait to stop
- * mattering — the tighter sanity-margin assertion below makes an "it
- * barely limped over the line" false pass much less likely to hide such a
- * regression than a bare `> 100` check would.
+ * test is positioned to catch, regardless of what the absolute baseline
+ * happens to be that day.
  *
  * Uses its own small warm-up/sample counts (not `perf-sweep.btest.ts`'s
  * D13-sized 20+60) — proving sensitivity to an injected ~150ms-per-
  * keystroke slowdown does not need 60 samples; a small, fast sample is
  * sufficient and keeps this control cheap to run on every `test:perf`
- * invocation.
+ * invocation, even measured twice (once unslowed, once slowed).
  */
 
 const entryPath = resolve(import.meta.dir, "support/entry.ts");
@@ -90,15 +99,34 @@ afterAll(async () => {
 
 describe("D13 performance harness control (G-12/AP-20)", () => {
   test(
-    "a synchronous ~150ms per-keystroke busy-wait blows the 250 KiB p95 budget",
+    "a synchronous ~150ms per-keystroke busy-wait raises the 250 KiB p95 by roughly the injected delay (differential control)",
     async () => {
       const text = generateMarkdownCorpus(250 * KIB);
       const { selector } = await mountDocument(harness.page, text);
 
+      // Pass 1 — UNSLOWED baseline, same mount/session as the slowed pass
+      // below, measured first so the differential is immune to whatever
+      // this run's absolute baseline happens to be (see this file's header
+      // for why a fixed threshold cannot do this).
+      const unslowedAll = await typeAndMeasure(
+        harness.page,
+        selector,
+        CONTROL_TOTAL_KEYSTROKES,
+        CONTROL_CADENCE_MS,
+        CONTROL_TYPING_PHRASE,
+      );
+      // AP-21 liveness before either behavioral assertion.
+      expect(unslowedAll.length).toBe(CONTROL_TOTAL_KEYSTROKES);
+      const unslowedSummary = summarize(unslowedAll.slice(CONTROL_WARMUP_KEYSTROKES));
+      console.log(`[perf-control] 250 KiB, unslowed baseline: ${formatSummary(unslowedSummary)}`);
+
+      // Pass 2 — SLOWED, same mount, same corpus (now with the unslowed
+      // pass's own keystrokes already appended -- an immaterial ~20 extra
+      // characters against a 250 KiB document).
       await harness.page.evaluate((ms) => window.__gpPerf.enableSlowdown(ms), CONTROL_SLOWDOWN_MS);
-      let all: number[];
+      let slowedAll: number[];
       try {
-        all = await typeAndMeasure(
+        slowedAll = await typeAndMeasure(
           harness.page,
           selector,
           CONTROL_TOTAL_KEYSTROKES,
@@ -109,25 +137,23 @@ describe("D13 performance harness control (G-12/AP-20)", () => {
         await harness.page.evaluate(() => window.__gpPerf.disableSlowdown());
       }
 
-      // AP-21 liveness before the behavioral assertion.
-      expect(all.length).toBe(CONTROL_TOTAL_KEYSTROKES);
+      expect(slowedAll.length).toBe(CONTROL_TOTAL_KEYSTROKES);
+      const slowedSummary = summarize(slowedAll.slice(CONTROL_WARMUP_KEYSTROKES));
+      console.log(`[perf-control] 250 KiB, +${CONTROL_SLOWDOWN_MS}ms/keystroke: ${formatSummary(slowedSummary)}`);
 
-      const samples = all.slice(CONTROL_WARMUP_KEYSTROKES);
-      const summary = summarize(samples);
-      console.log(`[perf-control] 250 KiB, +${CONTROL_SLOWDOWN_MS}ms/keystroke: ${formatSummary(summary)}`);
-
-      // The control's whole purpose: this must be a FAILING relationship to
-      // the real gate's assertion (p95 < D13_BUDGET_MS) — i.e. this
-      // assertion (p95 > D13_BUDGET_MS) must PASS, proving the measurement
-      // is sensitive to a real, injected slowdown on the exact path it
-      // measures.
-      expect(summary.p95).toBeGreaterThan(D13_BUDGET_MS);
-      // Sanity margin: comfortably over the line by roughly the injected
-      // delay itself (not merely a few stray milliseconds over 100), so a
-      // measurement that degraded to near-noise would still be caught here
-      // rather than scraping a bare pass.
-      expect(summary.p95).toBeGreaterThan(CONTROL_SLOWDOWN_MS * 0.5);
+      // The control's whole purpose, made DIFFERENTIAL (SFE-P3d-sweep+P3f
+      // repair round 1 — see this file's header): the slowed run's p95
+      // must exceed THIS SAME SESSION's own unslowed p95 by roughly the
+      // injected delay. Fails the moment the harness stops observing the
+      // injected cost, regardless of the absolute baseline that day —
+      // unlike the fixed-threshold assertions this replaces, which were
+      // satisfied by this sandbox's ordinary (unslowed) baseline alone.
+      const delta = slowedSummary.p95 - unslowedSummary.p95;
+      console.log(
+        `[perf-control] p95 delta: ${delta.toFixed(1)}ms (injected ${CONTROL_SLOWDOWN_MS}ms/keystroke)`,
+      );
+      expect(delta).toBeGreaterThan(CONTROL_SLOWDOWN_MS * 0.5);
     },
-    60_000,
+    90_000,
   );
 });

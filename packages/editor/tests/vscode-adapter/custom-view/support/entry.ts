@@ -191,6 +191,18 @@ export interface CustomViewDriver {
    * box.
    */
   segmentCharacterCenter(index: number, charIndex: number): { x: number; y: number };
+  /**
+   * SFE-P3d-sweep+P3f repair round, round 1 (finding 2 — "No test in the
+   * tree can detect this class of defect"). Real client-space `{x, y}`
+   * center of the CHARACTER at `charOffset` within the block at `index`'s
+   * OWN ORDINARY rendered text — found by walking that block's text nodes,
+   * so (unlike `segmentCharacterCenter` above) it works for default
+   * paragraph rendering with no per-character segment splitting. Used
+   * together with `offsetAtClientPoint` to prove pointer-to-offset
+   * resolution stays byte-exact for a block whose `absoluteStart` shifted
+   * because an earlier block in the document was edited.
+   */
+  characterCenter(index: number, charOffset: number): { x: number; y: number };
 
   /** Forces (or un-forces) `forcedMarkerVisibleBlocks` for the block at
    * `index` -- the one real "force this block active" seam the package
@@ -419,6 +431,34 @@ function astBlocks(): readonly BlockAstNode[] {
   return vd ? vd.blocks.map((b) => b.ast) : [];
 }
 
+/** See `CustomViewDriver.characterCenter`'s doc comment. */
+function characterCenter(index: number, charOffset: number): { x: number; y: number } {
+  const el = blockElements()[index];
+  if (!el) throw new Error(`gpc harness: no DOM block at index ${index}`);
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let remaining = charOffset;
+  let node: Text | null = null;
+  let offsetInNode = 0;
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    const text = current as Text;
+    const length = text.data.length;
+    if (remaining < length) {
+      node = text;
+      offsetInNode = remaining;
+      break;
+    }
+    remaining -= length;
+  }
+  if (!node) {
+    throw new Error(`gpc harness: block ${index} has no character at offset ${charOffset}`);
+  }
+  const range = document.createRange();
+  range.setStart(node, offsetInNode);
+  range.setEnd(node, offsetInNode + 1);
+  const rect = range.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
 function blockAbsoluteStart(index: number): number {
   const vd = requireState().view.viewData.get();
   const b = vd?.blocks[index];
@@ -477,6 +517,7 @@ window.__gpc = {
     const rect = range.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   },
+  characterCenter,
 
   forceBlockMarkersVisible(index: number, visible: boolean): void {
     const s = requireState();

@@ -5,6 +5,22 @@
 > patch's removal trigger — see `packages/vscode-markdown-editor/PATCHES.md`,
 > "Patch 2 upstreaming / removal trigger".
 >
+> **SFE-P3d-sweep+P3f repair round 1 note:** this draft was previously held
+> from filing because its central correctness argument ("Why the
+> translation is exact, not approximate," below) omitted the fix's second
+> input — a block's absolute source offset — and its own code sketch
+> carried the same defect the shipped patch had at the time (a cache-reuse
+> guard that did not compare `absoluteStart`, silently reusing a stale
+> `sourceRange`-bearing cache for any block after an earlier edit). That
+> defect is now fixed in the shipped patch (`PATCHES.md`'s "## Patch 2",
+> the `gpReusable` guard's `absoluteStart` comparison) and covered by a
+> browser regression test
+> (`packages/editor/tests/vscode-adapter/custom-view/fork-hook.btest.ts`,
+> the "pointer offset stays byte-exact after an edit shifts an earlier
+> block" describe block) that fails against the pre-fix code and passes
+> against the fix. This draft is corrected below to match and is ready to
+> file again.
+>
 > Everything below the rule is the issue body verbatim; the title is above it.
 > It is written for upstream maintainers: no internal plan vocabulary, no run
 > IDs, no references to our private docs.
@@ -116,25 +132,48 @@ at a given position as the previous render, that already means (by an
 invariant your own DOM-reuse correctness already depends on) that block's
 rendered DOM, and therefore its internal line geometry, did not change.
 
-We use that signal to skip the per-leaf walk, and instead translate the
-block's previously computed visual-line map by its own freshly (and cheaply)
-remeasured position delta — a plain `getBoundingClientRect()` call we keep
-making for every block regardless (it isn't the bottleneck; see above), just
-no longer followed by the expensive walk when nothing could have changed:
+That invariant covers only ONE of the two inputs `Pe.measure()`/`mo()`
+depends on, though: the block's rendered DOM. The other is `absoluteStart`
+— the document-wide byte offset baked into every run's `sourceRange` — and
+view-node identity says nothing about it. `absoluteStart` is assigned
+positionally on every render and shifts for a block whenever an edit
+changes the character count of anything earlier in the document, entirely
+independent of whether that block's own DOM was reused. Our first attempt
+at this fix missed that and reused a block's cache whenever its view-node
+identity held, regardless of whether its `absoluteStart` had shifted —
+producing a stale, silently-wrong `sourceRange` (and therefore wrong
+pointer-click/caret offsets) for every block after an edit landed earlier
+in the document. Caught by our own browser test suite once we added a case
+that edits an early block and then resolves a pointer offset in a later
+one — no existing case in our suite exercised that shape. The fix below is
+corrected to check both inputs.
+
+We use the DOM-identity signal to skip the per-leaf walk ONLY when the
+block's `absoluteStart` also matches what its cache was recorded under,
+and instead translate the block's previously computed visual-line map by
+its own freshly (and cheaply) remeasured position delta — a plain
+`getBoundingClientRect()` call we keep making for every block regardless
+(it isn't the bottleneck; see above), just no longer followed by the
+expensive walk when nothing could have changed:
 
 ```js
 const cache = incremental ? node.__cache : undefined;
-const reusable = cache !== undefined && cache.className === node.element.className;
+const reusable =
+  cache !== undefined &&
+  cache.className === node.element.className &&
+  cache.absoluteStart === absoluteStart;
 const visualLineMap = reusable
   ? translateVisualLineMap(cache.visualLineMap, freshRect.x - cache.rect.x, freshRect.y - cache.rect.y)
   : Pe.measure([{ absoluteStart, viewNode: node }], coordinateSpace, snapshot);
-node.__cache = { rect: freshRect, visualLineMap, className: node.element.className };
+node.__cache = { rect: freshRect, visualLineMap, className: node.element.className, absoluteStart };
 ```
 
 `translateVisualLineMap` is a small, pure function built entirely from your
 own existing, unmodified primitives — the rect class's own `translate(dx,
 dy)` method, and the same `Pe`/line/run constructors `mo()` itself already
-uses fresh on every call:
+uses fresh on every call. It moves RECT geometry only; it does not, and
+cannot, shift `sourceRange` (an absolute offset), which is why the
+`absoluteStart` check above has to happen before calling it, not inside it:
 
 ```js
 function translateVisualLineMap(map, dx, dy) {
@@ -148,15 +187,21 @@ function translateVisualLineMap(map, dx, dy) {
 ```
 
 Why the translation is exact, not approximate: your own
-`MeasuredLayoutModel.visualLineMap` getter already documents the invariant
+`MeasuredLayoutModel.visualLineMap` getter already documents one invariant
 this relies on — "every per-block map uses the same editor-local coordinate
 space, so concatenation is well-formed without translation or re-sorting."
-A block whose rendered DOM is provably unchanged has unchanged *internal*
-geometry (line wraps, run positions relative to its own top-left); the only
-thing that can differ between renders is *where* that unchanged subtree now
-sits, because something above it in document order grew or shrank. We
-measure that shift directly from a real, fresh DOM read (never modeled via
-margin/gap arithmetic) and apply it uniformly.
+That gives us the block's *internal* geometry (line wraps, run positions
+relative to its own top-left) for free once view-node identity proves the
+block's DOM is unchanged. It does NOT give us the block's *absolute*
+source offsets for free — those come only from checking `absoluteStart`
+directly, as above. With BOTH checked, the only thing that can differ
+between renders is *where* the unchanged subtree now sits on screen,
+because something above it in document order grew or shrank in rendered
+height while its own character count (and everything above it) stayed the
+same. We measure that shift directly from a real, fresh DOM read (never
+modeled via margin/gap arithmetic) and apply it uniformly to rects only —
+never to `sourceRange`, which the `absoluteStart` check already guarantees
+is still correct.
 
 We deliberately only gate this on the per-keystroke render path. Your own
 `ResizeObserver` callback and scroll listener, which also call
@@ -173,15 +218,59 @@ Against the exact published `0.0.2-84` runtime in headless Chromium, driven
 with real keyboard and pointer input, our full pre-existing browser test
 suite — caret placement, pointer-to-offset resolution, drag selection,
 selection-rect painting, IME/`EditContext` input, table editing, our own
-custom-block-render integration — passes identically with and without this
-patch applied. We also added a dedicated regression test that counts real
-`document.createRange()` calls across ordinary appended keystrokes in a
-250 KB document: unpatched, it costs on the order of 3,000+ calls per
-keystroke; patched, well under 100.
+custom-block-render integration — passes with this patch applied.
 
-Measured effect: roughly a 45-50% reduction in per-keystroke edit-to-paint
-latency at 250 KB in our own harness, with no change at small document
-sizes (where the per-leaf walk was already cheap in absolute terms).
+We also added two dedicated regression tests, deliberately covering
+different questions neither one answers alone:
+
+1. A performance-mechanism test that counts real `document.createRange()`
+   calls across ordinary appended keystrokes (typed at the true end of the
+   document, verified independently) in a 250 KB document: unpatched, it
+   costs on the order of 3,000+ calls per keystroke; patched, well under
+   100.
+2. A correctness test (added after we found, and fixed, a defect in an
+   earlier version of this patch — see below) that edits an EARLY block,
+   then resolves a pointer click at a known character offset in a LATER
+   block, and asserts the resolved offset is byte-exact. This is the case
+   our first regression test's "our full pre-existing suite passes
+   identically with and without this patch" claim did not actually cover:
+   every existing pointer/caret test in our suite either drives the caret
+   with keyboard navigation that self-corrects hit-test error (Home, then
+   ArrowRight N times), or performs a pointer click without a preceding
+   edit that shifts a later block's position. None of them combine "edit
+   an earlier block" with "then pointer-resolve inside a later one," which
+   is exactly the shape our defect broke.
+
+The defect the second test caught: our first version of this patch's
+reuse guard checked only view-node identity (does the block's own DOM
+still match what was cached?) and not the block's `absoluteStart` (has
+this block's absolute position in the source shifted because an edit
+landed earlier in the document?). A block whose DOM is untouched can still
+have shifted `absoluteStart` — our reuse guard missed that, so it
+translated a cached `visualLineMap` whose `sourceRange`s were silently
+wrong by the shift amount, corrupting pointer-click resolution, drag
+selection, and caret painting for every block after an edit. Our own
+"full pre-existing suite passes identically" claim was therefore true and
+useless as correctness evidence: none of those tests exercised the
+defect's shape. Caught internally before proposing this issue upstream;
+fixed by adding an `absoluteStart` comparison to the reuse guard (see "Our
+fix," above, for the corrected code) and by adding the test described
+above, which fails against the broken version and passes against the
+fixed one.
+
+Measured effect: at the exact end-of-document typing shape this fix
+targets (confirmed via a `document.createRange()` call-count check, not a
+timing measurement — see the numbered list above), the patch delivers its
+intended mechanism cleanly. We do NOT currently have a trustworthy
+edit-to-paint LATENCY number to offer for that shape: our own benchmark
+harness has a separate, pre-existing defect (its "click to position the
+caret, then press End" navigation does not reliably reach the document's
+end for a large document) that we found while investigating the
+`absoluteStart` defect above, and have not yet fixed. Until that is fixed
+and the benchmark re-run, we are withholding a specific percentage
+latency-reduction claim rather than repeat one we can no longer stand
+behind — an earlier draft of this issue claimed "roughly 45-50%," measured
+against the SAME benchmark defect, and is withdrawn.
 
 ## An open question we did not chase down
 

@@ -531,8 +531,24 @@ therefore no "stale/unmeasured" state for any consumer above to observe;
 the honesty requirement in SFE-P3f.md's binding constraints ("every
 consumer that could read a deferred value must either trigger measurement
 on demand or provably never be reached for an unmeasured block") is met by
-construction — there is no deferred value, only a cheaper-to-produce one
-that this patch proves is exact (see "Why the translate is exact," below).
+construction — there is no deferred value, only a cheaper-to-produce one.
+
+**This is a claim about TIMING, not about correctness, and the two are
+separate questions.** "Every consumer always reads a published value" says
+nothing about whether that published value is the RIGHT one — a stale
+`visualLineMap` translated from a cache keyed on the wrong `absoluteStart`
+is still published on schedule, in full, exactly as this paragraph
+describes; it is simply wrong. SFE-P3d-sweep+P3f repair round 1 found
+exactly that defect in an earlier version of this patch (the cache-reuse
+guard below did not compare `absoluteStart`, so a block's cached map — and
+therefore what every consumer above reads — went stale by exactly the
+length of any edit landing earlier in the document, corrupting pointer
+click resolution, drag selection, and caret painting for every block after
+the edit). That defect is fixed in the code below (the `gpReusable` guard's
+`absoluteStart` comparison) and is why "Why the translate is exact, not
+approximate," below, states two separate invariants rather than one — see
+that section for what is actually guaranteed, correctly, by the code as it
+ships.
 
 The pending-paragraph path (`_virtualLines`, `e.pendingParagraph` in
 `_publishMeasurements`) is untouched: it is measured unconditionally,
@@ -617,24 +633,45 @@ non-recommendation to chase this further inside this patch's scope.
 
 ### Why the translate is exact, not approximate
 
-`Y(n, e, t)` (`dist/index.js:~3780`, unmodified by this patch) already
-implements block-level DOM/view-node reuse: `if (t instanceof T) { if
-(t.canReuse(n, e)) return t; }`, where `T.canReuse(e) { return this.data ===
-e; }` — a REFERENCE check against the block's `ViewData`. The ViewData
-builder (`Se()`/`M()`, unmodified) already preserves ViewData identity only
-when a block's ENTIRE subtree — ast, `showMarkup` (active/inactive), and
-every nested mark's own visibility — is unchanged (this is the SAME
-identity the existing `renderCustomBlock` patch's Hunk 1-2 threads
-`showMarkup` through, and the SAME identity `EditorModel.document`'s own
-memoization already relies on for the parse side — see that class's doc
-comment: "unchanged blocks keep their object identity across reparses").
-So: `r.node` being the SAME object as the entry this loop measured last
-render, for the SAME array position, already means (by an invariant this
-renderer's OWN DOM-reuse correctness already depends on, not one this patch
-introduces) that block's rendered DOM — and therefore its INTERNAL geometry
-(line wraps, run positions relative to the block's own top-left) — did not
-change. The `className` equality check adds a second, independent,
-CHEAP guard against any block-level presentation state (e.g.
+**SFE-P3d-sweep+P3f repair round 1 correction:** an earlier version of this
+section argued from ONE invariant (view-node identity) to the conclusion
+that translation is always exact. That was wrong: `mo()` (and therefore
+every cached `visualLineMap`) depends on TWO independent inputs — the
+block's rendered DOM subtree, AND its `absoluteStart` (baked into every
+run's `sourceRange` as an ABSOLUTE document offset, `v.fromTo(m+R, m+V)`
+with `m` derived from `absoluteStart`). View-node identity proves only the
+first is unchanged; it says nothing about the second. `absoluteStart` is
+assigned per-render, POSITIONALLY (`ni()`'s `d += h.length` accumulation),
+is not part of `ViewData`, and is never consulted by `Y()`/`canReuse` — so
+a block whose own AST/`showMarkup` subtree is untouched (reused by
+identity, internal geometry genuinely unchanged) can still have a
+DIFFERENT `absoluteStart` than the one its cached `sourceRange`s were built
+from, whenever an edit changes the character count of anything earlier in
+the document. Translating that stale cache's RECTS does not, and cannot,
+fix its now-wrong `sourceRange`s — translation moves pixels; it never
+touches `sourceRange` (see `gpTranslateVisualLineMap`, which carries
+`sourceRange` through untouched by design). The corrected argument below
+proves both invariants explicitly, and the code enforces both.
+
+**(1) Internal geometry is proven unchanged by view-node identity.** `Y(n,
+e, t)` (`dist/index.js:~3780`, unmodified by this patch) already implements
+block-level DOM/view-node reuse: `if (t instanceof T) { if (t.canReuse(n,
+e)) return t; }`, where `T.canReuse(e) { return this.data === e; }` — a
+REFERENCE check against the block's `ViewData`. The ViewData builder
+(`Se()`/`M()`, unmodified) already preserves ViewData identity only when a
+block's ENTIRE subtree — ast, `showMarkup` (active/inactive), and every
+nested mark's own visibility — is unchanged (this is the SAME identity the
+existing `renderCustomBlock` patch's Hunk 1-2 threads `showMarkup` through,
+and the SAME identity `EditorModel.document`'s own memoization already
+relies on for the parse side — see that class's doc comment: "unchanged
+blocks keep their object identity across reparses"). So: `r.node` being the
+SAME object as the entry this loop measured last render, for the SAME
+array position, already means (by an invariant this renderer's OWN
+DOM-reuse correctness already depends on, not one this patch introduces)
+that block's rendered DOM — and therefore its INTERNAL geometry (line
+wraps, run positions relative to the block's own top-left) — did not
+change. The `className` equality check adds a second, independent, CHEAP
+guard against any block-level presentation state (e.g.
 `md-block-active`/`md-markers-hidden`, `md-diff-added`) this reasoning did
 not anticipate; `src/view/editor.css`'s only layout-relevant rule gated by
 such a class (`.md-table.md-block-active td { position: relative }`) sits
@@ -643,20 +680,56 @@ identity for that block, so it can never surface on a
 `gpReusable`-eligible node — the `className` check is defense-in-depth, not
 load-bearing on its own.
 
-What CAN change between two renders of an unchanged block is only its
-POSITION — a sibling before it in document order grew or shrank. This
-patch re-reads that position for EVERY block, every render, via the SAME
-cheap `getBoundingClientRect()` call the unpatched code already made (never
-skipped — see "Why the cheap read is never skipped," below), and applies
-the OBSERVED delta (`c.x - gpCache.rect.x`, `c.y - gpCache.rect.y` — real
-numbers from a real, fresh DOM read, never modeled/assumed via margin or
-gap arithmetic) to the cached map via `C.prototype.translate` (unmodified,
-pre-existing on the rect class). Because the block's own internal layout is
-provably unchanged (previous paragraph) and its coordinate space is shared
-document-wide (`wo.visualLineMap`'s own stated invariant, above), a uniform
-translation of every line/run rect by that SAME observed delta is exactly
-what a fresh `Pe.measure()` call would have computed — not an
-approximation of it.
+**(2) Absolute source offsets are proven unchanged ONLY by comparing
+`absoluteStart` directly — view-node identity implies nothing about it.**
+The `gpReusable` guard therefore requires `gpCache.absoluteStart ===
+r.absoluteStart` as a THIRD, independent condition alongside identity and
+`className` (see Hunk 9 below). When it holds, no edit has changed the
+character count of anything earlier in the document since the cache was
+recorded, so every cached `sourceRange` is still the correct absolute
+range for this block. When it does NOT hold — the case the earlier,
+uncorrected version of this patch missed — the cache is stale by exactly
+that shift and the code falls through to a full `Pe.measure()` instead of
+translating; a `dOff`-shifting alternative (add the observed
+`absoluteStart` delta to every cached `sourceRange`, avoiding the full
+remeasure) was considered and rejected in favor of the simpler,
+obviously-sound fallback — see "Repair round 1: the fallback-over-shift
+choice," below.
+
+What CAN change between two renders of a block whose identity, `className`,
+AND `absoluteStart` are ALL confirmed unchanged is only its screen
+POSITION — a sibling before it in document order grew or shrank in
+rendered height. This patch re-reads that position for EVERY block, every
+render, via the SAME cheap `getBoundingClientRect()` call the unpatched
+code already made (never skipped — see "Why the cheap read is never
+skipped," below), and applies the OBSERVED delta (`c.x - gpCache.rect.x`,
+`c.y - gpCache.rect.y` — real numbers from a real, fresh DOM read, never
+modeled/assumed via margin or gap arithmetic) to the cached map via
+`C.prototype.translate` (unmodified, pre-existing on the rect class).
+Because the block's own internal layout is provably unchanged (invariant
+1), its absolute source offsets are provably unchanged (invariant 2), and
+its coordinate space is shared document-wide (`wo.visualLineMap`'s own
+stated invariant, above), a uniform translation of every line/run rect by
+that SAME observed delta is exactly what a fresh `Pe.measure()` call would
+have computed — not an approximation of it.
+
+### Repair round 1: the fallback-over-shift choice
+
+SFE-P3d-sweep+P3f's repair round considered two equally-sound fixes for the
+missing `absoluteStart` check: (a) fall back to a full `Pe.measure()`
+whenever `absoluteStart` changed (what shipped), or (b) keep translating
+but additionally shift every cached `sourceRange` by the observed
+`absoluteStart` delta, avoiding the remeasure. (a) was chosen: it is the
+smaller, more obviously correct change (one added comparison, no new
+arithmetic on `sourceRange`), it cannot silently miscompute a shift the way
+a `dOff`-arithmetic bug could, and D13's own budget numbers this run
+recorded were produced by an APPEND-ONLY typing workload where NO block's
+`absoluteStart` ever changes mid-benchmark except the actively-edited
+block's own (which never qualified for `gpReusable` regardless, since its
+view-node identity changes too) — so the fallback costs nothing measurable
+on the exact benchmark D13 gates, while being strictly safer for every
+other edit shape. See `p3d-sweep-audit.md`'s "## Lane E (P3f)" section for
+the re-measured numbers confirming this.
 
 ### Why the cheap read is never skipped
 
@@ -715,10 +788,15 @@ Added (new function; no "before" — this is a pure addition):
  * computed Pe (a block's visual-line map, see mo() above) by a fixed
  * (dx, dy), using C's own unmodified translate(). Every line's rect and
  * every run's rect move by the same amount; sourceRange/source/
- * isVisualLineAnchor are carried over untouched, so offset<->rect mapping
- * stays exact — only WHERE on screen the (unchanged) mapping lands moves.
- * See PATCHES.md for why this is sound (Y()'s existing identity-reuse
- * contract) and for the one call site that uses it.
+ * isVisualLineAnchor are carried over untouched. That is exact ONLY when
+ * the caller has already proven the map's absoluteStart is byte-identical
+ * to this block's CURRENT absoluteStart (see the __gpCache.absoluteStart
+ * check at the one call site below) — sourceRange is an ABSOLUTE document
+ * offset baked in by mo(), and this function has no way to shift it, so a
+ * caller that invokes this after the block's absoluteStart changed (an
+ * edit landed earlier in the document) would silently publish a stale
+ * offset<->rect mapping. See PATCHES.md for why the call site's identity
+ * check is sound and for the one call site that uses it.
  */
 function gpTranslateVisualLineMap(n, e, t) {
   return e === 0 && t === 0 ? n : new Pe(n.lines.map((s) => new ot(
@@ -815,25 +893,39 @@ After:
        * entry this loop measured last render at this position iff Y()
        * (the view-node factory) reused it by identity, which happens only
        * when nothing in its ast/showMarkup/active-state subtree differs —
-       * i.e. only when its rendered DOM, and therefore its internal
-       * geometry, is provably unchanged since __gpCache below was
-       * recorded (see PATCHES.md's consumer-map rationale). className is
-       * compared too, as a cheap, generic guard against any block-level
-       * class this reasoning did not anticipate. When both hold, the
-       * expensive per-text-leaf walk (Pe.measure() -> mo(): one DOM Range
-       * + getClientRects() per text leaf) is skipped and replaced by
-       * translating the cached map by this block's freshly (and cheaply)
-       * remeasured position delta — exact, not approximate, under that
-       * same identity invariant, since translate() only ever moves rects
-       * by the block's OWN observed shift. */
-      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className;
+       * i.e. only when its rendered DOM, and therefore its INTERNAL
+       * geometry (line wraps, run positions relative to the block's own
+       * top-left), is provably unchanged since __gpCache below was
+       * recorded (see PATCHES.md's consumer-map rationale). That identity
+       * says nothing about the block's ABSOLUTE source offsets, which are
+       * baked into every cached run via `sourceRange` (see mo()/gpTranslate
+       * VisualLineMap above) and shift whenever an edit lands earlier in
+       * the document without touching this block's own DOM at all. So the
+       * cache is reusable only when BOTH hold: (1) className is unchanged
+       * — a cheap, generic guard against any block-level presentation
+       * state this reasoning did not otherwise anticipate — and (2) this
+       * block's absoluteStart is byte-identical to the absoluteStart the
+       * cache was recorded under, which is the ONLY thing that proves no
+       * edit shifted this block since. When (2) fails, the cached
+       * sourceRanges are stale by the shift amount and MUST NOT be reused
+       * even via translation — translating rect geometry does not, and
+       * cannot, correct a stale sourceRange, so this falls through to a
+       * full Pe.measure() instead. When both hold, the expensive
+       * per-text-leaf walk (Pe.measure() -> mo(): one DOM Range +
+       * getClientRects() per text leaf) is skipped and replaced by
+       * translating the cached map's RECT geometry only by this block's
+       * freshly (and cheaply) remeasured position delta — exact, not
+       * approximate, under that same identity invariant, since translate()
+       * only ever moves rects by the block's OWN observed shift and never
+       * touches sourceRange, which is guaranteed unchanged by (2). */
+      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className && gpCache.absoluteStart === r.absoluteStart;
       const h = gpReusable
         ? gpTranslateVisualLineMap(gpCache.visualLineMap, c.x - gpCache.rect.x, c.y - gpCache.rect.y)
         : Pe.measure([{
           absoluteStart: r.absoluteStart,
           viewNode: r.node
         }], this.coordinateSpace, t);
-      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className };
+      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className, absoluteStart: r.absoluteStart };
       s.push({
         block: r.node.block,
         absoluteStart: r.absoluteStart,
@@ -857,7 +949,12 @@ Design notes:
   across renders when `Y()` genuinely reused it, the cache and its
   eligibility check share one identity by construction, and a discarded
   node's cache is reclaimed with it — no cleanup pass required, no
-  unbounded growth.
+  unbounded growth. **Carries `absoluteStart` (repair round 1)** alongside
+  `rect`/`visualLineMap`/`className`, specifically so `gpReusable` can
+  compare it against the block's CURRENT `r.absoluteStart` — the field an
+  earlier version of this patch omitted, letting a block's cache be reused
+  by DOM identity alone even after its absolute position in the source had
+  shifted (see "Why the translate is exact, not approximate," above).
 - **Always writes `__gpCache`, on every path.** Whether a block was
   reused (translated) or fully remeasured, the fresh, verified-correct
   result is stashed for next time — including on the FULL-remeasure
@@ -935,4 +1032,7 @@ unconditionally again, when EITHER:
 Per CLAUDE.md's design-for-deletion rule, an upstream fix is the preferred
 end state here too; this patch changes nothing about `_publishMeasurements`'s
 OBSERVABLE output (see "Consumer map," above) so its removal, once upstream
-subsumes it, is a pure performance no-op for every consumer.
+subsumes it, is a pure performance no-op for every consumer. (This claim
+holds for the patch AS SHIPPED, `absoluteStart`-checked — see "Why the
+translate is exact, not approximate," above, for the repair round that made
+it true.)

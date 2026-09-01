@@ -2420,10 +2420,15 @@ function vo(n, e, t, s) {
  * computed Pe (a block's visual-line map, see mo() above) by a fixed
  * (dx, dy), using C's own unmodified translate(). Every line's rect and
  * every run's rect move by the same amount; sourceRange/source/
- * isVisualLineAnchor are carried over untouched, so offset<->rect mapping
- * stays exact — only WHERE on screen the (unchanged) mapping lands moves.
- * See PATCHES.md for why this is sound (Y()'s existing identity-reuse
- * contract) and for the one call site that uses it.
+ * isVisualLineAnchor are carried over untouched. That is exact ONLY when
+ * the caller has already proven the map's absoluteStart is byte-identical
+ * to this block's CURRENT absoluteStart (see the __gpCache.absoluteStart
+ * check at the one call site below) — sourceRange is an ABSOLUTE document
+ * offset baked in by mo(), and this function has no way to shift it, so a
+ * caller that invokes this after the block's absoluteStart changed (an
+ * edit landed earlier in the document) would silently publish a stale
+ * offset<->rect mapping. See PATCHES.md for why the call site's identity
+ * check is sound and for the one call site that uses it.
  */
 function gpTranslateVisualLineMap(n, e, t) {
   return e === 0 && t === 0 ? n : new Pe(n.lines.map((s) => new ot(
@@ -6382,25 +6387,39 @@ class gl extends H {
        * entry this loop measured last render at this position iff Y()
        * (the view-node factory) reused it by identity, which happens only
        * when nothing in its ast/showMarkup/active-state subtree differs —
-       * i.e. only when its rendered DOM, and therefore its internal
-       * geometry, is provably unchanged since __gpCache below was
-       * recorded (see PATCHES.md's consumer-map rationale). className is
-       * compared too, as a cheap, generic guard against any block-level
-       * class this reasoning did not anticipate. When both hold, the
-       * expensive per-text-leaf walk (Pe.measure() -> mo(): one DOM Range
-       * + getClientRects() per text leaf) is skipped and replaced by
-       * translating the cached map by this block's freshly (and cheaply)
-       * remeasured position delta — exact, not approximate, under that
-       * same identity invariant, since translate() only ever moves rects
-       * by the block's OWN observed shift. */
-      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className;
+       * i.e. only when its rendered DOM, and therefore its INTERNAL
+       * geometry (line wraps, run positions relative to the block's own
+       * top-left), is provably unchanged since __gpCache below was
+       * recorded (see PATCHES.md's consumer-map rationale). That identity
+       * says nothing about the block's ABSOLUTE source offsets, which are
+       * baked into every cached run via `sourceRange` (see mo()/gpTranslate
+       * VisualLineMap above) and shift whenever an edit lands earlier in
+       * the document without touching this block's own DOM at all. So the
+       * cache is reusable only when BOTH hold: (1) className is unchanged
+       * — a cheap, generic guard against any block-level presentation
+       * state this reasoning did not otherwise anticipate — and (2) this
+       * block's absoluteStart is byte-identical to the absoluteStart the
+       * cache was recorded under, which is the ONLY thing that proves no
+       * edit shifted this block since. When (2) fails, the cached
+       * sourceRanges are stale by the shift amount and MUST NOT be reused
+       * even via translation — translating rect geometry does not, and
+       * cannot, correct a stale sourceRange, so this falls through to a
+       * full Pe.measure() instead. When both hold, the expensive
+       * per-text-leaf walk (Pe.measure() -> mo(): one DOM Range +
+       * getClientRects() per text leaf) is skipped and replaced by
+       * translating the cached map's RECT geometry only by this block's
+       * freshly (and cheaply) remeasured position delta — exact, not
+       * approximate, under that same identity invariant, since translate()
+       * only ever moves rects by the block's OWN observed shift and never
+       * touches sourceRange, which is guaranteed unchanged by (2). */
+      const gpCache = n ? r.node.__gpCache : void 0, gpReusable = gpCache !== void 0 && gpCache.className === r.node.element.className && gpCache.absoluteStart === r.absoluteStart;
       const h = gpReusable
         ? gpTranslateVisualLineMap(gpCache.visualLineMap, c.x - gpCache.rect.x, c.y - gpCache.rect.y)
         : Pe.measure([{
           absoluteStart: r.absoluteStart,
           viewNode: r.node
         }], this.coordinateSpace, t);
-      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className };
+      r.node.__gpCache = { rect: c, visualLineMap: h, className: r.node.element.className, absoluteStart: r.absoluteStart };
       s.push({
         block: r.node.block,
         absoluteStart: r.absoluteStart,
