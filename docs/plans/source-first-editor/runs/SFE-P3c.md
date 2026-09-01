@@ -251,7 +251,47 @@ artifacts.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+Three batches over `a3e0da88..HEAD`, three rounds. Round 1: **14 CONFIRMED**
+findings — among them three "would not work in a real VS Code at all"
+(dist/extension.js unloadable by the extension host because `gutterpress` was
+bundled in with `import.meta.resolve` inside; the webview bundle was ESM
+behind a classic `<script>` tag; every accepted keystroke dispose-remounted
+the whole editor), one security hole (a `../` manifest plugin path loading
+and EXECUTING code outside the workspace, now refused with a fixture), a
+version-space conflation in projection staleness (the exact class the
+reconciliation addendum removed for edits, reintroduced for projections —
+fixed by remapping through the host stamp with a conservative
+NEGATIVE_INFINITY fallback), absolute paths leaking into the webview via
+pluginErrors (now fixed sanitized wire messages), D9's trust explanation
+unimplemented (now a real notice banner, browser-proven with both clearing
+mechanisms), preview project-identity tracking broken across restart, a
+malformed message permanently killing the surface while the mirror stayed
+writable, an uncited applyEdit/change-event ordering assumption, a
+never-matching extension id in the host-fidelity scaffold, the missing
+evidence record (now the "Deviations and evidence" section below), and
+build.mjs's dead placeholder path.
+
+Round 2: caught that round 1's repair report had **silently omitted one of
+the 14** — a queued edit was still dispatched after a REJECTED in-flight
+edit, applying it to a document state that never existed (silent source
+corruption) — plus a broken frozen lockfile from the @vscode/test-electron
+removal. Round 3 verified both fixed: a rejection now discards the queue
+with the convergence replacement.
+
+Verdict: **approve** — 0 confirmed remaining, 2 advisories (a rejection with
+unchanged host text still emits one redundant version bump + diagnostic,
+fail-closed direction; and an acceptance-log formatting nit resolved by the
+close-out). The per-round detail, sabotage-proof results, host-fidelity
+deviation and rationale accounts live in the sections below.
+
+## Gate
+
+PASS — all 18 commands exit 0: install (frozen); typecheck (4 workspaces);
+vscode-extension test (228) + test:browser (**34 across 9 suites**) + build;
+editor 3038 + 109 browser + purity; cli build (render purity) + 1913:60;
+desktop 6017:1 + check (896 files) + lint + build (render purity);
+architecture (route ratchet 104 == 104); generated-files (1319 tracked);
+vendored (26 hashes / 33 files); knip.
 
 ## Deviations and evidence
 
