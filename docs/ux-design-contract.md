@@ -210,6 +210,11 @@ Shipped baseline:
     headers) falls back to the nearest mapped ancestor.
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
   `webContents.printToPDF`.
+- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
+  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
+  snapshots at 1000ms, a user setting ("Save edits automatically",
+  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
+  indicator is subtle (no modal) — see Anti-Patterns.
 
 Proposed refinements:
 
@@ -1088,7 +1093,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Anti-pattern | Why | Alternative |
 |---|---|---|
 | Full-screen onboarding carousel | Hides the actual app | Annotated starter template (shipped wizard) |
-| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§3) |
+| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§1) |
 | Blocking publish modal with progress | Forces spinner-watching | Side-drawer progress log (§6) |
 | Floating panels that reset position | Lost state | Docked panels, persisted layout |
 | Color-only state indication | WCAG / color-blind users | Icon + color + label |
