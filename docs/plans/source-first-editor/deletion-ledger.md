@@ -40,11 +40,11 @@ against them.
 | PWA service-worker path | Future browser app | Out of scope | P5a | build/search proof | Smaller desktop build — **DONE, committed `5db8c581`**: `src/service-worker.ts` (110 lines) + `tests/platform/service-worker.test.ts` (77 lines) deleted; the `!isDesktop()`-gated registration block deleted from `+layout.svelte`; `svelte.config.js`'s `serviceWorker: { register: false }` override removed (SvelteKit's default — no auto-registration to suppress once there is no SW to register); zero `serviceWorker` occurrences left under `packages/desktop/src`. Also in `5db8c581`: `app.html`'s `<link rel="manifest">` and its PWA comment removed, and `api.ts`'s stale WebAdapter-staging comment rewritten as history — both resolved in-commit, not left for a later lane. |
 | Duplicate static viewer bundle | PWA fallback | Shared render asset ownership | P5a | generated file proof | One bundle output — **NOT resolved by `5db8c581`; DONE in round-1 repair (uncommitted).** `packages/desktop/static/engine/gutterpress-viewer.js` was left untouched by the SFE-P5a commit. Re-verification found it orphaned, not shared: at base `c33868f8` its only two consumers were `WebAdapter.renderBookHtml` (`web-adapter.ts:94`) and the service worker's precache list (`service-worker.ts:38`) — `5db8c581` deleted both call sites without deleting the asset they called. `platform-inventory.md` §13 does describe it as PWA-only (not "shared" as the prior note here claimed). Root cause: `packages/cli/scripts/build-engine-bundles.mjs` unconditionally copied the built viewer bundle into `packages/desktop/static/engine/` on every `packages/cli` library build (via desktop's `build:runtime` script) — deleting the static file without also fixing the generator meant the very next `bun run build` silently regenerated it. Round-1 repair deletes `packages/desktop/static/engine/` and removes that copy step (and its now-false rationale comment) from `build-engine-bundles.mjs`; verified with a full `rm -rf build .svelte-kit && npm run build` that `build/client` no longer emits `engine/gutterpress-viewer.js` and `static/engine/` stays absent. `static/icons/` is untouched (still referenced by `app.html`). |
 | Broad `Platform` service locator | Electron/PWA abstraction | Narrow feature capabilities | P5b | consumer/import search | Explicit dependencies — **DONE**: `getPlatform()`, the `Platform`/`HostServices` interfaces, and `electron-adapter.ts` (253 lines) are deleted; every real member moved to one of 5 new feature-owned capability modules (`update/updater-capability.ts`, `remote/remote-capability.ts`, `export/build-preview-capability.ts`, `app-lifecycle/app-lifecycle-capability.ts`, `editor-host/editor-projection-capability.ts`) or was found dead with search proof (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`/`setSecret` — 4 members/pairs) and deleted outright; `onNativeThemeUpdated` and the fs primitives (`readFile`/`writeFile`/`statFile`) collapsed into their sole consumers rather than getting a forwarding-only module. Full inventory, search proofs, and the capability-cut rationale: `docs/plans/source-first-editor/capability-map.md`. See this ledger's own SFE-P5b section below for the measured before/after. |
-| Desktop typed HTTP `api.ts` | Route client | Typed IPC | P5d | file absent | One transport |
-| `src/routes/api/**` | Electron request/reply host | Typed IPC | P5c/P5d | route count zero | One transport |
-| Adapter-node desktop server | Execute SvelteKit routes | Static renderer + IPC | P5d | dependency/server search | Deletes loopback service |
-| Loopback bearer token/proxy | Secure local server | Server absent | P5d | symbol search | Removes attack/failure mode |
-| Route-only DTO duplication | HTTP transport shapes | Capability/IPC contracts | P5c/P5d | type search | Fewer models |
+| Desktop typed HTTP `api.ts` | Route client | Typed IPC | P5d | file absent | One transport — **DONE**: `src/lib/api.ts` (722 lines) was deleted in SFE-P5c4, ahead of this row's own P5d phase — re-verified absent in this run (`find packages/desktop/src -iname api.ts` → zero hits) |
+| `src/routes/api/**` | Electron request/reply host | Typed IPC | P5c/P5d | route count zero | One transport — **DONE**: the directory was deleted whole in SFE-P5c4 (route count 104→0) — re-verified absent in this run (`test -d packages/desktop/src/routes/api` fails; `find packages/desktop/src/routes -type f` lists only `+layout.svelte`/`+layout.ts`/`+page.svelte`) |
+| Adapter-node desktop server | Execute SvelteKit routes | Static renderer + IPC | P5d | dependency/server search | Deletes loopback service — **DONE (SFE-P5d, this run)**: `@sveltejs/adapter-node` replaced by `@sveltejs/adapter-static` in `package.json`/`bun.lock`; `svelte.config.js` builds a plain static file tree (`pages`/`assets`: `build`, `fallback: "index.html"`); `electron/sveltekit-host.ts` (236 lines — `startSvelteKitServer`, the `createServer(...).listen(0, "127.0.0.1")` loopback bind, `getSvelteKitHandlerPath`) deleted outright; `electron/app-protocol.ts` (198 lines, new) reads `build/` directly from disk under `app://`. Search proofs below. |
+| Loopback bearer token/proxy | Secure local server | Server absent | P5d | symbol search | Removes attack/failure mode — **DONE (SFE-P5d, this run)**: `AUTH_HEADER`/`isAuthorizedRequest`/`withTokenAuth`/`skAuthToken` (the per-session `randomBytes(32)` token) and `buildProxyRequest`/the `fetch`-based proxy in `registerAppProtocol` all deleted with `sveltekit-host.ts`; the "app-host validation tied only to the proxy" (the pre-fix host check existed to gate what got proxied) is replaced by a new, differently-reasoned host check in `app-protocol.ts` that gates what gets served from disk (kept for origin-identity consistency with `APP_ORIGIN`, not proxy protection — see that file's header). Security-equivalence statement and the traversal-refusal proof are in this run's own section below. |
+| Route-only DTO duplication | HTTP transport shapes | Capability/IPC contracts | P5c/P5d | type search | Fewer models — **DONE (SFE-P5c)**: the HTTP-route-only DTO shapes were retired during the P5c migration itself (each subrun's rule 6 landed callers on the bounded context's capability module rather than a route-shaped type; `dtos.ts`'s surviving members carry "moved here from `$lib/api.ts`" provenance notes recording the consolidation). Nothing route-shaped remained for SFE-P5d to find or delete: `grep -rn "RouteOnly\|RouteResponse\|RouteRequest" packages/desktop/src packages/desktop/electron` → zero hits, and this run's `knip` pass (files/dependencies/unlisted/binaries — see the verification table below) flags no orphaned type module. |
 | Tracked generated directories | Build output in source | CI-generated only | P0b | git ls-files proof | Cleaner repository |
 | Stale ADR references/comments | Historical architecture drift | Current ADRs | P6c/P7 | doc link check | Discoverable rationale |
 | Workflow logic in `+page.svelte` | Organic composition growth | Feature-owned controllers | P6a | responsibility review | Smaller composition root |
@@ -2014,3 +2014,330 @@ the code looked like before that repair; a future change must not revert
 `.rejects.toThrow` back to `expect(() => fn()).toThrow(...)` for these
 three members on the strength of the paragraph above — that would be
 reverting the round-1 fix, not restoring a regression.
+
+### SFE-P5d — 2026-09-01 — static desktop renderer and local server deletion (Checkpoint C)
+
+Lane A (implementation), the single lane for this run — the plan's three
+named lanes (A: static build, B: Electron server deletion, C: API
+client/route-tree deletion) collapsed into one write-ownership grant because
+Lane C's own deliverables (`src/routes/api/**`, `src/lib/api.ts`) were
+already deleted whole by SFE-P5c4, ahead of this phase. Base SHA `d6092188`
+(SFE-P5c's close-out commit, current HEAD at the start of this run). Head:
+**uncommitted** — this run's changes are left in the working tree per its
+own instructions, for the integrator to commit.
+
+**What was deleted:**
+
+- `electron/sveltekit-host.ts` (236 lines) outright: `startSvelteKitServer`
+  (the `createServer(...).listen(0, "127.0.0.1")` loopback bind and
+  `getSvelteKitHandlerPath`'s `app.asar/build/handler.js` resolution),
+  `AUTH_HEADER`/`isAuthorizedRequest`/`withTokenAuth` (the bearer-token
+  check), `buildProxyRequest` (the `fetch`-based proxy request builder),
+  `buildHostErrorPage` (the server error page), and the old
+  `registerAppProtocol` (the proxy-only `app://` handler that forwarded
+  every request to the loopback server).
+- `main.ts`'s `skAuthToken` constant (`randomBytes(32).toString("hex")`,
+  minted once per process) and its two call sites
+  (`startSvelteKitServer(slog, skAuthToken)`, `registerAppProtocol
+  (skAuthToken)`), and the `node:crypto` `randomBytes` import that only
+  existed for it.
+- `@sveltejs/adapter-node` (`package.json` devDependency; `bun.lock`
+  correspondingly drops its whole dependency subtree — `@rollup/plugin-*`,
+  `rollup` — net −86 lines: `+2/−88`).
+- Two test files that existed solely to pin the deleted mechanism:
+  `tests/platform/sveltekit-host.test.ts` (88 lines — `buildHostErrorPage`
+  unit tests) and `tests/platform/sveltekit-host-auth.test.ts` (210 lines —
+  the bearer-token/host-validation regression suite, including the two
+  named P1-review repro tests `#2a`/`#2b`).
+
+**What was added:**
+
+- `electron/app-protocol.ts` (198 lines, new) — the static-file `app://`
+  handler. `registerAppProtocol(buildDir)` reads the requested file directly
+  from `buildDir` (`fs/promises.readFile`) and returns its bytes with a
+  correct `Content-Type` (`mimeTypeFor`, a small extension table); an
+  extensionless path with no matching file falls back to `build/index.html`
+  (`looksLikeAssetRequest` decides asset-vs-route) so the SvelteKit client
+  router can handle a deep link. `resolveAssetPath` is the pure,
+  independently-testable path-scoping function — see "Security equivalence"
+  and "Traversal-refusal proof" below. `resolveBuildDir(isPackaged, hereDir)`
+  and `staticBuildLooksValid(buildDir)` are pure helpers `main.ts` calls
+  directly (mirroring `navigation-policy.ts`'s `resolveDevServerUrl`
+  pattern), replacing `sveltekit-host.ts`'s internal
+  `getSvelteKitHandlerPath`.
+- `tests/platform/app-protocol.test.ts` (236 lines, new) — replaces the two
+  deleted test files. 21 tests: pure-function coverage for
+  `resolveAssetPath`/`looksLikeAssetRequest`/`mimeTypeFor`/`resolveBuildDir`/
+  `staticBuildLooksValid`, plus full-pipeline tests against a real temp
+  `buildDir` fixture and a captured `protocol.handle` callback (same
+  convention the deleted `sveltekit-host-auth.test.ts` used).
+- `svelte.config.js` switched to `@sveltejs/adapter-static` (`pages`/
+  `assets`: `"build"`, `fallback: "index.html"`) — `src/routes/+layout.ts`
+  already set `ssr = false` (unchanged; its comment was reworded to drop the
+  stale `+server.ts`/adapter-node framing), which is what lets adapter-static
+  build a pure client-only SPA with no dynamic-route error. `strict`
+  defaults to `true` but adapter-static's own source
+  (`node_modules/@sveltejs/adapter-static/index.js`) skips the
+  all-routes-must-be-prerenderable check entirely whenever `fallback` is
+  set, so no `prerender = true` was needed anywhere.
+- `main.ts`'s `whenReady()` block now resolves `buildDir` via
+  `resolveBuildDir(app.isPackaged, HERE)` and, gated behind the SAME
+  `resolveDevServerUrl(...)` check that used to gate `startSvelteKitServer`
+  (so a fresh checkout's `electron:hmr` dev session — no `build/` yet — does
+  not see a false "couldn't start" dialog), calls `staticBuildLooksValid
+  (buildDir)`; a missing/corrupt build directory shows the same
+  `dialog.showErrorBox("Gutterpress couldn't start", …)` ARCH review #28
+  UX, now for the new failure mode. `registerAppProtocol(buildDir)` is
+  called unconditionally afterward, matching the old always-register
+  behavior.
+
+**Security equivalence statement (the plan's required Checkpoint C
+deliverable):** the deleted bearer token existed to authenticate callers of
+the loopback HTTP server — `sveltekit-host.ts`'s own header explained the
+threat it closed (P1 review, PR #98, finding #2): a loopback bind
+(127.0.0.1) is not caller authentication, so any other local process that
+discovered the OS-assigned port could otherwise reach the same privileged
+`+server.ts` routes the renderer used. **There is no longer a server to
+protect** — `app-protocol.ts` never opens a socket; it only ever reads
+files out of the packaged, read-only `buildDir` and returns their bytes.
+The surviving boundary is **path-scoping**: `resolveAssetPath` refuses to
+resolve any request outside `buildDir` (two independent layers — a
+segment-level `..`/drive-letter reject before any path is joined, and a
+final lexical containment check after), proven by the traversal-refusal
+tests below. The old `registerAppProtocol`'s "reject any host but `local`"
+check is NOT carried forward as "the same validation moved" — a fresh,
+differently-reasoned host check was written for the new handler (kept for
+origin-identity consistency with `navigation-policy.ts`'s `APP_ORIGIN =
+"app://local"`, not because it protects a proxy that no longer exists).
+
+**Traversal-refusal proof (`tests/platform/app-protocol.test.ts`,
+verbatim tests, all passing):**
+
+```
+TRAVERSAL REFUSAL: a literal '..' segment is rejected
+TRAVERSAL REFUSAL: a slash-encoded '..' segment is rejected (bypasses URL-level dot-segment normalization, decoded by us)
+TRAVERSAL REFUSAL: a Windows drive-letter segment is rejected (would otherwise replace buildDir under path.win32.resolve)
+TRAVERSAL REFUSAL: an embedded NUL byte is rejected
+TRAVERSAL REFUSAL through the full app:// pipeline: a slash-encoded '..' request never escapes buildDir
+TRAVERSAL REFUSAL through the full app:// pipeline: a literal '../' request resolves within buildDir, never the real filesystem root
+```
+
+The slash-encoded case (`app://local/foo%2f..%2f..%2f..%2f..%2fetc%2fpasswd`)
+is the meaningful one: `new URL(...)` leaves an encoded slash (`%2f`)
+alone rather than treating it as a path separator, so the WHATWG URL
+parser's OWN dot-segment collapsing never sees the `..` segments this
+decodes to — proven empirically (`node -e 'new URL("app://local/foo%2f..%2f..%2fetc%2fpasswd").pathname'`
+→ `/foo%2f..%2f..%2fetc%2fpasswd`, unchanged) before writing the test.
+`resolveAssetPath`'s own `decodeURIComponent` + post-decode segment split is
+what catches it. The literal-`..` case demonstrates the complementary
+finding: the URL parser DOES collapse an unencoded `app://local/../../../../etc/passwd`
+to pathname `/etc/passwd` on its own — but because `resolveAssetPath` always
+treats the pathname as relative to `buildDir` (never as an OS-absolute
+path), the resulting lookup is for `buildDir/etc/passwd`, not the real
+`/etc/passwd` (present on the host running the test, never read) — the test
+asserts the real request lands on the ordinary SPA-fallback path (200,
+`index.html`) with a body that does not match `/root:.*:0:0:/`, proving no
+real-filesystem content leaked.
+
+**Search proofs (the plan's own required list, re-derived in this run):**
+
+```
+$ grep -rn "@sveltejs/adapter-node" packages/desktop --include="*.ts" --include="*.js" \
+    --include="*.json" --include="*.svelte" --include="*.md" --include="*.yml" \
+    | grep -vE "/\.svelte-kit/|/build/|/out/|/node_modules/"
+→ 1 hit: README.md's "No more `@sveltejs/adapter-node`..." removal note (historical/negation, not a live import or dependency)
+
+$ grep -rln "startSvelteKitServer\|sveltekit-host" packages/desktop --include="*.ts" --include="*.js" --include="*.svelte" --include="*.md" \
+    | grep -vE "/\.svelte-kit/|/build/|/out/|/node_modules/"
+→ 2 hits, both this run's own test files: main-boot-and-splash.test.ts (an
+  assertion that PROVES the string "startSvelteKitServer() runs it" is
+  ABSENT from main.ts) and app-protocol.test.ts (doc comments naming what
+  it replaces: "Replaces tests/platform/sveltekit-host.test.ts and
+  sveltekit-host-auth.test.ts")
+
+$ grep -rn 'fetch("/api\|fetch(.\/api' packages/desktop/src packages/desktop/electron
+→ 0 hits (already held since SFE-P5c4; re-verified)
+
+$ test -d packages/desktop/src/routes/api
+→ absent (already held since SFE-P5c4; re-verified — src/routes/ now
+  contains only +layout.svelte, +layout.ts, +page.svelte)
+
+$ find packages/desktop/src -iname api.ts
+→ 0 hits (already held since SFE-P5c4; re-verified)
+
+$ grep -rn "x-gutterpress-token\|skAuthToken\|buildProxyRequest\|withTokenAuth\|isAuthorizedRequest\|AUTH_HEADER" \
+    packages/desktop/electron packages/desktop/src
+→ 0 hits
+```
+
+**Packaged smoke (both scripts, run as-is against this run's own build —
+`out/main/main.js` from `electron:build`, `build/` from `bun run build`;
+the existing driver's xvfb fallback launches Electron headlessly in this
+sandbox, exactly as it did in P3d-sweep):**
+
+```
+$ node tests/integration/editor-toggle-loads-module.pw.mjs
+[editor-toggle] SPA ready
+[editor-toggle] project opened — editor module NOT yet loaded (no file clicked)
+[editor-toggle] Edit mode segment clicked
+[editor-toggle] PASS — Save enabled, Ctrl+S wrote source, preview updated in 111ms, and the app remained responsive (pre-shell 58ms, shell 53ms)
+Exit: 0
+
+$ node tests/integration/editor-opens-with-content.pw.mjs
+[editor-opens] SPA ready
+[editor-opens] project opened
+[editor-opens] CONTROL ok: Edit mode active, editor pane rendered
+[editor-opens] ok   — DEFECT 1: opening a book in Edit mode must mount CodeMirror
+[editor-opens] ok   — DEFECT 1: the editor must open showing the book's first chapter
+[editor-opens] ok   — DEFECT 2: a single click on content from 02-beta.md must load that file into the editor
+[editor-opens] ok   — DEFECT 3: clicking the TOC row "Gamma Chapter 2" in Edit mode must navigate the EDITOR
+[editor-opens] ok   — DEFECT 3: the same TOC click must also move the VIEWER
+[editor-opens] ok   — DEFECT 4: "Collapse Alpha Chapter" must work while that branch holds the active heading
+[editor-opens] ok   — re-expanding "Alpha Chapter" after a manual collapse must still work
+[editor-opens] PASS — all checks green
+Exit: 0
+```
+
+What these prove, exactly, at the level the plan's "still starts, edits"
+bar asks for: the app launches headless via CDP against the app://
+origin the new static handler serves (proving `registerAppProtocol` +
+adapter-static's `build/` output work end to end in a real Electron
+process, not just a mocked test); a project opens (folder scan + preview
+start over the CLI's own, unrelated preview server); the rich/source
+editor mounts and loads chapter content on demand; TOC navigation drives
+both the editor and the (still separately-served) preview iframe;
+Ctrl+S writes source through IPC and the preview re-renders it. Neither
+script drives a full PDF export or a git-remote publish, so "build" here
+means the desktop's own production `vite build` step (exercised directly
+by the `bun run build` verification row below, not by these two scripts)
+and "publish" is not exercised by either smoke script — no lane rule
+required a new publish-specific smoke, and `remote`/`publish` IPC (`electron/
+api/remote.ts`/`publish.ts`) is unchanged by this run (P5c3 already moved
+it off HTTP; this run touches only the protocol handler and the SvelteKit
+adapter). **Preview verification:** `PreviewFrame.svelte`'s iframe loads
+from `lib.startPreviewServer` (`electron/preview/controller.ts:185-188`),
+a second, separate `node:http` server on its own ephemeral
+`127.0.0.1:<port>` — grepped and confirmed to have zero dependency on
+`app://`/`sveltekit-host`/`app-protocol`; both smoke scripts' preview
+assertions (content rendering, TOC-driven scroll) passing is direct
+evidence nothing about preview relied on the deleted app server. **Dev
+workflow verification:** `bun run dev` (`vite dev --port 5555 --strictPort`)
+was started standalone and served the SPA shell (`curl` → HTTP 200, correct
+`<title>Gutterpress desktop</title>` markup) — confirming adapter-static
+doesn't break the plain Vite dev server adapter-node never touched either;
+`electron:hmr`'s `VITE_DEV_SERVER_URL` gate (`resolveDevServerUrl`) is
+unchanged code, protected by the existing `main-boot-and-splash.test.ts`
+ARCH #1 tests (all passing, see below), and by construction never reaches
+`app-protocol.ts` at all (the window loads the dev server URL directly).
+
+**Checkpoint C numbers:**
+
+- **Deleted modules:** `electron/sveltekit-host.ts` (236 lines),
+  `tests/platform/sveltekit-host.test.ts` (88 lines),
+  `tests/platform/sveltekit-host-auth.test.ts` (210 lines) — 534 lines
+  across 3 files, deleted outright.
+- **Added modules:** `electron/app-protocol.ts` (198 lines),
+  `tests/platform/app-protocol.test.ts` (236 lines) — 434 lines across 2
+  new files.
+- **Route count:** 104 → 0 — already recorded by SFE-P5c (baseline-table
+  row above); unchanged by this run, re-verified absent.
+- **IPC handler count:** 12 → 120 — already recorded by SFE-P5c
+  (baseline-table row above); unchanged by this run (`grep -c
+  'secureHandle(' packages/desktop/electron/main.ts` → 120, re-verified;
+  note the exact grep must NOT anchor on a trailing `"` — 4 of the 120
+  registrations wrap their arguments onto a new line and would be
+  undercounted at 116 by a `secureHandle("` anchor).
+- **Security equivalence:** stated above — server-authentication token
+  replaced by path-scoping, since there is no longer a server to
+  authenticate callers to.
+- **Packaged smoke:** both required scripts PASS (verbatim output above).
+- **Net production LOC, this run (P5d only):** production files (`electron/
+  **`, `src/**`, `svelte.config.js`, `vite.config.ts`,
+  `electron.vite.config.ts`, `package.json` — excludes `tests/**` and
+  `README.md`): 11 files, +301/−322, **net −21**. Test files: 7 files,
+  +264/−320, **net −56**. `README.md` (doc): +75/−56, net +19.
+  `bun.lock` (generated, not counted as production): +2/−88.
+- **Net production LOC, all of P5 (`5db8c581..HEAD`, git history, plus
+  this run's own uncommitted diff on top — see the caveat below):**
+  production paths (every changed file NOT under `docs/`, NOT a `.md`
+  file, NOT matching `tests/`/`.test.`/`.pw.mjs`, NOT a lockfile): **228
+  files, +6,619/−8,322, net −1,703.** Test paths: 73 files, +4,354/−3,805,
+  net +549 (P5c's IPC migration added substantial new IPC-boundary test
+  coverage — validation/traversal/error-path cases the deleted HTTP routes
+  never had, per the P5c1/P5c2 review logs — which is expected and by
+  design, not a regression). Doc paths: 11 files, +2,658/−292, net +2,366
+  (the run-specification and ledger entries this whole phase produced).
+  **Caveat on the range:** `5db8c581` is P5a's OWN first production commit
+  (`refactor(p5): delete the dormant PWA host`), so `5db8c581..HEAD`
+  excludes that commit's own diff — P5a's stand-alone numbers were already
+  measured separately, against the true pre-P5 base `c33868f8`, in this
+  ledger's own SFE-P5a section above (see its "Verification run" table).
+  This aggregate is therefore "P5a's review-repair rounds onward" (P5b,
+  P5c1–P5c4 and their repairs, P5d), not literally byte-for-byte "all of
+  P5 including P5a's initial commit" — reported this way because the
+  orchestrating instruction named `5db8c581` explicitly as the base SHA,
+  and it matches the ledger's own established measurement boundary for
+  P5a. Both figures (this run alone; the `5db8c581..HEAD`-plus-P5d
+  aggregate) are given so the reader can reconstruct either total.
+
+**A residual outside this lane's write ownership, flagged for the
+integrator (not fixed here — `.github/workflows/**` and the root-level
+`tools/` scripts are not in this run's write-ownership grant):**
+`.github/workflows/ci.yml`'s "Check renderer purity" step hardcodes
+`node tools/check-render-purity.mjs packages/desktop/build/client --strict`
+— a path that no longer exists now that adapter-static writes everything
+directly to `packages/desktop/build/` (no `client`/`server` split). This
+run's own `package.json` `build` script was updated to pass the correct
+argument (`build`, not `build/client`) and its own verification (below)
+confirms `check-render-purity: OK — scanned 144 file(s) in build` — but CI's
+separately-hardcoded invocation will fail (`--strict` + a nonexistent
+directory = exit 1) the next time it runs against a branch carrying this
+change, until someone with `.github/workflows/**` write access changes that
+one argument. `docs/plans/source-first-editor/guardrails.md`'s own D10/P5d
+row already anticipated exactly this ("the gate's `buildDir` argument and
+scope comment will need re-deriving against whatever the post-P5d
+static-SPA build emits") — this is that re-derivation's finding, not a new
+discovery. `tools/check-render-purity.mjs`'s own default-argument fallback
+(`packages/desktop/build/client`, used only when no `buildDir` is passed)
+and `tools/check-render-purity.test.mjs`'s adapter-node-shaped fixture
+scenario are the same class of residual, lower priority (CI always passes
+an explicit argument, so the default is dead in practice; the test fixture
+still validates the tool's general dir-scanping mechanism correctly, just
+under a now-unrealistic directory shape).
+
+#### Verification run
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && bun run test` | 0 | 5894 pass, 1 skip, 0 fail, 15238 expect() calls across 162 files (includes the new 21-test `app-protocol.test.ts`; the two deleted `sveltekit-host*.test.ts` files' assertions are gone with them) |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 688 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
+| `rm -rf packages/desktop/build packages/desktop/.svelte-kit && cd packages/desktop && bun run build` | 0 | production build via adapter-static; `Wrote site to "build"`; `check-render-purity: OK — scanned 144 file(s) in build, no forbidden host/node markers`; `build/index.html` present, `build/server/`/`build/handler.js` absent |
+| `cd packages/desktop && bun run electron:build` | 0 | `electron-vite build` + `node --check out/main/main.js` + `node --check out/preload/preload.cjs` all clean |
+| `node packages/desktop/tests/integration/editor-toggle-loads-module.pw.mjs` | 0 | PASS (verbatim output above) — against this run's own `out/main/main.js` + `build/` |
+| `node packages/desktop/tests/integration/editor-opens-with-content.pw.mjs` | 0 | PASS, all 7 checks green (verbatim output above) |
+| `bun run check:architecture` (repo root) | 0 | route ratchet 0 == baseline 0; ProseMirror ban, D4 import direction, future-package rules all PASS — unaffected by this run |
+| `bun run check:generated-files` (repo root) | 0 | 1,252 tracked files scanned, no generated/output paths tracked |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged |
+
+Targeted re-verification of the exact files touched by this lane, run
+individually before reporting: `cd packages/desktop && tsc -p
+electron/tsconfig.json` (0, clean — same command `bun run typecheck`
+invokes for this package); `bun test tests/platform/app-protocol.test.ts`
+(0, 21 pass / 0 fail / 34 expect() calls); `bun test
+tests/platform/main-boot-and-splash.test.ts` (0, 9 pass / 0 fail / 27
+expect() calls, after one round of self-correction — see "one repair"
+below).
+
+**One repair, before hand-off:** the first pass of
+`main-boot-and-splash.test.ts`'s reworded "prod-mode window-load comment"
+test failed on its own `bun test` run — the new, accurate comment this run
+wrote (documenting the ABSENCE of `build/handler.js`) legitimately contains
+the substring `"build/handler.js"`, which an earlier, too-broad `not.toContain`
+assertion rejected. Fixed by narrowing that assertion to the actual claim
+worth pinning (no positive `"startSvelteKitServer() runs it"` reference
+survives), re-run confirmed 9/9 green — recorded here per this run's
+"actually run the gate, not just describe it" discipline, matching the
+convention every prior SFE-P5* section in this ledger already uses for its
+own repair rounds.

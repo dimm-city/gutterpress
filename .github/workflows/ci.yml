@@ -232,14 +232,16 @@ jobs:
         run: node tools/check-render-purity.test.mjs
 
       # §8 renderer-purity guardrail: fail if host/node code leaked into the
-      # built desktop CLIENT SPA bundle. Scope is build/client/ ONLY —
-      # adapter-node's build/server/ + build/handler.js are host Node code by
-      # design (§8). --strict: the build step above just ran, so an absent
-      # build/client means the build silently did nothing — that must FAIL,
-      # not skip (review finding: the non-strict form passed vacuously while
-      # the broken `bun --cwd` build step produced no output at all).
+      # built desktop CLIENT SPA bundle. Since SFE-P5d switched the desktop
+      # to @sveltejs/adapter-static, the entire build/ directory IS the
+      # client bundle (no build/server or build/handler.js exists anymore),
+      # so the scan covers build/ — matching the package's own build script.
+      # --strict: the build step above just ran, so an absent build/ means
+      # the build silently did nothing — that must FAIL, not skip (review
+      # finding: the non-strict form passed vacuously while the broken
+      # `bun --cwd` build step produced no output at all).
       - name: Check renderer purity (CLAUDE.md §8)
-        run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
+        run: node tools/check-render-purity.mjs packages/desktop/build --strict
 
   desktop-test:
     name: Desktop Test

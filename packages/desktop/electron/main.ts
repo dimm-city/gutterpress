@@ -14,7 +14,6 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
@@ -181,8 +180,9 @@ import {
 import { createElectronEngineBrowser } from "./engine-browser";
 import {
   registerAppProtocol,
-  startSvelteKitServer,
-} from "./sveltekit-host";
+  resolveBuildDir,
+  staticBuildLooksValid,
+} from "./app-protocol";
 import {
   APP_ORIGIN,
   decideNavigation,
@@ -818,13 +818,14 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
-  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
-  // registerAppProtocol() proxies app:// requests to it via fetch, so the
-  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
-  // so SvelteKit's client router sees the root route. (Loading /index.html
-  // makes the router try to resolve a page named "index.html" and throw
-  // "Not found: /index.html".)
+  // Prod mode: adapter-static emits a plain static file tree to build/ (no
+  // server, no build/handler.js). registerAppProtocol() (electron/
+  // app-protocol.ts) reads that tree directly from disk under the app://
+  // scheme, so the page has a stable app:// origin with no local server or
+  // proxy involved. Load the root "/" — NOT "/index.html" — so SvelteKit's
+  // client router sees the root route. (Loading /index.html makes the
+  // router try to resolve a page named "index.html" and throw "Not found:
+  // /index.html".)
   //
   // ARCH #1 (CRITICAL): gated by resolveDevServerUrl() — null when packaged.
   const devUrl = resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL);
@@ -899,23 +900,25 @@ function createWindow() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// app:// protocol — serves the static SvelteKit SPA from build/
+// app:// protocol — serves the static SvelteKit SPA directly from build/
 //
-// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
-// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
-// scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
-// registerAppProtocol(skAuthToken) from whenReady below.
+// SFE-P5d: the protocol handler (electron/app-protocol.ts) reads the
+// adapter-static build output straight from disk — no local HTTP server, no
+// bearer token, no proxy request. The privileged-scheme registration stays
+// here so it runs at its original point (before app.whenReady). main.ts
+// calls registerAppProtocol(buildDir) from whenReady below, after a startup
+// sanity check (staticBuildLooksValid) that surfaces a friendly dialog for a
+// corrupt install or an unbuilt dev tree — the same UX ARCH review #28 asked
+// for, now triggered by a missing build directory instead of a failed async
+// server start (there is no longer a server-start step to fail).
+//
+// Security equivalence (Checkpoint C): the deleted bearer token protected
+// the loopback HTTP server from other local processes discovering its
+// OS-assigned port. With no server, there is nothing left to authenticate a
+// caller to — the surviving boundary is path-scoping (app-protocol.ts's
+// resolveAssetPath refuses to resolve outside buildDir), proven by the
+// traversal-refusal tests in tests/platform/app-protocol.test.ts.
 // ──────────────────────────────────────────────────────────────────────────
-
-// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
-// authentication — any other local process that discovers the OS-assigned
-// port could otherwise call the privileged adapter-node API routes directly.
-// Mint a per-session random bearer token once at process start (never
-// persisted, never leaves this process except as the header
-// registerAppProtocol injects into its own proxied requests below); the
-// loopback server rejects any request that doesn't carry it.
-const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -1316,9 +1319,10 @@ const desktopHooksImpl: DesktopHooks = {
   getUserDataPath: () => app.getPath('userData'),
 };
 
-// Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
-// in a different ESM context, and importing Electron there can fail.
+// Media thumbnail generation is exposed through a hook rather than having
+// electron/api/media.ts import `electron` directly, keeping raw Electron API
+// access concentrated in main.ts (and testable via a plain injected object —
+// see server-bridge/media-hooks.ts).
 const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
@@ -2060,34 +2064,33 @@ app.whenReady().then(async () => {
   slog("app whenReady");
   void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
-  // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
-  // server is already running externally — skip the local handler.js launch.
-  // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
-  // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), start the adapter-node HTTP server and wire it to the
-  // app:// protocol so the window only ever loads local content.
+  // Resolve the static SvelteKit build directory (packaged app.asar/build vs
+  // dev's build/). In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged)
+  // the window loads straight from the Vite dev server (below) and never
+  // depends on buildDir existing — a fresh checkout that hasn't run
+  // `npm run build` yet must still be able to `electron:hmr` without a false
+  // "couldn't start" dialog. In prod (or a packaged build where
+  // VITE_DEV_SERVER_URL is set by an attacker — ARCH review finding #1,
+  // CRITICAL — resolveDevServerUrl() ignores it), buildDir is what the
+  // window actually loads, so sanity-check it first: ARCH review #28, a
+  // corrupt install or an unbuilt dev tree must show a plain-language native
+  // dialog, not strand the author on a blank/erroring window.
+  const buildDir = resolveBuildDir(app.isPackaged, HERE);
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
-    try {
-      await startSvelteKitServer(slog, skAuthToken);
-    } catch (err) {
-      console.error("[sk-server] failed to start SvelteKit server:", err);
-      // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until
-      // skServerPort is set (corrupt install / port exhaustion / missing
-      // handler.js can all still resolve without a restart — e.g. a later
-      // manual retry). But a console.error alone stranded the author on a
-      // raw "SvelteKit server not started" page with zero explanation, so
-      // also surface it as a plain-language native dialog right away.
+    if (!staticBuildLooksValid(buildDir)) {
+      console.error(`[app-protocol] static build directory looks invalid: ${buildDir}`);
       dialog.showErrorBox(
         "Gutterpress couldn't start",
-        "Gutterpress's internal server didn't start, so the app can't load its interface.\n\n" +
+        "Gutterpress's interface files are missing, so the app can't load its interface.\n\n" +
         "Try quitting and reopening Gutterpress. If this keeps happening, reinstalling " +
         "Gutterpress usually fixes it.\n\n" +
-        `Details: ${err instanceof Error ? err.message : String(err)}`
+        `Details: expected build output at ${buildDir}`
       );
     }
   }
-  registerAppProtocol(skAuthToken);
+  // Registered unconditionally (harmless in dev mode, where the window never
+  // navigates to app://) — matches the pre-P5d registerAppProtocol call site.
+  registerAppProtocol(buildDir);
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;

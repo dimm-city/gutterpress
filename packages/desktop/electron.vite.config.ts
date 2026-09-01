@@ -4,12 +4,12 @@ import { dirname, resolve } from "node:path";
 
 // electron-vite builds the Electron main + preload (ESM — the package is
 // "type": "module"). The renderer is NOT built here: it's a SvelteKit
-// adapter-node app (server + client bundle) built separately by `vite build`
-// into build/, whose Node handler (build/handler.js) Electron main starts on
-// a local 127.0.0.1 server and serves to the window via the app:// protocol
-// (which proxies each request to that server with fetch — see CLAUDE.md §8).
-// externalizeDepsPlugin keeps the runtime deps (gutterpress and its
-// graph) out of the bundle so electron-builder ships them from node_modules.
+// adapter-static SPA (a plain static file tree, no server bundle) built
+// separately by `vite build` into build/, which Electron main reads directly
+// from disk and serves to the window via the app:// protocol (see
+// electron/app-protocol.ts and CLAUDE.md §8). externalizeDepsPlugin keeps
+// the runtime deps (gutterpress and its graph) out of the bundle so
+// electron-builder ships them from node_modules.
 const root = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({

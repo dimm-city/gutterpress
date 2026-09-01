@@ -6,9 +6,14 @@
  * desktop-ui-regressions.test.ts) these are source-text assertions rather than
  * an executed unit test:
  *
- *  - #28: if startSvelteKitServer() throws during app.whenReady(), main.ts
- *    must show a plain-language dialog.showErrorBox(...) instead of only
- *    logging to console.error and silently continuing.
+ *  - #28: if the app can't find its own static build directory during
+ *    app.whenReady(), main.ts must show a plain-language
+ *    dialog.showErrorBox(...) instead of only logging to console.error and
+ *    silently continuing. (SFE-P5d: the failure mode moved from "the
+ *    adapter-node loopback server failed to start" — an async step that no
+ *    longer exists — to "the adapter-static build directory looks invalid,"
+ *    checked synchronously via staticBuildLooksValid() before
+ *    registerAppProtocol wires it up; see electron/app-protocol.ts.)
  *
  * (This file also used to pin ARCH #58 — the splash fallback timer's
  * comment/value mismatch. The external splash window has since been REMOVED
@@ -25,24 +30,22 @@ const main = readFileSync(
   "utf8"
 );
 
-test("ARCH #28: a SvelteKit boot failure shows a plain-language native dialog, not just a console.error swallow", () => {
-  // The try/catch around startSvelteKitServer() in app.whenReady().
-  const bootBlockStart = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
+test("ARCH #28: a missing static build directory shows a plain-language native dialog, not just a console.error swallow", () => {
+  // The staticBuildLooksValid(buildDir) guard in app.whenReady().
+  const bootBlockStart = main.indexOf("if (!staticBuildLooksValid(buildDir)) {");
   expect(bootBlockStart).toBeGreaterThan(-1);
-  const catchBlock = main.slice(bootBlockStart, bootBlockStart + 1500);
+  const guardBlock = main.slice(bootBlockStart, bootBlockStart + 800);
 
   // Still logs for diagnostics...
-  expect(catchBlock).toContain(
-    'console.error("[sk-server] failed to start SvelteKit server:", err);'
-  );
+  expect(guardBlock).toContain("console.error(");
   // ...but must ALSO surface a native dialog so the author isn't stranded on
   // a silent failure (the pre-fix behavior was console.error-and-continue
   // with no dialog anywhere in the file).
-  expect(catchBlock).toContain("dialog.showErrorBox(");
-  expect(catchBlock).toContain("Gutterpress couldn't start");
+  expect(guardBlock).toContain("dialog.showErrorBox(");
+  expect(guardBlock).toContain("Gutterpress couldn't start");
   // Author-friendly: no stack traces or raw Node error class names required
-  // reading, and it must mention the underlying error for support/debugging.
-  expect(catchBlock).toMatch(/Details:.*err/s);
+  // reading, and it must mention where the expected files were looked for.
+  expect(guardBlock).toMatch(/Details:.*buildDir/s);
 });
 
 test("ARCH #28: dialog is imported from electron so showErrorBox actually resolves", () => {
@@ -55,12 +58,15 @@ test("the splash machinery stays deleted (superseded by the in-window start scre
   expect(main).not.toContain("createSplashWindow");
 });
 
-test("residual docs-sweep fix: the prod-mode window-load comment describes adapter-node, not adapter-static", () => {
+test("SFE-P5d: the prod-mode window-load comment describes adapter-static, not the deleted adapter-node server", () => {
   const loadUrlIdx = main.indexOf('mainWindow.loadURL(devUrl || "app://local/");');
   expect(loadUrlIdx).toBeGreaterThan(-1);
   const precedingComment = main.slice(Math.max(0, loadUrlIdx - 800), loadUrlIdx);
-  expect(precedingComment).toContain("adapter-node emits a Node HTTP handler");
-  expect(precedingComment).not.toContain("adapter-static emits an SPA");
+  expect(precedingComment).toContain("adapter-static emits a plain static file tree");
+  expect(precedingComment).not.toContain("adapter-node emits a Node HTTP handler");
+  // "no build/handler.js" (documenting the absence) is fine; a positive
+  // "startSvelteKitServer() runs it" claim (the deleted mechanism) is not.
+  expect(precedingComment).not.toContain("startSvelteKitServer() runs it");
 });
 
 // ARCH review finding #1 (CRITICAL): a packaged build must never trust
@@ -99,8 +105,8 @@ test("ARCH #1: originPolicyConfig()'s devServerOrigin uses the packaged-aware ga
   expect(body).not.toContain("devServerOrigin: process.env.VITE_DEV_SERVER_URL");
 });
 
-test("ARCH #1: the whenReady() local-server-start gate uses the packaged-aware helper", () => {
-  const idx = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
+test("ARCH #1: the whenReady() static-build-validity gate uses the packaged-aware helper", () => {
+  const idx = main.indexOf("if (!staticBuildLooksValid(buildDir)) {");
   expect(idx).toBeGreaterThan(-1);
   const precedingGate = main.slice(Math.max(0, idx - 400), idx);
   expect(precedingGate).toContain(

@@ -32,7 +32,7 @@ let currentUserDataDir = "";
 // NOTE: `bun test --isolate` does not fully sandbox `mock.module("electron", …)`
 // registrations between files that all touch the "electron" specifier — other
 // electron-mocking suites in this run (tests/updater/electron-updater.test.ts,
-// tests/platform/pdf-export.test.ts, tests/platform/sveltekit-host.test.ts)
+// tests/platform/pdf-export.test.ts, tests/platform/app-protocol.test.ts)
 // can end up "winning" the shared registration for this specifier. So every
 // such suite mocks the SAME superset of keys every electron/*.ts production
 // module statically imports from "electron" (app.getPath, protocol,

@@ -6,11 +6,11 @@
   "main": "out/main/main.js",
   "desktopName": "city.dimm.gutterpress.desktop",
   "author": "itlackey",
-  "description": "Gutterpress desktop authoring app (Electron + SvelteKit adapter-node app, served via app:// + fetch API routes).",
+  "description": "Gutterpress desktop authoring app (Electron + static SvelteKit SPA, served via app:// direct-from-disk).",
   "scripts": {
     "dev": "vite dev",
     "build:runtime": "bun run --cwd ../cli build:library",
-    "build": "npm run build:runtime && vite build && node ../../tools/check-render-purity.mjs build/client --strict",
+    "build": "npm run build:runtime && vite build && node ../../tools/check-render-purity.mjs build --strict",
     "preview": "vite preview",
     "test": "svelte-kit sync && node tests/preview-interface.test.mjs && node tests/preview-bridge.test.mjs && node tests/preview-shell-regression.test.mjs && bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media",
     "electron:build": "electron-vite build && node --check out/main/main.js && node --check out/preload/preload.cjs",
@@ -46,7 +46,7 @@
     "semver": "~7.7.3"
   },
   "devDependencies": {
-    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.70.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^22.0.0",

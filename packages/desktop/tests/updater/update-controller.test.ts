@@ -24,7 +24,7 @@ let applyResult: { applied: boolean; version?: string; error?: string } = { appl
 // substitution here was therefore visible to every later test file, not just
 // this one, and `bun test --isolate` does NOT sandbox it (same caveat already
 // called out for `mock.module("electron", …)` in tests/platform/
-// sveltekit-host.ts and friends).
+// app-protocol.test.ts and friends).
 //
 // Wrapping the old `mock.module` in `afterAll(() => mock.restore())` was
 // tried first and does NOT fix this: verified by reproduction that the
