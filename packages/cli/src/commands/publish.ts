@@ -6,7 +6,7 @@ import {
   FileTokenStore,
   connectPublishProvider,
   connectGoogleDrive,
-  revokeGoogleCredential,
+  disconnectPublishCredential,
   listPublishProviders,
   publishProviderFor,
   publishConnectionStatus,
@@ -247,13 +247,10 @@ export default defineCommand({
 
     if (args.disconnect) {
       const key = publishCredentialKey(provider.info.credential.host, account);
-      // Best-effort revoke at Google before deleting locally (D4/D6) — never
-      // blocks the local delete, and never logs the token value.
-      const existing = await store.get(key);
-      if (existing?.kind === "google-oauth") {
-        await revokeGoogleCredential(existing.token, { fetchImpl: deps.fetch });
-      }
-      await store.delete(key);
+      // Best-effort revoke at Google before returning (D4/D6) — the CLI is a
+      // one-shot process, so unlike the desktop's disconnect routes it can
+      // afford to wait for the whole thing to finish before printing success.
+      await disconnectPublishCredential(key, deps, { awaitRevoke: true });
       log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
       return;
     }

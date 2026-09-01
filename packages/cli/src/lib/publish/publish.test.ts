@@ -7,7 +7,7 @@ import { FileTokenStore } from "../remote-auth/token-store";
 import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths";
 import { listPublishProviders, publishProviderFor } from "./registry";
 import { runPublish, resolvePublishRequest, resolvePublishFormat } from "./run-publish";
-import { connectPublishProvider } from "./connect";
+import { connectPublishProvider, disconnectPublishCredential } from "./connect";
 import { readPublishSettings, setPublishProviderConfig } from "./manifest-publish";
 import type {
   CommandResult,
@@ -845,6 +845,89 @@ test("connectPublishProvider rejects an oauth provider's pasted token (gdrive) �
     ).rejects.toThrow(/connects through your browser.*--connect/);
     // Nothing was stored.
     expect(await deps.tokenStore.get("gdrive")).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── disconnectPublishCredential — the shared disconnect implementation ──────
+// behind the CLI's --disconnect and the desktop's publish:disconnect +
+// remote:disconnectHost routes (#221 review: this logic was duplicated three
+// times with a genuine bug in one copy — see connect.ts's doc comment).
+
+test("disconnectPublishCredential deletes the local credential even when there's nothing to revoke", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t", createdAt: 1 });
+    await disconnectPublishCredential("itch.io", deps);
+    expect(await deps.tokenStore.get("itch.io")).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential deletes locally FIRST, then fires (but by default does not await) a revoke for a google-oauth credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "refresh-token-value", createdAt: 1 });
+    let revokeStarted = false;
+    let revokeTokenSeen: string | undefined;
+    let resolveRevoke!: () => void;
+    const revokeGate = new Promise<void>((res) => {
+      resolveRevoke = res;
+    });
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      revokeStarted = true;
+      revokeTokenSeen = new URLSearchParams(String(init?.body)).get("token") ?? undefined;
+      await revokeGate; // never resolves until the test lets it
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    // awaitRevoke defaults to false — the call must resolve WITHOUT waiting
+    // for the (deliberately hung) revoke fetch above.
+    await disconnectPublishCredential("gdrive", { ...deps, fetch: fetchImpl });
+    expect(await deps.tokenStore.get("gdrive")).toBeNull(); // deleted already
+    expect(revokeStarted).toBe(true); // revoke WAS fired…
+    expect(revokeTokenSeen).toBe("refresh-token-value"); // …with the right token
+    resolveRevoke(); // let the hung fetch settle so it doesn't leak into other tests
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential with awaitRevoke:true waits for the revoke to finish before resolving", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "refresh-token-value", createdAt: 1 });
+    let revokeCompleted = false;
+    const fetchImpl = (async () => {
+      revokeCompleted = true;
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await disconnectPublishCredential("gdrive", { ...deps, fetch: fetchImpl }, { awaitRevoke: true });
+    expect(revokeCompleted).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("disconnectPublishCredential never attempts a revoke for a token-kind credential", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t", createdAt: 1 });
+    let fetchCalled = false;
+    const fetchImpl = (async () => {
+      fetchCalled = true;
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await disconnectPublishCredential("itch.io", { ...deps, fetch: fetchImpl }, { awaitRevoke: true });
+    expect(fetchCalled).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

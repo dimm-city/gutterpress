@@ -369,8 +369,11 @@ export {
   publishProviderFor,
 } from "../lib/publish/registry.ts";
 
-export { connectPublishProvider } from "../lib/publish/connect.ts";
-export type { ConnectPublishProviderOptions } from "../lib/publish/connect.ts";
+export { connectPublishProvider, disconnectPublishCredential } from "../lib/publish/connect.ts";
+export type {
+  ConnectPublishProviderOptions,
+  DisconnectPublishCredentialOptions,
+} from "../lib/publish/connect.ts";
 
 export {
   publishConnectionStatus,
