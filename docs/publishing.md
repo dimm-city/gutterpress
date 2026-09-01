@@ -1,8 +1,8 @@
 # Publishing (#35)
 
 Gutterpress can push a finished book to distribution platforms — from the CLI
-(`gutterpress publish`, CI-safe) or from the desktop app's Project settings →
-Publish section.
+(`gutterpress publish`, CI-safe) or by pressing **Publish** in the desktop
+app's toolbar.
 
 ## Provider matrix
 
