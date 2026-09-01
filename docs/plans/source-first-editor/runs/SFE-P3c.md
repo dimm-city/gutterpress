@@ -474,9 +474,117 @@ improvement independent of the flake: it now exercises the real build
 script end to end rather than a duplicated config that could drift from
 it) — re-verified 3/3 clean runs of the full suite after the fix.
 
+### Repair round 2
+
+Round 1's own review set contained **14** confirmed findings, not 13: its
+`addressed` list enumerated 13, silently omitting one. Round 2's review
+re-verified the codebase at round 1's head commit and found that omitted
+finding still live, plus one NEW finding round 1's own fix (dropping the
+`@vscode/test-electron` devDependency) had introduced as a side effect.
+Both are fixed here.
+
+#### The omitted finding: a queued edit could dispatch on a REJECTED in-flight edit's reply
+
+`src/webview-host/proxy-document-host.ts`'s `#handleSnapshot` decided
+whether an authoritative reply "confirmed" the one currently in-flight edit
+with:
+
+```ts
+const confirmed = (wasInFlight && snapshot.text === this.#inFlightExpectedText) || snapshot.text === this.#mirror.text;
+```
+
+The second disjunct is unsound the moment a SECOND edit has already queued
+behind the first: the mirror's current text then reflects that second,
+still-unsent, optimistically-applied edit — not the state the in-flight
+reply is actually about. A realistic type-then-backspace burst (insert a
+character, then immediately delete it) can make the mirror's post-queue
+text coincidentally equal the host's UNCHANGED text in a REJECTED reply to
+the first edit, which the old check then wrongly treated as confirmation.
+That falsely dispatched the queued (second) edit against the host's real,
+unmodified document instead of discarding it — the queued edit no longer
+targets bytes that exist, so it silently deletes unrelated, pre-existing
+content instead (a D2/G-01 violation: a byte changes outside any edit the
+author actually made).
+
+**Fix** (the one-line change the finding named): while an edit is in
+flight, confirmation is decided SOLELY by matching
+`this.#inFlightExpectedText` — the mirror's current text is never consulted
+as a fallback in that case. Only once nothing is in flight does the
+mirror's current text become the right comparison (the plain
+external-broadcast case):
+
+```ts
+const confirmed = wasInFlight ? snapshot.text === this.#inFlightExpectedText : snapshot.text === this.#mirror.text;
+```
+
+The class doc comment's point 4 and this call site's own inline comment are
+rewritten to record why the OR was wrong, not just that it changed.
+
+**Regression test** (`tests/webview-host/proxy-document-host.test.ts`, new
+describe block "convergence, wired against the REAL DocumentGateway"):
+unlike the file's existing (a)-(d) cases, which wire `ProxyDocumentHost`
+against the lightweight `SimulatedExtensionHost` fake, this case wires the
+REAL `DocumentGateway` (`src/host/document-gateway.ts`) directly to a real
+`ProxyDocumentHost` over `tests/support/fidelity-vscode.ts`'s
+`FidelitySimulatedWorkspace`, with `rejectNextApply = true` producing a
+genuine "workspace.applyEdit returned false" rejection — the same pairing
+`src/provider.ts` wires in production, minus the `vscode.WebviewPanel`
+plumbing. E1 (insert "x") goes in flight; E2 (delete that same "x") queues
+behind it, returning the mirror to its pre-E1 text; the host then rejects
+E1. The test asserts (1) exactly one `apply-edit` message ever reaches the
+gateway — E2 must never be dispatched — and (2) the host's real document
+and the mirror both end up byte-identical to the pre-edit text, with an
+`EDITOR_EXTERNAL_REPLACEMENT` diagnostic recorded.
+
+Sabotage-verified per G-12/AP-20: with the fix line temporarily reverted to
+the original `||` expression (nothing else changed), `bun test
+./tests/webview-host/proxy-document-host.test.ts` reported 49 pass / 1 fail
+— the new test's `expect(appliedEditCount()).toBe(1)` received `2` (E1's
+rejection plus the wrongly-dispatched E2), exactly as the analysis above
+predicts. The line was restored immediately after and the suite re-run
+clean (50 pass, 0 fail) before this was committed.
+
+#### NEW: `bun.lock` left stale by round 1's own `@vscode/test-electron` removal
+
+Round 1 removed `@vscode/test-electron` from
+`packages/vscode-extension/package.json` (its fix for the separate finding
+about the deleted host-fidelity scaffold) but never regenerated `bun.lock`,
+which still declared the dependency for that workspace (`bun.lock:130`
+and two derived entries). `bun install --frozen-lockfile` — the run
+spec's Gate's FIRST command, and what CI runs — failed as a result:
+
+```
+$ bun install --frozen-lockfile --dry-run
+error: lockfile had changes, but lockfile is frozen
+```
+
+**Fix:** `bun install` (no `--frozen-lockfile`), regenerating `bun.lock`.
+The resulting diff removes only `@vscode/test-electron` and its
+transitive-only dependencies (`ora`, `jszip`, `cli-cursor`, `restore-cursor`,
+etc.) plus the consequent hoisting/dedup shifts for a couple of shared
+transitive packages (e.g. `isarray`) — no new top-level dependency, no
+workspace `dependencies`/`devDependencies` change beyond what round 1 had
+already made in `package.json`. Re-verified:
+
+```
+$ bun install --frozen-lockfile --dry-run
+[...]
+[16.00ms] done
+```
+
+While there, `knip.jsonc`'s `packages/vscode-extension` entry list still
+named `tests/host-fidelity/run-in-host.js` — a path round 1's own scaffold
+removal had already deleted — which made `bun run knip` print a
+"Configuration hints" line (`Refine entry pattern (no matches)`) even
+though it still exited 0. Dropped that dangling entry and the two
+explanatory comment passages that justified it (both now describing files
+that no longer exist), replacing them with a short note recording why.
+Re-verified `bun run knip` prints no hints and exits 0.
+
 ### Acceptance
 
 `docs/plans/source-first-editor/acceptance.md`'s AC-10 ("VS Code host
-integration and trust") is updated by this repair round to reflect the
-round-1 fixes described above; it remains owned by the run's close-out
-step for final sign-off, not by this repair round.
+integration and trust") is updated by this repair round to correct the
+finding count (14, not 13) and record round 2's two fixes above, alongside
+the round-1 fixes already described; it remains owned by the run's
+close-out step for final sign-off, not by this repair round.

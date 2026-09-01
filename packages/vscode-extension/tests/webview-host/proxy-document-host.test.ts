@@ -6,16 +6,32 @@
 // proxy-document-host.ts is browser-safe (no "vscode", no node builtin —
 // see its own header), so this suite needs no mock.module at all; it wires
 // a real ProxyDocumentHost to the in-memory SimulatedExtensionHost/transport
-// pairing in ../support/simulated-extension-host.ts.
+// pairing in ../support/simulated-extension-host.ts for most cases. One
+// describe block (repair round 2, below) instead wires the REAL
+// `DocumentGateway` over `../support/fidelity-vscode.ts`'s fidelity mock —
+// the decisive end-to-end reproduction a finding's own repair called for.
+// `DocumentGateway` itself imports "vscode" as `import type` only (erased at
+// compile time — see its own header), so this still needs no
+// `mock.module("vscode", ...)`.
 
 import { describe, expect, test } from "bun:test";
 import {
   runDocumentHostContractTests,
+  type Diagnostic,
   type DocumentSnapshot,
   type EditorDocumentHost,
 } from "@dimm-city/gutterpress-editor/core";
-import { ProxyDocumentHost } from "../../src/webview-host/proxy-document-host.ts";
+import type * as vscode from "vscode";
+import { DocumentGateway, type DocumentGatewayVscodeApi } from "../../src/host/document-gateway.ts";
+import { ProxyDocumentHost, type WebviewHostTransport } from "../../src/webview-host/proxy-document-host.ts";
+import type { WebviewToHostMessage } from "../../src/protocol/messages.ts";
 import { createSimulatedProxyPair } from "../support/simulated-extension-host.ts";
+import {
+  FidelityRange,
+  FidelitySimulatedWorkspace,
+  type FidelityPosition,
+  type FidelityWorkspaceEdit,
+} from "../support/fidelity-vscode.ts";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,6 +138,138 @@ describe("ProxyDocumentHost — convergence (run spec DETAILS #3 a-d)", () => {
     const result = proxy.applyEdit({ from: 0, to: 4, insert: "XXXX", expectedVersion: 0 });
     expect(result).toEqual({ ok: false, reason: "readonly", snapshot: { text: "text", version: 0 } });
     expect(proxy.getSnapshot()).toEqual({ text: "text", version: 0 });
+  });
+});
+
+// ── Repair round 2 regression: real DocumentGateway <-> real ProxyDocumentHost ─
+//
+// The (a)-(d) cases above wire ProxyDocumentHost against SimulatedExtensionHost
+// — a fake host that shares applyEditPure's accept/reject logic but not
+// DocumentGateway's own base-stamp bookkeeping, and whose only rejection mode
+// (a stale `base`) always changes the "current" text alongside it. This block
+// instead wires the REAL DocumentGateway (../../src/host/document-gateway.ts)
+// directly to a real ProxyDocumentHost — the same pairing ../../src/provider.ts
+// wires in production, minus the vscode.WebviewPanel/OutputChannel plumbing
+// neither side under test needs — over ../support/fidelity-vscode.ts's fidelity
+// mock, so `workspace.rejectNextApply` can exercise a REAL "workspace.applyEdit
+// returned false" rejection whose reply text is genuinely unchanged. This is
+// the decisive end-to-end reproduction the finding's own repair called for.
+
+/** Wires one `DocumentGateway` directly to one `ProxyDocumentHost`'s
+ *  transport, in-memory, with no artificial latency — mirroring
+ *  `../../src/provider.ts`'s own `onDidReceiveMessage` switch (the "ready"
+ *  and "apply-edit" cases only; "diagnostic-report" has no host-side effect
+ *  either there or here) and `tests/host/document-gateway.test.ts`'s own
+ *  `setup()` helper for the `DocumentGatewayVscodeApi` half. Returns
+ *  `appliedEditCount()` so a test can assert HOW MANY `apply-edit` messages
+ *  ever reached the gateway — the direct, structural proof for a finding
+ *  titled "a queued edit is STILL DISPATCHED," independent of whether it
+ *  happens to land on the right bytes once it gets there. */
+function wireRealGatewayToRealProxy(workspace: FidelitySimulatedWorkspace, initialText: string) {
+  const handle = workspace.createDocument(initialText);
+  const proxyListeners = new Set<(message: unknown) => void>();
+  let editMessagesSent = 0;
+
+  const gatewayApi: DocumentGatewayVscodeApi = {
+    document: handle.document,
+    createWorkspaceEdit: () => workspace.createWorkspaceEdit() as unknown as vscode.WorkspaceEdit,
+    createRange: (start, end) =>
+      new FidelityRange(
+        start as unknown as FidelityPosition,
+        end as unknown as FidelityPosition,
+      ) as unknown as vscode.Range,
+    applyWorkspaceEdit: (edit) => workspace.applyEdit(edit as unknown as FidelityWorkspaceEdit),
+    onDidChangeTextDocument: (listener) => workspace.onDidChangeTextDocument(listener),
+    onDidCloseTextDocument: (listener) => workspace.onDidCloseTextDocument(listener),
+    // Mirrors provider.ts's gatewayApi.postMessage: a plain forward to every
+    // listener the proxy's own transport.onMessage registered below, with no
+    // side effect of its own (no projection rebuild — this test does not
+    // need one, and repair round 1 already removed that trigger from here).
+    postMessage: async (message) => {
+      for (const listener of proxyListeners) listener(message);
+      return true;
+    },
+  };
+  const gateway = new DocumentGateway(gatewayApi);
+
+  const transport: WebviewHostTransport = {
+    postMessage: (raw: WebviewToHostMessage) => {
+      switch (raw.type) {
+        case "ready":
+          void gateway.sendInitialSnapshot();
+          return;
+        case "apply-edit":
+          editMessagesSent += 1;
+          void gateway.applyEdit(raw.edit, raw.base);
+          return;
+        case "diagnostic-report":
+          return; // no host-side effect, matching provider.ts
+      }
+    },
+    onMessage: (listener) => {
+      proxyListeners.add(listener);
+      return () => proxyListeners.delete(listener);
+    },
+  };
+
+  return { gateway, handle, transport, appliedEditCount: () => editMessagesSent };
+}
+
+describe("ProxyDocumentHost — convergence, wired against the REAL DocumentGateway (repair round 2 regression)", () => {
+  test("a queued edit is NOT dispatched on the strength of a REJECTED in-flight edit's reply merely coinciding with the mirror's post-queue text", async () => {
+    // Reproduces the confirmed finding "A queued edit is still dispatched
+    // after a REJECTED in-flight edit — silent source corruption": E1
+    // (insert "x") goes in flight; E2 (delete that same "x" — a realistic
+    // type-then-backspace burst) queues behind it, optimistically returning
+    // the mirror to its PRE-E1 text ("hello"). The host then REJECTS E1
+    // (workspace.applyEdit -> false) and replies with its own unchanged
+    // "hello" — text that, purely by coincidence, equals the mirror's
+    // CURRENT (post-E2) text too, even though it confirms nothing E2 was
+    // ever built against.
+    const workspace = new FidelitySimulatedWorkspace();
+    const { handle, transport, appliedEditCount } = wireRealGatewayToRealProxy(workspace, "hello");
+    const diagnostics: Diagnostic[] = [];
+    const proxy = new ProxyDocumentHost({ text: "hello", version: 0 }, transport, {
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+
+    workspace.rejectNextApply = true; // the host will refuse the very next applyEdit — E1's
+
+    // E1: insert "x" at 2 -> mirror optimistically "hexllo", posted in
+    // flight immediately (nothing else in flight yet).
+    const e1 = proxy.applyEdit({ from: 2, to: 2, insert: "x", expectedVersion: 0 });
+    expect(e1).toEqual({ ok: true, snapshot: { text: "hexllo", version: 1 } });
+
+    // E2: delete [2,3) (the "x" just inserted) -> mirror optimistically back
+    // to "hello". E1's reply has not arrived yet, so E2 only QUEUES — its
+    // wire message is not sent yet.
+    const e2 = proxy.applyEdit({ from: 2, to: 3, insert: "", expectedVersion: 1 });
+    expect(e2).toEqual({ ok: true, snapshot: { text: "hello", version: 2 } });
+    expect(appliedEditCount()).toBe(1); // only E1 has actually been posted so far
+
+    await sleep(20); // let the (purely microtask-driven) reject+reply settle
+
+    // THE FIX: E2 must never be dispatched on the strength of E1's rejected
+    // reply — that reply proves nothing about the state E2 was built on top
+    // of. AT HEAD (pre-fix) this is 2: the false "confirmed" match dispatches
+    // E2 right after E1's rejection.
+    expect(appliedEditCount()).toBe(1);
+
+    // The host's real, authoritative document — the actual file VS Code
+    // would save — must stay byte-identical to what it was before either
+    // edit: E1 was refused, and E2 targeted an "x" that consequently was
+    // never there. Dispatching E2 anyway does not merely fail to help; it
+    // ACTIVELY deletes an unrelated, pre-existing "l" the author never
+    // touched (D2/G-01) — the exact silent corruption this finding named.
+    // AT HEAD this reads "helo".
+    expect(handle.document.getText()).toBe("hello");
+    expect(handle.document.version).toBe(0);
+
+    // The mirror itself must end up telling the truth: converged BY
+    // REPLACEMENT to the host's real text, not left showing a falsely
+    // "confirmed" state that happens to look right for the wrong reason.
+    expect(proxy.getSnapshot().text).toBe("hello");
+    expect(diagnostics.some((d) => d.category === "EDITOR_EXTERNAL_REPLACEMENT")).toBe(true);
   });
 });
 

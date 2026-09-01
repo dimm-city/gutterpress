@@ -179,20 +179,40 @@ const DEFAULT_REPLY_TIMEOUT_MS = 15_000;
  *   unprompted external change) arrives over the SAME "snapshot" message
  *   kind, each carrying the gateway's freshly bumped `baseStamp`.
  *
- *   Point 4 (amended) — convergence by REPLACEMENT, evaluated against what
- *   THIS reply was expected to confirm, not against the mirror's CURRENT
- *   text (which may already be ahead of it — see point 2's queueing note):
- *   a reply whose text matches either `#inFlightExpectedText` (confirms the
- *   in-flight edit exactly) or the mirror's current text outright (already
- *   caught up — the common single-edit case) is NOT a divergence; the queue
- *   dispatches its next entry (if any), using this reply's `baseStamp`.
- *   Anything else calls `replaceExternal` (one version bump) AND discards
- *   the whole queue along with it — the addendum's own "no rebasing" rule:
- *   later queued edits were computed on top of a mirror state now proven
- *   wrong, and are dropped rather than replayed. This is what suppresses
- *   the host's echo of our own accepted edit "without any origin
- *   bookkeeping": still no request/reply correlation id, just a text
- *   comparison against a value this class already knows.
+ *   Point 4 (amended, and re-amended by repair round 2 — see below) —
+ *   convergence by REPLACEMENT, evaluated against what THIS reply was
+ *   expected to confirm, not against the mirror's CURRENT text (which may
+ *   already be ahead of it — see point 2's queueing note). WHILE SOMETHING
+ *   IS IN FLIGHT, a reply confirms ONLY by matching `#inFlightExpectedText`
+ *   exactly — the mirror's current text is NEVER consulted as a fallback in
+ *   that case, even though it is normally identical to `#inFlightExpectedText`
+ *   for a single edit with nothing queued behind it. Once something else is
+ *   queued on top, the mirror's current text reflects THOSE later,
+ *   optimistic, not-yet-confirmed edits too — and can coincidentally equal
+ *   an UNRELATED reply's text (e.g. the host's unchanged pre-edit text,
+ *   reported because this reply's own edit was rejected) purely by chance,
+ *   which is not evidence of anything real. Repair round 2 (finding "A
+ *   queued edit is still dispatched after a REJECTED in-flight edit"): the
+ *   ORIGINAL "amended" wording above allowed EITHER match to count while
+ *   in flight, on the theory that "already caught up" only ever meant a
+ *   confirmed reply arriving with nothing queued — but the mirror can just
+ *   as easily be "caught up" to a value it reached by OPTIMISTICALLY
+ *   APPLYING a later queued edit, which looks identical to this check and
+ *   is not remotely the same fact. Only when NOTHING is in flight does the
+ *   mirror's current text become the right thing to compare against — the
+ *   plain external-broadcast case (also covers a reply arriving once the
+ *   queue has already fully drained). Either way: a reply that fails to
+ *   confirm calls `replaceExternal` (one version bump) AND discards the
+ *   whole queue along with it — the addendum's own "no rebasing" rule: later
+ *   queued edits were computed on top of a mirror state now proven wrong,
+ *   and are dropped rather than replayed, rather than being dispatched
+ *   against a state the host never actually confirmed reaching. A reply
+ *   that DOES confirm dispatches the queue's next entry (if any), using
+ *   this reply's `baseStamp`. This is what suppresses the host's echo of
+ *   our own accepted edit "without any origin bookkeeping": still no
+ *   request/reply correlation id, just a text comparison against a value
+ *   this class already knows — now scoped to the ONE value that is actually
+ *   proof of anything while an edit is outstanding.
  */
 export class ProxyDocumentHost implements EditorDocumentHost {
   #mirror: DocumentSnapshot;
@@ -548,14 +568,21 @@ export class ProxyDocumentHost implements EditorDocumentHost {
       this.#lastKnownStamp = baseStamp;
 
       // Confirmation, evaluated against what THIS reply was expected to
-      // show — the in-flight edit's own predicted result, OR the mirror's
-      // current text outright (the common, no-burst case; also covers a
-      // reply arriving once nothing is in flight at all, e.g. a plain
-      // external broadcast). See the class doc comment's point 4 for why
-      // this is not simply "matches the mirror," now that queued edits can
-      // leave the mirror ahead of what one confirmed reply alone shows.
+      // show. Repair round 2 (finding "A queued edit is still dispatched
+      // after a REJECTED in-flight edit"): WHILE something is in flight,
+      // the ONLY valid proof this reply confirms it is a match against
+      // `#inFlightExpectedText` — the mirror's CURRENT text is not
+      // consulted, because queued-but-unsent edits already applied to it
+      // optimistically can make it coincidentally equal an UNRELATED
+      // reply's text (e.g. the host's unchanged pre-edit text, reported
+      // because THIS edit was rejected) with no relation to what actually
+      // happened. Only once NOTHING is in flight does the mirror's current
+      // text become the right comparison — the plain external-broadcast
+      // case (also covers a reply arriving after the queue has already
+      // fully drained). See the class doc comment's point 4 for the full
+      // account, including the false-positive this replaces.
       const wasInFlight = this.#inFlightExpectedText !== undefined;
-      const confirmed = (wasInFlight && snapshot.text === this.#inFlightExpectedText) || snapshot.text === this.#mirror.text;
+      const confirmed = wasInFlight ? snapshot.text === this.#inFlightExpectedText : snapshot.text === this.#mirror.text;
 
       if (confirmed) {
         // Run spec convergence case (a): no spurious replacement. If this

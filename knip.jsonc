@@ -88,15 +88,10 @@
       // src/extension.ts (the package.json "main" -> dist/extension.js
       // source, loaded by the real VS Code extension host, not imported by
       // anything else in this repo) and every test file explicitly.
-      // scripts/build.mjs and tests/host-fidelity/launch.mjs are NOT
-      // listed here (knip flags that as a redundant entry pattern): both
-      // are already package.json SCRIPT commands ("build", "test:host-
-      // fidelity"), which knip's own npm-script scanning already treats as
-      // reachable roots. tests/host-fidelity/run-in-host.js IS listed
-      // explicitly — it has no package.json script of its own; it is
-      // loaded only by a real VS Code extension host via
-      // @vscode/test-electron's `extensionTestsPath` contract (a runtime
-      // string path launch.mjs passes, invisible to knip's import graph).
+      // scripts/build.mjs is NOT listed here (knip flags that as a
+      // redundant entry pattern): it is already a package.json SCRIPT
+      // command ("build"), which knip's own npm-script scanning already
+      // treats as a reachable root.
       //
       // Reconciliation addendum (integration lane D) widened this entry
       // list, mirroring packages/editor's own precedent exactly (see that
@@ -115,13 +110,20 @@
       //     resolves BY PATH STRING, plus their own support modules
       //     (fake-extension-host.ts) that only those two import — genuine
       //     entries/reachable-from-entries, not dead code.
+      //
+      // Repair round 2: dropped the tests/host-fidelity/run-in-host.js
+      // entry that used to sit alongside these — its whole launcher
+      // scaffold (launch.mjs, run-in-host.js, the "test:host-fidelity"
+      // script that made it reachable) was deleted in repair round 1
+      // (docs/plans/source-first-editor/runs/SFE-P3c.md, "Host-fidelity
+      // deviation"), and the entry pattern outlived it, so knip flagged it
+      // as matching nothing.
       "entry": [
         "src/extension.ts",
         "src/webview/index.ts",
         "tests/**/*.test.ts",
         "tests/**/*.btest.ts",
-        "tests/**/support/*.ts",
-        "tests/host-fidelity/run-in-host.js"
+        "tests/**/support/*.ts"
       ],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"],
       // tests/project/fixtures/plugin-project/plugins/highlight.js is a
