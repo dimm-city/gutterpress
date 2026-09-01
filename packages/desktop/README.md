@@ -80,15 +80,9 @@ tools each user-visible action requires.
 bun install
 ```
 
-Three dev modes, pick by what you're iterating on:
+Two dev modes, pick by what you're iterating on:
 
 ```bash
-# SvelteKit only (no Electron — runs in a regular browser tab at
-# http://localhost:5173). HMR works, but window.electron is undefined
-# so any IPC-driven feature (Open Folder, Save PDF) will toast
-# "Electron bridge unavailable". Good for pure UI/CSS iteration.
-bun --cwd packages/desktop run dev
-
 # Full Electron with SvelteKit HMR — RECOMMENDED for most desktop dev.
 # Runs vite dev + Electron together; Electron loads the vite dev
 # server (http://localhost:5173) instead of the static build. You
@@ -109,6 +103,13 @@ The `electron:hmr` script wires `VITE_DEV_SERVER_URL=http://localhost:5173`
 into the Electron main process; `electron/main.ts` checks that env var
 and calls `mainWindow.loadURL(devUrl)` when set, otherwise falls back to
 the static `app://local/`. Preload + IPC are identical in both modes.
+
+Plain `bun --cwd packages/desktop run dev` (SvelteKit only, no Electron) is
+**not** a usable UI-iteration mode since SFE-P5a: `getPlatform()` has no
+non-Electron implementation and throws `DesktopHostRequiredError` on first
+call (`initTheme()` in `+layout.svelte`'s `onMount`), so the page never
+paints — not the toast-and-degrade behavior older versions of this doc
+described. Use `electron:hmr` above for all UI/CSS iteration.
 
 ## Building for production
 

@@ -35,10 +35,10 @@ against them.
 | Preview image/link rewrite scanners | Context-menu source mutations | Shared editor commands | P4b | command/scanner search | One mutation vocabulary — **DONE, DELETED WITH SURVIVORS** (SFE-P4 `731aee7e`): the preview-driven finders `findImageToken`, `resolveLinkToken`, `makeLinkToken`, and the `LinkResolution` type are deleted from `context-menu-actions.ts`; `findImageWrapper`/`rewriteImageToken`/`rewriteLinkToken`/`spliceToken`/`findImageTokenAtOffset`/`findLinkTokenAtOffset` **survive** — their real consumers, per `grep -rn "context-menu-actions" packages/desktop/src`, are `packages/desktop/src/lib/editor/caret-token-commands.ts` (value imports of the six functions — the shared source/rich-mode image/link edit commands) and `packages/desktop/src/lib/editor/toolbar-actions.ts:141` (a type-only import of `ImageTokenMatch`/`LinkTokenMatch`), plus doc-comment mentions in `image-classes.ts`, `rich-commands.ts`, and `+page.svelte:1810`; not the preview context menu |
 | Preview edit protocol messages | Cross-frame editing | Read-only preview | P4a | protocol search | Smaller bridge — **DONE** (SFE-P4 `6080b4a4`): see the "Preview mutation protocol messages" row above (5 → 0); protocol version 8 → 9 |
 | Mutation-only source metadata | Support preview writes | Navigation-only metadata | P4b | output/fixture diff | **PARTIALLY DONE, corrected 2026-09-01 (round-1 review repair)** — the command/engine-scoped half is done (SFE-P4 `6080b4a4`/`731aee7e`): the `beginBlockEdit` payload's write-only `text`/`caret` fields and `CommitEngine`'s patch-only fields (`expected`, `degradeLine`) are gone with the command and the engine; the surviving `{chapter, range}` navigation shape (`getContextTargetAt`, `goToSource`) is unchanged. **NOT done, carried forward:** `data-gp-source-token`/`data-gp-source-occurrence` HTML-attribute emission and its bridge payload are still live and have no remaining consumer — see "Residual: HTML-attribute source metadata" below. No lane in this run owned `packages/cli/src/lib/markdown/**`, so this half was never in scope to close; the original DONE marking overclaimed it. The required output/fixture diff for this half was never produced and still is not. |
-| `WebAdapter` | Dormant future PWA | Future web host is separate package | P5a | file/import search | Deletes false host implementation — **DONE, mid-flight (uncommitted as of this Lane C pass, 2026-09-01)**: `packages/desktop/src/lib/platform/web-adapter.ts` (901 lines) staged-deleted; class and every runtime reference gone from `contract.ts`/`index.ts`/`+layout.svelte`/`+page.svelte`/`settings.svelte.ts`/`SyncStatusPill.svelte`/`adapter.test.ts` (search proofs below); `getPlatform()` now throws `DesktopHostRequiredError` off-Electron instead of falling back to it (the run's "fail loudly, not partially" binding decision) |
-| `web-fs` / `web-store` | Browser filesystem and persistence | Unsupported in desktop | P5a | file/import search | Deletes dormant stores — **DONE, mid-flight**: `web-fs.ts` (279 lines) + `web-fs.test.ts` (228 lines), `web-store.ts` (167 lines, including `InMemoryWebStore`) + `web-store.test.ts` (56 lines), and `fsa.d.ts` (31 lines) all staged-deleted; zero remaining occurrences of `web-fs`/`web-store`/`InMemoryWebStore`/`FileSystemDirectoryHandle`/`showDirectoryPicker` under `packages/desktop/src`\|`electron`\|`tests` (search proofs below) |
-| PWA service-worker path | Future browser app | Out of scope | P5a | build/search proof | Smaller desktop build — **DONE, mid-flight**: `src/service-worker.ts` (110 lines) + `tests/platform/service-worker.test.ts` (77 lines) staged-deleted; the `!isDesktop()`-gated registration block deleted from `+layout.svelte`; `svelte.config.js`'s `serviceWorker: { register: false }` override removed (SvelteKit's default — no auto-registration to suppress once there is no SW to register); zero `serviceWorker` occurrences left under `packages/desktop/src`. **Resolved by the integrator in the same commit:** `app.html`'s `<link rel="manifest">` and its PWA comment removed, and `api.ts`'s stale WebAdapter-staging comment rewritten as history. |
-| Duplicate static viewer bundle | PWA fallback | Shared render asset ownership | P5a | generated file proof | One bundle output — **NOT reflected in the current diff.** `packages/desktop/static/engine/gutterpress-viewer.js` is untouched (present, unstaged) — matching the run spec's "static `engine/`/`icons/` assets (not PWA-only; verify, don't assume)" instruction and `platform-inventory.md` §13's description of it as a **shared** asset `WebAdapter.renderBookHtml` also injected, not a PWA-only duplicate. Whether any actual "duplicate bundle" remains to delete was not established by this lane (production/build-asset investigation is outside this lane's write ownership) — the integrator should confirm with Lane A/B whether this row describes something already resolved elsewhere or should be re-scoped/closed as not-applicable |
+| `WebAdapter` | Dormant future PWA | Future web host is separate package | P5a | file/import search | Deletes false host implementation — **DONE, committed `5db8c581`**: `packages/desktop/src/lib/platform/web-adapter.ts` (901 lines) deleted; class and every runtime reference gone from `contract.ts`/`index.ts`/`+layout.svelte`/`+page.svelte`/`settings.svelte.ts`/`SyncStatusPill.svelte`/`adapter.test.ts` (search proofs below); `getPlatform()` now throws `DesktopHostRequiredError` off-Electron instead of falling back to it (the run's "fail loudly, not partially" binding decision) |
+| `web-fs` / `web-store` | Browser filesystem and persistence | Unsupported in desktop | P5a | file/import search | Deletes dormant stores — **DONE, committed `5db8c581`**: `web-fs.ts` (279 lines) + `web-fs.test.ts` (228 lines), `web-store.ts` (167 lines, including `InMemoryWebStore`) + `web-store.test.ts` (56 lines), and `fsa.d.ts` (31 lines) all deleted; zero remaining occurrences of `web-fs`/`web-store`/`InMemoryWebStore`/`FileSystemDirectoryHandle`/`showDirectoryPicker` under `packages/desktop/src`\|`electron`\|`tests` (search proofs below) |
+| PWA service-worker path | Future browser app | Out of scope | P5a | build/search proof | Smaller desktop build — **DONE, committed `5db8c581`**: `src/service-worker.ts` (110 lines) + `tests/platform/service-worker.test.ts` (77 lines) deleted; the `!isDesktop()`-gated registration block deleted from `+layout.svelte`; `svelte.config.js`'s `serviceWorker: { register: false }` override removed (SvelteKit's default — no auto-registration to suppress once there is no SW to register); zero `serviceWorker` occurrences left under `packages/desktop/src`. Also in `5db8c581`: `app.html`'s `<link rel="manifest">` and its PWA comment removed, and `api.ts`'s stale WebAdapter-staging comment rewritten as history — both resolved in-commit, not left for a later lane. |
+| Duplicate static viewer bundle | PWA fallback | Shared render asset ownership | P5a | generated file proof | One bundle output — **NOT resolved by `5db8c581`; DONE in round-1 repair (uncommitted).** `packages/desktop/static/engine/gutterpress-viewer.js` was left untouched by the SFE-P5a commit. Re-verification found it orphaned, not shared: at base `c33868f8` its only two consumers were `WebAdapter.renderBookHtml` (`web-adapter.ts:94`) and the service worker's precache list (`service-worker.ts:38`) — `5db8c581` deleted both call sites without deleting the asset they called. `platform-inventory.md` §13 does describe it as PWA-only (not "shared" as the prior note here claimed). Root cause: `packages/cli/scripts/build-engine-bundles.mjs` unconditionally copied the built viewer bundle into `packages/desktop/static/engine/` on every `packages/cli` library build (via desktop's `build:runtime` script) — deleting the static file without also fixing the generator meant the very next `bun run build` silently regenerated it. Round-1 repair deletes `packages/desktop/static/engine/` and removes that copy step (and its now-false rationale comment) from `build-engine-bundles.mjs`; verified with a full `rm -rf build .svelte-kit && npm run build` that `build/client` no longer emits `engine/gutterpress-viewer.js` and `static/engine/` stays absent. `static/icons/` is untouched (still referenced by `app.html`). |
 | Broad `Platform` service locator | Electron/PWA abstraction | Narrow feature capabilities | P5b | consumer/import search | Explicit dependencies |
 | Desktop typed HTTP `api.ts` | Route client | Typed IPC | P5d | file absent | One transport |
 | `src/routes/api/**` | Electron request/reply host | Typed IPC | P5c/P5d | route count zero | One transport |
@@ -54,34 +54,39 @@ against them.
 
 <!-- Each deletion run appends measured before/after counts and proofs here. -->
 
-### SFE-P5a — 2026-09-01 — delete the dormant PWA implementation (Lane C doc pass, Lane A/B mid-flight)
+### SFE-P5a — 2026-09-01 — delete the dormant PWA implementation
 
-**This section is written concurrently with Lane A/B's own work, per the run
-spec's instruction to Lane C.** Everything below the file/line-count table is
-a snapshot of the working tree at the time this lane ran — **nothing in
-`packages/desktop/src/lib/platform/**`, `service-worker.ts`,
-`static/manifest.webmanifest`, `svelte.config.js`, `knip.jsonc`, or
-`tests/platform/**` is committed yet**, and this lane did not write any of
-those files (production source and test files are outside this lane's write
-ownership; see "Docs statused this run" below for what this lane actually
-wrote). No commit SHA exists to cite. The integrator must re-run every search
-proof below against the committed HEAD before treating this section as final,
-and fill in the commit SHA(s) once Lane A/B's work lands.
+**Base SHA `c33868f8` → head SHA `5db8c581`** (`refactor(p5): delete the
+dormant PWA host`). All of Lane A/B's production/test deletions and Lane C's
+own doc edits landed in that single commit; nothing described below is
+uncommitted except where a subsection is explicitly marked "round-1 repair."
+This entry was rewritten against the committed tree in round-1 repair
+(2026-09-01) — the version originally committed with `5db8c581` was a
+mid-flight Lane C snapshot (written while Lane A/B's work was still
+uncommitted) that a post-commit review found stale in five ways: it asserted
+"no commit SHA exists to cite" against a tree that was, by the time of
+review, fully committed; it reported two defects (`app.html`'s dangling
+`<link rel="manifest">`, `api.ts`'s stale WebAdapter prose) as open when the
+same commit had already fixed both; its `ls` transcript did not match real
+`ls` output; and it cited a run-spec quote ("stays until P5b/P5c update it")
+that does not appear in `docs/plans/source-first-editor/runs/SFE-P5a.md`.
+Every one of those is corrected below by re-running the proofs against the
+actual committed tree.
 
-#### File-level diff, current working tree vs. this run's start (`git diff HEAD`, uncommitted)
+#### File-level diff, `c33868f8..5db8c581` (committed)
 
 | File | Insertions | Deletions | Note |
 |---|---:|---:|---|
-| `packages/desktop/src/lib/platform/web-adapter.ts` | 0 | 901 | staged delete — the `WebAdapter` class |
-| `packages/desktop/tests/platform/web-adapter-persistence.test.ts` | 0 | 199 | staged delete |
-| `packages/desktop/tests/platform/web-fs.test.ts` | 0 | 228 | staged delete |
-| `packages/desktop/src/lib/platform/web-fs.ts` | 0 | 279 | staged delete |
-| `packages/desktop/src/lib/platform/web-store.ts` | 0 | 167 | staged delete — incl. `InMemoryWebStore` |
-| `packages/desktop/tests/platform/web-store.test.ts` | 0 | 56 | staged delete |
-| `packages/desktop/tests/platform/service-worker.test.ts` | 0 | 77 | staged delete |
-| `packages/desktop/src/service-worker.ts` | 0 | 110 | staged delete |
-| `packages/desktop/src/lib/platform/fsa.d.ts` | 0 | 31 | staged delete |
-| `packages/desktop/static/manifest.webmanifest` | 0 | 20 | unstaged delete |
+| `packages/desktop/src/lib/platform/web-adapter.ts` | 0 | 901 | deleted — the `WebAdapter` class |
+| `packages/desktop/tests/platform/web-adapter-persistence.test.ts` | 0 | 199 | deleted |
+| `packages/desktop/tests/platform/web-fs.test.ts` | 0 | 228 | deleted |
+| `packages/desktop/src/lib/platform/web-fs.ts` | 0 | 279 | deleted |
+| `packages/desktop/src/lib/platform/web-store.ts` | 0 | 167 | deleted — incl. `InMemoryWebStore` |
+| `packages/desktop/tests/platform/web-store.test.ts` | 0 | 56 | deleted |
+| `packages/desktop/tests/platform/service-worker.test.ts` | 0 | 77 | deleted |
+| `packages/desktop/src/service-worker.ts` | 0 | 110 | deleted |
+| `packages/desktop/src/lib/platform/fsa.d.ts` | 0 | 31 | deleted |
+| `packages/desktop/static/manifest.webmanifest` | 0 | 20 | deleted |
 | `packages/desktop/src/lib/platform/index.ts` | 27 | 6 | `getPlatform()` fails loudly (`DesktopHostRequiredError`) instead of falling back to `WebAdapter` |
 | `packages/desktop/src/lib/platform/contract.ts` | 29 | 36 | doc-comment/type cleanup — every "on a future PWA" branch removed from `FolderRef`/`FileRef`/`PlatformCapabilities` doc comments |
 | `packages/desktop/tests/platform/adapter.test.ts` | 9 | 478 | every `WebAdapter`-targeted test deleted; one test rewritten to assert `DesktopHostRequiredError` |
@@ -91,24 +96,26 @@ and fill in the commit SHA(s) once Lane A/B's work lands.
 | `packages/desktop/src/lib/components/SyncStatusPill.svelte` | 4 | 2 | doc comment: the `isDesktop()` guard is now load-bearing, not cosmetic |
 | `knip.jsonc` | 7 | 10 | `src/service-worker.{ts,js}` and `web-store.ts` dropped from the desktop `entry`/exemption list, with the `docs/adr/0004-platform-abstraction.md` citation also dropped (that ADR does not exist in this repo — see "ADR statusing" below) |
 | `packages/desktop/svelte.config.js` | 0 | 3 | `serviceWorker: { register: false }` override removed |
-| **Total (19 files, production + test, Lane A/B)** | **92** | **2,638** | **net −2,546**, verified by `git diff HEAD --shortstat` on the same path set |
+| **Total (19 files, production + test, Lane A/B)** | **92** | **2,638** | **net −2,546**, verified by `git diff c33868f8..5db8c581 --shortstat` on the same path set |
 
-Command run: `git diff HEAD --numstat -- packages/desktop/src/lib/platform/
+Command run: `git diff c33868f8..5db8c581 --numstat -- packages/desktop/src/lib/platform/
 packages/desktop/src/service-worker.ts
 packages/desktop/static/manifest.webmanifest packages/desktop/svelte.config.js
 packages/desktop/tests/platform/ packages/desktop/src/routes/+layout.svelte
 packages/desktop/src/routes/+page.svelte
 packages/desktop/src/lib/settings.svelte.ts
 packages/desktop/src/lib/components/SyncStatusPill.svelte knip.jsonc`, cross-
-checked against `git diff HEAD --shortstat` on the same path set:
-`19 files changed, 92 insertions(+), 2638 deletions(-)`. Split by kind:
-production (14 files, excl. the 5 `tests/platform/*` files): 83 insertions,
-1,600 deletions, net −1,517; tests (5 files): 9 insertions, 1,038 deletions,
-net −1,029. This lane's own doc edits (CLAUDE.md, `docs/pwa-webadapter-plan.md`,
-this ledger) are separate and listed under "Docs statused this run" below —
-not counted in the table above, which is production/test only.
+checked against `git diff c33868f8..5db8c581 --shortstat` on the same path
+set: `19 files changed, 92 insertions(+), 2638 deletions(-)` — re-run in
+round-1 repair and confirmed identical to the numbers originally recorded
+here. Split by kind: production (14 files, excl. the 5 `tests/platform/*`
+files): 83 insertions, 1,600 deletions, net −1,517; tests (5 files): 9
+insertions, 1,038 deletions, net −1,029. Lane C's own doc edits (CLAUDE.md,
+`docs/pwa-webadapter-plan.md`, this ledger) are separate and listed under
+"Docs statused this run" below — not counted in the table above, which is
+production/test only.
 
-#### Search proofs (run 2026-09-01, from repo root, against the CURRENT WORKING TREE — Lane A/B uncommitted; re-run at commit time)
+#### Search proofs (re-run 2026-09-01 in round-1 repair, from repo root, against commit `5db8c581`)
 
 Per the run spec's D15 requirements: `WebAdapter` → zero runtime occurrences;
 `web-fs`/`web-store` → zero; service-worker registration → zero;
@@ -119,8 +126,6 @@ $ grep -rn 'WebAdapter' packages/desktop/src packages/desktop/electron
 packages/desktop/src/lib/components/SyncStatusPill.svelte:77:    // getPlatform() now throws off-Electron (the dormant WebAdapter it used
 packages/desktop/src/lib/platform/index.ts:7: * SFE-P5a (D10): the dormant browser host (`WebAdapter`) was deleted — a
 packages/desktop/src/lib/platform/contract.ts:540:// WebAdapter, SFE-P5a) was deleted with it — see D10.
-packages/desktop/src/lib/api.ts:270:     * WebAdapter plan's Phase 1 (docs/pwa-webadapter-plan.md lists
-packages/desktop/src/lib/api.ts:271:     * listProjectFiles), whose WebAdapter.listProjectFiles is the live browser
 packages/desktop/src/lib/settings.svelte.ts:34: * `WebAdapter`, but that adapter was deleted; a future web product is a
 packages/desktop/src/routes/+layout.svelte:10:  // was deleted along with `src/service-worker.ts` and the dormant WebAdapter
 
@@ -128,7 +133,6 @@ $ grep -rln 'WebAdapter' packages/desktop/src packages/desktop/electron packages
 packages/desktop/src/lib/components/SyncStatusPill.svelte
 packages/desktop/src/lib/platform/index.ts
 packages/desktop/src/lib/platform/contract.ts
-packages/desktop/src/lib/api.ts
 packages/desktop/src/lib/settings.svelte.ts
 packages/desktop/src/routes/+layout.svelte
 
@@ -148,59 +152,53 @@ $ grep -rn 'serviceWorker' packages/desktop/src packages/desktop/electron packag
 (no output — exit 1)
 
 $ grep -rln 'manifest.webmanifest' packages/desktop/src packages/desktop/static
-packages/desktop/src/app.html
-
-$ grep -n 'manifest.webmanifest' packages/desktop/src/app.html
-13:    <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+(no output — exit 1)
 
 $ ls packages/desktop/static/manifest.webmanifest
-ls: cannot access 'packages/desktop/static/manifest.webmanifest': No output (file gate absent — file is gone)
+ls: cannot access 'packages/desktop/static/manifest.webmanifest': No such file or directory
 ```
 
 **Reading the results against D15's four required proofs:**
 
-1. **`WebAdapter` → zero runtime occurrences: NOT YET CLEAN, but every hit is
-   a comment, not code — except one.** Six files still contain the string
-   `WebAdapter`. Five are doc-comment mentions describing the *removal*
-   (`SyncStatusPill.svelte`, `index.ts`, `contract.ts`, `settings.svelte.ts`,
-   `+layout.svelte`) — no executable reference, matching the P4 ledger's
-   precedent of counting comment-only hits as sanctioned residuals once they
-   describe the deletion by name. The sixth, **`packages/desktop/src/lib/api.ts:270-271`,
-   is stale present-tense prose** ("whose `WebAdapter.listProjectFiles` is the
-   live browser implementation") describing a class that no longer exists —
-   this is a real defect, not a sanctioned residual, but `api.ts` is a P5d
-   deletion target (see the "Desktop typed HTTP `api.ts`" row above) and
-   outside every P5a lane's write ownership (production source). **Flagged
-   for the integrator; not fixed by this lane.**
+1. **`WebAdapter` → zero runtime occurrences: CLEAN.** Five files still
+   contain the string `WebAdapter`, all doc-comment mentions describing the
+   *removal* (`SyncStatusPill.svelte`, `index.ts`, `contract.ts`,
+   `settings.svelte.ts`, `+layout.svelte`) — no executable reference,
+   matching the P4 ledger's precedent of counting comment-only hits as
+   sanctioned residuals once they describe the deletion by name.
+   `packages/desktop/src/lib/api.ts` no longer appears in this grep at all:
+   the stale present-tense "whose `WebAdapter.listProjectFiles` is the live
+   browser implementation" prose the mid-flight snapshot of this section
+   flagged as an open defect was in fact rewritten to past tense
+   ("was removed with the PWA host (SFE-P5a)") in the same commit
+   (`5db8c581`) — `git diff c33868f8..5db8c581 -- packages/desktop/src/lib/api.ts`
+   shows 3 insertions, 4 deletions, all in that one comment. Resolved
+   in-commit, not carried forward.
 2. **`web-fs`/`web-store` → zero: CLEAN.** Both greps (including
    `InMemoryWebStore` by name) return no output under `src`, `electron`, or
    `tests`.
-3. **Service-worker registration → zero: CLEAN in code; ONE dangling markup
-   reference.** No `serviceWorker` identifier remains in `src`, `electron`,
-   or `svelte.config.js`. But `packages/desktop/src/app.html:13` still emits
-   `<link rel="manifest" href="…/manifest.webmanifest">`, and nothing
-   registers a service worker to consume it any more — this is not a
-   "service-worker registration" hit itself, but it is the install-affordance
-   half of the same PWA surface, now pointing at a 404. **Flagged for the
-   integrator; not fixed by this lane** (production source, out of this
-   lane's write ownership).
-4. **`manifest.webmanifest` → gone unless something non-PWA consumes it: THE
-   FILE IS GONE, but something still references it.** `static/manifest.webmanifest`
-   no longer exists (confirmed: `ls` reports "No such file or directory").
-   The one remaining reference, `app.html`'s `<link rel="manifest">`, is not
-   "something non-PWA consuming it" — it is the PWA install tag itself,
-   left behind pointing at nothing. Per the run spec's binding decision
-   ("Fail loudly, not partially"), a dangling link tag is a partial-deletion
-   defect, not an acceptable residual; the D15 bullet's "unless" clause is
-   not satisfied here.
+3. **Service-worker registration → zero: CLEAN.** No `serviceWorker`
+   identifier remains in `src`, `electron`, or `svelte.config.js`, and
+   `packages/desktop/src/app.html` no longer emits a `<link rel="manifest">`
+   at all — `git diff c33868f8..5db8c581 -- packages/desktop/src/app.html`
+   shows 0 insertions, 6 deletions: the tag and its PWA comment were removed
+   in the same commit, not left dangling.
+4. **`manifest.webmanifest` → gone unless something non-PWA consumes it:
+   CLEAN.** `static/manifest.webmanifest` no longer exists (`ls` reports "No
+   such file or directory") and, per point 3, nothing under `src` or
+   `static` references the string `manifest.webmanifest` any more either.
 
-**Net verdict:** the `WebAdapter`/`web-fs`/`web-store`/service-worker-code
-deletion itself (Lane A's actual scope) reads as complete and clean by these
-proofs. Two loose ends surfaced by this lane's search — the stale `api.ts`
-comment and the dangling `app.html` manifest link — sit outside every P5a
-lane's write ownership (both are production source) and are recorded here so
-the integrator can route them to whichever lane/round closes them before the
-gate; they are not blockers for the doc-statusing this lane owns.
+**Net verdict:** all four of the run spec's D15 search-proof bullets
+(`WebAdapter`, `web-fs`/`web-store`, service-worker registration,
+`manifest.webmanifest`) are clean against the committed tree. The
+`WebAdapter`/`web-fs`/`web-store`/service-worker-code deletion (Lane A), the
+`app.html`/`api.ts` cleanup, and the doc re-statusing (Lane C) all landed in
+`5db8c581`. One item outside those four bullets — the run spec's separate
+Lane B search proof, "duplicate static viewer bundle path → zero generated
+copy unless required by another proven host" — was **not** satisfied by this
+commit: `packages/desktop/static/engine/gutterpress-viewer.js` was left in
+place. See the "Duplicate static viewer bundle" row in "Planned deletions"
+above and the "Round-1 repair" subsection below for that proof.
 
 #### ADR statusing — no edit made, and why
 
@@ -232,13 +230,12 @@ rule** (the same one this run's CLAUDE.md edit preserves), not to the deleted
 needs no status note. No ADR in this repository requires an edit for SFE-P5a.
 
 Separately, `knip.jsonc`'s own comment used to cite
-`docs/adr/0004-platform-abstraction.md` by path (confirmed in this file's
-git history — the P5a-in-progress working copy, read by this lane, has
-already dropped that citation as part of Lane B's edit, alongside the
-`service-worker.{ts,js}`/`web-store.ts` entries the same comment protected).
-That citation removal is Lane B's, not this lane's; noted here only as
-corroborating evidence that ADR 0004 is correctly treated as absent, not as
-a status-note target this lane skipped.
+`docs/adr/0004-platform-abstraction.md` by path (confirmed in this file's git
+history: `git diff c33868f8..5db8c581 -- knip.jsonc` shows Lane B's edit
+dropped that citation, alongside the `service-worker.{ts,js}`/`web-store.ts`
+entries the same comment protected). That citation removal is Lane B's, not
+this lane's; noted here only as corroborating evidence that ADR 0004 is
+correctly treated as absent, not as a status-note target this lane skipped.
 
 #### Docs statused this run
 
@@ -253,10 +250,23 @@ a status-note target this lane skipped.
   surrounding "Adding a new host capability" walkthrough (§8, step listing
   the `ElectronAdapter`/`WebAdapter` pair) corrected to name `ElectronAdapter`
   only, with a forward reference to the rewritten paragraph. No other §8
-  content touched — the route/adapter guidance (the "Transport", "Two seams,
-  not one", and "(A)"/"(B)" capability-adding instructions) is unchanged, per
-  the run spec's explicit "stays until P5b/P5c update it." Measured:
-  `git diff --stat CLAUDE.md` → `21 insertions(+), 21 deletions(-)`.
+  content touched by this commit — Lane C's write scope was "`CLAUDE.md`
+  (§8's PWA paragraphs only)" per the run spec's Lane ownership table, so the
+  route/adapter guidance (the "Transport", "Two seams, not one", and
+  "(A)"/"(B)" capability-adding instructions) was left alone. **Correction
+  (round-1 repair):** the mid-flight version of this bullet defended that as
+  "per the run spec's explicit 'stays until P5b/P5c update it'" — that quoted
+  string does not exist anywhere in
+  `docs/plans/source-first-editor/runs/SFE-P5a.md` (confirmed:
+  `grep -rn "P5b" docs/plans/source-first-editor/runs/SFE-P5a.md` returns one
+  line, scoping `ElectronAdapter`/the contract's Electron half/`api.ts` route
+  calls — production code, not CLAUDE.md prose). The real reason was simply
+  the write-scope boundary above, not a documentation exemption. That
+  boundary also left one real defect inside the "PWA paragraphs" themselves
+  uncaught: capability class 3 ("FSA-divergent fs primitives") still
+  described a web implementation that `5db8c581` had just deleted — fixed in
+  round-1 repair (see below), not by this commit. Measured:
+  `git diff c33868f8..5db8c581 --stat -- CLAUDE.md` → `21 insertions(+), 21 deletions(-)`.
 - **`docs/pwa-webadapter-plan.md`** — a new status block inserted at the top
   of the existing status blockquote: "CLOSED 2026-09-01 (0.11, SFE-P5a, plan
   D10) — the implementation this plan describes was removed, not completed,"
@@ -265,21 +275,73 @@ a status-note target this lane skipped.
   should not be resumed from or cited as evidence of a live web host. The
   original "partially shipped, plan revised 2026-08-23" status line is kept
   immediately below, relabeled "Status (historical)," and the body (phases,
-  capability matrix, open questions) is untouched. Measured: `git diff --stat
-  docs/pwa-webadapter-plan.md` → `23 insertions(+), 4 deletions(-)`.
+  capability matrix, open questions) is untouched. Measured:
+  `git diff c33868f8..5db8c581 --stat -- docs/pwa-webadapter-plan.md` →
+  `23 insertions(+), 4 deletions(-)`.
 - **`docs/adr/**`** — no file edited; see "ADR statusing" above for why
   (ADR 0004 does not exist in this repository; no present ADR describes the
   WebAdapter/FSA path).
 - **This ledger** — the four P5a rows in the "Planned deletions" table above
-  updated with DONE/status markers and proof pointers; this section added.
+  updated with DONE/status markers and proof pointers; this section added
+  (later rewritten wholesale in round-1 repair — see below).
 
-#### Verification run (this lane, from repo root)
+**Round-1 repair (uncommitted as of this rewrite) — additional docs fixed by
+a post-commit review pass, not part of `5db8c581`:**
+
+- **This ledger's own SFE-P5a section** — rewritten against the committed
+  tree: added base/head SHAs, dropped the "mid-flight"/"uncommitted" framing
+  throughout, re-ran every search proof against `5db8c581` (not the
+  pre-commit working tree), corrected the `WebAdapter`/`app.html`/`api.ts`
+  readings to reflect that both loose ends the mid-flight snapshot had
+  flagged for the integrator were already resolved in the same commit,
+  replaced the fabricated "stays until P5b/P5c update it" run-spec citation,
+  fixed the `ls` transcript to real `ls` output, and gave the `check` row a
+  real exit code (see below).
+- **`CLAUDE.md` §8** — capability class 3 ("FSA-divergent fs primitives")
+  deleted: it justified the Platform seam with the now-deleted `WebAdapter`'s
+  File System Access implementation, which `5db8c581` removed without
+  updating this enumeration. "Three narrower capability classes" /
+  "the three capability classes above" reworded to "two" at every occurrence
+  (4 sites). The section opener ("written so it could run unchanged in a
+  browser PWA tomorrow") softened to the surviving claim — the renderer
+  contains no host code, which is what would let a future separate web
+  package reuse it — since `getPlatform()` now throws
+  `DesktopHostRequiredError` off-Electron by design, and the literal claim no
+  longer held.
+- **`docs/ux-design-contract.md`** — a live product/UX contract, not a plan
+  snapshot, that `5db8c581` left uncorrected even though SFE-P4's Lane C set
+  the precedent of editing this exact file. Re-statused "PWA requirements"
+  and "§3 Mobile / PWA editor UX" as REMOVED (0.11, SFE-P5a, plan D10) with
+  wording matching CLAUDE.md §8's paragraph; dropped the "the plan wins" /
+  "Normative: `docs/pwa-webadapter-plan.md`" delegations; narrowed the Scope
+  section to the Electron desktop app; demoted the Vision Statement's "(via
+  the PWA) on mobile" claim, the architectural-constraints table's
+  FSA-divergent-fs citation, the "Mobile primary navigation (PWA)" bullet,
+  the mobile perf-targets citation, and the accessibility screen-reader
+  matrix's PWA row — all to historical/removed, matching the plan's success
+  criterion "No documentation claims PWA support in the desktop package after
+  P5a."
+- **`packages/desktop/README.md`** — deleted the "SvelteKit only (no
+  Electron)" dev-mode block, which documented a "pure UI/CSS iteration"
+  workflow that `getPlatform()`'s unguarded call in `initTheme()`
+  (`+layout.svelte`'s `onMount`) now hard-throws `DesktopHostRequiredError`
+  on, before first paint — not the "Electron bridge unavailable" toast the
+  doc described. Added a short note pointing contributors at `electron:hmr`
+  instead, per the plan's "deleted behavior is removed from user and
+  contributor docs in the same run" rule.
+- **`packages/cli/scripts/build-engine-bundles.mjs`** and
+  **`packages/desktop/static/engine/`** — see the "Duplicate static viewer
+  bundle" row in "Planned deletions" above for the fix and its proof.
+
+#### Verification run
 
 | Command | Exit code | Note |
 |---|---:|---|
-| `git diff --stat -- CLAUDE.md docs/pwa-webadapter-plan.md docs/plans/source-first-editor/deletion-ledger.md` | 0 | this lane's own write set only |
-| `grep -n 'WebAdapter' CLAUDE.md docs/pwa-webadapter-plan.md` | 0 | every remaining hit is historical/past-tense (removal description, or the plan's own pre-closure body kept as history) — see per-file confirmation in "Docs statused this run" |
-| `bun run --cwd packages/desktop check 2>&1 \| tail -40` | see notes | run for awareness only, against the concurrently-changing Lane A/B tree — not a gate this lane owns; see the structured report's Verification section |
+| `git diff c33868f8..5db8c581 --stat -- CLAUDE.md docs/pwa-webadapter-plan.md docs/plans/source-first-editor/deletion-ledger.md` | 0 | Lane C's original write set, as actually committed |
+| `grep -n 'WebAdapter' CLAUDE.md docs/pwa-webadapter-plan.md` (at `5db8c581`) | 0 | every remaining hit is historical/past-tense (removal description, or the plan's own pre-closure body kept as history) — see per-file confirmation in "Docs statused this run" |
+| `bun run --cwd packages/desktop check` (run against a `git worktree` checked out at `5db8c581`, with `node_modules` symlinked from the main checkout — same lockfile, confirmed identical) | 0 | `889 FILES 0 ERRORS 0 WARNINGS` — resolves the mid-flight snapshot's "see notes" placeholder with a real exit code, per D15 |
+| `rm -rf packages/desktop/build packages/desktop/.svelte-kit && cd packages/desktop && npm run build` (round-1 repair, current tree, after deleting `static/engine/` and fixing `build-engine-bundles.mjs`) | 0 | `check-render-purity: OK`; `find build/client -iname '*gutterpress-viewer*' -o -iname engine` returns nothing — proof for the "Duplicate static viewer bundle" row |
+| `bun test packages/cli/src/assets/engine/bundle-freshness.test.ts` (round-1 repair, confirms the `build-engine-bundles.mjs` edit didn't break the committed-bundle-freshness gate) | 0 | `3 pass, 0 fail` |
 
 ### SFE-P4 — 2026-09-01 — delete preview editing and the mutation machinery
 

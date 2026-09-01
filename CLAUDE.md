@@ -412,10 +412,12 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > standard, applied by default.
 
 The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
-`@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
-browser PWA tomorrow. To make that true — and to keep the desktop build correct
-— the renderer never contains host/Node code; it reaches the host through one
-of two seams, chosen by capability class, and both keep the SPA "PWA-clean."
+`@sveltejs/adapter-node`). The renderer contains ZERO host/Node code — that
+renderer/host split is what would let a future, separate web package reuse
+this SPA without a rewrite (see "PWA scaffolding" below for why that future
+package is not a mode of this one). To keep the desktop build correct, the
+renderer reaches the host through one of two seams, chosen by capability
+class, and both keep the SPA "PWA-clean."
 
 **Transport.** In production, Electron main starts the adapter-node handler
 (`build/handler.js`) on a local `127.0.0.1` HTTP server and serves the window
@@ -448,16 +450,18 @@ files call `src/lib/api.ts` directly (`+page.svelte` alone has 36 `api.*`
 call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
 (`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
 `import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
-owns three narrower capability classes a plain route can't cover:
+owns two narrower capability classes a plain route can't cover:
 
 1. **Push streams** the renderer subscribes to (build progress,
    folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
    shape needs a live event channel, not request/response.
 2. **Calls that must drive a live `BrowserWindow`** — preview/build
    orchestration, PDF export via `webContents.printToPDF`.
-3. **FSA-divergent fs primitives** — the handful of file operations where the
-   web implementation is a genuinely different algorithm (File System Access
-   API handles) rather than a thin `fetch()` wrapper.
+
+(A third class, FSA-divergent fs primitives, existed only to justify the
+now-deleted `WebAdapter`'s File System Access implementation — see "PWA
+scaffolding" below. There is no surviving host-divergent fs primitive; if one
+appears, name it here concretely rather than reopening this class generically.)
 
 Everything else — status, dialog, theme, plugin, remote/sync, vcs, recovery,
 settings, recents/favorites, and so on — is a server route + a typed
@@ -477,7 +481,7 @@ above).
    call `api.<ns>.<op>(...)` directly. No `contract.ts` / `HostServices` /
    adapter changes needed.
 
-**(B) Platform adapter — only for the three capability classes above.**
+**(B) Platform adapter — only for the two capability classes above.**
 
 1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
    types **locally**, decoupled from the lib)
@@ -492,7 +496,7 @@ above).
 
 **The canonical fix when node code is needed by the UI:** don't bundle it into
 the renderer — run it in the host and expose it as a server route (default) or,
-for the three narrower classes, through `getPlatform()`. Example: CSS
+for the two narrower classes, through `getPlatform()`. Example: CSS
 print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
 `api/lint/check-css` server route) and the editor's lint gutter calls
 `getPlatform().checkCss(...)` — routed through the adapter here because
@@ -555,7 +559,7 @@ lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
 Why this is the default for new Electron apps: the renderer/host split is the
 only thing that keeps an Electron UI portable to web, testable without a host,
 and free of the "works in `vite dev`, crashes in the packaged app" trap. Build
-the typed route + wrapper (or, for the three narrower classes, the adapter
+the typed route + wrapper (or, for the two narrower classes, the adapter
 seam) **first**, before the first feature adds a host call.
 
 ## Design-guide / DC-brand work has moved out of this repo
