@@ -19,7 +19,7 @@
 | AC-08 | Generated content cannot serialize | P2 | Negative source-path tests | Evidenced (SFE-P2b: GeneratedView has no from/to at the type level + runtime absence checks + provider never creates segments for generated content; browser proof of read-only in-chip preview) |
 | AC-09 | Desktop document-session integration | P3a | Source/rich switch and persistence tests | **Evidenced** (SFE-P1c session/host suites; SFE-P3ab: source↔rich switching, non-Markdown fallback, and preview-commit/rich-command coexistence over one `DocumentHost`, with byte-identity assertions across every switch) |
 | AC-10 | VS Code host integration and trust | P3c | Extension-host/webview tests | **Evidenced** (SFE-P3c: TextDocument/WorkspaceEdit gateway with native undo; stamped one-in-flight reconciliation passing the shared contract suite under latency/out-of-order replies; workspace-trust gate with loader spy-proof and a browser-proven trust-explanation banner; workspace-root-scoped plugin paths with a `../`-escape refusal fixture; CSP'd webview proven in real Chromium — 228 unit + 34 browser tests. Real-VS-Code activation remains a recorded deviation: @vscode/test-electron is scaffolded but network-blocked in this environment) |
-| AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | Evidenced for the desktop surface (SFE-P3ab: the P2a command vocabulary, images/links, layout markers, block movement and diagnostics all reachable from rich mode through the shared implementation; the packaged interaction/a11y/performance sweep remains P3d) |
+| AC-11 | Authoring interaction parity | P3b/P3d | Packaged interaction suite | **Evidenced** (SFE-P3ab desktop surface; SFE-P3d-sweep: all twenty P3d scenarios audited with read citations, five gaps closed in real Chromium, two packaged-Electron scenarios pass under the driver's own xvfb fallback; three product facts pinned as-is — plain-text-only paste, no pointer-drag block movement, no slash menu — and two open a11y items recorded for the product owner) |
 | AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Evidenced for navigation (SFE-P3d-parity: D8 capability coverage audit, host-command round trips through the real bridge and shell, and a two-layer mutation-separability proof; the P4 deletion itself remains) |
 | AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | Pending |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | Pending |
@@ -32,7 +32,7 @@
 | AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Evidenced for P3 (SFE-P3d-parity: full user guide, design-guide book, validation example and a plugin-using fixture book — 28 chapters total; the field guide is gitignored and out of corpus, and the final P7 sweep remains) |
 | AC-22 | Documentation complete | P7 | Doc link and example lint | Pending |
 | AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 and the desktop P3 boundary (SFE-P2c security review: host-only plugin execution, inert plugin HTML, fail-closed trust gate; SFE-P3e: rich-mode plugins execute only in main for the opened project — the same trust decision the preview already exercises — over one validated IPC channel whose projectDir must equal the host's own workspace root; SFE-P3c: nonced CSP with fixed base and dist-scoped roots proven inert in real Chromium, both-side message validation, workspace-trust-gated plugin loading with a path-containment refusal, sanitized wire errors; P5 boundaries pending) |
-| AC-24 | Performance budgets met | P3d | Recorded benchmark results | Pending |
+| AC-24 | Performance budgets met | P3d | Recorded benchmark results | **Measured — NOT met** (SFE-P3d-sweep/P3f: 25 KiB within the 100 ms p95 budget; 250 KiB p95 ~545–632 ms and 1 MiB p95 ~2.3 s, root-caused to the fork's whole-document geometry remeasurement; the sound Patch 2 helps end-of-document typing only. The budget assertion stays red in `test:perf`; follow-ups: benchmark navigation fix, delta-translation patch variant, then the located-not-proven EditContext residual. Sandbox caveat: not the CI reference runner) |
 
 ## Run results
 
@@ -579,5 +579,49 @@
   ],
   "deletionLedgerUpdates": [],
   "checkpointSummary": "The same editor that runs in the desktop now runs as a VS Code custom text editor: TextDocument and WorkspaceEdit own persistence and undo, a stamped one-in-flight reconciliation keeps the webview mirror honest under latency and rejection, plugins load host-side only under workspace trust with path containment, and the CSP'd webview is proven in real Chromium. The review needed three rounds and its first pass found the extension would not have loaded in a real VS Code at all — the strongest argument this program has produced for reviewing against the built artifact, not the source."
+}
+```
+
+### SFE-P3d-sweep + SFE-P3f — Interaction/a11y/perf sweep, fork measurement patch, Checkpoint B
+
+```json
+{
+  "status": "complete",
+  "baseSha": "bc98a23f",
+  "headSha": "873e9d94",
+  "history": [
+    "57d3e684 test(p3): P3d sweep — scenario audit, five gap closures, a11y, D13 numbers (lanes A/B/C)",
+    "f2b08636 / ef63b406 docs+test(p3): lane D — D13 root cause proven inside the fork",
+    "80b77f1d / f3e6f2e4 docs+perf(p3): SFE-P3f fork measurement patch (Patch 2)",
+    "404c0583 / d1b6e573 fix(p3): address review findings (rounds 1-2)",
+    "873e9d94 test(p3): drift-immune interleaved perf control"
+  ],
+  "confirmedFindings": [
+    "R1: fork Patch 2 was fast but WRONG — the cached visual-line map was not keyed on absoluteStart, so pointer->offset and caret math were stale for every block after an edit; fixed with the absoluteStart guard and a defect-class test that fails against the pre-fix bytes",
+    "R1: no test in the tree could detect that defect class — the browser safety net never re-queried pointer math on a reused block after an edit; closed via fork-hook.btest.ts's new correctness block driving the fork's own offsetAtClientPoint",
+    "R1: PATCHES.md's correctness proof was false as written, and the upstream draft was ready-to-file on the same false argument — both corrected, the 45-50% improvement claim withdrawn as an artifact of the broken cache",
+    "R1: the audit's before/after numbers were measured on the incorrect implementation — re-measured on the corrected patch: 250 KiB p95 551.8-577.0 ms, statistically the unpatched baseline for mid-document typing (the benchmark types at ~937 of 256,018 chars — worst case for the corrected patch, whose mechanism is verified real for end-of-document typing)",
+    "R1: the G-12 perf control was vacuous (both assertions passed with zero injected slowdown) and echo-guard's liveness tolerance was 10x its signal — both made differential/tightened",
+    "R1: audit mis-nesting and an over-claiming pointer-drag test title — corrected",
+    "R2: PATCHES.md's new fallback-over-shift section stated the opposite of what was measured — corrected",
+    "Post-gate: the sequential differential control produced a drift false-negative under sandbox contention (delta 63.3 ms of an injected 150) — made interleaved per-keystroke; now measures 151.1/123.6/144.2 ms"
+  ],
+  "advisories": [
+    "A pre-existing prototype claim elsewhere in PATCHES.md still cites the flawed-benchmark reduction, labeled as such",
+    "drive.ts's click+End navigation lands at ~937 of 256,018 characters — the named priority follow-up for the perf work",
+    "The EditContext input-path residual suspect is located, not proven — its earlier attribution was measured on the flawed benchmark and needs re-profiling after the navigation fix"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck (4 workspaces) / cli build + 1913:60 / editor 3038 unit + 121 browser (9 suites) + purity / vscode-extension 228 + 35 browser + build / desktop 6045:1 + check + lint + build / vendored (Patch 2 hashes) / architecture (104==104) / generated-files / knip — all exit 0; test:perf exits 1 on exactly the two 250 KiB D13 budget assertions (designed red, AC-24's recorded state) with the interleaved control and both mechanism guards green"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [
+    "AC-11 evidenced (with recorded open a11y items)",
+    "AC-24 measured — NOT met, honestly red with named follow-ups"
+  ],
+  "deletionLedgerUpdates": [],
+  "checkpointSummary": "Checkpoint B is assembled in the run spec: fork decision, both hosts' behavior, parity/security/a11y evidence, and the corrected performance narrative. The review's defining catch: a fork patch that was fast but wrong — stale caret math for every block after an edit, invisible to 118 green browser tests — fixed soundly at the cost of the apparent win, with the withdrawal recorded in every document that had cited it. The D13 budget stays red with three ordered follow-ups; the parity gate that governs P4 is green and its designated blocker closed."
 }
 ```

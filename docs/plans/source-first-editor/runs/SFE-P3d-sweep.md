@@ -95,10 +95,118 @@ section — no shared lines.
 - `cd packages/desktop && bun run test && bun run check && bun run lint`
 - `bun run check:architecture && bun run check:generated-files && bun run check:vendored && bun run knip`
 
-## Checkpoint B
-
-<!-- Assembled by the integrator at close-out. -->
-
 ## Review log
 
-<!-- Appended by the review stage. -->
+Combined review of SFE-P3d-sweep lanes A–D and SFE-P3f (`bc98a23f..f3e6f2e4`),
+four batches, three rounds. Round 1: **9 CONFIRMED** — the highest-stakes one
+being that **fork Patch 2 was fast but wrong**: it cached a block's
+visual-line map without keying on `absoluteStart`, so after any edit,
+pointer→offset and caret math were wrong for every block downstream — and no
+test in the tree could detect the class (the 118 green browser tests never
+re-query pointer math on a reused block after an edit). Also confirmed:
+PATCHES.md's correctness proof was false as written; the upstream draft was
+"ready to file" on the same false argument; the audit's headline 45–50%
+improvement was measured on the incorrect implementation; the perf control
+and echo-guard liveness checks were vacuous; a mis-nested audit section; and
+an over-claiming test title.
+
+Repair round 1 fixed the patch soundly (`absoluteStart` equality joins the
+reuse guard; fallback to full remeasure), added the missing defect-class
+test (fails against the pre-fix bytes, verified live), corrected every
+governance document, made the control differential, and **withdrew the
+performance win**: with the correct guard, typing early in a document
+invalidates every downstream block's cache, so the re-measured 250 KiB p95
+(551.8–577.0 ms over three invocations) is statistically the unpatched
+baseline. The patch's mechanism is real for genuine end-of-document typing
+(4 `Range` calls/keystroke, verified) — the benchmark's own navigation
+defect (`drive.ts`'s click+End lands at ~937 of 256,018 characters) means
+every recorded run measures near-start typing, which is the honest
+worst case for the corrected patch.
+
+Round 2 confirmed one residual (PATCHES.md's new fallback-over-shift section
+stated the opposite of what was measured; fixed in `d1b6e573`); round 3:
+**approve**, 0 confirmed, 1 advisory (a pre-existing prototype claim
+elsewhere in PATCHES.md, recorded).
+
+After the gate exposed a drift false-negative in the sequential differential
+control (a contention-inflated baseline compressed the measured delta to
+63.3 ms of an injected 150 ms), the control was made interleaved — the
+condition alternates per keystroke so load drift cancels — and now measures
+the injected 150 ms as 151.1/123.6/144.2 ms across three runs (`873e9d94`).
+
+## Gate
+
+**PASS on 18 of 19 commands; the 19th is red by design.** install; typecheck
+(4 workspaces); cli build + 1913:60; editor 3038 unit + 121 browser (9
+suites) + purity; vscode-extension 228 + 35 browser + build; desktop 6045:1 +
+check (896 files) + lint + build (render purity); vendored (Patch 2 hashes);
+architecture (route ratchet 104 == 104); generated-files; knip — all exit 0.
+`test:perf` exits 1 on exactly the two 250 KiB D13 budget assertions
+(fresh confirmation run: p95 545.5 ms vs 100 ms), with the interleaved
+control and both mechanism guards green. That red is the recorded state of
+AC-24, not a defect in the gate.
+
+## Checkpoint B — the plan's pre-deletion report
+
+**Editor/fork decision.** D5's compatibility gate ran all eight cases
+against the published `@vscode/markdown-editor` 0.0.2-84 in real Chromium;
+case 4 (a generic custom-block render hook) is structurally absent, so the
+package is vendored as a byte-pinned fork with exactly two patches, each
+documented hunk-by-hunk in PATCHES.md and re-hashed in checksums.json:
+`renderCustomBlock` (Hunks 1–7) and identity-cached measurement (Patch 2,
+corrected in review). Two upstream issue drafts stand ready; filing them is
+the fork's removal trigger.
+
+**Desktop behavior.** Rich mode runs the shared mount over
+`DesktopDocumentHost`; the projection is built host-side, plugin-aware and
+trusted, over validated IPC (SFE-P3e); the parity matrix maps all 13
+preview-mutation actions to tested replacements with zero waivers; 28 real
+chapters round-trip byte-identically; preview navigation is proven separable
+from the mutation surface P4 deletes.
+
+**VS Code behavior.** The same mount runs as a custom text editor:
+`TextDocument`/`WorkspaceEdit`/native undo, stamped one-in-flight
+reconciliation passing the shared contract suite under latency and
+rejection, workspace-trust-gated plugins with path containment, CSP'd
+webview proven in real Chromium. Recorded deviation: real-VS-Code activation
+via `@vscode/test-electron` is scaffolded but network-blocked in this
+environment.
+
+**Parity evidence.** The five-condition parity gate: 1–4 green on derived,
+sabotage-proven evidence; condition 5's designated blocker (plugins in the
+rich editor) closed by SFE-P3e. The twenty P3d scenarios are audited in
+`p3d-sweep-audit.md` with per-scenario citations; five gaps were closed and
+three product facts pinned as-is (paste is plain-text-only; no pointer-drag
+block movement exists; no slash menu exists outside the desktop toolbar).
+
+**Security review.** Plugin execution host-only (bundle-scan proven, P2c);
+CSP with per-render nonce, fixed base, dist-scoped roots, both-side message
+validation, sanitized wire errors, and workspace-root path containment with
+an escape-refusal fixture (P3c); renderer-boundary IPC validation (P3e);
+no secrets or absolute paths in projections, diagnostics, or messages.
+
+**Accessibility review.** Focus reachability, keyboard escape hatch, and
+arrow-caret behavior proven against the real fork (P1b); desktop landmarks
+asserted in the package's established convention with a can-fail control.
+**Open items for the product owner:** the rich-editing surface has no ARIA
+landmark role anywhere in the stack, and the shell has no `<main>` landmark
+and no skip-link. Recorded, not fixed — production changes beyond the
+sweep's scope.
+
+**Performance results.** 25 KiB is within the 100 ms p95 budget; 100 KiB,
+250 KiB (p95 ~545–632 ms) and 1 MiB (p95 ~2.3 s) are not. The measured cost
+is inside the vendored fork and scales with document size; the sound Patch 2
+helps end-of-document typing only. Named follow-ups, in order: fix the
+benchmark's navigation defect; implement the delta-translation variant
+(option b) so mid-document typing also reuses cached maps; then re-profile
+the residual (the EditContext input-path suspect is located, not proven).
+All numbers carry the caveat that this sandbox is not the CI reference
+runner; the assertion stays red until the numbers are real.
+
+**Approval to enter deletion phases.** Conditions the plan names for P4 are
+met: the parity gate is green and its designated blocker closed. The one red
+item, the D13 budget, does not interact with what P4 deletes (preview
+mutation), and deleting preview editing neither worsens nor masks it.
+Proceeding to P4 under the product owner's standing directive to complete
+the remaining phases, with this checkpoint recorded for their review — the
+perf follow-ups remain open work, not waived work.
