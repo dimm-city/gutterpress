@@ -6,7 +6,7 @@ import { fileTooLargeDiagnostic } from "./protocol/diagnostics.ts";
 import { validateWebviewToHostMessage } from "./protocol/validate.ts";
 import type { PresentationInputMessage } from "./protocol/messages.ts";
 import { findGutterpressProject } from "./project/discover.ts";
-import { resolveEditorProjectionMessage } from "./project/projection.ts";
+import { resolveEditorProjectionPayload } from "./project/projection.ts";
 
 /**
  * `gutterpress.markdownEditor` `CustomTextEditorProvider` — SFE-P3c Lane A
@@ -38,17 +38,30 @@ import { resolveEditorProjectionMessage } from "./project/projection.ts";
  * `createSessionLogger`'s own doc comment for exactly what is and is not
  * logged.
  *
- * SFE-P3c Lane B (this run's second phase) extends `resolveCustomTextEditor`
- * with the ONE thing it was still missing: the `projection` message
+ * SFE-P3c Lane B (this run's second phase) extended `resolveCustomTextEditor`
+ * with the ONE thing it was still missing: the projection payload
  * `mountGutterpressEditor` requires (deliverable 2). This file's own share
  * of that work is kept to WIRING only, per this lane's write boundary
  * ("provider.ts — ONLY to wire the projection/presentation flow into
  * resolveCustomTextEditor"): resolve the document's Gutterpress project once
  * (`./project/discover.ts`'s `findGutterpressProject`, D9 — a plain folder
  * with no manifest is a supported non-error `undefined`), build+send the
- * first `projection` message after the `ready` handshake's other three, and
+ * first projection resend after the `ready` handshake's other three, and
  * rebuild+resend on exactly the events D9/G-11 name: an authoritative
  * `snapshot` change for this document, and a trust grant.
+ *
+ * RECONCILIATION ADDENDUM (integration lane D): two changes land here.
+ * (1) The `ready` handshake's `snapshot` reply is now sent through
+ * `gateway.sendInitialSnapshot()` rather than hand-built inline — every
+ * authoritative snapshot needs a `baseStamp`, and that stamp is
+ * `DocumentGateway`'s own to assign (see that class's header). (2) The
+ * MESSAGE MERGE: `sendProjection()` below no longer builds a standalone
+ * `type: "projection"` message (that type is deleted) — it merges
+ * `resolveEditorProjectionPayload`'s result into a `presentation-input`
+ * resend, `mode` held fixed at this session's own decision. The inbound
+ * "apply-edit" case now forwards `message.base` to `gateway.applyEdit`
+ * alongside `message.edit` — the addendum's other required change, and
+ * `DocumentGateway.applyEdit`'s one production caller.
  *
  * REUSING THE GATEWAY'S EXISTING SUBSCRIPTION FLOW, LITERALLY (run spec:
  * "reuse the gateway's existing subscription flow from provider.ts rather
@@ -73,7 +86,7 @@ import { resolveEditorProjectionMessage } from "./project/projection.ts";
  * The actual DECIDE-and-BUILD logic (trust/project gating,
  * `loadPluginsWithCss`, `createEditorProjection`, the base-pipeline
  * fallback) lives entirely in `./project/projection.ts`'s
- * `resolveEditorProjectionMessage`, a `vscode`-free function this file only
+ * `resolveEditorProjectionPayload`, a `vscode`-free function this file only
  * calls — kept there rather than inlined here so it stays testable without
  * any `vscode` mocking and so this file's own diff stays the thinnest
  * wiring that satisfies the spec.
@@ -170,14 +183,26 @@ export function createGutterpressMarkdownEditorProvider(
 
         projectionEpoch += 1;
         const epoch = projectionEpoch;
-        void resolveEditorProjectionMessage(gateway.currentSnapshot(), project, vscode.workspace.isTrusted, (error) => {
+        void resolveEditorProjectionPayload(gateway.currentSnapshot(), project, vscode.workspace.isTrusted, (error) => {
           log("projection-build-failed", { message: error instanceof Error ? error.message : String(error) });
-        }).then((message) => {
+        }).then((payload) => {
           if (epoch !== projectionEpoch) return; // superseded by a later rebuild — drop, never post out of order
-          for (const pluginError of message.pluginErrors) {
+          for (const pluginError of payload.pluginErrors) {
             log("plugin-load-failed", { pluginRef: pluginError.pluginRef });
           }
-          void webviewPanel.webview.postMessage(message);
+          // Reconciliation addendum — message merge: the projection payload
+          // rides inside a `presentation-input` resend, `mode` held fixed at
+          // this session's own decision (`presentationInput.mode`, never
+          // re-evaluated — see that variable's own construction below).
+          void webviewPanel.webview.postMessage({
+            type: "presentation-input",
+            protocolVersion: EDITOR_PROTOCOL_VERSION,
+            mode: presentationInput.mode,
+            projection: payload.projection,
+            pluginCss: payload.pluginCss,
+            pluginErrors: payload.pluginErrors,
+            ...(payload.diagnostic ? { diagnostic: payload.diagnostic } : {}),
+          });
         });
       }
 
@@ -224,19 +249,23 @@ export function createGutterpressMarkdownEditorProvider(
               protocolVersion: EDITOR_PROTOCOL_VERSION,
               trusted: vscode.workspace.isTrusted,
             });
-            void webviewPanel.webview.postMessage({
-              type: "snapshot",
-              protocolVersion: EDITOR_PROTOCOL_VERSION,
-              snapshot: gateway.currentSnapshot(),
-            });
+            // Routed through the gateway (reconciliation addendum) rather
+            // than hand-built here: every authoritative snapshot needs a
+            // freshly bumped `baseStamp`, and `DocumentGateway` is the one
+            // place that stamp is assigned — see that class's header.
+            void gateway.sendInitialSnapshot();
             // Deliberately AFTER, not alongside, the three sends above —
             // see this file's header ("SENT ASYNCHRONOUSLY, ALWAYS AFTER
             // the ready handshake's other three messages" on
-            // ProjectionMessage in protocol/messages.ts).
+            // `PresentationInputMessage` in protocol/messages.ts).
             sendProjection();
             return;
           case "apply-edit":
-            void gateway.applyEdit(message.edit);
+            // Reconciliation addendum: `message.base` is the ONLY thing
+            // `DocumentGateway.applyEdit` uses to decide staleness now —
+            // see that method's own header for why `message.edit.expectedVersion`
+            // plays no part in this call.
+            void gateway.applyEdit(message.edit, message.base);
             return;
           case "diagnostic-report":
             log("webview-diagnostic", { category: message.diagnostic.category });

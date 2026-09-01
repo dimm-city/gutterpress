@@ -1,6 +1,11 @@
 import { EDITOR_PROTOCOL_VERSION, type Diagnostic, type SourceEdit } from "@dimm-city/gutterpress-editor/core";
+import type { GutterpressProjection } from "gutterpress/render";
 import { SimulatedExtensionHost } from "../../support/simulated-extension-host.ts";
-import type { HostToWebviewMessage, PresentationInputMessage } from "../../../src/protocol/messages.ts";
+import type {
+  HostToWebviewMessage,
+  PresentationInputMessage,
+  ProjectionPluginError,
+} from "../../../src/protocol/messages.ts";
 import type { WebviewHostTransport } from "../../../src/webview-host/proxy-document-host.ts";
 
 /**
@@ -34,6 +39,14 @@ import type { WebviewHostTransport } from "../../../src/webview-host/proxy-docum
  * observed, mirroring `provider.ts`'s own reply order (presentation-input,
  * then trust-state, THEN — asynchronously, via `SimulatedExtensionHost`'s
  * own ~1ms reply timer — `snapshot`).
+ *
+ * RECONCILIATION ADDENDUM — MESSAGE MERGE: `sendProjectionUpdate` (on the
+ * returned session) sends a LATER `presentation-input` resend carrying a
+ * projection payload — the real `provider.ts`'s own `sendProjection()`
+ * equivalent, called explicitly by a test rather than automatically on
+ * `"ready"`, so a test can assert the PRE-upgrade (plain `mountEditor`)
+ * state first and make the upgrade to `mountGutterpressEditor` observable
+ * (AP-21).
  */
 export interface FakeExtensionHostOptions {
   /** D13's decision this session's `presentation-input` reply carries.
@@ -45,6 +58,11 @@ export interface FakeExtensionHostOptions {
   /** D9's `trust-state` value. Default `true` (most scenarios in this
    *  suite are not exercising trust-gated behavior). */
   readonly trusted?: boolean;
+  /** Forwarded to `SimulatedExtensionHost`'s own `latencyMs` option —
+   *  reply-delay override for tests that need genuine in-flight overlap
+   *  (burst typing, an external change racing a queued edit). Defaults to
+   *  that class's own default (small random jitter) when omitted. */
+  readonly latencyMs?: () => number;
 }
 
 export interface FakeExtensionHostSession {
@@ -54,6 +72,23 @@ export interface FakeExtensionHostSession {
    *  re-expose: `currentSnapshot()`, `externalChange(text)`,
    *  `disconnect()`. */
   readonly simulated: SimulatedExtensionHost;
+  /**
+   * Sends a LATER `presentation-input` resend carrying a projection payload
+   * — mirrors `../../../src/provider.ts`'s async `sendProjection()` resend
+   * (reconciliation addendum's message merge: `presentation-input`, not a
+   * separate `"projection"` message, now carries this). `mode` is fixed at
+   * this session's own construction-time decision, matching the real
+   * provider's own invariant that `mode` never changes mid-session. Lets a
+   * test seed a projection AFTER asserting the pre-upgrade (plain
+   * `mountEditor`) state, so `mountGutterpressWebview`'s upgrade is
+   * observable rather than baked into the initial handshake reply.
+   */
+  sendProjectionUpdate(payload: {
+    readonly projection: GutterpressProjection;
+    readonly pluginCss?: string;
+    readonly pluginErrors?: readonly ProjectionPluginError[];
+    readonly diagnostic?: Diagnostic;
+  }): void;
   /**
    * Every `apply-edit` message this host RECEIVED from the webview, in
    * order, carrying the EXACT `{from, to, insert}` `SourceEdit` the webview
@@ -92,7 +127,10 @@ export function createFakeExtensionHost(
   initialText: string,
   options: FakeExtensionHostOptions = {},
 ): FakeExtensionHostSession {
-  const simulated = new SimulatedExtensionHost({ text: initialText, version: 0 });
+  const simulated = new SimulatedExtensionHost(
+    { text: initialText, version: 0 },
+    options.latencyMs !== undefined ? { latencyMs: options.latencyMs } : {},
+  );
   const listeners = new Set<(message: unknown) => void>();
   const edits: SourceEdit[] = [];
 
@@ -136,5 +174,16 @@ export function createFakeExtensionHost(
     simulated,
     recordedEdits: () => edits.slice(),
     listenerCount: () => listeners.size,
+    sendProjectionUpdate: (payload) => {
+      deliver({
+        type: "presentation-input",
+        protocolVersion: EDITOR_PROTOCOL_VERSION,
+        mode: options.mode ?? "rich",
+        projection: payload.projection,
+        pluginCss: payload.pluginCss ?? "",
+        pluginErrors: payload.pluginErrors ?? [],
+        ...(payload.diagnostic ? { diagnostic: payload.diagnostic } : {}),
+      });
+    },
   };
 }

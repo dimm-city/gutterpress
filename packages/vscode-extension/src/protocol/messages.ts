@@ -8,7 +8,7 @@ import type { GutterpressProjection } from "gutterpress/render";
  * from `@dimm-city/gutterpress-editor/core` and `gutterpress/render`
  * (erased at compile time — the latter is the SAME type-only import
  * pattern `packages/editor/src/gutterpress/mount.ts` etc. already use for
- * `GutterpressProjection` in browser-target code; see {@link ProjectionMessage}'s
+ * `GutterpressProjection` in browser-target code; see {@link PresentationInputMessage}'s
  * own doc comment) and declares plain data interfaces — no `vscode`, no
  * `node:*`, no VALUE import of any kind, so no runtime dependency of any
  * kind ships in a bundle that imports this file. `tools/check-architecture.mjs`'s
@@ -25,11 +25,7 @@ import type { GutterpressProjection } from "gutterpress/render";
  * anticipates a capability a later lane or run might want; Lane C adds its
  * own message kinds in its own run if it turns out to need one (P3e's
  * ruling: prefer the smallest design that fully satisfies the
- * specification). `ProjectionMessage` (added in this run's second phase,
- * deliverable 2) is the one exception to "every message from THIS run's
- * FIRST phase" — it is new in this same run, not a later one, because it is
- * the one thing `mountGutterpressEditor` cannot do without: "mountGutterpressEditor
- * REQUIRES a projection; nothing produces one today" (run spec DETAILS #2).
+ * specification).
  *
  * VERSIONING (D1/D3): every message carries `protocolVersion`, checked by
  * `../protocol/validate.ts` against `EDITOR_PROTOCOL_VERSION` on BOTH sides
@@ -41,6 +37,24 @@ import type { GutterpressProjection } from "gutterpress/render";
  * mirror that posts intent and receives authoritative truth back over the
  * SAME "snapshot" channel for both edit replies and external changes
  * (points 3 and 5).
+ *
+ * RECONCILIATION ADDENDUM (binding, added after phases 1-2 reported):
+ * `SnapshotMessage.baseStamp` and `ApplyEditMessage.base` are the fix for
+ * the confirmed defect the original model under-specified — see each
+ * field's own doc comment below and `../webview-host/proxy-document-host.ts`'s
+ * class header for the full account. Short version: the wire needed a
+ * THIRD number both sides agree on, distinct from the mirror's own local
+ * version AND from vscode's real `TextDocument.version` — this stamp is
+ * that number, owned solely by `DocumentGateway`.
+ *
+ * MESSAGE MERGE (same addendum): `presentation-input` and the formerly
+ * separate `projection` message type are now ONE message.
+ * `PresentationInputMessage` carries `mode` (decided once, per D13) and
+ * OPTIONALLY `projection`/`pluginCss`/`pluginErrors` (built asynchronously,
+ * host-side, and (re)sent every time the addendum's own triggers fire — an
+ * accepted edit, an external change, or a trust grant). A `mode` decision
+ * with no projection (the D13 oversized -> source-fallback case) stays
+ * valid by omission — see that interface's own doc comment.
  */
 
 // ── Webview -> Host ─────────────────────────────────────────────────────
@@ -71,11 +85,23 @@ export interface ReadyMessage {
  * "without any origin bookkeeping" — the proxy recognizes its own edit by
  * comparing the AUTHORITATIVE REPLY'S TEXT against its current mirror text,
  * not by matching a request id. See `SnapshotMessage`'s doc comment.
+ *
+ * `base` (reconciliation addendum): the `SnapshotMessage.baseStamp` of the
+ * state `ProxyDocumentHost`'s mirror last converged to — NOT `edit.expectedVersion`
+ * (that field stays the mirror's own LOCAL D3 check, in the mirror's own
+ * version space, and is never compared against anything host-side; see
+ * `../webview-host/proxy-document-host.ts`'s class header). `DocumentGateway.applyEdit`
+ * accepts the edit only when `base` equals its OWN current stamp; otherwise
+ * it replies authoritatively without ever touching the real document — the
+ * new, correct "is my view of the document still current" check that
+ * replaces the original model's broken cross-space `expectedVersion`
+ * comparison (the committed regression this addendum fixes).
  */
 export interface ApplyEditMessage {
   readonly type: "apply-edit";
   readonly protocolVersion: number;
   readonly edit: SourceEdit;
+  readonly base: number;
 }
 
 /**
@@ -108,29 +134,44 @@ export const WEBVIEW_TO_HOST_MESSAGE_TYPES = ["ready", "apply-edit", "diagnostic
  * authoritative message": the reply to an accepted OR rejected `apply-edit`
  * (`DocumentGateway.applyEdit` — reason "rejected applyEdit, closed
  * document, concurrent change" all reply with this SAME shape, distinguished
- * only by whether the text changed), and every `workspace.onDidChangeTextDocument`
- * firing for this document regardless of source (undo/redo, the plain text
- * editor, another extension) — binding point 5: "External changes are
- * authoritative messages too ... goes through the same channel and the
- * same convergence rule."
+ * only by whether the text changed), the initial ready-handshake reply
+ * (`DocumentGateway.sendInitialSnapshot`), and every
+ * `workspace.onDidChangeTextDocument` firing for this document regardless
+ * of source (undo/redo, the plain text editor, another extension) —
+ * binding point 5: "External changes are authoritative messages too ...
+ * goes through the same channel and the same convergence rule."
  *
  * `ProxyDocumentHost` converges by REPLACEMENT (binding point 4): if
- * `snapshot.text` differs from its current mirror text, it calls
+ * `snapshot.text` differs from what it currently expects, it calls
  * `replaceExternal` (one version bump); if it matches — the common case,
  * since MOST of these messages are simply confirming an edit the mirror
  * already applied optimistically — it does nothing. `snapshot.version` is
  * the HOST's own version (VS Code's real `TextDocument.version`, which
- * "will strictly increase after each change" per its own `.d.ts`); the
- * proxy uses it ONLY to drop stale/out-of-order deliveries (a message whose
- * version is not newer than the highest one already seen is ignored before
- * even comparing text) — it is NEVER assigned to the proxy's own local
- * mirror version (binding point 2: "the host's `TextDocument.version` is
- * never exposed to the editor and the two are never conflated").
+ * "will strictly increase after each change" per its own `.d.ts`); it is
+ * carried for informational/persistence purposes only and is NEVER read by
+ * `ProxyDocumentHost` for any accept/reject or ordering decision (binding
+ * point 2: "the host's `TextDocument.version` is never exposed to the
+ * editor and the two are never conflated") — `baseStamp` below is the field
+ * that decision actually uses.
+ *
+ * `baseStamp` (reconciliation addendum — the fix for the committed
+ * regression the original model left underspecified): a monotonic integer
+ * `DocumentGateway` alone owns and increments exactly once per authoritative
+ * snapshot it sends, regardless of whether the text changed. Neither
+ * vscode's real `TextDocument.version` (host-external, not gateway-owned)
+ * nor the proxy's own local mirror version (webview-local) — a THIRD number
+ * that exists solely so both sides of the wire agree on one thing: "which
+ * authoritative state is this." `ProxyDocumentHost` uses it for BOTH jobs
+ * the old, broken design conflated into `snapshot.version`: dropping
+ * stale/out-of-order deliveries (a message whose `baseStamp` is not greater
+ * than the highest one already seen is ignored before even comparing text),
+ * and as the value it sends back as the NEXT edit's `ApplyEditMessage.base`.
  */
 export interface SnapshotMessage {
   readonly type: "snapshot";
   readonly protocolVersion: number;
   readonly snapshot: DocumentSnapshot;
+  readonly baseStamp: number;
 }
 
 /**
@@ -146,49 +187,6 @@ export interface TrustStateMessage {
   readonly type: "trust-state";
   readonly protocolVersion: number;
   readonly trusted: boolean;
-}
-
-/**
- * D13's rich-vs-fallback mount decision, made host-side
- * (`src/provider.ts`, using the SAME 2 MiB ceiling
- * `packages/desktop/electron/editor-projection.ts`'s
- * `RICH_MODE_MAX_CONTENT_BYTES` already uses) and communicated once, as
- * part of the initial `ready` handshake reply. `mode: "source-fallback"`
- * carries the `EDITOR_FILE_TOO_LARGE` diagnostic explaining why; the actual
- * fallback RENDERING is Lane C's (run spec DETAILS #4: "the fallback
- * rendering itself is Lane C's").
- *
- * The decision is made once, at resolve time, not re-evaluated as the
- * document grows or shrinks during the session — see `provider.ts`'s
- * header for why (P3e: no machinery for a scenario — live remount on
- * crossing the ceiling mid-edit — this run's specification does not ask
- * for).
- */
-export interface PresentationInputMessage {
-  readonly type: "presentation-input";
-  readonly protocolVersion: number;
-  readonly mode: "rich" | "source-fallback";
-  readonly diagnostic?: Diagnostic;
-}
-
-/**
- * D14: "`EDITOR_HOST_DISCONNECTED` gets its first real producer in this
- * run." Sent when `DocumentGateway` observes `workspace.onDidCloseTextDocument`
- * for this document while the panel is still alive (see
- * `document-gateway.ts`'s header for why a disposed PANEL does not send
- * this — there is no live receiver to send it to). `ProxyDocumentHost`
- * also self-diagnoses the same category when no `snapshot` reply arrives
- * within its reply timeout ("a reply that never arrives" — run spec
- * behavior table, "Host disconnection" row) — that path never needs this
- * wire message at all, since the proxy detects it locally.
- *
- * Always carries a `Diagnostic` (never optional) — D14: "Generic 'failed'
- * errors at a boundary are a confirmed review finding."
- */
-export interface DisconnectMessage {
-  readonly type: "disconnect";
-  readonly protocolVersion: number;
-  readonly diagnostic: Diagnostic;
 }
 
 /**
@@ -212,67 +210,91 @@ export interface ProjectionPluginError {
 }
 
 /**
- * The Gutterpress-aware projection `mountGutterpressEditor` requires to
- * render layout markers, raw HTML, and (when trusted) plugin regions as
- * inactive chips (D6). Built HOST-SIDE (`../project/projection.ts`'s
- * `resolveEditorProjectionMessage`, called from `../provider.ts`) — exactly
- * the P3e desktop precedent (`packages/desktop/electron/editor-projection.ts`):
- * trusted + project present -> plugin-aware (`loadPluginsWithCss`
- * degrade-and-report -> `createMarkdownRenderer` -> `createEditorProjection(...,
- * {md, trusted: true})`); untrusted OR no project -> base pipeline only
- * (`createEditorProjection(content, {sourceVersion})` — core markers still
- * project; NO workspace plugin code loads, D9/D12).
+ * D13's rich-vs-fallback mount decision, made host-side
+ * (`src/provider.ts`, using the SAME 2 MiB ceiling
+ * `packages/desktop/electron/editor-projection.ts`'s
+ * `RICH_MODE_MAX_CONTENT_BYTES` already uses) and sent as part of the
+ * initial `ready` handshake reply. `mode: "source-fallback"` carries the
+ * `EDITOR_FILE_TOO_LARGE` diagnostic explaining why; the actual fallback
+ * RENDERING is Lane C's (run spec DETAILS #4: "the fallback rendering
+ * itself is Lane C's").
  *
- * SENT ASYNCHRONOUSLY, ALWAYS AFTER the `ready` handshake's other three
- * messages, never synchronously alongside them: building a plugin-aware
- * projection means loading and running project plugin code from disk, which
- * is not instantaneous. The webview MUST NOT assume a `projection` message
- * has arrived by the time it processes `presentation-input`/`trust-state`/
- * `snapshot` — it mounts once this message's first delivery arrives (P3e's
- * own review round 1 found exactly this ordering bug on the desktop host:
- * publishing a host object before its projection was in hand mounted the
- * WRONG surface entirely; this message's contract is written so the VS Code
- * webview cannot repeat it).
+ * `mode` itself is decided ONCE, at resolve time, and never changes for the
+ * life of a session — not re-evaluated as the document grows or shrinks
+ * mid-edit (P3e: no machinery for a scenario this run's specification does
+ * not ask for). A `mode: "source-fallback"` document never mounts rich, so
+ * it never needs — and never carries — a projection; that is what "a mode
+ * decision with no projection stays valid by omission" means below.
  *
- * RESENT on every authoritative change to the document (an accepted edit or
- * an external change — the same two triggers `SnapshotMessage` already
- * documents) and on `trust-state` transitioning to trusted (D9: "Trust
- * granted mid-session re-resolves") — see `../provider.ts`'s own header for
- * exactly which `vscode` events drive each resend. A STALE resend (an
- * earlier rebuild that finishes after a newer one already started) is never
- * sent — `../provider.ts` enforces this with an epoch guard (G-11: "reject
- * stale responses").
- *
- * `diagnostic` is set only when the WHOLE build failed outright (e.g. an
- * unreadable/invalid `manifest.yaml` — `EDITOR_PLUGIN_LOAD_FAILED`); it is
- * DISTINCT from `pluginErrors`, which names per-plugin degrades that still
- * produced a projection. Either way `projection` is always populated with a
- * SAFE fallback (the base pipeline) — this message can never leave the
- * webview with nothing to mount (D14: unsupported behavior falls back, it
- * never blanks the document).
+ * RECONCILIATION ADDENDUM — MESSAGE MERGE: `projection`/`pluginCss`/
+ * `pluginErrors` are OPTIONAL, and this SAME message type is what carries
+ * them — the formerly separate `type: "projection"` message is deleted.
+ * Unlike `mode`, this trio is NOT decided once: for a `mode: "rich"`
+ * session, `../provider.ts`'s `sendProjection()` sends this message AGAIN,
+ * with `mode` unchanged and a freshly (re)built projection, every time the
+ * addendum's own triggers fire — an authoritative change to the document
+ * (an accepted edit or an external change) or a trust grant (D9: "Trust
+ * granted mid-session re-resolves"). The FIRST `presentation-input` a
+ * session ever receives (the synchronous part of the `ready` handshake
+ * reply) never carries these three fields, since building a plugin-aware
+ * projection means loading plugin code from disk, which is not
+ * instantaneous — see `../webview/index.ts`'s `handlePresentationInput` for
+ * how the webview treats "no projection yet" versus "a projection arrived."
+ * `pluginErrors` names per-plugin degrade-and-report failures that still
+ * produced a projection; `diagnostic`, on a message carrying a projection,
+ * is set only when the WHOLE build failed outright (`EDITOR_PLUGIN_LOAD_FAILED`)
+ * and is DISTINCT from the D13 file-too-large diagnostic a `source-fallback`
+ * message's `diagnostic` field carries — the two never coexist on one
+ * message, since a `source-fallback` mode never reaches `sendProjection()`
+ * at all. Either way, once a session's `mode` is `"rich"` and a projection
+ * has ever been sent, it is ALWAYS populated with a SAFE fallback (the base
+ * pipeline) on every resend — this message can never leave the webview with
+ * nothing to mount (D14: unsupported behavior falls back, it never blanks
+ * the document).
  */
-export interface ProjectionMessage {
-  readonly type: "projection";
+export interface PresentationInputMessage {
+  readonly type: "presentation-input";
   readonly protocolVersion: number;
-  readonly projection: GutterpressProjection;
+  readonly mode: "rich" | "source-fallback";
+  readonly diagnostic?: Diagnostic;
+  readonly projection?: GutterpressProjection;
   /** Concatenated plugin CSS (load order), for the mount's `extraCss` —
    *  `""` when no loaded plugin declares any, including the untrusted/
-   *  no-project base-pipeline case. */
-  readonly pluginCss: string;
-  /** Every plugin that failed to load this time. Empty when every
+   *  no-project base-pipeline case. Present exactly when `projection` is. */
+  readonly pluginCss?: string;
+  /** Every plugin that failed to load this build. Empty when every
    *  configured plugin loaded, when trust/project gating skipped plugin
    *  loading entirely, or when the whole build failed outright (in which
-   *  case `diagnostic` carries the reason instead). */
-  readonly pluginErrors: readonly ProjectionPluginError[];
-  readonly diagnostic?: Diagnostic;
+   *  case `diagnostic` carries the reason instead). Present exactly when
+   *  `projection` is. */
+  readonly pluginErrors?: readonly ProjectionPluginError[];
+}
+
+/**
+ * D14: "`EDITOR_HOST_DISCONNECTED` gets its first real producer in this
+ * run." Sent when `DocumentGateway` observes `workspace.onDidCloseTextDocument`
+ * for this document while the panel is still alive (see
+ * `document-gateway.ts`'s header for why a disposed PANEL does not send
+ * this — there is no live receiver to send it to). `ProxyDocumentHost`
+ * also self-diagnoses the same category when no `snapshot` reply arrives
+ * within its reply timeout ("a reply that never arrives" — run spec
+ * behavior table, "Host disconnection" row) — that path never needs this
+ * wire message at all, since the proxy detects it locally.
+ *
+ * Always carries a `Diagnostic` (never optional) — D14: "Generic 'failed'
+ * errors at a boundary are a confirmed review finding."
+ */
+export interface DisconnectMessage {
+  readonly type: "disconnect";
+  readonly protocolVersion: number;
+  readonly diagnostic: Diagnostic;
 }
 
 export type HostToWebviewMessage =
   | SnapshotMessage
   | TrustStateMessage
   | PresentationInputMessage
-  | DisconnectMessage
-  | ProjectionMessage;
+  | DisconnectMessage;
 
 /** Every `HostToWebviewMessage["type"]` literal, for exhaustive validation. */
 export const HOST_TO_WEBVIEW_MESSAGE_TYPES = [
@@ -280,5 +302,4 @@ export const HOST_TO_WEBVIEW_MESSAGE_TYPES = [
   "trust-state",
   "presentation-input",
   "disconnect",
-  "projection",
 ] as const;

@@ -97,8 +97,42 @@
       // loaded only by a real VS Code extension host via
       // @vscode/test-electron's `extensionTestsPath` contract (a runtime
       // string path launch.mjs passes, invisible to knip's import graph).
-      "entry": ["src/extension.ts", "tests/**/*.test.ts", "tests/host-fidelity/run-in-host.js"],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"]
+      //
+      // Reconciliation addendum (integration lane D) widened this entry
+      // list, mirroring packages/editor's own precedent exactly (see that
+      // workspace's own comment for the identical reasoning applied here):
+      //   - src/webview/index.ts — scripts/build.mjs's OWN webview bundle
+      //     entry point (`target: "browser"`), resolved by path string at
+      //     build time, not imported by src/extension.ts or anything else
+      //     in this package's own import graph.
+      //   - tests/**/*.btest.ts — the real-Chromium suite suffix,
+      //     deliberately outside Bun's default `*.test.ts` glob so `bun run
+      //     test` stays fast and hermetic; run only by `bun run
+      //     test:browser`'s explicit per-file invocations, never imported
+      //     by anything else in the tree.
+      //   - tests/**/support/*.ts — browser-bundle entry points
+      //     (tests/webview/support/{entry,csp-entry}.ts) the harness
+      //     resolves BY PATH STRING, plus their own support modules
+      //     (fake-extension-host.ts) that only those two import — genuine
+      //     entries/reachable-from-entries, not dead code.
+      "entry": [
+        "src/extension.ts",
+        "src/webview/index.ts",
+        "tests/**/*.test.ts",
+        "tests/**/*.btest.ts",
+        "tests/**/support/*.ts",
+        "tests/host-fidelity/run-in-host.js"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"],
+      // tests/project/fixtures/plugin-project/plugins/highlight.js is a
+      // real, on-disk project-plugin fixture `projection.test.ts` loads
+      // dynamically (gutterpress/plugins' loadPluginsWithCss resolves it
+      // from manifest.yaml's own `plugins:` list, a STRING path, not a JS
+      // import) — the exact same "referenced by string, not by imports"
+      // shape the root workspace's own `ignore` already documents for
+      // packages/open-design-plugin's fixture trees; not part of the
+      // dead-code surface either.
+      "ignore": ["tests/project/fixtures/**"]
     },
     "packages/desktop": {
       "entry": [

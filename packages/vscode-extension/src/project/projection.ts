@@ -20,9 +20,19 @@
  * extension-host process. A thrown Error's message survives a plain
  * `try`/`catch` here with no serialization boundary to cross, so
  * {@link buildProjectEditorProjection} simply throws on a hard failure and
- * {@link resolveEditorProjectionMessage} catches it directly — no resolved-
+ * {@link resolveEditorProjectionPayload} catches it directly — no resolved-
  * outcome-instead-of-throwing dance is needed (see that desktop module's own
  * "IPC-boundary classification" header for the problem this sidesteps).
+ *
+ * RECONCILIATION ADDENDUM — MESSAGE MERGE: this module used to build a
+ * complete, standalone `ProjectionMessage` (`type`/`protocolVersion`
+ * included). That message type is deleted; the projection payload now rides
+ * inside a `presentation-input` resend instead (`PresentationInputMessage`'s
+ * own doc comment, `../protocol/messages.ts`). {@link resolveEditorProjectionPayload}
+ * therefore returns just the PAYLOAD fields (`projection`/`pluginCss`/
+ * `pluginErrors`/`diagnostic?`) — `../provider.ts`'s `sendProjection()` is
+ * the one place that wraps them into a full wire message, combined with the
+ * session's own fixed `mode`.
  *
  * NO CACHING, NO SPECULATIVE INVALIDATION (P3e's binding decision, restated
  * here because it applies equally to this host): every call re-resolves the
@@ -31,15 +41,12 @@
  * accepted edit, an external change, a trust grant) through its own epoch
  * guard — never a second cache layer here.
  */
-import {
-  EDITOR_PROTOCOL_VERSION,
-  type DocumentSnapshot,
-} from "@dimm-city/gutterpress-editor/core";
+import type { Diagnostic, DocumentSnapshot } from "@dimm-city/gutterpress-editor/core";
 import { loadManifestWithPath, resolveConfig } from "gutterpress";
 import { loadPluginsWithCss } from "gutterpress/plugins";
 import { createEditorProjection, createMarkdownRenderer, type GutterpressProjection } from "gutterpress/render";
 import { projectionBuildFailedDiagnostic } from "../protocol/diagnostics.ts";
-import type { ProjectionMessage, ProjectionPluginError } from "../protocol/messages.ts";
+import type { ProjectionPluginError } from "../protocol/messages.ts";
 import type { GutterpressProjectInfo } from "./discover.ts";
 
 export interface ProjectEditorProjectionArgs {
@@ -134,15 +141,29 @@ export function buildBaseEditorProjection(content: string, sourceVersion: number
 }
 
 /**
- * The one function `../provider.ts` calls to decide and build the whole
- * `ProjectionMessage` it sends to the webview (deliverable 2/3's trust
- * gate, in one place): `trusted && project` selects the plugin-aware path;
- * anything else selects the base pipeline. `project` is `undefined` -> no
- * Gutterpress project at this document's workspace folder (D9: a supported,
- * non-error state); `trusted` is `false` -> `vscode.workspace.isTrusted`
- * (an untrusted workspace never loads project plugin code, D9/D12 — this is
- * the ONLY gate; there is no second, workspace-writable trust setting to
- * consult, since a workspace-writable setting could grant itself trust).
+ * The projection PAYLOAD `PresentationInputMessage`'s optional
+ * `projection`/`pluginCss`/`pluginErrors`/`diagnostic` fields carry
+ * (reconciliation addendum — message merge; see this module's header for
+ * why this is no longer a standalone wire message).
+ */
+export interface EditorProjectionPayload {
+  readonly projection: GutterpressProjection;
+  readonly pluginCss: string;
+  readonly pluginErrors: readonly ProjectionPluginError[];
+  readonly diagnostic?: Diagnostic;
+}
+
+/**
+ * The one function `../provider.ts` calls to decide and build the
+ * projection PAYLOAD it merges into a `presentation-input` resend
+ * (deliverable 2/3's trust gate, in one place): `trusted && project`
+ * selects the plugin-aware path; anything else selects the base pipeline.
+ * `project` is `undefined` -> no Gutterpress project at this document's
+ * workspace folder (D9: a supported, non-error state); `trusted` is
+ * `false` -> `vscode.workspace.isTrusted` (an untrusted workspace never
+ * loads project plugin code, D9/D12 — this is the ONLY gate; there is no
+ * second, workspace-writable trust setting to consult, since a
+ * workspace-writable setting could grant itself trust).
  *
  * `onBuildError`, when supplied, is called with the raw caught error before
  * this function falls back to the base pipeline — D15 ("development logs
@@ -158,13 +179,13 @@ export function buildBaseEditorProjection(content: string, sourceVersion: number
  * is false, this function returns via the base-pipeline branch below WITHOUT
  * EVER REFERENCING `loadPlugins` at all — the spy call-count IS the proof.
  */
-export async function resolveEditorProjectionMessage(
+export async function resolveEditorProjectionPayload(
   snapshot: DocumentSnapshot,
   project: GutterpressProjectInfo | undefined,
   trusted: boolean,
   onBuildError?: (error: unknown) => void,
   loadPlugins: PluginLoaderFn = loadPluginsWithCss,
-): Promise<ProjectionMessage> {
+): Promise<EditorProjectionPayload> {
   if (trusted && project) {
     try {
       const built = await buildProjectEditorProjection(
@@ -175,18 +196,10 @@ export async function resolveEditorProjectionMessage(
         },
         loadPlugins,
       );
-      return {
-        type: "projection",
-        protocolVersion: EDITOR_PROTOCOL_VERSION,
-        projection: built.projection,
-        pluginCss: built.pluginCss,
-        pluginErrors: built.pluginErrors,
-      };
+      return { projection: built.projection, pluginCss: built.pluginCss, pluginErrors: built.pluginErrors };
     } catch (error) {
       onBuildError?.(error);
       return {
-        type: "projection",
-        protocolVersion: EDITOR_PROTOCOL_VERSION,
         projection: buildBaseEditorProjection(snapshot.text, snapshot.version),
         pluginCss: "",
         pluginErrors: [],
@@ -195,11 +208,5 @@ export async function resolveEditorProjectionMessage(
     }
   }
 
-  return {
-    type: "projection",
-    protocolVersion: EDITOR_PROTOCOL_VERSION,
-    projection: buildBaseEditorProjection(snapshot.text, snapshot.version),
-    pluginCss: "",
-    pluginErrors: [],
-  };
+  return { projection: buildBaseEditorProjection(snapshot.text, snapshot.version), pluginCss: "", pluginErrors: [] };
 }

@@ -262,7 +262,19 @@ export function validateWebviewToHostMessage(message: unknown): ProtocolValidati
       return fail("oversized-payload", [`"insert" exceeds the ${MAX_MESSAGE_STRING_LENGTH}-character wire ceiling`]);
     }
 
-    return { valid: true, value: { type: "apply-edit", protocolVersion, edit: editResult.value } };
+    // Reconciliation addendum: the `base` stamp — see ApplyEditMessage's own
+    // doc comment (messages.ts). A separate field from `edit.expectedVersion`
+    // (already validated above via `validateSourceEdit`, in the mirror's own
+    // local version space) — this one crosses the wire and is what
+    // `DocumentGateway.applyEdit` compares against its own stamp.
+    const base = ownField(obj, "base");
+    if (base === undefined) return fail("missing-field", ['missing required field "base"']);
+    if (base === ACCESSOR) return fail("wrong-field-type", ['"base" must be a plain data property, not an accessor']);
+    if (typeof base !== "number" || !Number.isFinite(base)) {
+      return fail("wrong-field-type", ['"base" must be a finite number']);
+    }
+
+    return { valid: true, value: { type: "apply-edit", protocolVersion, edit: editResult.value, base } };
   }
 
   if (type === "diagnostic-report") {
@@ -298,7 +310,7 @@ export function validateWebviewToHostMessage(message: unknown): ProtocolValidati
 const KNOWN_PROJECTION_SCHEMA_VERSION = 1;
 
 /**
- * SHALLOW, top-level structural check for `ProjectionMessage.projection` —
+ * SHALLOW, top-level structural check for `PresentationInputMessage.projection` —
  * deliberately not a deep per-block validator. No runtime validator for the
  * full `GutterpressProjection` shape (every `ProjectedBlock` kind variant,
  * `GeneratedView`, `ProjectionDiagnostic`) exists anywhere in this codebase
@@ -341,7 +353,7 @@ function validateProjectionShape(value: unknown): ProtocolValidationResult<Gutte
   return { valid: true, value: value as unknown as GutterpressProjection };
 }
 
-/** Validates `ProjectionMessage.pluginErrors`: an array of plain
+/** Validates `PresentationInputMessage.pluginErrors`: an array of plain
  *  `{pluginRef: string, message: string}` records. */
 function validateProjectionPluginErrors(value: unknown): ProtocolValidationResult<readonly ProjectionPluginError[]> {
   if (!Array.isArray(value)) {
@@ -390,7 +402,24 @@ export function validateHostToWebviewMessage(message: unknown): ProtocolValidati
         `"snapshot.text" exceeds the ${MAX_MESSAGE_STRING_LENGTH}-character wire ceiling`,
       ]);
     }
-    return { valid: true, value: { type: "snapshot", protocolVersion, snapshot: snapshotResult.value } };
+
+    // Reconciliation addendum: the host-assigned base stamp — see
+    // SnapshotMessage's own doc comment (messages.ts). Distinct from
+    // `snapshot.version` (vscode's real TextDocument.version, already
+    // validated above as part of `validateDocumentSnapshot`).
+    const baseStamp = ownField(obj, "baseStamp");
+    if (baseStamp === undefined) return fail("missing-field", ['missing required field "baseStamp"']);
+    if (baseStamp === ACCESSOR) {
+      return fail("wrong-field-type", ['"baseStamp" must be a plain data property, not an accessor']);
+    }
+    if (typeof baseStamp !== "number" || !Number.isFinite(baseStamp)) {
+      return fail("wrong-field-type", ['"baseStamp" must be a finite number']);
+    }
+
+    return {
+      valid: true,
+      value: { type: "snapshot", protocolVersion, snapshot: snapshotResult.value, baseStamp },
+    };
   }
 
   if (type === "trust-state") {
@@ -422,9 +451,62 @@ export function validateHostToWebviewMessage(message: unknown): ProtocolValidati
       diagnostic = diagnosticResult.value;
     }
 
+    // Reconciliation addendum — message merge: projection/pluginCss/
+    // pluginErrors are each independently OPTIONAL (a `mode: "source-fallback"`
+    // message, and the very first `presentation-input` of a "rich" session,
+    // both carry none of the three — "a mode decision with no projection
+    // stays valid by omission"). Reuses the SAME shallow shape validators the
+    // formerly separate "projection" message type used — see
+    // `validateProjectionShape`/`validateProjectionPluginErrors`'s own doc
+    // comments for why this stays shallow.
+    const projectionField = ownField(obj, "projection");
+    let projection: GutterpressProjection | undefined;
+    if (projectionField !== undefined) {
+      if (projectionField === ACCESSOR) {
+        return fail("wrong-field-type", ['"projection" must be a plain data property, not an accessor']);
+      }
+      const projectionResult = validateProjectionShape(projectionField);
+      if (!projectionResult.valid) return projectionResult;
+      projection = projectionResult.value;
+    }
+
+    const pluginCssField = ownField(obj, "pluginCss");
+    let pluginCss: string | undefined;
+    if (pluginCssField !== undefined) {
+      if (pluginCssField === ACCESSOR) {
+        return fail("wrong-field-type", ['"pluginCss" must be a plain data property, not an accessor']);
+      }
+      if (typeof pluginCssField !== "string") return fail("wrong-field-type", ['"pluginCss" must be a string']);
+      if (pluginCssField.length > MAX_MESSAGE_STRING_LENGTH) {
+        return fail("oversized-payload", [
+          `"pluginCss" exceeds the ${MAX_MESSAGE_STRING_LENGTH}-character wire ceiling`,
+        ]);
+      }
+      pluginCss = pluginCssField;
+    }
+
+    const pluginErrorsField = ownField(obj, "pluginErrors");
+    let pluginErrors: readonly ProjectionPluginError[] | undefined;
+    if (pluginErrorsField !== undefined) {
+      if (pluginErrorsField === ACCESSOR) {
+        return fail("wrong-field-type", ['"pluginErrors" must be a plain data property, not an accessor']);
+      }
+      const pluginErrorsResult = validateProjectionPluginErrors(pluginErrorsField);
+      if (!pluginErrorsResult.valid) return pluginErrorsResult;
+      pluginErrors = pluginErrorsResult.value;
+    }
+
     return {
       valid: true,
-      value: { type: "presentation-input", protocolVersion, mode, ...(diagnostic ? { diagnostic } : {}) },
+      value: {
+        type: "presentation-input",
+        protocolVersion,
+        mode,
+        ...(diagnostic ? { diagnostic } : {}),
+        ...(projection ? { projection } : {}),
+        ...(pluginCss !== undefined ? { pluginCss } : {}),
+        ...(pluginErrors ? { pluginErrors } : {}),
+      },
     };
   }
 
@@ -437,57 +519,6 @@ export function validateHostToWebviewMessage(message: unknown): ProtocolValidati
     const diagnosticResult = validateDiagnostic(diagnosticField);
     if (!diagnosticResult.valid) return diagnosticResult;
     return { valid: true, value: { type: "disconnect", protocolVersion, diagnostic: diagnosticResult.value } };
-  }
-
-  if (type === "projection") {
-    const projectionField = ownField(obj, "projection");
-    if (projectionField === undefined) return fail("missing-field", ['missing required field "projection"']);
-    if (projectionField === ACCESSOR) {
-      return fail("wrong-field-type", ['"projection" must be a plain data property, not an accessor']);
-    }
-    const projectionResult = validateProjectionShape(projectionField);
-    if (!projectionResult.valid) return projectionResult;
-
-    const pluginCss = ownField(obj, "pluginCss");
-    if (pluginCss === undefined) return fail("missing-field", ['missing required field "pluginCss"']);
-    if (pluginCss === ACCESSOR) {
-      return fail("wrong-field-type", ['"pluginCss" must be a plain data property, not an accessor']);
-    }
-    if (typeof pluginCss !== "string") return fail("wrong-field-type", ['"pluginCss" must be a string']);
-    if (pluginCss.length > MAX_MESSAGE_STRING_LENGTH) {
-      return fail("oversized-payload", [`"pluginCss" exceeds the ${MAX_MESSAGE_STRING_LENGTH}-character wire ceiling`]);
-    }
-
-    const pluginErrorsField = ownField(obj, "pluginErrors");
-    if (pluginErrorsField === undefined) return fail("missing-field", ['missing required field "pluginErrors"']);
-    if (pluginErrorsField === ACCESSOR) {
-      return fail("wrong-field-type", ['"pluginErrors" must be a plain data property, not an accessor']);
-    }
-    const pluginErrorsResult = validateProjectionPluginErrors(pluginErrorsField);
-    if (!pluginErrorsResult.valid) return pluginErrorsResult;
-
-    const diagnosticField = ownField(obj, "diagnostic");
-    let diagnostic: Diagnostic | undefined;
-    if (diagnosticField !== undefined) {
-      if (diagnosticField === ACCESSOR) {
-        return fail("wrong-field-type", ['"diagnostic" must be a plain data property, not an accessor']);
-      }
-      const diagnosticResult = validateDiagnostic(diagnosticField);
-      if (!diagnosticResult.valid) return diagnosticResult;
-      diagnostic = diagnosticResult.value;
-    }
-
-    return {
-      valid: true,
-      value: {
-        type: "projection",
-        protocolVersion,
-        projection: projectionResult.value,
-        pluginCss,
-        pluginErrors: pluginErrorsResult.value,
-        ...(diagnostic ? { diagnostic } : {}),
-      },
-    };
   }
 
   // Unreachable: validateEnvelope already restricted `type` to

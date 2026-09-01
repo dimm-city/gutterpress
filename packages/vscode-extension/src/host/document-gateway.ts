@@ -91,6 +91,28 @@ export type DocumentGatewayLogger = (event: string, detail?: Readonly<Record<str
  * three named failure shapes ("rejected applyEdit, closed document,
  * concurrent change") differ only in WHAT TEXT ends up in that one reply,
  * never in WHETHER a reply is sent.
+ *
+ * BASE STAMP (reconciliation addendum — the fix for the committed
+ * regression the original authority model left underspecified): `#stamp` is
+ * a monotonic integer THIS CLASS ALONE owns, bumped exactly once per
+ * authoritative `snapshot` message it sends (`#sendSnapshot`, below) —
+ * never vscode's own `TextDocument.version` (host-external; not this
+ * class's to control), never the webview mirror's local counter (webview-
+ * local; this class never even sees it). `applyEdit`'s inbound `base`
+ * parameter is the stamp of the state `ProxyDocumentHost`'s mirror last
+ * converged to; the edit is attempted ONLY when `base` equals `#stamp` —
+ * otherwise this method skips straight to its single reply site with the
+ * document's UNCHANGED truth, exactly "normal convergence" the same way a
+ * genuine `invalid-range`/`readonly` rejection already does. `edit.expectedVersion`
+ * plays NO role in that decision here: it is the mirror's own LOCAL D3
+ * check, in the mirror's own version space, and comparing it against this
+ * class's real `document.version` is exactly the bug this addendum fixes
+ * (see the committed regression test this run turns green,
+ * `tests/webview/edit-version-reconciliation.btest.ts`). `applyEditPure`
+ * is still reused for its readonly/invalid-range checks (never reintroduced
+ * as a hand-rolled duplicate) by forcing `expectedVersion` to the CURRENT
+ * real version before calling it, so its version check trivially agrees —
+ * the `base` check above is what actually decided staleness.
  */
 export class DocumentGateway {
   readonly #api: DocumentGatewayVscodeApi;
@@ -99,6 +121,17 @@ export class DocumentGateway {
   readonly #closeSubscription: vscode.Disposable;
   #disconnected = false;
   #disposed = false;
+  /** The base stamp — see class header. Starts at 0, matching
+   *  `ProxyDocumentHost`'s own pre-convergence default (that class's
+   *  `#lastKnownStamp` also starts at 0). `sendInitialSnapshot` deliberately
+   *  sends this value WITHOUT bumping it first (see that method's own doc
+   *  comment) — so an edit submitted before any snapshot has ever been
+   *  exchanged (structurally possible only in a fast unit-test harness that
+   *  bypasses the async wire entirely — a real webview session always
+   *  receives its first snapshot before a user could possibly type, per
+   *  `ProxyDocumentHost`'s own header) is accepted rather than spuriously
+   *  rejected by two hosts that simply have not talked yet. */
+  #stamp = 0;
   /** True for the exact span of an in-flight `workspace.applyEdit` call.
    *  `workspace.applyEdit` succeeding fires `onDidChangeTextDocument` for
    *  the SAME change `applyEdit`'s own reply (the single reply site below)
@@ -144,69 +177,108 @@ export class DocumentGateway {
   }
 
   /**
-   * Applies an inbound `SourceEdit` and ALWAYS replies with the document's
-   * fresh authoritative snapshot afterward — success or failure alike (run
-   * spec: "EVERY apply produces EXACTLY ONE reply: success or failure
-   * (rejected applyEdit, closed document, concurrent change). Silence on
-   * any path is a defect.").
+   * Sends the CURRENT authoritative snapshot at the CURRENT stamp — the
+   * initial ready-handshake reply (`../provider.ts`). Deliberately does
+   * NOT bump `#stamp` first, unlike every other authoritative send
+   * (`#sendSnapshot`, below): this reply reports the document exactly as
+   * it stood before this session began — nothing has changed yet — and a
+   * webview session CAN (a synchronous test transport, though never a real
+   * one — see `ProxyDocumentHost`'s own header) submit its first edit
+   * before this reply has even arrived, using the mirror's own starting
+   * stamp (0) as that edit's `base`. If this method bumped first, that
+   * edit's `base` would already be stale by the time the gateway sees it,
+   * for no reason connected to any real state change — an own-goal this
+   * addendum exists to eliminate, not reproduce at a new layer. The value
+   * sent is still part of the SAME monotonic sequence `#sendSnapshot` uses
+   * (it is simply `#stamp`'s value AT THIS POINT, not yet advanced) — there
+   * is no second, parallel numbering.
+   */
+  async sendInitialSnapshot(): Promise<void> {
+    await this.#send({
+      type: "snapshot",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      snapshot: this.currentSnapshot(),
+      baseStamp: this.#stamp,
+    });
+  }
+
+  /**
+   * Applies an inbound `SourceEdit` against the current base `stamp` and
+   * ALWAYS replies with the document's fresh authoritative snapshot
+   * afterward — success or failure alike (run spec: "EVERY apply produces
+   * EXACTLY ONE reply: success or failure (rejected applyEdit, closed
+   * document, concurrent change). Silence on any path is a defect.").
+   *
+   * `base` is the ONLY thing that decides whether this edit is even
+   * attempted — see this class's own header for why `edit.expectedVersion`
+   * plays no part in that decision.
    *
    * Path breakdown (each covered by its own test in
    * `tests/host/document-gateway.test.ts`):
    *   1. Already disconnected/closed at entry -> re-announce disconnect,
    *      no vscode call attempted, no reply (the disconnect message IS the
    *      reply this session gets from here on).
-   *   2. `applyEditPure` dry-run against the CURRENT live snapshot rejects
-   *      (this is "concurrent change": the caller's `expectedVersion` no
-   *      longer matches, or its range is no longer valid against the
-   *      document's current length) -> skip the real `workspace.applyEdit`
-   *      call entirely and fall through to the single reply site with the
-   *      unchanged current text.
-   *   3. Dry-run accepts -> convert `[from, to)` to a `Range` via
+   *   2. `base !== #stamp` (a STALE base — the caller's view of the
+   *      document is no longer current, the addendum's own "concurrent
+   *      change" case) -> skip `workspace.applyEdit` entirely and fall
+   *      through to the single reply site with the unchanged current text.
+   *   3. `base === #stamp` but the dry-run rejects (`invalid-range` — this
+   *      gateway is never constructed readonly, so that reason never fires
+   *      here) -> same skip, same unchanged reply.
+   *   4. Dry-run accepts -> convert `[from, to)` to a `Range` via
    *      `document.positionAt` ONLY, then call `workspace.applyEdit`. A
    *      `false` result or a thrown error ("rejected applyEdit") is not
    *      re-thrown — the reply at the bottom reports whatever the
    *      document's real state ended up being, never a coerced guess.
-   *   4. The document closed during the `await` (a race, not the common
+   *   5. The document closed during the `await` (a race, not the common
    *      "closed document" case which path 1 already covers) -> disconnect
    *      instead of reading a dead document.
-   *   5. Otherwise -> the one reply site, with the document's fresh
+   *   6. Otherwise -> the one reply site, with the document's fresh
    *      snapshot (unchanged on failure, updated on success — the SAME
    *      shape either way, distinguished only by its content, exactly as
    *      the run spec's reconciliation model requires for the "snapshot"
    *      channel).
    */
-  async applyEdit(edit: SourceEdit): Promise<void> {
+  async applyEdit(edit: SourceEdit, base: number): Promise<void> {
     if (this.#disconnected || this.#api.document.isClosed) {
       this.#disconnect("document-closed");
       return;
     }
 
-    const current = this.currentSnapshot();
-    // D3's own pure check (readonly/stale/invalid-range), reused rather
-    // than re-derived — see this module's header. A gateway is never
-    // constructed readonly on its own; only "stale" (expectedVersion
-    // mismatch) or "invalid-range" (offsets no longer valid against the
-    // CURRENT live text) can reject here, both of which are exactly what
-    // "concurrent change" means in the run spec's own wording.
-    const dryRun = applyEditPure(current, edit);
-    if (dryRun.ok) {
-      this.#log("apply-edit-accepted-locally");
-      const workspaceEdit = this.#api.createWorkspaceEdit();
-      const fromPosition = this.#api.document.positionAt(edit.from);
-      const toPosition = this.#api.document.positionAt(edit.to);
-      const range = this.#api.createRange(fromPosition, toPosition);
-      workspaceEdit.replace(this.#api.document.uri, range, edit.insert);
-      this.#applyInProgress = true;
-      try {
-        const applied = await this.#api.applyWorkspaceEdit(workspaceEdit);
-        this.#log(applied ? "apply-edit-workspace-accepted" : "apply-edit-workspace-rejected");
-      } catch (error) {
-        this.#log("apply-edit-workspace-threw", { message: error instanceof Error ? error.message : String(error) });
-      } finally {
-        this.#applyInProgress = false;
+    if (base === this.#stamp) {
+      const current = this.currentSnapshot();
+      // D3's own pure check (readonly/invalid-range), reused rather than
+      // re-derived — see this module's header. `expectedVersion` is FORCED
+      // to the document's real current version: the `base === #stamp` test
+      // above already proved this edit targets the document's CURRENT
+      // state, so `applyEditPure`'s own stale check must not independently
+      // (and wrongly) re-litigate that against a value
+      // (`edit.expectedVersion`) that lives in a completely different
+      // version space and was never meant to cross this boundary.
+      const dryRun = applyEditPure(current, { ...edit, expectedVersion: current.version });
+      if (dryRun.ok) {
+        this.#log("apply-edit-accepted-locally");
+        const workspaceEdit = this.#api.createWorkspaceEdit();
+        const fromPosition = this.#api.document.positionAt(edit.from);
+        const toPosition = this.#api.document.positionAt(edit.to);
+        const range = this.#api.createRange(fromPosition, toPosition);
+        workspaceEdit.replace(this.#api.document.uri, range, edit.insert);
+        this.#applyInProgress = true;
+        try {
+          const applied = await this.#api.applyWorkspaceEdit(workspaceEdit);
+          this.#log(applied ? "apply-edit-workspace-accepted" : "apply-edit-workspace-rejected");
+        } catch (error) {
+          this.#log("apply-edit-workspace-threw", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          this.#applyInProgress = false;
+        }
+      } else {
+        this.#log("apply-edit-rejected-locally", { reason: dryRun.reason });
       }
     } else {
-      this.#log("apply-edit-rejected-locally", { reason: dryRun.reason });
+      this.#log("apply-edit-rejected-stale-base", { base, currentStamp: this.#stamp });
     }
 
     if (this.#api.document.isClosed) {
@@ -217,11 +289,7 @@ export class DocumentGateway {
     // The single reply site (see this method's own doc comment): always
     // the document's FRESH truth, whether or not anything actually
     // changed above.
-    await this.#send({
-      type: "snapshot",
-      protocolVersion: EDITOR_PROTOCOL_VERSION,
-      snapshot: this.currentSnapshot(),
-    });
+    await this.#sendSnapshot();
   }
 
   /**
@@ -240,10 +308,26 @@ export class DocumentGateway {
 
   #broadcastSnapshot(): void {
     if (this.#disconnected || this.#applyInProgress) return;
-    void this.#send({
+    void this.#sendSnapshot();
+  }
+
+  /**
+   * The ONE place `#stamp` ever advances, and the ONE place a "snapshot"
+   * message is constructed — every caller (`sendInitialSnapshot`,
+   * `applyEdit`'s single reply site, `#broadcastSnapshot`) routes through
+   * here so the stamp sequence has no second writer. Bumps unconditionally,
+   * even when the reply's text turns out unchanged (an edit rejected for a
+   * stale base, or for `invalid-range`): every authoritative snapshot this
+   * gateway ever sends is itself a new, distinct point in that sequence,
+   * whether or not the DOCUMENT changed as a result.
+   */
+  async #sendSnapshot(): Promise<void> {
+    this.#stamp += 1;
+    await this.#send({
       type: "snapshot",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       snapshot: this.currentSnapshot(),
+      baseStamp: this.#stamp,
     });
   }
 

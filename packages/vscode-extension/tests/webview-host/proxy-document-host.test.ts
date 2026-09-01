@@ -63,10 +63,12 @@ describe("ProxyDocumentHost — convergence (run spec DETAILS #3 a-d)", () => {
     const { host: simHost, transport } = createSimulatedProxyPair("original");
     const proxy = new ProxyDocumentHost({ text: "original", version: 0 }, transport);
 
-    // A concurrent external change reaches the host BEFORE our edit does,
-    // so the host's own dry-run check rejects our edit as stale once it
-    // arrives (its expectedVersion:0 no longer matches the host's real
-    // version, now 1).
+    // A concurrent external change reaches the host BEFORE our edit does —
+    // its OWN reply bumps the host's base stamp, so once our edit arrives,
+    // its `base` (captured before that change) no longer matches the
+    // host's CURRENT stamp, and the host rejects it without ever applying
+    // it for real (reconciliation addendum: `base`, not
+    // `edit.expectedVersion`, is what decides this now).
     simHost.externalChange("changed elsewhere");
     const result = proxy.applyEdit({ from: 0, to: 8, insert: "MINE", expectedVersion: 0 });
     expect(result.ok).toBe(true); // accepted LOCALLY/optimistically — the mirror does not know yet
@@ -86,10 +88,13 @@ describe("ProxyDocumentHost — convergence (run spec DETAILS #3 a-d)", () => {
 
   test("(c) an external change while a local edit is in flight leaves the mirror byte-identical to the host, even out of order", async () => {
     // The edit's OWN accept-reply is delayed MORE than the external
-    // change's reply, so the external change's reply arrives FIRST —
-    // genuinely out of logical order relative to the host's own version
-    // sequence (the edit was accepted at host version 1, the external
-    // change at host version 2, but the proxy hears about 2 before 1).
+    // change's reply, so the external change's reply arrives FIRST — and
+    // because it bumps the host's base stamp before the edit's own
+    // (delayed) processing checks it, the edit is itself rejected as
+    // stale-based once its turn comes (reconciliation addendum): the
+    // proxy hears the external change's reply BEFORE the edit's own
+    // rejection reply, genuinely out of the order the two were triggered
+    // in.
     let replyCount = 0;
     const delays = [30, 5];
     const { host: simHost, transport } = createSimulatedProxyPair("original", {

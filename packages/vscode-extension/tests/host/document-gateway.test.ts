@@ -55,13 +55,14 @@ function setup(initialText: string, workspace: FidelitySimulatedWorkspace = new 
 describe("DocumentGateway — accepted edit", () => {
   test("applyEdit success: exactly one snapshot reply with the new text/version, document actually mutated", async () => {
     const { gateway, handle, sent } = setup("hello world");
-    await gateway.applyEdit({ from: 6, to: 11, insert: "there", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 6, to: 11, insert: "there", expectedVersion: 0 }, 0);
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({
       type: "snapshot",
       protocolVersion: 1,
       snapshot: { text: "hello there", version: 1 },
+      baseStamp: 1,
     });
     expect(handle.document.getText()).toBe("hello there");
     expect(handle.document.version).toBe(1);
@@ -75,7 +76,7 @@ describe("DocumentGateway — accepted edit", () => {
     const { gateway, handle } = setup(text);
     const from = text.indexOf("line2");
     const to = from + "line2".length;
-    await gateway.applyEdit({ from, to, insert: "REPLACED", expectedVersion: 0 });
+    await gateway.applyEdit({ from, to, insert: "REPLACED", expectedVersion: 0 }, 0);
     expect(handle.document.getText()).toBe("line0\nline1\nREPLACED\nline3");
   });
 });
@@ -84,17 +85,22 @@ describe("DocumentGateway — rejected applyEdit", () => {
   test("workspace.applyEdit returning false: exactly one snapshot reply with the UNCHANGED text, nothing mutated", async () => {
     const { gateway, handle, workspace, sent } = setup("unchanged");
     workspace.rejectNextApply = true;
-    await gateway.applyEdit({ from: 0, to: 9, insert: "gone", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 9, insert: "gone", expectedVersion: 0 }, 0);
 
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toEqual({ type: "snapshot", protocolVersion: 1, snapshot: { text: "unchanged", version: 0 } });
+    expect(sent[0]).toEqual({
+      type: "snapshot",
+      protocolVersion: 1,
+      snapshot: { text: "unchanged", version: 0 },
+      baseStamp: 1,
+    });
     expect(handle.document.getText()).toBe("unchanged");
     expect(handle.document.version).toBe(0);
   });
 });
 
-describe("DocumentGateway — concurrent change (stale/invalid-range dry-run rejection)", () => {
-  test("stale expectedVersion: exactly one snapshot reply with the CURRENT text; workspace.applyEdit never attempted", async () => {
+describe("DocumentGateway — concurrent change (stale base) and invalid-range dry-run rejection", () => {
+  test("stale base: exactly one snapshot reply with the CURRENT text; workspace.applyEdit never attempted", async () => {
     const { gateway, handle, workspace, sent } = setup("current text");
     let applyEditCalls = 0;
     const originalApplyEdit = workspace.applyEdit.bind(workspace);
@@ -103,7 +109,11 @@ describe("DocumentGateway — concurrent change (stale/invalid-range dry-run rej
       return originalApplyEdit(edit);
     };
 
-    await gateway.applyEdit({ from: 0, to: 7, insert: "X", expectedVersion: 99 });
+    // base 99 does not match the gateway's real current stamp (0) —
+    // reconciliation addendum: this, not edit.expectedVersion, is what
+    // DocumentGateway.applyEdit uses to detect a concurrent change; see
+    // "base stamp bookkeeping" below for the dedicated proof.
+    await gateway.applyEdit({ from: 0, to: 7, insert: "X", expectedVersion: 0 }, 99);
 
     expect(applyEditCalls).toBe(0);
     expect(sent).toHaveLength(1);
@@ -111,17 +121,74 @@ describe("DocumentGateway — concurrent change (stale/invalid-range dry-run rej
       type: "snapshot",
       protocolVersion: 1,
       snapshot: { text: "current text", version: 0 },
+      baseStamp: 1,
     });
     expect(handle.document.getText()).toBe("current text");
   });
 
   test("invalid-range against the CURRENT live text (to > length): exactly one snapshot reply, nothing mutated", async () => {
     const { gateway, handle, sent } = setup("short");
-    await gateway.applyEdit({ from: 0, to: 999, insert: "X", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 999, insert: "X", expectedVersion: 0 }, 0);
 
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toEqual({ type: "snapshot", protocolVersion: 1, snapshot: { text: "short", version: 0 } });
+    expect(sent[0]).toEqual({
+      type: "snapshot",
+      protocolVersion: 1,
+      snapshot: { text: "short", version: 0 },
+      baseStamp: 1,
+    });
     expect(handle.document.getText()).toBe("short");
+  });
+});
+
+describe("DocumentGateway — base stamp bookkeeping (reconciliation addendum's fix)", () => {
+  test("the base stamp starts at 0 and advances by exactly 1 per authoritative snapshot", async () => {
+    const { gateway, sent } = setup("abc");
+    await gateway.applyEdit({ from: 3, to: 3, insert: "d", expectedVersion: 0 }, 0);
+    expect(sent).toHaveLength(1);
+    expect((sent[0] as { baseStamp: number }).baseStamp).toBe(1);
+
+    await gateway.applyEdit({ from: 4, to: 4, insert: "e", expectedVersion: 1 }, 1);
+    expect(sent).toHaveLength(2);
+    expect((sent[1] as { baseStamp: number }).baseStamp).toBe(2);
+  });
+
+  test("a base that does not match the CURRENT stamp is rejected without ever calling workspace.applyEdit, even though its own edit range/version would otherwise be valid", async () => {
+    const { gateway, handle, workspace, sent } = setup("abc");
+    let applyEditCalls = 0;
+    const originalApplyEdit = workspace.applyEdit.bind(workspace);
+    workspace.applyEdit = async (edit) => {
+      applyEditCalls += 1;
+      return originalApplyEdit(edit);
+    };
+
+    // base 7 has no relationship to the gateway's real stamp (0) — this is
+    // exactly the class of bug the addendum fixes: the wire's `base` must
+    // be the gateway's OWN stamp space, never conflated with the mirror's
+    // local counter or vscode's own TextDocument.version.
+    await gateway.applyEdit({ from: 0, to: 3, insert: "X", expectedVersion: 0 }, 7);
+
+    expect(applyEditCalls).toBe(0);
+    expect(handle.document.getText()).toBe("abc");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual({
+      type: "snapshot",
+      protocolVersion: 1,
+      snapshot: { text: "abc", version: 0 },
+      baseStamp: 1,
+    });
+  });
+
+  test("expectedVersion is irrelevant to the gateway's own accept/reject decision — only the base stamp is; a real vscode.TextDocument.version is never compared against it", async () => {
+    const { gateway, handle, sent } = setup("abc");
+    // A wildly wrong expectedVersion (vscode's own document.version is 0,
+    // this claims 12345) — with a MATCHING base, the edit still succeeds:
+    // exactly what the addendum's "never vscode's TextDocument.version
+    // exposed raw, never the mirror's counter" rule requires.
+    await gateway.applyEdit({ from: 3, to: 3, insert: "!", expectedVersion: 12345 }, 0);
+    expect(handle.document.getText()).toBe("abc!");
+    expect(sent).toHaveLength(1);
+    expect((sent[0] as { type: string }).type).toBe("snapshot");
   });
 });
 
@@ -136,7 +203,7 @@ describe("DocumentGateway — closed document", () => {
       return originalApplyEdit(edit);
     };
 
-    await gateway.applyEdit({ from: 0, to: 3, insert: "X", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 3, insert: "X", expectedVersion: 0 }, 0);
 
     expect(applyEditCalls).toBe(0);
     expect(sent).toHaveLength(1);
@@ -149,10 +216,10 @@ describe("DocumentGateway — closed document", () => {
   test("a second applyEdit after disconnect sends NO further message (idempotent, not silent — no NEW reply, but no throw either)", async () => {
     const { gateway, handle, sent } = setup("doc text");
     handle.close();
-    await gateway.applyEdit({ from: 0, to: 3, insert: "X", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 3, insert: "X", expectedVersion: 0 }, 0);
     expect(sent).toHaveLength(1);
 
-    await gateway.applyEdit({ from: 0, to: 3, insert: "Y", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 3, insert: "Y", expectedVersion: 0 }, 0);
     expect(sent).toHaveLength(1); // no second disconnect message — already announced once
   });
 });
@@ -163,7 +230,12 @@ describe("DocumentGateway — external change broadcast (workspace.onDidChangeTe
     expect(sent).toHaveLength(0);
     handle.externalChange("after");
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toEqual({ type: "snapshot", protocolVersion: 1, snapshot: { text: "after", version: 1 } });
+    expect(sent[0]).toEqual({
+      type: "snapshot",
+      protocolVersion: 1,
+      snapshot: { text: "after", version: 1 },
+      baseStamp: 1,
+    });
   });
 
   test("closing THIS document while the panel is alive broadcasts exactly one disconnect message", () => {
@@ -233,7 +305,7 @@ describe("DocumentGateway — D15: never logs document text", () => {
 
   test("no log() call's detail ever contains the document's own content", async () => {
     const { gateway, handle, logCalls } = setup(`before ${marker} content`);
-    await gateway.applyEdit({ from: 0, to: 6, insert: "AFTER ", expectedVersion: 0 });
+    await gateway.applyEdit({ from: 0, to: 6, insert: "AFTER ", expectedVersion: 0 }, 0);
     handle.externalChange(`external ${marker} change`);
 
     const serialized = JSON.stringify(logCalls);

@@ -44,6 +44,22 @@ export interface WebviewHostTransport {
   onMessage(listener: (message: unknown) => void): () => void;
 }
 
+/**
+ * The fields of `PresentationInputMessage` (`../protocol/messages.ts`)
+ * `ProxyDocumentHostOptions.onPresentationInput` forwards, on every
+ * delivery of that message type — reconciliation addendum's message merge.
+ * `mode`/`diagnostic` are always meaningful; `projection`/`pluginCss`/
+ * `pluginErrors` are present only once a projection has actually been
+ * built and sent (never on the FIRST, synchronous handshake reply — see
+ * that interface's own doc comment) and absent otherwise, exactly mirroring
+ * the wire shape rather than inventing a separate "has a projection yet"
+ * boolean.
+ */
+export type PresentationInputPayload = Pick<
+  PresentationInputMessage,
+  "mode" | "diagnostic" | "projection" | "pluginCss" | "pluginErrors"
+>;
+
 export interface ProxyDocumentHostOptions {
   /** Fired for every locally-relevant `Diagnostic`: a rejected inbound
    *  message, an external-replacement notice, or an `EDITOR_HOST_DISCONNECTED`
@@ -56,11 +72,14 @@ export interface ProxyDocumentHostOptions {
    *  so this is a separate, optional channel Lane C's webview entry may
    *  wire into its own project/plugin-trust presentation. */
   readonly onTrustChange?: (trusted: boolean) => void;
-  /** Fired once on the initial `presentation-input` reply (D13's rich-vs-
-   *  fallback decision) — see `PresentationInputMessage`'s own doc comment
-   *  in `../protocol/messages.ts` for why this is a one-time, mount-time
-   *  decision, not a live subscription. */
-  readonly onPresentationInput?: (input: Pick<PresentationInputMessage, "mode" | "diagnostic">) => void;
+  /** Fired on EVERY `presentation-input` message — the initial reply (D13's
+   *  rich-vs-fallback `mode` decision, a one-time, mount-time decision — see
+   *  `PresentationInputMessage`'s own doc comment in `../protocol/messages.ts`)
+   *  AND every later resend the addendum's message merge adds (`mode`
+   *  unchanged, `projection`/`pluginCss`/`pluginErrors` newly populated or
+   *  refreshed). The caller distinguishes the two by whether `projection` is
+   *  present — see `PresentationInputPayload`'s own doc comment below. */
+  readonly onPresentationInput?: (input: PresentationInputPayload) => void;
   /** Starts the mirror in readonly mode (matches
    *  `DocumentHostFactoryOptions.readonly` in
    *  `@dimm-city/gutterpress-editor/core`'s shared contract suite — see
@@ -83,27 +102,58 @@ const DEFAULT_REPLY_TIMEOUT_MS = 15_000;
 
 /**
  * Implements `EditorDocumentHost` against a LOCAL MIRROR, per the run
- * spec's binding reconciliation model:
+ * spec's binding reconciliation model AS AMENDED (reconciliation addendum —
+ * see this file's own header note on the defect the addendum fixes, and
+ * `../protocol/messages.ts`'s `SnapshotMessage`/`ApplyEditMessage` doc
+ * comments for the wire fields below):
  *
- *   Point 2 — `applyEdit` performs the D3 checks (readonly -> stale ->
- *   invalid-range) against the mirror via the SAME pure `applyEdit` every
- *   other host uses, applies optimistically, bumps the mirror version
- *   exactly once, notifies subscribers, and posts the edit to the host. The
- *   mirror's version counter is LOCAL and monotonic; the host's real
- *   `TextDocument.version` is read ONLY to detect stale/out-of-order wire
- *   deliveries (`#lastSeenHostVersion` below) and is NEVER assigned to the
- *   mirror's own version.
+ *   Point 2 (amended) — `applyEdit` performs the D3 checks (readonly ->
+ *   stale -> invalid-range) against the mirror via the SAME pure
+ *   `applyEdit` every other host uses, applies optimistically, bumps the
+ *   mirror version exactly once, and notifies subscribers — ALWAYS,
+ *   synchronously, regardless of the wire. The mirror's version counter
+ *   (`edit.expectedVersion`, `getSnapshot().version`) is LOCAL and
+ *   monotonic and is NEVER sent anywhere meaningful on the wire (the
+ *   addendum's own fix: the original design sent it as `ApplyEditMessage`'s
+ *   `expectedVersion` and the gateway compared it against ITS OWN,
+ *   unrelated version space — a comparison that could only ever coincide by
+ *   accident, and in practice never did after the first real edit; a
+ *   committed regression test reproduced this deterministically). What
+ *   crosses the wire instead is `#lastKnownStamp`, described next.
+ *
+ *   Point 2 (addendum) — AT MOST ONE apply-edit in flight. Sending an edit
+ *   to the transport is decoupled from applying it to the mirror: every
+ *   accepted local edit updates the mirror and notifies IMMEDIATELY
+ *   (optimistic, per point 2 above), but if another edit is already
+ *   awaiting its authoritative reply, this one's WIRE MESSAGE queues
+ *   (`#queue`) rather than sending concurrently. `#inFlightExpectedText`
+ *   remembers the mirror text the one currently in-flight edit was expected
+ *   to produce; each `ApplyEditMessage` carries `base: #lastKnownStamp` —
+ *   the stamp of the state this proxy last had authoritative confirmation
+ *   of — as PROOF to the gateway of which state this edit was built
+ *   against (see `DocumentGateway.applyEdit`'s own header for the other
+ *   half of this check). No per-edit correlation id exists anywhere in this
+ *   class or on the wire — this is a stamp plus a bounded send queue, never
+ *   request/reply matching.
  *
  *   Point 3/5 — every authoritative reply (an edit's accept/reject, or an
  *   unprompted external change) arrives over the SAME "snapshot" message
- *   kind.
+ *   kind, each carrying the gateway's freshly bumped `baseStamp`.
  *
- *   Point 4 — convergence by REPLACEMENT: an incoming snapshot whose text
- *   differs from the mirror calls `replaceExternal` (one version bump);
- *   when it matches — the common case, confirming an edit already applied
- *   optimistically — nothing happens. This is what suppresses the host's
- *   echo of our own accepted edit "without any origin bookkeeping": no
- *   request/reply correlation id exists anywhere in this class.
+ *   Point 4 (amended) — convergence by REPLACEMENT, evaluated against what
+ *   THIS reply was expected to confirm, not against the mirror's CURRENT
+ *   text (which may already be ahead of it — see point 2's queueing note):
+ *   a reply whose text matches either `#inFlightExpectedText` (confirms the
+ *   in-flight edit exactly) or the mirror's current text outright (already
+ *   caught up — the common single-edit case) is NOT a divergence; the queue
+ *   dispatches its next entry (if any), using this reply's `baseStamp`.
+ *   Anything else calls `replaceExternal` (one version bump) AND discards
+ *   the whole queue along with it — the addendum's own "no rebasing" rule:
+ *   later queued edits were computed on top of a mirror state now proven
+ *   wrong, and are dropped rather than replayed. This is what suppresses
+ *   the host's echo of our own accepted edit "without any origin
+ *   bookkeeping": still no request/reply correlation id, just a text
+ *   comparison against a value this class already knows.
  */
 export class ProxyDocumentHost implements EditorDocumentHost {
   #mirror: DocumentSnapshot;
@@ -114,15 +164,43 @@ export class ProxyDocumentHost implements EditorDocumentHost {
   readonly #unsubscribeTransport: () => void;
   readonly #onDiagnostic?: (diagnostic: Diagnostic) => void;
   readonly #onTrustChange?: (trusted: boolean) => void;
-  readonly #onPresentationInput?: (input: Pick<PresentationInputMessage, "mode" | "diagnostic">) => void;
+  readonly #onPresentationInput?: (input: PresentationInputPayload) => void;
   readonly #replyTimeoutMs: number;
-  /** The highest `snapshot.version` (the HOST's real version — see the
-   *  class doc comment's point 2) accepted so far. Starts below any real
-   *  version so the FIRST reply is always accepted regardless of its
-   *  numeric value (a fresh document's starting version is host-defined,
-   *  not necessarily 0). Used ONLY to drop stale/out-of-order deliveries —
-   *  never surfaced as, or conflated with, the mirror's own version. */
-  #lastSeenHostVersion = Number.NEGATIVE_INFINITY;
+  /** The highest `SnapshotMessage.baseStamp` (the GATEWAY's own stamp — see
+   *  the class doc comment's point 3/5 and `../protocol/messages.ts`)
+   *  accepted so far. Starts at 0, matching `DocumentGateway`'s own
+   *  pre-first-send starting value (that class's `#stamp` also starts at
+   *  0), so the very first reply — whose stamp is always 1 or higher, since
+   *  the gateway bumps before every send — is always newer. Used for BOTH
+   *  jobs the addendum's fix separates from the mirror's own version:
+   *  dropping stale/out-of-order wire deliveries, AND as the value sent
+   *  back as the NEXT edit's `ApplyEditMessage.base` — never surfaced as,
+   *  or conflated with, the mirror's own local version. */
+  #lastKnownStamp = 0;
+  /** The mirror text the CURRENTLY in-flight edit (if any) was expected to
+   *  produce — `undefined` when nothing is in flight. Captured at the
+   *  moment an edit is actually POSTED to the transport (`#postEdit`), not
+   *  read fresh from `#mirror` later: by the time a reply arrives, `#mirror`
+   *  may already be AHEAD of it (later keystrokes queued on top while this
+   *  one was in flight — class doc comment, point 2's queueing note). This
+   *  is the one piece of "which edit is this" bookkeeping this class keeps,
+   *  and it names a STATE (a string to compare), never an id to correlate a
+   *  reply against — `#handleSnapshot` still converges by plain text
+   *  comparison. */
+  #inFlightExpectedText: string | undefined;
+  /** Edits applied to the mirror while another edit was already in flight —
+   *  optimistic and already reflected in `#mirror`/subscribers by the time
+   *  they land here; only their WIRE SEND is deferred. Each entry pairs the
+   *  edit with the mirror text it produced AT THE MOMENT it was queued
+   *  (`expectedText`) — NOT re-derived from `#mirror` later, because by the
+   *  time an earlier entry is dispatched, `#mirror` may already reflect
+   *  STILL-LATER queued entries too (three rapid keystrokes queue three
+   *  entries; dispatching the first must not claim credit for the other
+   *  two's text). Drained in order, one at a time, as each predecessor's
+   *  authoritative reply confirms (`#dispatchNextQueued`) — never sent
+   *  two-at-once, and wholly discarded (never rebased/replayed) the moment
+   *  a reply proves divergence (class doc comment, point 4). */
+  readonly #queue: Array<{ readonly edit: SourceEdit; readonly expectedText: string }> = [];
   #pendingReplyTimer: ReturnType<typeof setTimeout> | undefined;
   /** True once ANY local edit has been optimistically accepted (point 2).
    *  Combined with `#receivedInitialSnapshot` below to resolve a real race
@@ -170,8 +248,14 @@ export class ProxyDocumentHost implements EditorDocumentHost {
       this.#mirror = result.snapshot;
       this.#hasAppliedLocalEdit = true;
       this.#notify();
-      this.#transport.postMessage({ type: "apply-edit", protocolVersion: EDITOR_PROTOCOL_VERSION, edit });
-      this.#armReplyTimeoutIfNeeded();
+      // Addendum, point 2: AT MOST ONE apply-edit in flight. The mirror
+      // already reflects this edit (above) regardless of which branch
+      // fires below — only the WIRE SEND is gated.
+      if (this.#inFlightExpectedText === undefined) {
+        this.#postEdit(edit, result.snapshot.text);
+      } else {
+        this.#queue.push({ edit, expectedText: result.snapshot.text });
+      }
     }
     return result;
   }
@@ -228,6 +312,42 @@ export class ProxyDocumentHost implements EditorDocumentHost {
     this.#pendingReplyTimer = undefined;
   }
 
+  /**
+   * Posts `edit` to the transport as this session's one in-flight request,
+   * remembering `expectedText` (the mirror text this specific edit was
+   * expected to produce) so `#handleSnapshot` can recognize its
+   * confirmation later even if the mirror has since moved further ahead
+   * (class doc comment, point 2/4). `base` is always `#lastKnownStamp` —
+   * the freshest stamp this proxy has authoritative proof of.
+   */
+  #postEdit(edit: SourceEdit, expectedText: string): void {
+    this.#inFlightExpectedText = expectedText;
+    this.#transport.postMessage({
+      type: "apply-edit",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      edit,
+      base: this.#lastKnownStamp,
+    });
+    this.#armReplyTimeoutIfNeeded();
+  }
+
+  /**
+   * Sends the next queued edit (if any), using the stamp `#handleSnapshot`
+   * just recorded — or, if the queue is empty, marks nothing in flight.
+   * Called ONLY from `#handleSnapshot`'s "no divergence" branch (a reply
+   * confirmed what it was expected to, or the queue was just discarded
+   * along with a divergence) — never from `applyEdit` itself, which posts
+   * its OWN edit directly when nothing is already in flight.
+   */
+  #dispatchNextQueued(): void {
+    const next = this.#queue.shift();
+    if (next === undefined) {
+      this.#inFlightExpectedText = undefined;
+      return;
+    }
+    this.#postEdit(next.edit, next.expectedText);
+  }
+
   #handleIncoming(raw: unknown): void {
     const result = validateHostToWebviewMessage(raw);
     if (!result.valid) {
@@ -250,13 +370,19 @@ export class ProxyDocumentHost implements EditorDocumentHost {
   #dispatch(message: HostToWebviewMessage): void {
     switch (message.type) {
       case "snapshot":
-        this.#handleSnapshot(message.snapshot);
+        this.#handleSnapshot(message.snapshot, message.baseStamp);
         return;
       case "trust-state":
         this.#onTrustChange?.(message.trusted);
         return;
       case "presentation-input":
-        this.#onPresentationInput?.({ mode: message.mode, diagnostic: message.diagnostic });
+        this.#onPresentationInput?.({
+          mode: message.mode,
+          diagnostic: message.diagnostic,
+          projection: message.projection,
+          pluginCss: message.pluginCss,
+          pluginErrors: message.pluginErrors,
+        });
         if (message.diagnostic) this.#onDiagnostic?.(message.diagnostic);
         return;
       case "disconnect":
@@ -265,45 +391,75 @@ export class ProxyDocumentHost implements EditorDocumentHost {
     }
   }
 
-  /** Point 4's convergence rule. ANY snapshot message — whatever its
-   *  content — proves the channel is alive, so the reply timer always
-   *  clears here first, before the staleness/content checks below decide
-   *  whether anything else happens. */
-  #handleSnapshot(snapshot: DocumentSnapshot): void {
+  /**
+   * Point 4's (amended) convergence rule. ANY snapshot message — whatever
+   * its content — proves the channel is alive, so the reply timer always
+   * clears here first, before the staleness/content checks below decide
+   * whether anything else happens; it is re-armed at the very end if this
+   * class is still waiting on something once those checks finish (covers
+   * the pre-first-snapshot race below, which otherwise leaves the timer
+   * cleared with no reply yet actually confirmed).
+   */
+  #handleSnapshot(snapshot: DocumentSnapshot, baseStamp: number): void {
     this.#clearReplyTimeout();
     const isFirstSnapshot = !this.#receivedInitialSnapshot;
     this.#receivedInitialSnapshot = true;
 
-    // Point 2: stale/out-of-order delivery guard, keyed on the HOST's own
-    // version (never adopted as the mirror's version — see the class doc
-    // comment). Strictly-not-newer means this reply is older information
-    // than something already applied; drop it before even comparing text.
-    if (snapshot.version <= this.#lastSeenHostVersion) return;
-    this.#lastSeenHostVersion = snapshot.version;
+    // Reconciliation addendum: stale/out-of-order delivery guard, keyed on
+    // the GATEWAY's own stamp (never adopted as the mirror's version — see
+    // the class doc comment). `>=`, not strict `>`: the gateway's initial
+    // ready-handshake reply deliberately does NOT bump the stamp
+    // (`DocumentGateway.sendInitialSnapshot`'s own doc comment) — it and
+    // this proxy's own `#lastKnownStamp` both start at 0, so the very
+    // first reply must still be accepted at that shared starting value.
+    // Older-or-equal-to-what's-already-known means this reply carries no
+    // information this class does not already have; drop it before even
+    // comparing text, and before updating any in-flight/queue state below.
+    if (baseStamp >= this.#lastKnownStamp) {
+      this.#lastKnownStamp = baseStamp;
 
-    if (snapshot.text === this.#mirror.text) {
-      // The common case: this reply confirms an edit the mirror already
-      // applied optimistically. No spurious replacement (run spec
-      // convergence case (a)).
-      return;
+      // Confirmation, evaluated against what THIS reply was expected to
+      // show — the in-flight edit's own predicted result, OR the mirror's
+      // current text outright (the common, no-burst case; also covers a
+      // reply arriving once nothing is in flight at all, e.g. a plain
+      // external broadcast). See the class doc comment's point 4 for why
+      // this is not simply "matches the mirror," now that queued edits can
+      // leave the mirror ahead of what one confirmed reply alone shows.
+      const wasInFlight = this.#inFlightExpectedText !== undefined;
+      const confirmed = (wasInFlight && snapshot.text === this.#inFlightExpectedText) || snapshot.text === this.#mirror.text;
+
+      if (confirmed) {
+        // Run spec convergence case (a): no spurious replacement. If this
+        // was the reply the in-flight edit was waiting on, the queue
+        // advances; otherwise there is nothing to advance.
+        if (wasInFlight) this.#dispatchNextQueued();
+      } else if (isFirstSnapshot && this.#hasAppliedLocalEdit) {
+        // The FIRST snapshot this proxy EVER receives is always the reply
+        // to `ready` (see `#hasAppliedLocalEdit`'s doc comment for why a
+        // message channel guarantees this) — reporting the document as it
+        // stood BEFORE this session existed. If a local edit already moved
+        // the mirror past that, this stale confirmation must not revert
+        // it, and must not be treated as this edit's own reply either (the
+        // REAL reply is still to come) — its STAMP is still recorded above
+        // so the genuinely fresher reply that follows compares correctly,
+        // but its CONTENT is discarded here, and nothing in-flight/queued
+        // is touched.
+      } else {
+        // Text differs and this is real, current information: either a
+        // rejected edit reverting to the host's unchanged text (case (b)),
+        // or a genuine external change (case (c)) — either way, converge
+        // by replacement in exactly one step. Addendum: "no rebasing" —
+        // any still-queued edits were built on top of a mirror state now
+        // proven wrong, so they are discarded along with the replacement,
+        // never replayed.
+        this.replaceExternal(snapshot.text);
+        this.#queue.length = 0;
+        this.#inFlightExpectedText = undefined;
+        this.#onDiagnostic?.(externalReplacementDiagnostic());
+      }
     }
 
-    // The FIRST snapshot this proxy EVER receives is always the reply to
-    // `ready` (see `#hasAppliedLocalEdit`'s doc comment for why a message
-    // channel guarantees this) — reporting the document as it stood BEFORE
-    // this session existed. If a local edit already moved the mirror past
-    // that, this stale confirmation must not revert it; its VERSION is
-    // still recorded above so the genuinely fresher reply that follows
-    // compares correctly, but its CONTENT is discarded here rather than
-    // applied.
-    if (isFirstSnapshot && this.#hasAppliedLocalEdit) return;
-
-    // Text differs and this is real, current information: either a
-    // rejected edit reverting to the host's unchanged text (case (b)), or
-    // a genuine external change (case (c)) — either way, converge by
-    // replacement in exactly one step.
-    this.replaceExternal(snapshot.text);
-    this.#onDiagnostic?.(externalReplacementDiagnostic());
+    if (this.#inFlightExpectedText !== undefined) this.#armReplyTimeoutIfNeeded();
   }
 
   #handleDisconnect(diagnostic: Diagnostic): void {

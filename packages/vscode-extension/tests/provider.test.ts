@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { mock } from "bun:test";
 import { EDITOR_PROTOCOL_VERSION } from "@dimm-city/gutterpress-editor/core";
+import { createEditorProjection } from "gutterpress/render";
 import type * as vscode from "vscode";
 import {
   vscodeMock,
@@ -283,6 +284,13 @@ describe("resolveCustomTextEditor — 'ready' handshake", () => {
       type: "snapshot",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       snapshot: { text: "hello world", version: 0 },
+      // Reconciliation addendum: gateway.sendInitialSnapshot() (routed
+      // through here by provider.ts's "ready" handler) deliberately does
+      // NOT bump the base stamp — it reports the pre-session state, and
+      // bumping would stale-reject an edit submitted before this reply
+      // arrives (see that method's own doc comment). Stays at the
+      // gateway's initial value.
+      baseStamp: 0,
     });
   });
 
@@ -317,7 +325,7 @@ describe("resolveCustomTextEditor — 'ready' handshake", () => {
 });
 
 describe("resolveCustomTextEditor — apply-edit end to end", () => {
-  test("a valid apply-edit reaches workspace.applyEdit via document.positionAt and replies with the new snapshot", async () => {
+  test("a valid apply-edit reaches workspace.applyEdit via document.positionAt and replies with the new snapshot, then a merged presentation-input projection resend", async () => {
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
     const { panel, fireMessage, sentToWebview } = fakeWebviewPanel();
     provider.resolveCustomTextEditor(fakeDocument("hello world"), panel, {} as vscode.CancellationToken);
@@ -326,20 +334,47 @@ describe("resolveCustomTextEditor — apply-edit end to end", () => {
       type: "apply-edit",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       edit: { from: 6, to: 11, insert: "there", expectedVersion: 0 },
+      // Matches the gateway's initial base stamp (0 — no "ready" was fired
+      // in this test, so no authoritative send has happened yet to bump
+      // it). Reconciliation addendum: `base`, not `edit.expectedVersion`,
+      // is what DocumentGateway compares against its own stamp.
+      base: 0,
     });
     // provider.ts's "apply-edit" handler calls `void gateway.applyEdit(...)`
     // (fire-and-forget: the message-listener contract is synchronous), and
     // DocumentGateway.applyEdit is itself async (it awaits
     // workspace.applyEdit before its single reply site) — flush pending
-    // microtasks so that reply has landed before asserting on it.
+    // microtasks so that reply, AND the projection rebuild it triggers
+    // (`../src/provider.ts`'s own `gatewayApi.postMessage` intercept calls
+    // `sendProjection()` synchronously, which resolves via a microtask
+    // chain with no real plugin I/O here — no workspace folder is mocked,
+    // so `project` is `undefined` and the base pipeline resolves
+    // immediately), have both landed before asserting.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(apiCalls.applyEditCalls).toHaveLength(1);
-    expect(sentToWebview).toHaveLength(1);
+    // Reconciliation addendum's message merge: the accepted edit's own
+    // snapshot reply is ONE message; the projection rebuild it triggers
+    // (deliverable 2) is a SECOND, merged presentation-input resend — two
+    // messages total, in that order, not the pre-merge single reply.
+    expect(sentToWebview).toHaveLength(2);
     expect(sentToWebview[0]).toEqual({
       type: "snapshot",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       snapshot: { text: "hello there", version: 1 },
+      baseStamp: 1,
+    });
+    expect(sentToWebview[1]).toEqual({
+      type: "presentation-input",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      mode: "rich",
+      // No workspace folder is mocked in this suite (getWorkspaceFolder's
+      // default), so `project` is `undefined` and this resend takes the
+      // base (non-plugin-aware) pipeline — computed via the SAME real
+      // function provider.ts itself calls, not a hand-typed shape.
+      projection: createEditorProjection("hello there", { sourceVersion: 1 }),
+      pluginCss: "",
+      pluginErrors: [],
     });
   });
 });
@@ -412,6 +447,7 @@ describe("resolveCustomTextEditor — D15: session logging never includes docume
       type: "apply-edit",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       edit: { from: 0, to: 6, insert: "AFTER ", expectedVersion: 0 },
+      base: 0, // matches the gateway's initial stamp — no "ready" was fired, so it has not moved
     });
     await new Promise((resolve) => setTimeout(resolve, 0)); // let the full log sequence complete — see the apply-edit test above
 

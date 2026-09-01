@@ -10,7 +10,7 @@
  * the real, unmodified `createMarkdownRenderer`/`createEditorProjection` —
  * the SAME production functions the CLI build/preview path and the desktop
  * rich editor use (D11's `gutterpress/plugins` subpath).
- * Part 2 proves `resolveEditorProjectionMessage`'s own trust/project gate
+ * Part 2 proves `resolveEditorProjectionPayload`'s own trust/project gate
  * (deliverable 2/3's core contract) via the observable DELTA between the
  * plugin-aware and base-pipeline projections of the SAME content — not by
  * asserting on internals, but on whether a `plugin-region` block for the
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildBaseEditorProjection,
   buildProjectEditorProjection,
-  resolveEditorProjectionMessage,
+  resolveEditorProjectionPayload,
 } from "../../src/project/projection.ts";
 
 const FIXTURE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "plugin-project");
@@ -117,9 +117,9 @@ describe("buildBaseEditorProjection — the non-plugin-aware pipeline", () => {
   });
 });
 
-describe("resolveEditorProjectionMessage — the trust/project gate (deliverable 2/3's core contract)", () => {
+describe("resolveEditorProjectionPayload — the trust/project gate (deliverable 2/3's core contract)", () => {
   test("trusted + project present -> plugin-aware: a plugin-region block appears, pluginCss is populated, no diagnostic", async () => {
-    const message = await resolveEditorProjectionMessage(
+    const message = await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },
       true,
@@ -132,7 +132,7 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
   });
 
   test("D9/D12: untrusted + project present -> base pipeline ONLY — no plugin-region block, empty pluginCss", async () => {
-    const message = await resolveEditorProjectionMessage(
+    const message = await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },
       false,
@@ -144,30 +144,32 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
   });
 
   test("D9: trusted + no project present -> base pipeline ONLY", async () => {
-    const message = await resolveEditorProjectionMessage({ text: HIGHLIGHT_CONTENT, version: 0 }, undefined, true);
+    const message = await resolveEditorProjectionPayload({ text: HIGHLIGHT_CONTENT, version: 0 }, undefined, true);
     const regions = message.projection.blocks.filter((b) => b.kind === "plugin-region");
     expect(regions).toEqual([]);
     expect(message.pluginCss).toBe("");
   });
 
   test("core layout markers still project in the base pipeline (D9: 'core markers still project')", async () => {
-    const message = await resolveEditorProjectionMessage({ text: "@page\n\nHello.\n", version: 0 }, undefined, false);
+    const message = await resolveEditorProjectionPayload({ text: "@page\n\nHello.\n", version: 0 }, undefined, false);
     const pageBlocks = message.projection.blocks.filter((b) => b.kind === "page");
     expect(pageBlocks.length).toBeGreaterThan(0);
   });
 
-  test("every returned message always carries the message envelope fields", async () => {
-    const message = await resolveEditorProjectionMessage({ text: "hello", version: 3 }, undefined, false);
-    expect(message.type).toBe("projection");
-    expect(typeof message.protocolVersion).toBe("number");
-    expect(message.projection.sourceVersion).toBe(3);
+  test("the returned payload always carries projection/pluginCss/pluginErrors — no wire envelope of its own (reconciliation addendum's message merge: the caller, provider.ts, wraps this into a presentation-input message)", async () => {
+    const payload = await resolveEditorProjectionPayload({ text: "hello", version: 3 }, undefined, false);
+    expect(payload).not.toHaveProperty("type");
+    expect(payload).not.toHaveProperty("protocolVersion");
+    expect(payload.projection.sourceVersion).toBe(3);
+    expect(payload.pluginCss).toBe("");
+    expect(payload.pluginErrors).toEqual([]);
   });
 
   test("degrade-and-report: an uninstalled npm plugin is skipped and named, never blanking the document", async () => {
     const dir = makeDisposableProjectDir(
       'title: "temp"\nplugins:\n  - gutterpress-vscode-test-plugin-does-not-exist\n',
     );
-    const message = await resolveEditorProjectionMessage({ text: "hello world", version: 0 }, { projectDir: dir }, true);
+    const message = await resolveEditorProjectionPayload({ text: "hello world", version: 0 }, { projectDir: dir }, true);
     expect(message.pluginErrors).toHaveLength(1);
     expect(message.pluginErrors[0]?.pluginRef).toBe("gutterpress-vscode-test-plugin-does-not-exist");
     expect(message.pluginErrors[0]?.message.length).toBeGreaterThan(0);
@@ -189,7 +191,7 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
     mkdirSync(pluginsDir, { recursive: true });
     writeFileSync(path.join(pluginsDir, "highlight.js"), readFileSync(path.join(FIXTURE_ROOT, "plugins", "highlight.js")));
 
-    const message = await resolveEditorProjectionMessage(
+    const message = await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: dir },
       true,
@@ -210,7 +212,7 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
     // real) — this is the point: even a real, loadable project's plugin
     // must not be touched when the workspace is untrusted.
     const loadPluginsSpy = mock(async () => ({ plugins: [], pluginCss: "" }) as never);
-    await resolveEditorProjectionMessage(
+    await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },
       false,
@@ -222,7 +224,7 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
 
   test("POSITIVE CONTROL for the spy above: trusted + project DOES invoke the loader (proves the spy is actually wired, not vacuously always-zero, G-12/AP-20)", async () => {
     const loadPluginsSpy = mock(async () => ({ plugins: [], pluginCss: "" }) as never);
-    await resolveEditorProjectionMessage(
+    await resolveEditorProjectionPayload(
       { text: HIGHLIGHT_CONTENT, version: 0 },
       { projectDir: FIXTURE_ROOT },
       true,
@@ -235,7 +237,7 @@ describe("resolveEditorProjectionMessage — the trust/project gate (deliverable
   test("D14: a whole-build hard failure (invalid manifest.yaml) falls back to the base pipeline WITH a diagnostic, never throws", async () => {
     const dir = makeDisposableProjectDir("title: [this is not valid yaml because it never closes\n");
     let capturedError: unknown;
-    const message = await resolveEditorProjectionMessage(
+    const message = await resolveEditorProjectionPayload(
       { text: "hello world", version: 0 },
       { projectDir: dir },
       true,

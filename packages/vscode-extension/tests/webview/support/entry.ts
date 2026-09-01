@@ -1,4 +1,5 @@
 import type { SourceEdit } from "@dimm-city/gutterpress-editor/core";
+import type { GutterpressProjection } from "gutterpress/render";
 import { mountGutterpressWebview, type WebviewSession } from "../../../src/webview/index.ts";
 import {
   createFakeExtensionHost,
@@ -34,10 +35,19 @@ import {
  * header: a second Chromium launch hangs in this sandboxed environment).
  */
 
+/**
+ * JSON-safe mirror of `FakeExtensionHostOptions`: `latencyMs` is a plain
+ * NUMBER here, not a function — `page.evaluate`'s arguments cross the
+ * Node/browser boundary as JSON, which cannot carry a closure. `mount()`
+ * below (browser-side) constructs the real `() => number` closure
+ * `createFakeExtensionHost` expects from this number.
+ */
+export type MountOptions = Omit<FakeExtensionHostOptions, "latencyMs"> & { readonly latencyMs?: number };
+
 export interface GutterpressWebviewHarnessDriver {
   /** Mounts (disposing any previous session first) against a FRESH fake
    *  extension host and returns the CSS selector for the container. */
-  mount(initialText: string, options?: FakeExtensionHostOptions): string;
+  mount(initialText: string, options?: MountOptions): string;
   /** Disposes the current session, if any. Calling this more than once in a
    *  row exercises `WebviewSession.dispose()`'s own idempotency directly —
    *  `session` is never reset to `undefined` here, only `mount()`/`remount()`
@@ -63,9 +73,31 @@ export interface GutterpressWebviewHarnessDriver {
   /** Live transport-listener count on the CURRENT fake host — see
    *  `fake-extension-host.ts`'s own doc comment on `listenerCount()`. */
   listenerCount(): number;
+  /** `FakeExtensionHostSession.sendProjectionUpdate` passthrough on the
+   *  CURRENT fake host — sends a projection-bearing `presentation-input`
+   *  resend, driving `mountGutterpressWebview`'s dispose-then-remount
+   *  upgrade. */
+  sendProjectionUpdate(payload: { readonly projection: GutterpressProjection; readonly pluginCss?: string }): void;
   hasEditorMounted(): boolean;
   /** `.md-document`'s rendered text, or `null` if no editor is mounted. */
   documentText(): string | null;
+  /** Every `.gp-block-chip` element currently in the mounted document —
+   *  present only once `mountGutterpressEditor` (not the plain `mountEditor`)
+   *  has actually mounted, per `../../../src/gutterpress/mount.ts`'s (via
+   *  `@dimm-city/gutterpress-editor/gutterpress`) `renderCustomBlock`
+   *  provider. Used to prove the reconciliation addendum's projection
+   *  upgrade actually swapped the mount, not merely that no error was
+   *  thrown (AP-21). */
+  chipCount(): number;
+  /** Every `.md-document > .md-block` element, in order — mirrors
+   *  `packages/editor/tests/gutterpress/support/entry.ts`'s own
+   *  `blockCount()`/`blockCenter()` pair. */
+  blockCount(): number;
+  /** Client-space center point of the i-th `.md-document > .md-block` — a
+   *  real point for `page.mouse.click`, used to click a specific ORDINARY
+   *  (non-chip) block precisely rather than guessing where a plain
+   *  paragraph sits relative to an unknown number of chips. */
+  blockCenter(index: number): { x: number; y: number };
   /** The fallback DOM's `data-gp-fallback` attribute value (the D14
    *  category), or `null` if no fallback is showing. */
   fallbackCategory(): string | null;
@@ -104,12 +136,17 @@ function freshContainer(): HTMLDivElement {
   return container;
 }
 
-function mount(initialText: string, options: FakeExtensionHostOptions = {}): string {
+function mount(initialText: string, options: MountOptions = {}): string {
   // WebviewSession.dispose() is idempotent by contract (mirrors
   // EditorMount.dispose()), so calling it even when the previous session
   // was already disposed by the caller is always safe.
   session?.dispose();
-  fakeHost = createFakeExtensionHost(initialText, options);
+  const { latencyMs, ...rest } = options;
+  // See MountOptions's own doc comment: this browser-side closure is what
+  // page.evaluate's JSON argument boundary cannot carry directly.
+  const hostOptions: FakeExtensionHostOptions =
+    latencyMs === undefined ? rest : { ...rest, latencyMs: () => latencyMs };
+  fakeHost = createFakeExtensionHost(initialText, hostOptions);
   session = mountGutterpressWebview(freshContainer(), fakeHost.transport);
   return `#${CONTAINER_ID}`;
 }
@@ -136,8 +173,17 @@ window.__gpWebview = {
   disconnectHost: () => requireFakeHost().simulated.disconnect(),
   externalChange: (text: string) => requireFakeHost().simulated.externalChange(text),
   listenerCount: () => requireFakeHost().listenerCount(),
+  sendProjectionUpdate: (payload) => requireFakeHost().sendProjectionUpdate(payload),
   hasEditorMounted: () => document.querySelectorAll(`#${CONTAINER_ID} .md-editor`).length > 0,
   documentText: () => document.querySelector(`#${CONTAINER_ID} .md-document`)?.textContent ?? null,
+  chipCount: () => document.querySelectorAll(`#${CONTAINER_ID} .gp-block-chip`).length,
+  blockCount: () => document.querySelectorAll(`#${CONTAINER_ID} .md-document > .md-block`).length,
+  blockCenter(index: number): { x: number; y: number } {
+    const el = document.querySelectorAll<HTMLElement>(`#${CONTAINER_ID} .md-document > .md-block`)[index];
+    if (!el) throw new Error(`gp webview harness: no block at index ${index}`);
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  },
   fallbackCategory: () =>
     document.querySelector(`#${CONTAINER_ID} [data-gp-fallback]`)?.getAttribute("data-gp-fallback") ?? null,
   fallbackMessage: () => document.querySelector(`#${CONTAINER_ID} [data-gp-fallback-message]`)?.textContent ?? null,

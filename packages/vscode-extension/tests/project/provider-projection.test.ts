@@ -1,8 +1,19 @@
 // Wiring tests for the projection flow SFE-P3c Lane B added to
 // src/provider.ts (run spec deliverables 2/3): project discovery ->
-// resolveEditorProjectionMessage -> a "projection" message reaching the
-// webview, resent on an accepted edit, an external change, and a trust
-// grant — never sent for a source-fallback (oversized) document.
+// resolveEditorProjectionPayload -> a projection reaching the webview,
+// resent on an accepted edit, an external change, and a trust grant — never
+// sent for a source-fallback (oversized) document.
+//
+// RECONCILIATION ADDENDUM — MESSAGE MERGE (integration lane D): the
+// projection no longer arrives as its own standalone `type: "projection"`
+// message — that type is deleted. It now rides inside a `presentation-input`
+// resend (`mode` unchanged from the session's own decision,
+// `projection`/`pluginCss`/`pluginErrors` newly populated). Every "was a
+// projection sent" check below therefore looks for a `presentation-input`
+// message that CARRIES a `projection` field, not merely `type ===
+// "presentation-input"` — a session's FIRST presentation-input (part of the
+// synchronous ready-handshake reply) never carries one, so that weaker check
+// would be trivially, uselessly true for every session.
 //
 // Kept in tests/project/** (this lane's write boundary) rather than
 // tests/provider.test.ts (Lane A's, frozen) — see this run's report for the
@@ -12,7 +23,7 @@
 // Uses the REAL (unmocked) gutterpress/plugins loader against this run's
 // own local fixture (fixtures/plugin-project/) — the SPY-based "never
 // invoked when untrusted" proof lives in projection.test.ts, against
-// resolveEditorProjectionMessage's own injectable loader parameter (see
+// resolveEditorProjectionPayload's own injectable loader parameter (see
 // that file's own comment for why a real package specifier is never
 // mock.module()'d in this suite). THIS file instead proves provider.ts
 // correctly THREADS trust/project through to that function, by observing
@@ -105,14 +116,22 @@ function fakeDocument(text: string): vscode.TextDocument {
   } as unknown as vscode.TextDocument;
 }
 
+/** A `presentation-input` message that carries a projection payload — the
+ *  reconciliation addendum's merged shape (see this file's own header). */
+function isProjectionBearingPresentationInput(message: unknown): boolean {
+  const typed = message as { type?: string; projection?: unknown };
+  return typed.type === "presentation-input" && "projection" in typed;
+}
+
 interface FakePanel {
   panel: vscode.WebviewPanel;
   fireMessage: (message: unknown) => void;
   sentToWebview: unknown[];
-  /** Resolves with the NEXT "projection"-typed message posted, however
-   *  long that takes (real plugin loading involves real disk I/O — no
-   *  arbitrary timeout guessing). A safety timeout still bounds it so a
-   *  broken implementation fails loudly instead of hanging (G-12/AP-20). */
+  /** Resolves with the NEXT projection-bearing `presentation-input` message
+   *  posted, however long that takes (real plugin loading involves real
+   *  disk I/O — no arbitrary timeout guessing). A safety timeout still
+   *  bounds it so a broken implementation fails loudly instead of hanging
+   *  (G-12/AP-20). */
   waitForNextProjection: () => Promise<{ readonly [key: string]: unknown }>;
 }
 
@@ -133,8 +152,7 @@ function fakePanel(): FakePanel {
       },
       postMessage: async (message: unknown) => {
         sentToWebview.push(message);
-        const typed = message as { type?: string };
-        if (typed.type === "projection") {
+        if (isProjectionBearingPresentationInput(message)) {
           while (projectionWaiters.length > 0) projectionWaiters.shift()?.(message as { readonly [key: string]: unknown });
         }
         return true;
@@ -216,12 +234,12 @@ describe("resolveCustomTextEditor — projection sent on the ready handshake (de
     fireMessage({ type: "ready", protocolVersion: EDITOR_PROTOCOL_VERSION });
 
     const message = await waitForNextProjection();
-    expect(message.type).toBe("projection");
+    expect(message.type).toBe("presentation-input");
     const projection = message.projection as { sourceVersion: number };
     expect(projection.sourceVersion).toBe(0);
   });
 
-  test("D13: an oversized document (source-fallback mode) never sends a projection message at all", async () => {
+  test("D13: an oversized document (source-fallback mode) never sends a projection-bearing message at all", async () => {
     mockWorkspaceFolderFsPath = FIXTURE_ROOT;
     mockIsTrusted = true;
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
@@ -230,9 +248,13 @@ describe("resolveCustomTextEditor — projection sent on the ready handshake (de
     provider.resolveCustomTextEditor(fakeDocument(oversized), panel, {} as vscode.CancellationToken);
     fireMessage({ type: "ready", protocolVersion: EDITOR_PROTOCOL_VERSION });
 
-    // Bounded wait for anything that WOULD have arrived, then assert absence.
+    // Bounded wait for anything that WOULD have arrived, then assert
+    // absence. The session's OWN bare presentation-input (mode:
+    // "source-fallback") IS still sent — only the projection-bearing kind
+    // is asserted absent here (see isProjectionBearingPresentationInput's
+    // own doc comment for why a bare type check would be vacuous).
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(sentToWebview.some((m) => (m as { type?: string }).type === "projection")).toBe(false);
+    expect(sentToWebview.some((m) => isProjectionBearingPresentationInput(m))).toBe(false);
   });
 });
 
@@ -251,13 +273,19 @@ describe("resolveCustomTextEditor — projection resend on authoritative snapsho
       type: "apply-edit",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
       edit: { from: 6, to: 11, insert: "there", expectedVersion: 0 },
+      // Matches the gateway's base stamp: still 0, since
+      // gateway.sendInitialSnapshot() (the ready-handshake's own snapshot
+      // reply) deliberately does not bump it — reconciliation addendum:
+      // `base`, not `edit.expectedVersion`, is what DocumentGateway
+      // compares against its own stamp.
+      base: 0,
     });
 
     const second = await waitForNextProjection();
     expect((second.projection as { sourceVersion: number }).sourceVersion).toBe(1);
   });
 
-  test("a REJECTED edit (stale expectedVersion) does not trigger an extra resend", async () => {
+  test("a REJECTED edit (stale base) does not trigger an extra resend", async () => {
     mockWorkspaceFolderFsPath = undefined;
     mockIsTrusted = true;
     const provider = createGutterpressMarkdownEditorProvider(fakeExtensionContext(), asOutputChannel(fakeOutputChannel()));
@@ -269,15 +297,18 @@ describe("resolveCustomTextEditor — projection resend on authoritative snapsho
     fireMessage({
       type: "apply-edit",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
-      // Wrong expectedVersion (document is at 0) — DocumentGateway's own
-      // dry run rejects this locally, without ever calling
-      // workspace.applyEdit, so the version never moves.
-      edit: { from: 0, to: 5, insert: "X", expectedVersion: 99 },
+      edit: { from: 0, to: 5, insert: "X", expectedVersion: 0 },
+      // A base that does NOT match the gateway's current stamp (1, after
+      // the initial ready-handshake snapshot) — DocumentGateway's own base
+      // check rejects this without ever calling workspace.applyEdit, so
+      // document.version never moves (reconciliation addendum: base, not
+      // expectedVersion, is what decides staleness now).
+      base: 99,
     });
     // No REAL change occurred, so there is no next projection to await —
     // bounded wait, then assert exactly one projection was ever sent.
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const projectionMessages = sentToWebview.filter((m) => (m as { type?: string }).type === "projection");
+    const projectionMessages = sentToWebview.filter((m) => isProjectionBearingPresentationInput(m));
     expect(projectionMessages).toHaveLength(1);
   });
 });

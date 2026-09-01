@@ -116,13 +116,16 @@ describe("dispose then remount on the same fake host — no leaked wiring", () =
 
     const countAfterFirst = await applyEditCount();
     expect(countAfterFirst).toBe(1);
-    // Reads the MIRROR's own optimistic view (D2/D3's local-accept half),
-    // not `hostText()` — see
-    // `known-issue-edit-version-reconciliation.btest.ts` (this same
-    // directory) for why the fake host's OWN authoritative text does not
-    // currently move; that is a separately-tracked, out-of-boundary defect
-    // this file's own "no leaked listener" claim does not depend on.
+    // Reads the MIRROR's own optimistic view (D2/D3's local-accept half).
     expect(await harness.page.evaluate(() => window.__gpWebview.documentText())).toBe("helloA");
+
+    // The reconciliation fix (`edit-version-reconciliation.btest.ts`, this
+    // same directory) means this keystroke also reaches the fake host's
+    // OWN authoritative document, not only the mirror — wait for that
+    // round trip to land before disposing, rather than a fixed sleep.
+    await harness.page.waitForFunction(() => window.__gpWebview.hostText() === "helloA", undefined, {
+      timeout: 5_000,
+    });
 
     await harness.page.evaluate(() => window.__gpWebview.dispose());
     expect(await listenerCount()).toBe(0);
@@ -130,11 +133,13 @@ describe("dispose then remount on the same fake host — no leaked wiring", () =
     const remountedSelector = await harness.page.evaluate(() => window.__gpWebview.remount());
     expect(remountedSelector).toBe("#gp-editor-root");
     // The remounted session starts a FRESH ProxyDocumentHost, which
-    // converges from the fake host's OWN (unchanged — see the cross-
-    // reference above) authoritative text: "hello", not "helloA".
+    // converges from the fake host's OWN authoritative text — "helloA",
+    // reflecting the keystroke typed before dispose (the reconciliation fix
+    // means that edit genuinely reached the host; disposing the webview
+    // session is not a way to discard it).
     await harness.page.waitForFunction(
       (expected: string) => window.__gpWebview.documentText() === expected,
-      "hello",
+      "helloA",
       { timeout: 5_000 },
     );
     expect(await editorElementCount()).toBe(1); // AP-21 liveness on the remount
@@ -151,7 +156,7 @@ describe("dispose then remount on the same fake host — no leaked wiring", () =
     // the live, remounted one), and listenerCount() above would already
     // have shown 2 instead of 1.
     expect(await applyEditCount()).toBe(countAfterFirst + 1);
-    expect(await harness.page.evaluate(() => window.__gpWebview.documentText())).toBe("helloB");
+    expect(await harness.page.evaluate(() => window.__gpWebview.documentText())).toBe("helloAB");
   });
 });
 

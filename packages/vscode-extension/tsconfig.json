@@ -99,5 +99,13 @@
   // that would otherwise catch a type error in a test file, and the run's
   // gate gives `typecheck` and `test` separate, equally load-bearing
   // commands).
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  // src/webview/tsconfig.json's own header names these two edits as the
+  // integrator step its DOM-aware program needs to be reachable at all:
+  // this DOM-free root program must never try to typecheck src/webview/**
+  // or tests/webview/** itself (no "DOM" in its own "lib" above — see that
+  // file's header for the full "DOM-free root, DOM-aware nested program"
+  // rationale). package.json's "typecheck" script is the companion edit —
+  // it chains both programs so `bun run typecheck` covers the whole package.
+  "exclude": ["src/webview", "tests/webview"]
 }

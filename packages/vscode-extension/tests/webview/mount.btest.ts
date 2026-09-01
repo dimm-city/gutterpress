@@ -111,14 +111,13 @@ describe("typed input produces byte-exact apply-edit messages", () => {
   // These two cases prove exactly what run spec DETAILS #4b asks for at the
   // MESSAGE layer: a real keystroke's {from, to, insert, expectedVersion}
   // is computed correctly and posted to the host. They deliberately do NOT
-  // also assert the edit's effect on `hostText()`/`hostVersion()` — see
-  // `known-issue-edit-version-reconciliation.btest.ts` in this same
-  // directory (and this run's report) for why that half is currently a
-  // CONFIRMED, separately-tracked defect outside this lane's write
-  // boundary, kept out of this file (and out of the `test:browser` chain)
-  // so it does not block these two message-shape proofs — or the other
-  // suites later in that chain — from reporting their own, real, passing
-  // status.
+  // also assert the edit's effect on `hostText()`/`hostVersion()` —
+  // host-side reconciliation (whether an accepted-looking edit actually
+  // reaches the fake host's own authoritative document) is proven
+  // separately and more thoroughly, including burst typing and a racing
+  // external change, by `edit-version-reconciliation.btest.ts` in this
+  // same directory — kept apart so a regression in reconciliation does not
+  // obscure a message-shape regression here, or vice versa.
   test("a real keystroke at the end of the document submits {from,to,insert,expectedVersion} exactly", async () => {
     const selector = await mount("hello world");
     await harness.page.waitForFunction(

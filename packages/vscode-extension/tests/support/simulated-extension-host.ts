@@ -47,10 +47,25 @@ import type { WebviewHostTransport } from "../../src/webview-host/proxy-document
  *     fixed small delay above rules out by construction.
  *
  * Together these prove `ProxyDocumentHost`'s staleness/first-snapshot
- * handling (`#lastSeenHostVersion`, `#hasAppliedLocalEdit`) against
- * realistic reordering — not an unrealistic one where even causally-ordered
- * replies from the SAME sender could arrive scrambled, which no real
- * `postMessage` channel would ever do.
+ * handling (`#lastKnownStamp`, `#hasAppliedLocalEdit`) against realistic
+ * reordering — not an unrealistic one where even causally-ordered replies
+ * from the SAME sender could arrive scrambled, which no real `postMessage`
+ * channel would ever do.
+ *
+ * RECONCILIATION ADDENDUM: this class speaks the STAMPED protocol —
+ * `#stamp` is this fake host's own base stamp (mirroring
+ * `../../src/host/document-gateway.ts`'s `#stamp` field-for-field: starts
+ * at 0, bumped exactly once per genuine state-changing reply — captured at
+ * `#reply()` CALL TIME rather than delivery time — but NOT for the
+ * `"ready"` reply, which reports pre-session state and must not stale-
+ * reject a pre-convergence edit; see `#reply`'s own comment for why), and
+ * `receive()`'s `"apply-edit"` handling accepts an
+ * edit only when its `base` matches `#stamp`, exactly mirroring
+ * `DocumentGateway.applyEdit`'s own check. This is what makes this class a
+ * faithful stand-in for a real `DocumentGateway` rather than a
+ * fake-host-only artifact — the SAME class the formerly-red regression test
+ * (`tests/webview/edit-version-reconciliation.btest.ts`) uses to reproduce
+ * a real gateway's behavior.
  */
 export interface SimulatedExtensionHostOptions {
   /** Returns the delay (ms) before the NEXT reply is delivered. Called once
@@ -72,6 +87,13 @@ export class SimulatedExtensionHost {
    *  point, regardless of its own transmission delay — see this module's
    *  header. Monotonically non-decreasing. */
   #nextDeliveryTime = 0;
+  /** The base stamp — see this module's header. Bumped inside `#reply()`,
+   *  at CALL time (not delivery time), for the same reason `#reply()`
+   *  already captures `snapshotAtCallTime` at call time: the stamp
+   *  identifies which authoritative state a reply describes, and that is
+   *  decided when the underlying change actually happens, not by however
+   *  much simulated transmission jitter happens to follow it. */
+  #stamp = 0;
 
   constructor(initial: DocumentSnapshot, options: SimulatedExtensionHostOptions = {}) {
     this.#snapshot = initial;
@@ -96,7 +118,9 @@ export class SimulatedExtensionHost {
     const message = result.value;
 
     if (message.type === "ready") {
-      this.#reply(READY_REPLY_DELAY_MS);
+      // Mirrors DocumentGateway.sendInitialSnapshot: does NOT bump the
+      // stamp — see #reply's own doc comment for why.
+      this.#reply(READY_REPLY_DELAY_MS, false);
       return;
     }
     if (message.type === "apply-edit") {
@@ -106,8 +130,18 @@ export class SimulatedExtensionHost {
       // which an independent externalChange() can queue and deliver first.
       const processingDelayMs = this.#latencyMs();
       setTimeout(() => {
-        const outcome = applyEditPure(this.#snapshot, message.edit);
-        if (outcome.ok) this.#snapshot = outcome.snapshot;
+        // Reconciliation addendum: the SAME base-stamp check
+        // DocumentGateway.applyEdit performs — a stale `base` skips the
+        // apply entirely (no vscode.applyEdit-equivalent attempted) and
+        // falls straight through to the reply below with the UNCHANGED
+        // snapshot; `expectedVersion` is forced to the current real
+        // version for the same reason DocumentGateway forces it (the
+        // `base` check above already decided staleness — this class's own
+        // version space is not `ProxyDocumentHost`'s mirror's).
+        if (message.base === this.#stamp) {
+          const outcome = applyEditPure(this.#snapshot, { ...message.edit, expectedVersion: this.#snapshot.version });
+          if (outcome.ok) this.#snapshot = outcome.snapshot;
+        }
         // Always reply with the fresh truth, exactly like DocumentGateway's
         // own single-reply-site design (accept and reject share this same
         // path, differing only in the snapshot's content).
@@ -151,15 +185,35 @@ export class SimulatedExtensionHost {
 
   /** Queues a `snapshot` reply with `transmissionDelayMs` latency, but
    *  never delivers it before `#nextDeliveryTime` — preserving FIFO order
-   *  relative to every reply queued earlier (see this module's header). */
-  #reply(transmissionDelayMs: number): void {
+   *  relative to every reply queued earlier (see this module's header).
+   *  Bumps and captures `#stamp` HERE, at call time — the same reasoning
+   *  as `snapshotAtCallTime` below, and the class header's own note on why
+   *  the stamp identifies the state at the moment of the underlying
+   *  change, not at delivery time.
+   *
+   *  `bump` defaults to `true` (every genuine state-changing reply — an
+   *  edit's accept/reject, an external change — advances the sequence).
+   *  The ONE caller that passes `false` is the `"ready"` handler: it
+   *  reports the document exactly as it stood before this session began —
+   *  nothing has changed yet — mirroring `DocumentGateway.sendInitialSnapshot`'s
+   *  own doc comment on why bumping there would stale-reject an edit
+   *  submitted before this reply arrives, for no reason connected to any
+   *  real state change. */
+  #reply(transmissionDelayMs: number, bump = true): void {
     const snapshotAtCallTime = this.#snapshot;
+    if (bump) this.#stamp += 1;
+    const stampAtCallTime = this.#stamp;
     const now = Date.now();
     const deliverAt = Math.max(now + transmissionDelayMs, this.#nextDeliveryTime);
     this.#nextDeliveryTime = deliverAt;
     setTimeout(
       () => {
-        this.#deliver({ type: "snapshot", protocolVersion: EDITOR_PROTOCOL_VERSION, snapshot: snapshotAtCallTime });
+        this.#deliver({
+          type: "snapshot",
+          protocolVersion: EDITOR_PROTOCOL_VERSION,
+          snapshot: snapshotAtCallTime,
+          baseStamp: stampAtCallTime,
+        });
       },
       Math.max(0, deliverAt - now),
     );

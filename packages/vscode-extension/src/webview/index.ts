@@ -1,7 +1,11 @@
 import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
 import { mountEditor, type EditorMount } from "@dimm-city/gutterpress-editor/web";
-import { ProxyDocumentHost, type WebviewHostTransport } from "../webview-host/proxy-document-host.ts";
-import type { PresentationInputMessage } from "../protocol/messages.ts";
+import { mountGutterpressEditor } from "@dimm-city/gutterpress-editor/gutterpress";
+import {
+  ProxyDocumentHost,
+  type PresentationInputPayload,
+  type WebviewHostTransport,
+} from "../webview-host/proxy-document-host.ts";
 
 /**
  * SFE-P3c Lane C — the real webview entry (run spec DETAILS #1, "THE
@@ -31,16 +35,19 @@ import type { PresentationInputMessage } from "../protocol/messages.ts";
  * `presentation-input` decision (D13) and for an `EDITOR_HOST_DISCONNECTED`
  * diagnostic (D14) at any later point in the session.
  *
- * PROJECTION-MESSAGE SEAM (run spec DETAILS #1): `src/protocol/messages.ts`
- * now defines `ProjectionMessage` (added mid-run, concurrently with this
- * file, by another phase of Lane A's own work) but it is not yet
- * consumable here — `ProxyDocumentHost` has no hook for it and
- * `validate.ts`'s dispatcher does not yet accept it. `mountRichSurface`
- * below is therefore ALWAYS today's `mountEditor` (standard-Markdown)
- * branch, which independently satisfies D9's "untrusted/plain files still
- * get rich editing." See that function's own header for the exact gap,
- * citations, and the ready-to-wire replacement, and this run's report for
- * the same note.
+ * PROJECTION UPGRADE (reconciliation addendum, integration lane D — the
+ * wiring this file's own seam comment on `mountRichSurface` used to defer):
+ * `handlePresentationInput` below mounts `mountEditor` (standard-Markdown)
+ * IMMEDIATELY on the session's own `mode` decision, then UPGRADES to
+ * `mountGutterpressEditor` (`@dimm-city/gutterpress-editor/gutterpress`) the
+ * moment a `presentation-input` resend carrying a `projection` arrives — a
+ * plain, imperative dispose-then-remount, exactly the desktop's own
+ * rebuild-and-remount contract for the equivalent decision. Mounting plain
+ * first keeps the editor usable from t=0 even if a plugin-aware build is
+ * slow, independently satisfies D9's "untrusted/plain files still get rich
+ * editing," and needs no missing-reactivity guard to get right (this file's
+ * own `handleDiagnostic`/`renderFallback` already dispose-and-replace a live
+ * `mount` imperatively, the SAME pattern this extends).
  */
 
 declare global {
@@ -116,7 +123,7 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
   // exactly one captured synchronous reply immediately after construction
   // completes.
   let hostConstructed = false;
-  let pendingPresentationInput: Pick<PresentationInputMessage, "mode" | "diagnostic"> | undefined;
+  let pendingPresentationInput: PresentationInputPayload | undefined;
 
   const host = new ProxyDocumentHost(
     { text: "", version: 0 },
@@ -140,34 +147,63 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
   }
 
   /**
-   * D13's rich-vs-fallback decision, fired exactly once on the initial
-   * handshake reply (`PresentationInputMessage`'s own doc comment,
-   * `../protocol/messages.ts`: "made once, at resolve time, not re-
-   * evaluated as the document grows or shrinks during the session"). At
-   * the moment this fires, `host.getSnapshot()` still holds the
-   * placeholder `{text: "", version: 0}` this function constructed above —
-   * the real initial text arrives moments later as the handshake's
-   * `snapshot` reply (sent third, after `presentation-input` and
-   * `trust-state` — see `provider.ts`'s own reply order) and reaches the
-   * mounted view through `ProxyDocumentHost`'s ordinary convergence path
-   * (`replaceExternal`, which `createVscodeEditorAdapter`'s host
-   * subscription already renders on its own) — the SAME mechanism an
-   * external file change uses, not a special case. This is the intended
-   * design (`ProxyDocumentHost`'s own doc comment: "the FIRST snapshot this
-   * proxy ever receives is always the reply to `ready`"), not a workaround.
+   * D13's rich-vs-fallback `mode` decision arrives once, on the initial
+   * handshake reply, and never changes for the session — but this SAME
+   * callback fires again on every later `presentation-input` resend the
+   * reconciliation addendum's message merge adds (`mode` unchanged,
+   * `projection`/`pluginCss`/`pluginErrors` newly populated or refreshed —
+   * `PresentationInputMessage`'s own doc comment, `../protocol/messages.ts`).
+   *
+   * At the moment the FIRST call fires, `host.getSnapshot()` still holds
+   * the placeholder `{text: "", version: 0}` this function constructed
+   * above — the real initial text arrives moments later as the
+   * handshake's `snapshot` reply (sent third, after `presentation-input`
+   * and `trust-state` — see `provider.ts`'s own reply order) and reaches
+   * the mounted view through `ProxyDocumentHost`'s ordinary convergence
+   * path (`replaceExternal`, which both `mountEditor` and
+   * `mountGutterpressEditor`'s host subscription already render on their
+   * own) — the SAME mechanism an external file change uses, not a special
+   * case. This is the intended design (`ProxyDocumentHost`'s own doc
+   * comment: "the FIRST snapshot this proxy ever receives is always the
+   * reply to `ready`"), not a workaround.
+   *
+   * PROJECTION UPGRADE (this file's own header): `mode: "rich"` with no
+   * `projection` yet mounts (or, on the very first call only, leaves
+   * mounted) the plain `mountEditor` surface; a `projection` field present
+   * — the FIRST time it arrives, or any later refresh — disposes whatever
+   * is currently mounted and mounts `mountGutterpressEditor` instead. There
+   * is no third "downgrade" case: once a projection has arrived, every
+   * further resend for this session carries one too (that message's own
+   * doc comment: "once a session's mode is rich and a projection has ever
+   * been sent, it is ALWAYS populated").
    *
    * Called either directly (a genuinely async host reply — the common,
    * realistic case) or replayed once, immediately above, for a reply that
    * arrived synchronously during construction — `host` is guaranteed fully
    * initialized by the time this function body ever runs, either way.
    */
-  function handlePresentationInput(input: Pick<PresentationInputMessage, "mode" | "diagnostic">): void {
+  function handlePresentationInput(input: PresentationInputPayload): void {
     if (disposed || fallbackShown) return;
     if (input.mode === "source-fallback") {
       renderFallback(input.diagnostic ?? UNRESOLVED_PRESENTATION_DIAGNOSTIC);
       return;
     }
-    mount = mountRichSurface(container, host, handleDiagnostic);
+    // Dev-visible only (a projection build failure still falls back to the
+    // SAFE base pipeline, per that message's own contract) — never blocks
+    // the mount below.
+    if (input.diagnostic) handleDiagnostic(input.diagnostic);
+
+    if (input.projection) {
+      mount?.dispose();
+      mount = mountGutterpressEditor(container, host, {
+        projection: input.projection,
+        extraCss: input.pluginCss || undefined,
+        onDiagnostic: handleDiagnostic,
+      });
+      return;
+    }
+
+    if (!mount) mount = mountRichSurface(container, host, handleDiagnostic);
   }
 
   /**
@@ -232,81 +268,15 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
 }
 
 /**
- * D9's mount decision (run spec DETAILS #1): "when a projection has
- * arrived ... use mountGutterpressEditor from
- * '@dimm-city/gutterpress-editor/gutterpress' with extraCss from the
- * message; otherwise mountEditor from '@dimm-city/gutterpress-editor/web'
- * (standard Markdown — D9 says untrusted/plain files still get rich
- * editing)".
- *
- * *** PROJECTION-MESSAGE SEAM — READ BEFORE CHANGING *** (see this run's
- * report for the same account): `../protocol/messages.ts` NOW defines
- * `ProjectionMessage` (`type: "projection"`, fields `projection: GutterpressProjection`,
- * `pluginCss: string`, `pluginErrors`, `diagnostic?`) — added mid-run by a
- * concurrent phase of Lane A's own work (`../project/projection.ts`'s
- * `resolveEditorProjectionMessage` already builds it; observed landing
- * while this file was being written). Its CONTRACT is stable and worth
- * citing exactly: "SENT ASYNCHRONOUSLY, ALWAYS AFTER the `ready` handshake's
- * other three messages ... RESENT on every authoritative change to the
- * document ... and on `trust-state` transitioning to trusted ... `projection`
- * is always populated with a SAFE fallback (the base pipeline)."
- *
- * It is NOT YET CONSUMABLE from this file, for two reasons verified by
- * reading (not guessing) the current state of files outside this lane's
- * write boundary:
- *
- *   1. `../webview-host/proxy-document-host.ts`'s `ProxyDocumentHostOptions`
- *      has no `onProjection` callback, and its `#dispatch` switch has no
- *      `case "projection"` — a `ProjectionMessage` that reached it would be
- *      silently dropped (matched by nothing).
- *   2. `../protocol/validate.ts`'s `validateHostToWebviewMessage` has no
- *      `case (type === "projection")` in its dispatch chain either, despite
- *      already importing/defining `validateProjectionShape` and
- *      `validateProjectionPluginErrors` — a `ProjectionMessage` reaching it
- *      today falls through to the "unreachable" tail and is REJECTED as
- *      `unknown-message-type`, before this file could ever see it.
- *
- * Both are Lane A's own files (`src/protocol/**`, `src/webview-host/**`) —
- * outside this lane's write boundary, and this run's own "Behavior that
- * must remain unchanged" clause forbids editing `packages/editor/src/**`
- * to invent a different seam instead. Rather than hand-roll a SECOND,
- * parallel `transport.onMessage` subscription with its own ad hoc
- * (re-)validation of `ProjectionMessage` — exactly the kind of duplicate
- * machinery beside the real validator P3e's ruling warns against, and one
- * this file has no authority to keep in sync with Lane A's still-moving
- * design for the two hooks above — this function stays the "otherwise"
- * branch for now, which independently satisfies D9 on its own (standard
- * Markdown rich editing, available immediately, regardless of workspace
- * trust or project detection).
- *
- * Once both hooks land, wire it here exactly as the desktop's
- * `RichEditor.svelte` does for the equivalent decision — and, since this
- * file's own `handleDiagnostic`/`renderFallback` already dispose-and-replace
- * a live `mount` imperatively (no reactive prop-watching to omit, unlike the
- * Svelte `{#key}` bug SFE-P3e's review found and fixed on desktop), the same
- * pattern extends safely to a live upgrade-on-arrival:
- *
- *   function handleProjection(message: Pick<ProjectionMessage, "projection" | "pluginCss" | "diagnostic">): void {
- *     if (disposed || fallbackShown) return;
- *     if (message.diagnostic) handleDiagnostic(message.diagnostic); // dev-visible only; never blocks the mount below
- *     mount?.dispose();
- *     mount = mountGutterpressEditor(container, host, {
- *       projection: message.projection,
- *       extraCss: message.pluginCss || undefined,
- *       onDiagnostic: handleDiagnostic,
- *     });
- *   }
- *
- * wired as an ADDITIONAL `ProxyDocumentHostOptions` callback (e.g.
- * `onProjection: handleProjection`) alongside `onDiagnostic`/
- * `onPresentationInput` above — mounting `mountEditor` immediately on
- * `presentation-input` and then UPGRADING to `mountGutterpressEditor` the
- * moment a projection arrives (first delivery or a later resend) is
- * deliberately chosen over waiting for the first projection before ever
- * mounting: it keeps the editor usable from t=0 even if a build is slow (or,
- * as observed while writing this seam, not yet wired at all), and the
- * explicit imperative dispose-then-remount above has no missing-reactivity
- * failure mode to repeat.
+ * D9's INITIAL mount decision for a `mode: "rich"` session: standard
+ * Markdown, via `mountEditor` from `@dimm-city/gutterpress-editor/web` —
+ * independently satisfies "untrusted/plain files still get rich editing,"
+ * available immediately regardless of workspace trust or project
+ * detection. `handlePresentationInput` (above) is what UPGRADES this to
+ * `mountGutterpressEditor` once a projection arrives — see that function's
+ * own doc comment and this file's header for the full upgrade design; this
+ * function itself stays the plain half only, called once, on the FIRST
+ * `presentation-input` a session ever receives.
  */
 function mountRichSurface(
   container: Element,
