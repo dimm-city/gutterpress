@@ -25,14 +25,20 @@ export const POST: RequestHandler = defineRoute<
         account && lib.publishCredentialKey
           ? lib.publishCredentialKey(host, account)
           : host;
-      // Best-effort revoke at Google BEFORE deleting locally (#221 D4/D6) —
-      // never blocks the local delete, and never logs the token value.
-      // Mirrors the CLI's `--disconnect` branch (commands/publish.ts).
+      // Delete the local credential FIRST (#221 C5) — the "Remove this key"
+      // button must resolve immediately, even offline. The best-effort Google
+      // revoke carries its own ~10s network timeout and its result is never
+      // read, so it runs in the BACKGROUND after the response is decided
+      // instead of blocking it. revokeGoogleCredential is designed to never
+      // throw, so firing it un-awaited here is safe; its own errors are still
+      // swallowed/logged exactly as before. Mirrors the CLI's `--disconnect`
+      // branch (commands/publish.ts) for the local-delete step; the CLI has
+      // no button to keep responsive, so it can afford to await the revoke.
       const existing = await hooks.tokenStore.get(key);
-      if (existing?.kind === 'google-oauth' && lib.revokeGoogleCredential) {
-        await lib.revokeGoogleCredential(existing.token);
-      }
       await hooks.tokenStore.delete(key);
+      if (existing?.kind === 'google-oauth' && lib.revokeGoogleCredential) {
+        void lib.revokeGoogleCredential(existing.token);
+      }
       return { ok: true };
     }),
 });
