@@ -62,4 +62,29 @@ naming P5a) — Lane B removes them WITH the code, per the ledger's ties.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+Three batches over `c33868f8..HEAD`, three rounds. Round 1: **5 CONFIRMED** —
+the sharpest being that the orphaned static viewer bundle was **regenerated
+by the build**: `build-engine-bundles.mjs` unconditionally copied the built
+viewer into `static/engine/` on every CLI library build, so a plain delete
+would have silently resurrected on the next `npm run build`. Fixed at the
+generator and proven with a clean-slate rebuild. Also confirmed: the ledger
+committed stale (no head SHA, proofs describing already-fixed defects as
+open); `ux-design-contract.md` still declared the PWA SHIPPED and treated
+the closed WebAdapter plan as normative; CLAUDE.md §8's capability class 3
+still justified the seam with the deleted FSA implementation; and the
+desktop README documented a browser-tab dev mode that now hard-throws
+before first paint. Round 2 caught the round-1 repair's own over-deletion
+(the shipped desktop auto-save spec went out with the PWA content, leaving a
+dangling citation — restored verbatim). Round 3: **approve, 0 confirmed,
+0 advisories**.
+
+The fail-loudly landmine question came back clean: the reviewer's own
+census confirmed no SSR/build/test path evaluates `getPlatform()`
+off-Electron.
+
+## Gate
+
+PASS — all 13 commands exit 0: install (frozen); typecheck (4 workspaces);
+cli build + 1913:60; editor 3038; desktop 5815:1 + check (889 files) + lint
++ build (render purity, 143 files); architecture (route ratchet 104 == 104);
+generated-files (1319 tracked); vendored; knip.
