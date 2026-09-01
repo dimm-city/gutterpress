@@ -25,6 +25,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPublishProviders } from "./lib/publish/registry.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = path.join(__dirname, "cli.ts");
@@ -142,6 +143,29 @@ function helpHasPositional(helpText: string): boolean {
   return /\bARGUMENTS\b/.test(helpText);
 }
 
+/**
+ * Parse the `--provider <id>     itch | drivethrurpg | kdp | ...` line out
+ * of README.md's `### \`gutterpress publish\`` section into its individual
+ * provider id tokens (B3 — the gdrive-publish review found this table was
+ * NOT actually pinned by the per-command flag/positional checks above:
+ * those compare flag NAMES and positional presence, never a flag's
+ * documented VALUES, so a future provider could be added to the registry
+ * without ever touching this line and nothing here would catch it).
+ */
+function parseReadmeProviderIds(readme: string): string[] {
+  const m = readme.match(/--provider <id>\s+([^\n]+)/);
+  if (!m?.[1]) {
+    throw new Error(
+      "readme-drift.test.ts: could not find the `--provider <id>` list in README.md's " +
+        "`gutterpress publish` section — update parseReadmeProviderIds if the format changed.",
+    );
+  }
+  return m[1]
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 const readmeSource = fs.readFileSync(README_PATH, "utf8");
 const registeredCommands = getRegisteredCommands();
 const readmeCommands = parseReadmeCommands(readmeSource);
@@ -192,4 +216,22 @@ describe("packages/cli/README.md command reference matches `--help` (M18)", () =
       });
     });
   }
+});
+
+describe("packages/cli/README.md `publish` provider table matches listPublishProviders() (B3)", () => {
+  test("every registered publish provider id is documented in the README's --provider list", () => {
+    const registeredIds = listPublishProviders()
+      .map((p) => p.id)
+      .sort();
+    const readmeIds = parseReadmeProviderIds(readmeSource);
+    const missing = registeredIds.filter((id) => !readmeIds.includes(id));
+    expect(missing).toEqual([]);
+  });
+
+  test("README's --provider list names no stale/unknown provider id", () => {
+    const registeredIds = new Set<string>(listPublishProviders().map((p) => p.id));
+    const readmeIds = parseReadmeProviderIds(readmeSource);
+    const stale = readmeIds.filter((id) => !registeredIds.has(id));
+    expect(stale).toEqual([]);
+  });
 });

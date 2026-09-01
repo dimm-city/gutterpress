@@ -463,8 +463,15 @@ explicit, so listing them all:
    revoke helper, new types) — the desktop reaches everything through
    `loadLib()`.
 7. CLI strings: `--provider` help/error lists in `commands/publish.ts`, and
-   the README provider table (`readme-drift.test.ts` pins these — it will
-   fail until both move together).
+   the README provider table. Correction (fs8cmn fix pass, review finding
+   B3): `readme-drift.test.ts` did NOT actually pin the README's provider
+   table at the time this line originally claimed it did — that test only
+   ever pinned per-command flags/positionals against `--help`, never the
+   provider id list. The README happened to be updated correctly for gdrive
+   anyway, but nothing enforced it. `readme-drift.test.ts` now has a
+   dedicated pair of tests for this (comparing `listPublishProviders()`
+   against the README's `--provider <id>` line), so the claim is accurate
+   going forward.
 8. `connectPublishProvider` (pasted-token flow) rejects `connect: "oauth"`
    providers with a pointer to the right gesture ("Run
    `gutterpress publish --provider gdrive --connect` / click Connect Google
@@ -588,7 +595,9 @@ mirroring `publish.test.ts` / `github-auth.test.ts` style):
 - [x] provider: folderId-vs-name-vs-create resolution, update-vs-create, quota
   fail-fast, env-credential override, named-account compound keys
   (`named-credentials.test.ts`), `connectPublishProvider` rejection (§4.8).
-- [x] `readme-drift.test.ts` + README provider list.
+- [x] `readme-drift.test.ts` + README provider list (the actual pinning test
+  for the provider id list was added in the fs8cmn fix pass — see the §4.7
+  correction above).
 Milestone: `gutterpress publish --provider gdrive` works end-to-end against a
 real account.
 
