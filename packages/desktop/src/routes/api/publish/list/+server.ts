@@ -57,6 +57,10 @@ export const POST: RequestHandler = defineRoute<
             label: info.label,
             kind: info.kind,
             format: info.format,
+            // #221 phase 3, D8 — present only for a provider that supports
+            // more than one format (gdrive); the wizard renders a PDF/Website
+            // choice only when this is set.
+            ...(info.formats && info.formats.length > 1 ? { formats: info.formats } : {}),
             description: info.description,
             fields: info.configFields,
             credentialRequired: info.credential.required,

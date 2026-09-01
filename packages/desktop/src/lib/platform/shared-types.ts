@@ -561,8 +561,16 @@ export interface PublishProviderCard {
   label: string;
   /** "api" = real upload; "guided" = staged package + checklist. */
   kind: "api" | "guided";
-  /** Which build output the provider publishes. */
+  /** Which build output the provider publishes BY DEFAULT (and, absent
+   *  `formats` below, the only one it ever publishes). */
   format: "pdf" | "html";
+  /**
+   * Present only for a provider that supports more than one format (#221
+   * phase 3, D8 — currently only gdrive: `["pdf", "html"]`). The wizard
+   * renders a PDF/Website choice for the card only when this is set; every
+   * other provider stays fixed on `format` above.
+   */
+  formats?: Array<"pdf" | "html">;
   description: string;
   /** The provider's declared settings fields — the panel renders these. */
   fields: PublishConfigFieldInfo[];

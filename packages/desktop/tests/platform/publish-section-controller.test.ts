@@ -257,6 +257,70 @@ test("pickPublishArtifact uses the PDF picker for a pdf-format card and the dire
   expect(h.ctrl.publishArtifactDrafts.pages).toBe("/picked/dist");
 });
 
+// ── Multi-format providers (#221 phase 3, D8 — gdrive) ──────────────────────
+
+const GDRIVE_CARD: PublishProviderCard = {
+  id: "gdrive",
+  label: "Google Drive",
+  kind: "api",
+  format: "pdf",
+  formats: ["pdf", "html"],
+  description: "d",
+  fields: [{ key: "folder", label: "Drive folder" }],
+  credentialRequired: true,
+  connected: true,
+  config: {},
+};
+
+test("effectiveFormat falls back to card.format for a provider with no formats array", () => {
+  const h = make();
+  expect(h.ctrl.effectiveFormat(CARD)).toBe("pdf");
+});
+
+test("effectiveFormat defaults to card.format when publish.<id>.format is unset", () => {
+  const h = make();
+  expect(h.ctrl.effectiveFormat(GDRIVE_CARD)).toBe("pdf");
+});
+
+test("effectiveFormat uses the saved publish.<id>.format when it's a value the card declares", () => {
+  const h = make();
+  const card = { ...GDRIVE_CARD, config: { format: "html" } };
+  expect(h.ctrl.effectiveFormat(card)).toBe("html");
+});
+
+test("effectiveFormat ignores an unrecognized saved format and falls back to the default", () => {
+  const h = make();
+  const card = { ...GDRIVE_CARD, config: { format: "epub" } };
+  expect(h.ctrl.effectiveFormat(card)).toBe("pdf");
+});
+
+test("effectiveFormat prefers an unsaved draft over the saved value", () => {
+  const h = make();
+  h.ctrl.setPublishConfigDraft("gdrive", "format", "html");
+  const card = { ...GDRIVE_CARD, config: { format: "pdf" } };
+  expect(h.ctrl.effectiveFormat(card)).toBe("html");
+});
+
+test("selectFormat writes publish.<id>.format via setConfig and reloads the cards", async () => {
+  const h = make({ cards: [GDRIVE_CARD] });
+  await h.ctrl.selectFormat("gdrive", "html");
+  expect(h.setConfigCalls).toEqual([{ dir: "/proj", providerId: "gdrive", values: { format: "html" } }]);
+  expect(h.ctrl.publishBusyId).toBeNull();
+});
+
+test("pickPublishArtifact branches on the EFFECTIVE format for a multi-format card, not its static default", async () => {
+  const h = make();
+  // Still "pdf" by default → the PDF picker.
+  await h.ctrl.pickPublishArtifact(GDRIVE_CARD);
+  expect(h.ctrl.publishArtifactDrafts.gdrive).toBe("/picked/book.pdf");
+
+  // Selected "html" → the directory picker, even though card.format itself
+  // is still the fixed "pdf" default.
+  const htmlSelected = { ...GDRIVE_CARD, config: { format: "html" } };
+  await h.ctrl.pickPublishArtifact(htmlSelected);
+  expect(h.ctrl.publishArtifactDrafts.gdrive).toBe("/picked/dist");
+});
+
 // ── Preflight (#105) ──────────────────────────────────────────────────────────
 
 const PF_ROW = (over: Partial<PreflightRow>): PreflightRow => ({

@@ -194,4 +194,16 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain("card?.connected && card.destinations");
     expect(wiz).toContain("void controller.loadDestinations(card.id)");
   });
+
+  // ── Format choice (#221 phase 3, D8 — gdrive PDF/Website) ────────────────
+  test("renders a PDF/Website choice only for a provider that declares more than one format", () => {
+    expect(wiz).toContain("card.formats && card.formats.length > 1");
+    expect(wiz).toContain("controller.effectiveFormat(card)");
+    expect(wiz).toContain("controller.selectFormat(card.id, fmt)");
+  });
+  test("the format choice mentions Drive is file delivery, not a live website", () => {
+    const idx = wiz.indexOf("card.formats && card.formats.length > 1");
+    const region = wiz.slice(idx, idx + 1600);
+    expect(region).toContain("Azure Static Web Apps");
+  });
 });

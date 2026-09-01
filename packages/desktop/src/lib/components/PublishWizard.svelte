@@ -275,6 +275,36 @@
       {@const busy = controller.publishBusyId === card.id}
       <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
 
+      {#if card.formats && card.formats.length > 1}
+        {@const chosenFormat = controller.effectiveFormat(card)}
+        <fieldset class="field fmt-choice">
+          <legend>What to publish</legend>
+          <ul class="dest-list">
+            {#each card.formats as fmt (fmt)}
+              <li>
+                <label class="dest" class:selected={chosenFormat === fmt}>
+                  <input
+                    type="radio"
+                    name={`pw-${card.id}-format`}
+                    checked={chosenFormat === fmt}
+                    onchange={() => controller.selectFormat(card.id, fmt)}
+                    disabled={busy}
+                  />
+                  <span class="dest-main">
+                    <span class="dest-name">{fmt === "pdf" ? "PDF" : "Website (HTML export)"}</span>
+                    <span class="dest-desc">
+                      {fmt === "pdf"
+                        ? "Upload the finished PDF file."
+                        : "Zip the website export into one file. Drive delivers files, not live sites — use Azure Static Web Apps to publish it as one."}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+        </fieldset>
+      {/if}
+
       {#if card.fields.length > 0}
         {#each card.fields as field (field.key)}
           <label class="field" for={`pw-${card.id}-${field.key}`}>
@@ -684,6 +714,10 @@
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 
+  /* Format choice (#221 phase 3, D8) reuses the .dest-list row language —
+     border/margin reset since it's a <fieldset>, not the .field <label>. */
+  .fmt-choice { border: none; margin: 0; padding: 0; }
+  .fmt-choice legend { font-size: 12px; color: var(--app-text-muted); font-weight: 500; padding: 0; margin: 0 0 6px; }
   .dest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); cursor: pointer; }
   .dest:hover { background: var(--app-surface-hover); }

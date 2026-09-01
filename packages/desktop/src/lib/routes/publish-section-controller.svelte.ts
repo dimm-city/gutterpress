@@ -156,6 +156,45 @@ export class PublishSectionController {
   };
 
   /**
+   * The EFFECTIVE selected format for a card (#221 phase 3, D8): an unsaved
+   * draft wins, then the saved `publish.<id>.format`, then the card's fixed
+   * default — mirrors the lib's `resolvePublishFormat` (run-publish.ts) so
+   * the wizard can never show/act on a choice the lib itself wouldn't honor.
+   * Returns `card.format` unchanged for every provider without `formats`.
+   */
+  effectiveFormat = (card: PublishProviderCard): "pdf" | "html" => {
+    const allowed = card.formats;
+    if (!allowed || allowed.length === 0) return card.format;
+    const draft = this.publishConfigDrafts[card.id]?.format;
+    if (draft && (allowed as string[]).includes(draft)) return draft as "pdf" | "html";
+    const saved = card.config.format;
+    if (saved && (allowed as string[]).includes(saved)) return saved as "pdf" | "html";
+    return card.format;
+  };
+
+  /**
+   * Choose which format this book publishes to a multi-format provider
+   * (#221 phase 3, D8 — gdrive only), written immediately to
+   * `publish.<id>.format` the same way `selectCredential` writes the
+   * credential choice, so the wizard's other format-dependent UI (the
+   * folder picker step, the artifact picker) sees it right away.
+   */
+  selectFormat = async (providerId: string, format: "pdf" | "html"): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.publishBusyId) return;
+    this.publishBusyId = providerId;
+    this.publishError = null;
+    try {
+      await this.deps.setConfig(projectDir, providerId, { format });
+      await this.loadPublish();
+    } catch (e) {
+      this.publishError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.publishBusyId = null;
+    }
+  };
+
+  /**
    * Choose which SAVED credential this book uses for a provider (book-level
    * selection, written to the manifest's `publish.<id>.credential`). An empty
    * `account` clears it back to the default credential. Reused automatically —
@@ -424,8 +463,15 @@ export class PublishSectionController {
 
   pickPublishArtifact = async (card: PublishProviderCard): Promise<void> => {
     try {
+      // #221 phase 3, D8: a gdrive card set to "html" must offer the
+      // directory picker, matching what azure-swa (fixed html) already does
+      // — branch on the EFFECTIVE selected format, not the card's static
+      // default, which stays "pdf" for gdrive regardless of the author's
+      // choice.
       const picked =
-        card.format === "pdf" ? await this.deps.pickPdfFile() : await this.deps.openDirectory();
+        this.effectiveFormat(card) === "pdf"
+          ? await this.deps.pickPdfFile()
+          : await this.deps.openDirectory();
       if (picked) {
         this.publishArtifactDrafts = { ...this.publishArtifactDrafts, [card.id]: picked };
       }

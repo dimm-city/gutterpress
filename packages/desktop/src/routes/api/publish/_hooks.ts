@@ -25,6 +25,10 @@ export interface LibPublishProviderInfo {
   label: string;
   kind: 'api' | 'guided';
   format: 'pdf' | 'html';
+  /** #221 phase 3, D8 — present only for a provider that supports more than
+   *  one format (gdrive: ["pdf", "html"]); absent for every other provider,
+   *  which keeps them fixed on `format` above. */
+  formats?: Array<'pdf' | 'html'>;
   description: string;
   configFields: Array<{ key: string; label: string; placeholder?: string }>;
   credential: {
