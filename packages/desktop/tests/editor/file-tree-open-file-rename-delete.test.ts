@@ -293,7 +293,16 @@ test("switching from CSS to Markdown uses the normal flush-before-select path", 
 test("+page delegates file selection and default loading to the behavior-tested session", () => {
   const root = path.resolve(import.meta.dir, "../..");
   const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  expect(page).toContain("return editorFiles.select(path)");
+  // SFE-P3e review round 2: `selectEditorFile` no longer directly returns
+  // `editorFiles.select(path)` — it awaits it, then ALSO awaits any pending
+  // rich-mode host rebuild that selection just triggered
+  // (`richDocHostPending`), before returning the same result — closing the
+  // cross-chapter commit race that finding describes. Still delegates the
+  // actual selection decision entirely to `editorFiles.select`, which is
+  // what this test's own name asserts; only the "and await the pending rich
+  // publish, too" wrapper is new, so the assertion checks for the awaited
+  // call rather than a bare `return`.
+  expect(page).toContain("await editorFiles.select(path)");
   expect(page).toContain("await editorFiles.ensureDefault(");
   expect(page).toContain("return editorFiles.restore(filePath, content)");
 });

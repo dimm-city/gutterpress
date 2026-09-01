@@ -439,3 +439,128 @@ test("joins the chapter id using the project directory's OWN separator (compared
   expect(h.selectEditorFileCalls).toEqual(["C:\\proj\\sub\\ch2.md"]);
   expect(outcome.ok).toBe(true);
 });
+
+// ── SFE-P3e review round 2: cross-chapter commit vs. an in-flight rich-host
+// publish ────────────────────────────────────────────────────────────────
+//
+// `+page.svelte`'s rich mode publishes its `richDocHost` only once an async
+// host projection round trip resolves (`rebuildRichDocHost`), while
+// `EditorFileSession.select` invokes `onActivate` -> `showEditorContent` ->
+// `rebuildRichDocHost` SYNCHRONOUSLY and returns before that round trip can
+// possibly have completed. `CommitEngine`'s cross-chapter path is exactly
+// `await this.deps.selectEditorFile(absPath)` followed immediately (no
+// further `await`) by `this.deps.editorHasFile(absPath)` — so whether the
+// commit reaches the live rich surface or silently falls through to
+// `buf.edit(...)` depends entirely on whether `selectEditorFile` waits for
+// that publish before resolving. This harness models that exact seam —
+// not a further mock of `CommitEngine` itself, which needed no change —
+// with a real `CommitEngine` and fakes standing in for `richDocHost` /
+// `richDocHostPending` (`+page.svelte`'s own names for these).
+
+describe("SFE-P3e round 2: cross-chapter commit vs. an in-flight rich-host publish", () => {
+  /**
+   * `awaitPending` toggles the ONE behavior under test: whether the
+   * `selectEditorFile`-shaped dep waits for the modeled `richDocHostPending`
+   * before resolving (the review round 2 fix) or returns immediately, the
+   * way round 1's own fix still did (the reopened defect). Everything else
+   * — the buffer swap, the async publish itself — is identical in both
+   * cases, so any behavior difference between the two tests below is
+   * attributable to exactly that one thing.
+   *
+   * The publish is modeled with a real macrotask (`setTimeout(…, 0)`), not
+   * a microtask chain: it must resolve strictly AFTER any hops a bare
+   * `async () => true` return needs, and a macrotask boundary guarantees
+   * that regardless of how many microtask ticks an engine gives a trivial
+   * async return — the same ordering the real IPC round trip
+   * (`ipcRenderer.invoke`) has relative to `selectEditorFile`'s own
+   * `return`.
+   */
+  function makeRichModeHarness(awaitPending: boolean) {
+    let richDocHost: { path: string; content: string } | null = null;
+
+    const outgoing = new FakeBuffer();
+    loadClean(outgoing, "/proj/ch1.md", "a\nline two\nc\n");
+    let liveBuffer: FakeBuffer = outgoing;
+    const target = new FakeBuffer();
+    loadClean(target, "/proj/ch2.md", "x\nline two\nz\n");
+
+    const selectEditorFileCalls: string[] = [];
+
+    const deps: CommitEngineDeps = {
+      currentDir: () => "/proj",
+      rendering: () => false,
+      buffer: () => liveBuffer,
+      selectEditorFile: async (path: string) => {
+        selectEditorFileCalls.push(path);
+        // Models `EditorFileSession.select` -> `onActivate` ->
+        // `showEditorContent`: the buffer swap happens synchronously, and
+        // so does KICKING OFF the rich-host rebuild — but not its
+        // publication.
+        liveBuffer = target;
+        richDocHost = null;
+        // `rebuildRichDocHost(path, content)` captures `content` as a plain
+        // STRING argument at kickoff time — it does not re-read `buf.content`
+        // later — so the async publish below reflects whatever the document
+        // held at THIS moment, not whatever it holds once the timer fires.
+        // This is exactly what makes the pre-fix race land on STALE
+        // pre-commit text: the commit mutates `target.content` after
+        // kickoff, but the in-flight publish already closed over the OLD
+        // value.
+        const snapshotAtKickoff = target.content;
+        const pending = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            richDocHost = { path, content: snapshotAtKickoff };
+            resolve();
+          }, 0);
+        });
+        if (awaitPending) await pending;
+        return true;
+      },
+      editorHasFile: (path) => richDocHost !== null && richDocHost.path === path,
+      applyRangeEdit: (_path, from, to, insert) => {
+        if (!richDocHost) throw new Error("applyRangeEdit called with no published richDocHost");
+        richDocHost.content = richDocHost.content.slice(0, from) + insert + richDocHost.content.slice(to);
+        // The rich host's own `subscribe` -> `onEditorChange` -> `buffer.edit`
+        // forwarding (see `commitEngine`'s construction comment in
+        // +page.svelte) is what keeps the buffer in agreement; modeled here
+        // as a direct write since the forwarding itself is not under test.
+        target.content = richDocHost.content;
+      },
+    };
+    return {
+      engine: new CommitEngine(deps),
+      outgoing,
+      target,
+      selectEditorFileCalls,
+      getRichDocHost: () => richDocHost,
+    };
+  }
+
+  test("pre-fix shape reproduced: without awaiting the pending publish, the commit silently falls through to buf.edit, and the rich host later publishes STALE pre-commit text", async () => {
+    const h = makeRichModeHarness(false);
+    const outcome = await h.engine.commitRangePatch(patch({ chapter: "ch2.md" }));
+    expect(outcome.ok).toBe(true);
+    // richDocHost was still null when editorHasFile was consulted (the
+    // publish had not landed yet), so the edit went to buf.edit — silently
+    // bypassing the rich surface, exactly the divergence the finding
+    // reproduced.
+    expect(h.target.editCalls).toEqual(["x\nline TWO\nz\n"]);
+    // Once the in-flight publish DOES land, it carries the PRE-commit
+    // snapshot it was built from — the exact state that would silently
+    // revert the commit on the next rich-mode edit.
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(h.getRichDocHost()?.content).toBe("x\nline two\nz\n");
+  });
+
+  test("fix: awaiting the pending publish routes the edit through the rich host, which carries POST-commit text", async () => {
+    const h = makeRichModeHarness(true);
+    const outcome = await h.engine.commitRangePatch(patch({ chapter: "ch2.md" }));
+    expect(outcome.ok).toBe(true);
+    // The edit reached the published rich host, not the buffer-only path.
+    expect(h.target.editCalls).toEqual([]);
+    const host = h.getRichDocHost();
+    expect(host).not.toBeNull();
+    expect(host?.path).toBe("/proj/ch2.md");
+    expect(host?.content).toBe("x\nline TWO\nz\n");
+  });
+});

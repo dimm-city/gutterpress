@@ -193,15 +193,19 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 //      code — because it IS the parser resolving container/list context,
 //      not a scanner approximating it with regexes and prefix-stripping.
 //   2. Every real `image`/`link_open` token the pipeline produces is
-//      stamped with its own exact literal source text and a GLOBAL
-//      occurrence number (`gutterpress/render`'s `inlineSourceMetaOf`/
+//      stamped with its own exact literal source text and an occurrence
+//      number (`gutterpress/render`'s `inlineSourceMetaOf`/
 //      `sourceTokenOccurrenceAt`, backing `inline-source.ts`'s
 //      `registerInlineSourceMetadata` — the SAME disambiguator the render
 //      path emits as `data-gp-source-token`/`data-gp-source-occurrence` for
-//      the desktop context menu's own DOM-to-source lookups). Computing
-//      that SAME occurrence number for the CANDIDATE under the caret and
-//      requiring an exact stamped match makes this a caret-scoped check,
-//      not merely a block-scoped one.
+//      the desktop context menu's own DOM-to-source lookups). That
+//      occurrence number is scoped to the ENCLOSING INLINE TOKEN's own
+//      content (`state.src` at parse time is one block's inline content,
+//      never the whole document — see `inline-source.ts`'s own header).
+//      Computing the CANDIDATE's occurrence the SAME way — scoped to the
+//      SAME enclosing block, not to the whole document — and requiring an
+//      exact stamped match makes this a caret-scoped check, not merely a
+//      block-scoped one.
 //
 // SFE-P3e review round 1 (CONFIRMED finding): the first cut of this section
 // asked only "does ANY real child in the enclosing block have this
@@ -215,6 +219,34 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 // longer satisfy each other's check either, since they never share a
 // literal token to begin with — `md.normalizeLink` plays no role here.
 //
+// SFE-P3e review round 2 (CONFIRMED finding): round 1's fix computed the
+// CANDIDATE's occurrence with `sourceTokenOccurrenceAt(text, ...)` — a
+// WHOLE-DOCUMENT scan — and compared it against the stamp, which is a
+// BLOCK-scoped count (`state.src` is the enclosing block's inline content,
+// not the document — see point 2 above). The two numbers therefore agreed
+// only when the enclosing block happened to start at document offset 0
+// (every committed fixture's shape), and disagreed everywhere else: a real
+// image in a SECOND paragraph was refused (its block-scoped stamp of `0`
+// never matched a whole-document count that included the first paragraph's
+// occurrences), while a code-span literal in a later block could falsely
+// match a real token's stamp by coincidence of whole-document counting (see
+// this file's own "over-acceptance fix" tests for the reproduction). The fix
+// scopes the CANDIDATE's own count to the SAME block the stamp was scoped
+// to, using `enclosingProseChildren`'s own resolved container: its `.map`
+// already gives that container's first line, so `text.slice(scopeFrom, …)` —
+// not `text` from `0` — is what `sourceTokenOccurrenceAt` now scans. This is
+// PROVABLY the same count `state.src` would have produced without needing
+// to reconstruct `state.src` itself (which strips container prefixes — list
+// indent, blockquote `>` markers — per line): a fixed-width prefix stripped
+// uniformly from every line in the container cannot change how many times a
+// single-line, non-prefix-crossing literal substring occurs before a given
+// point, since a stamped token never contains a newline (`inline-source.ts`
+// deliberately does not stamp one that does) and container sigils
+// (`>`, `-`, digits) cannot themselves spell `![`/`[…](`. See
+// `enclosingProseChildren`'s own header for the table-cell case, where the
+// resolved container widens to the whole row (no per-cell `.map`) rather
+// than narrowing to one cell.
+//
 // The regex-based candidate finders (`findImageTokenAtOffset`/
 // `findLinkTokenAtOffset`, `context-menu-actions.ts`) are UNCHANGED and
 // still locate the candidate span and its raw src/href — this section is
@@ -223,15 +255,38 @@ function refuse<T>(reason: CaretTokenRefusalReason): LocateResult<T> {
 type MarkdownRenderer = ReturnType<typeof createMarkdownRenderer>;
 type MarkdownToken = ReturnType<MarkdownRenderer["parse"]>[number];
 
-/** 0-based line number of `offset`, matching markdown-it's own `.map`
- *  convention (which line-indexes the ORIGINAL source, not any internal
- *  normalization) — see markdown-it's `Token.map`. */
-function lineNumberAt(text: string, offset: number): number {
-  let line = 0;
-  for (let i = 0; i < offset && i < text.length; i++) {
-    if (text[i] === "\n") line++;
+/** `starts[i]` is the char offset where 0-based line `i` begins — the
+ *  inverse table {@link lineNumberFor} and {@link offsetOfLine} share, so a
+ *  line number and an absolute char offset stay round-trippable within one
+ *  `pipelineImageRefusal`/`pipelineLinkRefusal` call (SFE-P3e review round
+ *  2 — see "Real-parser literal-region evidence" above). Counts only `\n`,
+ *  matching markdown-it's own `.map` convention (line-indexing the
+ *  ORIGINAL source, not any internal normalization) — see markdown-it's
+ *  `Token.map`; a bare `\r` with no following `\n` is not split on, same as
+ *  this file's line counting has always done. */
+function buildLineStarts(text: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") starts.push(i + 1);
   }
-  return line;
+  return starts;
+}
+
+/** 0-based line number of `offset`, via {@link buildLineStarts}'s table (binary search — `starts` is sorted ascending by construction). */
+function lineNumberFor(starts: readonly number[], offset: number): number {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid]! <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** Absolute char offset where 0-based `line` begins; `text.length` past the last recorded line (mirrors `packages/cli/src/lib/markdown/editor-projection.ts`'s own `lineStartOffset` — duplicated, not imported: packages/desktop must not reach into packages/cli internals beyond the public `gutterpress/render` surface already imported above). */
+function offsetOfLine(starts: readonly number[], text: string, line: number): number {
+  return line < starts.length ? starts[line]! : text.length;
 }
 
 /** Whether `line` falls inside a real `fence` or `code_block` token's own
@@ -249,6 +304,18 @@ function caretLineIsCodeBlock(tokens: readonly MarkdownToken[], line: number): b
   return false;
 }
 
+/** The result of resolving the caret's enclosing prose container: the real
+ *  inline children it covers, plus the absolute char offset where THAT
+ *  container's own first line begins — the scope
+ *  {@link pipelineImageRefusal}/{@link pipelineLinkRefusal} count occurrence
+ *  within (SFE-P3e review round 2; see "Real-parser literal-region
+ *  evidence" above for why a line-start offset is enough, without needing
+ *  to reconstruct the container's own inline `state.src`). */
+interface ProseScope {
+  readonly children: readonly MarkdownToken[];
+  readonly scopeFrom: number;
+}
+
 /** The real inline children covering `line`, gathered from the INNERMOST
  *  map-bearing block token whose own `.map` range contains it — not from
  *  the `inline` token's OWN `.map`, the way this used to look it up.
@@ -264,12 +331,22 @@ function caretLineIsCodeBlock(tokens: readonly MarkdownToken[], line: number): b
  *  `inline` token nested between that pair's open and close (map-less table
  *  cells included, since nothing here requires the individual `inline`
  *  token to carry its own map), finds the right children whether or not the
- *  immediate container happens to carry one.
+ *  immediate container happens to carry one. For an ordinary paragraph,
+ *  heading, or single-paragraph list item, that innermost container IS the
+ *  one `inline` token itself (its own `paragraph_open`/`heading_open`
+ *  carries a `.map` covering exactly its own lines and nothing wider), so
+ *  {@link ProseScope.scopeFrom} below is exact per-inline-token scope; for a
+ *  map-less table cell it widens to the whole ROW (one occurrence scope
+ *  shared by every cell in that row, since markdown-it stamps each cell's
+ *  occurrence independently but this module has no per-cell map to narrow
+ *  further) — a known, documented coarsening that only matters for two
+ *  cells of the SAME row sharing byte-identical image/link syntax, a shape
+ *  none of this module's required behavior covers.
  *
  *  `null` when no block covers `line` at all (a blank line, a top-level
  *  `html_block` with no wrapping container, or any other leaf with no
  *  inline content) — unchanged from before. */
-function enclosingProseChildren(tokens: readonly MarkdownToken[], line: number): readonly MarkdownToken[] | null {
+function enclosingProseChildren(tokens: readonly MarkdownToken[], starts: readonly number[], text: string, line: number): ProseScope | null {
   let openIndex = -1;
   let closeIndex = -1;
   const openStack: number[] = [];
@@ -295,7 +372,10 @@ function enclosingProseChildren(tokens: readonly MarkdownToken[], line: number):
   for (let i = openIndex + 1; i < closeIndex; i++) {
     if (tokens[i]!.type === "inline") children.push(...(tokens[i]!.children ?? []));
   }
-  return children;
+  // `tokens[openIndex]!.map` is non-null here: `openIndex` is only ever set
+  // at a site that already checked `token.map` truthy, above.
+  const scopeFrom = offsetOfLine(starts, text, tokens[openIndex]!.map![0]);
+  return { children, scopeFrom };
 }
 
 /**
@@ -306,15 +386,20 @@ function enclosingProseChildren(tokens: readonly MarkdownToken[], line: number):
  *
  * Caret-scoped, not block-scoped (SFE-P3e review round 1, CONFIRMED
  * finding — see this file's "Real-parser literal-region evidence" header):
- * computes `candidate`'s own occurrence number the IDENTICAL way
- * `registerInlineSourceMetadata` computed it while parsing (same function,
- * same whole-document scan — `sourceTokenOccurrenceAt`), then requires a
- * real `image` child stamped with that EXACT `{token, occurrence}` pair,
- * not merely a real image SOMEWHERE in the block sharing a normalized
- * `src`. A literal `` `![a](b.png)` `` code span and a real `![a](b.png)`
- * image in the same paragraph now resolve to DIFFERENT occurrence numbers
- * for the identical literal text, so the caret's own candidate is judged on
- * its own position, never on a sibling's.
+ * computes `candidate`'s own occurrence number the SAME way
+ * `registerInlineSourceMetadata` computed it while parsing — scoped to the
+ * SAME enclosing block, not to the whole document (SFE-P3e review round 2,
+ * CONFIRMED finding: `sourceTokenOccurrenceAt` over the whole document
+ * compared against a stamp scoped to one block's inline content agreed only
+ * when that block started at document offset 0; see the header for the
+ * full account and why scanning from the resolved container's own
+ * `scopeFrom` — not `0` — reproduces the SAME count the stamp used) — then
+ * requires a real `image` child stamped with that EXACT `{token,
+ * occurrence}` pair, not merely a real image SOMEWHERE in the block sharing
+ * a normalized `src`. A literal `` `![a](b.png)` `` code span and a real
+ * `![a](b.png)` image in the same paragraph now resolve to DIFFERENT
+ * occurrence numbers for the identical literal text, so the caret's own
+ * candidate is judged on its own position, never on a sibling's.
  */
 function pipelineImageRefusal(
   text: string,
@@ -323,12 +408,17 @@ function pipelineImageRefusal(
 ): CaretTokenRefusalReason | null {
   const md = createMarkdownRenderer();
   const tokens = md.parse(text, {});
-  const line = lineNumberAt(text, offset);
+  const starts = buildLineStarts(text);
+  const line = lineNumberFor(starts, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const children = enclosingProseChildren(tokens, line);
-  if (!children) return "no-token";
-  const occurrence = sourceTokenOccurrenceAt(text, candidate.tokenRaw, candidate.start);
-  const isReal = children.some((child) => {
+  const scope = enclosingProseChildren(tokens, starts, text, line);
+  if (!scope) return "no-token";
+  const occurrence = sourceTokenOccurrenceAt(
+    text.slice(scope.scopeFrom),
+    candidate.tokenRaw,
+    candidate.start - scope.scopeFrom,
+  );
+  const isReal = scope.children.some((child) => {
     if (child.type !== "image") return false;
     const source = inlineSourceMetaOf(child);
     return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;
@@ -346,12 +436,17 @@ function pipelineLinkRefusal(
 ): CaretTokenRefusalReason | null {
   const md = createMarkdownRenderer();
   const tokens = md.parse(text, {});
-  const line = lineNumberAt(text, offset);
+  const starts = buildLineStarts(text);
+  const line = lineNumberFor(starts, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const children = enclosingProseChildren(tokens, line);
-  if (!children) return "no-token";
-  const occurrence = sourceTokenOccurrenceAt(text, candidate.tokenRaw, candidate.start);
-  const isReal = children.some((child) => {
+  const scope = enclosingProseChildren(tokens, starts, text, line);
+  if (!scope) return "no-token";
+  const occurrence = sourceTokenOccurrenceAt(
+    text.slice(scope.scopeFrom),
+    candidate.tokenRaw,
+    candidate.start - scope.scopeFrom,
+  );
+  const isReal = scope.children.some((child) => {
     if (child.type !== "link_open") return false;
     const source = inlineSourceMetaOf(child);
     return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;

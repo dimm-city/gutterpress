@@ -350,3 +350,152 @@ describe("SFE-P3e over-refusal fix: images and links inside table cells", () => 
     expect(located.value.match.href).toBe("h.html");
   });
 });
+
+/**
+ * SFE-P3e review round 2 (CONFIRMED finding): every case above lives in a
+ * block that starts at document offset 0 — the ONE shape where a
+ * whole-document occurrence count and a block-scoped occurrence count
+ * happen to agree by coincidence. Round 1's fix computed the caret's own
+ * candidate occurrence with `sourceTokenOccurrenceAt(text, ...)` (a
+ * whole-document scan) but compared it against a stamp scoped to the
+ * enclosing block's own inline content — so the false-accept this section
+ * exists to close (a code span "wins" against a real occurrence elsewhere
+ * in the document) still reproduced whenever a code span preceded a real
+ * occurrence in an EARLIER block, and, separately, an ordinary real
+ * image/link repeated in a SECOND block was newly refused. This describe
+ * block pins both directions with the block boundary explicit (`\n\n`, a
+ * second list item, and so on) — none of it lives at offset 0 — and
+ * reproduces the exact shapes SFE-P3e.md's review round 2 finding recorded:
+ * "the same token in two paragraphs", "the same token in two list items", a
+ * code span in a later block with an earlier real occurrence (image and
+ * link), and the reverse.
+ */
+describe("SFE-P3e round 2: occurrence counting is scoped per block, not per document", () => {
+  test("the same image repeated in a SECOND paragraph resolves (not just the first)", () => {
+    const text = "![a](b.png)\n\nLater: ![a](b.png)\n";
+    const firstCaret = text.indexOf("b.png");
+    const secondCaret = text.lastIndexOf("b.png");
+    expect(secondCaret).toBeGreaterThan(firstCaret);
+
+    const first = locateImageAtCaret(text, firstCaret);
+    expect(first.ok).toBe(true);
+
+    const second = locateImageAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.src).toBe("b.png");
+  });
+
+  test("the same link repeated in a SECOND paragraph resolves (not just the first)", () => {
+    const text = "[t](h.html)\n\nLater: [t](h.html)\n";
+    const secondCaret = text.lastIndexOf("h.html");
+
+    const second = locateLinkAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.href).toBe("h.html");
+  });
+
+  test("the same image repeated across a HEADING-separated pair of paragraphs resolves on the second", () => {
+    const text = "# Title\n\n![a](b.png)\n\nMore text\n\n![a](b.png)\n";
+    const secondCaret = text.lastIndexOf("b.png");
+
+    const second = locateImageAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.src).toBe("b.png");
+  });
+
+  test("the same image repeated in a SECOND list item resolves (not just the first)", () => {
+    const text = "- ![a](b.png)\n- ![a](b.png)\n";
+    const firstCaret = text.indexOf("b.png");
+    const secondCaret = text.lastIndexOf("b.png");
+    expect(secondCaret).toBeGreaterThan(firstCaret);
+
+    const first = locateImageAtCaret(text, firstCaret);
+    expect(first.ok).toBe(true);
+
+    const second = locateImageAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.src).toBe("b.png");
+  });
+
+  test("the same link repeated in a SECOND list item resolves (not just the first)", () => {
+    const text = "- [t](h.html)\n- [t](h.html)\n";
+    const secondCaret = text.lastIndexOf("h.html");
+
+    const second = locateLinkAtCaret(text, secondCaret);
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.value.match.href).toBe("h.html");
+  });
+
+  test("a code span in a LATER block with an earlier REAL occurrence in a prior block still refuses (image)", () => {
+    const text = "Text ![a](b.png) one.\n\nLiteral `![a](b.png)` and real ![a](b.png).\n";
+    const codeSpanCaret = text.indexOf("`![a](b.png)`") + 5;
+    const realCaret = text.lastIndexOf("![a](b.png)") + 2;
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("b.png");
+  });
+
+  test("a code span in a LATER block with an earlier REAL occurrence in a prior block still refuses (link)", () => {
+    const text = "Text [t](h.html) one.\n\nLiteral `[t](h.html)` and real [t](h.html).\n";
+    const codeSpanCaret = text.indexOf("`[t](h.html)`") + 5;
+    const realCaret = text.lastIndexOf("[t](h.html)") + 2;
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateLinkAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateLinkAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.href).toBe("h.html");
+  });
+
+  test("reverse: a code span in an EARLIER block with a real occurrence LATER still refuses the code span and resolves the real one (image)", () => {
+    const text = "Literal `![a](b.png)` here.\n\nReal ![a](b.png) there.\n";
+    const codeSpanCaret = text.indexOf("`![a](b.png)`") + 5;
+    const realCaret = text.lastIndexOf("b.png");
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateImageAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateImageAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.src).toBe("b.png");
+  });
+
+  test("reverse: a code span in an EARLIER block with a real occurrence LATER still refuses the code span and resolves the real one (link)", () => {
+    const text = "Literal `[t](h.html)` here.\n\nReal [t](h.html) there.\n";
+    const codeSpanCaret = text.indexOf("`[t](h.html)`") + 5;
+    const realCaret = text.lastIndexOf("h.html");
+    expect(realCaret).toBeGreaterThan(codeSpanCaret);
+
+    const fake = locateLinkAtCaret(text, codeSpanCaret);
+    expect(fake.ok).toBe(false);
+    if (fake.ok) throw new Error("unreachable");
+    expect(fake.reason).toBe("no-token");
+
+    const real = locateLinkAtCaret(text, realCaret);
+    expect(real.ok).toBe(true);
+    if (!real.ok) throw new Error("unreachable");
+    expect(real.value.match.href).toBe("h.html");
+  });
+});

@@ -51,7 +51,7 @@ import type {
   BuildArgs,
   BuildResult,
   EditorProjectionArgs,
-  EditorProjectionResult,
+  EditorProjectionOutcome,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   UpdaterApi,
@@ -818,7 +818,7 @@ export class WebAdapter implements Platform {
   // `isDesktop()` is true AND a project is open, so the web target never
   // reaches this method in practice; the stub exists only so WebAdapter
   // keeps satisfying the full Platform interface.
-  buildEditorProjection(_args: EditorProjectionArgs): Promise<EditorProjectionResult> {
+  buildEditorProjection(_args: EditorProjectionArgs): Promise<EditorProjectionOutcome> {
     return rejectNotImplemented("buildEditorProjection");
   }
 

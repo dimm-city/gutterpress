@@ -363,6 +363,29 @@ export interface EditorProjectionResult {
   readonly pluginErrors: readonly EditorProjectionPluginError[];
 }
 
+/** D14 classification codes {@link HostServices.buildEditorProjection} can
+ *  resolve with instead of succeeding. */
+export type EditorProjectionFailureCode = "EDITOR_FILE_TOO_LARGE" | "EDITOR_PLUGIN_LOAD_FAILED";
+
+/**
+ * {@link HostServices.buildEditorProjection}'s actual return shape (SFE-P3e
+ * review round 2, CONFIRMED finding): a RESOLVED discriminated union, never
+ * a rejection carrying the failure classification. Electron's IPC boundary
+ * serializes a rejected `ipcMain.handle` error by stringifying it — the
+ * renderer's `ipcRenderer.invoke` rejection carries a reconstructed `Error`
+ * with only `message`/`stack`, never a custom own-property such as `.code`
+ * — so `EDITOR_FILE_TOO_LARGE`/`EDITOR_PLUGIN_LOAD_FAILED` could never have
+ * reached a caller that branched on a thrown error's `.code`, which is
+ * exactly the shape this used to be before this fix. Local to this file
+ * (D4: renderer types are decoupled from the lib/host, defined here rather
+ * than imported from `electron/editor-projection.ts`'s own
+ * `EditorProjectionOutcome` — this is that same shape's renderer-side
+ * mirror, kept structurally in sync by hand like `EditorProjectionResult`
+ * above already is). */
+export type EditorProjectionOutcome =
+  | ({ readonly ok: true } & EditorProjectionResult)
+  | { readonly ok: false; readonly code: EditorProjectionFailureCode; readonly message: string };
+
 /** OS appearance state (#48). Resolved against "system" theme mode. */
 export interface NativeThemeState {
   shouldUseDarkColors: boolean;
@@ -473,8 +496,13 @@ export interface HostServices {
    * in `pluginErrors`, and never blanks the projection). Electron only; the
    * WebAdapter rejects (see its own doc comment) — this run's renderer
    * wiring only calls this when a desktop project is open, matching D10.
+   *
+   * Resolves to {@link EditorProjectionOutcome} — `ok: false` for the two
+   * classified hard-failure shapes (D13's rich-mode ceiling; a manifest
+   * that fails to load outright), never a rejection for either (SFE-P3e
+   * review round 2 — see that type's own doc comment for why).
    */
-  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionResult>;
+  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionOutcome>;
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;

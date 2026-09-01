@@ -19,7 +19,7 @@ import type {
   BuildArgs,
   BuildResult,
   EditorProjectionArgs,
-  EditorProjectionResult,
+  EditorProjectionOutcome,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   UpdaterApi,
@@ -224,7 +224,7 @@ export class ElectronAdapter implements Platform {
 
   // SFE-P3e: straight passthrough — no FolderRef translation needed here
   // (unlike startPreview/build above), `projectDir` is already a plain path.
-  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionResult> {
+  buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionOutcome> {
     return bridge().buildEditorProjection(args);
   }
 

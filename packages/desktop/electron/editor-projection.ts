@@ -36,7 +36,54 @@
  * SAME degrade-and-report loader the live preview uses, receipt-verified
  * vendored npm plugins and local files alike. This module no longer carries
  * a second, narrower duplicate of that loader.
+ *
+ * ## IPC-boundary classification (SFE-P3e review round 2)
+ *
+ * `validateEditorProjectionArgs` and {@link resolveEditorProjection} below
+ * used to live in `main.ts` and its `api:editorProjection` handler used to
+ * let a thrown, `.code`-tagged `Error` propagate straight out of
+ * `ipcMain.handle`. That never worked: Electron serializes a REJECTED
+ * handler's error by stringifying it — the renderer's `ipcRenderer.invoke`
+ * rejection carries a reconstructed `Error` with only `message`/`stack`,
+ * never a custom own-property such as `.code` (confirmed against this exact
+ * channel: a thrown `Error` with `.code` set reaches the renderer as a
+ * plain `Error` with `.code === undefined`). So neither D14 classification
+ * this module produces — `EDITOR_FILE_TOO_LARGE` (D13's rich-mode ceiling)
+ * nor `EDITOR_PLUGIN_LOAD_FAILED` (a manifest that fails to load outright,
+ * distinct from a per-plugin degrade, which never throws) — could ever
+ * reach `+page.svelte`'s `buildRichProjection`, which branched on that
+ * (always-`undefined`) `.code`.
+ *
+ * The fix: classification travels in a RESOLVED value, never a rejection.
+ * {@link resolveEditorProjection} validates and builds the projection, and
+ * for the two named hard-failure shapes returns `{ ok: false, code,
+ * message }` instead of throwing — a plain, structured-cloneable value that
+ * crosses `ipcMain.handle`/`ipcRenderer.invoke` intact, the same as any
+ * other resolved IPC result. `main.ts`'s `api:editorProjection` handler
+ * calls this function directly and returns its result unchanged (no
+ * try/catch of its own needed there) — moved here, rather than kept in
+ * `main.ts`, so it is unit-testable the same way {@link buildHostEditorProjection}
+ * already is (this module's own "PURE ENOUGH TO UNIT TEST DIRECTLY" header
+ * note, now extended to the validation/classification step too) without
+ * needing to import `main.ts` itself, which has Electron-`app`-lifecycle
+ * side effects at module scope that make it unsafe to import under `bun
+ * test`. `validateEditorProjectionArgs` takes `activeWorkspaceRoot` as a
+ * parameter rather than reading `main.ts`'s module-scoped mutable variable,
+ * for the same reason: a pure function a test can call with any workspace
+ * root it likes, matching the `ExportController` injected-deps precedent
+ * (`electron/export/controller.ts`) for testable main-process logic.
+ *
+ * A validation failure OTHER than the size ceiling (a malformed `args`
+ * shape, or a `projectDir` that does not match the host's own open
+ * workspace) still throws a plain `Error` and rejects across IPC exactly as
+ * before — those are contract violations a well-behaved renderer never
+ * triggers in practice, not a D14 user-facing diagnostic with a "safe next
+ * action" to state, so there is no more specific classification to give
+ * them (D14: "a generic 'failed' errors at a boundary are a confirmed
+ * review finding unless no more specific classification is possible" — for
+ * these, none is).
  */
+import path from "node:path";
 import {
   createEditorProjection,
   createMarkdownRenderer,
@@ -111,4 +158,128 @@ export async function buildHostEditorProjection(
   });
 
   return { projection, pluginCss, pluginErrors };
+}
+
+// ── IPC-boundary validation and classification (SFE-P3e review round 2) ────
+// See the module header "IPC-boundary classification" for why this lives
+// here (testable without importing main.ts) and why classification must be
+// a resolved value, never a thrown `.code`.
+
+/** D13: rich mode's own file-size ceiling — a document too large for rich
+ *  mode at all should never reach a host projection build. */
+export const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+
+/** Thrown ONLY by {@link validateEditorProjectionArgs}'s D13 ceiling check —
+ *  a distinct class (not a plain `Error`) so {@link resolveEditorProjection}
+ *  can tell "the size ceiling" apart from every other validation failure
+ *  without parsing message text. Never crosses a process boundary itself
+ *  (`resolveEditorProjection` catches it and returns a plain, structured-
+ *  cloneable `{ ok: false, code: "EDITOR_FILE_TOO_LARGE", message }` value
+ *  instead) — it exists purely as an in-process discriminator. */
+export class EditorProjectionTooLargeError extends Error {}
+
+/**
+ * Runtime-validates `args` at the IPC boundary (D10: "runtime validation is
+ * required at every IPC request boundary") and returns the validated,
+ * host-authoritative arguments — never the caller's own unresolved
+ * `projectDir` string. Mirrors `fs:watchFolder`'s existing pattern in
+ * `main.ts`: `projectDir` must equal the host's OWN open workspace root
+ * (passed in as `activeWorkspaceRoot`, not read from module-scoped state —
+ * see the module header), so a compromised or buggy renderer cannot point
+ * this handler at an arbitrary directory. Throws a distinct, descriptive
+ * error per failure reason (typed errors, not one generic "invalid
+ * arguments" message); the D13 ceiling specifically throws
+ * {@link EditorProjectionTooLargeError}, not a plain `Error`, so its caller
+ * can classify it.
+ */
+export function validateEditorProjectionArgs(
+  args: unknown,
+  activeWorkspaceRoot: string | null,
+): EditorProjectionHostArgs {
+  if (!args || typeof args !== "object") {
+    throw new Error("api:editorProjection: expected an arguments object.");
+  }
+  const { projectDir, content, sourceVersion } = args as Record<string, unknown>;
+
+  if (typeof projectDir !== "string" || projectDir.length === 0) {
+    throw new Error("api:editorProjection: projectDir must be a non-empty string.");
+  }
+  if (!activeWorkspaceRoot || path.resolve(projectDir) !== activeWorkspaceRoot) {
+    throw new Error(
+      `api:editorProjection: projectDir must be the active workspace directory (got: ${projectDir}).`,
+    );
+  }
+  if (typeof content !== "string") {
+    throw new Error("api:editorProjection: content must be a string.");
+  }
+  if (Buffer.byteLength(content, "utf8") > RICH_MODE_MAX_CONTENT_BYTES) {
+    throw new EditorProjectionTooLargeError(
+      `api:editorProjection: content exceeds the ${RICH_MODE_MAX_CONTENT_BYTES}-byte rich-mode ceiling (D13).`,
+    );
+  }
+  if (typeof sourceVersion !== "number" || !Number.isFinite(sourceVersion) || sourceVersion < 0) {
+    throw new Error("api:editorProjection: sourceVersion must be a finite, non-negative number.");
+  }
+
+  // activeWorkspaceRoot (not the caller's raw projectDir) is what actually
+  // resolves manifest/plugin paths in buildHostEditorProjection — already
+  // proven equal above.
+  return { projectDir: activeWorkspaceRoot, content, sourceVersion };
+}
+
+/** D14 classification codes {@link resolveEditorProjection} can resolve
+ *  with instead of throwing (see the module header) — a subset of D14's
+ *  full vocabulary, exactly the two shapes this handler can actually
+ *  produce. */
+export type EditorProjectionFailureCode = "EDITOR_FILE_TOO_LARGE" | "EDITOR_PLUGIN_LOAD_FAILED";
+
+/**
+ * {@link resolveEditorProjection}'s result: either the successful
+ * {@link EditorProjectionHostResult} (`ok: true`), or one of the two named
+ * hard-failure classifications (`ok: false`) — never a rejection for either
+ * of those two cases (see the module header). Every field is plain,
+ * JSON-shaped data, so this value survives Electron's `ipcMain.handle` /
+ * `ipcRenderer.invoke` structured clone intact.
+ */
+export type EditorProjectionOutcome =
+  | ({ readonly ok: true } & EditorProjectionHostResult)
+  | { readonly ok: false; readonly code: EditorProjectionFailureCode; readonly message: string };
+
+/**
+ * The full `api:editorProjection` handler body: validate, then build —
+ * classifying the two named hard-failure shapes into a resolved
+ * {@link EditorProjectionOutcome} instead of letting them reject (see the
+ * module header for why a rejection cannot carry `.code` across IPC).
+ * `main.ts`'s `secureHandle("api:editorProjection", ...)` registration
+ * calls this directly and returns its result unchanged.
+ *
+ * Still THROWS (rejects) for a validation failure other than the size
+ * ceiling — a malformed `args` shape or a `projectDir` that does not match
+ * the open workspace — since those are contract violations with no more
+ * specific D14 classification to give (see the module header).
+ */
+export async function resolveEditorProjection(
+  args: unknown,
+  activeWorkspaceRoot: string | null,
+): Promise<EditorProjectionOutcome> {
+  let validated: EditorProjectionHostArgs;
+  try {
+    validated = validateEditorProjectionArgs(args, activeWorkspaceRoot);
+  } catch (e) {
+    if (e instanceof EditorProjectionTooLargeError) {
+      return { ok: false, code: "EDITOR_FILE_TOO_LARGE", message: e.message };
+    }
+    throw e;
+  }
+
+  try {
+    const result = await buildHostEditorProjection(validated);
+    return { ok: true, ...result };
+  } catch (e) {
+    // The host call itself failed outright (e.g. a malformed
+    // manifest.yaml) — never a per-plugin degrade, which never throws (see
+    // buildHostEditorProjection's own doc comment above).
+    const message = e instanceof Error ? e.message : String(e);
+    return { ok: false, code: "EDITOR_PLUGIN_LOAD_FAILED", message };
+  }
 }

@@ -17,20 +17,28 @@
  *
  * CAVEAT (SFE-P3e, mirrors `shared-types.ts`'s own documented
  * `ProjectSource`/`ProjectCapabilities` caveat): `EditorProjectionHostArgs`/
- * `EditorProjectionHostResult`/`EditorProjectionPluginError` are re-exported
- * from `./editor-projection` below, NOT from `shared-types.ts` — that file's
- * own rule is "no imports, ever" / "self-contained", but the projection
- * result wraps `gutterpress/render`'s own `GutterpressProjection`, a D6
- * lib-owned shape this file must not hand-mirror (a manual copy would drift
- * from the real render pipeline). `editor-projection.ts` lives inside
- * `electron/`, so this is a same-directory re-export, not a new package
- * boundary crossing.
+ * `EditorProjectionHostResult`/`EditorProjectionPluginError`/
+ * `EditorProjectionOutcome` are re-exported from `./editor-projection`
+ * below, NOT from `shared-types.ts` — that file's own rule is "no imports,
+ * ever" / "self-contained", but the projection result wraps
+ * `gutterpress/render`'s own `GutterpressProjection`, a D6 lib-owned shape
+ * this file must not hand-mirror (a manual copy would drift from the real
+ * render pipeline). `editor-projection.ts` lives inside `electron/`, so
+ * this is a same-directory re-export, not a new package boundary crossing.
+ * `EditorProjectionOutcome` (SFE-P3e review round 2) is the bridge's actual
+ * `buildEditorProjection` RESULT type — a resolved discriminated union, not
+ * a rejection, since Electron's IPC boundary strips a rejected handler's
+ * custom Error properties (see `editor-projection.ts`'s own header,
+ * "IPC-boundary classification"). `EditorProjectionHostResult` stays
+ * re-exported too: it is still `buildHostEditorProjection`'s own success
+ * type and `EditorProjectionOutcome`'s `ok: true` member is built from it.
  */
 
 export type {
   EditorProjectionHostArgs,
   EditorProjectionHostResult,
   EditorProjectionPluginError,
+  EditorProjectionOutcome,
 } from "./editor-projection";
 
 export type {

@@ -15,7 +15,7 @@ import type {
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
   EditorProjectionHostArgs,
-  EditorProjectionHostResult,
+  EditorProjectionOutcome,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -244,8 +244,10 @@ contextBridge.exposeInMainWorld("electron", {
   // SFE-P3e: the desktop rich editor's plugin-aware projection, built
   // host-side (real manifest + real loaded plugins) — see
   // electron/editor-projection.ts and main.ts's "api:editorProjection"
-  // handler for the validated boundary.
-  buildEditorProjection: (args: EditorProjectionHostArgs): Promise<EditorProjectionHostResult> =>
+  // handler for the validated boundary. Resolves to a discriminated
+  // `EditorProjectionOutcome`, never a `.code`-tagged rejection (SFE-P3e
+  // review round 2 — see editor-projection.ts's header for why).
+  buildEditorProjection: (args: EditorProjectionHostArgs): Promise<EditorProjectionOutcome> =>
     ipcRenderer.invoke("api:editorProjection", args),
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.

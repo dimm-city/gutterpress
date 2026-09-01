@@ -1356,12 +1356,19 @@
    */
 
   /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
-   *  paired with the `.code` `electron/main.ts`'s `validateEditorProjectionArgs`
-   *  sets on the error it throws once `content` exceeds D13's 2 MiB
-   *  rich-mode ceiling. SFE-P3e review round 1 (CONFIRMED finding): this
-   *  rejection used to fall into `buildRichProjection`'s catch below and
-   *  vanish into a `console.warn` only — the ceiling existed but had no
-   *  user-visible effect. Unlike {@link RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC}
+   *  shown when the resolved `EditorProjectionOutcome` names this code
+   *  (`electron/editor-projection.ts`'s `resolveEditorProjection`, once
+   *  `content` exceeds D13's 2 MiB rich-mode ceiling). SFE-P3e review round 1
+   *  (CONFIRMED finding): this used to vanish into a `console.warn` only —
+   *  the ceiling existed but had no user-visible effect. SFE-P3e review
+   *  round 2 (CONFIRMED finding): round 1's own fix branched on a thrown
+   *  error's `.code`, which Electron's IPC boundary never actually
+   *  delivers (a rejected `ipcMain.handle` handler is serialized to
+   *  `message`/`stack` only — custom own-properties do not survive), so
+   *  this branch was STILL unreachable after round 1 — see
+   *  `EditorProjectionOutcome`'s own doc comment (`platform/contract.ts`)
+   *  for the full account and the fix: classification now travels in a
+   *  RESOLVED value. Unlike {@link RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC}
    *  below, switching to source mode IS a real fix here (the document keeps
    *  editing, just without the rich surface), so this gets the `safeAction`
    *  `showRichDiagnostic`'s existing toast-with-action pattern turns into a
@@ -1375,13 +1382,16 @@
   /** D14 `EDITOR_PLUGIN_LOAD_FAILED` for the HOST projection call failing
    *  OUTRIGHT — the manifest itself could not be read/resolved. Distinct
    *  from the PER-PLUGIN `pluginLoadFailedDiagnostic` below, which never
-   *  reaches this catch (a per-plugin degrade never throws). SFE-P3e review
-   *  round 1 (CONFIRMED finding): this used to vanish into a `console.warn`
-   *  only, same as the file-too-large case above. No `safeAction`: the rest
-   *  of the document already fell back to the local, plugin-less
-   *  projection below (still fully editable), and switching to source mode
-   *  would not fix a broken manifest — a heads-up notice, not an action
-   *  prompt, matching `pluginLoadFailedDiagnostic`'s own reasoning. */
+   *  produces this outcome (a per-plugin degrade never fails the whole
+   *  call). SFE-P3e review round 1 (CONFIRMED finding): this used to vanish
+   *  into a `console.warn` only, same as the file-too-large case above.
+   *  SFE-P3e review round 2 (CONFIRMED finding): same unreachable-`.code`
+   *  defect as {@link RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC} above — see that
+   *  doc comment. No `safeAction`: the rest of the document already fell
+   *  back to the local, plugin-less projection below (still fully
+   *  editable), and switching to source mode would not fix a broken
+   *  manifest — a heads-up notice, not an action prompt, matching
+   *  `pluginLoadFailedDiagnostic`'s own reasoning. */
   const RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC: Diagnostic = {
     category: "EDITOR_PLUGIN_LOAD_FAILED",
     message:
@@ -1394,41 +1404,53 @@
   ): Promise<{ projection: GutterpressProjection; pluginCss: string | undefined }> {
     if (isDesktop() && lifecycle.currentDir) {
       try {
-        const result = await getPlatform().buildEditorProjection({
+        const outcome = await getPlatform().buildEditorProjection({
           projectDir: lifecycle.currentDir,
           content,
           sourceVersion,
         });
-        for (const pluginError of result.pluginErrors) {
-          showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
+        if (outcome.ok) {
+          for (const pluginError of outcome.pluginErrors) {
+            showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
+          }
+          return { projection: outcome.projection, pluginCss: outcome.pluginCss || undefined };
         }
-        return { projection: result.projection, pluginCss: result.pluginCss || undefined };
-      } catch (e) {
         // The host call itself failed outright (e.g. a malformed
         // manifest.yaml, or content over D13's rich-mode ceiling) — never a
-        // per-plugin degrade, which never throws (see result.pluginErrors
-        // above). SFE-P3e review round 1 (CONFIRMED finding): this used to
-        // vanish into a console.warn only, so neither failure had any
-        // user-visible effect and D13's ceiling had nothing to reuse.
-        // Classified by the boundary error's stable `code` (set in
-        // electron/main.ts's validateEditorProjectionArgs and its
-        // api:editorProjection handler) so this branches on data, not on
-        // English prose (D14: "generic 'failed' errors at a boundary are a
-        // confirmed review finding unless no more specific classification
-        // is possible"). Either classification still falls through to the
-        // same local, plugin-less build the no-project path already uses
-        // below, so the document stays fully editable rather than getting
-        // stuck with no projection at all (D14: unsupported rich behavior
-        // falls back, it never blanks the document) — the diagnostic is
-        // purely the "state the safe next action" half D14 also requires.
-        const code = (e as { code?: string } | null | undefined)?.code;
-        if (code === "EDITOR_FILE_TOO_LARGE") {
+        // per-plugin degrade, which never produces `outcome.ok === false`
+        // (see the `outcome.ok` branch above). SFE-P3e review round 1
+        // (CONFIRMED finding): this used to vanish into a console.warn
+        // only, so neither failure had any user-visible effect and D13's
+        // ceiling had nothing to reuse. SFE-P3e review round 2 (CONFIRMED
+        // finding): round 1's fix branched on a THROWN error's `.code`,
+        // which Electron's IPC boundary strips — `outcome.code` here is a
+        // field on a RESOLVED value instead, which does survive (see
+        // `EditorProjectionOutcome`'s own doc comment in
+        // `platform/contract.ts`). Classified by `outcome.code`, so this
+        // branches on data, not on English prose (D14: "generic 'failed'
+        // errors at a boundary are a confirmed review finding unless no
+        // more specific classification is possible"). Either
+        // classification still falls through to the same local,
+        // plugin-less build the no-project path already uses below, so the
+        // document stays fully editable rather than getting stuck with no
+        // projection at all (D14: unsupported rich behavior falls back, it
+        // never blanks the document) — the diagnostic is purely the "state
+        // the safe next action" half D14 also requires.
+        if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
           showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);
-        } else if (code === "EDITOR_PLUGIN_LOAD_FAILED") {
-          showRichDiagnostic(RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC);
         } else {
-          console.warn("buildEditorProjection failed; falling back to the local projection:", e);
+          showRichDiagnostic(RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC);
         }
+      } catch (e) {
+        // Anything else — a genuinely unexpected IPC/contract failure, not
+        // one of the two named classifications resolved above (a malformed
+        // `args` shape or mismatched `projectDir`, which the host still
+        // rejects rather than classifies — see `resolveEditorProjection`'s
+        // own doc comment for why: those are contract violations with no
+        // more specific D14 category to give). Still falls back to the
+        // local, plugin-less projection below rather than blanking the
+        // document.
+        console.warn("buildEditorProjection failed; falling back to the local projection:", e);
       }
     }
     return { projection: createEditorProjection(content, { sourceVersion }), pluginCss: undefined };
@@ -1516,6 +1538,37 @@
    * read by the template, only by the guard checks below. */
   let richDocHostEpoch = 0;
 
+  /**
+   * The CURRENT rebuild's in-flight publication, or `null` once nothing is
+   * pending — SFE-P3e review round 2 (CONFIRMED finding). Deferring
+   * `richDocHost`'s publication (round 1, directly below) reopened the
+   * exact bug its own fix targeted: `CommitEngine`'s cross-chapter path is
+   * a SYNCHRONOUS continuation of `EditorFileSession.select` ->
+   * `onActivate` -> `showEditorContent` -> `rebuildRichDocHost`, with no
+   * `await` of its own between that call and `selectEditorFile`'s wrapper
+   * (below) returning — so by the time `CommitEngine` went on to check the
+   * `richSurfaceActive` seam (the "editorHasFile"/"applyRangeEdit" wiring
+   * near the engine's construction), the host projection round trip
+   * (`buildRichProjection` — a real IPC round trip, not a microtask) could
+   * not possibly have resolved yet: `richDocHost` was still the PRE-switch
+   * value (or `null`), so the seam fell through to `buf.edit(...)` —
+   * precisely the stale-rich-surface bug that seam's own long comment
+   * (where `commitEngine` is constructed) documents as fixed. `EditorBuffer
+   * .edit()` does not report through `onContentReplaced`, so the committed
+   * write was invisible to the rich host; the in-flight rebuild then
+   * published `nextHost` built from the PRE-commit content, silently
+   * REVERTING the commit on the very next rich-mode edit. Not a narrow
+   * race — the window is a full IPC round trip, so it reproduced every
+   * time. Rather than widen `richSurfaceActive`'s seam to tolerate a
+   * not-yet-published host (which would just move the staleness elsewhere),
+   * `selectEditorFile` (below) awaits THIS promise before resolving, so
+   * every one of its callers — `CommitEngine` included — only sees
+   * `editorFiles.select()` complete once any rich-mode rebuild it triggered
+   * has ALSO published. Callers outside rich mode, or a rebuild the current
+   * file switch didn't touch, see this stay `null` and pay nothing extra.
+   * Not `$state` — same reasoning as `richDocHostEpoch` above. */
+  let richDocHostPending: Promise<void> | null = null;
+
   function rebuildRichDocHost(path: string | null, content: string): void {
     richDocHostUnsub?.();
     richDocHostUnsub = null;
@@ -1525,6 +1578,7 @@
       richDocHost = null;
       richProjection = null;
       richPluginCss = undefined;
+      richDocHostPending = null;
       return;
     }
     const nextHost = new DesktopDocumentHost(content, { documentId: path });
@@ -1548,12 +1602,21 @@
     // no published `richDocHost` yet to compare against; `disposeRichDocHost`
     // also bumps it, so a rebuild superseded by leaving rich mode entirely
     // is discarded too, not just one superseded by a later rebuild.
-    void buildRichProjection(content, nextHost.getSnapshot().version).then((result) => {
-      if (epoch !== richDocHostEpoch) return;
-      richProjection = result.projection;
-      richPluginCss = result.pluginCss;
-      richDocHost = nextHost;
-    });
+    //
+    // SFE-P3e review round 2 (CONFIRMED finding): deferring publication
+    // reopened the committed-preview-edit divergence `richDocHostPending`'s
+    // own doc comment above describes — `richDocHostPending` closes that
+    // window by giving `selectEditorFile` something to await.
+    richDocHostPending = buildRichProjection(content, nextHost.getSnapshot().version)
+      .then((result) => {
+        if (epoch !== richDocHostEpoch) return;
+        richProjection = result.projection;
+        richPluginCss = result.pluginCss;
+        richDocHost = nextHost;
+      })
+      .finally(() => {
+        if (epoch === richDocHostEpoch) richDocHostPending = null;
+      });
   }
 
   function disposeRichDocHost(): void {
@@ -1563,6 +1626,7 @@
     richDocHost = null;
     richProjection = null;
     richPluginCss = undefined;
+    richDocHostPending = null;
   }
 
   /** The one place rich mode is entered/exited (today: the hidden keyboard
@@ -2203,12 +2267,29 @@
    *
    * The session keeps the outgoing file active while the target reads and
    * performs one atomic handoff after any required flush succeeds.
+   *
+   * SFE-P3e review round 2 (CONFIRMED finding): also awaits
+   * `richDocHostPending` before returning — `editorFiles.select` invokes
+   * `onActivate` -> `showEditorContent` -> `rebuildRichDocHost`
+   * SYNCHRONOUSLY, but publishing the rebuilt `richDocHost` is itself async
+   * (see `richDocHostPending`'s own doc comment). `CommitEngine`'s
+   * cross-chapter commit path calls this function and then IMMEDIATELY
+   * checks the `richSurfaceActive` seam (`editorHasFile`/`applyRangeEdit`,
+   * where `commitEngine` is constructed) with no `await` of its own in
+   * between — without this, that seam would still see the PRE-switch
+   * `richDocHost` and silently fall through to the buffer-only write path
+   * in rich mode. Every other caller of `selectEditorFile` pays nothing
+   * extra: `richDocHostPending` is `null` whenever rich mode did not just
+   * start a rebuild (source mode active, a non-markdown file, or nothing
+   * changed), so the `await` resolves immediately.
    */
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
     if (!isDesktop()) return false;
-    return editorFiles.select(path);
+    const ok = await editorFiles.select(path);
+    if (richDocHostPending) await richDocHostPending;
+    return ok;
   }
 
   /**

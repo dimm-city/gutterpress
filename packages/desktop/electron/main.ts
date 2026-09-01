@@ -89,11 +89,7 @@ import {
   type ExportBuildArgs,
 } from "./export/controller";
 import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
-import {
-  buildHostEditorProjection,
-  type EditorProjectionHostArgs,
-  type EditorProjectionHostResult,
-} from "./editor-projection";
+import { resolveEditorProjection, type EditorProjectionOutcome } from "./editor-projection";
 import { GitHubDeviceFlow } from "./github-device-flow";
 import {
   MarkdownFileLaunchQueue,
@@ -1598,56 +1594,20 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 // currently editing. See electron/editor-projection.ts for the pure,
 // unit-tested implementation this handler validates arguments for and then
 // calls unchanged.
-
-/** D13: rich mode's own file-size ceiling, reused here — a document too
- *  large for rich mode at all should never reach a host projection build. */
-const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
-
-/**
- * Runtime-validates `args` at the IPC boundary (D10: "runtime validation is
- * required at every IPC request boundary") and returns the validated,
- * host-authoritative arguments — never the renderer's own unresolved
- * `projectDir` string. Mirrors `fs:watchFolder`'s existing pattern above:
- * `projectDir` must equal the host's OWN `activeWorkspaceRoot`, so a
- * compromised or buggy renderer cannot point this handler at an arbitrary
- * directory. Throws a distinct, descriptive error per failure reason
- * (typed errors, not one generic "invalid arguments" message).
- */
-function validateEditorProjectionArgs(args: unknown): EditorProjectionHostArgs {
-  if (!args || typeof args !== "object") {
-    throw new Error("api:editorProjection: expected an arguments object.");
-  }
-  const { projectDir, content, sourceVersion } = args as Record<string, unknown>;
-
-  if (typeof projectDir !== "string" || projectDir.length === 0) {
-    throw new Error("api:editorProjection: projectDir must be a non-empty string.");
-  }
-  if (!activeWorkspaceRoot || path.resolve(projectDir) !== activeWorkspaceRoot) {
-    throw new Error(
-      `api:editorProjection: projectDir must be the active workspace directory (got: ${projectDir}).`,
-    );
-  }
-  if (typeof content !== "string") {
-    throw new Error("api:editorProjection: content must be a string.");
-  }
-  if (Buffer.byteLength(content, "utf8") > RICH_MODE_MAX_CONTENT_BYTES) {
-    throw new Error(
-      `api:editorProjection: content exceeds the ${RICH_MODE_MAX_CONTENT_BYTES}-byte rich-mode ceiling (D13).`,
-    );
-  }
-  if (typeof sourceVersion !== "number" || !Number.isFinite(sourceVersion) || sourceVersion < 0) {
-    throw new Error("api:editorProjection: sourceVersion must be a finite, non-negative number.");
-  }
-
-  // activeWorkspaceRoot (not the renderer's raw projectDir) is what actually
-  // resolves manifest/plugin paths below — already proven equal above.
-  return { projectDir: activeWorkspaceRoot, content, sourceVersion };
-}
+//
+// SFE-P3e review round 2 (CONFIRMED finding): argument validation and D14
+// classification moved into `editor-projection.ts`'s `resolveEditorProjection`
+// — a rejected `ipcMain.handle` promise cannot carry a custom `.code`
+// property across Electron's IPC boundary (only `message`/`stack` survive
+// serialization), so the classification a caller needs to distinguish
+// `EDITOR_FILE_TOO_LARGE` from `EDITOR_PLUGIN_LOAD_FAILED` must travel in a
+// RESOLVED value instead. See that module's own header for the full
+// account. This handler is now a thin delegate, matching the `api:build`/
+// `ExportController` precedent just above.
 
 secureHandle(
   "api:editorProjection",
-  (_e, args: unknown): Promise<EditorProjectionHostResult> =>
-    buildHostEditorProjection(validateEditorProjectionArgs(args)),
+  (_e, args: unknown): Promise<EditorProjectionOutcome> => resolveEditorProjection(args, activeWorkspaceRoot),
 );
 
 // ──────────────────────────────────────────────────────────────────────────
