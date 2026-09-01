@@ -16,8 +16,8 @@
  *      --remote-debugging-port, a throwaway HOME, and xvfb-run when no DISPLAY.
  *      Run `npm run build && npm run electron:build` FIRST.
  *   3. Opens the temp project and waits for the INITIAL layout to finish.
- *   4. WARM RE-RENDER LOOP: rewrites a chapter through the desktop write route
- *      (the same settled-write handoff as editor save), then measures both write →
+ *   4. WARM RE-RENDER LOOP: rewrites a chapter through the `fs:writeFile` IPC
+ *      channel (the same settled-write handoff as editor save), then measures both write →
  *      visible chapter splice and the browser-side pagination suffix reported
  *      by the preview shell. Takes the median over several iterations (first is
  *      a discarded warm-up). Server evidence must report `Chapter updated`,
@@ -325,8 +325,10 @@ await evalJs(`(() => {
 })()`);
 
 // ── 6. warm re-render loop ───────────────────────────────────────────────────
-// Each iteration uses the same host route as editor save. The route's completed
-// write notifies preview directly, avoiding watcher settling and debounce.
+// Each iteration uses the same IPC channel as editor save
+// (window.electron.fs.writeFile → "fs:writeFile", see electron/preload.ts and
+// electron/api/fs.ts's fsWriteFile). The handler's completed write notifies
+// preview directly, avoiding watcher settling and debounce.
 const samples = [];
 const hotReloadSamples = [];
 const preShellSamples = [];
@@ -337,14 +339,14 @@ for (let it = 0; it < ITERATIONS; it++) {
   const outputStart = childText.length;
   const writeResult = await evalJs(`(async () => {
     window.__gutterpressHotReloadProbe = { startedAt: performance.now(), result: null };
-    const response = await fetch('/api/fs/write-file', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: ${JSON.stringify(chapterToPoke)}, content: ${JSON.stringify(nextContent)} }),
-    });
-    return { ok: response.ok, status: response.status, body: response.ok ? '' : await response.text() };
+    try {
+      await window.electron.fs.writeFile(${JSON.stringify(chapterToPoke)}, ${JSON.stringify(nextContent)});
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, body: String(e) };
+    }
   })()`);
-  if (!writeResult?.ok) bail(`desktop write route failed (${writeResult?.status}): ${writeResult?.body}`);
+  if (!writeResult?.ok) bail(`desktop write IPC channel failed: ${writeResult?.body}`);
 
   const finDeadline = Date.now() + RENDER_ACTIVE_CAP_S * 1000;
   let result = null;

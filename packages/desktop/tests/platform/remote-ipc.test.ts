@@ -11,8 +11,12 @@
  *
  * SECURITY (D12): the "no token in response" describe block proves the one
  * function that receives a raw token (`remoteConnectGenericHost`) never
- * echoes it back — the exact guarantee `handleRemoteErrors`'s redaction
- * comment and the deleted route both documented.
+ * echoes it back on a SUCCESS response — the exact guarantee
+ * `handleRemoteErrors`'s redaction comment and the deleted route both
+ * documented. Repair round 1 added a second case in the same block for the
+ * ERROR path: a transport failure whose message carries a credentialed URL
+ * must come back through `handleRemoteErrors` with that URL's userinfo
+ * redacted, not just logged — the original block covered only success shapes.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
@@ -373,6 +377,35 @@ describe("no token in response", () => {
     const list = await remoteListConnections();
     expect(JSON.stringify(conn)).not.toContain(SECRET);
     expect(JSON.stringify(list)).not.toContain(SECRET);
+  });
+
+  // Repair round 1: the block above only ever covered SUCCESS response
+  // shapes. `handleRemoteErrors`'s allowlist (REMOTE_FRIENDLY_ERROR) rethrows
+  // a matching message verbatim, and a transport failure can carry the
+  // request URL — including credentials — inside that message. This pins
+  // the ERROR path: `redactUrlCredentials` must strip URL userinfo from the
+  // rethrown message the renderer actually receives, not just the logged copy.
+  test("a transport error carrying a credentialed URL is redacted before it reaches the renderer", async () => {
+    const SECRET_URL_TOKEN = "ghp_secret";
+    registerHostServices({
+      ...baseServices(),
+      remote: {
+        ...remoteBase,
+        loadLib: async () => ({
+          syncProject: async () => {
+            throw new Error(`Couldn't reach https://author:${SECRET_URL_TOKEN}@git.example.com/book.git`);
+          },
+        }),
+      } as never,
+    });
+    const message = await remoteSync("/abs/project", "msg").then(
+      () => { throw new Error("expected remoteSync to reject"); },
+      (e: unknown) => (e instanceof Error ? e.message : String(e)),
+    );
+    expect(message).not.toContain(SECRET_URL_TOKEN);
+    expect(message).not.toContain("author:");
+    expect(message).toContain("Couldn't reach");
+    expect(message).toContain("//(redacted)@git.example.com/book.git");
   });
 });
 

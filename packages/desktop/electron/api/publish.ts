@@ -26,7 +26,15 @@
  * token and gets a connection-status object back from `lib.connectPublishProvider`
  * — the lib's own contract returns only `{connected, providerId}` (never the
  * token), and this handler forwards that result unchanged, exactly as the
- * deleted route did.
+ * deleted route did. This claim covers the SUCCESS response only.
+ *
+ * The ERROR path is a separate claim: `handlePublishErrors` (see
+ * `../server-bridge/friendly-errors.ts`) redacts URL userinfo
+ * (`//user:token@host/…`) from both the logged copy and the rethrown message
+ * a transport failure can carry — a repair added after the original SFE-P5c3
+ * "no token in response" tests were found to cover only success shapes.
+ * `publish-ipc.test.ts`'s "no token in response" block pins the error-path
+ * case separately; do not read the success-path cases alone as proof for both.
  */
 import path from "node:path";
 import { getRemoteHooks, type RemoteHooks, type TokenStore } from "../server-bridge/remote-hooks";

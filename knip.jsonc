@@ -142,17 +142,19 @@
         // Compile-time type assertion gates: never imported, but type-checked by
         // `svelte-check` (they live under src/, inside its tsconfig scope).
         "src/**/*.type-test.ts",
-        // The platform seam + typed api surface are documented scaffolding for
-        // the desktop platform work still in flight (plan D10/D11;
-        // platform-inventory.md §14) — intentional export surface, not dead
-        // code. `src/service-worker.{ts,js}` and `web-store.ts` dropped out of
-        // this list in P5a with the PWA/WebAdapter code they protected (plan
-        // D10). What remains, and its own deletion tie, kept until the tied
+        // The platform seam is documented scaffolding for the desktop
+        // platform work still in flight (plan D10/D11; platform-inventory.md
+        // §14) — intentional export surface, not dead code.
+        // `src/service-worker.{ts,js}` and `web-store.ts` dropped out of this
+        // list in P5a with the PWA/WebAdapter code they protected (plan
+        // D10). `src/lib/api.ts` — the typed `fetch("/api/…")` client this
+        // bullet used to protect — was deleted in SFE-P5c4 along with the
+        // last `src/routes/api/**` route it called; struck from this list in
+        // the same repair round that caught the resulting stale-entry knip
+        // hint. What remains, and its own deletion tie, kept until the tied
         // phase lands — do not remove before then:
-        //   index/contract/dtos/shared-types.ts — P5b narrows; may shrink or fully drop
-        //   api.ts                              — P5d deletes (with src/routes/api/**)
-        "src/lib/platform/{index,contract,dtos,shared-types}.ts",
-        "src/lib/api.ts"
+        //   index/contract/dtos/shared-types.ts — P5b narrowed this; landed, still live
+        "src/lib/platform/{index,contract,dtos,shared-types}.ts"
       ],
       "project": [
         "src/**/*.{ts,js,svelte,mjs}",

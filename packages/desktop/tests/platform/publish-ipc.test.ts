@@ -13,7 +13,11 @@
  * route's own `validate` step also ran before any lib call).
  *
  * SECURITY (D12): the "no token in response" describe block proves
- * `publishConnect` never echoes the raw token it received.
+ * `publishConnect` never echoes the raw token it received on a SUCCESS
+ * response. Repair round 1 added a second case in the same block for the
+ * ERROR path: a transport failure whose message carries a credentialed URL
+ * must come back through `handlePublishErrors` with that URL's userinfo
+ * redacted, not just logged — the original block covered only success shapes.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -255,6 +259,35 @@ describe("no token in response", () => {
     });
     const result = await publishConnect("/abs/project", "shopify", SECRET, undefined);
     expect(JSON.stringify(result)).not.toContain(SECRET);
+  });
+
+  // Repair round 1: the case above only ever covered the SUCCESS response
+  // shape. `handlePublishErrors`'s allowlist (PUBLISH_FRIENDLY_ERROR)
+  // rethrows a matching message verbatim, and a transport failure can carry
+  // the request URL — including credentials — inside that message. This pins
+  // the ERROR path: `redactUrlCredentials` must strip URL userinfo from the
+  // rethrown message the renderer actually receives, not just the logged copy.
+  test("a transport error carrying a credentialed URL is redacted before it reaches the renderer", async () => {
+    const SECRET_URL_TOKEN = "sk_live_super-secret";
+    registerHostServices({
+      ...baseServices(),
+      remote: {
+        ...remoteBase,
+        loadLib: async () => ({
+          runPublish: async () => {
+            throw new Error(`Couldn't reach https://author:${SECRET_URL_TOKEN}@git.example.com/book.git`);
+          },
+        }),
+      } as never,
+    });
+    const message = await publishRun("/abs/project", "itch", undefined, undefined).then(
+      () => { throw new Error("expected publishRun to reject"); },
+      (e: unknown) => (e instanceof Error ? e.message : String(e)),
+    );
+    expect(message).not.toContain(SECRET_URL_TOKEN);
+    expect(message).not.toContain("author:");
+    expect(message).toContain("Couldn't reach");
+    expect(message).toContain("//(redacted)@git.example.com/book.git");
   });
 });
 

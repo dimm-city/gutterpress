@@ -14,7 +14,8 @@
  * `Error(message)` here with the EXACT same message text — that text is what
  * every real caller (the capability module, `friendlyHostError`-scrubbed) reads.
  *
- * SECURITY (D12): token values never cross into the renderer.
+ * SECURITY (D12): token values never cross into the renderer on a SUCCESS
+ * response.
  *  - `remoteGetConnection`/`remoteListConnections` return only what
  *    `TokenStore.status()`/`listRedacted()` themselves produce — already
  *    redacted by that interface's own contract, unchanged here.
@@ -27,6 +28,15 @@
  *  - `remoteSync`/`remoteCloneRepository` pass the `TokenStore` object BY
  *    REFERENCE into the lib, never a raw token string; their results are the
  *    lib's own sync/clone outcome shapes, which carry no credential material.
+ *
+ * The ERROR path is a separate claim: `handleRemoteErrors` (see
+ * `../server-bridge/friendly-errors.ts`) redacts URL userinfo
+ * (`//user:token@host/…`) from both the logged copy and the rethrown message
+ * a transport failure can carry — a repair added after the original SFE-P5c3
+ * "no token in response" tests were found to cover only success shapes.
+ * `remote-ipc.test.ts`'s "no token in response" block pins the error-path
+ * case separately (a rejected message containing URL userinfo); do not read
+ * the success-path cases alone as proof for both.
  */
 import { getRemoteHooks, type RemoteHooks, type LibModule as RemoteLibModule, type TokenStore } from "../server-bridge/remote-hooks";
 import { getSyncSettingsHooks, type SyncSettingsHooks } from "../server-bridge/sync-settings-hooks";

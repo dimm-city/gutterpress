@@ -1393,6 +1393,23 @@ For every subrun:
 
 **Purpose:** Remove adapter-node and the internal HTTP application server after route count reaches zero.
 
+**Carried over from the P5c3+P5c4 repair round (round 1):** these four
+still-accurate descriptions of the local server this phase deletes were
+explicitly left untouched by that repair (route count reaching zero does not
+make them wrong yet — the server they describe is still running) but flagged
+so this phase's own sweep does not miss them:
+`packages/desktop/electron/sveltekit-host.ts` (module header — the file
+itself is Lane B's explicit deletion target, already named below),
+`packages/desktop/vite.config.ts` (header comment describing the
+adapter-node `fetch("/api/...")` architecture), `packages/desktop/electron/
+server-bridge/fs-guard.ts` (header's `/api/fs/*` route-path framing —
+Lane C's route-tree deletion should confirm whether this module's containment
+logic is still consumed by the migrated `fs:*` IPC handlers, and reword or
+fold the header accordingly), and `packages/desktop/README.md` (its
+architecture diagram lines describing `fetch("/api/…")` as "the bulk" of the
+renderer↔host surface, plus the neighboring `api.*` wrapper/`electron-adapter.ts`
+description — both now historical once this phase's Lane C deletes `api.ts`).
+
 **Lane A — Static build**
 
 - Switch SvelteKit adapter to the smallest compatible static output.

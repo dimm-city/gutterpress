@@ -13,21 +13,35 @@
  * present that rejection — e.g. `CrashRecoveryController.scan()`'s existing
  * "show nothing" UI fallback — is unchanged product behavior, not something
  * this transport migration alters.)
+ *
+ * Error semantics (run rule 2, repair round 1): scrubs the Electron IPC
+ * transport prefix (`friendlyHostError`) off a rejection before re-throwing
+ * — the same discipline every other capability module uses. This changes
+ * only the message text of the D7 rejection above, never whether it rejects.
  */
 import { bridge } from "$lib/platform/bridge";
+import { friendlyHostError } from "$lib/errors";
 import type { RecoveryEntry } from "$lib/platform/dtos";
 
+async function call<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (e) {
+    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
+  }
+}
+
 /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
-export function writeRecovery(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }> {
-  return bridge().recovery.write(filePath, content, baseMtimeMs);
+export async function writeRecovery(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }> {
+  return call(bridge().recovery.write(filePath, content, baseMtimeMs));
 }
 
 /** Clear a recovery snapshot after a successful disk save (#44). */
-export function clearRecovery(filePath: string): Promise<{ ok: boolean }> {
-  return bridge().recovery.clear(filePath);
+export async function clearRecovery(filePath: string): Promise<{ ok: boolean }> {
+  return call(bridge().recovery.clear(filePath));
 }
 
 /** List pending recovery snapshots for an opened project, newest first (#44). */
-export function listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
-  return bridge().recovery.list(projectDir);
+export async function listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
+  return call(bridge().recovery.list(projectDir));
 }

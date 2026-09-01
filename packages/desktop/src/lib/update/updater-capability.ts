@@ -13,20 +13,45 @@
  * `remote-capability.ts` are: `update-controller.svelte.ts` names it as a
  * distinct bounded context, and collapsing it into that one consumer would
  * just move the same five functions, not simplify anything.
+ *
+ * Error semantics (run rule 2): the three request/reply members
+ * (`getUpdaterStatus`/`checkForUpdate`/`downloadUpdate`) scrub the Electron
+ * IPC transport prefix (`friendlyHostError`) off a rejection's message
+ * before re-throwing — the same discipline
+ * `remote-capability.ts`/`vcs-capability.ts`/`project-config-capability.ts`/
+ * `files-capability.ts`/`app-lifecycle-capability.ts` use, so
+ * `update-controller.svelte.ts`'s `e instanceof Error ? e.message : …`
+ * toast handling never shows an author `Error invoking remote method
+ * 'updater:check': …`. Declaring these `async function` (rather than a
+ * plain function returning `call(...)`) also matters off-Electron: `bridge()`
+ * throws SYNCHRONOUSLY when no desktop host is present (see `bridge.ts`),
+ * and wrapping the body in an `async function` turns that synchronous throw
+ * into a rejected promise — the shape every `.catch()`/`await`-in-`try`
+ * caller (including `+page.svelte`'s `getDoctorDiagnostics().then().catch()`
+ * sibling in `doctor-capability.ts`) already assumes.
  */
 import { bridge } from "$lib/platform/bridge";
+import { friendlyHostError } from "$lib/errors";
 import type { UpdaterEvent, UpdaterStatus } from "$lib/platform/contract";
 
-export function getUpdaterStatus(): Promise<UpdaterStatus> {
-  return bridge().updater.getStatus();
+async function call<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (e) {
+    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
+  }
 }
 
-export function checkForUpdate(): Promise<UpdaterStatus> {
-  return bridge().updater.check();
+export async function getUpdaterStatus(): Promise<UpdaterStatus> {
+  return call(bridge().updater.getStatus());
 }
 
-export function downloadUpdate(): Promise<UpdaterStatus> {
-  return bridge().updater.download();
+export async function checkForUpdate(): Promise<UpdaterStatus> {
+  return call(bridge().updater.check());
+}
+
+export async function downloadUpdate(): Promise<UpdaterStatus> {
+  return call(bridge().updater.download());
 }
 
 export function applyUpdateNow(): Promise<{ applied: boolean; version?: string; error?: string }> {

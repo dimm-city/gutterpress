@@ -429,7 +429,7 @@ export interface DoctorToolStatus {
   installHint: string;
 }
 
-/** Full `/api/doctor` response — system + tool diagnostics for the Help dialog. */
+/** Full `doctor:getDiagnostics` IPC response — system + tool diagnostics for the Help dialog. */
 export interface DoctorDiagnostics {
   libVersion: string;
   desktopVersion: string;

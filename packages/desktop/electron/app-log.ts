@@ -9,9 +9,10 @@
 //
 // It writes ONE `.log` file into userData/logs/, beside the per-project
 // operation logs — which is the whole point: the start screen's Logs tab
-// (src/routes/api/log/{list,read} + LogsPanel.svelte) already lists and reads
-// every `.log` in that directory, so the app log appears there with no new
-// route and no UI change. `recovery-paths.ts`'s appLogPath() names it.
+// (electron/api/log.ts's logList/logRead IPC handlers + LogsPanel.svelte)
+// already lists and reads every `.log` in that directory, so the app log
+// appears there with no new IPC channel and no UI change. `recovery-paths.ts`'s
+// appLogPath() names it.
 //
 // Deliberately NOT a logging framework: no levels, no transports, no config,
 // no filtering. Two entry points sharing one writer, one file, one size cap.

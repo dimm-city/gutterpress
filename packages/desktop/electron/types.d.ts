@@ -333,7 +333,6 @@ declare global {
       onSyncStatus(cb: (data: unknown) => void): () => void;
       // setAutoSync/getStatus — SFE-P5c3: restored to typed IPC on the `sync`
       // member above.
-      // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
       // resolveSyncConflicts — dead (removed before this run; sync always converges).
       startPreview(args: { input: string }): Promise<PreviewStartResult>;
       stopPreview(): Promise<{ stopped: boolean }>;

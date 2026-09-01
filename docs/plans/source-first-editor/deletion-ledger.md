@@ -15,8 +15,8 @@ against them.
 
 | Metric | Baseline | Current | Delta |
 |---|---:|---:|---:|
-| Desktop HTTP routes (`+server.ts`) | 104 | 32 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, ratchet re-baselined 104→69; SFE-P5c2 `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` migrated — 37 more deleted, ratchet re-baselined 69→32; remaining groups migrate in P5c3–P5c4) | −72 |
-| IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | 89 (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`, every match a real registration — the generic function's own declaration, `function secureHandle<Args …>(`, does not match the literal substring) — the deliberate counterpart of the routes row above: baseline 12 → 13 before this run started (`feat(p3): plugin-aware rich-editor projection`, SFE-P3e's multi-line `api:editorProjection` registration, main.ts:1779 — outside this ledger row's P5c write ownership), then SFE-P5c1 added 39 (`fs`/`dialog`/`shell`/`log`/`app`, 13→52) and SFE-P5c2 added 37 (`project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style`, 52→89); remaining route groups migrate in P5c3–P5c4 and will grow this row further before P5d deletes the server and both this row and the routes row converge on the true net concept count | +77 |
+| Desktop HTTP routes (`+server.ts`) | 104 | 0 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, ratchet re-baselined 104→69; SFE-P5c2 `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` migrated — 37 more deleted, ratchet re-baselined 69→32; SFE-P5c3 `remote`/`sync`/`publish` migrated; SFE-P5c4 migrated `updater`/`recovery`/`doctor`/`lint`/`status`/`api`/`_lib` remnants and every route still standing, ratchet re-baselined 32→10→0 — route count is ZERO, this pair's stated finish line. Re-derived at HEAD `0758cb9e`: `find packages/desktop/src/routes -name "+server.ts" \| wc -l` → 0, and `packages/desktop/src/routes/api` no longer exists) | −104 |
+| IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | 120 (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`, every match a real registration — the generic function's own declaration, `function secureHandle<Args …>(`, does not match the literal substring; re-derived at HEAD `0758cb9e`) — the deliberate counterpart of the routes row above: baseline 12 → 13 before this run started (`feat(p3): plugin-aware rich-editor projection`, SFE-P3e's multi-line `api:editorProjection` registration, main.ts:1779 — outside this ledger row's P5c write ownership), then SFE-P5c1 added 39 (`fs`/`dialog`/`shell`/`log`/`app`, 13→52), SFE-P5c2 added 37 (`project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style`, 52→89), and SFE-P5c3+SFE-P5c4 together added 31 more (`remote`/`sync`/`publish`, then `updater`/`recovery`/`doctor`/`lint`/`status`, and every route still standing, 89→120); route migration is complete — this row and the routes row above have now converged: every deleted route became one or more IPC registrations, plus the one pre-existing P3e handler | +108 |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
 | `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
 | Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
@@ -1350,9 +1350,10 @@ class as reusing an existing DTO rather than inventing a parallel shape).
 ### SFE-P5c3 — 2026-09-01 — migrate `remote`/`sync`/`publish` to typed IPC (the credentials-sensitive group)
 
 Lane A (implementation). Base SHA `b77a6524` (SFE-P5c1+P5c2's committed
-review-repair head, per the P5c2 section above). Head SHA: uncommitted at
-hand-off — the integrator records the real SHA at commit time per this
-row's own instruction.
+review-repair head, per the P5c2 section above). Head SHA `4616add1`
+(`refactor(p5): P5c3 — remote, sync and publish routes to typed IPC`); the
+quoted diffstat below is reproducible as `git diff --numstat b77a6524
+4616add1`.
 
 **What was deleted:**
 
@@ -1525,10 +1526,30 @@ credential material and each is provably redaction-safe:
    the lib's own sync/clone/publish outcome shapes, none of which are
    typed to carry credential material.
 
-No channel returns a raw token. `remote:getConnection`'s comment
-("NEVER returns the token") and `publish:connect`'s ("Response is
-redacted") are the same invariants the deleted routes documented,
-preserved verbatim.
+No channel returns a raw token **on a success response**. `remote:getConnection`'s
+comment ("NEVER returns the token") and `publish:connect`'s ("Response is
+redacted") are the same invariants the deleted routes documented, preserved
+verbatim.
+
+That qualifier is load-bearing, not decorative: round-1 review found the
+four success-shape proofs above did not extend to the ERROR channel.
+`handleRemoteErrors`/`handlePublishErrors` (`electron/server-bridge/
+friendly-errors.ts`) rethrow any message matching their author-friendly
+allowlist VERBATIM, and a transport failure's message (or its `.cause`) can
+echo the request URL, including userinfo, when one is present — the
+functions' own `redactUrlCredentials` doc comment names this exact hazard.
+Before this repair round, `redactUrlCredentials` was applied only to the
+copy headed for `console.error`, not to the rethrown message the renderer
+actually receives, so a caught-but-friendly transport error could leak a
+token through the UI. No live exploit was found: the lib's remote/publish
+paths emit fixed author-facing strings by construction (this pair's own base
+commit, unchanged), so no real code path was observed producing a
+credentialed message. Fixed by redacting on the rethrow in both wrappers
+(one line each) and pinned with a new case in each file's existing "no token
+in response" describe block (`remote-ipc.test.ts`, `publish-ipc.test.ts`): a
+stubbed lib throw carrying `https://author:SECRET@git.example.com/book.git`
+now surfaces to the caller with the userinfo replaced by `(redacted)` and
+neither the token nor `author:` present in the message.
 
 **The merge/checkout rollback guarantee:** `remoteSync` calls
 `lib.syncProject(...)` with the identical argument shape
@@ -1641,8 +1662,8 @@ count the call-site pattern `connectGenericHost(` instead.
 ### SFE-P5c4 — 2026-09-01 — migrate `updater`/`recovery`/`doctor`/`lint` to typed IPC (the LAST route group — route ratchet reaches zero)
 
 Lane A (implementation). Base SHA `4616add1` (SFE-P5c1–P5c3's committed
-head). Head SHA: uncommitted at hand-off — the integrator records the real
-SHA at commit time per this row's own instruction.
+head). Head SHA `0758cb9e` (`refactor(p5): P5c4 — the last ten routes to
+typed IPC; route count ZERO`).
 
 **What was deleted:**
 
@@ -1881,7 +1902,7 @@ $ grep -rn '\bapi\s*\.\s*\(doctor\|recovery\|lint\|updater\)' packages/desktop/s
 | `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
 | `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity: OK` (143 files scanned in `build/client`, no forbidden host/node markers) |
 | `bun run check:architecture` (repo root) | 0 | route ratchet 0 == baseline 0; ProseMirror ban, D4 import direction, future-package rules all PASS |
-| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged; one informational "Refine entry pattern" hint on `packages/desktop/knip.jsonc`'s now-stale `src/lib/api.ts` entry glob — a repo-root config file outside this lane's write ownership, left for the lane that owns it (not a failure; knip still exits 0) |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged; one informational "Refine entry pattern" hint on repo-root `knip.jsonc`'s (not `packages/desktop/knip.jsonc` — there is no such file) now-stale `src/lib/api.ts` entry glob, fixed in this repair round: the entry was dropped and its comment bullet struck (see the finding this round addressed) |
 | `cd packages/desktop && npm run electron:build` | 0 | main/preload bundles build and pass `node --check` (not in this run's required VERIFY list; run as an extra sanity check since `main.ts`/`preload.ts`/`types.d.ts` all changed) |
 
 One real defect was found and fixed before hand-off, by actually running the

@@ -938,12 +938,18 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
-// Host-service hook groups for server routes (Phase 2A) (ARCH review #31).
-// The SvelteKit handler runs in this same process but in a separate Vite
-// bundle scope. Each group below is a plain object built where its
-// dependencies live; none of them writes to globalThis on its own — they are
-// all handed to ONE `registerHostServices()` call once every group exists
-// (see the end of this section, next to the former conflict-preview site).
+// Host-service hook groups (Phase 2A) (ARCH review #31). Through SFE-P5c3,
+// these were consumed by both the IPC handlers registered in this file and
+// the SvelteKit `+server.ts` routes running in a separate Vite bundle scope
+// (hence the shared `registerHostServices()` seam rather than plain module
+// state). SFE-P5c4 deleted the last `+server.ts` route, so every group below
+// is now consumed only by `electron/api/*.ts`, in this same process and
+// bundle — the seam stays because `electron/api/*.ts` still can't reach
+// main.ts's module-private state any other way. Each group below is a plain
+// object built where its dependencies live; none of them writes to
+// globalThis on its own — they are all handed to ONE `registerHostServices()`
+// call once every group exists (see the end of this section, next to the
+// former conflict-preview site).
 // ──────────────────────────────────────────────────────────────────────────
 const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
@@ -1443,8 +1449,10 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   return projectDir;
 }
 
-// Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
-// module (friendlyVcsError), consumed by the SvelteKit routes.
+// Error sanitization for vcs:* lives in the shared server-bridge/friendly-errors
+// module (friendlyVcsError), consumed by the vcs:* IPC handlers in
+// electron/api/vcs.ts (SFE-P5c2 — the last SvelteKit vcs/*​/+server.ts route
+// that used to call it directly is gone).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
@@ -1454,16 +1462,22 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
 
 const GITHUB_HOST = "github.com";
 
-// lib + tokenStore + GITHUB_HOST for remote SvelteKit server routes (Phase 2F).
-// The routes live in a separate Vite bundle and cannot directly import from
-// main.ts; they access these through the collapsed host object instead.
+// lib + tokenStore + GITHUB_HOST for the remote:* IPC handlers
+// (electron/api/remote.ts, SFE-P5c3). Through SFE-P5c3, these fed the
+// SvelteKit remote/*​/+server.ts routes too, running in a separate Vite
+// bundle that could not import from main.ts directly — hence the collapsed
+// host object rather than a plain import. SFE-P5c4 deleted the last
+// +server.ts route; the object stays because electron/api/remote.ts still
+// can't reach main.ts's module-private state (mainWindow, safeSend) any
+// other way.
 //
-// cloneRepository (ARCH review #8) is a bound closure — not a raw piece —
-// for the same reason: the route that calls it cannot see `mainWindow`
+// cloneRepository is a bound closure — not a raw piece — for the same
+// reason: electron/api/remote.ts's IPC handler cannot see `mainWindow`
 // directly, so the closure below does the FULL operation (validation, lib
-// call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
-// ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
-// these hooks are the raw operation.
+// call, clone-progress push) the handler used to do inline. Friendly-error
+// sanitization (handleRemoteErrors) stays at the IPC HANDLER, matching every
+// other remote:* handler (e.g. remoteSync in electron/api/remote.ts) — these
+// hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks<LibModule> = {
   loadLib,
   tokenStore: electronTokenStore,

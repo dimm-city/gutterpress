@@ -539,7 +539,6 @@ contextBridge.exposeInMainWorld("electron", {
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
 
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
   // resolveSyncConflicts — dead (removed before this run; sync always converges).
 
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
