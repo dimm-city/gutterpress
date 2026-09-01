@@ -64,8 +64,8 @@ Two production commits, sequential per the run's Lane A-then-B ordering
 | `731aee7e` | Desktop (`InlineEditController`, `CommitEngine`, context-menu mutation half, `PreviewClient`'s block-edit surface) | 18 | −4,172 (336 insertions, 4,508 deletions) |
 | `6080b4a4` | Book (`preview-interface.js`, `preview-bridge.js`, `preview-shell.js`; protocol v8 → v9) | 7 | −722 (147 insertions, 869 deletions) |
 | **Run total (two commits, production + test)** | | 25 files | **−4,894** |
-| Round-1 review repair (uncommitted; `selection-search.ts` + its test) | Desktop | 2 | −791 (0 insertions, 791 deletions) |
-| **Run total including round-1 repair** | | 27 files | **−5,685** |
+| Round-1 review repair (`0944088b`; `inline-editing.pw.mjs`, `selection-search.ts` + its test, comment/doc fixes) | Desktop | 7 | −1,825 (50 insertions, 1,875 deletions) |
+| **Run total including round-1 repair** | | 32 files | **−6,719** |
 
 Lane C's own doc edits (this ledger, `docs/inline-editing-plan.md`,
 `docs/adr/0009-inline-editing-source-ranges.md`,
@@ -151,6 +151,24 @@ replacement, not a removed record.
   `packages/desktop/src/lib/editor/selection-search.ts` (358 lines) and
   `packages/desktop/tests/editor/selection-search.test.ts` (433 lines), 791
   lines not counted in the two commits' totals above.
+- **`packages/desktop/tests/integration/inline-editing.pw.mjs`** (1,047
+  lines) — **deleted in round 1 of review repair (`0944088b`), added to this
+  list per `mutation-inventory.md:281-289`'s explicit requirement that it
+  "should be listed, not silently dropped" when P4a removes or repurposes
+  it.** It was the packaged-Electron Playwright E2E smoke test for in-flow
+  block editing (real mouse/keyboard input driving `startEdit`/`finishEdit`,
+  the `beginBlockEdit`/`endBlockEdit` protocol pair, and the block-edit
+  context-menu item) — every one of its 16 checks exercised the mutation
+  surface this run deletes. The decision taken was to delete the file
+  outright rather than reduce it to the D8 read-only E2E surface (go-to-source,
+  image-reveal, link-copy, selection-copy), because none of its checks
+  covered anything D8 keeps — there was no subset to salvage. Deleted with
+  it: the `test:inline:packaged` script (`packages/desktop/package.json`)
+  that ran it, and two comment rewrites in
+  `.github/workflows/render-perf-gate.yml` — the header's path citation now
+  names only `tests/perf/render-gate.mjs`, and the stale "inline-editing
+  stays excluded … 15/16 under xvfb" paragraph is replaced with an accurate
+  note that the file was deleted with the feature.
 - **Book-side in-flow editing block** — `preview-interface.js`'s
   `startEdit`/`finishEdit`, the caret/repagination helpers, the
   dblclick-to-edit listener, and the edit-mode CSS (453 of the file's lines
