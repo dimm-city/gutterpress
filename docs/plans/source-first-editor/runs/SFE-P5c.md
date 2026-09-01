@@ -69,4 +69,35 @@ runs after each review pass.
 
 ## Review log
 
-<!-- Appended by the review stages. -->
+**Pass 1 (P5c1+P5c2, `dc900e96..c90ac668` + repair `b77a6524`):** approve
+after one round. 9 CONFIRMED — the two that justify the security focus:
+`fs:delete` lost its fail-closed VCS-hooks gate in migration (a delete could
+proceed un-snapshotted; restored with a file-survives-rejection regression
+test), and `tpl:listCustom` exposed an unvalidated renderer-supplied
+absolute path (zero real callers — the parameter was deleted from the IPC
+surface). Also: a dropped settings-read try/catch, a four-way bridge drift
+(including a silently dropped `watchFolder`), a re-implemented shared
+function, host-services test-isolation leaks, and ledger corrections.
+
+**Pass 2 (P5c3+P5c4, `b77a6524..0758cb9e` + repairs `df6e9f4f`,
+`f1f369e1`):** approve after two rounds. 9+3 CONFIRMED — the directed D12
+attack LANDED: the remote/publish error path forwarded an unredacted
+message, so a git remote URL with embedded credentials could cross to the
+renderer on the rethrow (the sanitizers redacted the log, not the throw).
+Fixed in both wrappers with error-path tests driving a credentialed URL
+through the REAL handlers. Also: the CI perf gate still POSTed to a deleted
+route; P5c4's capability modules missed the friendlyHostError scrub (raw
+IPC error prefixes reached author-visible surfaces); the publish-error
+JSON-envelope workaround had outlived its transport (deleted, AP-32);
+knip's entry for the deleted api.ts; ledger SHAs/metrics; and a
+fossil-comment sweep. Round 2 held a false "no assertions were dropped"
+claim open until it was actually true.
+
+## Gates
+
+Both passes: PASS, all 13 commands exit 0. End state after P5c4:
+**route ratchet 0 == baseline 0**, `src/routes/api/` absent, `api.ts`
+deleted, `fetch("/api/…")` zero across the package, 120 validated IPC
+handlers (+108 over the P0a baseline of 12, the deliberate counterpart of
+−104 routes), desktop 5889:1:0, svelte-check 688 files clean, render purity
+clean.

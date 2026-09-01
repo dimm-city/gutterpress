@@ -24,7 +24,7 @@
 | AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | **Evidenced** (SFE-P4: eight-identifier search proofs pasted in the deletion ledger with exactly two ruled residual classes — one v9 version-history comment and absence-asserting test strings; protocol v8→v9; the characterization suites and the 1,047-line packaged E2E of the deleted feature removed; net −6,719 LOC) |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | **Evidenced** (SFE-P5a: WebAdapter/web-fs/web-store/fsa.d.ts/service-worker/web manifest and four test suites deleted with pasted search proofs; getPlatform() fails loudly off-Electron; the build step that silently regenerated the orphaned viewer bundle fixed at the generator; ~-3,100 LOC net) |
 | AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | **Evidenced** (SFE-P5b: getPlatform()/Platform/HostServices/ElectronAdapter deleted; five feature-owned capability modules over one bridge accessor; two deliberate collapses into sole consumers; five dead members deleted with proofs; the full inventory and api.ts→P5c assignment in capability-map.md, audited by the review) |
-| AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Pending |
+| AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Evidenced for the route/client half (SFE-P5c: 104 → 0 routes across four subruns, api.ts deleted, every operation on validated typed IPC, two D12 leaks caught and fixed in review; the server deletion and packaged smoke remain P5d) |
 | AC-17 | Composition roots reduced | P6 | Responsibility review and module tests | Pending |
 | AC-18 | Public compatibility preserved | All | CLI/API/build/preview/publish gates | Pending |
 | AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Evidenced for P0b (generated-file + architecture checks wired into the CI build job, each with a self-test proving pass and fail paths; P6 additions pending) |
@@ -730,5 +730,40 @@
   "acceptanceUpdates": ["AC-15 evidenced"],
   "deletionLedgerUpdates": ["Platform/HostServices locator + 253-line adapter + 5 dead members deleted; net production +49 (modules replace forwarding), tests +280"],
   "checkpointSummary": "The desktop app has no service locator: five feature-owned capability modules over one bridge accessor, two honest collapses instead of ceremony modules, and a review that spent most of its force making the capability map — P5c's dispatch document — tell the exact truth."
+}
+```
+
+### SFE-P5c — Desktop HTTP APIs to typed IPC (four subruns)
+
+```json
+{
+  "status": "complete",
+  "baseSha": "dc900e96",
+  "headSha": "f1f369e1",
+  "history": [
+    "f6a6bb2d refactor(p5): P5c1 — fs/dialog/shell/log/app (104→69)",
+    "c90ac668 refactor(p5): P5c2 — nine project-config groups (69→32)",
+    "b77a6524 fix(p5): pass-1 review repair",
+    "4616add1 refactor(p5): P5c3 — remote/sync/publish (32→10)",
+    "0758cb9e refactor(p5): P5c4 — the last ten; ZERO routes",
+    "df6e9f4f / f1f369e1 fix(p5): pass-2 review repairs"
+  ],
+  "confirmedFindings": [
+    "Pass 1: fs:delete lost its fail-closed VCS-hooks gate (restored, regression-tested); tpl:listCustom exposed an unvalidated renderer-supplied absolute path (parameter deleted); dropped try/catch; four-way bridge drift incl. a silently dropped watchFolder; a re-implemented shared function; test-isolation leaks; ledger corrections",
+    "Pass 2: the remote/publish error rethrow could carry a credentialed git URL to the renderer — the sanitizers redacted the log, not the throw (fixed in both wrappers, error-path tests drive a credentialed URL through the real handlers); the CI perf gate still POSTed to a deleted route; P5c4's capability modules missed the error scrub; the publish-error envelope workaround outlived its transport (AP-32, deleted); a false no-assertions-dropped claim held open until true"
+  ],
+  "advisories": [
+    "The electron/server-bridge hooks bags survive with their rationale (reaching main-bundle mutable state) — P5d/P6 may simplify once the server dies",
+    "P5d's sweep must not miss the still-live server descriptions the fossil sweep deliberately left accurate (sveltekit-host.ts, vite.config, fs-guard, README) — forward-pointer added to the plan's P5d section"
+  ],
+  "gate": {
+    "commands": [
+      "both passes: install / typecheck (4 workspaces) / cli build + 1913:60 / editor 3038 / desktop 5889:1 + check (688 files) + lint + build (render purity) / architecture (0==0) / generated-files / vendored / knip — all 13 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-16 evidenced for the route/client half"],
+  "deletionLedgerUpdates": ["Desktop HTTP routes 104 → 0 (−104); IPC handlers 12 → 120 (+108); api.ts and the _lib route factory deleted; per-subrun diffstats recorded with SHAs"],
+  "checkpointSummary": "Every desktop operation now crosses one validated, typed boundary. The reviews earned their keep twice over: a fail-closed gate lost in mechanical migration, and a credentialed-URL leak through an error rethrow that only a directed attack would have found. P5d deletes the server the routes no longer need."
 }
 ```
