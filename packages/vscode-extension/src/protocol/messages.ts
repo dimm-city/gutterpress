@@ -1,25 +1,35 @@
 import type { Diagnostic, DocumentSnapshot, SourceEdit } from "@dimm-city/gutterpress-editor/core";
+import type { GutterpressProjection } from "gutterpress/render";
 
 /**
  * SFE-P3c Lane A — the host<->webview wire protocol shapes (D3/D9/D12).
  *
  * BROWSER-SAFE BY CONSTRUCTION: this file imports only type-only members
- * from `@dimm-city/gutterpress-editor/core` (erased at compile time) and
- * declares plain data interfaces — no `vscode`, no `node:*`, no runtime
- * dependency of any kind. `tools/check-architecture.mjs`'s webview-purity
- * rule (this run's deliverable 6) enforces this mechanically for everything
- * under `src/protocol/**`, so this file's own purity is self-checking, not
- * merely a comment's promise.
+ * from `@dimm-city/gutterpress-editor/core` and `gutterpress/render`
+ * (erased at compile time — the latter is the SAME type-only import
+ * pattern `packages/editor/src/gutterpress/mount.ts` etc. already use for
+ * `GutterpressProjection` in browser-target code; see {@link ProjectionMessage}'s
+ * own doc comment) and declares plain data interfaces — no `vscode`, no
+ * `node:*`, no VALUE import of any kind, so no runtime dependency of any
+ * kind ships in a bundle that imports this file. `tools/check-architecture.mjs`'s
+ * webview-purity rule (this run's deliverable 6) enforces this mechanically
+ * for everything under `src/protocol/**`, so this file's own purity is
+ * self-checking, not merely a comment's promise.
  *
  * MINIMALITY (run spec DETAILS #1: "Keep the message set MINIMAL — only
  * messages something in this run actually sends"): every message below has
  * a real sender and a real consumer inside THIS run's own deliverables
  * (`src/host/document-gateway.ts`, `src/webview-host/proxy-document-host.ts`,
- * `src/provider.ts`) — see each message's own doc comment for exactly who
- * sends and who reads it. No message anticipates a capability a later lane
- * or run might want; Lane B/C add their own message kinds in their own
- * runs if they turn out to need one (P3e's ruling: prefer the smallest
- * design that fully satisfies the specification).
+ * `src/provider.ts`, `src/project/projection.ts`) — see each message's own
+ * doc comment for exactly who sends and who reads it. No message
+ * anticipates a capability a later lane or run might want; Lane C adds its
+ * own message kinds in its own run if it turns out to need one (P3e's
+ * ruling: prefer the smallest design that fully satisfies the
+ * specification). `ProjectionMessage` (added in this run's second phase,
+ * deliverable 2) is the one exception to "every message from THIS run's
+ * FIRST phase" — it is new in this same run, not a later one, because it is
+ * the one thing `mountGutterpressEditor` cannot do without: "mountGutterpressEditor
+ * REQUIRES a projection; nothing produces one today" (run spec DETAILS #2).
  *
  * VERSIONING (D1/D3): every message carries `protocolVersion`, checked by
  * `../protocol/validate.ts` against `EDITOR_PROTOCOL_VERSION` on BOTH sides
@@ -181,11 +191,88 @@ export interface DisconnectMessage {
   readonly diagnostic: Diagnostic;
 }
 
+/**
+ * One plugin that failed to load, degrade-and-report style (D14
+ * `EDITOR_PLUGIN_LOAD_FAILED`). Mirrors
+ * `packages/desktop/electron/editor-projection.ts`'s
+ * `EditorProjectionPluginError` shape field-for-field — NOT imported from
+ * there: D4 forbids `packages/vscode-extension` importing `packages/desktop`
+ * (a Svelte/Electron product shell, not a shared library; enforced by
+ * `tools/check-architecture.mjs`). The real LOADING logic this describes the
+ * output of is genuinely shared (`gutterpress/plugins`'s `loadPluginsWithCss`
+ * — see `../project/projection.ts`); only this two-field wire shape is
+ * duplicated, which is a plain data contract, not behavior.
+ */
+export interface ProjectionPluginError {
+  /** The manifest entry's own ref — a local path (e.g. `./plugins/foo.js`)
+   *  or an npm package name, whichever the manifest used. */
+  readonly pluginRef: string;
+  /** A user-facing message naming why this one plugin was skipped. */
+  readonly message: string;
+}
+
+/**
+ * The Gutterpress-aware projection `mountGutterpressEditor` requires to
+ * render layout markers, raw HTML, and (when trusted) plugin regions as
+ * inactive chips (D6). Built HOST-SIDE (`../project/projection.ts`'s
+ * `resolveEditorProjectionMessage`, called from `../provider.ts`) — exactly
+ * the P3e desktop precedent (`packages/desktop/electron/editor-projection.ts`):
+ * trusted + project present -> plugin-aware (`loadPluginsWithCss`
+ * degrade-and-report -> `createMarkdownRenderer` -> `createEditorProjection(...,
+ * {md, trusted: true})`); untrusted OR no project -> base pipeline only
+ * (`createEditorProjection(content, {sourceVersion})` — core markers still
+ * project; NO workspace plugin code loads, D9/D12).
+ *
+ * SENT ASYNCHRONOUSLY, ALWAYS AFTER the `ready` handshake's other three
+ * messages, never synchronously alongside them: building a plugin-aware
+ * projection means loading and running project plugin code from disk, which
+ * is not instantaneous. The webview MUST NOT assume a `projection` message
+ * has arrived by the time it processes `presentation-input`/`trust-state`/
+ * `snapshot` — it mounts once this message's first delivery arrives (P3e's
+ * own review round 1 found exactly this ordering bug on the desktop host:
+ * publishing a host object before its projection was in hand mounted the
+ * WRONG surface entirely; this message's contract is written so the VS Code
+ * webview cannot repeat it).
+ *
+ * RESENT on every authoritative change to the document (an accepted edit or
+ * an external change — the same two triggers `SnapshotMessage` already
+ * documents) and on `trust-state` transitioning to trusted (D9: "Trust
+ * granted mid-session re-resolves") — see `../provider.ts`'s own header for
+ * exactly which `vscode` events drive each resend. A STALE resend (an
+ * earlier rebuild that finishes after a newer one already started) is never
+ * sent — `../provider.ts` enforces this with an epoch guard (G-11: "reject
+ * stale responses").
+ *
+ * `diagnostic` is set only when the WHOLE build failed outright (e.g. an
+ * unreadable/invalid `manifest.yaml` — `EDITOR_PLUGIN_LOAD_FAILED`); it is
+ * DISTINCT from `pluginErrors`, which names per-plugin degrades that still
+ * produced a projection. Either way `projection` is always populated with a
+ * SAFE fallback (the base pipeline) — this message can never leave the
+ * webview with nothing to mount (D14: unsupported behavior falls back, it
+ * never blanks the document).
+ */
+export interface ProjectionMessage {
+  readonly type: "projection";
+  readonly protocolVersion: number;
+  readonly projection: GutterpressProjection;
+  /** Concatenated plugin CSS (load order), for the mount's `extraCss` —
+   *  `""` when no loaded plugin declares any, including the untrusted/
+   *  no-project base-pipeline case. */
+  readonly pluginCss: string;
+  /** Every plugin that failed to load this time. Empty when every
+   *  configured plugin loaded, when trust/project gating skipped plugin
+   *  loading entirely, or when the whole build failed outright (in which
+   *  case `diagnostic` carries the reason instead). */
+  readonly pluginErrors: readonly ProjectionPluginError[];
+  readonly diagnostic?: Diagnostic;
+}
+
 export type HostToWebviewMessage =
   | SnapshotMessage
   | TrustStateMessage
   | PresentationInputMessage
-  | DisconnectMessage;
+  | DisconnectMessage
+  | ProjectionMessage;
 
 /** Every `HostToWebviewMessage["type"]` literal, for exhaustive validation. */
 export const HOST_TO_WEBVIEW_MESSAGE_TYPES = [
@@ -193,4 +280,5 @@ export const HOST_TO_WEBVIEW_MESSAGE_TYPES = [
   "trust-state",
   "presentation-input",
   "disconnect",
+  "projection",
 ] as const;

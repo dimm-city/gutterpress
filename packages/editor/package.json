@@ -9,7 +9,8 @@
     "./core": "./src/core/index.ts",
     "./web": "./src/web/index.ts",
     "./standard": "./src/web/standard/index.ts",
-    "./gutterpress": "./src/gutterpress/index.ts"
+    "./gutterpress": "./src/gutterpress/index.ts",
+    "./test-harness": "./tests/browser-harness/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/web.tsconfig.json && tsc --noEmit -p src/gutterpress/tsconfig.json",

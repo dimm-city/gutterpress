@@ -124,3 +124,21 @@ export function fileTooLargeDiagnostic(): Diagnostic {
     safeAction: "Switch to source mode",
   };
 }
+
+/**
+ * SFE-P3c deliverable 2 — the WHOLE host-side projection build failed
+ * outright (e.g. an unreadable/invalid `manifest.yaml`), distinct from a
+ * per-plugin degrade above. The document still gets the safe base-pipeline
+ * projection (`../project/projection.ts`'s `resolveEditorProjectionMessage`)
+ * — this diagnostic is purely the "state the safe next action" half D14
+ * also requires (mirrors the desktop's own
+ * `RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC`).
+ */
+export function projectionBuildFailedDiagnostic(): Diagnostic {
+  return {
+    category: "EDITOR_PLUGIN_LOAD_FAILED",
+    message:
+      "This project's plugins could not be loaded for the rich editor (its manifest.yaml may be invalid), " +
+      "so plugin regions show as plain text here. Fix the manifest, then reopen this file.",
+  };
+}

@@ -109,6 +109,40 @@ A lane may replace step 4's whole-text convergence with something cheaper
 **only** if it proves the replacement equivalent under D13's 2 MiB ceiling and
 records the proof.
 
+## Amendment — reconciliation addendum and integration lane D (added after phases 1–2 reported; spec amended before lane D runs)
+
+Phase 2 surfaced a confirmed defect the original authority model under-specified,
+plus a message-drift seam between the two parallel lanes:
+
+1. **Version spaces.** `ProxyDocumentHost` forwarded its LOCAL mirror version
+   verbatim as the edit's `expectedVersion`, and the gateway compared it
+   against its OWN independent counter — after the always-occurring initial
+   convergence, every real edit was silently rejected as stale, and the
+   rejection reply was itself dropped by the mirror's de-dup guard (a red
+   regression test is committed). The model's point 2 said the two counters
+   are "never conflated" but gave the wire no third thing to agree on.
+   **Addendum (binding):** every authoritative host→webview snapshot carries a
+   **host-assigned base stamp**; the proxy records the stamp of the state its
+   mirror last converged to and sends it as each edit's base; the gateway
+   applies only when the stamp matches its current one, else replies
+   authoritatively (normal convergence). To keep burst typing sound with no
+   rebasing, the proxy holds **at most one apply-edit in flight** — later
+   local edits queue (already applied optimistically to the mirror) and each
+   is sent only after the previous authoritative reply, with the stamp that
+   reply carried. An authoritative reply whose text diverges from the mirror
+   discards the queue along with the replacement (D3 fail-closed). Replies
+   remain uncorrelated; convergence stays text-comparison; this adds a stamp
+   and a send queue, not per-edit correlation.
+2. **One presentation concern, one message.** `presentation-input` (mode) and
+   `projection` (payload) are merged: `presentation-input` gains optional
+   `projection`/`pluginCss`/`pluginErrors`, and the separate `projection`
+   message type is deleted. A mode decision with no projection (oversized →
+   source) stays valid by omission.
+
+| Lane | May write | Must not write | Deliverable |
+|---|---|---|---|
+| D | `packages/vscode-extension/**` (all of it — the lanes are finished and committed), `knip.jsonc`, `packages/editor/package.json` (the test-harness export line only, if it needs adjusting) | `packages/editor/src/**`, `packages/editor/tests/**`, `packages/cli/**`, `packages/desktop/**`, `tools/**` | Reconciliation fix per the addendum, message merge, seam wiring to `mountGutterpressEditor`, config gaps, all suites green including the formerly-red regression test |
+
 ## Behavior table
 
 | Case | Required result | Owner |

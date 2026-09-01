@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { EDITOR_PROTOCOL_VERSION } from "@dimm-city/gutterpress-editor/core";
+import type { GutterpressProjection } from "gutterpress/render";
 import { diagnosticForProtocolRejection } from "../../src/protocol/diagnostics.ts";
 import { validateHostToWebviewMessage, validateWebviewToHostMessage } from "../../src/protocol/validate.ts";
 
@@ -340,6 +341,179 @@ describe("validateHostToWebviewMessage — 'disconnect' payload", () => {
     const result = validateHostToWebviewMessage({ type: "disconnect", protocolVersion: EDITOR_PROTOCOL_VERSION });
     expect(result.valid).toBe(false);
     if (!result.valid) expect(result.failure.reason).toBe("missing-field");
+  });
+});
+
+describe("validateHostToWebviewMessage — 'projection' payload (SFE-P3c Lane B)", () => {
+  const VALID_PROJECTION: GutterpressProjection = {
+    schemaVersion: 1,
+    sourceVersion: 0,
+    blocks: [],
+    generated: [],
+    diagnostics: [],
+  };
+
+  test("valid control passes", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: ".gp-callout { color: red; }",
+      pluginErrors: [{ pluginRef: "./plugins/broken.js", message: "not found" }],
+    });
+    expect(result).toEqual({
+      valid: true,
+      value: {
+        type: "projection",
+        protocolVersion: 1,
+        projection: VALID_PROJECTION,
+        pluginCss: ".gp-callout { color: red; }",
+        pluginErrors: [{ pluginRef: "./plugins/broken.js", message: "not found" }],
+      },
+    });
+  });
+
+  test("valid control WITH an optional diagnostic passes", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "",
+      pluginErrors: [],
+      diagnostic: VALID_DIAGNOSTIC,
+    });
+    expect(result.valid).toBe(true);
+    if (result.valid) expect((result.value as { diagnostic?: unknown }).diagnostic).toEqual(VALID_DIAGNOSTIC);
+  });
+
+  test("missing 'projection' field is rejected as missing-field", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      pluginCss: "",
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("missing-field");
+  });
+
+  test("'projection' as a non-object is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: "not an object",
+      pluginCss: "",
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("'projection.schemaVersion' of the wrong version is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: { ...VALID_PROJECTION, schemaVersion: 2 },
+      pluginCss: "",
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("'projection.blocks' as a non-array is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: { ...VALID_PROJECTION, blocks: "not-an-array" },
+      pluginCss: "",
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("missing 'pluginCss' field is rejected as missing-field", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("missing-field");
+  });
+
+  test("wrong-type 'pluginCss' (a number) is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: 42,
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("an oversized 'pluginCss' payload is rejected as oversized-payload", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "x".repeat(5 * 1024 * 1024),
+      pluginErrors: [],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("oversized-payload");
+  });
+
+  test("missing 'pluginErrors' field is rejected as missing-field", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "",
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("missing-field");
+  });
+
+  test("'pluginErrors' as a non-array is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "",
+      pluginErrors: "not-an-array",
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("a 'pluginErrors' entry missing 'message' is rejected as wrong-field-type", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "",
+      pluginErrors: [{ pluginRef: "./x.js" }],
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
+  });
+
+  test("an invalid optional 'diagnostic' is rejected (same rule as every other message)", () => {
+    const result = validateHostToWebviewMessage({
+      type: "projection",
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      projection: VALID_PROJECTION,
+      pluginCss: "",
+      pluginErrors: [],
+      diagnostic: { category: "NOT_A_REAL_CATEGORY", message: "x" },
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.failure.reason).toBe("wrong-field-type");
   });
 });
 

@@ -1,33 +1,64 @@
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
+import { runBuild, startPreviewServer } from "gutterpress";
+import { registerBuildCommand } from "../commands/build.ts";
+import { PreviewSession, registerPreviewCommand } from "../commands/preview.ts";
+import { registerOpenSourceCommand } from "../commands/open-source.ts";
 
 /**
- * TYPED STUB — SFE-P3c Lane A.
+ * SFE-P3c Lane B — replaces Lane A's typed stub (run spec deliverable 4:
+ * "Register through src/project/register.ts (replace the stub body)").
  *
- * Per this run's lane table, Lane A creates this file ONLY so
- * `../extension.ts` has a real call site to typecheck and wire disposal
- * against; Lane B owns this file's real implementation from the moment
- * this run's Lane A work is committed ("src/project/register.ts (a TYPED
- * STUB only — Lane B owns it from the next phase onward)"). No two lanes
- * write it concurrently.
+ * Registers the three commands D9 names as host-owned: `gutterpress.build`,
+ * `gutterpress.preview`, `gutterpress.openSource`. Each command module
+ * (`../commands/**`) owns its own precondition check and D14 diagnostic;
+ * this function is composition only — wiring the REAL `gutterpress` library
+ * functions (`runBuild`, `startPreviewServer`) into each command's
+ * INJECTABLE dependency, exactly once, for this extension's whole lifetime.
  *
- * D9 assigns Lane B: "project discovery; trusted plugin loading;
- * build/preview/export commands" — none of which this run's Lane A scope
- * (protocol, document gateway, proxy document host, provider/extension
- * wiring, build, webview-purity rule, host fidelity) needs. This stub is
- * intentionally inert: it registers nothing, resolves no project, loads no
- * plugin.
+ * SIGNATURE CHANGE FROM THE STUB: the stub's own header explicitly
+ * sanctioned this ("changing the signature is Lane B's call to make ... it
+ * would land together with its one caller in extension.ts"). This function
+ * now also takes `outputChannel` — the SAME "Gutterpress"
+ * `vscode.OutputChannel` `../provider.ts`'s D15 session logging already
+ * uses, created once in `extension.ts` — so build/preview command output
+ * lands in the one place a Gutterpress author already has open, rather
+ * than a second channel splitting the log. `../extension.ts`'s one call
+ * site is updated to pass it through; nothing else in that file changes.
  *
- * The FROZEN part of this stub's contract is its signature —
- * `(context) => vscode.Disposable`, called once from `activate()` and
- * pushed onto `context.subscriptions` exactly like the custom editor
- * registration next to it. Lane B replaces the body; changing the
- * signature is Lane B's call to make (and, per the plan's lane rules, would
- * land together with its one caller in `extension.ts`).
+ * DISPOSAL: the returned `Disposable` disposes all three command
+ * registrations AND stops any preview server `PreviewSession` still has
+ * running (`../commands/preview.ts`'s own header: "`../project/register.ts`'s
+ * own Disposable composes this in, so `extension.ts`'s existing
+ * `context.subscriptions.push(...)` needs no change to get this cleanup for
+ * free"). `PreviewSession.dispose()` is async (it awaits the server's own
+ * `stop()`); `context.subscriptions`'s own `Disposable.dispose(): void`
+ * contract does not await disposal (VS Code's own `.d.ts` types it
+ * `void`-returning), so this is fire-and-forget here exactly as
+ * `webviewPanel.webview.postMessage` calls already are elsewhere in this
+ * package — a slow shutdown does not block extension deactivation, and a
+ * failed stop is not a case this run's scope (or `PreviewSession`'s own
+ * documented contract) asks for a retry/report path.
  */
-export function registerProjectServices(_context: vscode.ExtensionContext): vscode.Disposable {
+export function registerProjectServices(
+  _context: vscode.ExtensionContext,
+  outputChannel: vscode.OutputChannel,
+): vscode.Disposable {
+  const previewSession = new PreviewSession(startPreviewServer);
+
+  const buildRegistration = registerBuildCommand({ runBuild, outputChannel });
+  const previewRegistration = registerPreviewCommand({
+    session: previewSession,
+    outputChannel,
+    openExternal: (url) => vscode.env.openExternal(vscode.Uri.parse(url)),
+  });
+  const openSourceRegistration = registerOpenSourceCommand();
+
   return {
     dispose(): void {
-      // No-op: this stub registers nothing that needs releasing.
+      buildRegistration.dispose();
+      previewRegistration.dispose();
+      openSourceRegistration.dispose();
+      void previewSession.dispose();
     },
   };
 }

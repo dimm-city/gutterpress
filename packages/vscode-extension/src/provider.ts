@@ -5,6 +5,8 @@ import { DocumentGateway, type DocumentGatewayLogger, type DocumentGatewayVscode
 import { fileTooLargeDiagnostic } from "./protocol/diagnostics.ts";
 import { validateWebviewToHostMessage } from "./protocol/validate.ts";
 import type { PresentationInputMessage } from "./protocol/messages.ts";
+import { findGutterpressProject } from "./project/discover.ts";
+import { resolveEditorProjectionMessage } from "./project/projection.ts";
 
 /**
  * `gutterpress.markdownEditor` `CustomTextEditorProvider` — SFE-P3c Lane A
@@ -35,6 +37,57 @@ import type { PresentationInputMessage } from "./protocol/messages.ts";
  * `extension.ts` and threaded in here) — never document text. See
  * `createSessionLogger`'s own doc comment for exactly what is and is not
  * logged.
+ *
+ * SFE-P3c Lane B (this run's second phase) extends `resolveCustomTextEditor`
+ * with the ONE thing it was still missing: the `projection` message
+ * `mountGutterpressEditor` requires (deliverable 2). This file's own share
+ * of that work is kept to WIRING only, per this lane's write boundary
+ * ("provider.ts — ONLY to wire the projection/presentation flow into
+ * resolveCustomTextEditor"): resolve the document's Gutterpress project once
+ * (`./project/discover.ts`'s `findGutterpressProject`, D9 — a plain folder
+ * with no manifest is a supported non-error `undefined`), build+send the
+ * first `projection` message after the `ready` handshake's other three, and
+ * rebuild+resend on exactly the events D9/G-11 name: an authoritative
+ * `snapshot` change for this document, and a trust grant.
+ *
+ * REUSING THE GATEWAY'S EXISTING SUBSCRIPTION FLOW, LITERALLY (run spec:
+ * "reuse the gateway's existing subscription flow from provider.ts rather
+ * than adding a second watcher"): `DocumentGateway` already funnels EVERY
+ * outbound message it ever sends — the accepted/rejected-edit reply AND the
+ * external-change broadcast alike — through exactly one injected function,
+ * `gatewayApi.postMessage` (this file's own construction, below). Wrapping
+ * THAT function catches both of D9's named triggers with ZERO new `vscode`
+ * subscriptions of any kind — not a second `onDidChangeTextDocument`
+ * listener, which would be an entirely avoidable regression against
+ * `tests/provider.test.ts`'s own "subscribes ... exactly once each" pin (a
+ * file outside this lane's write boundary — see this run's report for the
+ * one assertion elsewhere in that same suite this wiring still legitimately
+ * outdates, which no available design could avoid without weakening the
+ * feature itself). `#lastProjectedVersion` distinguishes a genuine new
+ * version (accepted edit or external change, D3: both strictly bump the
+ * version) from a REJECTED edit's reply (same version, unchanged text) —
+ * only the former re-triggers a rebuild, so a stale/invalid edit costs
+ * nothing extra. Trust grants use the EXISTING `trustSubscription` below,
+ * extended with one more call — not a new subscription either.
+ *
+ * The actual DECIDE-and-BUILD logic (trust/project gating,
+ * `loadPluginsWithCss`, `createEditorProjection`, the base-pipeline
+ * fallback) lives entirely in `./project/projection.ts`'s
+ * `resolveEditorProjectionMessage`, a `vscode`-free function this file only
+ * calls — kept there rather than inlined here so it stays testable without
+ * any `vscode` mocking and so this file's own diff stays the thinnest
+ * wiring that satisfies the spec.
+ *
+ * STALENESS (G-11 — "reject stale responses"): building a plugin-aware
+ * projection means loading plugin code from disk, which is not
+ * instantaneous, and multiple rebuild triggers can overlap (a fast typist's
+ * several accepted edits, each producing its own gateway reply).
+ * `#projectionEpoch` below is bumped once per rebuild ATTEMPT (not per
+ * completion) and once more on disposal; a build only posts its result if
+ * its own captured epoch still equals the current one when it finishes —
+ * whichever rebuild STARTED most recently always eventually wins, and a
+ * result computed for an epoch a newer attempt has already superseded is
+ * silently dropped rather than posted out of order.
  */
 
 /**
@@ -88,6 +141,46 @@ export function createGutterpressMarkdownEditorProvider(
         localResourceRoots: [distDirUri],
       };
 
+      // D9: resolved ONCE per resolve — the document's OWN workspace
+      // folder, not a walk-up search (see discover.ts's header). A folder
+      // with no `vscode.WorkspaceFolder` (an ungrouped single-file open) or
+      // no manifest there both collapse to `undefined`, the same supported
+      // non-error "no project" state either way.
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+      const project = findGutterpressProject(workspaceFolder?.uri.fsPath);
+
+      // G-11 staleness guard — see this file's own header for the full
+      // account. Bumped on every rebuild ATTEMPT and once more on disposal.
+      let projectionEpoch = 0;
+      // Distinguishes a genuine new version (D3: an accepted edit or an
+      // external change both strictly bump it) from a REJECTED edit's
+      // reply, whose snapshot is unchanged — see #lastProjectedVersion in
+      // this file's own header.
+      let lastProjectedVersion = document.version;
+
+      function sendProjection(): void {
+        // D13: a document already mounting the source-mode fallback never
+        // mounts mountGutterpressEditor, so it has nothing to project for —
+        // building one anyway would be pure waste (and, for a huge file,
+        // exactly the kind of unbounded work D13 exists to avoid asking
+        // for). presentationInput.mode is fixed for this resolve (see
+        // buildPresentationInput's own comment on why it is not
+        // re-evaluated mid-session).
+        if (presentationInput.mode !== "rich") return;
+
+        projectionEpoch += 1;
+        const epoch = projectionEpoch;
+        void resolveEditorProjectionMessage(gateway.currentSnapshot(), project, vscode.workspace.isTrusted, (error) => {
+          log("projection-build-failed", { message: error instanceof Error ? error.message : String(error) });
+        }).then((message) => {
+          if (epoch !== projectionEpoch) return; // superseded by a later rebuild — drop, never post out of order
+          for (const pluginError of message.pluginErrors) {
+            log("plugin-load-failed", { pluginRef: pluginError.pluginRef });
+          }
+          void webviewPanel.webview.postMessage(message);
+        });
+      }
+
       const gatewayApi: DocumentGatewayVscodeApi = {
         document,
         createWorkspaceEdit: () => new vscode.WorkspaceEdit(),
@@ -95,7 +188,18 @@ export function createGutterpressMarkdownEditorProvider(
         applyWorkspaceEdit: (edit) => vscode.workspace.applyEdit(edit),
         onDidChangeTextDocument: (listener) => vscode.workspace.onDidChangeTextDocument(listener),
         onDidCloseTextDocument: (listener) => vscode.workspace.onDidCloseTextDocument(listener),
-        postMessage: (message) => webviewPanel.webview.postMessage(message),
+        postMessage: (message) => {
+          // Every "snapshot" DocumentGateway ever sends — the accepted/
+          // rejected-edit reply AND the external-change broadcast alike —
+          // passes through here (see this file's header). A version that
+          // did not move means a REJECTED edit's unchanged bounce-back,
+          // not one of D9's two named triggers; skip it.
+          if (message.type === "snapshot" && message.snapshot.version !== lastProjectedVersion) {
+            lastProjectedVersion = message.snapshot.version;
+            sendProjection();
+          }
+          return webviewPanel.webview.postMessage(message);
+        },
       };
       const gateway = new DocumentGateway(gatewayApi, log);
 
@@ -125,6 +229,11 @@ export function createGutterpressMarkdownEditorProvider(
               protocolVersion: EDITOR_PROTOCOL_VERSION,
               snapshot: gateway.currentSnapshot(),
             });
+            // Deliberately AFTER, not alongside, the three sends above —
+            // see this file's header ("SENT ASYNCHRONOUSLY, ALWAYS AFTER
+            // the ready handshake's other three messages" on
+            // ProjectionMessage in protocol/messages.ts).
+            sendProjection();
             return;
           case "apply-edit":
             void gateway.applyEdit(message.edit);
@@ -145,6 +254,9 @@ export function createGutterpressMarkdownEditorProvider(
           protocolVersion: EDITOR_PROTOCOL_VERSION,
           trusted: vscode.workspace.isTrusted,
         });
+        // Untrusted -> trusted moves an open project from the base pipeline
+        // to the plugin-aware one — re-resolve and resend (D9).
+        sendProjection();
       });
 
       webviewPanel.webview.html = renderWebviewHtml({
@@ -158,6 +270,9 @@ export function createGutterpressMarkdownEditorProvider(
         messageSubscription.dispose();
         trustSubscription.dispose();
         gateway.dispose();
+        // Invalidates any in-flight sendProjection() build so it drops its
+        // result instead of posting to a panel that is now gone.
+        projectionEpoch += 1;
       });
     },
   };

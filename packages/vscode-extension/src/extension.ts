@@ -19,10 +19,13 @@ import { registerProjectServices } from "./project/register.ts";
  *      See `tests/manifest.test.ts`, which asserts `priority === "option"`
  *      and the `*.md` selector directly against the parsed JSON — unchanged
  *      by this run, and it must keep passing.
- *   2. `registerProjectServices` (`./project/register.ts`) — a TYPED STUB
- *      this run (Lane A creates it only so this file has a real call site
- *      to typecheck against; Lane B owns its real implementation from the
- *      next phase onward — see that file's own header).
+ *   2. `registerProjectServices` (`./project/register.ts`) — D9's three
+ *      host-owned commands (`gutterpress.build`/`.preview`/`.openSource`).
+ *      Its signature grew an `outputChannel` parameter this phase (its own
+ *      stub header explicitly sanctioned this); the ONE call below is
+ *      updated to pass the same channel the provider's own D15 session
+ *      logging already uses — see that file's own header for the full
+ *      account.
  *
  * A shared `vscode.OutputChannel` ("Gutterpress") is created once here and
  * threaded into the provider for D15's host-local session logging (see
@@ -54,7 +57,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(registration);
 
-  context.subscriptions.push(registerProjectServices(context));
+  context.subscriptions.push(registerProjectServices(context, outputChannel));
 }
 
 export function deactivate(): void {

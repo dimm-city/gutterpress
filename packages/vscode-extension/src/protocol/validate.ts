@@ -11,8 +11,10 @@ import {
   HOST_TO_WEBVIEW_MESSAGE_TYPES,
   WEBVIEW_TO_HOST_MESSAGE_TYPES,
   type HostToWebviewMessage,
+  type ProjectionPluginError,
   type WebviewToHostMessage,
 } from "./messages.ts";
+import type { GutterpressProjection } from "gutterpress/render";
 
 /**
  * SFE-P3c Lane A — runtime validators for the host<->webview protocol
@@ -282,6 +284,88 @@ export function validateWebviewToHostMessage(message: unknown): ProtocolValidati
   return fail("unknown-message-type", [`unknown message type "${type}"`]);
 }
 
+/**
+ * Mirrors `gutterpress/render`'s `PROJECTION_SCHEMA_VERSION` (currently `1`)
+ * — NOT imported as a value: this file stays type-only + primitive checks by
+ * design (see `messages.ts`'s header — "no VALUE import of any kind"), and
+ * every other browser-facing consumer of `gutterpress/render` in this
+ * codebase (`packages/editor/src/gutterpress/*.ts`) type-imports it too,
+ * never as a value. A schema bump is a D1 decision-record amendment
+ * regardless, so this literal moving out of lockstep with the real constant
+ * is already a documented, deliberate-change scenario, not a silent-drift
+ * risk.
+ */
+const KNOWN_PROJECTION_SCHEMA_VERSION = 1;
+
+/**
+ * SHALLOW, top-level structural check for `ProjectionMessage.projection` —
+ * deliberately not a deep per-block validator. No runtime validator for the
+ * full `GutterpressProjection` shape (every `ProjectedBlock` kind variant,
+ * `GeneratedView`, `ProjectionDiagnostic`) exists anywhere in this codebase
+ * today, including on the desktop, which consumes the identical type over
+ * Electron IPC without one — the type's actual definition and invariants
+ * (D6, D13's caps) are owned and already enforced by `createEditorProjection`
+ * itself (`packages/cli/src/lib/markdown/editor-projection.ts`, outside this
+ * package's write boundary this run). Deep-validating its own output a
+ * second time here would be exactly the "hand-rolled scanner next to the
+ * real parser" P3e's ruling warns against. This layer exists only to catch
+ * a message that is not shaped like a projection AT ALL (missing/wrong-type
+ * top-level fields) — the same rejection shapes the behavior table asks
+ * for ("missing field, wrong type") — while trusting the host's own
+ * production pipeline for everything nested inside `blocks`/`generated`/
+ * `diagnostics`.
+ */
+function validateProjectionShape(value: unknown): ProtocolValidationResult<GutterpressProjection> {
+  if (!isPlainObject(value)) {
+    return fail("wrong-field-type", [`"projection" must be a plain object, got "${describeType(value)}"`]);
+  }
+
+  const schemaVersion = ownField(value, "schemaVersion");
+  const sourceVersion = ownField(value, "sourceVersion");
+  const blocks = ownField(value, "blocks");
+  const generated = ownField(value, "generated");
+  const diagnostics = ownField(value, "diagnostics");
+  const errors: string[] = [];
+
+  if (schemaVersion !== KNOWN_PROJECTION_SCHEMA_VERSION) {
+    errors.push(`"projection.schemaVersion" must be ${KNOWN_PROJECTION_SCHEMA_VERSION}`);
+  }
+  if (typeof sourceVersion !== "number" || !Number.isFinite(sourceVersion)) {
+    errors.push('"projection.sourceVersion" must be a finite number');
+  }
+  if (!Array.isArray(blocks)) errors.push('"projection.blocks" must be an array');
+  if (!Array.isArray(generated)) errors.push('"projection.generated" must be an array');
+  if (!Array.isArray(diagnostics)) errors.push('"projection.diagnostics" must be an array');
+
+  if (errors.length > 0) return fail("wrong-field-type", errors);
+  return { valid: true, value: value as unknown as GutterpressProjection };
+}
+
+/** Validates `ProjectionMessage.pluginErrors`: an array of plain
+ *  `{pluginRef: string, message: string}` records. */
+function validateProjectionPluginErrors(value: unknown): ProtocolValidationResult<readonly ProjectionPluginError[]> {
+  if (!Array.isArray(value)) {
+    return fail("wrong-field-type", [`"pluginErrors" must be an array, got "${describeType(value)}"`]);
+  }
+  const result: ProjectionPluginError[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const entry = value[i];
+    if (!isPlainObject(entry)) {
+      return fail("wrong-field-type", [`"pluginErrors[${i}]" must be a plain object`]);
+    }
+    const pluginRef = ownField(entry, "pluginRef");
+    const message = ownField(entry, "message");
+    if (typeof pluginRef !== "string") {
+      return fail("wrong-field-type", [`"pluginErrors[${i}].pluginRef" must be a string`]);
+    }
+    if (typeof message !== "string") {
+      return fail("wrong-field-type", [`"pluginErrors[${i}].message" must be a string`]);
+    }
+    result.push({ pluginRef, message });
+  }
+  return { valid: true, value: result };
+}
+
 // ── Host -> Webview ──────────────────────────────────────────────────────
 
 /** Validates an inbound message on the WEBVIEW side
@@ -353,6 +437,57 @@ export function validateHostToWebviewMessage(message: unknown): ProtocolValidati
     const diagnosticResult = validateDiagnostic(diagnosticField);
     if (!diagnosticResult.valid) return diagnosticResult;
     return { valid: true, value: { type: "disconnect", protocolVersion, diagnostic: diagnosticResult.value } };
+  }
+
+  if (type === "projection") {
+    const projectionField = ownField(obj, "projection");
+    if (projectionField === undefined) return fail("missing-field", ['missing required field "projection"']);
+    if (projectionField === ACCESSOR) {
+      return fail("wrong-field-type", ['"projection" must be a plain data property, not an accessor']);
+    }
+    const projectionResult = validateProjectionShape(projectionField);
+    if (!projectionResult.valid) return projectionResult;
+
+    const pluginCss = ownField(obj, "pluginCss");
+    if (pluginCss === undefined) return fail("missing-field", ['missing required field "pluginCss"']);
+    if (pluginCss === ACCESSOR) {
+      return fail("wrong-field-type", ['"pluginCss" must be a plain data property, not an accessor']);
+    }
+    if (typeof pluginCss !== "string") return fail("wrong-field-type", ['"pluginCss" must be a string']);
+    if (pluginCss.length > MAX_MESSAGE_STRING_LENGTH) {
+      return fail("oversized-payload", [`"pluginCss" exceeds the ${MAX_MESSAGE_STRING_LENGTH}-character wire ceiling`]);
+    }
+
+    const pluginErrorsField = ownField(obj, "pluginErrors");
+    if (pluginErrorsField === undefined) return fail("missing-field", ['missing required field "pluginErrors"']);
+    if (pluginErrorsField === ACCESSOR) {
+      return fail("wrong-field-type", ['"pluginErrors" must be a plain data property, not an accessor']);
+    }
+    const pluginErrorsResult = validateProjectionPluginErrors(pluginErrorsField);
+    if (!pluginErrorsResult.valid) return pluginErrorsResult;
+
+    const diagnosticField = ownField(obj, "diagnostic");
+    let diagnostic: Diagnostic | undefined;
+    if (diagnosticField !== undefined) {
+      if (diagnosticField === ACCESSOR) {
+        return fail("wrong-field-type", ['"diagnostic" must be a plain data property, not an accessor']);
+      }
+      const diagnosticResult = validateDiagnostic(diagnosticField);
+      if (!diagnosticResult.valid) return diagnosticResult;
+      diagnostic = diagnosticResult.value;
+    }
+
+    return {
+      valid: true,
+      value: {
+        type: "projection",
+        protocolVersion,
+        projection: projectionResult.value,
+        pluginCss,
+        pluginErrors: pluginErrorsResult.value,
+        ...(diagnostic ? { diagnostic } : {}),
+      },
+    };
   }
 
   // Unreachable: validateEnvelope already restricted `type` to
