@@ -66,9 +66,8 @@
   } from "$lib/editor/toolbar-actions";
   // SFE-P3ab review round 1 (CONFIRMED finding) — the browser-safe render
   // subpath (CLAUDE.md monorepo layout: "browser-safe public subpath:
-  // gutterpress/render"), already value-imported client-side by
-  // web-adapter.ts for the same reason: this is the ONE place D4 lets the
-  // renderer build a D6 projection without any Node-side work.
+  // gutterpress/render"): this is the ONE place D4 lets the renderer build a
+  // D6 projection without any Node-side work.
   import { createEditorProjection } from "gutterpress/render";
   import type { GutterpressProjection } from "gutterpress/render";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
@@ -276,12 +275,12 @@
   });
   let publishOpen = $state(false);
 
-  // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
-  // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
-  // (Electron writes the PDF to a chosen path) and false on the web (no
-  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
-  // replaced with a short "requires the desktop app" note (acceptance criterion).
-  // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
+  // PDF/build gating via the capabilities() seam. `nativeSavePath` is
+  // true on the desktop host (Electron writes the PDF to a chosen path via
+  // puppeteer / printToPDF). SFE-P5a (D10): `getPlatform()` now throws
+  // off-Electron rather than resolving a degraded host, so this derived only
+  // ever evaluates true here — the "requires the desktop app" hint below is
+  // defensive UI copy, not a reachable web branch.
   const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
 
   // ── Left panel (#workspace-restructure) ───────────────────────────────────

@@ -14,9 +14,6 @@ const config = {
     // Emit relative asset URLs so app://-served pages don't request static
     // assets from the protocol root.
     paths: { relative: true },
-    // The same build serves both the web PWA and Electron's app:// origin.
-    // Register manually in +layout.svelte so app:// never attempts to use a SW.
-    serviceWorker: { register: false },
   },
 };
 

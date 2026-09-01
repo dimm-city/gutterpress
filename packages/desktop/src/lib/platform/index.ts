@@ -2,12 +2,28 @@
  * Platform abstraction entry point (#41).
  *
  * App code imports `getPlatform()` and the `Platform` type from here — and
- * nothing else touches `window.electron`. Swapping in a real `WebAdapter` for
- * the 0.6.0 PWA is a change to this file alone.
+ * nothing else touches `window.electron`.
+ *
+ * SFE-P5a (D10): the dormant browser host (`WebAdapter`) was deleted — a
+ * future web product is a separate package consuming
+ * `@dimm-city/gutterpress-editor` and `gutterpress/render`, not a second host
+ * hiding inside this one. `getPlatform()` therefore has exactly one real
+ * implementation (`ElectronAdapter`); off-Electron it fails loudly with a
+ * named error rather than silently degrading into a partial product.
  */
 import { ElectronAdapter } from "./electron-adapter";
-import { WebAdapter } from "./web-adapter";
 import type { Platform } from "./contract";
+
+/** Thrown by {@link getPlatform} when no Electron host is present (SFE-P5a). */
+export class DesktopHostRequiredError extends Error {
+  constructor() {
+    super(
+      "desktop host required — the browser host was removed in SFE-P5a; " +
+        "a future web product is a separate package",
+    );
+    this.name = "DesktopHostRequiredError";
+  }
+}
 
 export { DEFAULT_SETTINGS } from "./contract";
 
@@ -51,12 +67,17 @@ export function isDesktop(): boolean {
 }
 
 /**
- * Return the active platform adapter (memoised). `ElectronAdapter` when the
- * preload bridge is present, otherwise the `WebAdapter` stub.
+ * Return the active platform adapter (memoised): `ElectronAdapter` when the
+ * preload bridge is present. Off-Electron (a plain browser, or `vite dev`
+ * with no preload) this throws {@link DesktopHostRequiredError} instead of
+ * selecting a partial substitute — fail loudly, not partially (SFE-P5a).
  */
 export function getPlatform(): Platform {
+  if (!isDesktop()) {
+    throw new DesktopHostRequiredError();
+  }
   if (!instance) {
-    instance = isDesktop() ? new ElectronAdapter() : new WebAdapter();
+    instance = new ElectronAdapter();
   }
   return instance;
 }

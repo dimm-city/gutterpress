@@ -73,8 +73,10 @@
     logFilePath = null;
     liveMessage = null;
     statusMessage = null;
-    // Only subscribe when running in the desktop host (the WebAdapter stub is a
-    // safe no-op but we skip the wiring on the web path for clarity).
+    // Only subscribe when running in the desktop host. SFE-P5a (D10):
+    // getPlatform() now throws off-Electron (the dormant WebAdapter it used
+    // to fall back to was deleted), so this guard is load-bearing, not just
+    // a clarity nicety.
     if (!isDesktop() || !projectDir) {
       syncState = "idle";
       onSyncState?.("idle");

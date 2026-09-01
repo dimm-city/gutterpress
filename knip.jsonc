@@ -138,23 +138,20 @@
     },
     "packages/desktop": {
       "entry": [
-        // PWA-only; no in-repo importer by design (CLAUDE.md §8). P5a deletes
-        // this entry along with WebAdapter/web-fs/web-store (plan D10;
-        // platform-inventory.md §13/§14).
-        "src/service-worker.{ts,js}",
         "tests/**/*.{ts,js,mjs}",
         // Compile-time type assertion gates: never imported, but type-checked by
         // `svelte-check` (they live under src/, inside its tsconfig scope).
         "src/**/*.type-test.ts",
         // The platform seam + typed api surface are documented scaffolding for
-        // the remaining PWA phases (CLAUDE.md §8, docs/pwa-webadapter-plan.md,
-        // docs/adr/0004-platform-abstraction.md) — intentional export surface,
-        // not dead code. Deletion ties (plan D10; platform-inventory.md §14),
-        // kept until the tied phase lands — do not remove before then:
-        //   web-store.ts                        — P5a deletes (WebAdapter/web-fs/service-worker sibling)
+        // the desktop platform work still in flight (plan D10/D11;
+        // platform-inventory.md §14) — intentional export surface, not dead
+        // code. `src/service-worker.{ts,js}` and `web-store.ts` dropped out of
+        // this list in P5a with the PWA/WebAdapter code they protected (plan
+        // D10). What remains, and its own deletion tie, kept until the tied
+        // phase lands — do not remove before then:
         //   index/contract/dtos/shared-types.ts — P5b narrows; may shrink or fully drop
         //   api.ts                              — P5d deletes (with src/routes/api/**)
-        "src/lib/platform/{index,contract,dtos,shared-types,web-store}.ts",
+        "src/lib/platform/{index,contract,dtos,shared-types}.ts",
         "src/lib/api.ts"
       ],
       "project": [

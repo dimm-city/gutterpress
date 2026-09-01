@@ -446,7 +446,7 @@ the client bundle.
 the **default path** and the one most of the app actually uses today: 26+
 files call `src/lib/api.ts` directly (`+page.svelte` alone has 36 `api.*`
 call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
-(`src/lib/platform/contract.ts` + `ElectronAdapter`/`WebAdapter`, reached via
+(`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
 `import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
 owns three narrower capability classes a plain route can't cover:
 
@@ -481,9 +481,9 @@ above).
 
 1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
    types **locally**, decoupled from the lib)
-2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step) and
-   `WebAdapter` (a real implementation, or an explicit reject/no-op if the
-   capability has no web behavior yet — see "Dormant PWA scaffolding" below)
+2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step) —
+   the only `Platform`/`HostServices` implementation this package ships (see
+   "PWA scaffolding" below for why there is no web counterpart)
 3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
    **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
    `webContents.send` push channel); `electron/preload.ts` — expose it on
@@ -510,23 +510,23 @@ settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
 
-**PWA scaffolding (`WebAdapter`, #33 — partially shipped).** Issue #33 closed
-as completed (PR #63): the FSA folder-open path, in-browser preview,
-IndexedDB persistence, and the service worker + manifest offline app shell
-shipped; Phase 6 (Safari/OPFS) is **struck**, not deferred — the Chromium-only
-ruling above means the web target is Chrome/Edge and other Chromium browsers,
-where the File System Access API is always present. Normative status and
-remaining work live in `docs/pwa-webadapter-plan.md` ("partially shipped, plan
-revised 2026-08-23") — defer to that plan, not this paragraph. `WebAdapter`
-(`src/lib/platform/web-adapter.ts`) is live on the browser target for the
-shipped capabilities; the rest (e.g. the `localStorage` settings fallback —
-today's live settings path is still `api.app.getSettings`/`setSettings`, a
-server route, `isDesktop()`-gated) remains **scaffolding for the remaining
-phases, not dead code to delete**. As migration continues per the plan,
-expect more `api.ts` call sites to move to `getPlatform()` so the same UI
-code serves both Electron (`ElectronAdapter` → the existing server routes)
-and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
-correct call site for those capabilities.
+**PWA scaffolding — REMOVED (0.11, SFE-P5a, plan D10).** Issue #33's
+`WebAdapter` (the FSA folder-open path, in-browser preview, IndexedDB
+persistence, the service worker, and the web app manifest) shipped
+partially, then was **deleted rather than completed**: `packages/desktop`
+is an Electron-only product now, with no dormant browser host inside it. A
+future web product is not a mode of this package — it is a **separate
+package** consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`,
+built new against those public surfaces rather than by finishing this
+deleted adapter. `docs/pwa-webadapter-plan.md` is closed and kept as
+history; the deletion itself is recorded in the deletion ledger's SFE-P5a
+entry (`docs/plans/source-first-editor/deletion-ledger.md`). This does not
+touch the rule the rest of this section states: the renderer stays
+PWA-clean as an architecture requirement about the **renderer/host split**
+(no Node/platform code in the SPA), independent of whether a PWA ever
+ships from this package — that requirement is what would let a future web
+package reuse this renderer without a rewrite, and it is unaffected by
+`WebAdapter`'s removal.
 
 **Verification (must pass before any desktop change is "done"):** the client
 SPA bundle must contain no host code — adapter-node emits the browser assets

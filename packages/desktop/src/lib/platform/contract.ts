@@ -4,8 +4,8 @@
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
  * the canonical contract and lives in `gutterpress`. The desktop adds
  * `HostServices` — the host RPC surface (preview/build/doctor/prefs/updater/
- * dialogs) that is *also* host-divergent (Electron IPC today, HTTP in a future
- * PWA) but is desktop-specific, so it is defined here rather than in the lib.
+ * dialogs), which is desktop-specific (Electron IPC), so it is defined here
+ * rather than in the lib.
  *
  * The app consumes `Platform` = `PlatformAdapter & HostServices` via
  * `getPlatform()`. It must NOT touch `window.electron` directly — that access
@@ -160,13 +160,13 @@ export interface UpdaterApi {
  * A host-neutral reference to a project folder (#49).
  *
  * The app-facing contract deals in `FolderRef`, never raw path strings, so the
- * UI makes no assumptions about path-string semantics. On Electron the `key` is
- * the folder's absolute path; on a future PWA (File System Access API) it will
- * be a serialized FSA handle id. The `displayName` is precomputed by the adapter
- * (the folder basename) so the UI never has to split a path itself.
+ * UI makes no assumptions about path-string semantics. On Electron (the only
+ * host this contract resolves to — SFE-P5a/D10) the `key` is the folder's
+ * absolute path. The `displayName` is precomputed by the adapter (the folder
+ * basename) so the UI never has to split a path itself.
  */
 export interface FolderRef {
-  /** Stable key for equality / dedup / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
+  /** Stable key for equality / dedup / persistence. Electron: absolute path. */
   key: string;
   /** Human-readable basename, precomputed by the adapter. */
   displayName: string;
@@ -176,14 +176,13 @@ export interface FolderRef {
  * A host-neutral reference to a FILE (#61), analogous to {@link FolderRef}.
  *
  * The app-facing contract returns a `FileRef` from the native file picker
- * instead of a raw path string, so the UI makes no assumptions about path-string
- * semantics. On Electron the `key` is the file's absolute path; on a future PWA
- * (File System Access API) it will be a serialized FSA file-handle id. The
- * `displayName` is precomputed by the adapter (the file basename) so the UI never
- * has to split a path itself.
+ * instead of a raw path string, so the UI makes no assumptions about
+ * path-string semantics. On Electron the `key` is the file's absolute path.
+ * The `displayName` is precomputed by the adapter (the file basename) so the
+ * UI never has to split a path itself.
  */
 export interface FileRef {
-  /** Stable key for IPC / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
+  /** Stable key for IPC / persistence. Electron: absolute path. */
   key: string;
   /** Human-readable basename, precomputed by the adapter. */
   displayName: string;
@@ -393,16 +392,15 @@ export interface NativeThemeState {
 
 /**
  * Coarse host capability flags (#49) so the UI can degrade gracefully without
- * branching on `platform === "web"`. Electron returns all-true; the Web adapter
- * returns the conservative set (see WebAdapter.capabilities for the per-flag
- * rationale).
+ * branching on the platform discriminant directly. Electron (the only host
+ * `getPlatform()` resolves — SFE-P5a/D10) returns all-true.
  */
 export interface PlatformCapabilities {
   /** The host can write build output to a real, user-chosen filesystem path. */
   nativeSavePath: boolean;
   /** The host can reveal a file/folder in the OS file manager. */
   showInFolder: boolean;
-  /** The host can persist a folder handle across sessions (FSA on PWA). */
+  /** The host can persist a folder handle across sessions. */
   persistentFolderAccess: boolean;
 }
 
@@ -427,7 +425,7 @@ export interface HostServices {
   /**
    * Subscribe to `.md` launches from the desktop shell. Initial paths are
    * replayed before a `ready` sentinel; later Finder/Explorer launches stream
-   * through the same callback. WebAdapter never emits.
+   * through the same callback.
    */
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void;
 
@@ -443,7 +441,7 @@ export interface HostServices {
   // Two-phase connect: `connectGitHubStart` begins the device flow and
   // resolves with the code to show the user; `connectGitHubWait` resolves once
   // the user approves in the browser (the host stores the credential — the
-  // renderer only ever sees redacted status). The WebAdapter stubs reject.
+  // renderer only ever sees redacted status).
 
   /** Begin the GitHub device flow; resolves with the code/URL to display. */
   connectGitHubStart(): Promise<DeviceCodeInfo>;
@@ -470,16 +468,14 @@ export interface HostServices {
    * is NO initial replay — a handler that subscribes after a sync has already
    * settled stays uninvoked until the next transition, so callers should render
    * a sensible default (e.g. blank/idle) until the first event. Returns an
-   * unsubscribe fn — call it in `onDestroy` to prevent leaks. The WebAdapter
-   * stub never emits and returns a no-op unsubscribe.
+   * unsubscribe fn — call it in `onDestroy` to prevent leaks.
    */
   onSyncStatus(handler: (status: SyncStatus) => void): () => void;
 
   /**
    * Enable or disable the auto-sync master switch for the current project.
    * Persisted via the host settings store (equivalent to toggling
-   * `versionHistory.autoSync` in AppSettings). The WebAdapter stub is a no-op
-   * (auto-sync is desktop-only until the PWA lands).
+   * `versionHistory.autoSync` in AppSettings).
    */
   setAutoSync(enabled: boolean): Promise<void>;
 
@@ -493,9 +489,9 @@ export interface HostServices {
    * SFE-P3e — the desktop rich editor's plugin-aware projection, built
    * host-side: the OPEN project's real manifest and real loaded plugins
    * (degrade-and-report — a plugin that fails to load is skipped, reported
-   * in `pluginErrors`, and never blanks the projection). Electron only; the
-   * WebAdapter rejects (see its own doc comment) — this run's renderer
-   * wiring only calls this when a desktop project is open, matching D10.
+   * in `pluginErrors`, and never blanks the projection). Electron only —
+   * this run's renderer wiring only calls this when a desktop project is
+   * open, matching D10.
    *
    * Resolves to {@link EditorProjectionOutcome} — `ok: false` for the two
    * classified hard-failure shapes (D13's rich-mode ceiling; a manifest
@@ -527,24 +523,21 @@ export interface HostServices {
  * `openFolder` is overridden here (#49) to return a host-neutral `FolderRef`
  * instead of the lib `PlatformAdapter`'s raw `string` path — so the renderer
  * never assumes path-string semantics. The adapter is the translation seam
- * (Electron wraps the picker's path; the WebAdapter already returns an FSA
- * handle-registry ref today — see web-adapter.ts — though it is dormant/
- * unreachable until the #33 PWA milestone wires it up). Every other
- * `PlatformAdapter` primitive is inherited unchanged.
+ * (Electron wraps the picker's path in a `FolderRef` whose `key` is that
+ * absolute path). Every other `PlatformAdapter` primitive is inherited
+ * unchanged.
  */
 export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServices {
   /**
    * Open a native folder picker. Resolves with a {@link FolderRef} (key +
-   * precomputed displayName), or null when the user cancels. The Electron
-   * adapter wraps the chosen absolute path; the Web adapter genuinely opens
-   * the FSA directory picker (see web-adapter.ts) — dormant, not a stub.
+   * precomputed displayName), or null when the user cancels.
    */
   openFolder(): Promise<FolderRef | null>;
 
 }
-// NOTE: reopenFolder was removed from HostServices (no SPA caller in v1).
-// The WebAdapter retains its implementation for the FSA permission re-grant
-// flow that will be wired up when the PWA ships.
+// NOTE: reopenFolder was removed from HostServices (no SPA caller) and its
+// only implementation (the FSA permission re-grant flow on the now-deleted
+// WebAdapter, SFE-P5a) was deleted with it — see D10.
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
