@@ -90,36 +90,46 @@ const DEFAULT_FLOW_TIMEOUT_MS = 5 * 60_000;
 export const OFFLINE_MESSAGE = "Couldn't reach Google. Check your connection and try again.";
 
 /**
- * TODO(#221 / ADR 0011): set once the Gutterpress production OAuth client is
- * registered. See docs/gdrive-publish-plan.md Phase 0 and
- * docs/adr/0011-google-oauth-client-credentials.md. Left blank deliberately —
- * nobody has authorized embedding a real client id/secret yet, so this
- * package ships with Google Drive publishing unconfigured until a build sets
- * GUTTERPRESS_GOOGLE_CLIENT_ID / GUTTERPRESS_GOOGLE_CLIENT_SECRET (or a future
- * release fills these in after the client is registered).
+ * The Gutterpress production OAuth client — a Google **Desktop app** client,
+ * registered and filled in by the maintainer on 2026-09-01 for 0.10.5
+ * (docs/adr/0011-google-oauth-client-credentials.md). Its id and "secret"
+ * are public by design: every installed Drive app ships them, and what
+ * secures the flow is PKCE + the loopback redirect + the user's consent, not
+ * secrecy of these values. Env-overridable through
+ * GUTTERPRESS_GOOGLE_CLIENT_ID / GUTTERPRESS_GOOGLE_CLIENT_SECRET (the same
+ * shape as DEFAULT_GITHUB_CLIENT_ID) in case the registration is rotated.
+ * Blank both to ship a build with Google Drive publishing unconfigured — it
+ * then fails connect immediately with GOOGLE_NOT_CONFIGURED_MESSAGE.
  */
-const DEFAULT_GOOGLE_CLIENT_ID = "";
-/** See {@link DEFAULT_GOOGLE_CLIENT_ID} — same policy, same TODO. */
-const DEFAULT_GOOGLE_CLIENT_SECRET = "";
+const DEFAULT_GOOGLE_CLIENT_ID = "621278203862-2t35qditgvfh0pgosguqu2encf9c2h9j.apps.googleusercontent.com";
+/** See {@link DEFAULT_GOOGLE_CLIENT_ID} — same policy. */
+const DEFAULT_GOOGLE_CLIENT_SECRET = "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";
 
-/** Client id resolution: explicit option → env var → registered default. */
-export function resolveGoogleClientId(explicit?: string): string {
-  return (
-    explicit?.trim() ||
-    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID?.trim() ||
-    DEFAULT_GOOGLE_CLIENT_ID
-  );
+/**
+ * Explicit option → env var → embedded default, where a value that is
+ * PRESENT but empty means "no client" and does not fall through: with a real
+ * client embedded below, that is the only way a build (or a test) can express
+ * "Google Drive publishing unconfigured" without editing the constants. Only
+ * an ABSENT (`undefined`) value falls through. This is the one place the
+ * shape differs from `resolveGitHubClientId`, whose `||` chain never had a
+ * blank-vs-absent distinction to draw.
+ */
+function resolveClientValue(explicit: string | undefined, env: string | undefined, embedded: string): string {
+  if (explicit !== undefined) return explicit.trim();
+  if (env !== undefined) return env.trim();
+  return embedded;
 }
 
-/** Client secret resolution: explicit option → env var → registered default.
- * See the module header re: why a Google installed-app "secret" is safe to
- * embed as a default (ADR 0011) — this is deliberately NOT the GitHub rule. */
+/** Client id resolution — see {@link resolveClientValue}. */
+export function resolveGoogleClientId(explicit?: string): string {
+  return resolveClientValue(explicit, process.env.GUTTERPRESS_GOOGLE_CLIENT_ID, DEFAULT_GOOGLE_CLIENT_ID);
+}
+
+/** Client secret resolution — see {@link resolveClientValue}, and the module
+ * header re: why a Google installed-app "secret" is safe to embed as a
+ * default (ADR 0011) — this is deliberately NOT the GitHub rule. */
 export function resolveGoogleClientSecret(explicit?: string): string {
-  return (
-    explicit?.trim() ||
-    process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET?.trim() ||
-    DEFAULT_GOOGLE_CLIENT_SECRET
-  );
+  return resolveClientValue(explicit, process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET, DEFAULT_GOOGLE_CLIENT_SECRET);
 }
 
 /** Friendly, load-bearing product decision (see task brief): fail EARLY and
