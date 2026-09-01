@@ -161,6 +161,12 @@ export interface GoogleAuthProviderOptions {
   openBrowser?: (url: string) => Promise<void>;
   /** Overall deadline (ms) waiting for the browser redirect. Default 5 min. */
   timeoutMs?: number;
+  /** Test-only: bind the loopback listener to this exact port instead of an
+   * OS-assigned ephemeral one (0). Lets tests deterministically force a bind
+   * failure (EADDRINUSE) by pre-binding the port themselves. Never set this
+   * in production — an OS-assigned port is what makes the loopback flow work
+   * without a fixed-port conflict. */
+  port?: number;
 }
 
 function b64url(buf: Buffer): string {
@@ -259,6 +265,14 @@ function waitForCallback(
       const err = url.searchParams.get("error");
       const gotState = url.searchParams.get("state");
       const code = url.searchParams.get("code");
+      if (!err && !code) {
+        // Neither a code nor an error — this isn't the OAuth redirect (a
+        // browser preconnect/speculative probe, or someone hitting the
+        // loopback port manually). Don't settle the flow on it; keep
+        // waiting for the real callback.
+        res.writeHead(204).end();
+        return;
+      }
       if (err) {
         res.writeHead(200, { "Content-Type": "text/html" }).end(FAILURE_HTML);
         finishReject(new Error("Google sign-in was declined. You can connect Google Drive again whenever you're ready."));
@@ -304,6 +318,7 @@ export class GoogleAuthProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly openBrowser: (url: string) => Promise<void>;
   private readonly timeoutMs: number;
+  private readonly bindPort: number;
 
   constructor(options: GoogleAuthProviderOptions = {}) {
     this.clientIdOpt = options.clientId;
@@ -311,6 +326,7 @@ export class GoogleAuthProvider {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.openBrowser = options.openBrowser ?? openPath;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_FLOW_TIMEOUT_MS;
+    this.bindPort = options.port ?? 0;
   }
 
   async connect(callbacks: GoogleHostCallbacks): Promise<HostCredential> {
@@ -327,7 +343,16 @@ export class GoogleAuthProvider {
     const challenge = pkceChallengeFromVerifier(verifier);
 
     const server = http.createServer();
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve, reject) => {
+      const onListenError = (err: Error) => {
+        reject(new Error(`Couldn't start the local sign-in listener: ${err.message}`));
+      };
+      server.once("error", onListenError);
+      server.listen(this.bindPort, "127.0.0.1", () => {
+        server.removeListener("error", onListenError);
+        resolve();
+      });
+    });
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
     const redirectUri = `http://127.0.0.1:${port}`;

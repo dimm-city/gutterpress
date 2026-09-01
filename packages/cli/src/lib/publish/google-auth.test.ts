@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import http from "node:http";
 import {
   GoogleAuthProvider,
   pkceChallengeFromVerifier,
@@ -287,4 +288,84 @@ test("email lookup failure is non-fatal — connect still succeeds without a lab
   expect(cred.token).toBe("sensitive-refresh-value");
   expect(cred.username).toBeUndefined();
   expect(cred.label).toBe("Google Drive");
+});
+
+// A5: a request carrying neither "code" nor "error" (a browser
+// preconnect/speculative probe, or a stray manual hit on the loopback port)
+// must not be treated as the final OAuth answer — the flow keeps waiting.
+
+test("a stray request with neither code nor error is ignored — the flow keeps waiting for the real callback (A5)", async () => {
+  const { provider } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+
+  // Fires first, before the real redirect — must not settle the flow.
+  const strayRes = await fetch(`${redirectUri}/`);
+  expect(strayRes.status).toBe(204);
+
+  // Race the flow's promise against a short delay: it must still be
+  // pending (neither resolved nor rejected) after the stray request.
+  const pendingSentinel = Symbol("still-pending");
+  const outcome = await Promise.race([
+    donePromise.then(
+      () => "resolved" as const,
+      () => "rejected" as const,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(pendingSentinel), 50)),
+  ]);
+  expect(outcome).toBe(pendingSentinel);
+
+  // Now the real redirect arrives and the flow completes normally.
+  const res = await fetch(`${redirectUri}/?code=fake-auth-code&state=${state}`);
+  expect(res.status).toBe(200);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+});
+
+test("a bad-state request is still rejected exactly as before — the A5 fix only changes the neither-param case (A5 regression guard)", async () => {
+  const { provider, requests } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+
+  await fetch(`${redirectUri}/?code=fake-auth-code&state=an-attacker-controlled-state`);
+
+  await expect(donePromise).rejects.toThrow(/security check|state mismatch/i);
+  expect(requests.some((r) => r.url.includes("oauth2.googleapis.com/token"))).toBe(false);
+});
+
+// A6: a bind failure (port exhaustion, a sandboxed environment blocking
+// loopback binds, …) must reject connect() promptly with a friendly
+// message, not hang forever.
+
+test("a loopback bind failure rejects connect() promptly with a friendly message instead of hanging (A6)", async () => {
+  // Occupy a real port on 127.0.0.1 first, then point the provider's
+  // listener at that exact same port so its own bind fails with EADDRINUSE.
+  const occupied = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    occupied.once("error", reject);
+    occupied.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = occupied.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  try {
+    const provider = new GoogleAuthProvider({
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      fetchImpl: (async () => {
+        throw new Error("should never fetch");
+      }) as unknown as typeof fetch,
+      openBrowser: async () => {},
+      port,
+    });
+
+    await expect(provider.connect({ onAuthUrl: () => {} })).rejects.toThrow(
+      /couldn't start the local sign-in listener/i,
+    );
+  } finally {
+    await new Promise<void>((resolve) => occupied.close(() => resolve()));
+  }
 });
