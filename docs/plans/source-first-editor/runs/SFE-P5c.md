@@ -101,3 +101,36 @@ deleted, `fetch("/api/…")` zero across the package, 120 validated IPC
 handlers (+108 over the P0a baseline of 12, the deliberate counterpart of
 −104 routes), desktop 5889:1:0, svelte-check 688 files clean, render purity
 clean.
+
+
+## P5d — review log and gate
+
+**Review** (`d6092188..3df0ea74` + repair `e4438144`): approve after one
+round, 5 CONFIRMED. The two that mattered: the handler's "two independent
+defenses" claim was FALSE — the lexical containment check is the sole guard
+against the backslash-traversal class, now pinned by two win32 tests proven
+to fail when the check is deleted, with every docstring and ledger claim
+reworded to the true relationship (a fast pre-filter plus one non-redundant
+catch-all); and the "packaged smoke" evidence never exercised the packaged
+path — both drivers ran Electron with `app.isPackaged === false`, so the
+asar-reading branch is proven only by a unit test. Relabeled honestly as
+UNPACKAGED smoke; AC-16's packaged-smoke half stays pending with the
+untaken `electron-driver.pw.mjs` packaged mode named as the way to close
+it. Also confirmed: CLAUDE.md/ARCHITECTURE.md still described the deleted
+server (rewritten to the one-seam typed-IPC reality); README/vite/+layout
+still named `getPlatform()`/`electron-adapter` (deleted in P5b); and
+`check-render-purity.mjs`'s bare-invocation default still scanned the
+nonexistent `build/client` — a fail-open fixed with its self-test fixture.
+
+**Gate**: PASS — all 16 commands exit 0 (cli 1913:60; editor 3038;
+vscode-extension 228; desktop 5896:1 + check 688 files + lint + build +
+electron:build; purity self-test 10/10; architecture 0==0; generated-files;
+vendored; knip).
+
+**Checkpoint C, final numbers at P5 HEAD** (`git diff --numstat
+5db8c581^..HEAD -- packages/desktop packages/cli/scripts tools`):
+313 files, +11,177/−14,798, **net −3,621** across all of P5 (PWA deletion,
+locator replacement, 104→0 route migration, server deletion) — tests and
+fitness tooling included. Desktop HTTP routes 104 → 0; IPC handlers
+12 → ~120, every one runtime-validated; the loopback server, bearer token,
+proxy, adapter-node, service locator, and browser host no longer exist.

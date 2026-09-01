@@ -767,3 +767,37 @@
   "checkpointSummary": "Every desktop operation now crosses one validated, typed boundary. The reviews earned their keep twice over: a fail-closed gate lost in mechanical migration, and a credentialed-URL leak through an error rethrow that only a directed attack would have found. P5d deletes the server the routes no longer need."
 }
 ```
+
+### SFE-P5d — Static renderer, local server deleted (Checkpoint C)
+
+```json
+{
+  "status": "complete",
+  "baseSha": "d6092188",
+  "headSha": "e4438144",
+  "history": [
+    "3df0ea74 refactor(p5): static renderer over app://, the local server deleted",
+    "e4438144 fix(p5): address review findings (round 1)"
+  ],
+  "confirmedFindings": [
+    "R1: the 'two independent defenses' claim was false — the containment check is the sole guard against backslash traversal; pinned by win32 tests verified to fail with the check deleted, claims reworded everywhere",
+    "R1: 'packaged smoke' ran Electron unpackaged (app.isPackaged false) — relabeled honestly; the asar branch is unit-proven only and real packaged smoke stays an open item",
+    "R1: CLAUDE.md and ARCHITECTURE.md still described the deleted adapter-node server; README/vite/+layout still named the P5b-deleted locator — all rewritten to the one-seam reality",
+    "R1: check-render-purity's bare default scanned the nonexistent build/client (fail-open) — default, header, hint and self-test fixture fixed",
+    "R1: Checkpoint C contradicted its own commit (a 'residual' already fixed, stale head, stale LOC) — corrected with reproducible commands"
+  ],
+  "advisories": [
+    "Real packaged (asar) smoke remains open — named for the P7 sweep",
+    "Checkpoint C's LOC row goes stale with every later commit by construction; the close-out records the final-at-HEAD derivation command instead of a frozen number"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck (4) / cli build + 1913:60 / editor 3038 / vscode-extension 228 / desktop 5896:1 + check (688) + lint + build (adapter-static, purity 144 files) + electron:build / purity self-test 10:10 / architecture (0==0) / generated-files / vendored / knip — all 16 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-16: route/client/server halves evidenced; packaged-smoke half pending (P7)"],
+  "deletionLedgerUpdates": ["sveltekit-host (236 lines), bearer token, proxy, adapter-node deleted; app-protocol.ts (222) is the surviving boundary with traversal proofs; all-of-P5 net −3,621 LOC across 313 files"],
+  "checkpointSummary": "The desktop app is one process talking to itself over one validated boundary: no server, no token, no proxy, no locator, no second host. Checkpoint C is assembled in the run spec; the one honest asterisk is that packaged-asar smoke is unit-proven, not driven, and P7 owns closing it."
+}
+```
