@@ -761,6 +761,25 @@ Consequences for the plan: **D3 stands and ADR 0011 must be written**
 Google's own console**; **D6's stable-link promise is real**; D4, D5 and D7
 are mechanically validated.
 
+### Re-proven against the same account (2026-09-01) — `drive.file` ALONE, headless two-step, 12/12
+
+The 0.10.5 bring-up produced a "connected" account whose every Drive call
+answered 403 — same client, same project, Drive API enabled — which is the
+signature of a token issued **without** `drive.file`: with three scopes
+requested (`drive.file openid email`), Google's consent screen is granular
+and lists the Drive permission as a checkbox that can be left unticked while
+sign-in still completes, and the app never read the token response's
+`scope`. The request is now `drive.file` alone (D1 amended above; ADR 0011),
+and the connect flow refuses a token without it. This run proves the
+single-scope request end to end; the spike's `--manual`/`--resume` pair ran
+in a browser-less cloud session, with the consent done on a phone.
+
+| # | Assumption | Result | Evidence |
+|---|---|---|---|
+| P15 | **A single-scope request grants `drive.file`** — judged by the token response's `scope`, not by the request | **PASS** | requested `…/auth/drive.file`; granted `…/auth/drive.file`; Google's redirect echoed the same `scope=` |
+| P4 (again) | **`about.get` returns the account email with `drive.file` alone** — `openid`/`email` were never needed for the credential label | **PASS** | email and `storageQuota` returned with no sign-in scope in the grant |
+| P1–P11 | Everything in the table above, under the single scope | **PASS** | folder found (`1fq156Yx…`); listing still shows only the app's folder; 900 KiB resumable upload with 3× `308` resume; update-in-place kept id + link; refresh minted a new token; revoke `200` |
+
 ### Still open (both need wall-clock time, neither blocks Phase 1)
 
 | # | Assumption | How |
