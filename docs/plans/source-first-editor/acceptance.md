@@ -23,7 +23,7 @@
 | AC-12 | Preview remains print authority | P3/P4 | Preview/PDF and navigation tests | Evidenced for navigation (SFE-P3d-parity: D8 capability coverage audit, host-command round trips through the real bridge and shell, and a two-layer mutation-separability proof; the P4 deletion itself remains) |
 | AC-13 | Preview editing deleted | P4 | Search proof and removed tests/protocol | **Evidenced** (SFE-P4: eight-identifier search proofs pasted in the deletion ledger with exactly two ruled residual classes — one v9 version-history comment and absence-asserting test strings; protocol v8→v9; the characterization suites and the 1,047-line packaged E2E of the deleted feature removed; net −6,719 LOC) |
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | **Evidenced** (SFE-P5a: WebAdapter/web-fs/web-store/fsa.d.ts/service-worker/web manifest and four test suites deleted with pasted search proofs; getPlatform() fails loudly off-Electron; the build step that silently regenerated the orphaned viewer bundle fixed at the generator; ~-3,100 LOC net) |
-| AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | Pending |
+| AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | **Evidenced** (SFE-P5b: getPlatform()/Platform/HostServices/ElectronAdapter deleted; five feature-owned capability modules over one bridge accessor; two deliberate collapses into sole consumers; five dead members deleted with proofs; the full inventory and api.ts→P5c assignment in capability-map.md, audited by the review) |
 | AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Pending |
 | AC-17 | Composition roots reduced | P6 | Responsibility review and module tests | Pending |
 | AC-18 | Public compatibility preserved | All | CLI/API/build/preview/publish gates | Pending |
@@ -694,5 +694,41 @@
   "acceptanceUpdates": ["AC-14 evidenced"],
   "deletionLedgerUpdates": ["WebAdapter 901 + web-fs 279 + web-store 167 + fsa.d.ts 31 + service-worker 110 + four test suites 560 + manifest + viewer bundle + generator copy step: deleted with SHAs and proofs; ~-3,100 LOC net"],
   "checkpointSummary": "The desktop package hosts exactly one product again. The review's defining catch was the build step that would have silently resurrected the deleted viewer bundle on the next build — the difference between deleting a file and deleting a feature."
+}
+```
+
+### SFE-P5b — Feature-owned capabilities replace the Platform locator
+
+```json
+{
+  "status": "complete",
+  "baseSha": "951623d7",
+  "headSha": "7f369ad2",
+  "history": [
+    "f45d7961 refactor(p5): replace the Platform service locator with feature-owned capabilities",
+    "a0e1e97e / 7f369ad2 fix(p5): address review findings (rounds 1-2)"
+  ],
+  "confirmedFindings": [
+    "R1: four quotations attributed to the run specification exist nowhere in it — removed and re-attributed as the run's own reasoning",
+    "R1: the capability map's member arithmetic did not close and its diffstat narration reported figures its own command could not produce — re-derived to a consistent 31-member baseline (20 moved, 4 collapsed, 5 dead, 1 type-only, 1 discriminant) and reproducible numstat commands",
+    "R1: the DTO-relocation constraint was claimed met but only partly done — the editor-projection and capabilities types actually moved; the deliberate deferrals are now named",
+    "R1: the ElectronBridge parity table claimed exact agreement over two real divergences, and electron/types.d.ts's Window.electron block is a zero-consumer duplicate flagged for P5c/P6",
+    "R1: theme's onNativeThemeUpdated lost its only test in the collapse — restored as a real subscription-and-flip test",
+    "R1: the platform barrel carried 15+ dead re-exports — trimmed to the seven names with live importers",
+    "R1: an onFolderChanged consumer-count contradiction, six dangling HostServices JSDoc links, an unmeasured isDesktop census, a ledger section without SHAs, and a stale-prose sweep that had missed five locations including CLAUDE.md §8",
+    "R2: the map's diffstat narrative disagreed with its own reproducible commands — made character-identical to the ledger's figures"
+  ],
+  "advisories": [
+    "electron/types.d.ts's Window.electron block is a zero-consumer duplicate of the preload's own typing — P5c/P6 deletion candidate, recorded in the map"
+  ],
+  "gate": {
+    "commands": [
+      "install / typecheck (4 workspaces) / cli build + 1913:60 / editor 3038 / desktop 5823:1 + check (894) + lint + build (render purity, 143 files) / architecture (104==104) / generated-files (1332) / vendored / knip — all 13 exit 0"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": ["AC-15 evidenced"],
+  "deletionLedgerUpdates": ["Platform/HostServices locator + 253-line adapter + 5 dead members deleted; net production +49 (modules replace forwarding), tests +280"],
+  "checkpointSummary": "The desktop app has no service locator: five feature-owned capability modules over one bridge accessor, two honest collapses instead of ceremony modules, and a review that spent most of its force making the capability map — P5c's dispatch document — tell the exact truth."
 }
 ```

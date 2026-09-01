@@ -66,4 +66,31 @@ shape `api.ts` already gives routes, minus the locator.
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+Four batches over `951623d7..HEAD`, three rounds. Round 1: **12 CONFIRMED** —
+dominated by truthfulness defects in the capability map (the document P5c
+dispatches from): four quotations attributed to the run spec that exist
+nowhere in it; member arithmetic that did not close (21 vs 22 vs 30 vs 31);
+a DTO-relocation constraint claimed met but only partly done; an
+ElectronBridge parity table claiming exact agreement over two real
+divergences (a `build.allowShrink` missing from `types.d.ts`, an
+`onSyncStatus` cast) plus a zero-consumer duplicate `Window.electron` block
+flagged for P5c/P6 deletion; a "real output" block narrating figures its
+command could not produce; and an unmeasured isDesktop() census. Real code
+findings alongside: theme's `onNativeThemeUpdated` lost its only test
+(restored as a real subscription-and-flip test), the platform barrel carried
+15+ dead re-exports (trimmed to the seven with live importers), six dangling
+`{@link HostServices…}` references, and the editor-projection DTO exception
+was nominal until the types actually moved. Round 2 confirmed one residual
+(the map's diffstat narrative vs the reproducible numbers) and round 3
+verified it: **approve, 0 confirmed, 1 advisory**.
+
+Net production change over the run: 21 files, +580/−531 (+49); tests +280.
+The locator, the 253-line forwarding adapter, and five dead members are
+gone; behavior-identity probing produced no confirmed production defect.
+
+## Gate
+
+PASS — all 13 commands exit 0: install (frozen); typecheck (4 workspaces);
+cli build + 1913:60; editor 3038; desktop 5823:1 + check (894 files) + lint
++ build (render purity, 143 files); architecture (route ratchet 104 == 104);
+generated-files (1332 tracked); vendored; knip.

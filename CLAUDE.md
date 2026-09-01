@@ -447,10 +447,18 @@ the client bundle.
 **Two seams, not one.** The route-first split (server route + `fetch()`) is
 the **default path** and the one most of the app actually uses today: 26+
 files call `src/lib/api.ts` directly (`+page.svelte` alone has 36 `api.*`
-call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
-(`src/lib/platform/contract.ts` + `ElectronAdapter`, reached via
-`import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
-owns two narrower capability classes a plain route can't cover:
+call sites). The second seam is **feature-owned capability modules** over the
+preload bridge (SFE-P5b replaced the old `Platform`/`HostServices` service
+locator — `getPlatform()`, `ElectronAdapter` and the broad contract are
+deleted): `src/lib/update/updater-capability.ts`,
+`src/lib/remote/remote-capability.ts`,
+`src/lib/export/build-preview-capability.ts`,
+`src/lib/editor-host/editor-projection-capability.ts` and
+`src/lib/app-lifecycle/app-lifecycle-capability.ts` — plain module functions
+plus their own DTO types, each owning its slice of `window.electron` through
+the ONE shared accessor `src/lib/platform/bridge.ts` (which does the
+presence check and throws `DesktopHostRequiredError` off-Electron). This
+seam owns the two capability classes a plain route can't cover:
 
 1. **Push streams** the renderer subscribes to (build progress,
    folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
@@ -467,42 +475,41 @@ Everything else — status, dialog, theme, plugin, remote/sync, vcs, recovery,
 settings, recents/favorites, and so on — is a server route + a typed
 `api.ts` wrapper, called directly as `api.<ns>.<op>(...)`. Whichever seam a
 capability uses, app code never touches `window.electron`/`ipcRenderer`
-directly (only `electron-adapter.ts` may).
+directly (only `platform/bridge.ts` may). A capability with a single
+consumer and zero marshalling logic gets NO module — it collapses into its
+consumer (the theme stream and the editor buffer's fs trio are the worked
+examples), per the SFE-P3e product-owner ruling against forwarding ceremony.
 
 **Adding a new host capability.**
 
 **(A) Default: a server route.** Covers essentially everything (see the list
-above).
+above). NOTE: P5c is migrating these routes to typed IPC group by group and
+the route count may only ratchet DOWN (`tools/check-architecture.mjs`
+Rule 2) — a NEW capability must not add a route; give it typed IPC via (B)'s
+wiring even for plain request/reply, inside the bounded context's capability
+module.
 
-1. `src/routes/api/<ns>/<op>/+server.ts` — the real Node work (may `import`
-   `gutterpress`, `node:*`, postcss, isomorphic-git — it runs in main,
-   never in the client bundle)
-2. `src/lib/api.ts` — the typed `fetch("/api/<ns>/<op>")` wrapper; components
-   call `api.<ns>.<op>(...)` directly. No `contract.ts` / `HostServices` /
-   adapter changes needed.
+1. (until its P5c migration lands) `src/lib/api.ts` — the typed
+   `fetch("/api/<ns>/<op>")` wrapper over an existing route; components call
+   `api.<ns>.<op>(...)` directly.
 
-**(B) Platform adapter — only for the two capability classes above.**
+**(B) Capability module — push streams, live-window calls, and all NEW
+request/reply.**
 
-1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
-   types **locally**, decoupled from the lib)
-2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step) —
-   the only `Platform`/`HostServices` implementation this package ships (see
-   "PWA scaffolding" below for why there is no web counterpart)
-3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
-   **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
-   `webContents.send` push channel); `electron/preload.ts` — expose it on
-   `contextBridge`; `electron/types.d.ts` — add it to the `Window.electron`
-   shape; `contract.ts` — add it to `ElectronBridge`
+1. Wire the **IPC bridge**: `electron/main.ts` — `secureHandle("ns:op", …)`
+   with runtime-validated arguments (or a `webContents.send` push channel);
+   `electron/preload.ts` — expose it on `contextBridge`;
+   `electron/types.d.ts` — the `Window.electron` shape; `contract.ts` — the
+   `ElectronBridge` type.
+2. Add the operation to the bounded context's capability module (or create
+   one if a genuinely new context appears — payload types live IN the
+   module, decoupled from the lib); components import the module directly.
 
-**The canonical fix when node code is needed by the UI:** don't bundle it into
-the renderer — run it in the host and expose it as a server route (default) or,
-for the two narrower classes, through `getPlatform()`. Example: CSS
-print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
-`api/lint/check-css` server route) and the editor's lint gutter calls
-`getPlatform().checkCss(...)` — routed through the adapter here because
-CodeMirror's lint-source contract expects one async function to hand it, not
-because every route needs a `Platform` method; the route itself is still the
-(A) path.
+**The canonical fix when node code is needed by the UI:** don't bundle it
+into the renderer — run it in the host behind one of the two seams. Example:
+CSS print-safety linting (`checkCss`) is postcss-based, so it runs host-side
+and the editor's lint gutter calls `api.lint.checkCss(...)` (a server route
+until its P5c group migrates).
 
 **Svelte 5 conventions: `$effect` is banned in the SPA.** Enforced by eslint
 (`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the error
