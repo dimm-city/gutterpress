@@ -2023,8 +2023,10 @@ client/route-tree deletion) collapsed into one write-ownership grant because
 Lane C's own deliverables (`src/routes/api/**`, `src/lib/api.ts`) were
 already deleted whole by SFE-P5c4, ahead of this phase. Base SHA `d6092188`
 (SFE-P5c's close-out commit, current HEAD at the start of this run). Head:
-**uncommitted** — this run's changes are left in the working tree per its
-own instructions, for the integrator to commit.
+`3df0ea74` — this run's changes landed as that commit (round-1 repair,
+below, was correctly a further diff on top rather than an amend, and is
+left uncommitted in the working tree per repair-round instructions, for the
+integrator to fold in on the next commit).
 
 **What was deleted:**
 
@@ -2101,17 +2103,25 @@ discovered the OS-assigned port could otherwise reach the same privileged
 protect** — `app-protocol.ts` never opens a socket; it only ever reads
 files out of the packaged, read-only `buildDir` and returns their bytes.
 The surviving boundary is **path-scoping**: `resolveAssetPath` refuses to
-resolve any request outside `buildDir` (two independent layers — a
-segment-level `..`/drive-letter reject before any path is joined, and a
-final lexical containment check after), proven by the traversal-refusal
-tests below. The old `registerAppProtocol`'s "reject any host but `local`"
-check is NOT carried forward as "the same validation moved" — a fresh,
-differently-reasoned host check was written for the new handler (kept for
-origin-identity consistency with `navigation-policy.ts`'s `APP_ORIGIN =
-"app://local"`, not because it protects a proxy that no longer exists).
+resolve any request outside `buildDir` via a segment-level `..`/drive-letter
+pre-filter before any path is joined, plus a final lexical containment
+check after — **complementary, not independent layers** (round-1 repair:
+the original wording here overstated this). The pre-filter splits only on
+`/`, so it misses an entire class — a traversal expressed with `\` instead
+of `/` (directly, or `%5c`-encoded), which only `path.win32.resolve` treats
+as a separator; the final containment check is the one layer that actually
+catches it, proven by the `WIN32 CONTAINMENT` tests below (added in the same
+repair, exercising `path.win32` via `resolveAssetPath`'s injectable third
+parameter so the property is provable on a non-Windows CI runner). The old
+`registerAppProtocol`'s "reject any host but `local`" check is NOT carried
+forward as "the same validation moved" — a fresh, differently-reasoned host
+check was written for the new handler (kept for origin-identity consistency
+with `navigation-policy.ts`'s `APP_ORIGIN = "app://local"`, not because it
+protects a proxy that no longer exists).
 
 **Traversal-refusal proof (`tests/platform/app-protocol.test.ts`,
-verbatim tests, all passing):**
+verbatim tests, all passing — 23 tests total, 21 originally plus the 2
+`WIN32 CONTAINMENT` tests added in round-1 repair):**
 
 ```
 TRAVERSAL REFUSAL: a literal '..' segment is rejected
@@ -2120,7 +2130,19 @@ TRAVERSAL REFUSAL: a Windows drive-letter segment is rejected (would otherwise r
 TRAVERSAL REFUSAL: an embedded NUL byte is rejected
 TRAVERSAL REFUSAL through the full app:// pipeline: a slash-encoded '..' request never escapes buildDir
 TRAVERSAL REFUSAL through the full app:// pipeline: a literal '../' request resolves within buildDir, never the real filesystem root
+WIN32 CONTAINMENT: a backslash-traversal pathname with no unsafe '/'-segment still resolves outside buildDir and is rejected
+WIN32 CONTAINMENT: a %5c-encoded backslash-traversal pathname still resolves outside buildDir and is rejected
 ```
+
+The two `WIN32 CONTAINMENT` tests are the ones that isolate the final
+containment check specifically: both payloads pass `hasUnsafeSegment`
+unrejected (neither contains a literal `/`-delimited `..` or colon segment
+— the traversal is entirely backslash-shaped), so only the containment
+check stands between them and a path outside `buildDir`. Verified by
+temporarily deleting that check and re-running the suite: both tests fail
+(`toBeNull()` receives the escaped absolute path instead), while the other
+21 tests stay green — confirming these two, and only these two, pin that
+specific layer.
 
 The slash-encoded case (`app://local/foo%2f..%2f..%2f..%2f..%2fetc%2fpasswd`)
 is the meaningful one: `new URL(...)` leaves an encoded slash (`%2f`)
@@ -2170,10 +2192,28 @@ $ grep -rn "x-gutterpress-token\|skAuthToken\|buildProxyRequest\|withTokenAuth\|
 → 0 hits
 ```
 
-**Packaged smoke (both scripts, run as-is against this run's own build —
+**Unpackaged smoke (both scripts, run as-is against this run's own build —
 `out/main/main.js` from `electron:build`, `build/` from `bun run build`;
 the existing driver's xvfb fallback launches Electron headlessly in this
-sandbox, exactly as it did in P3d-sweep):**
+sandbox, exactly as it did in P3d-sweep — round-1 repair correction: this
+was mislabeled "Packaged smoke" originally. Both scripts launch Electron
+directly against `out/main/main.js`
+(`tests/integration/editor-toggle-loads-module.pw.mjs`'s `target = exeArg ?
+resolve(exeArg) : join(desktopDir, "out", "main", "main.js")`, invoked here
+with no `exeArg`), so `app.isPackaged === false` and `main.ts` takes
+`resolveBuildDir(false, HERE)` → the plain-filesystem `packages/desktop/build`
+branch. The branch this run actually adds for real users —
+`resolveBuildDir(true, …)` → `process.resourcesPath/app.asar/build`, read
+through `readFile` against a real asar — is exercised by neither script; it
+is covered only by the unit test in
+`tests/platform/app-protocol.test.ts` that stubs `process.resourcesPath` and
+asserts string equality on the resolved path, not by a running packaged app.
+The repo's own `tests/integration/electron-driver.pw.mjs` accepts a packaged
+executable via `exePath` and was not run here. This does NOT invalidate what
+follows below — it is real evidence that the app still starts, opens a
+project, and edits — it just proves less than "packaged smoke" claimed; see
+AC-16 in `acceptance.md`, corrected in the same repair round to record the
+packaged half as still pending):**
 
 ```
 $ node tests/integration/editor-toggle-loads-module.pw.mjs
@@ -2250,23 +2290,33 @@ ARCH #1 tests (all passing, see below), and by construction never reaches
 - **Security equivalence:** stated above — server-authentication token
   replaced by path-scoping, since there is no longer a server to
   authenticate callers to.
-- **Packaged smoke:** both required scripts PASS (verbatim output above).
+- **Unpackaged smoke:** both required scripts PASS (verbatim output above)
+  — against `out/main/main.js` run directly (`app.isPackaged === false`),
+  not a packaged build; see the correction above and AC-16 in
+  `acceptance.md`. The packaged (asar) code path this run adds is still
+  proven only by a unit test stubbing `process.resourcesPath`, not by a
+  running packaged app — AC-16's packaged half remains Pending.
 - **Net production LOC, this run (P5d only):** production files (`electron/
   **`, `src/**`, `svelte.config.js`, `vite.config.ts`,
   `electron.vite.config.ts`, `package.json` — excludes `tests/**` and
   `README.md`): 11 files, +301/−322, **net −21**. Test files: 7 files,
   +264/−320, **net −56**. `README.md` (doc): +75/−56, net +19.
   `bun.lock` (generated, not counted as production): +2/−88.
-- **Net production LOC, all of P5 (`5db8c581..HEAD`, git history, plus
-  this run's own uncommitted diff on top — see the caveat below):**
-  production paths (every changed file NOT under `docs/`, NOT a `.md`
-  file, NOT matching `tests/`/`.test.`/`.pw.mjs`, NOT a lockfile): **228
-  files, +6,619/−8,322, net −1,703.** Test paths: 73 files, +4,354/−3,805,
-  net +549 (P5c's IPC migration added substantial new IPC-boundary test
-  coverage — validation/traversal/error-path cases the deleted HTTP routes
-  never had, per the P5c1/P5c2 review logs — which is expected and by
-  design, not a regression). Doc paths: 11 files, +2,658/−292, net +2,366
-  (the run-specification and ledger entries this whole phase produced).
+- **Net production LOC, all of P5 (`5db8c581..HEAD`, git history — HEAD is
+  now the committed `3df0ea74`, so this is a plain `git diff --numstat`, not
+  a working-tree diff; re-derived in round-1 repair, see the correction
+  below):** production paths (every changed file NOT under `docs/`, NOT a
+  `.md` file, NOT matching `tests/`/`.test.`/`.pw.mjs`, NOT a lockfile):
+  **228 files, +6,628/−8,329, net −1,701.** (Round-1 repair correction: the
+  figure originally recorded here — +6,619/−8,322, net −1,703 — was measured
+  before `ci.yml`'s renderer-purity argument fix existed in the diff; that
+  9-line hunk, +9/−7, is exactly the delta between the two measurements.)
+  Test paths: 73 files, +4,354/−3,805, net +549 (P5c's IPC migration added
+  substantial new IPC-boundary test coverage — validation/traversal/
+  error-path cases the deleted HTTP routes never had, per the P5c1/P5c2
+  review logs — which is expected and by design, not a regression). Doc
+  paths: 11 files, +2,658/−292, net +2,366 (the run-specification and ledger
+  entries this whole phase produced).
   **Caveat on the range:** `5db8c581` is P5a's OWN first production commit
   (`refactor(p5): delete the dormant PWA host`), so `5db8c581..HEAD`
   excludes that commit's own diff — P5a's stand-alone numbers were already
@@ -2280,37 +2330,36 @@ ARCH #1 tests (all passing, see below), and by construction never reaches
   P5a. Both figures (this run alone; the `5db8c581..HEAD`-plus-P5d
   aggregate) are given so the reader can reconstruct either total.
 
-**A residual outside this lane's write ownership, flagged for the
-integrator (not fixed here — `.github/workflows/**` and the root-level
-`tools/` scripts are not in this run's write-ownership grant):**
-`.github/workflows/ci.yml`'s "Check renderer purity" step hardcodes
-`node tools/check-render-purity.mjs packages/desktop/build/client --strict`
-— a path that no longer exists now that adapter-static writes everything
-directly to `packages/desktop/build/` (no `client`/`server` split). This
-run's own `package.json` `build` script was updated to pass the correct
-argument (`build`, not `build/client`) and its own verification (below)
-confirms `check-render-purity: OK — scanned 144 file(s) in build` — but CI's
-separately-hardcoded invocation will fail (`--strict` + a nonexistent
-directory = exit 1) the next time it runs against a branch carrying this
-change, until someone with `.github/workflows/**` write access changes that
-one argument. `docs/plans/source-first-editor/guardrails.md`'s own D10/P5d
-row already anticipated exactly this ("the gate's `buildDir` argument and
-scope comment will need re-deriving against whatever the post-P5d
-static-SPA build emits") — this is that re-derivation's finding, not a new
-discovery. `tools/check-render-purity.mjs`'s own default-argument fallback
-(`packages/desktop/build/client`, used only when no `buildDir` is passed)
-and `tools/check-render-purity.test.mjs`'s adapter-node-shaped fixture
-scenario are the same class of residual, lower priority (CI always passes
-an explicit argument, so the default is dead in practice; the test fixture
-still validates the tool's general dir-scanping mechanism correctly, just
-under a now-unrealistic directory shape).
+**`.github/workflows/ci.yml`'s renderer-purity argument — WAS updated in
+this commit, not a residual (round-1 repair correction):** an earlier draft
+of this section reported `ci.yml`'s "Check renderer purity" step as still
+hardcoding `packages/desktop/build/client --strict` — a path that no longer
+exists — and flagged it as a residual outside this lane's write-ownership
+grant, left for the integrator. That was wrong: `git diff d6092188..HEAD --
+.github/workflows/ci.yml` shows the step's argument WAS changed, in this
+same commit, to `packages/desktop/build --strict` (plus a rewritten comment
+explaining why the `client`/`server` split no longer exists), matching the
+`package.json` `build` script exactly. Re-verified directly:
+`node tools/check-render-purity.mjs` (no argument, so it exercises the
+tool's own default rather than either caller's explicit one) →
+`check-render-purity: OK — scanned 144 file(s) in
+/home/user/gutterpress/packages/desktop/build, no forbidden host/node
+markers`, exit 0. Two lower-priority items in the same file WERE genuine
+residuals and are fixed in this repair round: `tools/check-render-purity.mjs`'s
+own default-argument fallback (previously `packages/desktop/build/client`,
+now `packages/desktop/build`, matching both callers) and its header's
+scoping paragraph (rewritten for the adapter-static shape); and
+`tools/check-render-purity.test.mjs`'s Case 5, previously an adapter-node-
+shaped client/server-split fixture that no longer matches either invocation,
+now a generic "host code nested in a subdirectory" fixture proving the walk
+recurses into the whole tree adapter-static actually emits.
 
 #### Verification run
 
 | Command | Exit code | Note |
 |---|---:|---|
 | `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
-| `cd packages/desktop && bun run test` | 0 | 5894 pass, 1 skip, 0 fail, 15238 expect() calls across 162 files (includes the new 21-test `app-protocol.test.ts`; the two deleted `sveltekit-host*.test.ts` files' assertions are gone with them) |
+| `cd packages/desktop && bun run test` | 0 | 5894 pass, 1 skip, 0 fail, 15238 expect() calls across 162 files (includes the new 21-test `app-protocol.test.ts`; the two deleted `sveltekit-host*.test.ts` files' assertions are gone with them). Round-1 repair added 2 more tests to this file (now 23) — see the repair appendix below for the re-run. |
 | `cd packages/desktop && bun run check` | 0 | `svelte-check`: 688 files, 0 errors, 0 warnings |
 | `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean (59 tokens, all consumed) |
 | `rm -rf packages/desktop/build packages/desktop/.svelte-kit && cd packages/desktop && bun run build` | 0 | production build via adapter-static; `Wrote site to "build"`; `check-render-purity: OK — scanned 144 file(s) in build, no forbidden host/node markers`; `build/index.html` present, `build/server/`/`build/handler.js` absent |
@@ -2325,7 +2374,8 @@ Targeted re-verification of the exact files touched by this lane, run
 individually before reporting: `cd packages/desktop && tsc -p
 electron/tsconfig.json` (0, clean — same command `bun run typecheck`
 invokes for this package); `bun test tests/platform/app-protocol.test.ts`
-(0, 21 pass / 0 fail / 34 expect() calls); `bun test
+(0, 21 pass / 0 fail / 34 expect() calls — re-run after round-1 repair:
+0, 23 pass / 0 fail / 36 expect() calls); `bun test
 tests/platform/main-boot-and-splash.test.ts` (0, 9 pass / 0 fail / 27
 expect() calls, after one round of self-correction — see "one repair"
 below).
@@ -2341,3 +2391,79 @@ survives), re-run confirmed 9/9 green — recorded here per this run's
 "actually run the gate, not just describe it" discipline, matching the
 convention every prior SFE-P5* section in this ledger already uses for its
 own repair rounds.
+
+**Round-1 repair (post-review, on top of `3df0ea74`):** five CONFIRMED
+findings from the review pass, addressed together:
+
+1. **CLAUDE.md and docs/ARCHITECTURE.md still described the deleted
+   adapter-node server**, contradicting the very `ci.yml`/`package.json`
+   change this run made. Rewrote CLAUDE.md's Monorepo-layout paragraph, all
+   of §8's Transport/seams/Verification prose, and `docs/ARCHITECTURE.md`'s
+   §4 entry, for adapter-static + `app-protocol.ts` + typed IPC only — zero
+   remaining `@sveltejs/adapter-node`/`+server.ts`/`fetch("/api`/
+   `build/client`/`getPlatform()` hits in either file outside negation
+   sentences (re-grepped after editing).
+2. **This section's own Checkpoint C was self-contradicting**: it reported
+   `ci.yml`'s renderer-purity argument as unfixed ("will fail... until
+   someone with `.github/workflows/**` access changes that one argument")
+   when `git diff d6092188..HEAD -- .github/workflows/ci.yml` shows this
+   commit already changed it. Corrected above (the former "residual"
+   paragraph now states what actually happened); "Head: uncommitted"
+   corrected to `3df0ea74`; the all-of-P5 LOC row re-derived at HEAD (228
+   files, +6,628/−8,329, net −1,701 — exactly `+9/−7` more than the
+   original figure, matching the `ci.yml` hunk that measurement predated).
+3. **`packages/desktop/README.md` documented `getPlatform()`/
+   `electron-adapter.ts`** — both deleted in SFE-P5b, a run before this
+   one — as the live seam, in prose this run itself wrote or rewrote (the
+   architecture diagram, the "What's NOT here anymore" bullet, the
+   Auto-update section, the Architecture-notes IPC bullet). Replaced every
+   instance with `src/lib/platform/bridge.ts` + the feature-owned
+   capability modules (`$lib/update/updater-capability.ts`, etc.), and
+   fixed the same stale phrasing this run had introduced into
+   `vite.config.ts`'s header and `src/routes/+layout.ts`'s comment.
+4. **`tools/check-render-purity.mjs`'s default `buildDir`, header, and
+   failure hint still encoded the deleted client/server split** even
+   though both real callers (`ci.yml`, `package.json`) now pass `build`
+   explicitly — a guardrail whose own defaults assert the inverse of what
+   CI does is exactly the kind of fossil that gets a correct CI change
+   reverted. Default changed to `packages/desktop/build`; header rewritten
+   for the adapter-static shape (no subtree to carve out); failure hint
+   repointed at typed IPC + capability modules.
+   `tools/check-render-purity.test.mjs`'s Case 5 (an adapter-node-shaped
+   client/server fixture) replaced with a generic nested-subdirectory
+   fixture proving the walk recurses — re-run: `node
+   tools/check-render-purity.test.mjs` → all tests pass; `node
+   tools/check-render-purity.mjs` (bare, exercising the new default) →
+   `check-render-purity: OK — scanned 144 file(s) in
+   .../packages/desktop/build`, matching CI's own scanned-file count.
+5. **No test pinned `resolveAssetPath`'s lexical containment check** — the
+   sole defense against a Windows backslash-traversal class the segment
+   pre-filter (`hasUnsafeSegment`, split on `/` only) cannot see — and the
+   "two independent defenses" language in both `app-protocol.ts`'s header
+   and this section's own security-equivalence statement overstated the
+   relationship. Added an injectable third `pathApi` parameter to
+   `resolveAssetPath` (defaults to the host's own `path`, so production
+   behavior is unchanged) and two `WIN32 CONTAINMENT` tests that pass
+   `path.win32` explicitly; verified both fail if the containment check is
+   deleted (temporarily removed it, re-ran, both failed with the escaped
+   absolute path instead of `null`, restored, re-ran green — 23/23).
+   Reworded both "independent defenses" claims to state the true
+   relationship: a fast pre-filter plus the containment check as the
+   authoritative, non-redundant catch-all. `docs/plans/source-first-editor/
+   acceptance.md`'s AC-16 row updated in the same pass for finding 5's
+   sibling issue: the "packaged smoke" claim below was re-labeled
+   "unpackaged smoke" (both scripts run `out/main/main.js` directly,
+   `app.isPackaged === false` — the asar-reading branch this run adds is
+   proven only by a stubbed unit test) and AC-16's packaged half recorded
+   as still Pending rather than claimed complete.
+
+Verification re-run after this repair round (targeted, per repair-round
+instructions — not a full `bun run test`):
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` (repo root) | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && tsc -p electron/tsconfig.json` | 0 | clean |
+| `bun test tests/platform/app-protocol.test.ts` (packages/desktop) | 0 | 23 pass, 0 fail, 36 expect() calls |
+| `node tools/check-render-purity.test.mjs` (repo root) | 0 | all cases pass, including the reframed Case 5 |
+| `node tools/check-render-purity.mjs` (repo root, no argument — exercises the fixed default) | 0 | `check-render-purity: OK — scanned 144 file(s) in .../packages/desktop/build` |

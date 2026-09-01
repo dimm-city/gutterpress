@@ -4,8 +4,10 @@ import { defineConfig } from "vite";
 // adapter-static architecture (see svelte.config.js): the SvelteKit build
 // emits a plain static file tree to build/ — no Node server, no
 // build/handler.js, no src/routes/api/** (deleted in SFE-P5c/P5d). The
-// renderer reaches the host through typed IPC (window.electron.* /
-// getPlatform(), preload.ts) for push-event streams and live-BrowserWindow
+// renderer reaches the host through typed IPC (window.electron.*, preload.ts,
+// reached via the feature-owned capability modules over the one shared
+// src/lib/platform/bridge.ts accessor — SFE-P5b deleted the old
+// getPlatform() service locator) for push-event streams and live-BrowserWindow
 // calls, and through the same IPC surface for request/reply operations that
 // used to be +server.ts routes — see CLAUDE.md §8. In production,
 // electron/app-protocol.ts serves build/ directly from disk under the app://

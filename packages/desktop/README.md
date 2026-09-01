@@ -25,10 +25,12 @@ Electron main process (out/main/main.js — ESM, built by electron-vite)
 BrowserWindow loads app://local/
   ├─ preload.ts installs the narrow window.electron bridge (contextBridge)
   └─ renderer (Svelte SPA) reaches the host entirely through IPC:
-       window.electron.* (preload) → getPlatform() → feature code.
+       window.electron.* (preload) → bridge.ts → feature capability module.
      There is no fetch("/api/…") surface — every request/reply operation
      that used to be a SvelteKit +server.ts route moved to a validated IPC
-     channel (SFE-P5c); only electron-adapter.ts touches window.electron.
+     channel (SFE-P5c); only src/lib/platform/bridge.ts touches
+     window.electron (SFE-P5b deleted electron-adapter.ts and the
+     getPlatform() service locator it backed).
 
 Host capabilities are the 120 secureHandle(...) IPC channels in
 electron/api/*.ts — status, fs, dialog, theme, plugin, remote/sync, vcs,
@@ -59,8 +61,13 @@ removed:
   token, no `fetch`-based proxy request.
 - **No more `src/routes/api/**` SvelteKit routes or `src/lib/api.ts`** —
   every request/reply operation the renderer needs is a typed, runtime-
-  validated IPC channel (SFE-P5c). Components call `getPlatform()`; nothing
-  calls `fetch("/api/…")` anymore.
+  validated IPC channel (SFE-P5c). Components call the feature-owned
+  capability module for that operation (`$lib/update/updater-capability`,
+  `$lib/remote/remote-capability`, `$lib/export/build-preview-capability`,
+  `$lib/editor-host/editor-projection-capability`,
+  `$lib/app-lifecycle/app-lifecycle-capability`, `$lib/lint/lint-capability`,
+  …); nothing calls `fetch("/api/…")` anymore, and the old `getPlatform()`
+  service locator is gone too (SFE-P5b).
 
 ## Prerequisites
 
@@ -118,11 +125,12 @@ and calls `mainWindow.loadURL(devUrl)` when set, otherwise falls back to
 the static `app://local/`. Preload + IPC are identical in both modes.
 
 Plain `bun --cwd packages/desktop run dev` (SvelteKit only, no Electron) is
-**not** a usable UI-iteration mode since SFE-P5a: `getPlatform()` has no
-non-Electron implementation and throws `DesktopHostRequiredError` on first
-call (`initTheme()` in `+layout.svelte`'s `onMount`), so the page never
-paints — not the toast-and-degrade behavior older versions of this doc
-described. Use `electron:hmr` above for all UI/CSS iteration.
+**not** a usable UI-iteration mode since SFE-P5a: `bridge()` (`$lib/platform/
+bridge.ts`) has no non-Electron implementation and throws
+`DesktopHostRequiredError` on first call (`initTheme()` in `+layout.svelte`'s
+`onMount`), so the page never paints — not the toast-and-degrade behavior
+older versions of this doc described. Use `electron:hmr` above for all
+UI/CSS iteration.
 
 ## Building for production
 
@@ -309,8 +317,9 @@ The engine lives in `electron/updater.ts`. Status, check, and download are
 typed IPC (`updater:getStatus`/`updater:check`/`updater:download`); Restart &
 Update (`updater:applyNow`) and updater push events also use the preload
 bridge because applying an update must flush the live BrowserWindow before
-quitting. The renderer reaches all of it through `getPlatform().updater` and
-never touches electron-updater directly.
+quitting. The renderer reaches all of it through
+`$lib/update/updater-capability.ts` and never touches electron-updater
+directly.
 
 
 ## Architecture notes
@@ -338,8 +347,12 @@ never touches electron-updater directly.
   (`electron/api/*.ts` holds the actual logic), plain `ipcMain`/
   `webContents.send` for push streams (build progress, folder-changed, sync
   status, updater events) and the preview/build pipeline. The `window.electron`
-  bridge (`preload.ts`) is the only way the renderer reaches any of it; the
-  renderer only ever calls `getPlatform().X(...)`.
+  bridge (`preload.ts`) is the only way the renderer reaches any of it; app
+  code never touches `window.electron` directly — only
+  `src/lib/platform/bridge.ts` may — and calls the feature-owned capability
+  module for that operation instead (`$lib/update/updater-capability.ts`,
+  `$lib/remote/remote-capability.ts`, and so on — see "What's NOT here
+  anymore" above; SFE-P5b deleted the `getPlatform()` service locator).
 - **Build** — `electron-vite` builds the ESM main + preload into `out/`
   (externalizing electron + the lib); `vite build` (adapter-static) builds the
   renderer into `build/`. No CJS↔ESM interop trick: the ESM main just does

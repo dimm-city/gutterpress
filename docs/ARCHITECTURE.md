@@ -690,14 +690,18 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit is built with `@sveltejs/adapter-node`, which emits a Node HTTP
-  handler (`build/handler.js`). Electron main starts that handler on a local
-  `127.0.0.1` server and serves the window through a custom `app://` protocol
-  handler that proxies each request to it with `fetch`. Host capabilities are
-  exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
-  `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
-  streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
-  §8).
+- SvelteKit is built with `@sveltejs/adapter-static`, which emits a plain
+  static file tree to `build/` (`index.html`, `_app/**`, …) — no server
+  bundle. Electron main registers a custom `app://` protocol handler
+  (`electron/app-protocol.ts`) that reads that tree straight off disk — out
+  of the asar in a packaged build — and returns file bytes directly: no
+  local HTTP server, no proxy (SFE-P5d). Host capabilities are exposed
+  entirely as typed, runtime-validated IPC channels — `secureHandle(...)`
+  request/reply channels (`electron/api/*.ts`) for everything a `+server.ts`
+  route used to cover, plus a narrow `ipcMain`/preload push-channel set for
+  build progress, folder-changed, sync status, updater events, and calls
+  that must drive a live `BrowserWindow` (see `CLAUDE.md` §8). There is no
+  `src/routes/api/**` route tree.
 - The lib (`gutterpress`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic

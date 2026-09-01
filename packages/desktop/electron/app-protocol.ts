@@ -44,10 +44,14 @@ export function resolveBuildDir(isPackaged: boolean, hereDir: string): string {
  * True if `segment` is a raw ".." component or contains a colon (a
  * drive-letter marker on Windows — `path.resolve`/`path.win32.resolve`
  * treats an argument like `"C:/evil"` as absolute and would otherwise let it
- * replace `buildDir` entirely instead of being joined under it). Rejecting
- * both at the segment level, BEFORE any path-joining, is the first of two
- * independent traversal defenses — {@link resolveAssetPath}'s final
- * containment check is the second.
+ * replace `buildDir` entirely instead of being joined under it). This is a
+ * fast PRE-FILTER over `/`-delimited segments, not a complete defense: it
+ * does not split on `\`, so a decoded pathname carrying a literal backslash
+ * (directly, or via `%5c`) — which `path.win32.resolve` treats as a
+ * separator on Windows — passes straight through this check as one opaque
+ * segment. {@link resolveAssetPath}'s final lexical containment check is
+ * the layer that actually catches that shape; see that function's header
+ * and the `WIN32 CONTAINMENT` tests in tests/platform/app-protocol.test.ts.
  */
 function hasUnsafeSegment(decodedPathname: string): boolean {
   return decodedPathname
@@ -62,18 +66,38 @@ function hasUnsafeSegment(decodedPathname: string): boolean {
  * directly unit-testable with plain strings (see
  * tests/platform/app-protocol.test.ts's traversal-refusal tests).
  *
- * Two independent defenses, matching the belt-and-suspenders pattern already
- * used by the fs IPC guard (server-bridge/fs-guard.ts):
- *   1. {@link hasUnsafeSegment} rejects `..` and drive-letter segments before
- *      any path is built.
+ * `pathApi` defaults to the host's own `path` module (posix on Linux/macOS,
+ * win32 on Windows — the module Electron's real `readFile` calls this
+ * function's result against) but is injectable so a Linux/CI test process
+ * can still exercise the win32 resolution semantics a Windows *build* of
+ * this app runs under (`path.win32.resolve`'s backslash/drive-letter
+ * handling cannot be reproduced by calling the platform `path` module on a
+ * non-Windows CI runner).
+ *
+ * A segment-level pre-filter plus a final containment check, matching the
+ * belt-and-suspenders pattern already used by the fs IPC guard
+ * (server-bridge/fs-guard.ts) — but they are complementary, not
+ * independent, and the second is the one that actually matters:
+ *   1. {@link hasUnsafeSegment} rejects `..` and drive-letter segments,
+ *      split on `/` only, before any path is built — fast, but it misses
+ *      an entire class (any traversal expressed with `\` instead of `/`;
+ *      Windows-only, since only `path.win32.resolve` treats `\` as a
+ *      separator).
  *   2. The final resolved path must equal `buildDir` or start with
- *      `buildDir + path.sep` — a lexical containment check. (The build
- *      directory ships read-only inside the packaged app/asar, not
- *      user-writable content, so — unlike the project-root guard — a
- *      symlink-escape threat model does not apply here; the lexical check is
- *      sufficient.)
+ *      `buildDir + pathApi.sep` — a lexical containment check. This is the
+ *      AUTHORITATIVE boundary, not a redundant second opinion: it is what
+ *      actually decides whether the request escaped `buildDir`, and it is
+ *      the only layer that catches the backslash class layer 1 misses (see
+ *      the `WIN32 CONTAINMENT` tests). (The build directory ships read-only
+ *      inside the packaged app/asar, not user-writable content, so — unlike
+ *      the project-root guard — a symlink-escape threat model does not
+ *      apply here; the lexical check is sufficient.)
  */
-export function resolveAssetPath(buildDir: string, pathname: string): string | null {
+export function resolveAssetPath(
+  buildDir: string,
+  pathname: string,
+  pathApi: path.PlatformPath = path,
+): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(pathname);
@@ -87,9 +111,9 @@ export function resolveAssetPath(buildDir: string, pathname: string): string | n
   if (hasUnsafeSegment(decoded)) return null;
 
   const relative = decoded.replace(/^\/+/, "");
-  const resolvedBuildDir = path.resolve(buildDir);
-  const resolved = path.resolve(resolvedBuildDir, relative);
-  if (resolved !== resolvedBuildDir && !resolved.startsWith(resolvedBuildDir + path.sep)) {
+  const resolvedBuildDir = pathApi.resolve(buildDir);
+  const resolved = pathApi.resolve(resolvedBuildDir, relative);
+  if (resolved !== resolvedBuildDir && !resolved.startsWith(resolvedBuildDir + pathApi.sep)) {
     return null;
   }
   return resolved;

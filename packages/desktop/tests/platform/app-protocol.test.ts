@@ -78,6 +78,37 @@ test("resolveAssetPath rejects malformed percent-encoding rather than throwing",
   expect(resolveAssetPath("/build", "/%zz")).toBeNull();
 });
 
+// ── resolveAssetPath: the win32 containment-check pin ──────────────────────
+//
+// Every case above is caught by hasUnsafeSegment (layer 1) alone — none of
+// them exercises the final lexical containment check at the end of
+// resolveAssetPath. On Windows that containment check is the ONLY thing
+// standing between a request and a backslash-shaped traversal: the `app:`
+// scheme is registered as WHATWG-"standard" but non-special, so
+// `new URL(...)` performs no backslash→slash conversion and no dot-segment
+// collapsing on it, and hasUnsafeSegment's own split (on both `/` and `\`)
+// only catches a segment that is EXACTLY `..` or contains a colon — it does
+// not, and cannot, predict what `path.win32.resolve` will do with a
+// decoded string it does not itself resolve. These two tests inject
+// `path.win32` (via resolveAssetPath's third parameter) against a win32
+// buildDir so this property is provable on any CI runner, not just Windows:
+// deleting the containment check makes either one fail.
+test("WIN32 CONTAINMENT: a backslash-traversal pathname with no unsafe '/'-segment still resolves outside buildDir and is rejected", () => {
+  expect(
+    resolveAssetPath(
+      "C:\\app\\build",
+      "/..\\..\\..\\Users\\me\\.ssh\\id_rsa",
+      path.win32,
+    ),
+  ).toBeNull();
+});
+
+test("WIN32 CONTAINMENT: a %5c-encoded backslash-traversal pathname still resolves outside buildDir and is rejected", () => {
+  expect(
+    resolveAssetPath("C:\\app\\build", "/%5c..%5c..%5cWindows%5cwin.ini", path.win32),
+  ).toBeNull();
+});
+
 // ── looksLikeAssetRequest / mimeTypeFor ─────────────────────────────────────
 
 test("looksLikeAssetRequest is true for a filename with an extension", () => {
