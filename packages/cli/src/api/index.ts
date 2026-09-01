@@ -357,6 +357,7 @@ export type {
 export {
   runPublish,
   resolvePublishRequest,
+  resolvePublishFormat,
 } from "../lib/publish/run-publish.ts";
 export type {
   RunPublishOptions,
