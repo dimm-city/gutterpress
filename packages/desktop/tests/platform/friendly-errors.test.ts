@@ -5,6 +5,8 @@ import {
   handleRemoteErrors,
   handlePublishErrors,
 } from "../../electron/server-bridge/friendly-errors";
+import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 
 // These lock the security/UX error-filter behavior that was previously
 // copy-pasted across electron/main.ts, routes/api/remote/_hooks.ts, and the
@@ -249,6 +251,81 @@ test("the google allowlist does NOT match run-together identifiers with no bound
         throw new Error("GoogleDriveProvider failed to reach googleapis.com");
       }),
     ).rejects.toThrow("Publishing could not be completed. See the app log for details.");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+// ── "See the app log for details" must be TRUE (the 0.10.5 bring-up) ─────────
+//
+// These filters logged only to the main process's stderr, which a packaged
+// app never shows — so the details the message pointed at existed nowhere an
+// author could look. Every logged line now also goes to the host's app-log
+// sink (main.ts wires it to electron/app-log.ts, the file the Logs tab shows).
+
+test("handlePublishErrors forwards every logged failure line to the host's app-log sink when one is registered", async () => {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  const lines: string[] = [];
+  const base = makeHostServices();
+  registerHostServices({ ...base, app: { ...base.app, logFailure: (line) => lines.push(line) } });
+  try {
+    await expect(
+      handlePublishErrors("publish:destinations:create", async () => {
+        throw new Error("TypeError: cannot read property foo of undefined");
+      }),
+    ).rejects.toThrow("Publishing could not be completed. See the app log for details.");
+    expect(lines[0]).toBe(
+      "[publish:destinations:create] failed: TypeError: cannot read property foo of undefined",
+    );
+    expect(lines.length).toBe(2); // the message line, then the stack
+    expect(lines[1]).toContain("TypeError: cannot read property foo of undefined");
+    // The console still gets exactly the same lines — the sink is in ADDITION
+    // to the dev terminal, not instead of it.
+    expect(spy).toHaveBeenCalledTimes(lines.length);
+  } finally {
+    spy.mockRestore();
+    registerHostServices(base); // leave no sink behind for later suites
+  }
+});
+
+test("the other three filters reach the same sink", async () => {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  const lines: string[] = [];
+  const base = makeHostServices();
+  registerHostServices({ ...base, app: { ...base.app, logFailure: (line) => lines.push(line) } });
+  try {
+    friendlyVcsError(new Error("isomorphic-git internals"), "restoreSnapshot", "vcs/restore-snapshot");
+    expect(lines[0]).toBe("[vcs/restore-snapshot] failed: isomorphic-git internals");
+    await handleRemoteErrors("remote:test", async () => {
+      throw new Error("ECONNRESET");
+    }).catch(() => {});
+    expect(lines).toContain("[remote:test] failed: ECONNRESET");
+  } finally {
+    spy.mockRestore();
+    registerHostServices(base);
+  }
+});
+
+test("the lib's Google Drive failures — Google's reason attached — pass through verbatim, not masked", async () => {
+  // Contract with packages/cli's google-errors.ts: every Drive failure names
+  // "Google" as prose, so the `\bgoogle\b` alternation lets it through. The
+  // create-folder message used to say only "the Drive folder" and was
+  // replaced by the generic fallback the author then couldn't act on.
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  const messages = [
+    'Couldn\'t create the Google Drive folder "field-guide" (HTTP 403, accessNotConfigured). Google Drive publishing isn\'t fully set up on this build: the Google Drive API isn\'t enabled for the app\'s Google Cloud project, so a maintainer needs to enable it (the link is in Google\'s message). Google said: "Google Drive API has not been used in project 1234 before or it is disabled."',
+    "Couldn't list Google Drive folders (HTTP 403).",
+    'Couldn\'t look up the Google Drive folder "field-guide" (HTTP 403).',
+    "Google Drive rejected the new connection (HTTP 403, accessNotConfigured).",
+  ];
+  try {
+    for (const msg of messages) {
+      await expect(
+        handlePublishErrors("publish:destinations:create", async () => {
+          throw new Error(msg);
+        }),
+      ).rejects.toThrow(msg);
+    }
   } finally {
     spy.mockRestore();
   }
