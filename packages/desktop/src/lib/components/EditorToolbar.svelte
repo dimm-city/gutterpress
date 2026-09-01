@@ -20,7 +20,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
   import { dialogBehavior, FOCUSABLE } from "$lib/dialog";

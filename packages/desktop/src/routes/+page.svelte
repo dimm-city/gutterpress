@@ -89,11 +89,27 @@
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import type { WorkspaceMode } from "$lib/platform";
   // SFE-P3e — the desktop rich editor's host-built projection call and its
   // degrade-and-report plugin-error payload shape.
   import type { EditorProjectionPluginError } from "$lib/platform";
+  import {
+    build,
+    cancelExport,
+    getPlatformCapabilities,
+    onBuildProgress,
+    onUrlPreviewBlocked,
+    startPreview,
+    stopPreview,
+  } from "$lib/export/build-preview-capability";
+  import { buildEditorProjection } from "$lib/editor-host/editor-projection-capability";
+  import {
+    onFlushBeforeClose,
+    onOpenMarkdownFile,
+    watchFolder,
+  } from "$lib/app-lifecycle/app-lifecycle-capability";
+  import { onSyncStatus } from "$lib/remote/remote-capability";
   import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
@@ -200,10 +216,9 @@
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
     chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
-    onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
+    onBuildProgress,
     buildPdf: (input, outPath, opts) =>
-      getPlatform()
-        .build({
+      build({
         input,
         format: "pdf",
         out: outPath,
@@ -226,8 +241,8 @@
           buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input) => getPlatform().build({ input, format: "html" }),
-    cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
+    buildHtml: (input) => build({ input, format: "html" }),
+    cancelExportHost: (exportId) => cancelExport(exportId),
     downloadFile: (url, filename) => {
       const a = document.createElement("a");
       a.href = url;
@@ -275,13 +290,14 @@
   });
   let publishOpen = $state(false);
 
-  // PDF/build gating via the capabilities() seam. `nativeSavePath` is
-  // true on the desktop host (Electron writes the PDF to a chosen path via
-  // puppeteer / printToPDF). SFE-P5a (D10): `getPlatform()` now throws
-  // off-Electron rather than resolving a degraded host, so this derived only
-  // ever evaluates true here — the "requires the desktop app" hint below is
-  // defensive UI copy, not a reachable web branch.
-  const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
+  // PDF/build gating via the getPlatformCapabilities() seam. `nativeSavePath`
+  // is true on the desktop host (Electron writes the PDF to a chosen path via
+  // puppeteer / printToPDF). SFE-P5a (D10): the capability still fails
+  // loudly off-Electron rather than resolving a degraded host (see that
+  // function's own doc comment), so this derived only ever evaluates true
+  // here — the "requires the desktop app" hint below is defensive UI copy,
+  // not a reachable web branch.
+  const canSavePdf = $derived(getPlatformCapabilities().nativeSavePath);
 
   // ── Left panel (#workspace-restructure) ───────────────────────────────────
   // State persisted via DesktopPrefs. Keyed separately from per-project state.
@@ -547,8 +563,8 @@
   const lifecycle: ProjectLifecycleController = new ProjectLifecycleController({
     isDesktop: () => isDesktop(),
     desktopRequiredMessage: DESKTOP_APP_REQUIRED,
-    startPreviewHost: (input) => getPlatform().startPreview({ input }),
-    stopPreviewHost: () => getPlatform().stopPreview(),
+    startPreviewHost: (input) => startPreview({ input }),
+    stopPreviewHost: () => stopPreview(),
     adoptFolder: (dir) => api.app.adoptFolder({ dir }),
     invalidateDiscoveredProjects: () => invalidateDiscoveredProjects(),
     projectSession,
@@ -944,10 +960,10 @@
   // Subscribe to the host's sync:status channel for the converge report —
   // combined-with-markers files and side-by-side pairs each get a review
   // toast. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host
-  // work through getPlatform().
+  // work through the remote capability module.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = getPlatform().onSyncStatus((status) => {
+    const off = onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
       if (shouldReconcileAfterSync(status)) {
@@ -1328,7 +1344,7 @@
    * SFE-P3e — the root-cause fix the run's product-owner ruling names
    * directly: with a desktop project open, the projection is built HOST-SIDE
    * (real manifest, real loaded plugins, `trusted: true`) via
-   * `getPlatform().buildEditorProjection` — the `api:editorProjection` IPC
+   * `buildEditorProjection` — the `api:editorProjection` IPC
    * call (`electron/editor-projection.ts`). With no project open (a plain
    * file), the existing local, plugin-less
    * `createEditorProjection(content, { sourceVersion })` path is UNCHANGED —
@@ -1406,7 +1422,7 @@
   ): Promise<{ projection: GutterpressProjection; pluginCss: string | undefined }> {
     if (isDesktop() && lifecycle.currentDir) {
       try {
-        const outcome = await getPlatform().buildEditorProjection({
+        const outcome = await buildEditorProjection({
           projectDir: lifecycle.currentDir,
           content,
           sourceVersion,
@@ -2080,7 +2096,7 @@
   function createEditorBuffer(): EditorBuffer {
     let instance: EditorBuffer;
     instance = new EditorBuffer({
-      platform: getPlatform(),
+      fs: api.fs,
       saveDelayMs: settings.current.editor.autoSaveDelay,
       recoveryEnabled: settings.current.editor.crashRecovery,
       onError: (msg) => {
@@ -2193,7 +2209,7 @@
   function startFolderWatch(dir: string) {
     if (!isDesktop()) return;
     _watchFolderOff?.();
-    _watchFolderOff = getPlatform().watchFolder(dir, () => {
+    _watchFolderOff = watchFolder(dir, () => {
       buffer?.reconcileExternalChange().catch(() => {});
     }) ?? undefined;
   }
@@ -2206,7 +2222,7 @@
   // closing, flush the buffer. The preload wrapper signals main when done.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = getPlatform().onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
+    const off = onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
     return () => off?.();
   });
 
@@ -2596,7 +2612,7 @@
   // in the renderingComplete handler. No reactive effect needed.
 
   onMount(() => {
-    const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
+    const off = onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (lifecycle.sourceMode !== "url") return;
       if (!lifecycle.previewUrl) return;
       lifecycle.previewUrl = null;
@@ -2719,7 +2735,7 @@
     let initialFileLaunchSeen = false;
     let initialFileLaunchSetup: Promise<void> | null = null;
     let initialReplayComplete = false;
-    const off = getPlatform().onOpenMarkdownFile((event) => {
+    const off = onOpenMarkdownFile((event) => {
       if (event.type === "ready") {
         initialReplayComplete = true;
         if (!initialFileLaunchSeen) void startup.run();

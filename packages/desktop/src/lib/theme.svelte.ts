@@ -8,15 +8,20 @@
  * Svelte 5 runes module — no class. The reactive `themeMode`/`resolvedTheme`
  * are read by UI controls; `setThemeMode()` persists through the settings store.
  *
- * No-flash contract: the canonical store is `AppSettings` (via the platform
- * adapter). To set `data-theme` before first paint, `app.html` runs an inline
- * script that reads a fast-path cache from `localStorage[THEME_CACHE_KEY]`.
- * `initTheme()` keeps that cache in sync on every resolve so the next launch
- * paints the correct theme synchronously.
+ * No-flash contract: the canonical store is `AppSettings`. To set `data-theme`
+ * before first paint, `app.html` runs an inline script that reads a fast-path
+ * cache from `localStorage[THEME_CACHE_KEY]`. `initTheme()` keeps that cache
+ * in sync on every resolve so the next launch paints the correct theme
+ * synchronously.
+ *
+ * SFE-P5b: the OS-theme push subscription is the sole consumer of
+ * `onNativeThemeUpdated`, so it calls the shared bridge accessor directly
+ * (`bridge().onNativeThemeUpdated(...)`) rather than through a dedicated
+ * capability module — the smallest honest shape for a single 1:1 forward.
  */
-import { getPlatform } from "$lib/platform";
+import { bridge } from "$lib/platform/bridge";
 import { useSettings } from "$lib/settings.svelte";
-import type { NativeThemeState } from "$lib/platform";
+import type { NativeThemeState } from "$lib/platform/contract";
 import { api } from "$lib/api";
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -68,7 +73,6 @@ export function initTheme(): void {
   if (state.initialized) return;
   state.initialized = true;
 
-  const platform = getPlatform();
   const settings = useSettings();
 
   // Seed mode from the (already-seeded) settings store; refines once settings
@@ -85,7 +89,7 @@ export function initTheme(): void {
       apply();
     });
 
-  unsubscribeOs = platform.onNativeThemeUpdated((s) => {
+  unsubscribeOs = bridge().onNativeThemeUpdated((s) => {
     state.osDark = s.shouldUseDarkColors;
     apply();
   });

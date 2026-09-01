@@ -30,12 +30,13 @@
    * providers needs the open project's manifest — so that form asks for an
    * open project when none is.
    *
-   * PWA-clean (§8): api.* routes + getPlatform() only.
+   * PWA-clean (§8): api.* routes + the remote capability module only.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api, type PublishProviderStaticInfo } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { connectGitHubCancel, connectGitHubStart, connectGitHubWait } from "$lib/remote/remote-capability";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -91,7 +92,7 @@
       clearTimeout(serverInputTimer);
       serverInputTimer = undefined;
       // A device flow left mid-poll must not keep polling after the tab closes.
-      if (ghBusy) getPlatform().connectGitHubCancel().catch(() => {});
+      if (ghBusy) connectGitHubCancel().catch(() => {});
     };
   });
 
@@ -163,10 +164,10 @@
     ghBusy = true;
     ghError = null;
     try {
-      const info = await getPlatform().connectGitHubStart();
+      const info = await connectGitHubStart();
       ghCode = info;
       api.shell.openExternal(info.verificationUri).catch(() => {});
-      await getPlatform().connectGitHubWait();
+      await connectGitHubWait();
       ghCode = null;
       await load();
     } catch (e) {

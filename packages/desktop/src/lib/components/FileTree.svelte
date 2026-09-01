@@ -63,7 +63,8 @@
    */
   import { onMount } from "svelte";
   import { api } from "$lib/api";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
   import Icon from "$lib/components/Icon.svelte";
   import {
     invalidateDir,
@@ -164,7 +165,7 @@
     if (!isDesktop()) return;
     // Debounced (matches MediaPanel): the host already debounces
     // fs:folderChanged, this merges bursts while a refresh is in flight.
-    const off = getPlatform().onFolderChanged(() => {
+    const off = onFolderChanged(() => {
       if (rootRefreshTimer) clearTimeout(rootRefreshTimer);
       rootRefreshTimer = setTimeout(() => {
         rootRefreshTimer = null;

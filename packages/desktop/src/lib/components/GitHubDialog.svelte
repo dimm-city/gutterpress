@@ -8,7 +8,14 @@
    * sees a token: connection status is redacted by the host.
    */
   import { tick } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import {
+    cloneRemoteRepository,
+    connectGitHubCancel,
+    connectGitHubStart,
+    connectGitHubWait,
+    onCloneProgress,
+  } from "$lib/remote/remote-capability";
   import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
@@ -114,21 +121,20 @@
   async function connect() {
     error = null;
     busy = true;
-    const platform = getPlatform();
     try {
-      const info = await platform.connectGitHubStart();
+      const info = await connectGitHubStart();
       code = info;
       step = "code";
       // Open the verification page for the user; the code stays visible here.
       api.shell.openExternal(info.verificationUri).catch(() => {});
-      const conn = await platform.connectGitHubWait();
+      const conn = await connectGitHubWait();
       username = conn.username ?? null;
       await loadRepos();
     } catch (e) {
       // The user may have closed the dialog mid-flow — only surface errors
       // while it is still open.
       if (open) {
-        // This path is IPC-bridged (getPlatform() → ipcRenderer.invoke), so
+        // This path is IPC-bridged (remote-capability → ipcRenderer.invoke), so
         // unlike the api.remote.* fetch routes (sanitized host-side) the raw
         // "Error invoking remote method '…':" transport prefix can reach here
         // unscrubbed (L11) — scrub it before it reaches the writer.
@@ -240,17 +246,16 @@
     step = "cloning";
     cloneProgress = null;
     closeBlocked = false;
-    const platform = getPlatform();
     // NOTE: block body on purpose — an expression body `(p) => (cloneProgress = p)`
     // implicitly RETURNS the Svelte $state proxy, which contextBridge then tries
     // (and fails) to structured-clone back to the preload: one uncaught
     // "An object could not be cloned" per progress event (0.5.0-rc.3 storm).
     // Push-channel callbacks must never return a value.
-    const unsubscribe = platform.onCloneProgress((p) => {
+    const unsubscribe = onCloneProgress((p) => {
       cloneProgress = p;
     });
     try {
-      const { projectDir } = await platform.cloneRemoteRepository({
+      const { projectDir } = await cloneRemoteRepository({
         url: `${selectedRepo.htmlUrl}.git`,
         parentDir: destination,
         folderName: folderName.trim() || selectedRepo.name,
@@ -264,7 +269,7 @@
       onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
-      // Also IPC-bridged (platform.cloneRemoteRepository) — same L11 scrub.
+      // Also IPC-bridged (cloneRemoteRepository) — same L11 scrub.
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
       step = "configure";
     } finally {
@@ -291,7 +296,7 @@
       return;
     }
     if (step === "code") {
-      getPlatform().connectGitHubCancel().catch(() => {});
+      connectGitHubCancel().catch(() => {});
     }
     open = false;
     // Focus restoration to `triggerEl` is handled by the dialogBehavior action.

@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
-import { EditorBuffer } from "../../src/lib/editor/buffer-state.svelte";
-import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform/contract";
+import { EditorBuffer, type EditorBufferFs } from "../../src/lib/editor/buffer-state.svelte";
+import type { FileStat, FileWriteResult } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
 // needs plain values for this behavior test.
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
-class MemoryPlatform implements Partial<Platform> {
-  readonly platform = "electron" as const;
+// SFE-P5b: EditorBuffer no longer takes the whole `Platform` locator, only
+// the narrow `EditorBufferFs` slice — this fake implements exactly that,
+// same injected-fake pattern as before, just against the narrower interface.
+class MemoryPlatform implements EditorBufferFs {
   private files = new Map<string, { content: string; mtimeMs: number }>();
   private clock = 1000;
 
@@ -56,7 +58,7 @@ class MemoryPlatform implements Partial<Platform> {
 
 function makeBuffer(platform: MemoryPlatform, events: string[] = []): EditorBuffer {
   return new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 10_000,
     recoveryEnabled: false,
     onExternalConflict: () => events.push("conflict"),
@@ -160,7 +162,7 @@ test("reconcileExternalChange on a clean buffer fires onContentReplaced with the
   const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
   const events: string[] = [];
   const buffer = new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 10_000,
     recoveryEnabled: false,
     onExternalConflict: () => events.push("conflict"),
@@ -183,7 +185,7 @@ test("acceptExternal (the reloadExternal conflict-banner path) fires the same on
   const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
   const events: string[] = [];
   const buffer = new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 10_000,
     recoveryEnabled: false,
     onExternalConflict: () => events.push("conflict"),
@@ -334,7 +336,7 @@ test("flush serializes behind an in-flight autosave and persists the latest edit
 
   const platform = new SlowFirstWritePlatform({ "/book/chapter.md": "original" });
   const buffer = new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 0,
     recoveryEnabled: false,
   });
@@ -419,7 +421,7 @@ test("an in-flight external reconcile for file A cannot overwrite newly loaded f
   });
   const replaced: Array<[string, string]> = [];
   const buffer = new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     recoveryEnabled: false,
     onContentReplaced: (path, content) => replaced.push([path, content]),
   });
@@ -604,7 +606,7 @@ test("a failed disk write rejects flush and remains dirty for the close gate", a
   const dirty: boolean[] = [];
   const errors: string[] = [];
   const buffer = new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 10_000,
     recoveryEnabled: false,
     onDirty: (pending) => dirty.push(pending),

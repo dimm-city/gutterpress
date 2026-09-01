@@ -5,7 +5,8 @@
   import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { setAutoSync } from "$lib/remote/remote-capability";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import { api, type AppImageIntegrationStatus } from "$lib/api";
 
@@ -499,7 +500,7 @@
               settings.set({ versionHistory: { autoSync: enabled } });
               // Notify the host orchestrator immediately so the change takes effect
               // without waiting for a settings reload cycle (§4.3).
-              if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+              if (isDesktop()) setAutoSync(enabled).catch(() => {});
             }}
           />
         </div>

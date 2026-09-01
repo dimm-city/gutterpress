@@ -10,7 +10,7 @@
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
   import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";

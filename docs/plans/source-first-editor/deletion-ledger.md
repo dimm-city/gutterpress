@@ -18,7 +18,7 @@ against them.
 | Desktop HTTP routes (`+server.ts`) | 104 | — | — |
 | IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | — | — |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
-| `Platform`/`HostServices` methods | 30 (9 `PlatformAdapter` + 21 `HostServices`, combined with one override; platform-inventory.md §1–§2) | — | — |
+| `Platform`/`HostServices` methods | 30 (9 `PlatformAdapter` + 21 `HostServices`, combined with one override; platform-inventory.md §1–§2) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 30 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers). Full accounting: `capability-map.md` §2. | −30 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 30 still reachable, 9 gone (5 dead + 4 collapsed-but-still-reachable through their consumer, so 5 true behavior deletions) |
 | Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
 | Test LOC | 316 files / 76,861 lines (at baseline SHA; see baseline.md §4.6) | — | — |
 | Dependencies (workspace, prod) | 41 (summed across packages: cli 28, desktop 13, open-design-plugin 0; see baseline.md §4.7) | — | — |
@@ -39,7 +39,7 @@ against them.
 | `web-fs` / `web-store` | Browser filesystem and persistence | Unsupported in desktop | P5a | file/import search | Deletes dormant stores — **DONE, committed `5db8c581`**: `web-fs.ts` (279 lines) + `web-fs.test.ts` (228 lines), `web-store.ts` (167 lines, including `InMemoryWebStore`) + `web-store.test.ts` (56 lines), and `fsa.d.ts` (31 lines) all deleted; zero remaining occurrences of `web-fs`/`web-store`/`InMemoryWebStore`/`FileSystemDirectoryHandle`/`showDirectoryPicker` under `packages/desktop/src`\|`electron`\|`tests` (search proofs below) |
 | PWA service-worker path | Future browser app | Out of scope | P5a | build/search proof | Smaller desktop build — **DONE, committed `5db8c581`**: `src/service-worker.ts` (110 lines) + `tests/platform/service-worker.test.ts` (77 lines) deleted; the `!isDesktop()`-gated registration block deleted from `+layout.svelte`; `svelte.config.js`'s `serviceWorker: { register: false }` override removed (SvelteKit's default — no auto-registration to suppress once there is no SW to register); zero `serviceWorker` occurrences left under `packages/desktop/src`. Also in `5db8c581`: `app.html`'s `<link rel="manifest">` and its PWA comment removed, and `api.ts`'s stale WebAdapter-staging comment rewritten as history — both resolved in-commit, not left for a later lane. |
 | Duplicate static viewer bundle | PWA fallback | Shared render asset ownership | P5a | generated file proof | One bundle output — **NOT resolved by `5db8c581`; DONE in round-1 repair (uncommitted).** `packages/desktop/static/engine/gutterpress-viewer.js` was left untouched by the SFE-P5a commit. Re-verification found it orphaned, not shared: at base `c33868f8` its only two consumers were `WebAdapter.renderBookHtml` (`web-adapter.ts:94`) and the service worker's precache list (`service-worker.ts:38`) — `5db8c581` deleted both call sites without deleting the asset they called. `platform-inventory.md` §13 does describe it as PWA-only (not "shared" as the prior note here claimed). Root cause: `packages/cli/scripts/build-engine-bundles.mjs` unconditionally copied the built viewer bundle into `packages/desktop/static/engine/` on every `packages/cli` library build (via desktop's `build:runtime` script) — deleting the static file without also fixing the generator meant the very next `bun run build` silently regenerated it. Round-1 repair deletes `packages/desktop/static/engine/` and removes that copy step (and its now-false rationale comment) from `build-engine-bundles.mjs`; verified with a full `rm -rf build .svelte-kit && npm run build` that `build/client` no longer emits `engine/gutterpress-viewer.js` and `static/engine/` stays absent. `static/icons/` is untouched (still referenced by `app.html`). |
-| Broad `Platform` service locator | Electron/PWA abstraction | Narrow feature capabilities | P5b | consumer/import search | Explicit dependencies |
+| Broad `Platform` service locator | Electron/PWA abstraction | Narrow feature capabilities | P5b | consumer/import search | Explicit dependencies — **DONE**: `getPlatform()`, the `Platform`/`HostServices` interfaces, and `electron-adapter.ts` (253 lines) are deleted; every real member moved to one of 5 new feature-owned capability modules (`update/updater-capability.ts`, `remote/remote-capability.ts`, `export/build-preview-capability.ts`, `app-lifecycle/app-lifecycle-capability.ts`, `editor-host/editor-projection-capability.ts`) or was found dead with search proof (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`/`setSecret` — 4 members/pairs) and deleted outright; `onNativeThemeUpdated` and the fs primitives (`readFile`/`writeFile`/`statFile`) collapsed into their sole consumers rather than getting a forwarding-only module. Full inventory, search proofs, and the capability-cut rationale: `docs/plans/source-first-editor/capability-map.md`. See this ledger's own SFE-P5b section below for the measured before/after. |
 | Desktop typed HTTP `api.ts` | Route client | Typed IPC | P5d | file absent | One transport |
 | `src/routes/api/**` | Electron request/reply host | Typed IPC | P5c/P5d | route count zero | One transport |
 | Adapter-node desktop server | Execute SvelteKit routes | Static renderer + IPC | P5d | dependency/server search | Deletes loopback service |
@@ -666,3 +666,116 @@ excluded).
   verbatim per the document's own stated policy). Also corrected the
   preamble's "REMAIN in the suite and keep running in CI" claim to note
   this one exception.
+
+### SFE-P5b — 2026-09-01 — replace the broad `Platform` with narrow capabilities
+
+Lane A (implementation). Uncommitted at hand-off — the integrator commits
+after review, per the run's protocol. Working-tree diff, not a SHA range.
+
+**What was deleted:**
+
+- `packages/desktop/src/lib/platform/electron-adapter.ts` (253 lines) —
+  every one of its 30 forwarding members either moved to a capability module
+  (20), collapsed into its sole consumer (4), or died as dead surface (5,
+  with `apiVersion` kept only as an unused-but-real `ElectronBridge` type
+  field — see capability-map.md §2 for the full accounting).
+- `Platform`/`HostServices` interfaces and `getPlatform()`/`__resetPlatform()`
+  (`packages/desktop/src/lib/platform/contract.ts`/`index.ts`) — the
+  service-locator surface itself.
+- `packages/desktop/tests/platform/adapter.test.ts` (166 lines) — its target
+  (`ElectronAdapter`) no longer exists. Real per-member delegation assertions
+  moved to the new capability modules' own test files (not dropped); the
+  fail-loudly host-selection tests moved to the new `bridge.test.ts`, per the
+  run specification's own instruction ("adapter.test.ts's fail-loudly
+  selection test moves to the bridge accessor").
+- 5 dead `Platform`/`HostServices` members, with search proof each had zero
+  real desktop consumers: `saveSnapshot` (real callers already used
+  `api.vcs.saveSnapshot` directly; the type was never even really on the
+  preload bridge — a genuine `ElectronBridge`/`electron/types.d.ts` drift,
+  fixed), `openFolder`/`listDir` (real callers already used
+  `api.dialog.openDirectory()`/`api.fs.listDir()` directly), `getSecret`/
+  `setSecret` (scaffolding that only ever threw "not implemented yet", #12 —
+  unaffected by this run).
+
+**What was added:**
+
+- `docs/plans/source-first-editor/capability-map.md` — the full inventory,
+  search proofs, and capability-cut rationale this run's map deliverable
+  requires (see that document; not duplicated here).
+- 5 new capability modules (`update/updater-capability.ts`,
+  `remote/remote-capability.ts`, `export/build-preview-capability.ts`,
+  `app-lifecycle/app-lifecycle-capability.ts`,
+  `editor-host/editor-projection-capability.ts`) + 1 shared bridge accessor
+  (`platform/bridge.ts`, moved out of `platform/index.ts`) — plain module
+  functions, no classes, no injection framework, per the design constraint.
+- 6 new test files covering the capability modules
+  (`tests/platform/bridge.test.ts`,
+  `tests/updater/updater-capability.test.ts`,
+  `tests/platform/remote-capability.test.ts`,
+  `tests/platform/build-preview-capability.test.ts`,
+  `tests/platform/app-lifecycle-capability.test.ts`,
+  `tests/editor/editor-projection-capability.test.ts`).
+
+**Net diffstat** (`git diff --cached --numstat`, this lane's own working
+tree, `packages/desktop/{src,tests}` only — see capability-map.md §8 for the
+full reasoning):
+
+```
+production (src):   21 files, +583 / -531  (net +52)
+tests:               11 files, +487 / -207  (net +280)
+```
+
+Production is near-flat despite the 253-line class deletion because the 5
+new capability modules carry deliberate doc-comment explanation of the
+capability cut (this ledger's and capability-map.md's own "why" narrative
+lives partly in those files' headers too, not only in the docs). This run's
+net-LOC is not itself required to be negative — success criterion 22 scopes
+the net-LOC requirement to the combined P4–P6 phases; P5a alone already
+removed ~1,900 lines (`WebAdapter` 888 + `web-fs.ts` 279 + `web-store.ts`
+167 + ~4 dedicated test files), so the cumulative P5 effect through this run
+remains deeply net-negative.
+
+#### Search proofs (re-run 2026-09-01, from repo root, against the working tree)
+
+```
+$ grep -rn "getPlatform(" packages/desktop/src --include="*.ts" --include="*.svelte" \
+    | grep -vE '^\s*[^:]+:[0-9]+:\s*(//|\*|/\*\*)' | grep -v getPlatformCapabilities
+(zero real call sites)
+
+$ grep -rn "ElectronAdapter" packages/desktop/src packages/desktop/tests --include="*.ts" --include="*.svelte" \
+    | grep -v "^\s*[^:]*:[0-9]*:\s*\(//\|\*\)"
+(zero — class and file deleted; remaining hits are doc-comment history)
+
+$ grep -rn "window\.electron\b" packages/desktop/src --include="*.ts" --include="*.svelte"
+(only src/app.d.ts's ambient type decl, out of write ownership, unedited;
+ platform/bridge.ts's isDesktop()/bridge() bodies — the ONE accessor;
+ platform/contract.ts's ElectronBridge doc-comment header)
+```
+
+Full search-proof detail, including the value-vs-type-import breakdown for
+every remaining `$lib/platform` importer: capability-map.md §7.
+
+#### Verification run (this lane, from repo root / `packages/desktop`)
+
+| Command | Exit code | Note |
+|---|---:|---|
+| `bun run typecheck` | 0 | clean across all 4 workspace packages |
+| `cd packages/desktop && bun run test` | 0 | 5822 pass, 1 skip, 0 fail (was 9 fail + 1 error before the fix pass — see below) |
+| `cd packages/desktop && bun run check` | 0 | `svelte-check`: 894 files, 0 errors, 0 warnings |
+| `cd packages/desktop && bun run lint` | 0 | eslint + app-token check clean |
+| `cd packages/desktop && bun run build` | 0 | production build + `check-render-purity` (143 files scanned, no forbidden host/node markers) clean |
+| `bun run knip` (repo root) | 0 | zero unused files/dependencies/unlisted/binaries flagged |
+
+The 9 pre-fix test failures were 3 test files (`buffer-state.test.ts`,
+`editor-file-session.test.ts`, `file-tree-open-file-rename-delete.test.ts`)
+whose local `Platform`-typed test doubles needed the same mechanical
+`Partial<Platform>` → `EditorBufferFs` narrowing `buffer-state.svelte.ts`
+itself got (D4: consumer-shaped interface, not the deleted locator's
+type) — not a behavior regression, a signature-change ripple this lane's
+own write ownership (`packages/desktop/tests/**`) covers. The 1 pre-fix
+error was `adapter.test.ts`'s now-broken import, resolved by its deletion
+(see above). One of the 6 new capability tests also needed a same-turn fix
+(`editor-projection-capability.test.ts` used `.rejects.toThrow` against a
+function that fails SYNCHRONOUSLY, matching the deleted `getPlatform()`'s
+own synchronous-throw behavior — a test-authoring mistake in this lane's own
+new file, corrected before hand-off, not a production defect).

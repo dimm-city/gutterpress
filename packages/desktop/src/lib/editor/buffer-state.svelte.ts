@@ -11,8 +11,17 @@
  * (`load`, `edit`, `flush`, `acceptExternal`, `keepMine`, `reset`).
  *
  * Desktop-only: the editor is gated behind `isDesktop()` in `+page.svelte`, so
- * every platform call here runs against the ElectronAdapter. On web the buffer
- * is simply never constructed/used.
+ * every fs call here runs for real. On web the buffer is simply never
+ * constructed/used.
+ *
+ * SFE-P5b: this class used to take the whole `Platform` service-locator
+ * object (`opts.platform`) purely to reach `readFile`/`writeFile`/`statFile`
+ * — three members that, on `ElectronAdapter`, forwarded straight to
+ * `api.fs.*` with zero added logic. That indirection died with the locator:
+ * `EditorBufferFs` below is the narrow, consumer-shaped interface this class
+ * actually needs (D4 — "consumer-shaped interfaces live with the consuming
+ * domain"), and `+page.svelte` satisfies it by passing `api.fs` directly
+ * (which structurally has all three methods, plus more this class ignores).
  *
  * ## Delegation to `DocumentSession` (SFE-P1c)
  *
@@ -33,7 +42,7 @@
  * mtime-echo / `hasPendingSave` self-write-echo guards in
  * {@link reconcileExternalChange} that run before any I/O or session call.
  */
-import type { Platform } from "$lib/platform/contract";
+import type { FileStat, FileWriteResult } from "$lib/platform/contract";
 import { api } from "$lib/api";
 import {
   DocumentSession,
@@ -42,6 +51,18 @@ import {
 } from "../document-session/session";
 
 export type EditorBufferPhase = DocumentSessionPhase;
+
+/**
+ * The narrow fs slice {@link EditorBuffer} actually needs (SFE-P5b) —
+ * satisfied in production by `$lib/api`'s `api.fs` (which structurally has
+ * all three methods, plus more this class ignores) and by a test double
+ * (`MemoryPlatform` in `buffer-state.test.ts`) in tests.
+ */
+export interface EditorBufferFs {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<FileWriteResult>;
+  statFile(path: string): Promise<FileStat>;
+}
 
 /** Pending external-edit details awaiting the user's Reload / Keep-mine call. */
 export interface ExternalChange {
@@ -52,8 +73,8 @@ export interface ExternalChange {
 }
 
 export interface EditorBufferOptions {
-  /** The platform adapter (Electron). */
-  platform: Platform;
+  /** The fs primitives this buffer reads/writes through (SFE-P5b: `api.fs` in production). */
+  fs: EditorBufferFs;
   /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview loop). */
   saveDelayMs?: number;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
@@ -144,8 +165,8 @@ export class EditorBuffer {
     this.opts = opts;
   }
 
-  private get platform(): Platform {
-    return this.opts.platform;
+  private get fs(): EditorBufferFs {
+    return this.opts.fs;
   }
 
   /** Set phase and notify the onDirty callback when pending-save state changes. */
@@ -205,9 +226,9 @@ export class EditorBuffer {
     const gen = ++this.loadGen;
     this.externalChange = null;
     try {
-      const text = await this.platform.readFile(filePath);
+      const text = await this.fs.readFile(filePath);
       if (gen !== this.loadGen) return; // a newer load superseded this one
-      const st = await this.platform.statFile(filePath).catch(() => null);
+      const st = await this.fs.statFile(filePath).catch(() => null);
       if (gen !== this.loadGen) return;
       this.session.open(filePath, text, st?.mtimeMs ?? 0);
       this.syncFromSession();
@@ -247,11 +268,11 @@ export class EditorBuffer {
     const gen = ++this.loadGen;
     this.session.beginRestore(filePath, recovered);
     this.syncFromSession();
-    const st = await this.platform.statFile(filePath).catch(() => null);
+    const st = await this.fs.statFile(filePath).catch(() => null);
     if (gen !== this.loadGen) return;
     let diskText: string;
     try {
-      diskText = await this.platform.readFile(filePath);
+      diskText = await this.fs.readFile(filePath);
     } catch {
       diskText = "";
     }
@@ -345,7 +366,7 @@ export class EditorBuffer {
         return;
       }
 
-      const { mtimeMs } = await this.platform.writeFile(filePath, snapshot);
+      const { mtimeMs } = await this.fs.writeFile(filePath, snapshot);
       this.opts.onSaved?.(filePath);
       if (this.opts.recoveryEnabled !== false) {
         api.recovery.clear(filePath).catch(() => {});
@@ -421,7 +442,7 @@ export class EditorBuffer {
     if (this.hasPendingSave) return;
     let stat: { mtimeMs: number; size: number; exists: boolean };
     try {
-      stat = await this.platform.statFile(filePath);
+      stat = await this.fs.statFile(filePath);
     } catch {
       return;
     }
@@ -441,7 +462,7 @@ export class EditorBuffer {
     if (stat.mtimeMs === this.diskMtimeMs) return;
     let diskContent: string;
     try {
-      diskContent = await this.platform.readFile(filePath);
+      diskContent = await this.fs.readFile(filePath);
     } catch {
       return;
     }
@@ -513,7 +534,7 @@ export class EditorBuffer {
     filePath: string,
     baseline: string,
   ): Promise<ExternalChange | null> {
-    const stat = await this.platform.statFile(filePath).catch(() => null);
+    const stat = await this.fs.statFile(filePath).catch(() => null);
     if (!stat?.exists) {
       return baseline === "" && this.diskMtimeMs === 0
         ? null
@@ -522,7 +543,7 @@ export class EditorBuffer {
 
     let diskContent: string;
     try {
-      diskContent = await this.platform.readFile(filePath);
+      diskContent = await this.fs.readFile(filePath);
     } catch {
       return { diskContent: "", diskMtimeMs: 0, exists: false };
     }

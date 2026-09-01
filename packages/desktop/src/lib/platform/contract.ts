@@ -1,32 +1,59 @@
 /**
- * Desktop-facing platform contract (#41, ARCH review #39).
+ * Desktop-facing seam types (#41, ARCH review #39, narrowed SFE-P5b).
  *
- * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
- * the canonical contract and lives in `gutterpress`. The desktop adds
- * `HostServices` — the host RPC surface (preview/build/doctor/prefs/updater/
- * dialogs), which is desktop-specific (Electron IPC), so it is defined here
- * rather than in the lib.
+ * Through 0.10.x this file defined the broad `Platform`/`HostServices`
+ * service-locator contract (`PlatformAdapter & HostServices`, consumed via
+ * `getPlatform()`). SFE-P5b deleted that locator: `getPlatform()`,
+ * `ElectronAdapter`, the `Platform` and `HostServices` interfaces, and
+ * `PlatformAdapter`'s desktop-side re-export are all gone. Each capability a
+ * component needs is now a plain function imported directly from a
+ * feature-owned module (`$lib/update/updater-capability`,
+ * `$lib/remote/remote-capability`, `$lib/export/build-preview-capability`,
+ * `$lib/editor-host/editor-projection-capability`,
+ * `$lib/app-lifecycle/app-lifecycle-capability`, or inlined in
+ * `theme.svelte.ts`) — see `docs/plans/source-first-editor/capability-map.md`
+ * for the full member-by-member accounting and `./bridge.ts` for the one
+ * shared `window.electron` accessor those modules call.
  *
- * The app consumes `Platform` = `PlatformAdapter & HostServices` via
- * `getPlatform()`. It must NOT touch `window.electron` directly — that access
- * is confined to `electron-adapter.ts`.
+ * What remains here:
  *
- * This file is the SEAM-INTERFACE file: `HostServices`, `ElectronBridge`,
- * `Platform`, and the small cluster of types those interfaces' members
- * reference directly (`UpdaterApi`, `FolderRef`/`FileRef`, `PreviewStartArgs`/
- * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
- * `FolderChangedEvent`, and the sync status vocabulary —
- * `SyncStatus`/`SyncState`). Plain request/response DTOs that the seam does NOT
- * reference — the ~30 shapes server routes return (plugin manager, theme
- * manager, style resolver, media panel, problems panel, project
- * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
- * Electron host process (and mirrored into `electron/bridge-types.ts`) live in
- * `./shared-types.ts`. This file re-exports both so existing `$lib/platform/
- * contract` importers keep resolving; new code should import DTOs from
- * `./dtos` directly.
+ * - `ElectronBridge` — types the REAL preload boundary. It is a genuine
+ *   duplicate of the ambient `Window.electron` shape `electron/types.d.ts`
+ *   declares (out of this run's write ownership) — kept, not deleted,
+ *   because `src/app.d.ts` (also out of this run's write ownership) imports
+ *   it by name to type the SPA's own `Window.electron` ambient declaration
+ *   (a separate `declare global` scope from `electron/types.d.ts`'s
+ *   main/preload TS program, which the SPA's tsconfig does not include).
+ *   Verified member-for-member against `electron/types.d.ts` as part of this
+ *   run (capability-map.md §"ElectronBridge parity") — the one drift found
+ *   (a stale `saveSnapshot` member that was never really on the bridge) is
+ *   fixed below.
+ * - `UpdaterApi` — still typed here: `ElectronBridge.updater` is
+ *   `Pick<UpdaterApi, "applyNow" | "onEvent">`, and
+ *   `$lib/update/updater-capability` imports the full shape's per-method
+ *   return types.
+ * - Every other type below (`FolderRef`/`FileRef`, `PreviewStartArgs`/
+ *   `BuildArgs`, `EditorProjection*`, `PlatformCapabilities`,
+ *   `NativeThemeState`, `FolderChangedEvent`, `SyncState`/`SyncStatus`, the
+ *   re-exported IPC payload types) stays here rather than moving to its
+ *   consuming capability module: each is either referenced by
+ *   `ElectronBridge` directly (so moving it would make this file import back
+ *   from a capability module that itself imports the bridge accessor FROM
+ *   here — a cycle), or has real consumers outside this run's write
+ *   ownership (e.g. `LeftPanel.svelte`'s `ProjectCapabilities`, `api.ts`'s
+ *   `FileStat`/`FileWriteResult`) that this run may not edit. This file
+ *   remains the one shared IPC-DTO module those genuinely cross-cutting
+ *   types live in — see the capability map for the per-type justification.
+ *
+ * Plain request/response DTOs the seam does NOT reference — the ~30 shapes
+ * server routes return (plugin manager, theme manager, style resolver, media
+ * panel, problems panel, project classification, …) — live in `./dtos.ts`
+ * (untouched by this run; P5c's surface). IPC payload types shared with the
+ * Electron host process (and mirrored into `electron/bridge-types.ts`) live
+ * in `./shared-types.ts` (also untouched by this run). This file re-exports
+ * both so existing `$lib/platform/contract` importers keep resolving.
  */
 import type {
-  PlatformAdapter,
   ProjectSource,
   ProjectCapabilities,
   FileStat,
@@ -83,7 +110,6 @@ import type {
 } from "./shared-types";
 
 export type {
-  PlatformAdapter,
   ProjectSource,
   ProjectCapabilities,
   FileStat,
@@ -393,7 +419,9 @@ export interface NativeThemeState {
 /**
  * Coarse host capability flags (#49) so the UI can degrade gracefully without
  * branching on the platform discriminant directly. Electron (the only host
- * `getPlatform()` resolves — SFE-P5a/D10) returns all-true.
+ * this desktop package runs on — SFE-P5a/D10) returns all-true; synthesised
+ * locally by `$lib/export/build-preview-capability`'s `getPlatformCapabilities()`
+ * (no IPC call — see that module).
  */
 export interface PlatformCapabilities {
   /** The host can write build output to a real, user-chosen filesystem path. */
@@ -404,22 +432,51 @@ export interface PlatformCapabilities {
   persistentFolderAccess: boolean;
 }
 
+// NOTE (SFE-P5b): the broad `HostServices`/`Platform` service-locator
+// interfaces that used to live here are deleted. Every member above the
+// `ElectronBridge` type below either moved to a feature-owned capability
+// module (updater/remote/build-preview/editor-projection/app-lifecycle/theme
+// — see this file's header) or was found dead (zero real desktop consumers)
+// and deleted outright:
+//
+//   - `apiVersion` had no desktop-app reader; the field still exists for
+//     real on `window.electron` (electron/types.d.ts), so it stays on
+//     `ElectronBridge` below (a type must not lie about the real preload
+//     shape), it just has no capability-module wrapper.
+//   - `saveSnapshot` was NEVER actually on the preload bridge (compare
+//     `electron/types.d.ts`, which has no `saveSnapshot` member) — the real
+//     desktop code already called `api.vcs.saveSnapshot(...)` directly
+//     (`+page.svelte`). The old `HostServices.saveSnapshot`/
+//     `ElectronAdapter.saveSnapshot` forwarding was dead type surface long
+//     before this run; deleted here with that search proof.
+//   - `openFolder`, `listDir`, `getSecret`, `setSecret` had zero real
+//     `getPlatform()`-mediated consumers: every real call site already used
+//     `api.dialog.openDirectory()` / `api.fs.listDir()` directly, and
+//     `getSecret`/`setSecret` only ever threw ("not implemented yet", #12).
+//     Deleted; `readFile`/`writeFile`/`statFile` (EditorBuffer's real fs
+//     need) collapsed the same way — EditorBuffer now takes the narrow
+//     `EditorBufferFs` shape (`editor/buffer-state.svelte.ts`) satisfied
+//     directly by `api.fs`, since the old Platform-level readFile/writeFile/
+//     statFile forwarding added no logic of its own over `api.fs.*`.
+//   - `capabilities()` moved to `$lib/export/build-preview-capability`'s
+//     `getPlatformCapabilities()` — a local synthesis, not a bridge call.
+
 /**
- * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
- * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
+ * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
+ * ONLY `bridge.ts` (and the `Window` global) should reference this —
+ * everything else goes through a capability module.
  */
-export interface HostServices {
+export interface ElectronBridge {
   /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
   readonly apiVersion: number;
-  readonly updater: UpdaterApi;
-
   /**
-   * Coarse host capability flags (#49). Lets the UI degrade gracefully
-   * without branching on the platform name. Electron: all-true.
+   * ARCH review #8: getStatus/check/download migrated to server routes
+   * (api.updater.*) — the raw bridge only carries applyNow (quit + install,
+   * a live-BrowserWindow flush) and the onEvent push subscription.
    */
-  capabilities(): PlatformCapabilities;
+  updater: Pick<UpdaterApi, "applyNow" | "onEvent">;
 
-  // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
+  // Native (OS) theme (#48) — push channel (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
 
   /**
@@ -429,13 +486,11 @@ export interface HostServices {
    */
   onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void;
 
-  // ── Local version history (#13) ───────────────────────────────────────────
   /**
-   * Save an explicit snapshot of the project's current state. `message` is
-   * optional author text; the host substitutes a default when blank. Rejects
-   * with a friendly message when nothing has changed since the last snapshot.
+   * Raw folder-watch IPC (#44). Subscribes to change events for `path` and
+   * returns an unsubscribe fn.
    */
-  saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+  watchFolder(path: string, cb: () => void): () => void;
 
   // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
   // Two-phase connect: `connectGitHubStart` begins the device flow and
@@ -450,16 +505,16 @@ export interface HostServices {
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
 
-  /** Download ("clone") a repository into a new local project folder. */
-  cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
-  /** Subscribe to clone progress events. Returns an unsubscribe fn. */
+  /** Subscribe to clone progress events. Returns an unsubscribe fn. (`cloneRemoteRepository`
+   *  itself moved to a server route — api.remote.cloneRepository — ARCH review #8.) */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
   //
   // The host auto-sync orchestrator (electron/main.ts) emits `sync:status`
   // events whenever its state machine transitions. The renderer subscribes here
-  // to drive the ambient status pill without polling.
+  // to drive the ambient status pill without polling. (`setAutoSync` itself
+  // moved to a server route — api.sync.setAutoSync — ARCH review #8.)
 
   /**
    * Subscribe to ambient sync-status updates from the host orchestrator.
@@ -472,18 +527,14 @@ export interface HostServices {
    */
   onSyncStatus(handler: (status: SyncStatus) => void): () => void;
 
-  /**
-   * Enable or disable the auto-sync master switch for the current project.
-   * Persisted via the host settings store (equivalent to toggling
-   * `versionHistory.autoSync` in AppSettings).
-   */
-  setAutoSync(enabled: boolean): Promise<void>;
-
-  // Preview / build
-  startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
+  // ── Preview / build ────────────────────────────────────────────────────────
+  // #49: the IPC layer keeps raw path-string semantics — the capability
+  // module (`$lib/export/build-preview-capability`) is the translation seam
+  // that unwraps FolderRef.key back into the string `input` the IPC expects.
+  startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
   stopPreview(): Promise<{ stopped: boolean }>;
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
-  build(args: BuildArgs): Promise<BuildResult>;
+  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
 
   /**
    * SFE-P3e — the desktop rich editor's plugin-aware projection, built
@@ -515,73 +566,4 @@ export interface HostServices {
    * (#44), backing external-edit detection. Returns an unsubscribe fn.
    */
   onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void;
-}
-
-/**
- * The complete host surface the desktop app consumes through `getPlatform()`.
- *
- * `openFolder` is overridden here (#49) to return a host-neutral `FolderRef`
- * instead of the lib `PlatformAdapter`'s raw `string` path — so the renderer
- * never assumes path-string semantics. The adapter is the translation seam
- * (Electron wraps the picker's path in a `FolderRef` whose `key` is that
- * absolute path). Every other `PlatformAdapter` primitive is inherited
- * unchanged.
- */
-export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServices {
-  /**
-   * Open a native folder picker. Resolves with a {@link FolderRef} (key +
-   * precomputed displayName), or null when the user cancels.
-   */
-  openFolder(): Promise<FolderRef | null>;
-
-}
-// NOTE: reopenFolder was removed from HostServices (no SPA caller) and its
-// only implementation (the FSA permission re-grant flow on the now-deleted
-// WebAdapter, SFE-P5a) was deleted with it — see D10.
-
-/**
- * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
- * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
- * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
- * FolderRef translation seam (`startPreview`/`build` keep raw path strings here;
- * #49), and `capabilities()` (synthesised by the adapter, not an IPC — Omitted
- * so it can't be called on the raw bridge).
- * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
- * everything else goes through `Platform`.
- */
-export interface ElectronBridge
-  extends Omit<
-    HostServices,
-    | "startPreview"
-    | "build"
-    | "capabilities"
-    // ARCH review #8: these moved to server routes (api.sync.setAutoSync
-    // / api.remote.cloneRepository) — the raw bridge no longer exposes them.
-    // `updater` is narrowed below instead of omitted: applyNow/onEvent stay
-    // on the bridge, only getStatus/check/download moved.
-    | "setAutoSync"
-    | "cloneRemoteRepository"
-    | "updater"
-  > {
-  // audit D3: openDirectory/readFile/writeFile/listDir/statFile were removed
-  // from here — the real preload bridge migrated them to server routes (the
-  // ElectronAdapter's PlatformAdapter methods call api.dialog.*/api.fs.*, never
-  // bridge().*), so the type promised IPC members that don't exist. Matches the
-  // already-pruned electron/types.d.ts.
-  // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
-  // the translation seam that unwraps FolderRef.key back into the string `input`
-  // the existing IPC expects.
-  startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
-  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
-  /**
-   * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
-   * to change events for `path` and returns an unsubscribe fn.
-   */
-  watchFolder(path: string, cb: () => void): () => void;
-  /**
-   * ARCH review #8: getStatus/check/download migrated to server routes
-   * (api.updater.*) — the raw bridge only carries applyNow (quit + install,
-   * a live-BrowserWindow flush) and the onEvent push subscription.
-   */
-  updater: Pick<UpdaterApi, "applyNow" | "onEvent">;
 }

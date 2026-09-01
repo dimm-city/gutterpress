@@ -10,13 +10,14 @@
    * Host work — listing, thumbnails (generated AND cached host-side so
    * multi-MB originals never reach the renderer), inspection, and file
    * copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
-   * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
-   * for the live folder-changed push stream, one of the seam's narrower
-   * classes. Renderer-side thumbnail state is bounded (THUMB_LIMIT) so a huge
-   * project can't balloon memory.
+   * default seam (CLAUDE.md §8); the app-lifecycle capability's
+   * `onFolderChanged` is used only for the live folder-changed push stream,
+   * one of the seam's narrower classes. Renderer-side thumbnail state is
+   * bounded (THUMB_LIMIT) so a huge project can't balloon memory.
    */
   import { onMount } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { onFolderChanged } from "$lib/app-lifecycle/app-lifecycle-capability";
   import { api } from "$lib/api";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
@@ -124,7 +125,7 @@
     notice = null;
     void refresh();
     if (!projectDir || !isDesktop()) return;
-    const off = getPlatform().onFolderChanged(() => {
+    const off = onFolderChanged(() => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
