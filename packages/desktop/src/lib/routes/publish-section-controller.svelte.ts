@@ -109,8 +109,12 @@ export class PublishSectionController {
 
   // ── Destinations picker (#221 D9) — provider-neutral (gdrive: folders) ───
   publishDestinations = $state<Record<string, PublishDestination[]>>({});
-  destinationsBusyId = $state<string | null>(null);
-  destinationsError = $state<string | null>(null);
+  // C3 — keyed per-provider like publishDestinations/newDestinationDrafts
+  // beside them: a global string/id let one provider's busy state or error
+  // render under a completely different provider's picker (harmless only
+  // while gdrive is the sole destinations-capable provider).
+  destinationsBusyId = $state<Record<string, boolean>>({});
+  destinationsError = $state<Record<string, string | null>>({});
   // Per-provider draft for the inline "New folder…" name input.
   newDestinationDrafts = $state<Record<string, string>>({});
 
@@ -122,6 +126,17 @@ export class PublishSectionController {
   preflightError = $state<string | null>(null);
 
   private readonly deps: PublishSectionDeps;
+  /**
+   * Generation counter for `connectGoogleOAuth` (C1 hardening). Cancelling an
+   * in-flight attempt clears `publishBusyId` right away, but that attempt's own
+   * await on `connectGoogleWait()` is still pending — its `catch`/`finally`
+   * settle LATE. Without this guard, a cancel immediately followed by a fresh
+   * connect lets the OLD attempt's late settlement stomp the NEW one (wrong
+   * `publishError`, `publishBusyId` nulled out from under the new attempt).
+   * Each `connectGoogleOAuth` call captures the post-increment value; only the
+   * MOST RECENT attempt's side effects are allowed to land.
+   */
+  private googleConnectGeneration = 0;
 
   constructor(deps: PublishSectionDeps) {
     this.deps = deps;
@@ -208,6 +223,11 @@ export class PublishSectionController {
     try {
       await this.deps.setConfig(projectDir, providerId, { credential: account });
       await this.loadPublish();
+      // C2 — switching the saved account this book uses must refresh the
+      // destinations picker the same way connectPublish/connectGoogleOAuth do,
+      // or the PREVIOUS account's folder list keeps showing until the wizard
+      // step is re-entered.
+      await this.loadDestinationsIfPickerAvailable(providerId);
     } catch (e) {
       this.publishError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -317,6 +337,13 @@ export class PublishSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     const account = (this.publishAccountDrafts[providerId] ?? "").trim();
+    // C1 hardening: this attempt owns `generation` for its whole lifetime.
+    // Cancel clears `publishBusyId` right away while this same await chain is
+    // still pending — if a NEW connect starts before this one settles, every
+    // side effect below (including the catch/finally) must become a no-op
+    // rather than stomp the newer attempt's state.
+    const generation = ++this.googleConnectGeneration;
+    const isCurrent = () => generation === this.googleConnectGeneration;
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
@@ -325,8 +352,10 @@ export class PublishSectionController {
       // symmetry with connectPublish in case a future oauth provider adds one.
       await this.flushPublishDraft(providerId);
       const { authUrl } = await this.deps.connectGoogleStart(account || undefined);
+      if (!isCurrent()) return;
       this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: authUrl };
       await this.deps.connectGoogleWait();
+      if (!isCurrent()) return;
       this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: "" };
       // A NAMED account just connected → make this book use it (book-level
       // selection), same as the paste-a-key flow.
@@ -337,10 +366,13 @@ export class PublishSectionController {
       await this.loadDestinationsIfPickerAvailable(providerId);
       this.deps.onConnected?.();
     } catch (e) {
+      if (!isCurrent()) return; // a newer attempt has since taken over — stay quiet
       this.publishError = e instanceof Error ? e.message : String(e);
     } finally {
-      this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: "" };
-      this.publishBusyId = null;
+      if (isCurrent()) {
+        this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: "" };
+        this.publishBusyId = null;
+      }
     }
   };
 
@@ -369,18 +401,21 @@ export class PublishSectionController {
    *  once connected, and after a successful connect). */
   loadDestinations = async (providerId: string): Promise<void> => {
     const projectDir = this.deps.projectDir();
-    if (!projectDir || this.destinationsBusyId) return;
-    this.destinationsBusyId = providerId;
-    this.destinationsError = null;
+    if (!projectDir || this.destinationsBusyId[providerId]) return;
+    this.destinationsBusyId = { ...this.destinationsBusyId, [providerId]: true };
+    this.destinationsError = { ...this.destinationsError, [providerId]: null };
     try {
       this.publishDestinations = {
         ...this.publishDestinations,
         [providerId]: await this.deps.listDestinations(projectDir, providerId),
       };
     } catch (e) {
-      this.destinationsError = e instanceof Error ? e.message : String(e);
+      this.destinationsError = {
+        ...this.destinationsError,
+        [providerId]: e instanceof Error ? e.message : String(e),
+      };
     } finally {
-      this.destinationsBusyId = null;
+      this.destinationsBusyId = { ...this.destinationsBusyId, [providerId]: false };
     }
   };
 
