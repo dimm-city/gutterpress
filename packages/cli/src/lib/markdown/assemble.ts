@@ -29,7 +29,9 @@ export type ReadText = (relPath: string) => Promise<string>;
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
  * `extra_bare_marker_token`, `unknown_marker`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `pin_outside_page`).
+ * `page_outside_spread`, `pin_outside_page`, `unknown_gp_class` — the last
+ * emitted by `gp-pin-scope.js`'s `gp_pin_scope_check`, same as
+ * `pin_outside_page`, see #226).
  *
  * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
  * @section with no open @page is valid authoring (audited, 17/17 false

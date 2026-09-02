@@ -348,3 +348,48 @@ img.gp-shape {
 .gp-raised { z-index: var(--gp-z-raised); }
 .gp-front  { z-index: var(--gp-z-front); }
 `;
+/**
+ * GP_CLASSES — every class an author may legitimately write with a `gp-`
+ * prefix: the `.gp-*` selectors in `GUTTERPRESS_CSS` above, the two
+ * structural classes `markers.js`'s `MARKER_CSS` styles (`gp-page-break`,
+ * `gp-column-break`), and two classes the marker plugin EMITS but that carry
+ * no CSS rule of their own — `gp-continued` (a `@continue`d section's marker,
+ * for author/theme styling — see markers.js's header) and `gp-flush` (a
+ * `.gp-pin` edge modifier implemented in the engine's layout code, not CSS —
+ * see the `.gp-flush` doctrine note above).
+ *
+ * This is the vocabulary `gp-pin-scope.js`'s `unknown_gp_class` diagnostic
+ * (#226) checks every author-facing class against: any `gp-`-prefixed class
+ * NOT in this set is either a typo or forgotten vocabulary, and is worth a
+ * warning either way — key on `gp-` only; `.dc-*`, `.fg-*`, and unprefixed
+ * classes are none of core's business.
+ *
+ * `gutterpress-css.test.ts` asserts this set and the `.gp-*` selectors
+ * textually present in `GUTTERPRESS_CSS` + `MARKER_CSS` agree (modulo the two
+ * marker-only exceptions above), so the two cannot silently drift apart —
+ * whoever adds a class to one CSS block and forgets this list finds out from
+ * a failing test, not from a future bug report.
+ */
+export const GP_CLASSES: ReadonlySet<string> = new Set([
+  // flow positions, sizes, spacing
+  "gp-left", "gp-right", "gp-center", "gp-full", "gp-bleed",
+  "gp-small", "gp-medium", "gp-large",
+  "gp-tight", "gp-loose",
+  // column runs + the column-fill/span vocabulary (#225/#228)
+  "gp-columns-2", "gp-columns-3",
+  "gp-columns-all", "gp-columns-flow", "gp-columns-balanced",
+  // fragmentation controls (#225/#228)
+  "gp-no-break", "gp-break-before",
+  // grid runs
+  "gp-grid-2", "gp-grid-3",
+  // shape wrap
+  "gp-shape",
+  // pin + edge modifiers
+  "gp-pin", "gp-top", "gp-bottom",
+  // depth ladder
+  "gp-behind", "gp-base", "gp-raised", "gp-front",
+  // MARKER_CSS (markers.js) — structural break classes
+  "gp-page-break", "gp-column-break",
+  // marker-only, no CSS rule of their own (see the doc comment above)
+  "gp-continued", "gp-flush",
+]);
