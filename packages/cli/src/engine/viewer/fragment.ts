@@ -459,8 +459,10 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     }
     // Nothing precedes it: text with real content opens its own default-page
     // run (print puts it on the default page, then the named element breaks
-    // to its own). Whitespace generates no box, so it just rides along.
-    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+    // to its own). Whitespace generates no box, so it just rides along — and
+    // so does an element node, which reaches `pending` only when it generates
+    // no boxes either (see the loop below).
+    if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
       pushRun(runs, undefined, held);
       return [];
     }
@@ -481,6 +483,19 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
+      // A `display: none` element generates no boxes anywhere in its subtree,
+      // so print cannot start a page at it. It therefore rides along with a
+      // neighbouring run exactly as whitespace does, instead of opening a run
+      // — and a page — of its own. Read after the page checks above, so an
+      // element that DOES carry page context is never treated this way.
+      //
+      // The editor's locked view hides its marker chips like this, and a
+      // hidden chip sitting ahead of a chapter opener manufactured a whole
+      // blank leading page there.
+      if (getComputedStyle(kid).display === "none") {
+        pending.push(node);
+        continue;
+      }
       pushRun(runs, undefined, [...carry(), kid], flush);
       continue;
     }

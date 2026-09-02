@@ -1196,7 +1196,7 @@
         pushRun(runs, last.page, held, last.flushEdges);
         return [];
       }
-      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      if (held.some((n) => n.nodeType !== 1 && (n.textContent ?? "").trim() !== "")) {
         pushRun(runs, undefined, held);
         return [];
       }
@@ -1217,6 +1217,10 @@
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
+        if (getComputedStyle(kid).display === "none") {
+          pending.push(node);
+          continue;
+        }
         pushRun(runs, undefined, [...carry(), kid], flush);
         continue;
       }

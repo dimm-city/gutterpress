@@ -21,7 +21,6 @@ import {
   applySpreadMode,
   decorate,
   extract,
-  injectBreakMapping,
   injectViewerCss,
   paginate,
   PX_PER_PT,
@@ -63,12 +62,6 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   const model = modelFor(bookCss);
   /** The book's default page width in CSS px — known from the model, before anything is laid out. */
   const pageWidthPx = resolvePage(model).geometry.width * PX_PER_PT;
-  // On screen a page box is a multicol COLUMN, so the book's forced page
-  // breaks have to be re-expressed as column breaks — exactly what the
-  // preview does inside `fragmentDocument`. Without this the editor
-  // silently ignores every `@page` / `@page-break` and paginates
-  // differently from the page it is meant to be showing.
-  injectBreakMapping(model, doc);
   const listeners = new Set<(totalPages: number) => void>();
   let pages = 0;
   let decoration: DecorationApi | undefined;

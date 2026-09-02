@@ -2421,16 +2421,20 @@
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
    * existing file-selection + reveal path — no new navigation machinery.
+   *
+   * It lands in FOCUS mode, the raw-Markdown surface, because that is the
+   * only surface a diagnostic's line number addresses: a problem is reported
+   * against a source line, and the paged editor shows the book, not the
+   * source. Focus mode is also the surface `revealLine` exists on
+   * (MarkdownEditor/CodeMirror) — asking for it anywhere else reveals
+   * nothing at all.
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
     // Make sure the editor pane is visible first (narrow = Edit mode pane;
     // wide = the editor split).
-    if (isNarrow) {
-      setPaneMode("edit");
-    } else if (!editorEditable) {
-      setMode("editor");
-    }
+    if (isNarrow) setPaneMode("edit");
+    setMode("focus");
     void selectEditorFile(p.filePath).then((selected) => {
       if (selected && p.line) {
         const path = p.filePath!;
