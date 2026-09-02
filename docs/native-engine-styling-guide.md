@@ -334,3 +334,56 @@ If you add a check to the engine, give it a code in `BUILD_DIAGNOSTIC_CODES`
 and a plain-language label in the desktop's `SOURCE_LABELS` — a test fails
 otherwise, so an author never sees a raw id like
 `engine.multicol.dead-column`.
+
+## 12. Cascade layers: core vs. your book
+
+Core wraps its own two CSS blocks in cascade layers (#227), declared first in
+the assembled `<style>` block:
+
+```css
+@layer gp.marker, gp.vocab;
+@layer gp.marker { /* MARKER_CSS — .page/.spread/.section/.chapter, breaks */ }
+@layer gp.vocab  { /* GUTTERPRESS_CSS — the gp-* utility vocabulary */ }
+```
+
+Everything else — user plugin CSS, every stylesheet the manifest's `styles:`
+list names (including an `engineStyles.native` sheet, which
+`resolveActiveStyles` folds into that same list before the book is
+assembled), and anything those sheets `@import` — stays UNLAYERED. Per the
+CSS Cascading and Layers spec, unlayered CSS always wins over layered CSS,
+regardless of selector specificity: a book rule as unspecific as a bare
+element selector (`section { columns: unset }`) now overrides a core
+`.gp-columns-2` utility outright and correctly, and this is true BY
+CONSTRUCTION for every book — not a fact that happens to hold because of
+where a sheet sits in `styles:`, the way it worked before #227 (and could
+regress: a theme's `columns: unset` silently ate core's `columns: 2` for
+months on exactly this kind of specificity accident).
+
+MARKER_CSS's own break/orphan/sizing defaults still wrap each rule in
+`:where()` even though they no longer need to out-rank core's OWN
+vocabulary for specificity — `:where()` gives them zero specificity against
+OTHER unlayered author CSS too, e.g. a plain `.section { break-inside: ... }`
+you write directly rather than through a rule that also targets a `gp-*`
+class. Layers and `:where()` solve two different halves of "author wins":
+layers settle core-vs-author; `:where()` keeps core's OWN rules from out-
+specificity-ing whatever ELSE you write.
+
+**Recommended book-side convention.** If your own theme is more than a
+couple of files, declare your own layer order once, at the top of your
+first stylesheet:
+
+```css
+@layer tokens, base, components, templates, pages, book;
+```
+
+Every rule you then place inside one of those layers cascades by that fixed
+order — `components` always beats `base`, regardless of which file
+`styles:` lists last — so splitting or reordering your stylesheets can no
+longer silently flip who wins. (Your layers are still unlayered relative to
+`gp.marker`/`gp.vocab`, so they keep winning over core exactly as before —
+declaring an order only changes how YOUR OWN files settle ties with each
+other.) A caveat worth stating because it surprises people the first time:
+once a stylesheet declares layers, any rule you leave OUTSIDE all of them is
+still fully unlayered and therefore beats every one of your own layered
+rules too — so adopt the convention for a whole sheet at once, not for a
+handful of rules inside an otherwise plain file.

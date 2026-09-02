@@ -205,15 +205,29 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   }
 
   // Inject built-in + user-plugin CSS as a single <style> block.
-  // Cascade order: Gutterpress's marker layout primitives, then its `gp-*`
-  // vocabulary, then user plugin CSS, then the author's own
-  // stylesheets last so project rules win at equal specificity.
+  //
+  // Cascade order (#227): core's two blocks are wrapped in cascade layers —
+  // `@layer gp.marker, gp.vocab;` declares the order, then each block gets
+  // its own named layer. Per the CSS Cascade Layers spec, unlayered CSS
+  // ALWAYS wins over layered CSS regardless of selector specificity, so
+  // user plugin CSS and the author's own project stylesheets — both left
+  // UNLAYERED below, along with any `engineStyles.native` sheet (already
+  // folded into `projectCss` by `resolveActiveStyles`/manifest.ts before it
+  // reaches here) — win over core's two layers "by construction" rather
+  // than by outrunning them on specificity or injection order. This
+  // replaces source-order + `:where()` as the mechanism that makes "author
+  // wins" true; `:where()` stays inside MARKER_CSS's own break/orphan rules
+  // because those still need to lose to an author's UNLAYERED rule at ANY
+  // specificity too (an author-declared layer is a separate concern — see
+  // the styling guide's cascade-layers section for the recommended book
+  // convention).
   // The two core blocks stay separate by ownership: MARKER_CSS supports the
   // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
   // author vocabulary.
   const inlineCss = [
-    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
-    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
+    "@layer gp.marker, gp.vocab;",
+    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
+    `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");

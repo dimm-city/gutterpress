@@ -223,6 +223,27 @@ styles:
   - "styles/chapter-art.css"      # 4. Chapter-specific rules (last wins)
 ```
 
+Gutterpress's own CSS sits underneath all of this in two cascade layers —
+the marker structural CSS in `@layer gp.marker`, the `gp-*` utility
+vocabulary in `@layer gp.vocab` — both declared before anything above. A
+cascade layer always loses to unlayered CSS, so every stylesheet in
+`styles:` (and anything loaded via `engineStyles.native`) beats core's
+defaults automatically, at any specificity — even a bare element selector.
+You never need `!important`, or an extra selector to inflate specificity,
+just to beat a `gp-*` rule.
+
+If your own theme is more than a couple of files, declare your own layer
+order at the top of your first stylesheet instead of relying on the list
+above:
+
+```css
+@layer tokens, base, components, templates, pages, book;
+```
+
+Every rule you place inside one of those layers then cascades by that fixed
+order, not by which file the manifest happens to load last — so splitting a
+file in two, or reordering `styles:`, can no longer silently flip who wins.
+
 ## Layout Marker CSS Classes
 
 Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](./02-writing-content.md#layout-directives) — repeated here as a CSS-focused cheat sheet:

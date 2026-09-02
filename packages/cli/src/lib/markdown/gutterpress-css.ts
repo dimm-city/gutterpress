@@ -7,10 +7,13 @@
  * classes authors apply to content. Keeping the two core blocks separate makes
  * that ownership boundary explicit without implying an external plugin.
  *
- * Injected by assemble.ts immediately AFTER `MARKER_CSS` and BEFORE user plugin
- * and project CSS, so the cascade order is: marker layout primitives ->
- * Gutterpress vocabulary -> plugin CSS -> the author's stylesheets last. An
- * author overriding a `gp-*` class at equal specificity still wins.
+ * Injected by assemble.ts inside `@layer gp.vocab` (#227), immediately after
+ * MARKER_CSS's own `@layer gp.marker`, and before user plugin CSS and the
+ * author's project stylesheets — both of which stay UNLAYERED. Per the CSS
+ * Cascade Layers spec, unlayered CSS always beats layered CSS regardless of
+ * selector specificity, so a plugin or project rule targeting a `gp-*` class
+ * now wins UNCONDITIONALLY, not merely at equal specificity — see
+ * assemble.ts's cascade-order comment for the full layer list.
  *
  * Also ships the author-facing `gp-*` image/block vocabulary (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
