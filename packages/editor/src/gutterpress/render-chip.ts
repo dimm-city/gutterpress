@@ -195,10 +195,26 @@ function renderSanitizedHtml(doc: Document, html: string, className: string): HT
  * a muted chip with per-character segments, editable like any marker line.
  */
 export function renderCloseMarkerChip(doc: Document, sourceText: string): CustomBlockRendering {
-  const dom = el(doc, "div", `md-block ${CHIP_ROOT_CLASS} ${CHIP_ROOT_CLASS}--end-section`);
-  dom.dataset["gpBlockKind"] = "end-section";
+  return renderSourceOnlyChip(doc, sourceText, "end-section", "end");
+}
+
+/**
+ * A raw HTML tag that opens or closes a container the author wrote by hand
+ * (`<div class="colophon-grid">` … `</div>`). The wrapper itself is mounted
+ * by `groupBlocks`, so the tag's own block is source and nothing else — the
+ * book's HTML has no box here either. Locked, this chip is dropped like any
+ * other authoring affordance; unlocked it names what the line does.
+ */
+export function renderContainerTagChip(doc: Document, sourceText: string): CustomBlockRendering {
+  return renderSourceOnlyChip(doc, sourceText, "html-container", "html");
+}
+
+/** A chip that shows only its own source, character by character so the fork can map a caret into it. */
+function renderSourceOnlyChip(doc: Document, sourceText: string, variant: string, label: string): CustomBlockRendering {
+  const dom = el(doc, "div", `md-block ${CHIP_ROOT_CLASS} ${CHIP_ROOT_CLASS}--${variant}`);
+  dom.dataset["gpBlockKind"] = variant;
   const kindLabel = el(doc, "div", `${CHIP_ROOT_CLASS}__kind`);
-  kindLabel.textContent = "end";
+  kindLabel.textContent = label;
   dom.appendChild(kindLabel);
   const sourceEl = el(doc, "div", `${CHIP_ROOT_CLASS}__source`);
   const segments: SourceSegment[] = [];

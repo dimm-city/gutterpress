@@ -442,38 +442,46 @@ const VOID_TAGS = new Set([
   "link", "meta", "param", "source", "track", "wbr",
 ]);
 
+/** What an HTML fragment does to the element nesting around it. */
+export interface HtmlFragmentNesting {
+  /** Elements the fragment leaves OPEN, outermost first. */
+  readonly opened: readonly { readonly tag: string; readonly attributes: Readonly<Record<string, string>> }[];
+  /** How many elements it closes that something BEFORE it opened. */
+  readonly closed: number;
+}
+
 /**
- * The elements an `html_block` leaves OPEN, outermost first — the wrappers
- * the blocks after it will be rendered inside.
+ * What a block of HTML does to the nesting around it: which elements it
+ * leaves open for the blocks that follow, and how many it closes that an
+ * earlier block opened.
  *
- * A plugin's container marker becomes one `html_block` in the token stream,
- * and its content is whatever HTML that plugin writes: a lone opening tag
- * for a simple wrapper, or a whole opening fragment for a decorated one (the
- * design guide's `@skill` emits a card shell, a fully closed title bar, and
- * two more opening divs in one token). Reading the unclosed tags is what
- * distinguishes the two from a self-contained block (`<div
- * class="dc-card-heading">…</div>`, which wraps nothing) and from a bare
- * `</div>` closer, without needing to know what any plugin emits.
+ * This is what tells a CONTAINER from a self-contained block. A plugin's
+ * container marker becomes one `html_block`, and its content is whatever
+ * HTML that plugin writes: a lone opening tag for a simple wrapper, or a
+ * whole opening fragment for a decorated one (the design guide's `@skill`
+ * emits a card shell, a fully closed title bar, and two more opening divs in
+ * one token). An author's own `<div class="colophon-grid">` is the same
+ * shape, and its `</div>` is the closing half. Reading the tags is what
+ * separates all of those from `<div class="dc-card-heading">…</div>`, which
+ * wraps nothing at all — without needing to know what any plugin emits.
  */
-function unclosedWrappers(html: string): { tag: string; attributes: Record<string, string> }[] {
-  const open: { tag: string; attributes: Record<string, string> }[] = [];
+export function htmlFragmentNesting(html: string): HtmlFragmentNesting {
+  const opened: { tag: string; attributes: Record<string, string> }[] = [];
+  let closed = 0;
   for (const m of html.matchAll(TAG_RE)) {
     const tag = m[2]!.toLowerCase();
     if (m[1]) {
-      // A closer with nothing open in this token closes a wrapper an EARLIER
-      // token opened, which is a container ending, not one beginning.
-      if (!open.length) return [];
-      const at = open.map((w) => w.tag).lastIndexOf(tag);
-      if (at < 0) return [];
-      open.length = at;
+      const at = opened.map((w) => w.tag).lastIndexOf(tag);
+      if (at < 0) closed += 1;
+      else opened.length = at;
       continue;
     }
     if (m[4] || VOID_TAGS.has(tag)) continue;
     const attributes: Record<string, string> = {};
     for (const a of (m[3] ?? "").matchAll(ATTR_RE)) attributes[a[1]!] = a[2]!;
-    open.push({ tag, attributes });
+    opened.push({ tag, attributes });
   }
-  return open;
+  return { opened, closed };
 }
 
 /** An opening plugin marker, with the 0-based source line it sits on. */
@@ -535,7 +543,7 @@ function collectPluginContainers(tokens: readonly Token[], source: string): Plug
       continue;
     }
     if (token.type !== "html_block") continue;
-    const wrappers = unclosedWrappers(token.content);
+    const { opened: wrappers } = htmlFragmentNesting(token.content);
     if (!wrappers.length) continue;
     const limit = nextMappedLine(i + 1);
     // Every marker still unclaimed that this wrapper could have come from.

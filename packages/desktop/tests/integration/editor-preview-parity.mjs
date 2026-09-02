@@ -241,7 +241,39 @@ try {
   const frame = await bookFrame();
   log(`preview frame: ${frame.url()}`);
   await frame.evaluate(() => window.Gutterpress?.setSpread?.(false));
-  await sleep(1200);
+
+  /**
+   * The book's own page counts are read ONCE, so they have to be read after
+   * the viewer has finished paginating — not after a fixed sleep. A book
+   * whose art or fonts are still arriving paginates again afterwards, and
+   * reading through that made the BOOK's own answer move between runs (a
+   * role chapter reported 23 pages on one run and 24 on the next), which
+   * turned real agreement into a coin flip.
+   */
+  await frame.evaluate(async () => {
+    await document.fonts?.ready;
+    await Promise.all(
+      [...document.images]
+        .filter((img) => !img.complete)
+        .map(
+          (img) =>
+            new Promise((resolve) => {
+              img.addEventListener("load", resolve, { once: true });
+              img.addEventListener("error", resolve, { once: true });
+            }),
+        ),
+    );
+  });
+  for (let last = -1, stableSince = Date.now(), deadline = Date.now() + 60_000; Date.now() < deadline; ) {
+    const now = await frame.evaluate(() => document.querySelectorAll(".gp-sheet").length).catch(() => -1);
+    if (now !== last) {
+      last = now;
+      stableSince = Date.now();
+    } else if (now > 0 && Date.now() - stableSince >= 600) {
+      break;
+    }
+    await sleep(100);
+  }
 
   // The book's own answer for every chapter, in one call.
   const bookPages = await frame.evaluate(() => {

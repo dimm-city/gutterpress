@@ -450,6 +450,28 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     expect(groups.find((g) => g.start === 5)?.className).toBe("section sidebar gp-continued");
   });
 
+  test("an author's own raw HTML container wraps the blocks between its tags", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "unhandledBlock", id: 1 } as unknown as BlockAstNode, sourceText: '<div class="colophon-grid" data-x="1">\n', absoluteStart: 0 },
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "Credits.\n", absoluteStart: 50 },
+      { ast: { kind: "unhandledBlock", id: 3 } as unknown as BlockAstNode, sourceText: "</div>\n", absoluteStart: 100 },
+      { ast: { kind: "paragraph", id: 4 } as unknown as BlockAstNode, sourceText: "After.\n", absoluteStart: 150 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([
+      { start: 1, end: 2, key: "html:0:1", tagName: "div", className: "colophon-grid", attributes: { "data-x": "1" } },
+    ]);
+  });
+
+  test("a raw HTML block that closes what it opens wraps nothing", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "unhandledBlock", id: 1 } as unknown as BlockAstNode, sourceText: '<div class="rule"><hr></div>\n', absoluteStart: 0 },
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "After.\n", absoluteStart: 50 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([]);
+  });
+
   test("prose and non-paragraph blocks are never markers", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const blocks = [

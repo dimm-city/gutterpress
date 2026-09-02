@@ -40,6 +40,7 @@ export type { InlineSourceMeta } from "./lib/markdown/inline-source";
 
 export {
   createEditorProjection,
+  htmlFragmentNesting,
   PROJECTION_SCHEMA_VERSION,
   RICH_MODE_MAX_CONTENT_BYTES,
 } from "./lib/markdown/editor-projection";
@@ -52,4 +53,6 @@ export type {
   ProjectionDiagnostic,
   ProjectionDiagnosticCategory,
   CreateEditorProjectionOptions,
+  HtmlFragmentNesting,
+  PluginContainer,
 } from "./lib/markdown/editor-projection";

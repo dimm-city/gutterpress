@@ -45,12 +45,14 @@ export const GUTTERPRESS_EDITOR_CSS = `
   overflow-wrap: anywhere;
 }
 .gp-block-chip--end-section,
+.gp-block-chip--html-container,
 .gp-block-chip--page-break,
 .gp-block-chip--column-break {
   border-left-color: #94a3b8;
   background: rgba(148, 163, 184, 0.12);
 }
 .gp-block-chip--end-section .gp-block-chip__kind,
+.gp-block-chip--html-container .gp-block-chip__kind,
 .gp-block-chip--page-break .gp-block-chip__kind,
 .gp-block-chip--column-break .gp-block-chip__kind {
   color: #64748b;

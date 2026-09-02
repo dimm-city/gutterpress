@@ -44,11 +44,11 @@
  * module's own contract) — this provider does not duplicate that check.
  */
 import type { BlockAstNode, BlockGroupCandidate, BlockGroupSpec, CustomBlockRendering } from "@dimm-city/vscode-markdown-editor";
-import { markerElementAttributes, parseMarkerLine } from "gutterpress/render";
+import { htmlFragmentNesting, markerElementAttributes, parseMarkerLine } from "gutterpress/render";
 import type { GutterpressProjection, ProjectedBlock, ProjectedBlockKind } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh, type BlockIndex } from "./match.ts";
 import { buildChipPlan } from "./plan.ts";
-import { renderChipPlan, renderCloseMarkerChip } from "./render-chip.ts";
+import { renderChipPlan, renderCloseMarkerChip, renderContainerTagChip } from "./render-chip.ts";
 
 export interface CreateGutterpressBlockProviderOptions {
   readonly source: string;
@@ -126,6 +126,22 @@ const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue
 /** `@end-x` closes `@x` — the closing convention core uses and plugins follow. */
 const closedKindOf = (marker: ParsedMarker): string | null =>
   marker.kind.startsWith("end-") ? marker.kind.slice(4) : null;
+
+/**
+ * The container an author opened by hand.
+ *
+ * A book may wrap blocks in its own HTML — the field guide's credits page
+ * writes `<div class="colophon-grid">` around them and closes it with
+ * `</div>`, and its CSS lays that grid out in two columns. The editor
+ * rendered the two tags as blocks and left the content between them
+ * unwrapped, so the credits ran the full page width instead of two columns.
+ * Whether a raw HTML block opens or closes a container is read from the tags
+ * themselves, the same way a plugin's own wrapper is.
+ */
+function rawHtmlNesting(candidate: BlockGroupCandidate): { opened: readonly { tag: string; attributes: Readonly<Record<string, string>> }[]; closed: number } {
+  if (candidate.ast.kind !== "unhandledBlock") return { opened: [], closed: 0 };
+  return htmlFragmentNesting(candidate.sourceText);
+}
 
 /**
  * The wrapper a PLUGIN's own container marker opens.
@@ -218,6 +234,14 @@ export function createGutterpressBlockProvider(
         viewAttributes: markerElementAttributes(marker),
       };
       return renderChipPlan(buildChipPlan(block, match?.generatedPreviews ?? [], sourceText), opts.ownerDocument);
+    }
+
+    // A raw HTML tag that opens or closes a container is mounted as the
+    // container itself by `groupBlocks`; rendering its HTML here as well
+    // would put a second, empty copy of the wrapper on the page.
+    if (node.kind === "unhandledBlock") {
+      const nesting = htmlFragmentNesting(sourceText);
+      if (nesting.opened.length || nesting.closed) return renderContainerTagChip(opts.ownerDocument, sourceText);
     }
 
     // Plugin regions and raw HTML still come from the projection (they need
@@ -344,6 +368,30 @@ export function createGutterpressBlockProvider(
         groups.push({ start: i + 1, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
       }
       }
+    });
+
+    blocks.forEach((candidate, i) => {
+      const { opened } = rawHtmlNesting(candidate);
+      if (!opened.length) return;
+      let depth = opened.length;
+      let end = i + 1;
+      for (; end < blocks.length; end++) {
+        const nesting = rawHtmlNesting(blocks[end]!);
+        depth += nesting.opened.length - nesting.closed;
+        if (depth <= 0) break;
+      }
+      if (end <= i + 1) return;
+      opened.forEach((wrapper, depthIndex) => {
+        const { class: className, ...attributes } = { ...wrapper.attributes };
+        groups.push({
+          start: i + 1,
+          end,
+          key: `html:${depthIndex}:${candidate.ast.id}`,
+          tagName: wrapper.tag,
+          className,
+          attributes,
+        });
+      });
     });
     return groups;
   }
