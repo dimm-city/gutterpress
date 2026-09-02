@@ -209,6 +209,32 @@ export const GUTTERPRESS_CSS = `
 .gp-columns-2 { columns: 2; column-gap: var(--gp-column-gap, 1.5em); }
 .gp-columns-3 { columns: 3; column-gap: var(--gp-column-gap, 1.5em); }
 
+/* the per-shape decisions the paragraph above deliberately leaves to the
+   author, named instead of left as raw CSS every book was reinventing
+   (2026-09-01 CSS architecture review, findings C1/C7 — CLAUDE.md §0:
+   "behavior broadly useful to non-technical authors belongs in core").
+   Permanent vocabulary, standard properties verbatim — same rationale as
+   the column/grid runs above. One name each, no aliases:
+     .gp-columns-all       column-span: all      a heading or block that
+                                                  spans every column in the
+                                                  run it sits inside.
+     .gp-columns-flow      column-fill: auto     a run that FRAGMENTS across
+                                                  pages — every page's
+                                                  columns fill instead of
+                                                  only the last one
+                                                  balancing (the dead-column
+                                                  collapse the build's
+                                                  engine.multicol.dead-column
+                                                  warning names this fix
+                                                  for).
+     .gp-columns-balanced  column-fill: balance  a run that fits on ONE
+                                                  page (the CSS initial
+                                                  value — ragged columns
+                                                  would be wrong here). */
+.gp-columns-all { column-span: all; }
+.gp-columns-flow { column-fill: auto; }
+.gp-columns-balanced { column-fill: balance; }
+
 /* grid runs — the SLOTTED counterpart to the column runs above. Grid places
    each child into the next cell, across then down (deterministic slots: card
    layouts, stat blocks, image-plus-caption pairs); columns FLOW one text run
@@ -228,6 +254,15 @@ export const GUTTERPRESS_CSS = `
    --gp-grid-gap is author-settable. */
 .gp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gp-grid-gap, 1.5em); }
 .gp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gp-grid-gap, 1.5em); }
+
+/* fragmentation controls — generic pagination utilities for any element,
+   independent of the column/grid vocabulary above (a book reached for
+   these just as often outside a multicol run: keeping a card whole,
+   forcing a section to start a fresh page). Standard properties only —
+   this project is Chromium-only (CLAUDE.md), so there are no legacy
+   page-break-* twins to also emit. One name each. */
+.gp-no-break { break-inside: avoid; }
+.gp-break-before { break-before: page; }
 
 /* shape wrap — text follows the image's alpha silhouette instead of its
    rectangular box. shape-outside only applies to floats, so this is inert

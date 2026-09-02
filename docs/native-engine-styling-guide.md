@@ -171,19 +171,22 @@ oversize child has consequences.
   see in a computed style is now yours. Still check the computed style rather
   than only your own sheets when hunting one down.
 - **`column-fill: balance` on a multicol that fragments across pages leaves
-  non-final page fragments with a dead second column.** Use
-  `column-fill: auto` (sequential fill) on fragmenting multicol under native —
-  both columns fill on every page. (Balance is fine for a multicol that fits
-  on one page — which is why this is NOT defaulted: a global `column-fill:
-  auto` would visibly ragged-ify every ordinary single-page two-column
-  layout.) **[reported]** — the build warns when a balanced multicol actually
-  fragments, names it, and tells you to add `column-fill: auto`.
-- **A column-spanning heading (`column-span: all`) followed by an
-  unbreakable box strands the heading**: Chromium emits an EMPTY box fragment
-  (border + padding, zero content) under the spanner at the page bottom, and
-  the content flows headerless onto the next page. Fix: make the box after
-  the spanner fragmentable (`break-inside: auto`) so it starts filling
-  directly under its header.
+  non-final page fragments with a dead second column.** The choice is a
+  one-line author decision, named instead of raw CSS (#225/#228):
+  `.gp-columns-flow` (`column-fill: auto`, sequential fill) for a run that
+  FRAGMENTS across pages — both columns fill on every page; `.gp-columns-balanced`
+  (`column-fill: balance`) for a run that fits on ONE page. Neither is
+  defaulted onto plain `.gp-columns-2`/`.gp-columns-3` — a global
+  `column-fill: auto` would visibly ragged-ify every ordinary single-page
+  two-column layout, and only the author knows which shape a given run is.
+  **[reported]** — the build warns when a balanced multicol actually
+  fragments, names it, and tells you to add `.gp-columns-flow`.
+- **A column-spanning heading (`.gp-columns-all`, i.e. `column-span: all`)
+  followed by an unbreakable box strands the heading**: Chromium emits an
+  EMPTY box fragment (border + padding, zero content) under the spanner at
+  the page bottom, and the content flows headerless onto the next page. Fix:
+  make the box after the spanner fragmentable (`break-inside: auto`) so it
+  starts filling directly under its header.
 
 ## 6. Keeping headers with their content
 
