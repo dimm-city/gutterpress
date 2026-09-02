@@ -1212,6 +1212,69 @@ export default function plugin(md, pluginOptions = {}) {
  * bottom` collapses the line box onto the image, keeping the image inline (so
  * `text-align: center` still centers it — `display: block` would not).
  *
+ * #231 — two engine-generic print fixes adopted from a real book's own
+ * engine sheet (2026-09-01 CSS architecture review, finding C8), because
+ * both are written entirely in terms of core's own published contract and
+ * fix a failure every book with big art or a `<figure>` hits, not a
+ * DC-brand-specific one:
+ *
+ *   - A bare markdown placard (`![Alt](art.jpg)`, no class) taller than the
+ *     page content box is monolithic replaced content, and the fragmenter
+ *     SLICES it mid-image across the page break instead of moving it whole.
+ *     Capping a bare image to `--gp-content-h` (core's own published page
+ *     CONTENT height for the page context it is in — see the min-height
+ *     rule above) with `object-fit: contain` letterboxes it onto one page
+ *     instead. Scoped to `:not([class])` so it never touches a `.gp-full`,
+ *     `.gp-bleed`, or any other explicitly sized/classed image — an author
+ *     who already sized their own art has already made the call this rule
+ *     exists to make for the ones who haven't. `--gp-content-h` is
+ *     published by BOTH renderers (the compiler on `:root` plus every
+ *     `page:` assignment selector; the viewer on each `.gp-strip`), so this
+ *     rule cannot itself split preview from print.
+ *
+ *     MEASURED on the field guide (295pp, adopted verbatim from its own
+ *     native-furniture.css §9, which carried this exact rule for months):
+ *     chapter-01's rabbit placard paints 717.0pt tall on the default page
+ *     both before and after adoption (core's cap and the book's copy agree
+ *     bit-for-bit — the book's copy is now a harmless duplicate of core's,
+ *     not a competing rule). Chapter-03's full-sheet plate (an `@page` with
+ *     zero margins, so the content box IS the sheet) paints 621.0 x 804.0pt
+ *     inside its 621 x 810pt sheet both before and after — the OLD hand-
+ *     computed version of this rule (`calc(var(--page-height) - 0.5in -
+ *     0.75in - 4px)`, hard-coding the DEFAULT page's margins) over-capped
+ *     this named page's art to 553.5 x 717.0pt, a 1.3in band of bare wall
+ *     along its foot; reading the cap off `--gp-content-h` instead fixed
+ *     that BEFORE core ever adopted the rule, so adoption itself changes
+ *     nothing further. Total page count unchanged at 295pp — no
+ *     shrink-to-fit side effect from moving the rule into core.
+ *
+ *   - `figure { break-inside: avoid }` keeps in-flow art (anything an
+ *     author or a plugin wraps in a real `<figure>`) from being sliced
+ *     across a page break the same way a bare placard would be — the
+ *     `:where(p > img:only-child, figure > img)` sizing rule above already
+ *     assumes the figure survives as one piece; without this it did not.
+ *
+ * Design-for-deletion note (CLAUDE.md): neither rule is a Chromium-gap shim
+ * with a removal trigger — both are permanent, standards-verbatim defaults
+ * in the same category as the min-height/box-sizing/vertical-align rules
+ * above (real print-fragmentation behavior, not a spec feature Chrome has
+ * yet to ship). They stay `:where()` so an author's own sizing or
+ * break-inside rule, at ANY specificity, still wins outright.
+ *
+ * The companion "spanner + unbreakable box" glue pattern (`column-span: all`
+ * followed by a `break-inside: avoid` box, native-engine-styling-guide.md
+ * §5) was measured for this same adoption pass and DELIBERATELY NOT
+ * adopted: a `:where()`-zero-specificity override can never win against
+ * whatever real-specificity rule gave the box its `break-inside: avoid` in
+ * the first place (a synthetic 2-column fixture with the candidate
+ * `:where(.gp-columns-all) + :where(*) { break-inside: auto }` produced
+ * BYTE-IDENTICAL output to the same fixture without it, across every
+ * geometry swept), and the field guide's own native-furniture.css §13 shows
+ * a context-blind version of the same idea is actively wrong for at least
+ * one real, shipped case (a short, non-fragmenting instance that needed its
+ * `avoid` restored after a general fragmenting-context rule took it away).
+ * It stays an author remedy, named in the styling guide (`.gp-columns-all`).
+ *
  */
 export const MARKER_CSS = `
 /* The UA default of 8px body margin is a screen affordance with no meaning
@@ -1234,6 +1297,8 @@ body { margin: 0; }
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
+:where(p) > :where(img:not([class])) { max-height: calc(var(--gp-content-h) - 4px); object-fit: contain; }
+:where(figure) { break-inside: avoid; }
 :where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 `;
