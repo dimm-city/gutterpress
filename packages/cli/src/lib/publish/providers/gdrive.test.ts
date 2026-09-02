@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -619,24 +619,24 @@ test("upload reuses the exact same update-in-place resumable flow for an HTML ex
 
 // ── zipHtmlExport: async zip build, temp-dir cleanup, symlink handling ──────
 
-/** Runs `fn`, counting `setImmediate` turns the event loop got while it was
- * pending — used below to prove `zipHtmlExport` actually yields during a
- * large entry's compression rather than blocking the event loop for the
- * whole build (the property the A7 fix exists for). */
-async function countEventLoopTicks<T>(fn: () => Promise<T>): Promise<{ result: T; ticks: number }> {
-  let ticks = 0;
-  let running = true;
-  const loop = () => {
-    if (!running) return;
-    ticks++;
-    setImmediate(loop);
-  };
-  setImmediate(loop);
+/** Runs `fn`, counting the `setImmediate` calls made while it was pending —
+ * used below to prove `zipHtmlExport` actually yields during a large entry's
+ * compression rather than blocking the event loop for the whole build (the
+ * property the A7 fix exists for). `zipHtmlExport` yields between chunks
+ * through `setImmediate` (its `yieldToEventLoop`), and nothing else on its
+ * path schedules one — the fs promises it awaits resolve from native I/O —
+ * so the count is exactly the number of times the build handed the event
+ * loop back. Counting the calls, rather than how many turns a competing
+ * `setImmediate` loop managed to get, is what makes this deterministic: a
+ * turn count also rises with every I/O wait, so it depended on how fast the
+ * runner's disk happened to be, and inverted on a slow CI runner. */
+async function countYields<T>(fn: () => Promise<T>): Promise<{ result: T; yields: number }> {
+  const spy = spyOn(globalThis, "setImmediate");
   try {
     const result = await fn();
-    return { result, ticks };
+    return { result, yields: spy.mock.calls.length };
   } finally {
-    running = false;
+    spy.mockRestore();
   }
 }
 
@@ -655,10 +655,10 @@ test("zipHtmlExport (A7 fix) stays non-blocking and correct across fflate's 160K
     const bigContent = `<html><body>${"a".repeat(300_000)}</body></html>`; // > 160000-byte threshold
     await writeFile(path.join(bigDir, BOOK_HTML), bigContent);
 
-    const { result: smallSource, ticks: smallTicks } = await countEventLoopTicks(() =>
+    const { result: smallSource, yields: smallYields } = await countYields(() =>
       zipHtmlExport(smallDir, "Small Book"),
     );
-    const { result: bigSource, ticks: bigTicks } = await countEventLoopTicks(() =>
+    const { result: bigSource, yields: bigYields } = await countYields(() =>
       zipHtmlExport(bigDir, "Big Book"),
     );
     try {
@@ -669,12 +669,13 @@ test("zipHtmlExport (A7 fix) stays non-blocking and correct across fflate's 160K
       const unzipped = unzipSync(zipped);
       expect(Buffer.from(unzipped[BOOK_HTML]!).toString("utf8")).toBe(bigContent);
 
-      // Non-blocking: the big entry is chunked into multiple ZIP_CHUNK_BYTES
-      // pushes, each yielding one event-loop turn, so it must produce
-      // noticeably more ticks than the tiny entry (well under one chunk).
-      // A reversion to a fully synchronous build (e.g. zipSync) would show
-      // no such gap, since nothing would yield mid-compression.
-      expect(bigTicks).toBeGreaterThan(smallTicks + 2);
+      // Non-blocking: the big entry is chunked into several ZIP_CHUNK_BYTES
+      // pushes with one event-loop yield after each, so the build must have
+      // yielded more than once, and more often than for the tiny entry
+      // (a single chunk, a single yield). A reversion to a fully synchronous
+      // build (e.g. zipSync) would yield zero times at any size.
+      expect(bigYields).toBeGreaterThan(1);
+      expect(bigYields).toBeGreaterThan(smallYields);
     } finally {
       await smallSource.cleanup();
       await bigSource.cleanup();
