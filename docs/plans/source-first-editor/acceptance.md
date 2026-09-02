@@ -844,3 +844,760 @@
   "checkpointSummary": "The two composition roots now compose: features own their workflows, registration lives beside the handlers, and the whole refactor is provably behavior-identical (byte-identical IPC surface, every suite green). The export surface is pinned by a test that fails when a subpath disappears. The review earned its keep — a live CI break and four guard/oracle weakenings never reached the branch history unfixed."
 }
 ```
+
+---
+
+## Final acceptance sweep — SFE-P7
+
+> **Report-only stage.** This section is additive: it does not modify the
+> acceptance matrix rows or any run entry above. It is the plan's
+> "Final acceptance sweep" (`source-first-editor-enterprise-refactor.md`,
+> P7 → *Final acceptance sweep*) and the run spec's "Acceptance sweep"
+> section: every criterion walked once, with implementation location,
+> test/fixture evidence, search evidence where absence matters, gate
+> evidence, security evidence, performance evidence, and a final status.
+> **A criterion without evidence is not complete.**
+
+### Sweep conditions
+
+- **HEAD swept:** `e10b70597d9687f74321eef0bd0b8e3c35e33a11`
+  (`docs(p7): review log — three rounds to approve`). The P7 review's
+  round-3 approve is one commit earlier, `131a65e5`; the P7 lane commit is
+  `ea2610b3`.
+- **Program base:** `ea7b60d50340b75b9c58666e5063bcbbbb666576`
+  (`origin/main` at plan authoring, `baseline.md` §1.1) — re-verified as an
+  ancestor of HEAD in this pass.
+- **Method.** Evidence is cited to a specific in-tree record (file +
+  section) or to a specific CI run/job/step. Where a claim was cheap to
+  re-derive, this sweep re-derived it rather than quoting a lane: the
+  commands and exit codes are listed in *Verification commands run by this
+  sweep* at the end. No long suite was re-run; recorded gate results are
+  cited by run and count instead.
+- **Sandbox limits carried into this sweep** (all recorded, none hidden):
+  no Chromium 148+ (`parity:gate` and every PDF build exit 1 here —
+  `p7-sweeps.md` §1.1/§1.2); `@vscode/test-electron` download is network
+  blocked (`SFE-P3c.md`, "Deviations and evidence"); `dist:win`/`dist:mac`
+  are CI-runner work (`p7-sweeps.md` §3.2).
+- **New evidence this sweep obtained that earlier P7 lanes did not have:**
+  the work branch is pushed and its remote tip equals HEAD, so real CI
+  results exist for the P7 commits and were read directly from the GitHub
+  Actions API. Two of them are load-bearing below
+  (F-1 and AC-21).
+
+### Program-level findings this sweep raises
+
+**F-1 — BLOCKING: CI is red at HEAD, and the SFE-P7 gate ("the full
+program gate, one last time, at the final SHA") is therefore not
+satisfied at `e10b7059`.**
+
+- CI run `33582923756` (HEAD): `Type Check`, `Build`, `Desktop Test` all
+  **success**; `Test` **failure** at step 8 (`bun --filter gutterpress
+  test`) — `1980 pass, 10 skip, 1 fail, 46018 expect(), 1991 tests across
+  156 files`. Because that step failed, step 10 *Preview/print parity gate*
+  was **skipped**, not run.
+- Failing test: `runtime deps classification > every runtime import in
+  lib/src must be a dependency (not a devDependency)`
+  (`packages/cli/tests/integration/runtime-deps-classification.test.ts`).
+  Reproduced locally at HEAD, exit 1, same single violation:
+  `gutterpress at src/index.ts:7 (dynamic import "gutterpress")`.
+- **Root cause — a record-correction comment, not a code change.**
+  `git diff ea2610b3..HEAD -- packages/` is 35 files, **doc comments only**;
+  the one relevant hunk is `packages/cli/src/index.ts:5-8`, where round 2 of
+  the P7 review replaced "SvelteKit API routes import from here at runtime"
+  with a sentence containing the literal text `` `import("gutterpress")` ``.
+  The dependency scanner matches that specifier inside the comment and
+  reports the library as importing itself. The lib does not; the *desktop*
+  does, which is what the comment says.
+- **Impact:** no runtime, export-surface, or packaging behavior changes —
+  but the branch's own CI is red at the final SHA and the parity gate did
+  not execute there. **Fix is one line** (reword the comment so the
+  specifier is not in `import("…")` form, or teach the scanner to strip
+  comments). Both files are outside this report-only lane's write
+  ownership; reported, not fixed.
+- This is the same defect class the P7 review confirmed twice
+  (`runs/SFE-P7.md`, review log rounds 1-2: "two of the integrator's own
+  fixes introduced fresh instances of the defect class they fixed"),
+  recurring one round later with a live gate consequence.
+
+**F-2 — Open release-management action (not a code defect).**
+`origin/release/0.11.0` still points at `ea7b60d5`, while `origin/main` is
+`5ec25e5a` (5 commits ahead) — re-verified live in this pass. Success
+criterion 1's second conjunct ("`release/0.11.0` was already synchronized
+with that baseline before feature commits") is therefore still literally
+unmet, exactly as `baseline.md` §"Deviations" recorded it. Named here so it
+is not lost between the sweep and the release.
+
+**F-3 — Advisory carried from `p7-sweeps.md` §3.1.** Two test-support
+declaration files (`dist/test-helpers/testkit.d.ts`,
+`dist/lib/remote-auth/test-support/git-http-server.d.ts`) ship in the npm
+tarball against their own headers' claim, because `tsconfig.build.json`'s
+`exclude` list does not cover them. No JS runtime surface and no documented
+`exports` subpath is affected. Follow-up, not a compatibility break.
+
+**F-4 — Open product items, already recorded, restated so they survive the
+close-out:** the two a11y gaps (no ARIA landmark on the rich surface, no
+`<main>`/skip-link — `p3d-sweep-audit.md` §B/§11) and the three ordered D13
+performance follow-ups (AC-24 below).
+
+---
+
+### AC-01 — Post-release branch baseline verified
+
+- **Implementation:** `docs/plans/source-first-editor/baseline.md` (§1.1
+  facts, §1.2 ancestry proof, §1.3 byte-identity, §"Deviations").
+- **Test/fixture evidence:** n/a (record criterion). Re-derived here:
+  `git merge-base --is-ancestor ea7b60d5 HEAD` → exit 0; `git rev-parse
+  origin/release/0.11.0` → `ea7b60d5`; `git rev-parse origin/main` →
+  `5ec25e5a`.
+- **Gate evidence:** SFE-P0a gate, 4 commands exit 0 (typecheck; desktop
+  2132 pass/1 skip; cli 1810 pass/60 skip; the baseline byte-identity
+  `git diff --stat` empty).
+- **Status: PASS (scoped).** All three required artifacts exist, are
+  reproducible, and were re-verified at HEAD. The equality *check* was
+  performed and its negative result recorded honestly; the underlying
+  precondition remains unmet and is release management's action (F-2), not
+  a program deliverable.
+
+### AC-02 — No ProseMirror-family dependency
+
+- **Implementation:** `tools/check-architecture.mjs` Rule 1, wired in
+  `.github/workflows/ci.yml` (`Build` job, "Check architecture boundaries").
+- **Search evidence (absence matters):** re-run in this pass —
+  `grep -ric 'prosemirror|tiptap|milkdown'` over `bun.lock` + all 7
+  workspace `package.json` files → **0** in every file. `check:architecture`
+  Rule 1 at HEAD: PASS, scanned 7 `package.json` files (bun.lock found) and
+  **604 code files** (non-vacuous by printed count, per AP-21).
+- **Gate evidence:** re-run by this sweep, `bun run check:architecture` exit
+  0 (4/4 rules). Deliberate-failure proof: `tools/check-architecture.test.mjs`
+  (36 assertions incl. prosemirror deps in `package.json`/`bun.lock`/imports)
+  — CI `Build` step 8 success at HEAD.
+- **Status: PASS.** Absence proven repo-wide by a gate that prints its scan
+  counts and has a proven fail path, green at HEAD in CI and in this sweep.
+
+### AC-03 — Exact no-edit byte identity
+
+- **Implementation:** `packages/editor/src/core/apply-edit.ts`,
+  `validate.ts`, `contract-tests.ts`; real-book host
+  `packages/desktop/src/lib/editor-host/desktop-document-host.ts` (all
+  verified present).
+- **Test/fixture evidence:** SFE-P2a 19-fixture corpus + P1b browser cases;
+  **SFE-P3d-parity**: 25 real chapters / 154,366 bytes plus a 3-chapter
+  plugin book round-tripped through the real host/controller/projection with
+  zero drift, sabotage-proven (`acceptance.md` SFE-P3d-parity entry;
+  `parity-matrix.md` condition 1).
+- **Gate evidence:** SFE-P3d-parity gate, 17 commands exit 0 (editor 3,038
+  unit + 109 browser across 8 suites; desktop 5,981 pass/1 skip; cli 1,913
+  pass/60 skip).
+- **Status: PASS.** Byte identity is proven on both synthetic corpora and
+  real books, through the real desktop host rather than a stub.
+
+### AC-04 — Explicit edit locality
+
+- **Implementation:** `packages/editor/src/core/apply-edit.ts` (minimal-range
+  replacement); command layer `packages/editor/src/web/standard/*.ts`,
+  `packages/editor/src/core/commands.ts`.
+- **Test/fixture evidence:** SFE-P2a independent-bound oracle (tautological
+  host-splice oracle replaced after review; sabotage-proven at ~1,468 failing
+  assertions against a deliberately widened implementation); SFE-P3d-parity
+  reuses that oracle verbatim against real books and the real
+  `DesktopDocumentHost` — **2,810 locality cases, 400 whole-document cases**,
+  plus edits adjacent to and inside plugin regions.
+- **Gate evidence:** same SFE-P3d-parity 17-command gate, all exit 0.
+- **Status: PASS.** The oracle is independent of the implementation and
+  proven able to fail, which is what makes the locality claim meaningful.
+
+### AC-05 — Stale/invalid edits fail closed
+
+- **Implementation:** `packages/editor/src/core/apply-edit.ts`,
+  `validate.ts`, `memory-host.ts`;
+  `packages/desktop/src/lib/editor-host/desktop-document-host.ts`.
+- **Test/fixture evidence:** SFE-P1a contract/property/validator suites,
+  including the applyEdit TOCTOU regression (edit fields re-read after
+  validation, exploitable through accessor-backed objects — fixed with a
+  single destructure + regression test); SFE-P1c runs **one shared contract
+  suite against both `MemoryDocumentHost` and `DesktopDocumentHost`**,
+  including the version-collision attack regression; SFE-P3c adds the VS Code
+  host to the same suite under latency, out-of-order replies and rejection
+  (a rejected in-flight edit discards the queue).
+- **Gate evidence:** SFE-P1c gate (editor 160 + 51 browser; desktop 2,252 +
+  svelte-check 829 files; cli 1,810 — all exit 0); SFE-P3c gate, 18 commands
+  exit 0.
+- **Security evidence:** fail-closed is the security posture here — every
+  refusal path (`EDITOR_STALE_EDIT`, `NO_LIVE_CARET`, invalid range) is
+  asserted, not assumed.
+- **Status: PASS.** Three independent hosts pass one contract suite whose
+  refusal paths are individually pinned.
+
+### AC-06 — Shared desktop/VS Code editor mount
+
+- **Implementation:** `packages/editor/src/web/mount.ts`,
+  `packages/editor/src/gutterpress/mount.ts`; hosts
+  `packages/desktop/src/lib/editor-host/desktop-document-host.ts` and
+  `packages/vscode-extension/src/webview-host/proxy-document-host.ts` (all
+  verified present).
+- **Test/fixture evidence:** both hosts mount the same
+  `mountEditor`/`mountGutterpressEditor` over their own
+  `EditorDocumentHost` and pass the one shared contract suite; the
+  host-agnosticism proof is that `packages/editor/src` was **unchanged by
+  the whole SFE-P3c run**.
+- **Search evidence:** `check:architecture` Rule 3 (D4 import direction,
+  345 cli + 208 desktop files) and Rule 4 (35 editor + 16 vscode-extension
+  files) PASS at HEAD — the import graph cannot invert without failing CI.
+- **Gate evidence:** SFE-P3c gate, 18 commands exit 0 (vscode-extension 228
+  unit + 34 browser across 9 suites).
+- **Status: PASS.** One mount, two real hosts, one contract suite, with the
+  import direction enforced rather than asserted.
+
+### AC-07 — Gutterpress projection coverage
+
+- **Implementation:** `packages/cli/src/lib/markdown/editor-projection.ts`
+  (builder), `plugin-origin.ts` (transform origin); desktop wiring
+  `packages/desktop/electron/editor-projection.ts`.
+- **Test/fixture evidence:** SFE-P2b core markers / raw-html / generated
+  views + malformed matrix + D13 caps (fail-closed ambiguity detector
+  converged across three adversarial rounds); SFE-P2c plugin-region
+  projection with a **six-shape refusal matrix**, each refusal reaching
+  `projection.diagnostics` by rule name; SFE-P3e proves the DESKTOP builds
+  the plugin-aware trusted projection host-side — the P2c machinery is
+  reachable from the actual app, after the review caught the first wiring
+  being inert in the running product.
+- **Gate evidence:** SFE-P2c gate (cli 1,913; editor 3,038 + 99 browser
+  across 8 suites) and SFE-P3e gate, 16 commands exit 0 (incl.
+  `electron:build` with the subpaths external).
+- **Status: PASS.** Coverage is proven at the builder, at the consumer, and
+  in the shipped desktop wiring.
+
+### AC-08 — Generated content cannot serialize
+
+- **Implementation:** `packages/cli/src/lib/markdown/editor-projection.ts`
+  (`GeneratedView`); `packages/editor/src/core/contracts.ts` consumers.
+- **Test/fixture evidence:** re-verified directly in this pass —
+  `editor-projection.ts:398-402` declares
+  `interface GeneratedView { readonly id; readonly anchor; readonly html }`:
+  **no `from`/`to` exists at the type level**, so no source range can be
+  derived from a generated view at all. SFE-P2b adds runtime absence checks,
+  proves the provider never creates segments for generated content, and pins
+  read-only in-chip preview in a real browser.
+- **Search evidence:** `packages/editor/src/gutterpress/render-chip.ts:147`
+  documents the same invariant at the only rendering consumer.
+- **Gate evidence:** SFE-P2b gate, all commands exit 0 (editor 3,028 unit +
+  90 browser across 7 suites).
+- **Status: PASS.** The impossibility is structural (type-level), not merely
+  tested.
+
+### AC-09 — Desktop document-session integration
+
+- **Implementation:** `packages/desktop/src/lib/document-session/session.ts`,
+  `editor-host/desktop-document-host.ts`, `editor/rich-mode.svelte.ts`,
+  `editor/rich-doc-host-controller.svelte.ts`.
+- **Test/fixture evidence:** SFE-P1c's pure state machine with **72
+  transition tests** plus 13 desktop-specific cases; SFE-P3ab proves
+  source↔rich switching, non-Markdown fallback, and preview-commit /
+  rich-command coexistence over **one** `DocumentHost`, with byte-identity
+  assertions across every switch. The review's central catch — rich mode as
+  a second, never-refreshed document owner that silently reverted preview
+  commits — is fixed and regression-pinned.
+- **Gate evidence:** SFE-P3ab gate, 15 commands exit 0 (desktop 2,380 pass/1
+  skip + svelte-check 889 files + lint + build).
+- **Status: PASS.** One session, one persistence path, proven across the
+  mode switch rather than per mode.
+
+### AC-10 — VS Code host integration and trust
+
+- **Implementation:** `packages/vscode-extension/src/provider.ts`,
+  `src/host/document-gateway.ts`, `src/project/projection.ts`,
+  `src/project/path-containment.ts`; fidelity mock
+  `tests/support/fidelity-vscode.ts`.
+- **Test/fixture evidence:** 228 unit + 34 browser tests; `TextDocument` /
+  `WorkspaceEdit` gateway with native undo; stamped one-in-flight
+  reconciliation under latency and out-of-order replies; CSP'd webview
+  proven inert in real Chromium over the production `renderWebviewHtml`
+  output.
+- **Security evidence:** workspace-trust gate with a loader spy proof
+  (plugins do not execute untrusted); workspace-root-scoped plugin paths
+  with a `../`-escape refusal fixture and a marker-file proof that the
+  escaped module never executes; sanitized wire errors (absolute host paths
+  never cross into the webview).
+- **Deviation (recorded, not hidden):** real-VS-Code activation via
+  `@vscode/test-electron` is network-blocked in this environment; the
+  bounded attempt failed on a network policy denial and its dead launcher
+  scaffold was removed rather than left as false coverage
+  (`runs/SFE-P3c.md`, "Deviations and evidence"). The harness suite is the
+  evidence that exists; the first host with network access should run it.
+- **Gate evidence:** SFE-P3c gate, 18 commands exit 0; at HEAD, CI `Build`
+  steps 19-20 (vscode-extension typecheck + tests) **success**.
+- **Status: PASS (scoped).** Every contract the criterion names is proven
+  against the built artifact in a real Chromium webview; only *activation
+  inside a real VS Code process* is unproven, and that gap is recorded with
+  the exact blocked command rather than papered over.
+
+### AC-11 — Authoring interaction parity
+
+- **Implementation:** `packages/desktop/src/lib/editor/rich-commands.ts`,
+  `src/lib/components/RichEditor.svelte`; shared commands
+  `packages/editor/src/web/standard/*.ts`.
+- **Test/fixture evidence:** SFE-P3d-sweep audited **all twenty** P3d
+  scenarios with read citations (`p3d-sweep-audit.md`), closed five gaps in
+  real Chromium, and passed **two packaged-Electron scenarios** under the
+  driver's own xvfb fallback. Three product facts are pinned as-is
+  (plain-text-only paste, no pointer-drag block movement, no slash menu).
+  A11y: 22 pass / 0 fail / 66 expect() in `app-shell-a11y-landmarks.test.ts`
+  with an AP-21 liveness pair.
+- **Open items (F-4):** no ARIA landmark role on the rich-editing surface;
+  no `<main>` landmark and no skip-link anywhere in the shell — both
+  recorded for the product owner, both production changes beyond the
+  sweep's scope.
+- **Gate evidence:** SFE-P3d-sweep gate, all commands exit 0 except the
+  deliberately red `test:perf` budget assertions (AC-24).
+- **Status: PASS (scoped).** Parity itself is evidenced scenario by
+  scenario; the two open a11y gaps are recorded product work, not parity
+  failures, and are restated in F-4 so the close-out does not bury them.
+
+### AC-12 — Preview remains print authority
+
+- **Implementation:** `packages/cli/scripts/native-parity-gate.ts`; preview
+  client `packages/desktop/src/lib/preview-client.ts`,
+  `src/lib/components/PreviewFrame.svelte`.
+- **Test/fixture evidence:** SFE-P3d-parity's D8 capability-coverage audit,
+  host-command round trips through the real bridge and shell, and a
+  two-layer mutation-separability proof; after SFE-P4, the read-only surface
+  is pinned by absence-asserting suites (`preview-separability-mutation-inert`,
+  `preview-navigation-protocol`, `preview-interface`, `preview-shell-regression`).
+- **Search evidence (re-derived here):** `getProtocolVersion()` returns
+  **9** at `preview-interface.js:754`; the five mutation messages are absent
+  from `previewAPI` (`deletion-ledger.md` §1.1, §2.3).
+- **Additional evidence obtained by this sweep:** the print/pagination code
+  the criterion protects is **untouched by the entire program** —
+  `git diff --numstat ea7b60d5..HEAD -- packages/cli/src/engine` returns
+  **zero files**. The only preview-side changes anywhere are three shell
+  scripts, net **+22/−490** (mutation removal). Preview's authority role
+  cannot have regressed because the code that decides it did not change.
+- **Gate evidence:** SFE-P4 gate, 17 commands exit 0; CI `Test` job step 10
+  (parity gate) **success** at `ea2610b3` (see AC-21).
+- **Status: PASS.** Read-only is proven by absence assertions; print
+  authority is proven by the engine being byte-identical to the program's
+  baseline.
+
+### AC-13 — Preview editing deleted
+
+- **Implementation:** proven by absence. Surviving read-only surface:
+  `packages/desktop/src/lib/preview-client.ts`.
+- **Search evidence (absence is the whole criterion):**
+  `deletion-ledger.md` §1.1-§1.4 — repo-wide `rg` per identifier over the
+  five protocol messages (74/57/23/22/29 hits), `InlineEditController` (52,
+  14 files, **zero under any `packages/*/src`**), `CommitEngine` (59, 19
+  files, one production hit and it is a JSDoc history comment),
+  `selection-search` (10, 3 files, zero under `packages/`). Independently
+  re-run with a widened 8-identifier pattern in `p7-sweeps.md` §4.3: 242 raw
+  hits, **every one** classified into the three sanctioned D15 residual
+  classes plus the dated-changelog judgment call; zero hits define, export,
+  or call any identifier as live code.
+- **Test/fixture evidence:** the characterization suites and the 1,047-line
+  packaged E2E of the deleted feature were removed (review catch: they had
+  survived the first pass, with an npm script and a CI reference).
+- **Gate evidence:** SFE-P4 gate, 17 commands exit 0; protocol v8 → v9; net
+  **−6,719 LOC**.
+- **Status: PASS.** The absence is proven repo-wide, twice, by two
+  independently constructed patterns, with every residual read in context.
+
+### AC-14 — Dormant PWA deleted
+
+- **Implementation:** proven by absence (`deletion-ledger.md` SFE-P5a
+  section + §1.5).
+- **Search evidence:** `service-worker`, `manifest.webmanifest` /
+  `rel="manifest"`, and `IndexedDB`/`indexedDB` → **zero repo-wide hits**;
+  `packages/desktop/static/` contains only `icons`. `WebAdapter` (126 hits,
+  26 files) fully classified; `p7-sweeps.md` §4.4 re-runs the identifier set
+  repo-wide (189 hits) and confirms zero live definitions, imports, or
+  `showDirectoryPicker()` calls.
+- **Test/fixture evidence:** four orphaned test suites deleted with the
+  code; `getPlatform()`'s successor fails loudly off-Electron
+  (`DesktopHostRequiredError`). The review's defining catch — the generator
+  step that silently *regenerated* the orphaned viewer bundle on every CLI
+  library build — was fixed at the generator and proven with a clean-slate
+  rebuild.
+- **Record note:** the six stale `WebAdapter`-as-live comments in
+  `packages/cli/src` that §1.5 reported as CONFIRMED DEFECTS were fixed in
+  `ea2610b3`, and the P7 review's round-2 repair (`131a65e5`) completed the
+  enumeration that found four more. That same comment sweep is the source of
+  F-1 — the fix was correct in substance and tripped a scanner.
+- **Gate evidence:** SFE-P5a gate, 13 commands exit 0; net **−2,546 LOC**
+  over 19 files (`git diff c33868f8..5db8c581`).
+- **Status: PASS.** Deleted as a feature, not merely as files — the
+  resurrection path was closed too.
+
+### AC-15 — Narrow capabilities replace Platform
+
+- **Implementation:** re-enumerated in this pass — **12** feature-owned
+  capability modules under `packages/desktop/src/lib/*/*-capability.ts`
+  (app-lifecycle, doctor, editor-projection, build-preview, files, lint,
+  project-config, publish, recovery, remote, updater, vcs) over the one
+  shared accessor `packages/desktop/src/lib/platform/bridge.ts`.
+- **Search evidence:** `deletion-ledger.md` §1.6 — `getPlatform` (100 hits,
+  33 files), `ElectronAdapter` (47/21), `HostServices` (152/45), every
+  `packages/**` hit read in context. The 152 `HostServices` hits resolve to
+  **two unrelated symbols**: the deleted renderer-side locator (8 comment
+  hits) and a live, independently-introduced main-process type
+  (`electron/server-bridge/host-services.ts`) consumed by 11 of the
+  `electron/api/*.ts` registrars — flagged as a namespace collision rather
+  than silently counted as a residual.
+- **Test/fixture evidence:** the collapse of the theme stream and the editor
+  buffer's fs trio into their sole consumers is deliberate (SFE-P3e ruling
+  against forwarding ceremony); `onNativeThemeUpdated`'s test, lost in that
+  collapse, was restored as a real subscription-and-flip test after review.
+  Full member-by-member disposition in `capability-map.md`.
+- **Gate evidence:** SFE-P5b gate, 13 commands exit 0.
+- **Status: PASS.** No service locator survives; every member's fate is
+  individually recorded.
+
+### AC-16 — HTTP transport deleted
+
+- **Implementation:** `packages/desktop/electron/app-protocol.ts` (`app://`
+  serving), `electron/server-bridge/secure-handle.ts` (the one IPC wrapper),
+  `electron/api/*.ts` — re-counted here: **21 registrar modules** under
+  `electron/api/` and **26** `register*Handlers` functions repo-wide, matching
+  `docs/architecture/source-first-editor.md`.
+- **Search evidence (re-derived here):** `packages/desktop/src/routes/api`
+  → **ABSENT**; `check:architecture` Rule 2 route ratchet **0 == baseline 0**
+  at HEAD. `deletion-ledger.md` §1.7-§1.8 classify every `+server.ts` (118),
+  `src/lib/api.ts` (40), `fetch("/api` (21), `sveltekit-host` (34),
+  `adapter-node` (54), "bearer token" (23) and "loopback" (28 files) hit —
+  including the honest separation of the CLI's own live, unrelated
+  "loopback" credential-safety feature. `@sveltejs/adapter-node` is absent
+  from `package.json` and `bun.lock` (0 matches).
+- **Packaged smoke — the previously open half, now closed:**
+  `p7-sweeps.md` §2. `electron-builder --linux dir` exit 0; `app.asar`
+  99,297,019 bytes / **8,856 entries** containing `/out/main/main.js`,
+  `/out/preload/preload.cjs`, `/build/index.html` and 154 `/build/_app/**`
+  files, with `^/build/(server|handler)` and `routes/api|+server` both
+  matching **zero** entries; `xvfb-run` launch of the packaged binary
+  reaches `renderer ready-to-show (first paint)` with
+  `--app-path=…/resources/app.asar` and **zero** fatal/crash/uncaught lines
+  in a 177-line log. This is the real `app.isPackaged === true` path that
+  SFE-P5d's own smoke had not exercised.
+- **Security evidence:** `packages/desktop/tests/platform/app-protocol.test.ts`
+  (traversal refusals incl. the win32 backslash containment case, after the
+  review corrected a false "two independent defenses" claim);
+  `secure-handle.ts:47-51` rejects any invocation whose sender frame fails
+  `isTrustedIpcSender` — one mechanism for all 120 channels.
+- **Gate evidence:** SFE-P5c gate (both passes, 13 commands exit 0, ratchet
+  0 == 0); SFE-P5d gate, 16 commands exit 0.
+- **Status: PASS (scoped).** Route/client/server deletion and the Linux
+  packaged smoke are both proven; `dist:win`/`dist:mac` packaged smokes are
+  CI-runner work with no result to attribute here, recorded as such per the
+  plan's own "record which runner produced each result".
+
+### AC-17 — Composition roots reduced
+
+- **Implementation:** `packages/desktop/src/routes/+page.svelte`,
+  `packages/desktop/electron/main.ts`.
+- **Test/fixture evidence:** extractions landed in feature owners with
+  race-scenario and controller tests (the `.finally` epoch guard in
+  `RichDocHostController` was mutation-proven after review found it
+  untested); `preload-surface.test.ts` now asserts every exported
+  `register*Handlers` is actually invoked in `main.ts` (mutation-proven,
+  >20 liveness floor) instead of counting registrars that were never called.
+- **Measurements re-derived here:** `+page.svelte` **4,543** lines (matches
+  P6's recorded figure); `main.ts` **1,969** at HEAD vs P6's recorded 1,965
+  — the +4 is `131a65e5`'s comment correction (`git diff fc6f543a..HEAD`:
+  +9/−5, comments only). Unique `secureHandle` channels at HEAD: **120**,
+  re-derived independently and matching the byte-identical-surface claim.
+- **Gate evidence:** SFE-P6 gate, 16 commands exit 0 at `fc6f543a`.
+- **Status: PASS.** Both roots shrank, the extracted work is owned and
+  tested, and the IPC surface is provably unchanged across the refactor.
+
+### AC-18 — Public compatibility preserved
+
+- **Implementation:** `packages/cli/tests/integration/package-exports.test.ts`;
+  pinned surface is `packages/cli/package.json`'s `exports` map.
+- **Test/fixture evidence (re-run by this sweep):**
+  `bun test tests/integration/package-exports.test.ts` → **18 pass / 0 fail
+  / 14 expect()**, exit 0 at HEAD. The test pins the literal surface
+  `{".", "./api", "./render", "./plugins"} × [default, types]` and is
+  sabotage-proven (an earlier self-referential version was rejected in
+  review). `p7-sweeps.md` §3.1: `npm pack --dry-run` exit 0, 228 files,
+  5,791,254 bytes unpacked, every `exports` target and the `dist/cli.js`
+  bin present.
+- **Behavioral evidence:** all four example books build (`--format html`),
+  `lint`, and `validate --phase pre` at exit 0 with 14/14 checks
+  (`p7-sweeps.md` §1.3) — the public CLI/build/preview/publish behavior the
+  criterion names, exercised end to end on real projects.
+- **Gate evidence — NOT green at HEAD; stated plainly.** CI run
+  `33582923756` `Test` job: **1980 pass / 10 skip / 1 fail**. The single
+  failure is F-1's comment-triggered dependency-classification false
+  positive, reproduced locally. The last fully green CI run is
+  `33579455024` at `ea2610b3` (all 4 jobs success, cli suite green, parity
+  gate green), and `git diff ea2610b3..HEAD -- packages/` is **doc comments
+  only** across 35 files.
+- **Status: PASS (scoped) — with F-1 blocking the release, not the
+  criterion.** Compatibility substance is proven at HEAD by the pinned
+  export test, the tarball contents, and real-book CLI behavior; the red
+  assertion is about *dependency declaration* and its trigger is a sentence
+  in a doc comment, so it is not evidence of a compatibility break. The gate
+  must nevertheless be green before merge/publish: F-1 is a one-line fix.
+
+### AC-19 — Architecture CI active
+
+- **Implementation:** `tools/check-architecture.mjs`,
+  `tools/check-generated-files.mjs`, `tools/check-render-purity.mjs`,
+  `packages/cli/scripts/check-render-pure.mjs`,
+  `packages/editor/scripts/check-browser-purity.mjs`,
+  `packages/vscode-markdown-editor/scripts/verify-vendored.mjs`, `knip` —
+  all wired in `.github/workflows/ci.yml`.
+- **Coverage against success criterion 20's six named properties**, each
+  read out of the workflow in this pass: layer imports → `check:architecture`
+  Rules 3/4 (`Build` step 9); generated-file hygiene → steps 6-7; dead code
+  → knip (step 21); package exports → `Test` steps 7-8 (dist build then the
+  cli suite containing `package-exports.test.ts`); render purity →
+  `check-render-pure.mjs` inside the CLI build plus `check-render-purity.mjs
+  … --strict` (steps 24-25); required interaction tests → editor
+  `test:browser` (step 18), desktop tests (`Desktop Test` step 8),
+  vscode-extension tests (step 20).
+- **Deliberate-failure proofs, all wired as their own CI steps:**
+  architecture self-test (36 assertions), generated-files self-test (5
+  patterns), renderer-purity self-test, vendored-integrity self-test (20
+  assertions), browser-purity self-test — each immediately preceding its
+  live gate.
+- **Gate evidence:** at HEAD, CI `Build` job — **all 25 steps success**,
+  including every self-test/live-gate pair. Re-run by this sweep:
+  `check:architecture` exit 0 (4/4), `check:generated-files` exit 0 (1,271
+  tracked files), `check:vendored` exit 0 (26 hashes, 33 files),
+  `check-render-pure.mjs` exit 0.
+- **Status: PASS.** Every named property has a live CI gate with a proven
+  fail path. F-1 is, ironically, positive evidence the gates are live: the
+  suite caught an unintended change on the last commit.
+
+### AC-20 — Net complexity reduced
+
+- **Implementation:** `deletion-ledger.md` (SFE-P7 Lane A §2, nine metrics
+  with both baseline-scope and whole-workspace readings and the exact
+  derivation command for each side).
+- **Metric evidence:** desktop HTTP routes **104 → 0**; IPC handlers
+  **12 → 120**; preview mutation protocol messages **5 → 0**; desktop
+  `Platform`/`HostServices` locator members **31 → 0**; lockfile packages
+  **909 → 880** (−29 *despite* three new workspace packages);
+  architecture-check scripts **0 → 3** (4 named rules). Production LOC over
+  the whole program is honestly net-positive (+15,311 baseline-scope→
+  whole-workspace) because P1-P3 built two new packages before P4-P6 deleted
+  what they made obsolete.
+- **The P4-P6-scoped figure the ledger explicitly left to this sweep,
+  derived here** (`git diff --numstat cf5dacda..fc6f543a`, production files
+  only — `packages/{cli,desktop,editor,vscode-extension,open-design-plugin}/{src,electron}`,
+  `.ts/.js/.mjs/.svelte`, excluding `*.test.*`/`*.spec.*`):
+  **246 files, +7,608 / −10,097 = net −2,489 production LOC**, with **124
+  production files deleted against 42 added (−82 modules)**. Extending the
+  range to HEAD: **net −2,444**. Success criterion 22's requirement
+  ("non-positive net production LOC for the combined simplification phases
+  P4-P6", plus a net reduction in runtime concepts and modules) is
+  therefore **met, with margin, on both the LOC and the module-count half**.
+- **Gate evidence:** the per-run deletion gates (P4 17 commands, P5a 13,
+  P5b 13, P5c 13 ×2, P5d 16, P6 16 — all exit 0).
+- **Status: PASS.** The criterion's own scoping is satisfied by re-derived
+  numbers, and the whole-program figure is recorded honestly rather than
+  substituted for it.
+
+### AC-21 — Real-book regression gate green
+
+- **Implementation:** `packages/cli/scripts/native-parity-gate.ts`; corpus
+  `examples/gutterpress-user-guide/`, `examples/with-design-guide/`,
+  `examples/with-validation/`.
+- **What is proven — and this sweep found the missing piece.** The P7
+  review's round-1 finding #6 was that no green parity run existed anywhere
+  in the program's evidence. It does now: **CI run `33579455024` at
+  `ea2610b3`, `Test` job step 10 "Preview/print parity gate", conclusion
+  success**, 01:29:46→01:29:59Z, on `ubuntu-latest` with the runner image's
+  `google-chrome-stable` (which satisfies the engine's Chromium-148 floor;
+  the sandbox's 141 does not). All four jobs of that run are green.
+- **Real-book evidence at HEAD-adjacent `2ba5ca0a`** (`p7-sweeps.md` §1.3):
+  all four example books `build --format html` exit 0 (user guide 167,419
+  bytes; with-validation 21,078; design-guide books 40,412 / 40,421), `lint`
+  exit 0 on each, `validate --phase pre` **14/14 checks** on each with only
+  the expected `gs`-absent skip. Byte-identity and locality on 25 real
+  chapters come from SFE-P3d-parity (AC-03/AC-04).
+- **Allowlist:** `KNOWN_DIVERGENCES` is a typed **empty** array literal
+  (`native-parity-gate.ts:156-160`), verified by reading the file; no second
+  allowlist file exists.
+- **Structural evidence added here:** the gate's measured subject — the
+  viewer fragmenter (`src/engine/viewer/fragment.ts`) and the print path —
+  is byte-identical to the program's baseline
+  (`git diff ea7b60d5..HEAD -- packages/cli/src/engine` → zero files).
+- **What remains for CI:** one green `parity:gate` execution **at the final
+  SHA**. At HEAD the step was *skipped*, not run, because F-1 failed the
+  step before it, and this sandbox cannot execute it (Chromium 141 < 148;
+  `p7-sweeps.md` §1.1 records the verbatim failure). PDF-format builds are
+  likewise unexecutable here.
+- **Deviation:** the field guide is gitignored and out of corpus — recorded
+  in SFE-P3d-parity, still true.
+- **Status: PASS (scoped).** The gate has a real green run on a real runner
+  at a P7 commit whose only difference from HEAD is doc comments, the books
+  build clean on every executable channel, and the code the gate measures
+  did not change all program. The final-SHA execution is genuinely
+  outstanding and lands automatically once F-1 is fixed; if that run
+  diverges, this criterion must be reopened.
+
+### AC-22 — Documentation complete
+
+- **Implementation:** `docs/architecture/source-first-editor.md`,
+  `docs/vscode-extension.md`, `docs/adr/0011`-`0016`, `docs/ARCHITECTURE.md`,
+  `CHANGELOG.md`, `docs/releases/0.11.0.md` — all verified present, and all
+  six ADRs present as separate files.
+- **Doc-link evidence (re-derived here):** every relative link in
+  `docs/architecture/source-first-editor.md` resolves — 6 ADRs, the plan,
+  and `docs/vscode-extension.md`, 8/8 OK. The doc's decision table maps each
+  binding decision to its ADR.
+- **Example-lint evidence:** `gutterpress lint` exit 0 on all four example
+  books and `validate` 14/14 including `source.links.local-refs`
+  (`p7-sweeps.md` §1.3).
+- **Accuracy evidence:** the P7 review forced three laundered claims out of
+  these documents in round 1 (the `gutterpress/render` "unchanged" claim,
+  the parity-gate "proves" wording, and the P5a `~−3,100` figure that
+  contradicted the audited −2,546) and four more stale comments in round 2 —
+  the records now agree with the tree they ship with.
+- **Open item:** `CHANGELOG.md` dates a `0.11.0` release while no version
+  bump exists anywhere in the tree (`packages/cli` is still `0.10.2`). The
+  integrator dispositioned this as intended — the bump and publish are
+  stakeholder release actions listed in the wrap-up. Recorded, not treated
+  as a doc defect.
+- **Status: PASS.** All plan-named final outputs exist, their links resolve,
+  their claims were adversarially re-derived, and the one date/version
+  mismatch is a named release action.
+
+### AC-23 — Security boundaries preserved
+
+- **Implementation:** `packages/cli/src/lib/markdown/plugin-origin.ts` +
+  `packages/desktop/electron/editor-projection.ts` (host-only plugin
+  execution); `packages/vscode-extension/src/webview/index.ts` (nonced CSP);
+  `packages/desktop/electron/server-bridge/secure-handle.ts`
+  (sender-validated IPC).
+- **Security evidence, boundary by boundary:**
+  - *Plugin execution* — SFE-P2c: host-only execution proven by a bundle
+    scan, inert plugin HTML, fail-closed trust gate; SFE-P3e: rich-mode
+    plugins execute only in main, for the opened project, over one validated
+    IPC channel whose `projectDir` must equal the host's own workspace root.
+  - *VS Code* — SFE-P3c: nonced CSP with fixed base and dist-scoped roots,
+    proven inert in real Chromium; both-side message validation;
+    workspace-trust-gated plugin loading with a path-containment refusal
+    fixture and a marker-file proof of non-execution; sanitized wire errors.
+  - *Electron transport* — `secure-handle.ts:47-51` blocks untrusted sender
+    frames for every one of the 120 channels; `app-protocol.test.ts` pins
+    traversal refusal including the win32 containment case (the sole-guard
+    correction that review forced).
+  - *Secrets* — SFE-P5c pass 2 caught the highest-value defect of the
+    program: the remote/publish error rethrow could carry a credentialed
+    git URL to the renderer because the sanitizers redacted the log, not the
+    throw. Fixed in both wrappers with error-path tests that drive a
+    credentialed URL through the real handlers; `token-store` /
+    `transport` / `credential-store` / `publish-ipc` suites assert
+    no-token-in-response and that credentials never leave the process over
+    non-loopback `http://`.
+- **Gate evidence:** SFE-P2c, P3c, P3e, P5c (both passes) and P5d gates —
+  all commands exit 0; at HEAD, CI `Desktop Test` and `Build` jobs green.
+- **Status: PASS.** Every boundary the criterion names has a positive
+  refusal test, and the two real leaks found during the program were closed
+  with directed regression tests rather than assertions of intent.
+
+### AC-24 — Performance budgets met
+
+- **Implementation:** `packages/editor/tests/perf/perf-sweep.btest.ts`,
+  `perf-control.btest.ts` (run via `packages/editor`'s `test:perf`); the
+  attempted fix is `packages/vscode-markdown-editor/PATCHES.md` Patch 2.
+- **Performance evidence:** D13's budget is p95 edit-to-paint **< 100 ms**
+  in a 250 KiB document after warm-up. Measured: 25 KiB **within** budget;
+  250 KiB p95 **~545-632 ms** (5.5-6.3× over; the fresh confirmation run
+  recorded 545.5 ms, the three post-fix invocations 551.8-577.0 ms); 1 MiB
+  p95 **~2.3 s**. `test:perf` exits 1 on exactly the two 250 KiB budget
+  assertions — designed red, with the interleaved differential control and
+  both mechanism guards green (the control was itself rebuilt after review
+  found it vacuous, and now measures 151.1/123.6/144.2 ms against an
+  injected 150 ms slowdown).
+- **Root cause:** inside the vendored fork — whole-document geometry
+  remeasurement on edit; cost scales with document size. Patch 2 is sound
+  but helps end-of-document typing only, and the benchmark's own navigation
+  defect lands the caret at ~937 of 256,018 characters, the worst case for
+  it. The earlier "45-50% improvement" claim was withdrawn as an artifact of
+  a broken cache that review caught (fast but wrong: stale caret math for
+  every block after an edit).
+- **Ordered follow-ups (recorded in the SFE-P3f close-out and PATCHES.md):**
+  (1) fix the benchmark's navigation defect; (2) implement the
+  delta-translation variant so mid-document typing also reuses cached
+  geometry; (3) re-profile the residual (the EditContext input-path suspect
+  is located, not proven).
+- **Caveat, stated but not used as an excuse:** this sandbox is not the CI
+  reference runner. A 5.5-6.3× miss is not a runner artifact.
+- **Status: FAIL.** The budget is measured and not met. Not "deferred", not
+  "not applicable" — the assertion is red on purpose so it cannot be
+  forgotten, and the work to close it is named and ordered.
+
+---
+
+### Summary
+
+| Status | Count | Criteria |
+|---|---:|---|
+| PASS | 23 | AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, AC-21, AC-22, AC-23 |
+| FAIL | 1 | AC-24 |
+| NOT APPLICABLE | 0 | — |
+
+Of the 23 PASS results, seven are **scoped** — the scope is stated in the
+criterion's own rationale, not hidden here: AC-01 (the `release/0.11.0`
+equality precondition is unmet and is a release action, F-2), AC-10 (no
+real-VS-Code activation — network blocked), AC-11 (two open a11y items,
+F-4), AC-16 (win/mac packaged smokes are CI-runner work), AC-18 (substance
+proven; the cli suite is red at HEAD on F-1), AC-21 (green parity run
+exists at `ea2610b3`, not at the final SHA), AC-22 (the changelog dates a
+release the tree has not version-bumped).
+
+### Bottom line
+
+Twenty-three of twenty-four criteria are evidenced and pass; the
+twenty-fourth, D13's 250 KiB typing budget, is measured, missed by 5.5-6.3×,
+and recorded as FAIL with a red assertion and three ordered follow-ups
+rather than softened into a deferral. The program's central claims hold up
+to re-derivation: exact source is authoritative and byte-identical across
+every open/close/mode switch on real books; edits are minimal-range against
+an independent, sabotage-proven oracle; one editor mounts in two real hosts
+under one contract suite; and the four deletion phases removed
+**net −2,489 production LOC across 82 net-deleted modules** while taking
+desktop HTTP routes 104 → 0, preview mutation messages 5 → 0, and the
+broad platform locator 31 members → 0 — the P4-P6 scoping success criterion
+22 actually asks about, computed here because the ledger deliberately left
+it to this sweep. Two hard calls went against the comfortable answer: AC-24
+is FAIL, and AC-21 is a *scoped* PASS resting on a real green CI parity run
+at `ea2610b3` plus the fact that the engine the gate measures is
+byte-identical to the program's baseline — not on a final-SHA run, which
+does not exist. The one thing standing between this branch and a clean
+release-ready state is **F-1**: a doc comment added by the review's own
+round-2 repair contains the literal text `import("gutterpress")`, the
+dependency-classification scanner reads it as a real import, the cli suite
+goes red at HEAD, and the parity-gate step that would have closed AC-21's
+last gap is skipped behind it. It is a one-line fix in a file this
+report-only lane may not write; until it lands, the SFE-P7 gate requirement
+— the full program gate green at the final SHA — is not satisfied.
+
+### Verification commands run by this sweep
+
+| Command | Exit | Result |
+|---|---:|---|
+| `git log -1 --format=%H` | 0 | `e10b70597d9687f74321eef0bd0b8e3c35e33a11` |
+| `git cat-file -t 131a65e5` | 0 | `commit` (review approve SHA exists) |
+| every `baseSha`/`headSha` in this file → `git cat-file -t` | 0 | all resolve; **0 missing** (the two corrupted strings Lane A reported were corrected in `ea2610b3`) |
+| `git merge-base --is-ancestor ea7b60d5 HEAD` | 0 | program base is an ancestor of HEAD |
+| `git merge-base --is-ancestor cf5dacda fc6f543a` | 0 | P4 base → P6 head chain intact |
+| `bun run check:architecture` | 0 | 4/4 rules PASS (604 code files; ratchet 0 == 0; 345+208; 35+16) |
+| `bun run check:generated-files` | 0 | 1,271 tracked files, none generated |
+| `bun run check:vendored` | 0 | 26 hashes, 33 tracked files accounted |
+| `node packages/cli/scripts/check-render-pure.mjs` | 0 | `dist/render.js` node-free and self-contained |
+| `cd packages/cli && bun test tests/integration/package-exports.test.ts` | 0 | 18 pass / 0 fail / 14 expect() |
+| `cd packages/cli && bun test tests/integration/runtime-deps-classification.test.ts` | **1** | **F-1 reproduced**: `gutterpress at src/index.ts:7 (dynamic import "gutterpress")` |
+| `test -d packages/desktop/src/routes/api` | 1 | ABSENT |
+| `grep -ric prosemirror` (then `tiptap`, then `milkdown`) over `bun.lock`, the root `package.json` and all 7 workspace manifests | 0 | **0 hits** for every term in every one of the 8 files |
+| unique `secureHandle("…")` channel literals across `packages/desktop/electron` (`rg -U -oP … --replace`, then `sort -u`, then `wc -l`) | 0 | 120 unique channels |
+| `grep -rn 'export function register[A-Za-z]*Handlers' packages/desktop/electron` | 0 | 26 registrars (21 under `electron/api/`) |
+| `wc -l packages/desktop/src/routes/+page.svelte packages/desktop/electron/main.ts` | 0 | 4,543 / 1,969 |
+| `git diff --numstat ea7b60d5 HEAD -- packages/cli/src/engine` | 0 | **zero files** (print/viewer engine untouched by the program) |
+| `git diff --numstat cf5dacda fc6f543a -- <production paths>` | 0 | 246 files, +7,608/−10,097 = **−2,489** |
+| `git diff --name-status --diff-filter=A/D cf5dacda fc6f543a` | 0 | 42 production files added, 124 deleted |
+| `git diff --stat ea2610b3 HEAD -- packages/` | 0 | 35 files, doc comments only |
+| `git rev-parse origin/release/0.11.0 origin/main` | 0 | `ea7b60d5` / `5ec25e5a` (F-2) |
+| GitHub Actions API — run `33579455024` (`ea2610b3`) jobs/steps | n/a | 4/4 jobs success; `Test` step 10 *Preview/print parity gate* **success** |
+| GitHub Actions API — run `33582923756` (HEAD) jobs/steps + job log | n/a | `Test` **failure** (1980/10/1); parity-gate step **skipped**; `Build`, `Desktop Test`, `Type Check` success |

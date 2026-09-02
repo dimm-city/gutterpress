@@ -3,8 +3,8 @@
  *
  * Consumed by:
  *   - packages/cli  (commands import from here; bundled into the CLI binary + npm package)
- *   - packages/desktop (Electron main imports this at runtime via a dynamic
- *     `import("gutterpress")`, behind the typed IPC handlers in
+ *   - packages/desktop (Electron main imports this package at runtime via a
+ *     plain dynamic import, behind the typed IPC handlers in
  *     `electron/api/*.ts`; the SvelteKit-served renderer/SPA never imports it)
  *
  * Plugin authors use the type-only exports below to type their plugins without
