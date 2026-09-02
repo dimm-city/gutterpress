@@ -137,4 +137,63 @@ Lane C with their results recorded in `p7-sweeps.md`, not repeated here.)
 
 ## Review log
 
-<!-- Appended by the review stage. -->
+Two batches over `2ba5ca0a..HEAD` (lanes + integrator fixes, `ea2610b3`),
+three rounds. The reviewer re-ran every load-bearing grep, git range, and
+file read itself.
+
+Round 1: **needs-repair, 11 CONFIRMED, 11 advisories.** The dominant
+failure mode: records disagreeing with the tree they shipped with, inside
+one commit — (1) ledger §5 said the four stale-comment defects were "not
+fixed" while `ea2610b3` fixed all four; (2–3) two of the integrator's own
+fixes introduced fresh instances of the defect class they fixed —
+`render.ts`'s new header cited two type-only importers as browser *value*
+importers and missed the real one (`+page.svelte`), and `assemble.ts`
+swapped a nonexistent `WebAdapter` consumer for a nonexistent desktop-SPA
+consumer (`assembleBookHtml` has zero browser call sites); (4) the
+`platform.ts` fix left five `Web:`/`0.6.0` residues in the file it edited —
+root cause: the sweep matched the identifier `WebAdapter`, not the concept,
+which is also why (8) a dozen more same-class files were missed, three in
+the published package; (5) CHANGELOG + release notes claimed
+`gutterpress/render` unchanged when it gained the program's central new
+projection surface; (6) release notes and architecture doc said the parity
+gate "proves" agreement while this run's own sweep records it BLOCKED with
+no green run in the program's evidence; (7) the p7-sweeps §4.3/§4.4 grep
+breakdowns did not reproduce and §4.3's pattern missed 3 of 5 deleted
+protocol messages; (9) ledger §2.5 scored the vendored fork as "no fork
+needed, 0 LOC" against ADR 0013 and its own §2.8; (10) the architecture
+doc mis-dated the `check-parity.mjs` deletion; (11) the release notes'
+P5a "~−3,100" contradicted the ledger's audited −2,546.
+
+Repair round 1 (`86e97f61`): all 11 addressed — consumer lists re-derived
+from actual imports, capability framing ("CAN run in a browser host; no
+browser caller today"), the `"web"` discriminant arm deleted, ledger §5
+given an explicit disposition naming `ea2610b3`, the three laundered
+release claims corrected against the program's own evidence, §4.3/§4.4
+re-run with reproducible per-file counts under the real three-class D15
+ruling, the fork honestly recorded as a stated LOC exclusion (17 tracked
+files), and the same-class sweep extended through 13 more files.
+
+Round 2: **needs-repair, 1 CONFIRMED** — the extended sweep still fixed
+instances rather than performing the enumeration §5.5 itself prescribes:
+three present-tense "SvelteKit server routes" comments survived in the
+published package (`manifest-config.ts`, `manifest-doc.ts`, `index.ts`)
+plus `create-host-bridge.ts`. Repair round 2 (`131a65e5`): the four fixed,
+and the full enumeration actually run — every surviving hit read in
+context and classified (dated version-history prose, accurate SPA
+framework naming, or the CLI preview server's own still-live `/api/status`).
+
+Round 3: **approve, 0 confirmed, 2 advisories** (one loose-but-sanctioned
+wording; enumeration scope excluded docs/ and tools/, spot-checked clean).
+The reviewer verified round 2's fixes in the tree, re-ran both enumeration
+commands at HEAD, and re-checked repo typecheck (4 workspaces) and
+`check:architecture` (4 rules) green.
+
+Advisory dispositions (integrator): "CHANGELOG dates a 0.11.0 release with
+no version bump anywhere in the tree" — correct and intended: the version
+bump and publish are stakeholder release actions, listed as such in the
+wrap-up, not this program's to take. "PlatformAdapter is dead exported
+surface" — recorded as a follow-up candidate (removing a public export is
+a contract change outside this program's scope). The p7-sweeps §4.3
+total's self-referential growth (242→246 as the ledger discusses the
+identifiers) is the sanctioned class its §4.4 note describes. Remaining
+record-nit advisories are recorded in the workflow journal.
