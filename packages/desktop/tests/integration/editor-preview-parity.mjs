@@ -118,8 +118,30 @@ try {
   // `art-unplaced/` and `images/` before its chapters), and clicking one
   // opens no document at all — the gate then waits out its whole timeout on
   // an editor that was never given a file.
-  await page.locator(".file-item").filter({ hasText: /\.md$/i }).first().click();
-  await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
+  await page.locator(".file-item").filter({ hasText: /\.md/i }).first().click();
+  try {
+    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
+  } catch (e) {
+    // A gate that only reports "no sheet appeared" sends the next hour to
+    // guessing why. Say what the editor pane actually contains.
+    const state = await page
+      .evaluate(() => {
+        const host = document.querySelector(".rich-editor-host");
+        const loading = [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim());
+        return {
+          host: !!host,
+          document: !!document.querySelector(".rich-editor-host .md-document"),
+          blocks: document.querySelectorAll(".rich-editor-host .md-block").length,
+          layouts: document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? null,
+          loading,
+          activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
+          mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
+        };
+      })
+      .catch(() => null);
+    console.error(`[parity] editor never paginated — pane state: ${JSON.stringify(state)}`);
+    throw e;
+  }
 
   // Read mode: the locked editor is the one that must match the page.
   await page.click('button[aria-label="Read"]');
