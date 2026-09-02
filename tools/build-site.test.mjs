@@ -35,6 +35,17 @@ try {
   check("landing links to the privacy page relatively", landing.includes('href="./privacy/"'));
   check("landing links to the stylesheet relatively", landing.includes('href="./site.css"'));
 
+  // The brand mark: the desktop app's two-ink SVG monogram, copied into the
+  // site and used both in the masthead and as the theme-aware favicon.
+  check("light brand mark copied", existsSync(join(out, "icons", "gutterpress-icon-light.svg")));
+  check("dark brand mark copied", existsSync(join(out, "icons", "gutterpress-icon-dark.svg")));
+  check(
+    "landing masthead shows the brand mark with a dark-theme source",
+    landing.includes('src="./icons/gutterpress-icon-light.svg"') &&
+      landing.includes('srcset="./icons/gutterpress-icon-dark.svg"'),
+  );
+  check("landing declares theme-aware favicons", landing.includes('rel="icon"') && landing.includes("prefers-color-scheme: dark"));
+
   const privacyPath = join(out, "privacy", "index.html");
   check("privacy page rendered at /privacy/", existsSync(privacyPath));
   const privacy = existsSync(privacyPath) ? readFileSync(privacyPath, "utf8") : "";
@@ -45,6 +56,7 @@ try {
   check("privacy page carries the effective date", effective !== "" && privacy.includes(effective));
   check("privacy page has no unfilled placeholders", !privacy.includes("{{"));
   check("privacy page reaches the stylesheet one level up", privacy.includes('href="../site.css"'));
+  check("privacy page reaches the brand mark one level up", privacy.includes('src="../icons/gutterpress-icon-light.svg"'));
   check("privacy nav marks itself current", privacy.includes('aria-current="page"'));
   check(
     "markdown links became anchors",
