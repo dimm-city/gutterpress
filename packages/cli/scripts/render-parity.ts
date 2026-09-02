@@ -111,6 +111,18 @@ async function runExtract(args: string[]): Promise<void> {
   }
   await writeFile(resolve(flags.out), serializeReport(report), "utf8");
   console.log(`Wrote ${flags.out} (${report.pageCount} page(s))`);
+
+  // Exit explicitly, exactly as runCompare already does below. Returning
+  // normally hangs the process on a large book: on a 131MB/247-page field
+  // guide the work finishes in ~10s and then the process never exits, and
+  // has to be SIGKILLed. It is not the document cache and not the document
+  // proxy — measured, with `process.getActiveResourcesInfo()` reporting an
+  // EMPTY handle list at the moment main returns, and with neither
+  // `clearPdfCache()` nor `await doc.destroy()` making any difference. The
+  // runtime is holding a PDF.js worker it does not surface, so no
+  // library-level teardown can release it; only exiting does. `compare`
+  // never showed the bug precisely because it already exits here.
+  process.exit(0);
 }
 
 async function runCompare(args: string[]): Promise<void> {
