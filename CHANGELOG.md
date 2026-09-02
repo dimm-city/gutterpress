@@ -5,6 +5,64 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-09-02
+
+### Added
+
+- **Five layout classes you no longer have to invent yourself.** A heading or
+  a preamble that should cross both columns of a two-column run had no class
+  in Gutterpress, so every book grew its own — and an author who guessed at a
+  name got a silent no-op instead of the layout they asked for. There are now
+  real ones: `.gp-columns-all` spans a column run, `.gp-no-break` keeps a
+  block from splitting across pages, `.gp-break-before` starts a new page, and
+  `.gp-columns-flow` / `.gp-columns-balanced` answer the one multi-column
+  question only you can answer — whether a run flows across several pages
+  (`flow`) or fits on one (`balanced`). Write them the way you write any other
+  class: `@section .gp-columns-2 .gp-columns-all`, or `{.gp-no-break}` on a
+  block. See [User Guide: Chapter 2](./examples/gutterpress-user-guide/02-writing-content.md).
+
+- **A misspelled `gp-` class now tells you, instead of doing nothing.** Typing
+  `.gp-column-2` where you meant `.gp-columns-2` used to render a perfectly
+  ordinary single-column section with no complaint anywhere — a real book
+  carried exactly that mistake through a full proof cycle. The build, the
+  editor's Problems panel and `gutterpress lint` now all say
+  `Unknown class "gp-column-2" on @section. Did you mean "gp-columns-2"?`.
+  Only `gp-` names are checked; your own classes are your business.
+
+### Changed
+
+- **Your CSS now beats Gutterpress's, always.** Core's own styles are wrapped
+  in cascade layers, and yours are not — which in CSS means yours win outright,
+  whatever selector you used. Before this, "the author wins" was true only
+  because of the order the stylesheets happened to be injected in, and a
+  plain-looking rule in a book's theme could silently shadow a core layout
+  primitive at equal specificity. One real book lost `columns: 2` off every
+  spanning section that way, for months, and it took a page-height measurement
+  to find. You do not need to change anything: books render exactly as before.
+
+- **The multi-column warning now names the class to add.** It used to hand you
+  raw CSS (`add column-fill: auto`); it now says to add `.gp-columns-flow` to
+  the marker, which is the thing you can actually type in your markdown.
+
+### Fixed
+
+- **A tall image no longer gets sliced across two pages.** A plain markdown
+  image taller than the page was cut in half by the paginator, stranding its
+  bottom on the next sheet. Oversized images are now fitted to the page and
+  letterboxed instead. A `<figure>` is likewise kept whole rather than split.
+  Both were fixes individual books had been carrying privately; they belong in
+  Gutterpress, and a new book with big art gets them without knowing they exist.
+
+- **`render-parity.ts extract` no longer hangs after it finishes.** On a large
+  book it wrote a correct report and then never exited, holding the terminal
+  (or a CI step) until something killed it — measured on a 131MB, 247-page
+  book whose report was complete after ten seconds while the process ran on
+  until SIGKILL. The runtime keeps a PDF.js worker alive that no library-level
+  teardown reaches, so `extract` now exits explicitly once its report is
+  written, exactly as `compare` always has. `compare` was never affected,
+  which is why every CI gate stayed green.
+
+
 ## [0.10.5] - 2026-09-02
 
 ### Added
@@ -1489,5 +1547,6 @@ full diff above for the exact changes.
   architecture with IPC instead of HTTP routes, and PDF export via Electron's
   bundled Chromium. See the v0.2.0 release notes for details.
 
+[0.10.6]: https://github.com/dimm-city/gutterpress/compare/v0.10.5...v0.10.6
 [0.2.1]: https://github.com/dimm-city/print-md/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dimm-city/print-md/compare/v0.1.13...v0.2.0

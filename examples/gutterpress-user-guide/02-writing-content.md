@@ -329,6 +329,14 @@ utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
 `@section`; an enclosing `@page` is not required. Themes may add decoration to
 an explicitly themed class, but should not redefine generic column vocabulary.
 
+Three more classes name decisions a column run otherwise needs raw CSS for:
+
+| Class | Meaning |
+|-------|---------|
+| `.gp-columns-all` | Spans a heading or block across every column in the run it sits inside. |
+| `.gp-columns-flow` | A run that FRAGMENTS across pages — every page's columns fill (`column-fill: auto`). |
+| `.gp-columns-balanced` | A run that fits on ONE page — its columns end up even (`column-fill: balance`). |
+
 ### Grids: .gp-grid-2 and .gp-grid-3
 
 Columns flow; grids place. A `.gp-columns-2` section pours one run of text
@@ -365,6 +373,15 @@ Two grid-specific notes:
   section: the break becomes a grid slot of its own and scrambles the
   layout (Gutterpress warns when this happens). Close the grid first with
   `@end-section`, then break.
+
+### Fragmentation: .gp-no-break and .gp-break-before
+
+Two more generic classes, useful with or without columns/grids:
+
+| Class | Meaning |
+|-------|---------|
+| `.gp-no-break` | Keeps the element from splitting across a page break (`break-inside: avoid`). |
+| `.gp-break-before` | Forces a fresh page before the element (`break-before: page`). |
 
 ## Writing Guidelines
 

@@ -1664,6 +1664,80 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   });
 });
 
+// unknown_gp_class (#226): a gp-* class that is not part of core's published
+// vocabulary previously rendered as a silent no-op — an author typed
+// `@section .gp-columns-all` before the class existed and nothing said why.
+// Same gp_pin_scope_check core rule as pin_outside_page, but unconditional
+// (checked everywhere, not gated by @page/@spread depth) and keyed on the
+// `gp-` prefix only: `.dc-*`, `.fg-*`, and unprefixed classes are never this
+// check's business.
+describe("unknown_gp_class warning (gp_pin_scope_check)", () => {
+  function gpClassWarnings(src: string): { all: LayoutWarning[]; unknown: LayoutWarning[] } {
+    const md = createMarkdownRenderer();
+    const env: PagedEnv = {};
+    md.render(src, env);
+    const all = env.layoutWarnings ?? [];
+    return { all, unknown: all.filter((w) => w.type === "unknown_gp_class") };
+  }
+
+  test("an unknown gp-* class warns, naming the element and a did-you-mean", () => {
+    const { unknown } = gpClassWarnings("@section .gp-column-2\n\ntext\n");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.message).toBe(
+      'Unknown class "gp-column-2" on @section. Did you mean "gp-columns-2"?'
+    );
+  });
+
+  test("a document with no markers still warns for a {.gp-typo} image", () => {
+    const { all, unknown } = gpClassWarnings("![w](w.png){.gp-typo}\n");
+    expect(all).toEqual(unknown); // fires even though no markers are used
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.message).toContain('Unknown class "gp-typo" on an image.');
+  });
+
+  test("known classes across both core CSS files never warn, including marker-only ones", () => {
+    const src = [
+      "@page",
+      "",
+      "@section {.gp-columns-2 .gp-grid-3}",
+      "",
+      "text",
+      "",
+      "@column-break",
+      "",
+      "more text",
+      "",
+      "@end-section",
+      "",
+      "@section Notes",
+      "",
+      "content",
+      "",
+      "@continue",
+      "",
+      "more content",
+      "",
+      "@end-section",
+      "",
+      "![a](a.png){.gp-left .gp-small .gp-tight .gp-shape}",
+      "",
+      "![b](b.png){.gp-pin .gp-top .gp-behind}",
+      "",
+      "![c](c.png){.gp-bleed .gp-flush}",
+      "",
+      "@page-break",
+      "",
+    ].join("\n");
+    const { unknown } = gpClassWarnings(src);
+    expect(unknown).toEqual([]);
+  });
+
+  test("a non-gp- class never warns, however unusual", () => {
+    const { unknown } = gpClassWarnings("![w](w.png){.dc-panel .fg-art-top .made-up-class}\n");
+    expect(unknown).toEqual([]);
+  });
+});
+
 /**
  * The markdown-it-attrs `{...}` spelling on core marker arguments.
  *
