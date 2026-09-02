@@ -20,28 +20,20 @@
  * only the message text of the D7 rejection above, never whether it rejects.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type { RecoveryEntry } from "$lib/platform/dtos";
-
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
 
 /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
 export async function writeRecovery(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }> {
-  return call(bridge().recovery.write(filePath, content, baseMtimeMs));
+  return hostCall(bridge().recovery.write(filePath, content, baseMtimeMs));
 }
 
 /** Clear a recovery snapshot after a successful disk save (#44). */
 export async function clearRecovery(filePath: string): Promise<{ ok: boolean }> {
-  return call(bridge().recovery.clear(filePath));
+  return hostCall(bridge().recovery.clear(filePath));
 }
 
 /** List pending recovery snapshots for an opened project, newest first (#44). */
 export async function listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
-  return call(bridge().recovery.list(projectDir));
+  return hostCall(bridge().recovery.list(projectDir));
 }

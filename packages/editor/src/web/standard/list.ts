@@ -30,7 +30,9 @@
 import { lineAfter, lineBefore, touchedLines, type LineInfo } from "./line-utils.ts";
 import type { ComputedEdit } from "./wrap-inline.ts";
 
-export type ListVariant = "bullet" | "ordered" | "task";
+import type { ListVariant } from "../../core/commands.ts";
+
+export type { ListVariant };
 
 const INDENT_RE = /^[ \t]*/;
 const TASK_RE = /^([ \t]*)[*-] \[[ xX]\] /;

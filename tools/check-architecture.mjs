@@ -171,12 +171,16 @@ function extractSpecifiers(file) {
   for (const pattern of SPECIFIER_PATTERNS) {
     pattern.lastIndex = 0;
     let m;
+    // Matches arrive in ascending index order, so the line number is kept
+    // incrementally instead of re-splitting the prefix per match.
+    let scanned = 0;
+    let line = 1;
     while ((m = pattern.exec(text))) {
       const specifier = m[1];
       const key = `${m.index}:${specifier}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const line = text.slice(0, m.index).split("\n").length;
+      for (; scanned < m.index; scanned++) if (text.charCodeAt(scanned) === 10) line++;
       found.push({ specifier, line, file });
     }
   }

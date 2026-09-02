@@ -8,8 +8,9 @@
  * `publish`, `doctor`, `lint`, and `recovery` routes (out of that subrun)
  * still imported it — moving a helper whose consumers don't all migrate in
  * the same subrun is exactly what the run specification forbids.
- * `electron/main.ts` keeps its own private `loadLib()` for the same reason
- * `_lib/route.ts` did — this module gives every `electron/api/*.ts` handler
+ * `electron/main.ts` kept its own private `loadLib()` for the same reason
+ * `_lib/route.ts` did (it imports this one now) — this module gives every
+ * `electron/api/*.ts` handler
  * (project/manifest/tpl/snip/media/plugin/theme/vcs/style/lint/doctor) ONE
  * shared cache instead of many private copies. SFE-P5c4 (the last subrun)
  * migrated `doctor`/`lint`/`recovery`/`updater` and deleted

@@ -22,7 +22,7 @@ import type { ListVariant, SetHeadingLevel } from "../../core/commands.ts";
 import { isBlockquoteActive } from "./blockquote.ts";
 import { isExactFencedBlock } from "./code-block.ts";
 import { currentHeadingLevel } from "./heading.ts";
-import { fencedCodeBlockRanges, lineAt } from "./line-utils.ts";
+import { isInsideFencedCodeBlock, lineAt } from "./line-utils.ts";
 import { activeListVariant } from "./list.ts";
 import { BOLD_SPEC, INLINE_CODE_SPEC, ITALIC_SPEC, STRIKE_SPEC, isWrapped } from "./wrap-inline.ts";
 import type { CommandSelection } from "./apply-command.ts";
@@ -72,9 +72,7 @@ export function commandState(snapshot: DocumentSnapshot, selection: CommandSelec
 
   const headingLevel = currentHeadingLevel(text, start);
   const line = lineAt(text, start);
-  const headingApplicable = !fencedCodeBlockRanges(text).some(
-    (r) => line.start >= r.start && line.start < r.end,
-  );
+  const headingApplicable = !isInsideFencedCodeBlock(text, line.start);
 
   const listVariant = activeListVariant(text, start, endExclusive);
 

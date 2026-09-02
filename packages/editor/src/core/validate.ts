@@ -30,10 +30,10 @@ export type ValidationResult<T> =
   | { readonly valid: true; readonly value: T }
   | { readonly valid: false; readonly errors: readonly string[] };
 
-/** Sentinel returned by `ownField` when the named property is an accessor. */
-const ACCESSOR_PROPERTY: unique symbol = Symbol("editor-validate-accessor-property-rejected");
+/** Sentinel returned by `ownField` when the named property is an accessor. Exported (with `isPlainObject`/`ownField`/`describeType`) so the VS Code extension's wire validator applies the SAME prototype-pollution/accessor defense instead of a copy. */
+export const ACCESSOR_PROPERTY: unique symbol = Symbol("editor-validate-accessor-property-rejected");
 
-function isPlainObject(value: unknown): value is object {
+export function isPlainObject(value: unknown): value is object {
   if (typeof value !== "object" || value === null) return false;
   if (Array.isArray(value)) return false;
   return true;
@@ -46,7 +46,7 @@ function isPlainObject(value: unknown): value is object {
  * identically on null-prototype objects because it never calls a method ON
  * the value — only static `Object.getOwnPropertyDescriptor`.
  */
-function ownField(obj: object, key: string): unknown {
+export function ownField(obj: object, key: string): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
   if (!descriptor) return undefined;
   if (descriptor.get || descriptor.set) return ACCESSOR_PROPERTY;
@@ -141,7 +141,7 @@ export function isDocumentSnapshot(value: unknown): value is DocumentSnapshot {
   return validateDocumentSnapshot(value).valid;
 }
 
-function describeType(value: unknown): string {
+export function describeType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   return typeof value;

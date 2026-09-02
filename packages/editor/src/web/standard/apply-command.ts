@@ -19,6 +19,7 @@ import type { Diagnostic } from "../../core/diagnostics.ts";
 import type { EditorCommand } from "../../core/commands.ts";
 import { computeToggleBlockquote } from "./blockquote.ts";
 import { computeToggleCodeBlock } from "./code-block.ts";
+import { isValidRange } from "../../core/apply-edit.ts";
 import { computeSetHeading } from "./heading.ts";
 import { computeInsertHorizontalRule } from "./hr.ts";
 import { computeInsertImage, computeInsertLink } from "./link-image.ts";
@@ -41,12 +42,7 @@ export interface CommandSelection {
 export type ApplyCommandResult = { readonly edit: SourceEdit } | { readonly refused: Diagnostic };
 
 function invalidSelection(snapshot: DocumentSnapshot, selection: CommandSelection): boolean {
-  const { start, endExclusive } = selection;
-  if (!Number.isInteger(start) || !Number.isInteger(endExclusive)) return true;
-  if (start < 0 || endExclusive < 0) return true;
-  if (start > endExclusive) return true;
-  if (endExclusive > snapshot.text.length) return true;
-  return false;
+  return !isValidRange(selection.start, selection.endExclusive, snapshot.text.length);
 }
 
 function invalidRangeDiagnostic(): Diagnostic {

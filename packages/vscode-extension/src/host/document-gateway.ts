@@ -218,7 +218,7 @@ export class DocumentGateway {
     });
     this.#closeSubscription = api.onDidCloseTextDocument((doc) => {
       if (doc !== this.#api.document) return;
-      this.#disconnect("document-closed");
+      this.#disconnect();
     });
   }
 
@@ -315,7 +315,7 @@ export class DocumentGateway {
    */
   async applyEdit(edit: SourceEdit, base: number): Promise<void> {
     if (this.#disconnected || this.#api.document.isClosed) {
-      this.#disconnect("document-closed");
+      this.#disconnect();
       return;
     }
 
@@ -360,7 +360,7 @@ export class DocumentGateway {
     }
 
     if (this.#api.document.isClosed) {
-      this.#disconnect("document-closed");
+      this.#disconnect();
       return;
     }
 
@@ -443,14 +443,14 @@ export class DocumentGateway {
    * inert: every subsequent `applyEdit` call re-enters the entry guard
    * above and returns without attempting any vscode call.
    */
-  #disconnect(_reason: "document-closed"): void {
+  #disconnect(): void {
     if (this.#disconnected) return;
     this.#disconnected = true;
-    this.#log("host-disconnected", { reason: _reason });
+    this.#log("host-disconnected", { reason: "document-closed" });
     void this.#send({
       type: "disconnect",
       protocolVersion: EDITOR_PROTOCOL_VERSION,
-      diagnostic: hostDisconnectedDiagnostic(_reason),
+      diagnostic: hostDisconnectedDiagnostic("document-closed"),
     });
   }
 

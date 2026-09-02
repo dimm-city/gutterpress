@@ -272,7 +272,7 @@ type MarkdownToken = ReturnType<MarkdownRenderer["parse"]>[number];
 /** `starts[i]` is the char offset where 0-based line `i` begins — the
  *  inverse table {@link lineNumberFor} and {@link offsetOfLine} share, so a
  *  line number and an absolute char offset stay round-trippable within one
- *  `pipelineImageRefusal`/`pipelineLinkRefusal` call (SFE-P3e review round
+ *  `pipelineTokenRefusal` call (SFE-P3e review round
  *  2 — see "Real-parser literal-region evidence" above). Counts only `\n`,
  *  matching markdown-it's own `.map` convention (line-indexing the
  *  ORIGINAL source, not any internal normalization) — see markdown-it's
@@ -483,43 +483,28 @@ function scopeContaining(scopes: readonly InlineScope[], offset: number): Inline
  * identical literal text, so the caret's own candidate is judged on its own
  * position, never on a sibling's.
  */
-function pipelineImageRefusal(
-  text: string,
-  offset: number,
-  candidate: ImageTokenMatch,
-): CaretTokenRefusalReason | null {
-  const md = createMarkdownRenderer();
-  const tokens = md.parse(text, {});
-  const starts = buildLineStarts(text);
-  const line = lineNumberFor(starts, offset);
-  if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
-  const scopes = enclosingProseScopes(tokens, starts, text, line);
-  if (!scopes) return "no-token";
-  const scope = scopeContaining(scopes, candidate.start);
-  if (!scope) return "no-token";
-  const occurrence = sourceTokenOccurrenceAt(
-    text.slice(scope.scopeFrom),
-    candidate.tokenRaw,
-    candidate.start - scope.scopeFrom,
-  );
-  const isReal = scope.children.some((child) => {
-    if (child.type !== "image") return false;
-    const source = inlineSourceMetaOf(child);
-    return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;
-  });
-  return isReal ? null : "no-token";
+let sharedRenderer: MarkdownRenderer | undefined;
+/** The base renderer (no project plugins) every pipeline-evidence lookup
+ *  parses with — constructed once per module, not per user action: a
+ *  markdown-it instance carries no per-parse state (`env` is per call). */
+function renderer(): MarkdownRenderer {
+  return (sharedRenderer ??= createMarkdownRenderer());
 }
 
-/** The link counterpart of {@link pipelineImageRefusal} — matches a real
- *  `link_open` token's own stamped `{token, occurrence}` instead of an
- *  `image` token's. */
-function pipelineLinkRefusal(
+/**
+ * Real-parser evidence for a caret candidate: `null` when a `tokenType`
+ * child token whose stamped `{token, occurrence}` matches the candidate's
+ * own literal + occurrence exists in the caret's prose scope; otherwise the
+ * refusal reason. One function for images (`"image"`) and links
+ * (`"link_open"`) — the two differ only in which inline child they match.
+ */
+function pipelineTokenRefusal(
   text: string,
   offset: number,
-  candidate: LinkTokenMatch,
+  candidate: { readonly start: number; readonly tokenRaw: string },
+  tokenType: "image" | "link_open",
 ): CaretTokenRefusalReason | null {
-  const md = createMarkdownRenderer();
-  const tokens = md.parse(text, {});
+  const tokens = renderer().parse(text, {});
   const starts = buildLineStarts(text);
   const line = lineNumberFor(starts, offset);
   if (caretLineIsCodeBlock(tokens, line)) return "fenced-code-block";
@@ -533,7 +518,7 @@ function pipelineLinkRefusal(
     candidate.start - scope.scopeFrom,
   );
   const isReal = scope.children.some((child) => {
-    if (child.type !== "link_open") return false;
+    if (child.type !== tokenType) return false;
     const source = inlineSourceMetaOf(child);
     return source !== undefined && source.token === candidate.tokenRaw && source.occurrence === occurrence;
   });
@@ -558,7 +543,7 @@ export interface ImageCaretMatch {
 export function locateImageAtCaret(text: string, caret: number): LocateResult<ImageCaretMatch> {
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineImageRefusal(text, caret, match);
+  const refusal = pipelineTokenRefusal(text, caret, match, "image");
   if (refusal) return refuse(refusal);
   const wrapper = findImageWrapper(text, match);
   const tokens = tokenizeImageAttrs(match.attrsRaw);
@@ -631,7 +616,7 @@ export function computeImagePropertiesEdit(
 export function locateImageUnwrapEdit(text: string, caret: number): LocateResult<TextEdit> {
   const match = findImageTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineImageRefusal(text, caret, match);
+  const refusal = pipelineTokenRefusal(text, caret, match, "image");
   if (refusal) return refuse(refusal);
   const wrapper = findImageWrapper(text, match);
   if (!wrapper) return refuse("no-wrapper");
@@ -650,7 +635,7 @@ export interface LinkCaretMatch {
 export function locateLinkAtCaret(text: string, caret: number): LocateResult<LinkCaretMatch> {
   const match = findLinkTokenAtOffset(text, caret);
   if (!match) return refuse("no-token");
-  const refusal = pipelineLinkRefusal(text, caret, match);
+  const refusal = pipelineTokenRefusal(text, caret, match, "link_open");
   if (refusal) return refuse(refusal);
   return { ok: true, value: { match, initialHref: match.href } };
 }

@@ -27,7 +27,7 @@
  * HTTP routes used to send as the response body.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type {
   GoogleConnectResult,
   GoogleConnectStartResult,
@@ -40,23 +40,15 @@ import type { PreflightRow } from "$lib/preflight";
 
 export type { PublishProviderStaticInfo };
 
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
-
 /** Provider cards: static info + redacted connection status + manifest config. */
 export function listProviders(projectDir: string): Promise<PublishProviderCard[]> {
-  return call(bridge().publish.listProviders(projectDir));
+  return hostCall(bridge().publish.listProviders(projectDir));
 }
 
 /** Static provider metadata — id/label/credential host. No project needed
  *  (Settings → Connections classification + labels). */
 export function providers(): Promise<PublishProviderStaticInfo[]> {
-  return call(bridge().publish.providers());
+  return hostCall(bridge().publish.providers());
 }
 
 /**
@@ -71,12 +63,12 @@ export function connect(
   token: string,
   account?: string,
 ): Promise<{ connected: boolean; providerId: string }> {
-  return call(bridge().publish.connect(projectDir, providerId, token, account));
+  return hostCall(bridge().publish.connect(projectDir, providerId, token, account));
 }
 
 /** Forget a stored key for a provider (the default, or a named `account`). */
 export function disconnect(providerId: string, account?: string): Promise<{ ok: boolean }> {
-  return call(bridge().publish.disconnect(providerId, account));
+  return hostCall(bridge().publish.disconnect(providerId, account));
 }
 
 /** Write NON-SECRET provider settings into the manifest's publish section. */
@@ -85,7 +77,7 @@ export function setConfig(
   providerId: string,
   values: Record<string, string>,
 ): Promise<Record<string, Record<string, unknown>>> {
-  return call(bridge().publish.setConfig(projectDir, providerId, values));
+  return hostCall(bridge().publish.setConfig(projectDir, providerId, values));
 }
 
 /**
@@ -94,7 +86,7 @@ export function setConfig(
  * plain-language rows the wizard's Preflight step renders + gates on.
  */
 export function preflight(projectDir: string, providerIds: string[]): Promise<PreflightRow[]> {
-  return call(bridge().publish.preflight(projectDir, providerIds) as Promise<PreflightRow[]>);
+  return hostCall(bridge().publish.preflight(projectDir, providerIds) as Promise<PreflightRow[]>);
 }
 
 /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
@@ -103,7 +95,7 @@ export function run(
   providerId: string,
   options?: { dryRun?: boolean; artifactPath?: string },
 ): Promise<PublishRunResult> {
-  return call(bridge().publish.run(projectDir, providerId, options));
+  return hostCall(bridge().publish.run(projectDir, providerId, options));
 }
 
 // ── Google Drive publish connect (#221 D10) ──────────────────────────────────
@@ -115,12 +107,12 @@ export function run(
 /** Begin the Google Drive OAuth connect flow. An optional `account` label
  *  connects a NAMED credential (mirrors `connect`'s account label). */
 export function connectGoogleStart(account?: string): Promise<GoogleConnectStartResult> {
-  return call(bridge().connectGoogleStart(account));
+  return hostCall(bridge().connectGoogleStart(account));
 }
 
 /** Await user approval of the in-flight connect (redacted result). */
 export function connectGoogleWait(): Promise<GoogleConnectResult> {
-  return call(bridge().connectGoogleWait());
+  return hostCall(bridge().connectGoogleWait());
 }
 
 /** Cancel an in-flight connect attempt (user closed the dialog). */
@@ -133,7 +125,7 @@ export function connectGoogleCancel(): Promise<{ ok: boolean }> {
 /** Existing places a provider can publish into. The wizard only calls this
  *  when the provider's card carries `destinations` (see `listProviders`). */
 export function listDestinations(projectDir: string, providerId: string): Promise<PublishDestination[]> {
-  return call(bridge().publish.listDestinations(projectDir, providerId));
+  return hostCall(bridge().publish.listDestinations(projectDir, providerId));
 }
 
 /** Create a new destination (gdrive: a Drive folder at My Drive root). */
@@ -142,5 +134,5 @@ export function createDestination(
   providerId: string,
   name: string,
 ): Promise<PublishDestination> {
-  return call(bridge().publish.createDestination(projectDir, providerId, name));
+  return hostCall(bridge().publish.createDestination(projectDir, providerId, name));
 }

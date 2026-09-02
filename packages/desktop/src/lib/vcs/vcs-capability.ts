@@ -29,20 +29,12 @@
  * `project-config-capability.ts` use.
  */
 import { bridge } from "../platform/bridge";
-import { friendlyHostError } from "../errors";
+import { hostCall } from "../errors";
 import type { RestoreVersionResult, SnapshotEntry, SnapshotPage } from "../platform/contract";
-
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
 
 /** Turn a plain local-folder project into a versioned one (CLAUDE.md §7's escape hatch). */
 export async function vcsEnableVersionHistory(projectDir: string): Promise<unknown> {
-  return call(bridge().vcs.enableVersionHistory(projectDir));
+  return hostCall(bridge().vcs.enableVersionHistory(projectDir));
 }
 
 /** Page through the project's snapshot history, newest first. */
@@ -50,7 +42,7 @@ export async function vcsListSnapshotsPage(
   projectDir: string,
   options?: { limit?: number; before?: string },
 ): Promise<SnapshotPage> {
-  return call(bridge().vcs.listSnapshotsPage(projectDir, options));
+  return hostCall(bridge().vcs.listSnapshotsPage(projectDir, options));
 }
 
 /**
@@ -59,10 +51,10 @@ export async function vcsListSnapshotsPage(
  * in-progress work.
  */
 export async function vcsRestoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
-  return call(bridge().vcs.restoreSnapshot(projectDir, id));
+  return hostCall(bridge().vcs.restoreSnapshot(projectDir, id));
 }
 
 /** Save a snapshot of the project's current working tree. */
 export async function vcsSaveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
-  return call(bridge().vcs.saveSnapshot(projectDir, message));
+  return hostCall(bridge().vcs.saveSnapshot(projectDir, message));
 }

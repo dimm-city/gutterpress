@@ -49,7 +49,7 @@
  * block (SFE-P5c1 correction, see that file's header) also depended on.
  */
 import { bridge } from "../platform/bridge";
-import { friendlyHostError } from "../errors";
+import { hostCall } from "../errors";
 import type { FileStat, FileWriteResult } from "../platform/contract";
 
 export interface DirEntry {
@@ -63,19 +63,11 @@ export interface ProjectFileEntry {
   css: string[];
 }
 
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
-
 // ── fs ───────────────────────────────────────────────────────────────────
 
 /** Read a file as UTF-8 text. Path must be absolute. */
 export async function readFile(filePath: string): Promise<string> {
-  return call(bridge().fs.readFile(filePath));
+  return hostCall(bridge().fs.readFile(filePath));
 }
 
 /**
@@ -84,37 +76,37 @@ export async function readFile(filePath: string): Promise<string> {
  * Returns `{ mtimeMs }` of the post-write stat.
  */
 export async function writeFile(filePath: string, content: string): Promise<FileWriteResult> {
-  return call(bridge().fs.writeFile(filePath, content));
+  return hostCall(bridge().fs.writeFile(filePath, content));
 }
 
 /** Stat a file. Returns `{ exists: false }` instead of throwing when absent. */
 export async function statFile(filePath: string): Promise<FileStat> {
-  return call(bridge().fs.statFile(filePath));
+  return hostCall(bridge().fs.statFile(filePath));
 }
 
 /** List the immediate entries of a directory. Path must be absolute. */
 export async function listDir(dirPath: string): Promise<DirEntry[]> {
-  return call(bridge().fs.listDir(dirPath));
+  return hostCall(bridge().fs.listDir(dirPath));
 }
 
 /** List top-level `.md`/`.css` files in a project directory. */
 export async function listProjectFiles(projectDir: string): Promise<ProjectFileEntry> {
-  return call(bridge().fs.listProjectFiles(projectDir));
+  return hostCall(bridge().fs.listProjectFiles(projectDir));
 }
 
 /** Create a new file under `dir`. Fails if a file already exists there. */
 export async function createFile(dir: string, name: string, content = ""): Promise<{ path: string; mtimeMs: number }> {
-  return call(bridge().fs.createFile(dir, name, content));
+  return hostCall(bridge().fs.createFile(dir, name, content));
 }
 
 /** Create a new folder under `dir`. Fails if something already exists there. */
 export async function createFolder(dir: string, name: string): Promise<{ path: string }> {
-  return call(bridge().fs.createFolder(dir, name));
+  return hostCall(bridge().fs.createFolder(dir, name));
 }
 
 /** Rename a file/folder in place (same parent dir, new name). */
 export async function renamePath(path: string, newName: string): Promise<{ path: string }> {
-  return call(bridge().fs.renamePath(path, newName));
+  return hostCall(bridge().fs.renamePath(path, newName));
 }
 
 /**
@@ -124,44 +116,44 @@ export async function renamePath(path: string, newName: string): Promise<{ path:
  * safety snapshot fails.
  */
 export async function deletePath(path: string, projectDir: string): Promise<{ ok: true }> {
-  return call(bridge().fs.deletePath(path, projectDir));
+  return hostCall(bridge().fs.deletePath(path, projectDir));
 }
 
 // ── dialog ───────────────────────────────────────────────────────────────
 
 /** Open native directory picker. Resolves null when cancelled. */
 export async function openDirectory(): Promise<string | null> {
-  return call(bridge().dialog.openDirectory());
+  return hostCall(bridge().dialog.openDirectory());
 }
 
 /** Open native PDF save dialog. Resolves null when cancelled. */
 export async function savePdf(defaultName?: string): Promise<string | null> {
-  return call(bridge().dialog.savePdf(defaultName));
+  return hostCall(bridge().dialog.savePdf(defaultName));
 }
 
 /** Open native single image file picker. Resolves null when cancelled. */
 export async function pickImageFile(): Promise<string | null> {
-  return call(bridge().dialog.pickImageFile());
+  return hostCall(bridge().dialog.pickImageFile());
 }
 
 /** Native open dialog for the publish artifact (PDF). Null when cancelled. */
 export async function pickPdfFile(): Promise<string | null> {
-  return call(bridge().dialog.pickPdfFile());
+  return hostCall(bridge().dialog.pickPdfFile());
 }
 
 /** Open native multi-select image file picker. Resolves [] when cancelled. */
 export async function pickImageFiles(): Promise<string[]> {
-  return call(bridge().dialog.pickImageFiles());
+  return hostCall(bridge().dialog.pickImageFiles());
 }
 
 // ── shell ────────────────────────────────────────────────────────────────
 
 /** Open a URL in the system browser. */
 export async function openExternal(url: string): Promise<{ ok: true }> {
-  return call(bridge().shell.openExternal(url));
+  return hostCall(bridge().shell.openExternal(url));
 }
 
 /** Reveal a file in the OS file manager. */
 export async function showInFolder(filePath: string): Promise<{ ok: true }> {
-  return call(bridge().shell.showInFolder(filePath));
+  return hostCall(bridge().shell.showInFolder(filePath));
 }

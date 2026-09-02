@@ -34,7 +34,7 @@
  * HTTP routes used to send as the response body.
  */
 import { bridge } from "../platform/bridge";
-import { friendlyHostError } from "../errors";
+import { hostCall } from "../errors";
 import type {
   ApplyThemeTarget,
   MediaImageDetails,
@@ -51,14 +51,6 @@ import type {
   ThemeInfo,
 } from "../platform/dtos";
 
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
-
 // ── project ──────────────────────────────────────────────────────────────
 
 /**
@@ -67,14 +59,14 @@ async function call<T>(op: Promise<T>): Promise<T> {
  * repo's SHARED stylesheets.
  */
 export async function projectListStyles(projectDir: string, repoRoot?: string | null): Promise<ProjectStyle[]> {
-  return call(bridge().project.listStyles(projectDir, repoRoot));
+  return hostCall(bridge().project.listStyles(projectDir, repoRoot));
 }
 
 // ── manifest ─────────────────────────────────────────────────────────────
 
 /** Read the author-facing manifest subset for the Config view's Details section. */
 export async function manifestRead(projectDir: string): Promise<ProjectConfigFields> {
-  return call(bridge().manifest.read(projectDir));
+  return hostCall(bridge().manifest.read(projectDir));
 }
 
 /** Apply the author-facing manifest field updates (one yaml round-trip). */
@@ -82,19 +74,19 @@ export async function manifestSetFields(
   projectDir: string,
   updates: ProjectConfigFields,
 ): Promise<ProjectConfigFields> {
-  return call(bridge().manifest.setFields(projectDir, updates));
+  return hostCall(bridge().manifest.setFields(projectDir, updates));
 }
 
 // ── tpl ──────────────────────────────────────────────────────────────────
 
 /** List the built-in starter templates (static metadata). */
 export async function tplListBuiltIn(): Promise<TemplateInfo[]> {
-  return call(bridge().tpl.listBuiltIn());
+  return hostCall(bridge().tpl.listBuiltIn());
 }
 
 /** List the user's saved/imported custom templates. */
 export async function tplListCustom(): Promise<TemplateInfo[]> {
-  return call(bridge().tpl.listCustom());
+  return hostCall(bridge().tpl.listCustom());
 }
 
 /**
@@ -107,51 +99,51 @@ export async function tplSaveAsTemplate(opts: {
   name: string;
   sharedRefs?: "vendor" | "exclude";
 }): Promise<SavedTemplateInfo> {
-  return call(bridge().tpl.saveAsTemplate(opts));
+  return hostCall(bridge().tpl.saveAsTemplate(opts));
 }
 
 /** Open a native folder picker and import the selected folder as a template. Resolves null when cancelled. */
 export async function tplImportFromFolder(): Promise<TemplateInfo | null> {
-  return call(bridge().tpl.importFromFolder());
+  return hostCall(bridge().tpl.importFromFolder());
 }
 
 // ── snip ─────────────────────────────────────────────────────────────────
 
 /** List the open project's snippets. */
 export async function snipList(projectDir: string): Promise<SnippetEntry[]> {
-  return call(bridge().snip.list(projectDir));
+  return hostCall(bridge().snip.list(projectDir));
 }
 
 /** Read one snippet's raw body. */
 export async function snipRead(projectDir: string, fileName: string): Promise<string> {
-  return call(bridge().snip.read(projectDir, fileName));
+  return hostCall(bridge().snip.read(projectDir, fileName));
 }
 
 /** Save a snippet body under the project's snippets/ folder. */
 export async function snipSave(projectDir: string, name: string, body: string): Promise<SnippetEntry> {
-  return call(bridge().snip.save(projectDir, name, body));
+  return hostCall(bridge().snip.save(projectDir, name, body));
 }
 
 /** Delete a snippet by filename. */
 export async function snipDelete(projectDir: string, fileName: string): Promise<{ ok: boolean }> {
-  return call(bridge().snip.delete(projectDir, fileName));
+  return hostCall(bridge().snip.delete(projectDir, fileName));
 }
 
 // ── media ────────────────────────────────────────────────────────────────
 
 /** List all image files under a project directory (recursive, bounded). */
 export async function mediaListImages(projectDir: string): Promise<MediaImageEntry[]> {
-  return call(bridge().media.listImages(projectDir));
+  return hostCall(bridge().media.listImages(projectDir));
 }
 
 /** Generate a small (<=192px) thumbnail data URL for an image. Returns null when unavailable. */
 export async function mediaThumbnail(imagePath: string): Promise<string | null> {
-  return call(bridge().media.thumbnail(imagePath));
+  return hostCall(bridge().media.thumbnail(imagePath));
 }
 
 /** Inspect an image file — file size + header metadata (dimensions, DPI, alpha, color space). */
 export async function mediaInspect(imagePath: string): Promise<MediaImageDetails | null> {
-  return call(bridge().media.inspect(imagePath));
+  return hostCall(bridge().media.inspect(imagePath));
 }
 
 /**
@@ -165,14 +157,14 @@ export async function mediaImportImage(
   projectDir: string,
   src: string,
 ): Promise<{ src: string; copied: boolean }> {
-  return call(bridge().media.importImage(projectDir, src));
+  return hostCall(bridge().media.importImage(projectDir, src));
 }
 
 // ── plugin ───────────────────────────────────────────────────────────────
 
 /** List the open project's configured plugins. */
 export async function pluginList(projectDir: string): Promise<ProjectPluginEntry[]> {
-  return call(bridge().plugin.list(projectDir));
+  return hostCall(bridge().plugin.list(projectDir));
 }
 
 /** Enable or disable a configured plugin by ref. */
@@ -181,7 +173,7 @@ export async function pluginSetEnabled(
   ref: string,
   enabled: boolean,
 ): Promise<{ ok: boolean }> {
-  return call(bridge().plugin.setEnabled(projectDir, ref, enabled));
+  return hostCall(bridge().plugin.setEnabled(projectDir, ref, enabled));
 }
 
 /** Download, verify, vendor, and pin an npm plugin (built-ins only need configuring). */
@@ -190,59 +182,59 @@ export async function pluginAddNpm(
   packageName: string,
   exportName?: string,
 ): Promise<ProjectPluginEntry | null> {
-  return call(bridge().plugin.addNpm(projectDir, packageName, exportName));
+  return hostCall(bridge().plugin.addNpm(projectDir, packageName, exportName));
 }
 
 /** Open a native file picker and import the chosen file/folder as a local plugin. Resolves null when cancelled. */
 export async function pluginAddLocal(projectDir: string): Promise<ProjectPluginEntry | null> {
-  return call(bridge().plugin.addLocal(projectDir));
+  return hostCall(bridge().plugin.addLocal(projectDir));
 }
 
 /** Load-test every configured plugin; reports ok/error per entry (degrade-and-report). */
 export async function pluginValidate(projectDir: string): Promise<PluginValidationResult[]> {
-  return call(bridge().plugin.validate(projectDir));
+  return hostCall(bridge().plugin.validate(projectDir));
 }
 
 /** The curated list of recommended plugins (static, no projectDir needed). */
 export async function pluginRecommended(): Promise<RecommendedPlugin[]> {
-  return call(bridge().plugin.recommended());
+  return hostCall(bridge().plugin.recommended());
 }
 
 // ── theme ────────────────────────────────────────────────────────────────
 
 /** List all built-in themes (static metadata). */
 export async function themeListBuiltIn(): Promise<ThemeInfo[]> {
-  return call(bridge().theme.listBuiltIn());
+  return hostCall(bridge().theme.listBuiltIn());
 }
 
 /** List themes already imported into the project. */
 export async function themeListProject(projectDir: string): Promise<ThemeInfo[]> {
-  return call(bridge().theme.listProject(projectDir));
+  return hostCall(bridge().theme.listProject(projectDir));
 }
 
 /** The currently active theme for the project. Null when none applied. */
 export async function themeGetActive(projectDir: string): Promise<ThemeInfo | null> {
-  return call(bridge().theme.getActive(projectDir));
+  return hostCall(bridge().theme.getActive(projectDir));
 }
 
 /** Apply a built-in or project theme. Copies files and wires the manifest. */
 export async function themeApply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
-  return call(bridge().theme.apply(projectDir, target));
+  return hostCall(bridge().theme.apply(projectDir, target));
 }
 
 /** Open a native folder picker and import the selected folder as a theme. Resolves null when cancelled. */
 export async function themeImportFromFolder(projectDir: string): Promise<ThemeInfo | null> {
-  return call(bridge().theme.importFromFolder(projectDir));
+  return hostCall(bridge().theme.importFromFolder(projectDir));
 }
 
 /** Open a native file picker and import a `.zip` package or bare `.css` as a theme. Resolves null when cancelled. */
 export async function themeImportFromFile(projectDir: string): Promise<ThemeImportResult | null> {
-  return call(bridge().theme.importFromFile(projectDir));
+  return hostCall(bridge().theme.importFromFile(projectDir));
 }
 
 /** Import a theme from a remote URL (raw CSS or theme folder). */
 export async function themeImportFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
-  return call(bridge().theme.importFromUrl(projectDir, url));
+  return hostCall(bridge().theme.importFromUrl(projectDir, url));
 }
 
 /** Read the raw CSS of a theme (built-in or project) for preview rendering. */
@@ -250,27 +242,27 @@ export async function themeReadCss(
   projectDir: string | null,
   source: { kind: "builtin" | "project"; id: string },
 ): Promise<string> {
-  return call(bridge().theme.readCss(projectDir, source));
+  return hostCall(bridge().theme.readCss(projectDir, source));
 }
 
 /** Remove a project-local theme by id. */
 export async function themeRemove(projectDir: string, id: string): Promise<{ ok: true }> {
-  return call(bridge().theme.remove(projectDir, id));
+  return hostCall(bridge().theme.remove(projectDir, id));
 }
 
 /** The theme active before the current one — the "Revert" target — or null. */
 export async function themeGetPrevious(projectDir: string): Promise<ThemeInfo | null> {
-  return call(bridge().theme.getPrevious(projectDir));
+  return hostCall(bridge().theme.getPrevious(projectDir));
 }
 
 /** Re-apply the previously active theme. */
 export async function themeRevert(projectDir: string): Promise<ThemeInfo> {
-  return call(bridge().theme.revert(projectDir));
+  return hostCall(bridge().theme.revert(projectDir));
 }
 
 // ── style ────────────────────────────────────────────────────────────────
 
 /** Replace the manifest's active `styles:` list (reorder + toggle). */
 export async function styleSetActive(projectDir: string, paths: string[]): Promise<string[]> {
-  return call(bridge().style.setActive(projectDir, paths));
+  return hostCall(bridge().style.setActive(projectDir, paths));
 }

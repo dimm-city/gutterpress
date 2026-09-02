@@ -20,7 +20,7 @@
  * routes used to send as the response body.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type {
   CloneProgressEvent,
   CloneRepositoryArgs,
@@ -36,14 +36,6 @@ import type {
   SyncOutcome,
   SyncStatus,
 } from "$lib/platform/contract";
-
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
 
 // ── Managed GitHub integration (#15, ADR 0006) ──────────────────────────────
 
@@ -64,7 +56,7 @@ export function connectGitHubCancel(): Promise<{ ok: boolean }> {
 
 /** Forget the stored GitHub connection. */
 export function disconnectGitHub(): Promise<{ ok: boolean }> {
-  return call(bridge().remote.disconnectGitHub());
+  return hostCall(bridge().remote.disconnectGitHub());
 }
 
 /**
@@ -72,32 +64,32 @@ export function disconnectGitHub(): Promise<{ ok: boolean }> {
  * the token — only { connected, username?, label? }.
  */
 export function getRemoteConnection(host?: string): Promise<RemoteConnection> {
-  return call(bridge().remote.getConnection(host));
+  return hostCall(bridge().remote.getConnection(host));
 }
 
 /** Repositories the user granted the Gutterpress GitHub App. */
 export function listRemoteRepositories(): Promise<RemoteRepository[]> {
-  return call(bridge().remote.listRepositories());
+  return hostCall(bridge().remote.listRepositories());
 }
 
 /** Branches of a chosen repository. */
 export function listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]> {
-  return call(bridge().remote.listBranches(owner, repo));
+  return hostCall(bridge().remote.listBranches(owner, repo));
 }
 
 /** Book folders (manifest.yaml/.yml) inside a repository branch. */
 export function listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]> {
-  return call(bridge().remote.listRepoBooks(owner, repo, branch));
+  return hostCall(bridge().remote.listRepoBooks(owner, repo, branch));
 }
 
 /** Classify the project's remote situation for the environment panel. */
 export function diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis> {
-  return call(bridge().remote.diagnoseProject(projectDir));
+  return hostCall(bridge().remote.diagnoseProject(projectDir));
 }
 
 /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
 export function testRemoteAccess(url: string): Promise<RemoteAccessResult> {
-  return call(bridge().remote.testRemoteAccess(url));
+  return hostCall(bridge().remote.testRemoteAccess(url));
 }
 
 /**
@@ -107,32 +99,32 @@ export function testRemoteAccess(url: string): Promise<RemoteAccessResult> {
 export function connectGenericHost(
   args: ConnectGenericHostArgs,
 ): Promise<{ connected: boolean; host: string; username?: string }> {
-  return call(bridge().remote.connectGenericHost(args));
+  return hostCall(bridge().remote.connectGenericHost(args));
 }
 
 /** Forget the stored connection for a host. */
 export function disconnectHost(host: string): Promise<{ ok: boolean }> {
-  return call(bridge().remote.disconnectHost(host));
+  return hostCall(bridge().remote.disconnectHost(host));
 }
 
 /** Redacted list of stored connections (host/username/label — no tokens). */
 export function listHostConnections(): Promise<HostConnectionInfo[]> {
-  return call(bridge().remote.listConnections());
+  return hostCall(bridge().remote.listConnections());
 }
 
 /** Token-settings deep link for recognized forges; null when unknown. */
 export function forgeTokenUrl(host: string): Promise<string | null> {
-  return call(bridge().remote.forgeTokenUrl(host));
+  return hostCall(bridge().remote.forgeTokenUrl(host));
 }
 
 /** Snapshot-first sync of the project to its online repository. */
 export function syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
-  return call(bridge().remote.sync(projectDir, message));
+  return hostCall(bridge().remote.sync(projectDir, message));
 }
 
 /** Download ("clone") a repository into a new local project folder. */
 export function cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
-  return call(bridge().remote.cloneRepository(args));
+  return hostCall(bridge().remote.cloneRepository(args));
 }
 
 /** Subscribe to clone progress events. Returns an unsubscribe fn. */
@@ -157,7 +149,7 @@ export function onSyncStatus(handler: (status: SyncStatus) => void): () => void 
  * Persisted via the host settings store.
  */
 export async function setAutoSync(enabled: boolean): Promise<void> {
-  await call(bridge().sync.setAutoSync(enabled));
+  await hostCall(bridge().sync.setAutoSync(enabled));
 }
 
 /**
@@ -167,5 +159,5 @@ export async function setAutoSync(enabled: boolean): Promise<void> {
  * subscription that lands after an emit never strands on blank/stale status.
  */
 export function getSyncStatus(projectDir: string): Promise<SyncStatus | null> {
-  return call(bridge().sync.getStatus(projectDir) as Promise<SyncStatus | null>);
+  return hostCall(bridge().sync.getStatus(projectDir) as Promise<SyncStatus | null>);
 }

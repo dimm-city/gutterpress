@@ -16,6 +16,21 @@ export function friendlyHostError(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
 }
 
+/**
+ * Awaits one bridge (IPC) call, re-throwing any rejection with the Electron
+ * transport prefix scrubbed off its message (`friendlyHostError`) — the one
+ * wrapper every `$lib/*\/*-capability.ts` module applies to its calls, so
+ * the author-facing text a host handler threw is what a caller's own
+ * `e.message` handling sees.
+ */
+export async function hostCall<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (e) {
+    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
+  }
+}
+
 function isMissingManifestError(msg: string): boolean {
   return (
     /\bNo [^\n]*manifest[^\n]* found(?:\s+in\b|[.!]?\s*$)/i.test(msg) ||

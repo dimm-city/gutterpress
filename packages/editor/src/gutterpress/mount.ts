@@ -1,36 +1,15 @@
 /**
- * SFE-P2b Lane B — `mountGutterpressEditor`: composes the shared editor
- * mount with the projection-driven `renderCustomBlock` provider (D6/G-11).
- *
- * WHY THIS DOES NOT LITERALLY CALL `mountEditor` (run spec: "composing
- * mountEditor + the provider — thin, no new state"): verified by reading
- * `../web/mount.ts` (out of this lane's write ownership — `src/web/**`
- * belongs to another lane) that `EditorMountOptions` has no
- * `viewOptions`/`renderCustomBlock` passthrough today — it hardcodes
- * `viewOptions: { classNames: [FORK_THEME_CLASS_NAME] }` when calling
- * `createVscodeEditorAdapter`, with no seam for a caller to add to it.
- * `renderCustomBlock` MUST be supplied at `EditorView` CONSTRUCTION time
- * (`EditorViewOptions`, consumed once inside `createVscodeEditorAdapter`) —
- * there is no post-mount API to add it afterwards. Widening
- * `EditorMountOptions` would require editing `src/web/mount.ts`, which is
- * outside this lane's write boundary for this run.
- *
- * So this module composes the layer `mountEditor` itself is built on
- * (`createVscodeEditorAdapter`, whose `viewOptions` DOES accept
- * `renderCustomBlock`) plus `mountEditor`'s own exported CSS constants
- * (`../web/fork-editor-css.ts` — plain string constants, a read-only
- * import, not a write), reproducing `mountEditor`'s CSS-injection behavior
- * byte-for-byte (same constants, same injection order, same
- * `container.ownerDocument` scoping, same dispose symmetry) rather than
- * duplicating it by re-deriving it independently. `createVscodeEditorAdapter`
- * is public (`../vscode-adapter/index.ts` — D5's sanctioned import
- * boundary), so this is an ordinary cross-module composition inside
- * `packages/editor`, not a second adapter. Recorded here explicitly per
- * this run's "record every design decision" instruction.
+ * SFE-P2b Lane B — `mountGutterpressEditor`: `mountEditor` (`../web/mount.ts`)
+ * plus the projection-driven `renderCustomBlock` provider (D6/G-11). The
+ * provider is built BEFORE the mount because the fork consumes
+ * `renderCustomBlock` at `EditorView` construction time; everything else —
+ * the `ownerDocument`/style-host guards, the two CSS injections, dispose
+ * symmetry, `getSelection` — is `mountEditor`'s own, reached through its
+ * `renderCustomBlock` option (this module used to reproduce that body
+ * byte-for-byte because the option did not exist yet).
  */
-import { createVscodeEditorAdapter, type VscodeEditorAdapter } from "../vscode-adapter/index.ts";
 import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
-import { FORK_DEFAULT_THEME_CSS, FORK_EDITOR_BASE_CSS, FORK_THEME_CLASS_NAME } from "../web/fork-editor-css.ts";
+import { mountEditor } from "../web/mount.ts";
 import { projectionNeedsRefresh } from "./match.ts";
 import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
@@ -72,26 +51,16 @@ export interface GutterpressEditorMount {
  * Mounts a real `@vscode/markdown-editor` fork surface into `container`,
  * backed by `host`, with `options.projection`'s marker/raw-html blocks and
  * generated views rendered as inactive chips.
- *
- * Mirrors `../web/mount.ts`'s `mountEditor` guard clauses and CSS-injection
- * symmetry exactly (same errors, same scoping) — see this module's header
- * for why it cannot simply delegate to that function.
  */
 export function mountGutterpressEditor(
   container: Element,
   host: EditorDocumentHost,
   options: MountGutterpressEditorOptions,
 ): GutterpressEditorMount {
+  // The provider needs the document before `mountEditor` runs its own guard.
   const doc = container.ownerDocument;
   if (!doc) {
     throw new Error("mountGutterpressEditor: container has no ownerDocument");
-  }
-
-  const styleHost = doc.head ?? doc.documentElement;
-  if (!styleHost) {
-    throw new Error(
-      "mountGutterpressEditor: container's ownerDocument has no <head> or document element to attach editor CSS to",
-    );
   }
 
   // SFE-P2c repair round 1 (finding 5 — "refused plugin regions ship no
@@ -118,39 +87,16 @@ export function mountGutterpressEditor(
     isStale,
   });
 
-  const baseStyleEl = doc.createElement("style");
-  baseStyleEl.setAttribute("data-gp-editor-css", "fork-base");
-  baseStyleEl.textContent = `${FORK_EDITOR_BASE_CSS}\n${FORK_DEFAULT_THEME_CSS}`;
-  styleHost.appendChild(baseStyleEl);
-
-  let extraStyleEl: Element | undefined;
-  if (options.extraCss !== undefined) {
-    extraStyleEl = doc.createElement("style");
-    extraStyleEl.setAttribute("data-gp-editor-css", "extra");
-    extraStyleEl.textContent = options.extraCss;
-    styleHost.appendChild(extraStyleEl);
-  }
-
-  const adapter: VscodeEditorAdapter = createVscodeEditorAdapter(container, host, {
+  const mount = mountEditor(container, host, {
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
-    viewOptions: {
-      classNames: [FORK_THEME_CLASS_NAME],
-      renderCustomBlock: provider.renderCustomBlock,
-    },
+    extraCss: options.extraCss,
+    renderCustomBlock: provider.renderCustomBlock,
   });
 
-  let disposed = false;
-
   return {
-    dispose(): void {
-      if (disposed) return;
-      disposed = true;
-      adapter.dispose();
-      baseStyleEl.remove();
-      extraStyleEl?.remove();
-    },
-    needsRefresh: (): boolean => provider.needsRefresh(host.getSnapshot().version),
-    getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
+    dispose: (): void => mount.dispose(),
+    needsRefresh: isStale,
+    getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
   };
 }

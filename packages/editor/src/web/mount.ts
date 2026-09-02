@@ -1,6 +1,7 @@
 import {
   createVscodeEditorAdapter,
   type VscodeEditorAdapter,
+  type VscodeEditorAdapterOptions,
 } from "../vscode-adapter/index.ts";
 import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
 import {
@@ -86,6 +87,15 @@ export interface EditorMountOptions {
    * `false`.
    */
   readonly readonly?: boolean;
+
+  /**
+   * The fork's `renderCustomBlock` hook (D6/G-11) — must be supplied at
+   * `EditorView` CONSTRUCTION time, so it is threaded straight through to
+   * `createVscodeEditorAdapter`'s `viewOptions`. `../gutterpress/mount.ts`
+   * is the caller; a plain mount leaves it unset and gets the fork's
+   * default block views.
+   */
+  readonly renderCustomBlock?: NonNullable<VscodeEditorAdapterOptions["viewOptions"]>["renderCustomBlock"];
 
   /**
    * An additional stylesheet, appended to `container.ownerDocument` AFTER
@@ -182,7 +192,7 @@ export function mountEditor(
   const adapter: VscodeEditorAdapter = createVscodeEditorAdapter(container, host, {
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
-    viewOptions: { classNames: [FORK_THEME_CLASS_NAME] },
+    viewOptions: { classNames: [FORK_THEME_CLASS_NAME], renderCustomBlock: options.renderCustomBlock },
   });
 
   let disposed = false;

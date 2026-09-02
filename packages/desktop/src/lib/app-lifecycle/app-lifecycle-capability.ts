@@ -26,7 +26,7 @@
  * `$lib/files/files-capability.ts`'s header.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type {
   AppImageIntegrationInstallResult,
   AppImageIntegrationRemoveResult,
@@ -43,14 +43,6 @@ import type {
   MarkdownFileLaunchEvent,
   ProjectState,
 } from "$lib/platform/contract";
-
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
 
 /**
  * Subscribe to debounced folder-change notifications for the open project
@@ -87,29 +79,29 @@ export function watchFolder(path: string, cb: () => void): () => void {
 
 /** Read an operation log file. Returns null when the file doesn't exist. */
 export async function readLog(logPath: string): Promise<string | null> {
-  return call(bridge().log.read(logPath));
+  return hostCall(bridge().log.read(logPath));
 }
 
 /** List the app's diagnostic log files (newest first). */
 export async function listLogs(): Promise<LogFileEntry[]> {
-  return call(bridge().log.list());
+  return hostCall(bridge().log.list());
 }
 
 // ── app (SFE-P5c1) ───────────────────────────────────────────────────────
 
 /** Get desktop prefs (lastProjectDir, recentFolders, projectStates, etc.). */
 export async function getDesktopPrefs(): Promise<DesktopPrefs> {
-  return call(bridge().app.getDesktopPrefs());
+  return hostCall(bridge().app.getDesktopPrefs());
 }
 
 /** Shallow-merge patch into desktop prefs. */
 export async function setDesktopPrefs(prefs: Record<string, unknown>): Promise<{ ok: true }> {
-  return call(bridge().app.setDesktopPrefs(prefs));
+  return hostCall(bridge().app.setDesktopPrefs(prefs));
 }
 
 /** Get per-project editor/preview state for the given projectDir. */
 export async function getDesktopProjectState(projectDir: string): Promise<ProjectState | null> {
-  return call(bridge().app.getDesktopProjectState(projectDir));
+  return hostCall(bridge().app.getDesktopProjectState(projectDir));
 }
 
 /** Set per-project editor/preview state for the given projectDir. */
@@ -117,22 +109,22 @@ export async function setDesktopProjectState(
   projectDir: string,
   state: Record<string, unknown>,
 ): Promise<{ ok: true }> {
-  return call(bridge().app.setDesktopProjectState(projectDir, state));
+  return hostCall(bridge().app.setDesktopProjectState(projectDir, state));
 }
 
 /** Get app settings (merged with defaults). */
 export async function getSettings(): Promise<Record<string, unknown>> {
-  return call(bridge().app.getSettings());
+  return hostCall(bridge().app.getSettings());
 }
 
 /** Deep-merge patch into app settings. */
 export async function setSettings(settings: Record<string, unknown>): Promise<{ ok: true }> {
-  return call(bridge().app.setSettings(settings));
+  return hostCall(bridge().app.setSettings(settings));
 }
 
 /** Get the OS native dark/light theme preference. */
 export async function getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }> {
-  return call(bridge().app.getNativeTheme());
+  return hostCall(bridge().app.getNativeTheme());
 }
 
 /** Get the recent folders list (with `exists` flag). `lastActiveBook` is the
@@ -141,57 +133,57 @@ export async function getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }
 export async function getRecentFolders(): Promise<
   Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>
 > {
-  return call(bridge().app.getRecentFolders());
+  return hostCall(bridge().app.getRecentFolders());
 }
 
 /** Get the favorites list (with `exists` flag). */
 export async function getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>> {
-  return call(bridge().app.getFavorites());
+  return hostCall(bridge().app.getFavorites());
 }
 
 /** Toggle a folder in the favorites list. */
 export async function toggleFavorite(path: string, title: string): Promise<{ favorited: boolean }> {
-  return call(bridge().app.toggleFavorite(path, title));
+  return hostCall(bridge().app.toggleFavorite(path, title));
 }
 
 /** Remove a folder from the recent list. */
 export async function removeRecent(path: string): Promise<{ ok: true }> {
-  return call(bridge().app.removeRecent(path));
+  return hostCall(bridge().app.removeRecent(path));
 }
 
 /** Discover Gutterpress projects under the configured search roots. */
 export async function discoverProjects(): Promise<DiscoveredProject[]> {
-  return call(bridge().app.discoverProjects());
+  return hostCall(bridge().app.discoverProjects());
 }
 
 /** Classify a project folder (source type + capabilities + repo book list). */
 export async function classifyProject(projectDir: string): Promise<ProjectClassification> {
-  return call(bridge().app.classifyProject(projectDir));
+  return hostCall(bridge().app.classifyProject(projectDir));
 }
 
 /** Scaffold a new project from a template. */
 export async function createProject(options: Record<string, unknown>): Promise<CreateProjectResult> {
-  return call(bridge().app.createProject(options));
+  return hostCall(bridge().app.createProject(options));
 }
 
 /** Adopt an existing folder as a Gutterpress project. */
 export async function adoptFolder(options: Record<string, unknown>): Promise<CreateProjectResult> {
-  return call(bridge().app.adoptFolder(options));
+  return hostCall(bridge().app.adoptFolder(options));
 }
 
 /** Push a best-effort dirty-state hint; close still requests a direct flush. */
 export async function setDirtyState(dirty: boolean): Promise<{ ok: true }> {
-  return call(bridge().app.setDirtyState(dirty));
+  return hostCall(bridge().app.setDirtyState(dirty));
 }
 
 /** Persist a failed editor-buffer flush marker in the atomic desktop prefs store. */
 export async function recordFlushFailure(projectDir: string | null): Promise<LastFlushFailure> {
-  return call(bridge().app.recordFlushFailure(projectDir));
+  return hostCall(bridge().app.recordFlushFailure(projectDir));
 }
 
 /** Clear exactly the marker that was surfaced, without racing a newer failure. */
 export async function acknowledgeFlushFailure(failedAt: string): Promise<{ acknowledged: boolean }> {
-  return call(bridge().app.acknowledgeFlushFailure(failedAt));
+  return hostCall(bridge().app.acknowledgeFlushFailure(failedAt));
 }
 
 /**
@@ -201,12 +193,12 @@ export async function acknowledgeFlushFailure(failedAt: string): Promise<{ ackno
  */
 export const appImageIntegration = {
   getStatus(): Promise<AppImageIntegrationStatus> {
-    return call(bridge().app.appImageIntegration.getStatus());
+    return hostCall(bridge().app.appImageIntegration.getStatus());
   },
   install(): Promise<AppImageIntegrationInstallResult> {
-    return call(bridge().app.appImageIntegration.install());
+    return hostCall(bridge().app.appImageIntegration.install());
   },
   remove(): Promise<AppImageIntegrationRemoveResult> {
-    return call(bridge().app.appImageIntegration.remove());
+    return hostCall(bridge().app.appImageIntegration.remove());
   },
 };

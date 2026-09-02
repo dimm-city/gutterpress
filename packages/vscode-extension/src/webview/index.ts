@@ -1,4 +1,4 @@
-import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
+import type { Diagnostic } from "@dimm-city/gutterpress-editor/core";
 import { mountEditor, type EditorMount } from "@dimm-city/gutterpress-editor/web";
 import { mountGutterpressEditor } from "@dimm-city/gutterpress-editor/gutterpress";
 import { pluginLoadFailedDiagnostic } from "../protocol/diagnostics.ts";
@@ -50,7 +50,7 @@ import {
  * already uses one).
  *
  * PROJECTION UPGRADE (reconciliation addendum, integration lane D — the
- * wiring this file's own seam comment on `mountRichSurface` used to defer):
+ * wiring an earlier seam comment in this file used to defer):
  * `handlePresentationInput` below mounts `mountEditor` (standard-Markdown)
  * IMMEDIATELY on the session's own `mode` decision, then UPGRADES to
  * `mountGutterpressEditor` (`@dimm-city/gutterpress-editor/gutterpress`) the
@@ -275,7 +275,11 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
       return;
     }
 
-    if (!mount) mount = mountRichSurface(mountRoot, host, handleDiagnostic);
+    if (!mount) // D9's INITIAL mount for a `mode: "rich"` session: standard Markdown,
+      // available immediately regardless of workspace trust or project
+      // detection; `handlePresentationInput` UPGRADES it to
+      // `mountGutterpressEditor` once a projection arrives.
+      mount = mountEditor(mountRoot, host, { onDiagnostic: handleDiagnostic });
   }
 
   /**
@@ -399,24 +403,6 @@ export function mountGutterpressWebview(container: Element, transport: WebviewHo
   };
 }
 
-/**
- * D9's INITIAL mount decision for a `mode: "rich"` session: standard
- * Markdown, via `mountEditor` from `@dimm-city/gutterpress-editor/web` —
- * independently satisfies "untrusted/plain files still get rich editing,"
- * available immediately regardless of workspace trust or project
- * detection. `handlePresentationInput` (above) is what UPGRADES this to
- * `mountGutterpressEditor` once a projection arrives — see that function's
- * own doc comment and this file's header for the full upgrade design; this
- * function itself stays the plain half only, called once, on the FIRST
- * `presentation-input` a session ever receives.
- */
-function mountRichSurface(
-  container: Element,
-  host: EditorDocumentHost,
-  onDiagnostic: (diagnostic: Diagnostic) => void,
-): EditorMount {
-  return mountEditor(container, host, { onDiagnostic });
-}
 
 /** D14 requires every boundary failure to carry a specific category —
  *  never a generic "failed". A `presentation-input` reply of

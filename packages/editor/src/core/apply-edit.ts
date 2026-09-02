@@ -79,7 +79,7 @@ export function applyEdit(
  * non-integer, non-finite" in one guard; the explicit `< 0` and `from > to`
  * / `to > textLength` checks then cover the remaining D3 range rule.
  */
-function isValidRange(from: number, to: number, textLength: number): boolean {
+export function isValidRange(from: number, to: number, textLength: number): boolean {
   if (!Number.isInteger(from) || !Number.isInteger(to)) return false;
   if (from < 0 || to < 0) return false;
   if (from > to) return false;

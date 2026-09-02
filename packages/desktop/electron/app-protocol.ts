@@ -184,7 +184,7 @@ export function registerAppProtocol(buildDir: string): void {
     }
     try {
       const data = await readFile(resolved);
-      return new Response(new Uint8Array(data), {
+      return new Response(data, {
         headers: { "Content-Type": mimeTypeFor(resolved) },
       });
     } catch (e) {
@@ -196,7 +196,7 @@ export function registerAppProtocol(buildDir: string): void {
         // SPA fallback for a client-side route with no matching file on disk.
         try {
           const fallback = await readFile(path.join(path.resolve(buildDir), "index.html"));
-          return new Response(new Uint8Array(fallback), {
+          return new Response(fallback, {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
         } catch (fallbackErr) {

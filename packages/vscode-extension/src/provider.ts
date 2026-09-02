@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { EDITOR_PROTOCOL_VERSION } from "@dimm-city/gutterpress-editor/core";
+import { RICH_MODE_MAX_CONTENT_BYTES } from "gutterpress/render";
 import { DocumentGateway, type DocumentGatewayLogger, type DocumentGatewayVscodeApi } from "./host/document-gateway.ts";
 import { fileTooLargeDiagnostic } from "./protocol/diagnostics.ts";
 import { validateWebviewToHostMessage } from "./protocol/validate.ts";
@@ -124,20 +125,14 @@ import { resolveEditorProjectionPayload } from "./project/projection.ts";
  */
 
 /**
- * D13's rich-mode ceiling, measured in UTF-8 bytes via `Buffer.byteLength`
- * — matching `packages/desktop/electron/editor-projection.ts`'s
- * `RICH_MODE_MAX_CONTENT_BYTES` exactly (same constant value, same
- * measurement convention) so the SAME limit reads identically across
- * hosts. Duplicated rather than imported: D4/`tools/check-architecture.mjs`
- * forbid `packages/vscode-extension` from importing `packages/desktop` (a
- * Svelte/Electron product shell, not a shared library) — see this
- * package's Rule 4 in that tool. `../protocol/validate.ts`'s own
- * `MAX_MESSAGE_STRING_LENGTH` is a DIFFERENT, browser-safe, UTF-16-length
- * wire-sanity backstop (it cannot use `Buffer`, a Node global, and stay
- * browser-safe) — the two constants answer different questions and are not
- * meant to be unified.
+ * D13's rich-mode ceiling, measured in UTF-8 bytes via `Buffer.byteLength` —
+ * the ONE constant `gutterpress/render` owns, so this host and the desktop's
+ * `electron/editor-projection.ts` gate on the same number by construction.
+ * `../protocol/validate.ts`'s own `MAX_MESSAGE_STRING_LENGTH` is a DIFFERENT,
+ * browser-safe, UTF-16-length wire-sanity backstop; the two are not meant
+ * to be unified.
  */
-export const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+export { RICH_MODE_MAX_CONTENT_BYTES };
 
 /**
  * D15-safe session logger: every call site in `DocumentGateway` and this

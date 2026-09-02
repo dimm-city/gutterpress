@@ -14,7 +14,6 @@ import path from "node:path";
 import {
   findGutterpressProject,
   resolveActiveProjectDir,
-  resolveActiveGutterpressProject,
   resolveProjectForCommand,
 } from "../../src/project/discover.ts";
 
@@ -119,20 +118,6 @@ describe("resolveActiveProjectDir — pure path resolution, no manifest check", 
       workspaceFolderPaths: ["/ws/project", "/ws/project-extra"],
     });
     expect(result).toBe("/ws/project-extra");
-  });
-});
-
-describe("resolveActiveGutterpressProject — combines both", () => {
-  test("returns the project when the resolved directory has a manifest", () => {
-    const dir = makeProjectDir();
-    const result = resolveActiveGutterpressProject({ activeDocumentPath: undefined, workspaceFolderPaths: [dir] });
-    expect(result).toEqual({ projectDir: dir });
-  });
-
-  test("returns undefined when the resolved directory has no manifest", () => {
-    const dir = makeTempDir();
-    const result = resolveActiveGutterpressProject({ activeDocumentPath: undefined, workspaceFolderPaths: [dir] });
-    expect(result).toBeUndefined();
   });
 });
 

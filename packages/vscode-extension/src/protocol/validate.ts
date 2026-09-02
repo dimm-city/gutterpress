@@ -1,6 +1,11 @@
 import {
+  ACCESSOR_PROPERTY as ACCESSOR,
   DIAGNOSTIC_CATEGORIES,
   EDITOR_PROTOCOL_VERSION,
+  PROJECTION_SCHEMA_VERSION,
+  describeType,
+  isPlainObject,
+  ownField,
   validateDocumentSnapshot,
   validateSourceEdit,
   type Diagnostic,
@@ -80,37 +85,6 @@ export type ProtocolValidationResult<T> =
  * unbounded string, not to enforce the real rich-mode size policy.
  */
 const MAX_MESSAGE_STRING_LENGTH = 4 * 1024 * 1024;
-
-/** Sentinel returned by `ownField` when the named property is an accessor
- *  (never invoked — see the doc comment below). */
-const ACCESSOR: unique symbol = Symbol("vscode-extension-protocol-validate-accessor-rejected");
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Reads an OWN property by exact key via its property descriptor, exactly
- * mirroring `packages/editor/src/core/validate.ts`'s `ownField` defense
- * (prototype-pollution safe via `Object.getOwnPropertyDescriptor`, accessor
- * properties rejected rather than invoked — closes the same TOCTOU gap that
- * module's header describes). Reimplemented locally because `ownField` is
- * private to that module (not exported); the actual D3 SHAPE rules it backs
- * — where the real duplication risk would matter — are reused directly via
- * `validateSourceEdit`/`validateDocumentSnapshot` below, not re-derived.
- */
-function ownField(obj: object, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(obj, key);
-  if (!descriptor) return undefined;
-  if (descriptor.get || descriptor.set) return ACCESSOR;
-  return descriptor.value;
-}
-
-function describeType(value: unknown): string {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  return typeof value;
-}
 
 function fail(
   reason: ProtocolRejectionReason,
@@ -297,19 +271,6 @@ export function validateWebviewToHostMessage(message: unknown): ProtocolValidati
 }
 
 /**
- * Mirrors `gutterpress/render`'s `PROJECTION_SCHEMA_VERSION` (currently `1`)
- * — NOT imported as a value: this file stays type-only + primitive checks by
- * design (see `messages.ts`'s header — "no VALUE import of any kind"), and
- * every other browser-facing consumer of `gutterpress/render` in this
- * codebase (`packages/editor/src/gutterpress/*.ts`) type-imports it too,
- * never as a value. A schema bump is a D1 decision-record amendment
- * regardless, so this literal moving out of lockstep with the real constant
- * is already a documented, deliberate-change scenario, not a silent-drift
- * risk.
- */
-const KNOWN_PROJECTION_SCHEMA_VERSION = 1;
-
-/**
  * SHALLOW, top-level structural check for `PresentationInputMessage.projection` —
  * deliberately not a deep per-block validator. No runtime validator for the
  * full `GutterpressProjection` shape (every `ProjectedBlock` kind variant,
@@ -339,8 +300,8 @@ function validateProjectionShape(value: unknown): ProtocolValidationResult<Gutte
   const diagnostics = ownField(value, "diagnostics");
   const errors: string[] = [];
 
-  if (schemaVersion !== KNOWN_PROJECTION_SCHEMA_VERSION) {
-    errors.push(`"projection.schemaVersion" must be ${KNOWN_PROJECTION_SCHEMA_VERSION}`);
+  if (schemaVersion !== PROJECTION_SCHEMA_VERSION) {
+    errors.push(`"projection.schemaVersion" must be ${PROJECTION_SCHEMA_VERSION}`);
   }
   if (typeof sourceVersion !== "number" || !Number.isFinite(sourceVersion)) {
     errors.push('"projection.sourceVersion" must be a finite number');

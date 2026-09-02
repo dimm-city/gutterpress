@@ -20,7 +20,7 @@
  * describes for a multi-line command. No other line changes.
  */
 import {
-  fencedCodeBlockRanges,
+  isInsideFencedCodeBlock,
   lineAfter,
   lineAt,
   lineBefore,
@@ -29,8 +29,9 @@ import {
 } from "./line-utils.ts";
 import type { ComputedEdit } from "./wrap-inline.ts";
 
-export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
-export type SetHeadingLevel = HeadingLevel | "none";
+import type { HeadingLevel, SetHeadingLevel } from "../../core/commands.ts";
+
+export type { HeadingLevel, SetHeadingLevel };
 
 const ATX_RE = /^(#{1,6}) /;
 const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
@@ -113,9 +114,7 @@ export function computeSetHeading(
 ): { readonly edit: ComputedEdit } | { readonly refusal: HeadingRefusal } {
   const line = lineAt(text, caretOffset);
 
-  const insideFence = fencedCodeBlockRanges(text).some(
-    (r) => line.start >= r.start && line.start < r.end,
-  );
+  const insideFence = isInsideFencedCodeBlock(text, line.start);
   if (insideFence) {
     return { refusal: { reason: "inside-fenced-code-block" } };
   }

@@ -433,14 +433,10 @@ export async function publishSetConfig(
 
 /**
  * Pre-build publish preflight (#105): run the SOURCE + ASSET checks (no PDF
- * build) for a project, scoped to the selected destinations. No `hooks` bag
- * needed — see this module's header.
+ * build) for a project. No `hooks` bag needed — see this module's header.
  */
-export async function publishPreflight(rawProjectDir: unknown, rawProviderIds: unknown): Promise<PreflightRow[]> {
+export async function publishPreflight(rawProjectDir: unknown, _rawProviderIds: unknown): Promise<PreflightRow[]> {
   const projectDir = await requireProjectDir(rawProjectDir, "publish:preflight");
-  const providerIds = Array.isArray(rawProviderIds)
-    ? rawProviderIds.filter((x): x is string => typeof x === "string")
-    : [];
 
   const lib = await loadLib();
   const execution = await lib.executeValidation({
@@ -470,14 +466,8 @@ export async function publishPreflight(rawProjectDir: unknown, rawProviderIds: u
     };
   });
 
-  // Provider-awareness (#105): no provider-scoped registry checks exist yet
-  // (see the deleted route's own note) — this loop is intentionally a no-op,
-  // kept so a future `provider.<id>.*` check category slots in without
-  // reshaping this function.
-  for (const _providerId of providerIds) {
-    void _providerId;
-  }
-
+  // Provider-awareness (#105): the renderer still sends `providerIds`, but no
+  // provider-scoped check category exists yet, so nothing reads it.
   return shapePreflight(raws);
 }
 

@@ -9,6 +9,10 @@
  * it without pulling those in.
  */
 export { applyCommand, type ApplyCommandResult, type CommandSelection } from "./apply-command.ts";
+// Building blocks a host reuses PER LINE / per caret where `applyCommand`
+// already returns the combined answer (desktop `toolbar-actions.ts`).
+export { minimalReplacement } from "./line-utils.ts";
+export { currentHeadingLevel } from "./heading.ts";
 export {
   commandState,
   type CommandStateEntry,

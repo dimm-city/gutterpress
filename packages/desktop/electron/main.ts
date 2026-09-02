@@ -48,6 +48,10 @@ import { createPickedFilesService, createSavePathsService } from "./server-bridg
 import { createSecureHandle } from "./server-bridge/secure-handle";
 import { registerGitHubDeviceFlowHandlers } from "./github-device-flow-registrar";
 import { registerGoogleConnectFlowHandlers } from "./google-connect-flow-registrar";
+// The one process-wide `gutterpress` lib cache — shared with every
+// `electron/api/*.ts` handler (SFE-P5c2/P5c4; this file used to keep a
+// private copy for the deleted SvelteKit routes' sake).
+import { loadLib, type LibModule } from "./api/lib-loader";
 // SFE-P5c1: fs/dialog/shell/log/app moved from SvelteKit HTTP routes to typed
 // IPC. Each module below is the main-process logic the deleted +server.ts
 // handlers used to run — see electron/api/*.ts's own header comments.
@@ -258,17 +262,6 @@ interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
   diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
-}
-
-type LibModule = typeof import("gutterpress");
-
-let libPromise: Promise<LibModule> | null = null;
-
-function loadLib(): Promise<LibModule> {
-  if (!libPromise) {
-    libPromise = import("gutterpress");
-  }
-  return libPromise;
 }
 
 // ──────────────────────────────────────────────────────────────────────────

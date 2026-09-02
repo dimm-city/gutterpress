@@ -99,12 +99,6 @@ export function resolveActiveProjectDir(params: ActiveProjectDirParams): string 
   return undefined;
 }
 
-/** Combines {@link resolveActiveProjectDir} and {@link findGutterpressProject}
- *  — the one function the three commands actually call. */
-export function resolveActiveGutterpressProject(params: ActiveProjectDirParams): GutterpressProjectInfo | undefined {
-  return findGutterpressProject(resolveActiveProjectDir(params));
-}
-
 /**
  * Why a command could not find a project to act on — D14: "fails with a
  * SPECIFIC diagnostic when its precondition is absent (no project -> say

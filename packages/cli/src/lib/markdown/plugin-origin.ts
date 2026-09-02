@@ -556,22 +556,30 @@ function describeRule(pluginRuleNames: readonly string[]): string {
 }
 
 /**
- * The pure diff/classification core (rules 3 and 4 — see this module's own
- * header for the full design and the six named refusal shapes). Exported
- * directly so tests can exercise EACH shape with hand-constructed
- * `before`/`after` arrays where a realistic markdown-it pipeline cannot
- * naturally produce it (e.g. object-identity duplication), alongside
- * pipeline-driven fixtures for the shapes that arise naturally (clean
- * splice, partial evidence, consume-all).
+ * Everything the per-token resolver needs that depends ONLY on the snapshot
+ * pair, not on which token is being queried: the before/after identity
+ * indexes, the "reliable survivor" predicate they define, and the global
+ * shape-1 (interleaved-edits) verdict. Built ONCE per `after` array —
+ * `registerPluginOriginCapture` slices a fresh array per `md.parse()`, so
+ * the array is the snapshot's identity — and reused across every map-less
+ * plugin token `createEditorProjection` queries from that parse; before
+ * this cache each query rebuilt all four maps and re-ran the survivor-order
+ * pass over the whole token stream (~5·N work per token).
  */
-export function resolvePluginTokenOriginFromSnapshot(
-  token: Token,
-  tokenIndex: number,
-  after: readonly Token[],
-  before: readonly Token[],
-  pluginRuleNames: readonly string[],
-): PluginOriginResult {
-  const rule = describeRule(pluginRuleNames);
+interface SnapshotIndex {
+  readonly beforeIndexOf: ReadonlyMap<Token, number>;
+  readonly afterCount: ReadonlyMap<Token, number>;
+  readonly afterIndexOf: ReadonlyMap<Token, number>;
+  readonly isReliableSurvivor: (t: Token) => boolean;
+  /** Shape 1: some reliable survivor appears in a different relative order after vs. before. */
+  readonly interleaved: boolean;
+}
+
+const snapshotIndexCache = new WeakMap<readonly Token[], SnapshotIndex>();
+
+function snapshotIndexFor(after: readonly Token[], before: readonly Token[]): SnapshotIndex {
+  const cached = snapshotIndexCache.get(after);
+  if (cached) return cached;
 
   const beforeIndexOf = new Map<Token, number>();
   const beforeDuplicates = new Set<Token>();
@@ -592,26 +600,55 @@ export function resolvePluginTokenOriginFromSnapshot(
   const isReliableSurvivor = (t: Token): boolean =>
     beforeIndexOf.has(t) && !beforeDuplicates.has(t) && (afterCount.get(t) ?? 0) === 1;
 
-  // Shape 1 — INTERLEAVED EDITS: global survivor-order check across the
-  // WHOLE snapshot, once. A violation means this document's plugin activity
-  // reordered content, not just replaced it — no local anchor pair anywhere
-  // can then be trusted (see header "HONEST VERDICT").
+  let interleaved = false;
   let previousAfterIdx = -1;
-  for (let i = 0; i < before.length; i++) {
+  for (let i = 0; i < before.length && !interleaved; i++) {
     const t = before[i]!;
     if (!isReliableSurvivor(t)) continue;
     const afterIdx = afterIndexOf.get(t)!;
-    if (afterIdx <= previousAfterIdx) {
-      return {
-        ok: false,
-        reason:
-          `Refusing: ${rule} reordered other tokens elsewhere in this document — a token ` +
-          `that survives the plugin boundary appears in a different relative order before ` +
-          `vs. after, so no local origin near "${token.type}" can be trusted (interleaved ` +
-          `edits). Edit this content in source mode.`,
-      };
-    }
+    if (afterIdx <= previousAfterIdx) interleaved = true;
     previousAfterIdx = afterIdx;
+  }
+
+  const index: SnapshotIndex = { beforeIndexOf, afterCount, afterIndexOf, isReliableSurvivor, interleaved };
+  snapshotIndexCache.set(after, index);
+  return index;
+}
+
+/**
+ * The pure diff/classification core (rules 3 and 4 — see this module's own
+ * header for the full design and the six named refusal shapes). Exported
+ * directly so tests can exercise EACH shape with hand-constructed
+ * `before`/`after` arrays where a realistic markdown-it pipeline cannot
+ * naturally produce it (e.g. object-identity duplication), alongside
+ * pipeline-driven fixtures for the shapes that arise naturally (clean
+ * splice, partial evidence, consume-all).
+ */
+export function resolvePluginTokenOriginFromSnapshot(
+  token: Token,
+  tokenIndex: number,
+  after: readonly Token[],
+  before: readonly Token[],
+  pluginRuleNames: readonly string[],
+): PluginOriginResult {
+  const rule = describeRule(pluginRuleNames);
+
+  const { beforeIndexOf, afterCount, isReliableSurvivor, interleaved } = snapshotIndexFor(after, before);
+
+  // Shape 1 — INTERLEAVED EDITS: global survivor-order check across the
+  // WHOLE snapshot, computed once per snapshot (see `snapshotIndexFor`). A
+  // violation means this document's plugin activity reordered content, not
+  // just replaced it — no local anchor pair anywhere can then be trusted
+  // (see header "HONEST VERDICT").
+  if (interleaved) {
+    return {
+      ok: false,
+      reason:
+        `Refusing: ${rule} reordered other tokens elsewhere in this document — a token ` +
+        `that survives the plugin boundary appears in a different relative order before ` +
+        `vs. after, so no local origin near "${token.type}" can be trusted (interleaved ` +
+        `edits). Edit this content in source mode.`,
+    };
   }
 
   // Shape 2a — COPY / MULTIPLE OVERLAPPING SPLICES (object-identity
@@ -829,7 +866,7 @@ export function resolvePluginTokenOrigin(token: Token, env: unknown): PluginOrig
         `Edit this content in source mode.`,
     };
   }
-  const tokenIndex = snapshot.after.indexOf(token);
+  const tokenIndex = snapshotIndexFor(snapshot.after, snapshot.before).afterIndexOf.get(token) ?? -1;
   if (tokenIndex === -1) {
     return {
       ok: false,

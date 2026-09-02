@@ -33,12 +33,16 @@ export type {
   GutterpressPluginExport,
 } from "./lib/markdown/renderer";
 
-export { MARKER_CSS } from "./lib/markdown/markers.js";
+export { MARKER_CSS, KNOWN_KINDS } from "./lib/markdown/markers.js";
 
 export { sourceTokenOccurrenceAt, inlineSourceMetaOf } from "./lib/markdown/inline-source";
 export type { InlineSourceMeta } from "./lib/markdown/inline-source";
 
-export { createEditorProjection, PROJECTION_SCHEMA_VERSION } from "./lib/markdown/editor-projection";
+export {
+  createEditorProjection,
+  PROJECTION_SCHEMA_VERSION,
+  RICH_MODE_MAX_CONTENT_BYTES,
+} from "./lib/markdown/editor-projection";
 export type {
   GutterpressProjection,
   ProjectedBlock,

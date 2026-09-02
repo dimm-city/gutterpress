@@ -104,7 +104,7 @@ function isBareToken(token) {
  * rule in CLAUDE.md §5 means by project plugins adding BRANDED component
  * markers.
  */
-const KNOWN_KINDS = [
+export const KNOWN_KINDS = [
   'chapter',
   'spread',
   'page',

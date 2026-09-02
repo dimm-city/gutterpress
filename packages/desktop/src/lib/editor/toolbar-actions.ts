@@ -114,7 +114,7 @@
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection, type Text } from "@codemirror/state";
 import type { Diagnostic, EditorCommand, LayoutBlockKind } from "@dimm-city/gutterpress-editor/core";
-import { applyCommand, commandState } from "@dimm-city/gutterpress-editor/standard";
+import { applyCommand, currentHeadingLevel, minimalReplacement } from "@dimm-city/gutterpress-editor/standard";
 import {
   IMAGE_POSITION_OPTIONS,
   IMAGE_SIZE_OPTIONS,
@@ -203,39 +203,6 @@ function applyWrapCommand(view: EditorView, command: EditorCommand, canonicalLen
 }
 
 /**
- * Narrows a "line `lineFrom` currently reads `oldText`, should become
- * `newText`" change to the smallest range that still produces the
- * identical result, by trimming any common leading/trailing substring —
- * the same idea as the shared editor package's `line-utils.ts`
- * `minimalReplacement` (not imported: that module is a PRIVATE
- * implementation file of `src/web/standard/`, not part of the package's
- * `"./standard"` export surface), reimplemented locally because
- * `applyBlockLevelCommand` below needs it PER LINE, not for the one
- * combined multi-line edit `applyCommand` already returns.
- */
-function minimalLineChange(
-  lineFrom: number,
-  oldText: string,
-  newText: string,
-): { from: number; to: number; insert: string } {
-  const maxPrefix = Math.min(oldText.length, newText.length);
-  let prefix = 0;
-  while (prefix < maxPrefix && oldText[prefix] === newText[prefix]) prefix++;
-
-  const maxSuffix = Math.min(oldText.length - prefix, newText.length - prefix);
-  let suffix = 0;
-  while (suffix < maxSuffix && oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]) {
-    suffix++;
-  }
-
-  return {
-    from: lineFrom + prefix,
-    to: lineFrom + oldText.length - suffix,
-    insert: newText.slice(prefix, newText.length - suffix),
-  };
-}
-
-/**
  * Dispatches a multi-line block toggle (`toggle-blockquote`/
  * `toggle-list`) as N PER-LINE MINIMAL changes — this file's own
  * pre-mapping convention for these three actions (a zero-width marker
@@ -275,7 +242,7 @@ function applyBlockLevelCommand(view: EditorView, command: EditorCommand): void 
   const changes = [];
   for (let n = startLine; n <= endLine; n++) {
     const l = view.state.doc.line(n);
-    changes.push(minimalLineChange(l.from, l.text, insertedLines[n - startLine] ?? ""));
+    changes.push(minimalReplacement(l.from, l.text, insertedLines[n - startLine] ?? ""));
   }
   view.dispatch({ changes });
 }
@@ -464,7 +431,7 @@ export function applyHeading(view: EditorView, level: 1 | 2 | 3 | 4): void {
   const snapshot = { text, version: 0 };
   const selection = { start: from, endExclusive: from };
 
-  const active = commandState(snapshot, selection)["set-heading"].level;
+  const active = currentHeadingLevel(text, from);
   const targetLevel = active === level ? "none" : level;
 
   const result = applyCommand(snapshot, selection, { kind: "set-heading", level: targetLevel });

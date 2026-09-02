@@ -17,18 +17,10 @@
  * has no surrounding `try` — actually catches the off-host case.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type { DoctorDiagnostics } from "$lib/platform/dtos";
-
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
 
 /** System + tool diagnostics (tool paths, versions, Chromium/Electron info). */
 export async function getDoctorDiagnostics(): Promise<DoctorDiagnostics> {
-  return call(bridge().doctor.getDiagnostics());
+  return hostCall(bridge().doctor.getDiagnostics());
 }

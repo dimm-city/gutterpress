@@ -88,7 +88,8 @@ import type {
   SourceEdit,
 } from "@dimm-city/gutterpress-editor/core";
 import { diagnosticForEditRejection } from "@dimm-city/gutterpress-editor/core";
-import { applyCommand, commandState, type CommandSelection } from "@dimm-city/gutterpress-editor/standard";
+import { applyCommand, currentHeadingLevel, type CommandSelection } from "@dimm-city/gutterpress-editor/standard";
+import { KNOWN_KINDS } from "gutterpress/render";
 import { descriptorForLayoutBlock } from "./toolbar-actions";
 // SFE-P3d-parity, Lane D — the shared pure locate/compute core for the
 // caret-driven image-properties/image-unwrap/link-edit commands below (see
@@ -209,7 +210,7 @@ function resolveHeadingToggle(
   command: EditorCommand,
 ): EditorCommand {
   if (command.kind !== "set-heading" || command.level === "none") return command;
-  const active = commandState(snapshot, selection)["set-heading"].level;
+  const active = currentHeadingLevel(snapshot.text, selection.start);
   return active === command.level ? { kind: "set-heading", level: "none" } : command;
 }
 
@@ -646,22 +647,8 @@ export interface SourceBlock {
   readonly markerKind: string | null;
 }
 
-/**
- * Inlined copy of `packages/cli/src/lib/markdown/markers.js`'s
- * `KNOWN_KINDS` (CLAUDE.md §5 — a narrow copy, not an import: this module
- * is browser-safe and Lane B may not import `packages/cli`). Kept in sync
- * by hand; `markers.js` is the grammar's source of truth.
- */
-const KNOWN_MARKER_KINDS = new Set([
-  "chapter",
-  "spread",
-  "page",
-  "section",
-  "continue",
-  "page-break",
-  "column-break",
-  "end-section",
-]);
+/** `markers.js`'s `KNOWN_KINDS` (the grammar's source of truth), via the public `gutterpress/render` surface. */
+const KNOWN_MARKER_KINDS: ReadonlySet<string> = new Set(KNOWN_KINDS);
 
 /**
  * Marker kinds with NO open/close scope semantics — `markers.js` never

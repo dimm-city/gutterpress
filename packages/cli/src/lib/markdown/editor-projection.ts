@@ -277,7 +277,7 @@
  * markers.js's OWN chapter-opener does — `new state.Token(...)` with no
  * map/meta at all), this module cannot honestly attribute a range to it by
  * itself — inventing one would be exactly the AP-05 guess D6/G-05 forbid.
- * The call site below hands this case to `resolveMaplessPluginTokenOrigin`,
+ * The call site below hands this case to `resolvePluginRegionOrigin`,
  * which now delegates to `plugin-origin.ts`'s evidence-based
  * before/after-token-stream-object-identity mechanism (that module's own
  * header documents the full design: rule 3's clean-splice recovery and rule
@@ -286,7 +286,7 @@
  * `registerPluginOriginCapture` call could not bracket — becomes the SAME
  * shape of `EDITOR_UNSUPPORTED_PROJECTION` diagnostic this module has always
  * used for an unattributable token; the call site's own diagnostic text is
- * unchanged from P2b/Lane A (see `resolveMaplessPluginTokenOrigin`'s own doc
+ * unchanged from P2b/Lane A (see `resolvePluginRegionOrigin`'s own doc
  * comment for the exact contract).
  *
  * PLUGIN CSS: `collectPluginCss(loadedPlugins)` (`renderer.ts`) concatenates
@@ -334,10 +334,7 @@
  *      real bytes were never emitted).
  *
  * `limited` is intentionally NOT set by caps 2/3 — see cap 1's paragraph
- * above. `refusalReason` is spec'd on `ProjectedBlock` for a "future refused-
- * but-still-anchored block shape... unused by this run" (Lane A's own
- * comment on that field, preserved) — the payload caps do not repurpose it;
- * they go through the existing `diagnostics` channel like every other
+ * above; the payload caps go through the existing `diagnostics` channel like every other
  * refusal in this module, so a consumer has exactly one place to look.
  */
 import type MarkdownIt from "markdown-it";
@@ -383,8 +380,6 @@ export interface ProjectedBlock {
   readonly inactiveHtml?: string;
   /** Source-derived, presentation-safe attributes (AP-06) — never written back to source. */
   readonly viewAttributes?: Readonly<Record<string, string>>;
-  /** Reserved for a future refused-but-still-anchored block shape; unused by this run (ambiguous cases produce a diagnostic with NO block instead). */
-  readonly refusalReason?: string;
 }
 
 /**
@@ -689,7 +684,7 @@ const BASE_PIPELINE_OPEN_TOKEN_TYPES = new Set<string>([
  * (SFE-P2c repair round 1 — finding: the rich, rule-named reason
  * `plugin-origin.ts` computes used to be discarded at the call site and
  * replaced with one fixed generic string for all six rule-4 shapes; see
- * {@link resolveMaplessPluginTokenOrigin} and its call site below, which
+ * {@link resolvePluginRegionOrigin} and its call site below, which
  * now use `reason` directly as the projected diagnostic's text).
  */
 type PluginRegionOrigin =
@@ -697,54 +692,50 @@ type PluginRegionOrigin =
   | { readonly ok: false; readonly reason: string };
 
 /**
- * SFE-P2c Lane B INTEGRATION POINT (now wired) — see the run spec's "Origin
- * mechanism" section (docs/plans/source-first-editor/runs/SFE-P2c.md) and
- * `plugin-origin.ts`'s own module header for the full design: rule 3, a
- * single clean before/after core-rule-boundary splice where every removed
- * token carried complete range evidence, yielding origin = the union of the
- * removed run's ranges; rule 4 (refuse, six distinct shapes) for every other
- * case.
+ * The ONE corroborate-and-convert path for a trusted, project-plugin-produced,
+ * nesting===1 open token: takes the LINE range the token's own
+ * `data-source-range` evidence claims (`parsedRange`, the evidence-bearing
+ * case — `source_range.ts` runs LAST, after every custom plugin, so a plugin
+ * that preserved `token.map` gets stamped directly), or, when the token
+ * carries no evidence, RECOVERS one through `plugin-origin.ts`'s
+ * `resolvePluginTokenOrigin` (rule 3: a single clean before/after
+ * core-rule-boundary splice; rule 4: refuse, six named shapes — see that
+ * module's header), which reads the before/after snapshot
+ * `registerPluginOriginCapture` stashed on `env` during `md.parse()`.
  *
- * Called ONLY for a trusted, project-plugin-produced, nesting===1 open
- * token that carries NO `data-source-range` evidence of its own (the
- * evidence-bearing case is handled directly at the call site below, and
- * ALSO now runs through {@link pluginRegionLinesLookAuthored} there before
- * being trusted). Delegates the recovery itself entirely to
- * `plugin-origin.ts`'s `resolvePluginTokenOrigin`, which reads the
- * before/after snapshot `registerPluginOriginCapture` stashed on `env`
- * during `md.parse()` (see `createEditorProjection` below, where `env` is
- * threaded through instead of being a throwaway `{}`).
- *
- * `env`/`starts`/`source` convert `plugin-origin.ts`'s LINE range (the same
- * `token.map` convention `source-range.ts` and this module's own
- * marker-family branch use) to the CHAR range this function's return type
- * promises, via the SAME `charRangeForLines` helper the `parsed` branch
- * already uses — but ONLY after {@link pluginRegionLinesLookAuthored}
- * corroborates it against `source` (SFE-P2c repair round 1: closes a
- * confirmed finding that neither this branch nor the evidence-bearing one
- * ever checked a claimed range against source content at all). This
- * function still never throws and never returns a guessed range for a
- * refusal — but now returns `plugin-origin.ts`'s OWN rule-named reason
- * (repair round 1 — previously discarded in favor of one fixed generic
- * string for all six rule-4 shapes), prefixed with the token type to match
- * this module's own diagnostic-text convention elsewhere.
+ * Either way the claimed range is corroborated against `source` by
+ * {@link pluginRegionLinesLookAuthored} BEFORE being trusted (SFE-P2c
+ * repair round 1: closes a confirmed finding that neither case checked a
+ * claimed range against source content at all), then converted from the
+ * `token.map` LINE convention to the CHAR range this module's blocks carry
+ * via {@link charRangeForLines}. Never throws; never returns a guessed range
+ * for a refusal — a refusal carries the rule-named reason (prefixed with the
+ * token type, this module's diagnostic-text convention).
  */
-function resolveMaplessPluginTokenOrigin(
+function resolvePluginRegionOrigin(
   token: Token,
+  parsedRange: readonly [number, number] | null,
   env: unknown,
   starts: readonly number[],
   source: string,
 ): PluginRegionOrigin {
-  const result = resolvePluginTokenOrigin(token, env);
-  if (!result.ok) {
-    return { ok: false, reason: `"${token.type}": ${result.reason}` };
+  let fromLine: number;
+  let toLine: number;
+  let claim: "resolved" | "recovered origin";
+  if (parsedRange) {
+    [fromLine, toLine] = parsedRange;
+    claim = "resolved";
+  } else {
+    const result = resolvePluginTokenOrigin(token, env);
+    if (!result.ok) return { ok: false, reason: `"${token.type}": ${result.reason}` };
+    [fromLine, toLine] = result.range;
+    claim = "recovered origin";
   }
-  const [fromLine, toLine] = result.range;
   if (!pluginRegionLinesLookAuthored(source, starts, fromLine, toLine)) {
     return {
       ok: false,
       reason:
-        `"${token.type}" token's recovered origin range does not corroborate against source ` +
+        `"${token.type}" token's ${claim} range does not corroborate against source ` +
         `(a container-prefixed first line, a nested Gutterpress marker line, or an ` +
         `out-of-bounds line claim) — refusing to project a plugin-region whose evidence ` +
         `cannot be verified against source. Edit this content in source mode.`,
@@ -768,19 +759,39 @@ export const MAX_INACTIVE_HTML_BYTES = 1024 * 1024;
 /** D13 — aggregate cap, in UTF-8 bytes (8 MiB), across every kept (non-placeholder) HTML payload this call emits. */
 export const MAX_AGGREGATE_HTML_BYTES = 8 * 1024 * 1024;
 
+/** D13: rich mode's own file-size ceiling — a document over this many UTF-8
+ *  bytes opens in source mode instead of building a projection at all. One
+ *  constant, exported through `gutterpress/render`, so the desktop host, the
+ *  VS Code extension and their tests all gate on the same number. */
+export const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+
 /** Fixed, tiny, safe replacement for an HTML payload that tripped either the per-payload or the aggregate cap. Never derived from the oversized content itself — nothing about the omitted bytes is echoed back. Exported (not just an internal constant) so tests assert exact equality instead of a loose substring match. */
 export const HTML_PAYLOAD_PLACEHOLDER =
   '<div class="gp-projection-omitted" aria-hidden="true">Content omitted (over the Gutterpress editor size limit) — edit in source mode.</div>';
 
-// Reused across every payload this call measures — a module-scope encoder
-// carries no per-call state, so one instance is correct and avoids
-// reallocating it per payload (`TextEncoder` is browser-safe: no
-// `node:buffer`/`Buffer`, per D13's own "measure... browser-safe").
-const textEncoder = new TextEncoder();
-
-/** D13's byte convention: UTF-8 byte length via `TextEncoder` (browser-safe), NOT `string.length` (UTF-16 code units) and NOT a Node `Buffer`. */
+/**
+ * D13's byte convention: UTF-8 byte length, NOT `string.length` (UTF-16 code
+ * units) and NOT a Node `Buffer` (browser-safe). Counted straight off the
+ * code units — `TextEncoder.encode(html).length` gives the same answer but
+ * allocates a full second copy of every payload it measures (up to 1 MiB
+ * each, 8 MiB aggregate per projection). A lone surrogate counts 3 bytes,
+ * exactly as `TextEncoder` encodes it (U+FFFD).
+ */
 function utf8ByteLength(html: string): number {
-  return textEncoder.encode(html).length;
+  let bytes = 0;
+  for (let i = 0; i < html.length; i++) {
+    const c = html.charCodeAt(i);
+    if (c < 0x80) bytes += 1;
+    else if (c < 0x800) bytes += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < html.length) {
+      const next = html.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
 }
 
 /** Mutable running total for the aggregate cap — threaded through one `createEditorProjection` call only, never module-level state (a thrown/concurrent render must not leak a count into the next call). */
@@ -1000,7 +1011,7 @@ export function createEditorProjection(
   // plugin-origin.ts's header PART 1) and thread a real `env` object through
   // `md.parse()` (rather than a throwaway `{}`) so the before/after snapshot
   // that registration stashes survives past this call for
-  // `resolveMaplessPluginTokenOrigin` to read below. Idempotent and a safe
+  // `resolvePluginRegionOrigin` to read below. Idempotent and a safe
   // no-op on any `md` without Gutterpress's own pipeline applied — see that
   // function's own doc comment.
   registerPluginOriginCapture(md);
@@ -1196,18 +1207,7 @@ export function createEditorProjection(
       // `pluginRegionLinesLookAuthored`'s own doc comment for the three
       // over-claim shapes this closes). NO-EVIDENCE case (Lane B's
       // territory): the integration point.
-      const origin: PluginRegionOrigin = parsed
-        ? pluginRegionLinesLookAuthored(source, starts, parsed[0], parsed[1])
-          ? { ok: true, range: charRangeForLines(starts, source, parsed[0], parsed[1]) }
-          : {
-              ok: false,
-              reason:
-                `"${token.type}" token's resolved range does not corroborate against source ` +
-                `(a container-prefixed first line, a nested Gutterpress marker line, or an ` +
-                `out-of-bounds line claim) — refusing to project a plugin-region whose ` +
-                `evidence cannot be verified against source. Edit this content in source mode.`,
-            }
-        : resolveMaplessPluginTokenOrigin(token, env, starts, source);
+      const origin = resolvePluginRegionOrigin(token, parsed, env, starts, source);
 
       if (!origin.ok) {
         // SFE-P2c repair round 1: this diagnostic's `reason` is now the

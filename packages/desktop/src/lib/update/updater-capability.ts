@@ -23,7 +23,7 @@
  * `update-controller.svelte.ts`'s `e instanceof Error ? e.message : …`
  * toast handling never shows an author `Error invoking remote method
  * 'updater:check': …`. Declaring these `async function` (rather than a
- * plain function returning `call(...)`) also matters off-Electron: `bridge()`
+ * plain function returning `hostCall(...)`) also matters off-Electron: `bridge()`
  * throws SYNCHRONOUSLY when no desktop host is present (see `bridge.ts`),
  * and wrapping the body in an `async function` turns that synchronous throw
  * into a rejected promise — the shape every `.catch()`/`await`-in-`try`
@@ -31,27 +31,19 @@
  * sibling in `doctor-capability.ts`) already assumes.
  */
 import { bridge } from "$lib/platform/bridge";
-import { friendlyHostError } from "$lib/errors";
+import { hostCall } from "$lib/errors";
 import type { UpdaterEvent, UpdaterStatus } from "$lib/platform/contract";
 
-async function call<T>(op: Promise<T>): Promise<T> {
-  try {
-    return await op;
-  } catch (e) {
-    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-  }
-}
-
 export async function getUpdaterStatus(): Promise<UpdaterStatus> {
-  return call(bridge().updater.getStatus());
+  return hostCall(bridge().updater.getStatus());
 }
 
 export async function checkForUpdate(): Promise<UpdaterStatus> {
-  return call(bridge().updater.check());
+  return hostCall(bridge().updater.check());
 }
 
 export async function downloadUpdate(): Promise<UpdaterStatus> {
-  return call(bridge().updater.download());
+  return hostCall(bridge().updater.download());
 }
 
 export function applyUpdateNow(): Promise<{ applied: boolean; version?: string; error?: string }> {

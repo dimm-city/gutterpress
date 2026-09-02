@@ -93,6 +93,7 @@ import {
 } from "gutterpress/render";
 import { loadManifestWithPath, resolveConfig } from "gutterpress";
 import { loadPluginsWithCss } from "gutterpress/plugins";
+import { RICH_MODE_MAX_CONTENT_BYTES } from "gutterpress/render";
 import type { SecureHandle } from "./server-bridge/secure-handle";
 
 /** One plugin that failed to load, degrade-and-report style (D14 `EDITOR_PLUGIN_LOAD_FAILED`). */
@@ -169,8 +170,9 @@ export async function buildHostEditorProjection(
 // a resolved value, never a thrown `.code`.
 
 /** D13: rich mode's own file-size ceiling — a document too large for rich
- *  mode at all should never reach a host projection build. */
-export const RICH_MODE_MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+ *  mode at all should never reach a host projection build. One constant,
+ *  owned by `gutterpress/render`; re-exported for this module's tests. */
+export { RICH_MODE_MAX_CONTENT_BYTES };
 
 /** Thrown ONLY by {@link validateEditorProjectionArgs}'s D13 ceiling check —
  *  a distinct class (not a plain `Error`) so {@link resolveEditorProjection}
