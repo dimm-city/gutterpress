@@ -135,6 +135,44 @@ The full program gate, one last time, at the final SHA:
 (Release checks — `dist:linux` attempt, `npm pack --dry-run` — run inside
 Lane C with their results recorded in `p7-sweeps.md`, not repeated here.)
 
+## Gate results
+
+PASS — all 16 commands exit 0 at `dfe75b91` (the final verified SHA;
+close-out documentation commits follow it, touching no code): install
+(frozen, 806 packages); typecheck (4 workspaces); cli build (render-pure)
++ 1931 pass / 60 skip / 0 fail (skips are the expected no-Chromium/no-qpdf
+sandbox set); editor 3038 unit + 121 browser (9 suites); vscode-extension
+228; desktop 5915 pass / 1 skip / 0 fail + check (693 files, 0 errors) +
+lint + build (adapter-static, purity 144 files) + electron:build
+(`node --check` clean); architecture 4/4; generated-files (1,271 tracked);
+vendored (24 unpatched byte-identical + 2 patched, 26 hashes / 33 files);
+knip clean.
+
+CI at the same SHA (`dfe75b91`, run 33583966490): **all four jobs green**,
+with the Test job's "Preview/print parity gate" step completing SUCCESS
+(14s) on a runner with real Chrome and Ghostscript/qpdf — the parity gate
+is green AT the final SHA, closing the sweep's one "remains for CI" item
+on AC-21 and the F-1 bottom-line caveat.
+
+## Run result
+
+The program's close-out is auditable end to end: repo-wide zero-remnant
+proofs for every deleted surface with per-hit classification; the
+nine-metric measured before/after, every number carrying its derivation
+command (routes 104→0, IPC 12→120, protocol messages 5→0, locator members
+31→0, architecture checks 0→4+3, with production/test LOC and
+module/dependency counts split baseline-scope vs whole-workspace and the
+vendored fork a stated exclusion); a verified 21-run SHA chain; release
+records (CHANGELOG 0.11.0, `docs/releases/0.11.0.md`,
+`docs/architecture/source-first-editor.md`) whose every claim survived an
+adversarial re-derivation; the packaged-asar smoke closed with a real
+electron-builder build and headless launch; and the 24-criterion
+acceptance sweep at 23 PASS / 1 FAIL (AC-24, carried openly) / 0 NA. The
+review cost three rounds precisely because record accuracy IS this run's
+deliverable — including findings against the integrator's own fixes.
+Commits: `ea2610b3` (lanes + integrator fixes), `86e97f61`/`131a65e5`
+(repairs), `e10b7059` (review log), `dfe75b91` (sweep + F-1 fix).
+
 ## Review log
 
 Two batches over `2ba5ca0a..HEAD` (lanes + integrator fixes, `ea2610b3`),
@@ -187,6 +225,14 @@ wording; enumeration scope excluded docs/ and tools/, spot-checked clean).
 The reviewer verified round 2's fixes in the tree, re-ran both enumeration
 commands at HEAD, and re-checked repo typecheck (4 workspaces) and
 `check:architecture` (4 rules) green.
+
+After the approve, the report-only acceptance sweep (its own stage) walked
+all 24 criteria: **23 PASS (7 with explicit scope), 1 FAIL (AC-24), 0 NA**
+— the full per-criterion record is acceptance.md's "Final acceptance sweep
+— SFE-P7" section. The sweep also caught F-1, a live CI break the round-2
+repair itself introduced: the literal specifier text in a rewritten header
+comment tripped the runtime-deps scanner. Fixed at `dfe75b91` (comment
+reworded; test re-run locally, 1 pass).
 
 Advisory dispositions (integrator): "CHANGELOG dates a 0.11.0 release with
 no version bump anywhere in the tree" — correct and intended: the version

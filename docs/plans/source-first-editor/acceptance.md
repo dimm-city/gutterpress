@@ -847,6 +847,49 @@
 
 ---
 
+### SFE-P7 — Decision-record close-out and final acceptance sweep
+
+```json
+{
+  "status": "complete",
+  "baseSha": "2ba5ca0a",
+  "headSha": "dfe75b91",
+  "history": [
+    "ea2610b3 docs(p7): close-out records, sweeps, and release notes; fix stale post-deletion comments",
+    "86e97f61 fix(p0): address review findings (round 1)",
+    "131a65e5 fix(p0): address review findings (round 2)",
+    "e10b7059 docs(p7): review log — three rounds to approve",
+    "dfe75b91 docs(p7): final acceptance sweep (23 PASS / 1 FAIL / 0 NA); fix comment-triggered CI failure"
+  ],
+  "confirmedFindings": [
+    "R1 (11 confirmed): ledger said the four stale-comment defects were 'not fixed' while the same commit fixed all four; two integrator fixes introduced fresh instances of the class they fixed (render.ts type-only importers named as value importers; assemble.ts nonexistent browser consumer); platform.ts fix incomplete in its own file; a dozen more same-class files missed (three in the published package); CHANGELOG/release notes claimed gutterpress/render unchanged (it gained the projection surface); parity gate claimed 'proven' against the run's own BLOCKED record; p7-sweeps greps not reproducible and missing 3 of 5 protocol messages; ledger scored the vendored fork 'no fork needed, 0 LOC'; architecture doc mis-dated the check-parity.mjs deletion; release notes' P5a ~-3,100 vs the ledger's audited -2,546",
+    "R2 (1 confirmed): the extended sweep fixed named instances without running its own prescribed enumeration — three present-tense 'SvelteKit server routes' comments survived in the published package plus create-host-bridge.ts; repair ran the full enumeration and classified every surviving hit",
+    "Post-approve, caught by the acceptance sweep (F-1): the round-2 repair embedded the literal specifier text import(\"gutterpress\") in a header comment, tripping the runtime-deps scanner — CI red at e10b7059; fixed at dfe75b91, CI green at that SHA"
+  ],
+  "advisories": [
+    "F-2: origin/release/0.11.0 still at ea7b60d5 vs main 5ec25e5a — release-management action for the stakeholder",
+    "F-3: two test-support .d.ts files leak into the npm tarball (p7-sweeps §3.1)",
+    "F-4: the two a11y items and three D13 follow-ups restated so the close-out does not bury them",
+    "PlatformAdapter is dead exported surface (public-contract change, not taken unilaterally); no in-tree version bump by design (stakeholder release action)"
+  ],
+  "gate": {
+    "commands": [
+      "install (frozen) / typecheck (4) / cli build + 1931:60 / editor 3038 + 121 browser / vscode-extension 228 / desktop 5915:1 + check (693) + lint + build (purity 144) + electron:build / architecture 4/4 / generated-files (1271) / vendored (26 hashes, 33 files) / knip — all 16 exit 0 at dfe75b91; CI run 33583966490 at the same SHA: 4/4 jobs green INCLUDING the Preview/print parity gate step (success, real Chrome runner)"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [
+    "Final sweep below: 23 PASS (7 scoped) / 1 FAIL (AC-24) / 0 NA",
+    "AC-21: parity gate green at the final SHA in CI (run 33583966490), on top of the ea2610b3 green run and the zero-engine-diff proof",
+    "AC-16: packaged-asar smoke closed (p7-sweeps §2); AC-20: P4-P6 net -2,489 production LOC derived"
+  ],
+  "deletionLedgerUpdates": [
+    "Final Lane A section: nine repo-wide zero-remnant sweeps with per-hit classification; nine-metric before/after with derivation commands; verified 21-run SHA chain; proposal records swept; §5 defect record with repair-round extensions §5.5/§5.6"
+  ],
+  "checkpointSummary": "The program closes with records that survived three adversarial rounds aimed at the records themselves — including findings against the integrator's own fixes and a CI break introduced by a repair round and caught by the sweep. What remains open is exactly what the records say: AC-24 red with a named root cause and ordered follow-ups, win/mac packaged smokes on CI runners, and a short stakeholder release checklist."
+}
+```
+
 ## Final acceptance sweep — SFE-P7
 
 > **Report-only stage.** This section is additive: it does not modify the
@@ -1601,3 +1644,18 @@ report-only lane may not write; until it lands, the SFE-P7 gate requirement
 | `git rev-parse origin/release/0.11.0 origin/main` | 0 | `ea7b60d5` / `5ec25e5a` (F-2) |
 | GitHub Actions API — run `33579455024` (`ea2610b3`) jobs/steps | n/a | 4/4 jobs success; `Test` step 10 *Preview/print parity gate* **success** |
 | GitHub Actions API — run `33582923756` (HEAD) jobs/steps + job log | n/a | `Test` **failure** (1980/10/1); parity-gate step **skipped**; `Build`, `Desktop Test`, `Type Check` success |
+
+### Integrator addendum (post-sweep, at `dfe75b91`)
+
+The sweep above is a snapshot at `e10b7059`. Its F-1 (CI red at HEAD from
+a comment-triggered runtime-deps false positive) was fixed in the next
+commit, `dfe75b91`: the SFE-P7 gate then ran at that SHA — all 16 commands
+exit 0 (recorded in `runs/SFE-P7.md` § Gate results) — and CI run
+33583966490 at the same SHA is green across all four jobs **including the
+"Preview/print parity gate" step (success, 14s, real Chrome runner)**.
+This closes the sweep's two conditional statements: the run-spec gate
+requirement ("the full program gate at the final SHA") is satisfied, and
+AC-21's "what remains for CI — one green `parity:gate` at the FINAL SHA"
+now exists. F-2 (release-branch pointer), F-3 (tarball `.d.ts` leak), and
+F-4 (a11y + D13 follow-ups) remain open as recorded, in the stakeholder
+wrap-up's action list.
