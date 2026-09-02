@@ -33,7 +33,7 @@ export type {
   GutterpressPluginExport,
 } from "./lib/markdown/renderer";
 
-export { MARKER_CSS, KNOWN_KINDS } from "./lib/markdown/markers.js";
+export { MARKER_CSS, KNOWN_KINDS, parseMarkerLine, markerElementAttributes } from "./lib/markdown/markers.js";
 
 export { sourceTokenOccurrenceAt, inlineSourceMetaOf } from "./lib/markdown/inline-source";
 export type { InlineSourceMeta } from "./lib/markdown/inline-source";

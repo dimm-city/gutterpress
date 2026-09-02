@@ -100,6 +100,8 @@ export interface ChipPlan {
   readonly inactivePreviewText: string;
   /** Read-only inert HTML text previews anchored at this block's own `to` (D6/AP-13) — rendered, never parsed as live markup; never segmented. */
   readonly generatedPreviews: readonly string[];
+  /** The pipeline's own rendered HTML for a `plugin-region`/`raw-html` block — rendered as real (sanitized) DOM so the editor shows what the book shows. */
+  readonly renderedHtml?: string;
 }
 
 export function buildChipPlan(
@@ -112,6 +114,7 @@ export function buildChipPlan(
     sourceText,
     segmented: block.editMode === "structured",
     inactivePreviewText: block.inactiveHtml ?? sourceText,
+    renderedHtml: block.editMode === "source" ? block.inactiveHtml : undefined,
     generatedPreviews: generatedPreviews.map((view) => view.html),
   };
 }

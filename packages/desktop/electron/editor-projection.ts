@@ -91,7 +91,8 @@ import {
   createMarkdownRenderer,
   type GutterpressProjection,
 } from "gutterpress/render";
-import { loadManifestWithPath, resolveConfig } from "gutterpress";
+import { composeEditorCss, inlineStyles, loadManifestWithPath, resolveConfig } from "gutterpress";
+import { stat } from "node:fs/promises";
 import { loadPluginsWithCss } from "gutterpress/plugins";
 import { RICH_MODE_MAX_CONTENT_BYTES } from "gutterpress/render";
 import type { SecureHandle } from "./server-bridge/secure-handle";
@@ -110,6 +111,38 @@ export interface EditorProjectionHostResult {
   readonly pluginCss: string;
   /** Every plugin that failed to load. Empty when every configured plugin loaded (or none are configured). */
   readonly pluginErrors: readonly EditorProjectionPluginError[];
+  /** The book's CSS (markers, utilities, plugin CSS, the author's inlined stylesheets) scoped to the editor document — the mount's `extraCss`. */
+  readonly bookCss: string;
+}
+
+/** Selector of the element that plays the book's `body` inside the desktop's rich editor. */
+export const EDITOR_BOOK_SCOPE_SELECTOR = ".rich-editor-host .md-document";
+
+const bookCssCache = new Map<string, { stamp: string; css: string }>();
+
+/**
+ * The editor's book CSS for one project, rebuilt only when a stylesheet or
+ * the plugin CSS changes (stat-stamped): projections rebuild per edit, and
+ * inlining fonts on every keystroke would be wasted work.
+ */
+async function bookCssFor(projectDir: string, styles: readonly string[], pluginCss: string): Promise<string> {
+  const stamps = await Promise.all(
+    styles.map(async (rel) => {
+      try {
+        const st = await stat(path.resolve(projectDir, rel));
+        return `${rel}@${st.mtimeMs}:${st.size}`;
+      } catch {
+        return `${rel}@missing`;
+      }
+    }),
+  );
+  const stamp = JSON.stringify([stamps, pluginCss]);
+  const cached = bookCssCache.get(projectDir);
+  if (cached && cached.stamp === stamp) return cached.css;
+  const inlined = await inlineStyles(projectDir, [...styles]);
+  const css = composeEditorCss({ scopeSelector: EDITOR_BOOK_SCOPE_SELECTOR, pluginCss, projectCss: inlined.css });
+  bookCssCache.set(projectDir, { stamp, css });
+  return css;
 }
 
 export interface EditorProjectionHostArgs {
@@ -161,7 +194,9 @@ export async function buildHostEditorProjection(
     trusted: true,
   });
 
-  return { projection, pluginCss, pluginErrors };
+  const bookCss = await bookCssFor(manifestDir, config.styles ?? [], pluginCss);
+
+  return { projection, pluginCss, pluginErrors, bookCss };
 }
 
 // ── IPC-boundary validation and classification (SFE-P3e review round 2) ────

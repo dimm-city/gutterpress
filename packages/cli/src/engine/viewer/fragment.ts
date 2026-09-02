@@ -59,6 +59,14 @@ export interface LayoutOptions {
   root?: HTMLElement;
   /** reserve (and draw) repeated table headers on continuation pages; default true */
   compensateHeaders?: boolean;
+  /**
+   * The book's CSS, when the flow root is NOT the whole document — the
+   * desktop's paged editor paginates one editor document inside the app,
+   * where `document.styleSheets` is the APP's CSS, not the book's. Supplied,
+   * it replaces the `loadStyleSources()` read entirely: the GCPM model
+   * (`@page` geometry, margin boxes, `string-set`) comes from this string.
+   */
+  css?: string;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -1442,26 +1450,20 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 }
 
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
-export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
-  // Kick off alongside the stylesheet fetches below so a cold cache's font/
-  // image load overlaps network time instead of adding to it.
-  const layoutReady = waitForLayoutReady();
-  const css = await loadStyleSources();
-  injectViewerCss();
-  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
-  // as screen rules, since the browser won't apply them outside print emulation
-  const printOnly = mediaPrintBodies(css).join("\n");
-  if (printOnly && !document.getElementById("gp-media-print")) {
-    const style = document.createElement("style");
-    style.id = "gp-media-print";
-    style.textContent = printOnly;
-    document.head.appendChild(style);
-  }
-  const model = extract(css);
-  injectBreakMapping(model);
+/**
+ * The SYNCHRONOUS half of {@link fragmentDocument}: everything from "I have a
+ * GCPM model and a flow root" to a measured {@link GutterpressViewerApi}.
+ *
+ * Split out for the desktop's paged editor, which paginates a flow root it
+ * owns (the live editor's document element) on every editor render: it has
+ * the model already (a book's CSS changes far less often than its text) and
+ * cannot await anything, because the editor measures caret geometry
+ * immediately after the synchronous render it calls this from.
+ * {@link fragmentDocument} is this function plus the async style/image reads.
+ */
+export function paginate(model: GcpmModel, opts: LayoutOptions = {}): GutterpressViewerApi {
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
-  await layoutReady;
   makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
   synthesizeColumnBreaks(model);
@@ -1516,4 +1518,25 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     },
   };
   return api;
+}
+
+export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
+  // Kick off alongside the stylesheet fetches below so a cold cache's font/
+  // image load overlaps network time instead of adding to it.
+  const layoutReady = waitForLayoutReady();
+  const css = opts.css ?? (await loadStyleSources());
+  injectViewerCss();
+  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
+  // as screen rules, since the browser won't apply them outside print emulation
+  const printOnly = mediaPrintBodies(css).join("\n");
+  if (printOnly && !document.getElementById("gp-media-print")) {
+    const style = document.createElement("style");
+    style.id = "gp-media-print";
+    style.textContent = printOnly;
+    document.head.appendChild(style);
+  }
+  const model = extract(css);
+  injectBreakMapping(model);
+  await layoutReady;
+  return paginate(model, opts);
 }

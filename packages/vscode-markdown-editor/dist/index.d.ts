@@ -231,6 +231,38 @@ export declare interface BlockViewOptions {
      * Never consulted while the block is active (source shown).
      */
     readonly renderCustomBlock?: (node: BlockAstNode, sourceText: string) => CustomBlockRendering | undefined;
+    /**
+     * gp-fork: groupBlocks. Called once per document render with every
+     * top-level block (in order, with its exact source text and absolute
+     * start offset). Returns container specs — runs of consecutive blocks
+     * (`start` inclusive, `end` exclusive, indices into `blocks`) to mount
+     * inside one host-described wrapper element. The blocks themselves
+     * render exactly as they otherwise would; only their DOM parent
+     * changes. Specs must nest properly (an inner run wholly inside an
+     * outer one); a spec that does not fit is skipped, never guessed.
+     * Wrappers are reused across renders by `key`. Returning `undefined`
+     * or an empty array mounts every block directly, unchanged.
+     */
+    readonly groupBlocks?: (blocks: readonly BlockGroupCandidate[]) => readonly BlockGroupSpec[] | undefined;
+    /**
+     * gp-fork: decorateInactiveBlock. Called once for each freshly built,
+     * INACTIVE top-level block view, after its default (or custom)
+     * rendering is complete, with the block's element, AST node and exact
+     * source text. Lets the host apply presentation derived from the
+     * block's source — e.g. markdown-it-attrs `{#id .class}` trailers
+     * become real `id`/`class` attributes and the trailer text is hidden.
+     * Never called for an active block (its source is shown verbatim);
+     * a block re-renders from scratch when it becomes inactive again.
+     */
+    readonly decorateInactiveBlock?: (element: HTMLElement, node: BlockAstNode, sourceText: string) => void;
+    /**
+     * gp-fork: afterDocumentMount. Called synchronously on every document
+     * render, right after the block views are mounted under the document
+     * element and before the view measures them — the host may re-layout
+     * the document (move blocks into layout containers) and the
+     * measurements that follow see the final geometry.
+     */
+    readonly afterDocumentMount?: (documentElement: HTMLElement) => void;
     readonly onToggleCheckbox?: (item: ListItemAstNode, newChecked: boolean) => void;
     /**
      * Supplies live, declarative metadata for recognized links. The editor owns
@@ -290,6 +322,28 @@ export declare interface BlockViewOptions {
  * renderer. A direct rename of the package's own {@link MathRendering} to a
  * non-math-specific name — not a new shape.
  */
+/** gp-fork: groupBlocks — one top-level block as offered to {@link BlockViewOptions.groupBlocks}. */
+export declare interface BlockGroupCandidate {
+    readonly ast: BlockAstNode;
+    /** The block's exact source text (what {@link BlockViewOptions.renderCustomBlock} receives). */
+    readonly sourceText: string;
+    /** Absolute UTF-16 offset of the block's first character in the document. */
+    readonly absoluteStart: number;
+}
+
+/** gp-fork: groupBlocks — a container to mount blocks `[start, end)` inside. */
+export declare interface BlockGroupSpec {
+    readonly start: number;
+    readonly end: number;
+    /** Stable identity for wrapper reuse across renders (e.g. the opening block's AST id). */
+    readonly key: string;
+    /** Wrapper tag name; defaults to `div`. */
+    readonly tagName?: string;
+    readonly className?: string;
+    /** Extra attributes set on the wrapper (`class` is ignored here; use `className`). */
+    readonly attributes?: Readonly<Record<string, string>>;
+}
+
 export declare interface CustomBlockRendering {
     /**
      * Host element to mount (the rendered block output). The host adds the

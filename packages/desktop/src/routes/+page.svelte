@@ -1031,9 +1031,12 @@
   // `editor` or `viewer`. Written ONLY on entering focus.
   let modeBeforeFocus: "editor" | "viewer" | null = null;
   /** The viewer is hidden in `focus` and nowhere else. */
-  let previewVisible = $derived(mode !== "focus");
+  // The paged editor IS the view (`$lib/editor/paged-surface`): Read is that
+  // same editor, locked. The separate paginated preview pane is kept only
+  // for Edit, side by side, while the two are being compared.
+  let previewVisible = $derived(mode === "editor");
   /** `focus` is the editor without the viewer, so the editor shows in both. */
-  let editorVisible = $derived(mode !== "viewer");
+  let editorVisible = $derived(true);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -1253,7 +1256,7 @@
   // for the mode-selection / exactly-one-mounted-surface contract this
   // wiring proves, and desktop-document-host.ts's header for why rich mode
   // mounts against a `DesktopDocumentHost`, not the buffer directly.
-  const richMode = createRichModeController();
+  const richMode = createRichModeController({ initialSurface: "rich" });
 
   /**
    * Whether `path` is a Markdown source the rich surface can mount against
@@ -1277,14 +1280,10 @@
   // mount (client-only). With the flag unset (the overwhelming common case)
   // `richModeAvailable` stays false and nothing below this comment ever
   // runs: the CodeMirror path loads exactly what it does today.
-  let richModeAvailable = $state(false);
-  onMount(() => {
-    try {
-      richModeAvailable = localStorage.getItem("gp:experimental-rich-editor") === "1";
-    } catch {
-      // Storage unavailable (privacy mode, disabled site data, …) — stay off.
-    }
-  });
+  // The rich editor is THE markdown editing surface; source (CodeMirror)
+  // stays as the fallback for refused projections, oversize files and
+  // non-markdown files.
+  const richModeAvailable = true;
 
   // Mirrors the MarkdownEditor lazy-import pattern immediately above: the
   // rich editor's chunk (the `@vscode/markdown-editor` fork + its adapter)
@@ -1386,7 +1385,7 @@
   async function buildRichProjection(
     content: string,
     sourceVersion: number,
-  ): Promise<{ projection: GutterpressProjection; pluginCss: string | undefined }> {
+  ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
     if (isDesktop() && lifecycle.currentDir) {
       try {
         const outcome = await buildEditorProjection({
@@ -1398,7 +1397,7 @@
           for (const pluginError of outcome.pluginErrors) {
             showRichDiagnostic(pluginLoadFailedDiagnostic(pluginError));
           }
-          return { projection: outcome.projection, pluginCss: outcome.pluginCss || undefined };
+          return { projection: outcome.projection, editorCss: outcome.bookCss || undefined };
         }
         // The host call itself failed outright (e.g. a malformed
         // manifest.yaml, or content over D13's rich-mode ceiling) — never a
@@ -1439,7 +1438,7 @@
         console.warn("buildEditorProjection failed; falling back to the local projection:", e);
       }
     }
-    return { projection: createEditorProjection(content, { sourceVersion }), pluginCss: undefined };
+    return { projection: createEditorProjection(content, { sourceVersion }), editorCss: undefined };
   }
 
   // SFE-P3ab, Lane A — the mounted RichEditor component instance, bound the
@@ -1930,8 +1929,12 @@
    * counts as active so the rich pane's own "select a file" placeholder
    * keeps showing while the preference is "rich", matching prior behavior.
    */
+  // Focus mode is the raw-Markdown surface: CodeMirror, no pagination, no
+  // chips — the technical view. Everything else edits on the paged editor.
   let richSurfaceActive = $derived(
-    richMode.mode === "rich" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
+    richMode.mode === "rich" &&
+      mode !== "focus" &&
+      (editorFilePath === null || isMarkdownPath(editorFilePath)),
   );
 
   function showEditorContent(path: string, content: string): void {
@@ -1949,6 +1952,9 @@
       // on the source surface, and any stale host from a PRIOR markdown
       // file is dropped rather than left mounted over the wrong content.
       if (isMarkdownPath(path)) {
+        // Rich is the default surface, so a file can open into it before the
+        // toggle path ever ran: load the chunk here too, not only on toggle.
+        loadRichEditorModule();
         richDocHostCtrl.rebuild(path, content);
       } else {
         richDocHostCtrl.dispose();
@@ -3661,8 +3667,10 @@
                       bind:this={richEditorRef}
                       host={richDocHostCtrl.host}
                       projection={richDocHostCtrl.projection ?? undefined}
-                      extraCss={richDocHostCtrl.pluginCss}
+                      extraCss={richDocHostCtrl.editorCss}
                       onDiagnostic={showRichDiagnostic}
+                      paged={true}
+                      readonly={mode === "viewer"}
                     />
                   {/key}
                 {:else if richEditorModuleFailed}

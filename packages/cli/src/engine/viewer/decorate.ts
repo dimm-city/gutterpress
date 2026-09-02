@@ -119,7 +119,18 @@ function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
 
 export function decorate(
   layout: GutterpressViewerApi,
-  opts: { designer?: boolean } = {},
+  opts: {
+    designer?: boolean;
+    /**
+     * Elements that play the document canvas, innermost first. Defaults to
+     * `[<html>, <body>]` — right for the preview, where the book IS the
+     * document. A host paginating a flow root INSIDE its own app (the
+     * desktop's paged editor) passes that root instead, so the book's page
+     * background is read from the book's own canvas and the app's chrome
+     * is neither read nor cleared.
+     */
+    canvasRoots?: readonly Element[];
+  } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
   const sheets = new Map<number, HTMLElement>();
@@ -138,7 +149,7 @@ export function decorate(
   };
   // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
-  const canvasBg = captureCanvasBackground();
+  const canvasBg = captureCanvasBackground(opts.canvasRoots);
   document.body.classList.add("gp-stage");
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
@@ -184,7 +195,12 @@ export function decorate(
         entries.push({
           page,
           value: evaluate(decl.value, {
-            text: (el.textContent ?? "").trim(),
+            // RENDERED text, not `textContent`: an element may carry text that
+            // does not print — the desktop's paged editor keeps a heading's
+            // hidden `#` markdown marker in the DOM, and `textContent` would
+            // put it in the running head. `innerText` is what the reader
+            // sees, which is what `content()` means.
+            text: ((el as HTMLElement).innerText ?? el.textContent ?? "").trim(),
             attr: (n) => el.getAttribute(n) ?? undefined,
           }),
         });
@@ -585,15 +601,17 @@ const CANVAS_BG_PROPS = [
  * showing viewer chrome. When it came from `body`, no clearing is needed:
  * `.gp-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
  */
-function captureCanvasBackground(): Array<[string, string]> {
-  for (const el of [document.documentElement, document.body]) {
+function captureCanvasBackground(roots?: readonly Element[]): Array<[string, string]> {
+  for (const el of roots ?? [document.documentElement, document.body]) {
     const cs = getComputedStyle(el);
     const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
     if (cs.backgroundImage === "none" && transparent) continue;
     const captured = CANVAS_BG_PROPS.map(
       (p) => [p, cs.getPropertyValue(p)] as [string, string],
     );
-    if (el === document.documentElement) el.style.background = "none";
+    // The captured background is replayed on every sheet, so the element it
+    // came from must stop painting it behind them.
+    if (el === document.documentElement || roots) (el as HTMLElement).style.background = "none";
     return captured;
   }
   return [];

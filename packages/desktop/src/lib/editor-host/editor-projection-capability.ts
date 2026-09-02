@@ -51,6 +51,8 @@ export interface EditorProjectionResult {
   readonly projection: GutterpressProjection;
   readonly pluginCss: string;
   readonly pluginErrors: readonly EditorProjectionPluginError[];
+  /** The book's CSS layers scoped to the editor document — the rich mount's `extraCss`. */
+  readonly bookCss: string;
 }
 
 /** D14 classification codes {@link buildEditorProjection} can resolve with

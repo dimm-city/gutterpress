@@ -97,6 +97,26 @@ export interface EditorMountOptions {
    */
   readonly renderCustomBlock?: NonNullable<VscodeEditorAdapterOptions["viewOptions"]>["renderCustomBlock"];
 
+  /** Container grouping hook (fork Patch 3): runs of top-level blocks mounted inside host-described wrapper elements. */
+  readonly groupBlocks?: NonNullable<VscodeEditorAdapterOptions["viewOptions"]>["groupBlocks"];
+
+  /**
+   * Theme class applied to the editor root. Defaults to the fork's own
+   * default theme; `null` applies NO theme, for hosts that supply the
+   * document's real typography through `extraCss` (a Gutterpress book's own
+   * stylesheets).
+   */
+  readonly themeClassName?: string | null;
+
+  /** Render the fork's sticky lock/pencil read-only toggle. Defaults to `true`. */
+  readonly showReadonlyToggle?: boolean;
+
+  /** Fork Patch 4: decorate a freshly rendered inactive top-level block (markdown-it-attrs trailers, …). */
+  readonly decorateInactiveBlock?: NonNullable<VscodeEditorAdapterOptions["viewOptions"]>["decorateInactiveBlock"];
+
+  /** Fork Patch 5: re-layout the mounted document before the editor measures it (pagination). */
+  readonly afterDocumentMount?: NonNullable<VscodeEditorAdapterOptions["viewOptions"]>["afterDocumentMount"];
+
   /**
    * An additional stylesheet, appended to `container.ownerDocument` AFTER
    * the fork's own base + default-theme CSS (so it wins equal-specificity
@@ -192,7 +212,14 @@ export function mountEditor(
   const adapter: VscodeEditorAdapter = createVscodeEditorAdapter(container, host, {
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
-    viewOptions: { classNames: [FORK_THEME_CLASS_NAME], renderCustomBlock: options.renderCustomBlock },
+    viewOptions: {
+      classNames: options.themeClassName === null ? [] : [options.themeClassName ?? FORK_THEME_CLASS_NAME],
+      renderCustomBlock: options.renderCustomBlock,
+      groupBlocks: options.groupBlocks,
+      showReadonlyToggle: options.showReadonlyToggle,
+      decorateInactiveBlock: options.decorateInactiveBlock,
+      afterDocumentMount: options.afterDocumentMount,
+    },
   });
 
   let disposed = false;

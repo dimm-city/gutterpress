@@ -43,59 +43,145 @@
  * flag (a block-count-capped projection is stale-equivalent by that
  * module's own contract) — this provider does not duplicate that check.
  */
-import type { BlockAstNode, CustomBlockRendering } from "@dimm-city/vscode-markdown-editor";
-import type { GutterpressProjection } from "gutterpress/render";
+import type { BlockAstNode, BlockGroupCandidate, BlockGroupSpec, CustomBlockRendering } from "@dimm-city/vscode-markdown-editor";
+import { markerElementAttributes, parseMarkerLine } from "gutterpress/render";
+import type { GutterpressProjection, ProjectedBlock, ProjectedBlockKind } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh, type BlockIndex } from "./match.ts";
 import { buildChipPlan } from "./plan.ts";
-import { renderChipPlan } from "./render-chip.ts";
+import { renderChipPlan, renderCloseMarkerChip } from "./render-chip.ts";
 
 export interface CreateGutterpressBlockProviderOptions {
-  /** The exact source text `projection` was built against. */
   readonly source: string;
-  /** The document to create chip elements in — required, never the bare `document` global (see `render-chip.ts`'s header on iframe safety). */
   readonly ownerDocument: Document;
-  /**
-   * G-11 — called before every match attempt. Returning `true` makes
-   * `renderCustomBlock` return `undefined` unconditionally for THIS call,
-   * regardless of whether a real match would otherwise be found. Omit only
-   * when the caller has some other way to guarantee freshness (e.g. a
-   * throwaway provider built fresh for a single, already-verified render) —
-   * `mountGutterpressEditor` always supplies a live one.
-   */
-  readonly isStale?: () => boolean;
 }
 
 export interface GutterpressBlockProvider {
-  /** Pass directly as `EditorViewOptions.renderCustomBlock`. */
   readonly renderCustomBlock: (node: BlockAstNode, sourceText: string) => CustomBlockRendering | undefined;
-  /** G-11 — pull-based staleness query against the projection this provider was built from. */
+  /** Fork Patch 3 hook: the container runs (`@section`…`@end-section`, `@page`, `@spread`, `@chapter` scopes) to mount inside real `div.section`/`div.page`/… wrappers carrying the print pipeline's own classes and attributes. */
+  readonly groupBlocks: (blocks: readonly BlockGroupCandidate[]) => readonly BlockGroupSpec[] | undefined;
   readonly needsRefresh: (currentVersion: number) => boolean;
 }
 
+type ContainerKind = "chapter" | "spread" | "page" | "section";
+const CONTAINER_KINDS: ReadonlySet<string> = new Set(["chapter", "spread", "page", "section"]);
+
 /**
- * Builds a `GutterpressBlockProvider` for `projection`. The returned
- * `renderCustomBlock` is a pure function of its own two arguments plus this
- * provider's captured `projection`/`opts` — no additional state is created
- * beyond the one-time `BlockIndex` built here.
+ * Which opener kinds close an open scope of a given kind — markers.js's own
+ * scope cascade (chapter ⊃ spread ⊃ page ⊃ section): opening an outer or
+ * sibling scope closes everything inside it. `@end-section` closes the
+ * innermost section explicitly; the other kinds have no explicit closer.
  */
+const CLOSED_BY: Readonly<Record<ContainerKind, ReadonlySet<string>>> = {
+  chapter: new Set(["chapter"]),
+  spread: new Set(["chapter", "spread"]),
+  page: new Set(["chapter", "spread", "page"]),
+  section: new Set(["chapter", "spread", "page", "section"]),
+};
+
+interface ParsedMarker {
+  readonly kind: string;
+  readonly name: string | null;
+  readonly attrs: Record<string, string>;
+}
+
+/**
+ * Marker lines are classified from TEXT with the pipeline's own grammar
+ * (`parseMarkerLine`, the exact function `layout_transform` runs), never
+ * from a projection snapshot: the editor's document changes on every
+ * keystroke and a marker must keep rendering as a marker through all of
+ * them. A marker is a single-line paragraph whose first character is `@`.
+ */
+function markerOf(node: { readonly kind: string } | undefined, sourceText: string): ParsedMarker | null {
+  if (node && node.kind !== "paragraph") return null;
+  const line = sourceText.trim();
+  if (!line.startsWith("@") || line.includes("\n")) return null;
+  return parseMarkerLine(line) as ParsedMarker | null;
+}
+
+const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue" ? "section" : marker.kind);
+
+function mergeClass(existing: string | undefined, extra: string): string {
+  const classes = (existing ?? "").split(/\s+/).filter(Boolean);
+  if (extra && !classes.includes(extra)) classes.push(extra);
+  return classes.join(" ");
+}
+
 export function createGutterpressBlockProvider(
   projection: GutterpressProjection,
   opts: CreateGutterpressBlockProviderOptions,
 ): GutterpressBlockProvider {
   const index: BlockIndex = buildBlockIndex(projection, opts.source);
 
-  function renderCustomBlock(_node: BlockAstNode, sourceText: string): CustomBlockRendering | undefined {
-    if (opts.isStale?.()) return undefined;
+  function renderCustomBlock(node: BlockAstNode, sourceText: string): CustomBlockRendering | undefined {
+    const marker = markerOf(node, sourceText);
+    if (marker) {
+      if (marker.kind === "end-section") return renderCloseMarkerChip(opts.ownerDocument, sourceText);
+      const kind = scopeKindOf(marker) as ProjectedBlockKind;
+      const block: ProjectedBlock = {
+        id: `marker:${kind}`,
+        kind,
+        from: 0,
+        to: sourceText.length,
+        editMode: "structured",
+        viewAttributes: markerElementAttributes(marker),
+      };
+      return renderChipPlan(buildChipPlan(block, [], sourceText), opts.ownerDocument);
+    }
 
+    // Plugin regions and raw HTML still come from the projection (they need
+    // the pipeline's own rendering); matched by exact text, so an edit
+    // elsewhere in the document never un-renders them.
     const match = matchProjectedBlock(index, sourceText);
     if (!match) return undefined;
-
     const plan = buildChipPlan(match.block, match.generatedPreviews, sourceText);
     return renderChipPlan(plan, opts.ownerDocument);
   }
 
+  function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
+    const markers = blocks.map((candidate) => markerOf(candidate.ast, candidate.sourceText));
+    const groups: BlockGroupSpec[] = [];
+    // The two context-dependent attribute rules markers.js applies while
+    // walking (see `markerElementAttributes`'s doc): pages inherit the open
+    // chapter's `.chapter-N`, and `@continue` inherits the previous section.
+    let chapterCounterClass = "";
+    let lastSectionAttrs: Record<string, string> | undefined;
+
+    markers.forEach((marker, i) => {
+      if (!marker) return;
+      const kind = scopeKindOf(marker);
+      if (!CONTAINER_KINDS.has(kind)) return;
+
+      let attrs: Record<string, string> = { ...markerElementAttributes(marker) };
+      if (marker.kind === "continue" && lastSectionAttrs) {
+        attrs = { ...lastSectionAttrs, class: mergeClass(lastSectionAttrs["class"], "gp-continued") };
+      }
+      if (kind === "chapter") {
+        const explicit = (attrs["class"] ?? "").match(/(?:^|\s)(chapter-\d+)(?=\s|$)/)?.[1] ?? "";
+        chapterCounterClass = explicit || (marker.attrs["ch"] ? `chapter-${marker.attrs["ch"]}` : "");
+      }
+      if (kind === "page" && chapterCounterClass) attrs["class"] = mergeClass(attrs["class"], chapterCounterClass);
+      if (kind === "section") lastSectionAttrs = attrs;
+
+      const closers = CLOSED_BY[kind as ContainerKind];
+      let end = i + 1;
+      while (end < blocks.length) {
+        const other = markers[end];
+        if (other && closers.has(scopeKindOf(other))) break;
+        if (kind === "section" && other?.kind === "end-section") {
+          end += 1; // the explicit closer belongs to the section it closes
+          break;
+        }
+        end += 1;
+      }
+      const { class: className, ...attributes } = attrs;
+      groups.push({ start: i, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
+    });
+    return groups;
+  }
+
   return {
     renderCustomBlock,
+    groupBlocks,
     needsRefresh: (currentVersion: number) => projectionNeedsRefresh(projection, currentVersion),
   };
 }

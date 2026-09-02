@@ -162,7 +162,7 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function parseMarkerLine(line) {
+export function parseMarkerLine(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
 
@@ -372,6 +372,32 @@ function attachDataAttrs(token, kind, name, attrs) {
     if (k === 'class' || k === 'id' || k === 'template' || k === 'region') continue;
     token.attrSet(`data-${k}`, v);
   }
+}
+
+/**
+ * The element attributes `layout_transform` puts on a marker's OPEN element
+ * — the context-free part: the kind's base class, the author's classes,
+ * `id`, the optional name (`data-page="cover"`, `data-chapter-label=…`)
+ * and every other `key=value` as `data-key`. `@continue` is a section that
+ * also carries `gp-continued`. Exported for the rich editor
+ * (`packages/editor`), which classifies marker LINES with this same grammar
+ * so the editor's `div.section`/`div.page` wrappers carry exactly what the
+ * print path's do. The two context-dependent extras — a page inheriting
+ * its chapter's `.chapter-N` counter class, and `@continue` inheriting the
+ * previous section's attributes — are the editor's own small pass, since
+ * they need the surrounding markers.
+ */
+export function markerElementAttributes(parsed) {
+  const kind = parsed.kind === 'continue' ? 'section' : parsed.kind;
+  if (kind !== 'chapter' && kind !== 'spread' && kind !== 'page' && kind !== 'section') return {};
+  const attrs = parsed.attrs || {};
+  const authorClasses = (attrs.class || '').split(/\s+/).filter(Boolean);
+  if (parsed.kind === 'continue' && !authorClasses.includes('gp-continued')) authorClasses.push('gp-continued');
+  const out = {};
+  const token = { attrSet(k, v) { out[k] = v; } };
+  addClasses(token, kind, authorClasses.join(' '));
+  attachDataAttrs(token, kind, parsed.name, attrs);
+  return out;
 }
 
 export default function plugin(md, pluginOptions = {}) {

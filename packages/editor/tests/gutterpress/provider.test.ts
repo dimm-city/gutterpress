@@ -404,57 +404,57 @@ describe("buildChipPlan", () => {
   });
 });
 
-// ── stale fallthrough (G-11) — the full provider, never reaching DOM ───────
+// ── marker scopes from text — the full provider, never reaching DOM ────────
+//
+// Marker lines are classified with the pipeline's own grammar
+// (`parseMarkerLine`), not a projection snapshot, so `groupBlocks` and the
+// marker chips keep working through every keystroke. These tests drive the
+// pure `groupBlocks` half; the chip DOM is covered by the browser suite.
 
-describe("createGutterpressBlockProvider — stale fallthrough (G-11)", () => {
-  test("returns undefined for a block that WOULD otherwise match, when isStale() reports true", () => {
-    const projection = buildFixtureProjection();
-    const page = blockOf(projection, "page");
-    const matchingSourceText = FIXTURE_SOURCE.slice(page.from, page.to);
+describe("createGutterpressBlockProvider — marker scopes from text", () => {
+  const candidates = (lines: readonly string[]) =>
+    lines.map((sourceText, i) => ({ ast: { kind: "paragraph", id: i } as unknown as BlockAstNode, sourceText, absoluteStart: i * 100 }));
 
-    const provider = createGutterpressBlockProvider(projection, {
-      source: FIXTURE_SOURCE,
-      ownerDocument: UNUSED_DOCUMENT,
-      isStale: () => true,
-    });
-
-    // Never reaches render-chip.ts's document.createElement -- if it did,
-    // this call would throw under bun:test's DOM-less runtime, failing the
-    // test outright rather than merely returning the wrong value.
-    const result: CustomBlockRendering | undefined = provider.renderCustomBlock(FAKE_NODE, matchingSourceText);
-    expect(result).toBeUndefined();
+  test("a section runs to its @end-section (inclusive) and carries the pipeline's class/data attributes", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@section intro .lede\n", "Body.\n", "More body.\n", "@end-section\n", "After.\n"]))!;
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ start: 0, end: 4, className: "section lede", attributes: { "data-section": "intro" } });
   });
 
-  test("needsRefresh() reflects the projection's own sourceVersion regardless of isStale", () => {
-    const projection = buildFixtureProjection(7);
-    const provider = createGutterpressBlockProvider(projection, {
-      source: FIXTURE_SOURCE,
-      ownerDocument: UNUSED_DOCUMENT,
-    });
-    expect(provider.needsRefresh(7)).toBe(false);
-    expect(provider.needsRefresh(8)).toBe(true);
+  test("a page closes at the next page, and the sections inside it nest within it", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@page one\n", "@section a\n", "Text.\n", "@section b\n", "Text.\n", "@page two\n", "Text.\n"]))!;
+    expect(groups.map((g) => [g.className, g.start, g.end])).toEqual([
+      ["page", 0, 5],
+      ["section", 1, 3],
+      ["section", 3, 5],
+      ["page", 5, 7],
+    ]);
   });
 
-  test("returns undefined for sourceText that matches nothing, whether or not isStale is set", () => {
-    const projection = buildFixtureProjection();
-    const provider = createGutterpressBlockProvider(projection, {
-      source: FIXTURE_SOURCE,
-      ownerDocument: UNUSED_DOCUMENT,
-    });
+  test("@continue inherits the previous section's attributes plus gp-continued; pages inherit the chapter counter class", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@chapter ch=3\n", "@page\n", "@section .sidebar\n", "Text.\n", "@continue\n", "Text.\n"]))!;
+    expect(groups.find((g) => g.start === 1)?.className).toBe("page chapter-3");
+    expect(groups.find((g) => g.start === 4)?.className).toBe("section sidebar gp-continued");
+  });
+
+  test("prose and non-paragraph blocks are never markers", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "codeBlock", id: 1 } as unknown as BlockAstNode, sourceText: "@section in a fence\n", absoluteStart: 0 },
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "@section is a word this sentence starts with\nand it wraps\n", absoluteStart: 50 },
+      { ast: { kind: "paragraph", id: 3 } as unknown as BlockAstNode, sourceText: "Ordinary paragraph text.\n", absoluteStart: 100 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([]);
     expect(provider.renderCustomBlock(FAKE_NODE, "Ordinary paragraph text, not projected.\n\n")).toBeUndefined();
   });
 
-  test("isStale is consulted before any matching work -- a stale provider never renders even a definitely-matching, definitely-non-empty sourceText", () => {
-    const projection = buildFixtureProjection();
-    const chapter = blockOf(projection, "chapter");
-    const provider = createGutterpressBlockProvider(projection, {
-      source: FIXTURE_SOURCE,
-      ownerDocument: UNUSED_DOCUMENT,
-      isStale: () => true,
-    });
-    expect(
-      provider.renderCustomBlock(FAKE_NODE, FIXTURE_SOURCE.slice(chapter.from, chapter.to)),
-    ).toBeUndefined();
+  test("needsRefresh() reflects the projection's own sourceVersion", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(7), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    expect(provider.needsRefresh(7)).toBe(false);
+    expect(provider.needsRefresh(8)).toBe(true);
   });
 });
 

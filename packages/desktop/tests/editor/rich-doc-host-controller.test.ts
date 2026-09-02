@@ -73,7 +73,7 @@ function fakeBuilder() {
     calls.push({ content, sourceVersion });
     const label = `${content}@${sourceVersion}`;
     const d = deferred<RichDocHostBuildResult>();
-    pendingResolvers.push(() => d.resolve({ projection: projectionFor(label), pluginCss: undefined }));
+    pendingResolvers.push(() => d.resolve({ projection: projectionFor(label), editorCss: undefined }));
     return d.promise;
   }
   return {
@@ -87,7 +87,7 @@ function fakeBuilder() {
 }
 
 describe("RichDocHostController — rebuild epoch guard (a file switch during an in-flight projection build lands in the right final state)", () => {
-  test("starts with no host/projection/pluginCss", () => {
+  test("starts with no host/projection/editorCss", () => {
     const builder = fakeBuilder();
     const ctrl = new RichDocHostController({
       buildProjection: builder.buildProjection,
@@ -95,10 +95,10 @@ describe("RichDocHostController — rebuild epoch guard (a file switch during an
     });
     expect(ctrl.host).toBeNull();
     expect(ctrl.projection).toBeNull();
-    expect(ctrl.pluginCss).toBeUndefined();
+    expect(ctrl.editorCss).toBeUndefined();
   });
 
-  test("control: a single rebuild's build resolving normally publishes host + projection + pluginCss together", async () => {
+  test("control: a single rebuild's build resolving normally publishes host + projection + editorCss together", async () => {
     const builder = fakeBuilder();
     const ctrl = new RichDocHostController({
       buildProjection: builder.buildProjection,
@@ -209,7 +209,7 @@ describe("RichDocHostController — rebuild epoch guard (a file switch during an
 
     expect(ctrl.host).toBeNull();
     expect(ctrl.projection).toBeNull();
-    expect(ctrl.pluginCss).toBeUndefined();
+    expect(ctrl.editorCss).toBeUndefined();
   });
 
   test("rebuild(null, ...) clears the host synchronously without waiting on any build", () => {

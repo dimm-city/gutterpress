@@ -4740,6 +4740,13 @@ class sn extends oe {
       if (e.children[m].kind === "block") {
         const p = o.get(f);
         p !== void 0 && (_.element.classList.toggle("md-block-active", p), _.element.classList.toggle("md-markers-hidden", !p));
+        /* gp-fork: decorateInactiveBlock — a freshly built, INACTIVE top-level
+         * block view is offered to the host once, after its rendering is
+         * complete, so the host can apply presentation derived from the
+         * block's source (e.g. markdown-it-attrs `{#id .class}` trailers).
+         * Never for an active block: its source is on screen verbatim. See
+         * PATCHES.md Patch 4. */
+        p === !1 && _ !== g && t?.decorateInactiveBlock?.(_.element, f.ast, Es(f.ast));
         const w = e.children[m].diffKind;
         _.element.classList.toggle("md-diff-added", w === "added"), _.element.classList.toggle("md-diff-modified", w === "modified");
       }
@@ -4747,16 +4754,80 @@ class sn extends oe {
     });
     for (const f of l)
       f.dispose();
-    Q(i, u.map((f) => f.mountNode));
+    /* gp-fork: groupBlocks — wrap runs of top-level block views in
+     * host-owned container elements (Gutterpress @section/@page/@spread/
+     * @chapter scopes) before mounting. The block views, `u`, and the
+     * `blocks` list below are untouched; only the DOM parent of a mounted
+     * block changes. See PATCHES.md Patch 3. */
+    let gpMountNodes = u.map((f) => f.mountNode), gpWrappers = s?._gpWrappers;
+    if (t?.groupBlocks) {
+      const gpCandidates = [];
+      e.children.forEach((f, m) => {
+        f.kind === "block" && gpCandidates.push({ index: m, ast: f.view.ast, sourceText: Es(f.view.ast), absoluteStart: f.absoluteStart });
+      });
+      const gpGroups = t.groupBlocks(gpCandidates) ?? [];
+      if (gpGroups.length > 0) {
+        const gpResult = gpMountGroups(u, gpCandidates, gpGroups, gpWrappers);
+        gpMountNodes = gpResult.nodes, gpWrappers = gpResult.wrappers;
+      } else
+        gpWrappers = void 0;
+    }
+    Q(i, gpMountNodes);
+    /* gp-fork: afterDocumentMount — the host may re-layout the mounted
+     * document (Gutterpress paginates it into multicol strips) before the
+     * view measures it. See PATCHES.md Patch 5. */
+    t?.afterDocumentMount?.(i);
     const h = [];
-    return e.children.forEach((f, m) => {
+    e.children.forEach((f, m) => {
       f.kind === "block" && h.push({ node: u[m], absoluteStart: f.absoluteStart });
-    }), new sn(e.ast, i, h, u, d);
+    });
+    const gpView = new sn(e.ast, i, h, u, d);
+    return gpView._gpWrappers = gpWrappers, gpView;
   }
   /** The stable content element this document mounts its children into. */
   get contentDomNode() {
     return this.dom;
   }
+}
+/* gp-fork: groupBlocks — container mounting helper for sn.create above.
+ * `groups` are indices into `candidates` (block-only positions, start
+ * inclusive / end exclusive); `candidates[i].index` maps back into `u`.
+ * Wrapper elements are reused across renders by `spec.key` so an unchanged
+ * container keeps its DOM node (and the block views inside it keep theirs).
+ * Groups must nest properly; a group that does not fit inside the range
+ * being built is skipped rather than guessed. See PATCHES.md Patch 3. */
+function gpMountGroups(u, candidates, groups, prevWrappers) {
+  const wrappers = /* @__PURE__ */ new Map(), ranges = [];
+  for (const g of groups) {
+    const first = candidates[g.start], last = candidates[g.end - 1];
+    !first || !last || g.end <= g.start || ranges.push({ spec: g, uStart: first.index, uEnd: last.index + 1 });
+  }
+  ranges.sort((a, b) => a.uStart - b.uStart || b.uEnd - a.uEnd);
+  let next = 0;
+  const build = (from, to) => {
+    const nodes = [];
+    let m = from;
+    for (; m < to; ) {
+      const r = ranges[next];
+      if (r && r.uStart === m && r.uEnd <= to) {
+        next++;
+        const tag = (r.spec.tagName ?? "div").toLowerCase();
+        let el = prevWrappers?.get(r.spec.key);
+        (!el || el.tagName.toLowerCase() !== tag) && (el = document.createElement(tag));
+        for (const a of Array.from(el.attributes))
+          el.removeAttribute(a.name);
+        r.spec.className && (el.className = r.spec.className);
+        for (const [k, v] of Object.entries(r.spec.attributes ?? {}))
+          k !== "class" && el.setAttribute(k, v);
+        el.classList.add("md-block-group"), wrappers.set(r.spec.key, el), Q(el, build(m, r.uEnd)), nodes.push(el), m = r.uEnd;
+      } else if (r && r.uStart === m)
+        next++;
+      else
+        nodes.push(u[m].mountNode), m++;
+    }
+    return nodes;
+  };
+  return { nodes: build(0, u.length), wrappers };
 }
 class Wn extends oe {
   element;

@@ -64,7 +64,7 @@ import type { GutterpressProjection } from "gutterpress/render";
 
 export interface RichDocHostBuildResult {
   readonly projection: GutterpressProjection;
-  readonly pluginCss: string | undefined;
+  readonly editorCss: string | undefined;
 }
 
 export interface RichDocHostControllerDeps {
@@ -90,7 +90,7 @@ export class RichDocHostController {
   projection = $state<GutterpressProjection | null>(null);
   /** Plugin CSS from the host-built projection (SFE-P3e); `undefined` on
    *  the local (no-project) path. In lockstep with {@link host}. */
-  pluginCss = $state<string | undefined>(undefined);
+  editorCss = $state<string | undefined>(undefined);
 
   private readonly deps: RichDocHostControllerDeps;
   private unsub: (() => void) | null = null;
@@ -123,7 +123,7 @@ export class RichDocHostController {
     if (!path) {
       this.host = null;
       this.projection = null;
-      this.pluginCss = undefined;
+      this.editorCss = undefined;
       this.pending = null;
       return;
     }
@@ -134,7 +134,7 @@ export class RichDocHostController {
       .then((result) => {
         if (epoch !== this.epoch) return;
         this.projection = result.projection;
-        this.pluginCss = result.pluginCss;
+        this.editorCss = result.editorCss;
         this.host = nextHost;
       })
       .finally(() => {
@@ -150,7 +150,7 @@ export class RichDocHostController {
     this.epoch += 1;
     this.host = null;
     this.projection = null;
-    this.pluginCss = undefined;
+    this.editorCss = undefined;
     this.pending = null;
   }
 }

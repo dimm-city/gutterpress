@@ -7,3 +7,4 @@ export * from "./match.ts";
 export * from "./plan.ts";
 export * from "./provider.ts";
 export * from "./mount.ts";
+export * from "./editor-css.ts";

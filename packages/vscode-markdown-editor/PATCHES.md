@@ -1060,3 +1060,106 @@ subsumes it, is a pure performance no-op for every consumer. (This claim
 holds for the patch AS SHIPPED, `absoluteStart`-checked — see "Why the
 translate is exact, not approximate," above, for the repair round that made
 it true.)
+
+## Patch 3 — `groupBlocks` (container mounting for Gutterpress scopes)
+
+Marked `/* gp-fork: groupBlocks */`. Touches `dist/index.js` (Hunks 11-12)
+and `dist/index.d.ts` (Hunk 13). Additive; every existing line is
+unchanged.
+
+**Why.** Gutterpress markers (`@section … @end-section`, `@page`, `@spread`,
+`@chapter`) are SCOPES: the print pipeline renders them as a `div.section`
+/ `div.page` / … wrapping the blocks between the markers, and a book's own
+stylesheet targets that wrapper (`.section.lede`, `.page.cover-page`,
+`.gp-columns-2`). The upstream editor's document is a flat list of
+top-level block views mounted directly under `.md-document`, so with
+Patch 1 alone the editor could show the marker LINE (as a custom block) but
+never the scope: nothing in the DOM carried the wrapper the CSS needs, so
+the editor could not render a Gutterpress book the way the book renders.
+
+**What.** `BlockViewOptions.groupBlocks` is consulted once per document
+render (in the document view's `create`) with every top-level block — its
+AST node, exact source text (the same `Es(ast)` text `renderCustomBlock`
+receives) and absolute start offset. It returns container specs: runs of
+consecutive blocks (`start` inclusive / `end` exclusive, indices into that
+list) plus the wrapper's tag, class and attributes, and a `key` the wrapper
+element is reused by across renders. `gpMountGroups` (Hunk 12) builds the
+mount-node list with those runs nested inside their wrappers and hands it
+to the SAME child reconciler (`Q`) the upstream code already used for the
+flat list; the block views themselves, the `blocks` layout list, and every
+measurement/caret path that reads a block's `element` are untouched — only
+a mounted block's DOM PARENT changes. Specs must nest properly; one that
+does not fit inside the range being built is skipped, never guessed.
+
+### Hunk 11 — `sn.create` (the document view) mounts through `gpMountGroups`
+
+Replaces the single `Q(i, u.map((f) => f.mountNode))` call with the
+grouped mount when `groupBlocks` is set (and the flat mount, byte-identical
+in effect, when it is not or returns nothing), and carries the wrapper map
+on the view instance (`_gpWrappers`) so the next render reuses wrappers.
+
+### Hunk 12 — `gpMountGroups`, a new helper
+
+Defined immediately after `class sn`. Pure DOM/list work: converts specs to
+`u`-index ranges, sorts outer-first, and recursively builds the mount list.
+
+### Hunk 13 — `BlockViewOptions.groupBlocks`, `BlockGroupCandidate`, `BlockGroupSpec` (index.d.ts)
+
+The option, documented next to `renderCustomBlock`, and the two plain-data
+interfaces it uses, declared before `CustomBlockRendering`.
+
+### Patch 3 upstreaming / removal trigger
+
+Delete this patch when upstream offers a way to mount runs of blocks inside
+a host-owned container (a container/grouping hook, or a block kind whose
+children are top-level blocks) — `packages/editor`'s provider then returns
+its specs through that surface instead.
+
+## Patch 4 — `decorateInactiveBlock` (source-derived presentation on inactive blocks)
+
+Marked `/* gp-fork: decorateInactiveBlock */`. Touches `dist/index.js`
+(Hunk 14, inside `sn.create`'s per-block map, right after the
+active/markers-hidden class toggles) and `dist/index.d.ts` (Hunk 15, the
+option next to `groupBlocks`). Additive.
+
+**Why.** Gutterpress books use markdown-it-attrs: `# Title {#ch-1 .x}`
+gives the heading an id and a class the book's CSS targets. The editor's
+own parser has no attrs syntax, so it rendered the trailer as heading text
+and the CSS never matched. The hook lets the host apply those attributes to
+the rendered element and hide the trailer while the block is inactive; an
+active block still shows its source verbatim, as the fork always did.
+
+**What.** After a top-level block view is built and its active/inactive
+classes are set, if the block is inactive AND the view is new (not reused
+by identity), `options.decorateInactiveBlock(element, ast, sourceText)` is
+called once. A reused view was decorated when it was built; a block that
+becomes active is rebuilt (fresh view data), and rebuilt again when it goes
+inactive, so decoration always follows a complete default rendering.
+
+### Patch 4 upstreaming / removal trigger
+
+Delete when upstream renders markdown-it-attrs trailers itself, or offers a
+post-render hook per block.
+
+## Patch 5 — `afterDocumentMount` (host re-layout before measurement)
+
+Marked `/* gp-fork: afterDocumentMount */`. One call added in `sn.create`
+immediately after the document's children are mounted (Hunk 16,
+`dist/index.js`) and the option declared next to `decorateInactiveBlock`
+(Hunk 17, `dist/index.d.ts`). Additive.
+
+**Why.** Gutterpress paginates the editor's document on screen with the
+same multicol fragmenter the preview uses: it moves runs of blocks into
+column strips and draws page sheets around them. That has to happen after
+the editor has mounted its blocks and BEFORE it measures them, or the
+caret/selection geometry is computed against the unpaginated layout and
+drawn in the wrong place.
+
+**What.** `options.afterDocumentMount(documentElement)` runs synchronously
+inside the render, after `Q(...)` mounted the blocks and before the render
+autorun continues to measurement. The host must leave every block view's
+element in the document (moving it is fine).
+
+### Patch 5 upstreaming / removal trigger
+
+Delete when upstream exposes a post-mount/pre-measure hook.

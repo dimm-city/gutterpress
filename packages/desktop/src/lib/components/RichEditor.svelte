@@ -43,6 +43,7 @@
   import { mountEditor } from "@dimm-city/gutterpress-editor/web";
   import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
   import type { GutterpressProjection } from "gutterpress/render";
+  import { createPagedSurface } from "$lib/editor/paged-surface";
 
   let {
     host,
@@ -50,6 +51,8 @@
     readonly = false,
     extraCss,
     onDiagnostic,
+    paged = false,
+    onPaginated,
   }: {
     /**
      * The document this mount reads/writes through — the D3/D7
@@ -74,6 +77,9 @@
     readonly?: boolean;
     extraCss?: string;
     onDiagnostic?: (diagnostic: Diagnostic) => void;
+    /** Paginate the live document with the book's own `@page` geometry (`$lib/editor/paged-surface`). */
+    paged?: boolean;
+    onPaginated?: (totalPages: number) => void;
   } = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
@@ -88,13 +94,27 @@
 
   onMount(() => {
     if (!container) return;
+    const surface = paged && extraCss ? createPagedSurface(extraCss, container.ownerDocument) : undefined;
+    if (surface && onPaginated) surface.onPaginated(onPaginated);
     const mount = projection
-      ? mountGutterpressEditor(container, host, { projection, readonly, extraCss, onDiagnostic })
-      : mountEditor(container, host, { readonly, extraCss, onDiagnostic });
+      ? mountGutterpressEditor(container, host, {
+          projection,
+          readonly,
+          extraCss,
+          onDiagnostic,
+          // The book's own CSS supplies the typography; the fork's default
+          // theme would fight it (and caps the editor at 800px).
+          themeClassName: extraCss ? null : undefined,
+          // Read/Edit is a workspace decision, not a per-editor toggle.
+          showReadonlyToggle: false,
+          afterDocumentMount: surface?.onDocumentMount,
+        })
+      : mountEditor(container, host, { readonly, extraCss, onDiagnostic, showReadonlyToggle: false });
     mountHandle = mount;
     return () => {
       mountHandle = undefined;
       mount.dispose();
+      surface?.dispose();
     };
   });
 
@@ -116,6 +136,8 @@
 
 <style>
   .rich-editor-host {
+    width: 100%;
+    min-width: 0;
     height: 100%;
     min-height: 0;
     overflow: hidden;

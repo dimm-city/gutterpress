@@ -26,6 +26,7 @@
     spreadModeSupported: () => spreadModeSupported,
     runPageBox: () => runPageBox,
     rowStrideOf: () => rowStrideOf,
+    paginate: () => paginate,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     measure: () => measure,
@@ -1667,23 +1668,9 @@
       return;
     });
   }
-  async function fragmentDocument(opts = {}) {
-    const layoutReady = waitForLayoutReady();
-    const css = await loadStyleSources();
-    injectViewerCss();
-    const printOnly = mediaPrintBodies(css).join(`
-`);
-    if (printOnly && !document.getElementById("gp-media-print")) {
-      const style = document.createElement("style");
-      style.id = "gp-media-print";
-      style.textContent = printOnly;
-      document.head.appendChild(style);
-    }
-    const model = extract(css);
-    injectBreakMapping(model);
+  function paginate(model, opts = {}) {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
-    await layoutReady;
     makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
     synthesizeColumnBreaks(model);
@@ -1727,6 +1714,23 @@
       }
     };
     return api;
+  }
+  async function fragmentDocument(opts = {}) {
+    const layoutReady = waitForLayoutReady();
+    const css = opts.css ?? await loadStyleSources();
+    injectViewerCss();
+    const printOnly = mediaPrintBodies(css).join(`
+`);
+    if (printOnly && !document.getElementById("gp-media-print")) {
+      const style = document.createElement("style");
+      style.id = "gp-media-print";
+      style.textContent = printOnly;
+      document.head.appendChild(style);
+    }
+    const model = extract(css);
+    injectBreakMapping(model);
+    await layoutReady;
+    return paginate(model, opts);
   }
 
   // src/engine/shared/content-value.ts
@@ -2025,7 +2029,7 @@
         document.body.dataset.designer = on ? "on" : "off";
       }
     };
-    const canvasBg = captureCanvasBackground();
+    const canvasBg = captureCanvasBackground(opts.canvasRoots);
     document.body.classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
@@ -2065,7 +2069,7 @@
           entries.push({
             page,
             value: evaluate(decl.value, {
-              text: (el.textContent ?? "").trim(),
+              text: (el.innerText ?? el.textContent ?? "").trim(),
               attr: (n) => el.getAttribute(n) ?? undefined
             })
           });
@@ -2327,14 +2331,14 @@
     "background-clip",
     "background-blend-mode"
   ];
-  function captureCanvasBackground() {
-    for (const el of [document.documentElement, document.body]) {
+  function captureCanvasBackground(roots) {
+    for (const el of roots ?? [document.documentElement, document.body]) {
       const cs = getComputedStyle(el);
       const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
       if (cs.backgroundImage === "none" && transparent)
         continue;
       const captured = CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]);
-      if (el === document.documentElement)
+      if (el === document.documentElement || roots)
         el.style.background = "none";
       return captured;
     }

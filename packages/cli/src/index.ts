@@ -69,3 +69,9 @@ export type {
   GutterpressPluginExport,
   GutterpressPluginMetadata,
 } from "./lib/markdown/plugins.ts";
+
+// Rich editor (desktop) — the book's CSS layers scoped to the editor document.
+export { composeEditorCss, scopeCssToEditor } from "./lib/editor-css.ts";
+export type { ComposeEditorCssOptions } from "./lib/editor-css.ts";
+export { inlineStyles } from "./lib/asset-inline.ts";
+export type { InlineStylesResult } from "./lib/asset-inline.ts";

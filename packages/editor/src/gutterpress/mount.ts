@@ -13,6 +13,8 @@ import { mountEditor } from "../web/mount.ts";
 import { projectionNeedsRefresh } from "./match.ts";
 import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
+import { GUTTERPRESS_EDITOR_CSS } from "./editor-css.ts";
+import { decorateAttrsTrailer } from "./attrs.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -21,6 +23,12 @@ export interface MountGutterpressEditorOptions {
   readonly onDiagnostic?: (diagnostic: Diagnostic) => void;
   readonly readonly?: boolean;
   readonly extraCss?: string;
+  /** See `mountEditor`'s option of the same name. Pass `null` when `extraCss` carries the book's own typography. */
+  readonly themeClassName?: string | null;
+  /** See `mountEditor`'s option of the same name. */
+  readonly showReadonlyToggle?: boolean;
+  /** See `mountEditor`'s option of the same name. */
+  readonly afterDocumentMount?: (documentElement: HTMLElement) => void;
 }
 
 export interface GutterpressEditorMount {
@@ -84,14 +92,18 @@ export function mountGutterpressEditor(
   const provider = createGutterpressBlockProvider(options.projection, {
     source: host.getSnapshot().text,
     ownerDocument: doc,
-    isStale,
   });
 
   const mount = mountEditor(container, host, {
     onDiagnostic: options.onDiagnostic,
     readonly: options.readonly,
-    extraCss: options.extraCss,
+    extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
     renderCustomBlock: provider.renderCustomBlock,
+    groupBlocks: provider.groupBlocks,
+    themeClassName: options.themeClassName,
+    showReadonlyToggle: options.showReadonlyToggle,
+    decorateInactiveBlock: decorateAttrsTrailer,
+    afterDocumentMount: options.afterDocumentMount,
   });
 
   return {

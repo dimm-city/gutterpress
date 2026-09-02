@@ -127,6 +127,14 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
     pre.className = `${CHIP_ROOT_CLASS}__source ${CHIP_ROOT_CLASS}__source--inert`;
     pre.textContent = plan.inactivePreviewText;
     dom.appendChild(pre);
+    if (plan.renderedHtml !== undefined) {
+      // The book's own output for this block (a project plugin's rendering,
+      // or the author's raw HTML) as real DOM, so the editor shows what the
+      // PDF shows. Scripts, event handlers and javascript: URLs are stripped
+      // — this HTML renders inside the app's own document, not the preview
+      // iframe.
+      dom.appendChild(renderSanitizedHtml(doc, plan.renderedHtml, `${CHIP_ROOT_CLASS}__rendered`));
+    }
   }
 
   if (plan.block.viewAttributes) {
@@ -152,4 +160,53 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
   }
 
   return segments ? { dom, segments } : { dom };
+}
+
+const BLOCKED_TAGS = new Set(["SCRIPT", "IFRAME", "OBJECT", "EMBED", "FRAME", "LINK", "META", "BASE"]);
+
+function renderSanitizedHtml(doc: Document, html: string, className: string): HTMLElement {
+  const wrap = el(doc, "div", className);
+  const tpl = doc.createElement("template");
+  tpl.innerHTML = html;
+  const walker = doc.createTreeWalker(tpl.content, 1 /* NodeFilter.SHOW_ELEMENT */);
+  const doomed: Element[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const element = node as Element;
+    if (BLOCKED_TAGS.has(element.tagName)) {
+      doomed.push(element);
+      continue;
+    }
+    for (const attr of Array.from(element.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith("on") || ((name === "href" || name === "src" || name === "xlink:href") && value.startsWith("javascript:"))) {
+        element.removeAttribute(attr.name);
+      }
+    }
+  }
+  for (const element of doomed) element.remove();
+  wrap.appendChild(tpl.content);
+  return wrap;
+}
+
+/**
+ * `@end-section` — the marker grammar's one explicit closer. It projects no
+ * block of its own (it produces no token), so it is rendered from its text:
+ * a muted chip with per-character segments, editable like any marker line.
+ */
+export function renderCloseMarkerChip(doc: Document, sourceText: string): CustomBlockRendering {
+  const dom = el(doc, "div", `md-block ${CHIP_ROOT_CLASS} ${CHIP_ROOT_CLASS}--end-section`);
+  dom.dataset["gpBlockKind"] = "end-section";
+  const kindLabel = el(doc, "div", `${CHIP_ROOT_CLASS}__kind`);
+  kindLabel.textContent = "end";
+  dom.appendChild(kindLabel);
+  const sourceEl = el(doc, "div", `${CHIP_ROOT_CLASS}__source`);
+  const segments: SourceSegment[] = [];
+  for (let i = 0; i < sourceText.length; i++) {
+    const charNode = doc.createTextNode(sourceText[i] ?? "");
+    sourceEl.appendChild(charNode);
+    segments.push({ dom: charNode, start: i, length: 1 });
+  }
+  dom.appendChild(sourceEl);
+  return { dom, segments };
 }
