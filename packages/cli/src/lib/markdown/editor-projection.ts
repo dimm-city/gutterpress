@@ -342,6 +342,7 @@ import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "./renderer";
 import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
 import { registerPluginOriginCapture, resolvePluginTokenOrigin } from "./plugin-origin";
+import { parseMarkerLine } from "./markers.js";
 
 /** D1/D6 — Gutterpress sparse-projection schema version. Bump only via an explicit decision-record amendment. */
 export const PROJECTION_SCHEMA_VERSION = 1 as const;
@@ -421,6 +422,71 @@ export interface ProjectionDiagnostic {
  * D6's top-level projection shape, plus one SFE-P2b Lane C (D13) addition:
  * `limited`.
  */
+/**
+ * A container element a PROJECT PLUGIN opens for one of its own markers.
+ *
+ * A plugin turns `@specialty .augmerc` into a real wrapper — the Dimm City
+ * plugin emits `<div class="dc-specialty augmerc">` — and that wrapper is
+ * what its stylesheet targets. An editor that knows only the marker's own
+ * name cannot guess the class (`specialty` is not `dc-specialty`), so the
+ * content inside renders unwrapped and unstyled: those portraits measured
+ * 696px against the book's 58px, and one chapter came out 39 pages against
+ * 25. Reporting the wrapper the pipeline ACTUALLY emitted is the only way an
+ * editor can reproduce it for an arbitrary plugin.
+ */
+/** One opening tag, alone in an `html_block` — the shape a plugin's container marker becomes. */
+const OPENING_TAG_RE = /^\s*<([a-z][\w-]*)((?:\s+[^<>]*)?)>\s*$/i;
+const ATTR_RE = /([a-zA-Z_:][-\w:.]*)\s*=\s*"([^"]*)"/g;
+
+/**
+ * The container elements a document's plugins opened, in document order.
+ *
+ * A plugin container marker (`@specialty`) is replaced in the token stream
+ * by the wrapper the plugin emits, as a single opening tag in an
+ * `html_block`. Matching them back to their marker by KIND rather than by
+ * position is what keeps an author's own raw `<div class="colophon-grid">`
+ * from being mistaken for one: a wrapper counts as a container for kind `k`
+ * only when one of its classes IS `k` or ends with `-k`, which is the naming
+ * every plugin following core's marker convention already uses
+ * (`dc-specialty` for `@specialty`).
+ */
+function collectPluginContainers(tokens: readonly Token[], source: string): PluginContainer[] {
+  const kinds = new Set<string>();
+  for (const line of source.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("@")) continue;
+    const parsed = parseMarkerLine(trimmed, { allowUnknownKinds: true }) as
+      | { kind: string; unknownKind?: boolean }
+      | null;
+    if (parsed?.unknownKind) kinds.add(parsed.kind);
+  }
+  if (kinds.size === 0) return [];
+
+  const out: PluginContainer[] = [];
+  for (const token of tokens) {
+    if (token.type !== "html_block") continue;
+    const m = OPENING_TAG_RE.exec(token.content);
+    if (!m) continue;
+    const attributes: Record<string, string> = {};
+    for (const a of m[2]!.matchAll(ATTR_RE)) attributes[a[1]!] = a[2]!;
+    const classes = (attributes["class"] ?? "").split(/\s+/).filter(Boolean);
+    // Longest kind first, so `@specialty-card` is not claimed by `@specialty`.
+    const kind = [...kinds]
+      .sort((a, b) => b.length - a.length)
+      .find((k) => classes.some((c) => c === k || c.endsWith(`-${k}`)));
+    if (!kind) continue;
+    out.push({ kind, tag: m[1]!.toLowerCase(), attributes });
+  }
+  return out;
+}
+
+export interface PluginContainer {
+  /** The marker kind this wrapper belongs to (`specialty` for `dc-specialty`). */
+  readonly kind: string;
+  readonly tag: string;
+  readonly attributes: Readonly<Record<string, string>>;
+}
+
 export interface GutterpressProjection {
   readonly schemaVersion: 1;
   readonly sourceVersion: number;
@@ -443,6 +509,12 @@ export interface GutterpressProjection {
    * preview shrank.
    */
   readonly limited?: true;
+  /**
+   * Container elements this document's PLUGINS opened, in document order —
+   * see {@link PluginContainer}. Empty for a document with no plugin
+   * containers, which is every project that uses only core's markers.
+   */
+  readonly pluginContainers: readonly PluginContainer[];
 }
 
 export interface CreateEditorProjectionOptions {
@@ -1336,6 +1408,7 @@ export function createEditorProjection(
     blocks,
     generated,
     diagnostics,
+    pluginContainers: collectPluginContainers(tokens, source),
     // D13 — omit the key entirely when not limited (optional-field
     // convention, not `limited: false`; see the field's own doc comment).
     ...(limited ? { limited: true as const } : {}),

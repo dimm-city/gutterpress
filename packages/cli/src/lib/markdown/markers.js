@@ -219,14 +219,17 @@ export function parseMarkerLine(line, options = {}) {
   //
   // Constrained to a marker-SHAPED head (`@lower-case-word`) so an ordinary
   // paragraph opening with an `@` handle is not swept up by it.
-  if (!KNOWN_KINDS.includes(kind)) {
-    if (!options.allowUnknownKinds || !/^[a-z][a-z0-9-]*$/.test(kind)) return null;
-    return { kind, name: null, attrs: {}, unknownKind: true };
-  }
+  const unknownKind = !KNOWN_KINDS.includes(kind);
+  if (unknownKind && (!options.allowUnknownKinds || !/^[a-z][a-z0-9-]*$/.test(kind))) return null;
 
   if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section' || kind === 'continue') {
     return { kind, name: null, attrs: {} };
   }
+  // An unknown kind takes the SAME body grammar as a known one — its name,
+  // `.class`, `#id` and `key=value` arguments all mean what they mean
+  // everywhere else, because that grammar is what plugins are told to
+  // extend. Only the transformation is core's to refuse.
+
 
   const body = tokens.slice(1);
   const hasExplicitAttrsOrShorthand = body.some(
@@ -320,6 +323,7 @@ export function parseMarkerLine(line, options = {}) {
   // this parser is also invoked by markdown-it's silent paragraph-terminator
   // probes, so warning from here would push duplicates onto env.
   const marker = { kind, name, attrs };
+  if (unknownKind) marker.unknownKind = true;
   if (hasAmbiguousBareToken) marker.__ambiguousBareToken = true;
   if (unknownTokens.length) marker.__unknownTokens = unknownTokens;
   // A marker has exactly one name slot. A second plain word is either

@@ -123,6 +123,34 @@ function markersOf(node: { readonly kind: string } | undefined, sourceText: stri
 
 const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue" ? "section" : marker.kind);
 
+/** `@end-x` closes `@x` — the closing convention core uses and plugins follow. */
+const closedKindOf = (marker: ParsedMarker): string | null =>
+  marker.kind.startsWith("end-") ? marker.kind.slice(4) : null;
+
+/**
+ * The wrapper a PLUGIN's own container marker opens.
+ *
+ * A project plugin's markers are containers just as core's are — the Dimm
+ * City plugin's `@specialty .augmerc` wraps a role's whole spread, and its
+ * CSS sizes the art inside it. Chipping the marker without building that
+ * wrapper leaves the content unwrapped: those portraits rendered at their
+ * natural 690px against the book's 80px, and one chapter came out 39 pages
+ * against 25.
+ *
+ * Core cannot know what element the plugin emits, so this follows the
+ * convention core documents and plugins mirror: the kind as a class, plus
+ * the author's own classes and id. A plugin that emits some other class
+ * gets a wrapper its CSS does not match — no worse than the nothing it had
+ * before, and right for every plugin that follows the convention.
+ */
+function pluginContainerAttributes(marker: ParsedMarker): Record<string, string> {
+  const authored = (marker.attrs["class"] ?? "").split(/\s+/).filter(Boolean);
+  const out: Record<string, string> = { class: [marker.kind, ...authored].join(" ") };
+  const id = marker.attrs["id"];
+  if (id) out["id"] = id;
+  return out;
+}
+
 function mergeClass(existing: string | undefined, extra: string): string {
   const classes = (existing ?? "").split(/\s+/).filter(Boolean);
   if (extra && !classes.includes(extra)) classes.push(extra);
@@ -134,6 +162,19 @@ export function createGutterpressBlockProvider(
   opts: CreateGutterpressBlockProviderOptions,
 ): GutterpressBlockProvider {
   const index: BlockIndex = buildBlockIndex(projection, opts.source);
+  /**
+   * The wrappers the project's plugins actually opened, per kind, in
+   * document order — the pipeline's own answer, so the editor reproduces a
+   * plugin's `dc-specialty` rather than guessing `specialty` from the
+   * marker's name. Consumed in order per kind, matching the order the
+   * markers appear in.
+   */
+  const pluginWrappers = new Map<string, { tag: string; attributes: Record<string, string> }[]>();
+  for (const container of projection.pluginContainers ?? []) {
+    const list = pluginWrappers.get(container.kind) ?? [];
+    list.push({ tag: container.tag, attributes: { ...container.attributes } });
+    pluginWrappers.set(container.kind, list);
+  }
   /** AST ids of this render's top-level blocks, from `groupBlocks`. */
   let topLevel: ReadonlySet<number> = new Set();
 
@@ -157,7 +198,7 @@ export function createGutterpressBlockProvider(
     const markers = topLevel.has(node.id) ? markersOf(node, sourceText) : [];
     const marker = markers[0];
     if (marker) {
-      if (markers.length === 1 && marker.kind === "end-section") {
+      if (markers.length === 1 && (marker.kind === "end-section" || closedKindOf(marker))) {
         return renderCloseMarkerChip(opts.ownerDocument, sourceText);
       }
       // The projection is still the authority when it recognizes this exact
@@ -189,6 +230,18 @@ export function createGutterpressBlockProvider(
   }
 
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
+    // Each render consumes the wrappers from the top; the queues are rebuilt
+    // per render so a re-render sees the same document the last one did.
+    const takeWrapper = (() => {
+      const cursors = new Map<string, number>();
+      return (kind: string) => {
+        const list = pluginWrappers.get(kind);
+        if (!list) return undefined;
+        const at = cursors.get(kind) ?? 0;
+        cursors.set(kind, at + 1);
+        return list[at];
+      };
+    })();
     topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
     /** Every marker each top-level block carries, in source order. */
     const markers = blocks.map((candidate) => markersOf(candidate.ast, candidate.sourceText));
@@ -204,7 +257,41 @@ export function createGutterpressBlockProvider(
 
     markers.forEach((blockMarkers, i) => {
       for (const marker of blockMarkers) {
-      if (marker.unknownKind) continue;
+      if (marker.unknownKind) {
+        // A plugin's own container. It runs to its `@end-<kind>`, to the
+        // next `@<kind>` (the auto-close every such plugin documents), or to
+        // the end of the core scope enclosing it — a new page or section
+        // ends it, because the plugin's own wrapper cannot span one.
+        if (closedKindOf(marker)) continue; // a closer opens nothing
+        let end = i + 1;
+        while (end < blocks.length) {
+          const others = markers[end]!;
+          const ends = others.some(
+            (m) =>
+              closedKindOf(m) === marker.kind ||
+              (m.unknownKind && m.kind === marker.kind) ||
+              (!m.unknownKind && CONTAINER_KINDS.has(scopeKindOf(m))),
+          );
+          if (ends) break;
+          end += 1;
+        }
+        // The pipeline's own wrapper when the projection captured one;
+        // otherwise the convention-derived fallback, which is right for a
+        // plugin that names its wrapper after the marker and harmless for
+        // one that does not.
+        const emitted = takeWrapper(marker.kind);
+        const attrs = emitted ? { ...emitted.attributes } : pluginContainerAttributes(marker);
+        const { class: pluginClass, ...pluginAttrs } = attrs;
+        groups.push({
+          start: i,
+          end,
+          key: `${marker.kind}:${blocks[i]!.ast.id}`,
+          tagName: emitted?.tag,
+          className: pluginClass,
+          attributes: pluginAttrs,
+        });
+        continue;
+      }
       const kind = scopeKindOf(marker);
       if (!CONTAINER_KINDS.has(kind)) continue;
 
