@@ -3,7 +3,9 @@
  *
  * Consumed by:
  *   - packages/cli  (commands import from here; bundled into the CLI binary + npm package)
- *   - packages/desktop (SvelteKit API routes import from here at runtime)
+ *   - packages/desktop (Electron main imports this at runtime via a dynamic
+ *     `import("gutterpress")`, behind the typed IPC handlers in
+ *     `electron/api/*.ts`; the SvelteKit-served renderer/SPA never imports it)
  *
  * Plugin authors use the type-only exports below to type their plugins without
  * taking a runtime dependency on this package.

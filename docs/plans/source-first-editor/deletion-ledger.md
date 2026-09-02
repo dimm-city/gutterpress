@@ -4224,6 +4224,109 @@ version-history line describing a past migration step, the same class the
 run's own zero-remnant sweep (§1.7) already treats as sanctioned; left
 unchanged.
 
+#### 5.6 The enumeration §5.5 promised but did not run (P7-repair-round-2)
+
+Round 2's review confirmed §5.5's own root-cause diagnosis — "sampled rather
+than enumerated" — had reproduced itself: the round-1 repair fixed every
+instance a finding NAMED, but never ran the repo-wide enumeration §5.5's own
+text claims to be. Four instances (three in the published `gutterpress`
+package) survived in production source, all present-tense descriptions of
+the deleted `src/routes/api/**`/`+server.ts`/SvelteKit-handler surface.
+
+This round runs that enumeration for real:
+
+```console
+$ grep -rn -iE 'SvelteKit|server route|\+server\.ts' packages/*/src packages/desktop/electron packages/vscode-extension/src packages/editor/src
+$ grep -rn '/api/' packages/*/src packages/desktop/electron | grep -v 'electron/api/' | grep -v -- '-capability'
+```
+
+Every hit from both commands was read in context and classified. The
+sanctioned residual classes are unchanged from §1.7/§5.5: dated
+version-history prose describing a past migration step (e.g. `preload.ts`'s
+IPC-surface-version changelog, every `electron/api/*.ts` header's "Ports
+`src/routes/api/.../+server.ts` verbatim", every `server-bridge/*-hooks.ts`
+header naming the `+server.ts` route it replaced as "deleted"), and accurate
+present-tense naming of SvelteKit as the desktop SPA's build framework (the
+desktop genuinely still ships a SvelteKit SPA per CLAUDE.md's Monorepo
+layout — `app.html`'s `%sveltekit.*%` template tags, `svelte-kit sync`
+references, "the SvelteKit renderer/SPA" as a framework name). Every other
+hit was a present-tense claim that a server route, a SvelteKit handler
+process, or a network port still carries a capability that IPC now carries,
+or a stale quotation of another file's header that has since been corrected.
+Fixed this round, beyond the four §5.5 named:
+
+- `packages/desktop/electron/server-bridge/friendly-errors.ts:43` —
+  "Callers throw the SvelteKit `error(status, message)`"; the real callers
+  (`electron/api/vcs.ts`) throw a plain `Error(message)` — IPC has no
+  status-code concept. Now names the real caller and mechanism.
+- `packages/desktop/electron/api/style.ts:7` — labeled `api.lint.checkCss`
+  "(a server route; P5c4)"; P5c4 is the phase that *removed* the last route.
+  Now names the `lint:checkCss` typed IPC channel.
+- `packages/desktop/src/lib/api.contract-dto.type-test.ts:5-7` — opening
+  paragraph still centered on `src/lib/api.ts`, deleted in SFE-P5c4 (the
+  file's own SFE-P5c1/c3/c4 notes lower down say so); the file's actual
+  guarded imports are the typed IPC capability modules. Rewrote the opening
+  to describe what the file actually pins today.
+- `packages/cli/src/assets/preview/scripts/preview-bridge.js:3-4` and
+  `packages/desktop/src/lib/iframe-styles.ts:4-5` — both described the
+  desktop toolbar/preview cross-origin split as "SvelteKit on port A,
+  gutterpress preview on port B". True only in dev (`VITE_DEV_SERVER_URL`);
+  the packaged app serves the toolbar from the portless `app://` origin
+  (`electron/app-protocol.ts`) with no local server involved. Both now name
+  `app://` for production and the dev-server port as the dev-only case.
+- `packages/cli/src/checks/source/layout-markers.ts:11-13`,
+  `packages/cli/src/checks/source/merge-markers.ts:13-16`,
+  `packages/cli/src/checks/source/layout-markers.test.ts:3-6` — all three
+  named a `/api/lint/project` route as the desktop's Problems-panel feed.
+  Now name the `lint:project` typed IPC channel (`electron/api/lint.ts`).
+- `packages/desktop/electron/settings-store.ts:24-25` — "the POST
+  /api/app/settings route runs this copy"; now names the `app:setSettings`
+  typed IPC handler. (Line 184's "previously did" sibling comment was
+  already correctly past-tense — left unchanged.)
+- `packages/desktop/electron/main.ts:1518-1521` — the auto-sync section
+  header still said the renderer reaches `setAutoSync` "via the SvelteKit
+  server route ... so it doesn't belong on IPC", directly above a hooks
+  object (`syncSettingsHooksImpl`) that IS wired to the `sync:setAutoSync`
+  IPC channel per `sync-settings-hooks.ts`. The ARCH review #8 framing
+  predates SFE-P5c3's restoration back to IPC and was never updated. Now
+  states the current channel and the restoration.
+- `packages/desktop/electron/main.ts:1224` and `:1285` — "Prefs/settings
+  hooks for server routes (Phase 2B)" and "loadLib + operationLogPath for
+  VCS SvelteKit server routes"; both are section headers for hooks objects
+  that feed `app:*`/`vcs:*` typed IPC handlers today. Now name those
+  channels, keeping the Phase 2B / historical framing as context rather than
+  a present-tense claim.
+- `packages/desktop/src/lib/components/NewProjectWizard.svelte:325-328` — a
+  forward-looking note about a capability that "needs a renderer-reachable
+  route that does not exist yet" used the retired `src/routes/api/**`
+  vocabulary for what a future implementer would actually need to add (a
+  typed IPC channel, not a SvelteKit route). Reworded to the current
+  vocabulary so it doesn't point a future contributor at a deleted pattern.
+- `packages/desktop/src/lib/platform/dtos.ts:23-26` — "`RecoveryEntry` is
+  the live DTO those routes return", referring to "the /api/recovery/*
+  routes below" in a file with no routes in it. Now names the
+  `recovery:write`/`recovery:clear`/`recovery:list` typed IPC channels.
+- `packages/desktop/src/lib/platform/contract.ts:118-119` and
+  `packages/desktop/electron/bridge-types.ts:114-115` — both quote dtos.ts's
+  header as calling itself "the established home for 'plain request/response
+  shapes a server route returns'"; dtos.ts's actual header (already correct)
+  says "plain data shapes the typed IPC capability modules ... return." Both
+  quotes updated to match the file they cite.
+- `packages/desktop/electron/prefs-store.ts:140-143` — "the app/* server
+  routes the renderer calls"; now names the `app:*` typed IPC handlers.
+- `packages/cli/src/preview/lifecycle.ts:230-234` — `shutdownServer()`'s
+  caller note said it must not kill "the SvelteKit host process"; post
+  SFE-P5d there is no separate SvelteKit handler process to protect (the
+  desktop's own UI is static files behind `app://`, not a server). Reworded
+  to name what the comment actually protects: the shared Electron main
+  process this preview server runs inside.
+
+Both enumeration commands were re-run after the fixes above; every remaining
+hit was re-classified into a sanctioned class (verified individually, not
+by pattern-matching the class name). No further present-tense claim about a
+current server route, SvelteKit handler process, or port-based desktop
+origin remains in `packages/*/src` or `packages/desktop/electron`.
+
 ### 6. Verification run for this lane's own changes
 
 This lane wrote only files listed in its write-ownership boundary

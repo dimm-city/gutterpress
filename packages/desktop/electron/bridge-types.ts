@@ -112,7 +112,7 @@ export type {
 
 // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
 // DTOs. All ~13 of these already lived in `dtos.ts` (the established home
-// for "plain request/response shapes a server route returns", per that
+// for "plain data shapes the typed IPC capability modules return", per that
 // file's own header) before this run — moving the TRANSPORT under them
 // doesn't move the DTOs; the bridge just needs to reach them now too, via
 // the same relative-import-into-src/lib pattern used above.

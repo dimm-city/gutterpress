@@ -1,9 +1,9 @@
 /**
  * The layout-marker check is the ONLY path by which `env.layoutWarnings`
  * reaches the desktop Problems panel: the panel is filled by
- * `executeValidation({ category: "source", phase: "pre-build" })` via
- * `/api/lint/project`, and before this check every marker warning died in a
- * build-log line the desktop user never saw.
+ * `executeValidation({ category: "source", phase: "pre-build" })` via the
+ * `lint:project` typed IPC channel, and before this check every marker
+ * warning died in a build-log line the desktop user never saw.
  */
 import { describe, test, expect } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";

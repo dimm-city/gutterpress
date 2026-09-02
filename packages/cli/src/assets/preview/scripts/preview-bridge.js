@@ -1,7 +1,9 @@
 // Cross-origin postMessage bridge for window.previewAPI.
 //
 // The desktop (Svelte toolbar) and this iframe are on different origins
-// (SvelteKit on port A, gutterpress preview on port B), so the toolbar can't
+// (the packaged app's toolbar is served from the app:// origin, or a
+// SvelteKit dev-server port in development; this gutterpress preview iframe
+// is always its own http://localhost:PORT), so the toolbar can't
 // reach window.previewAPI directly. This bridge listens for command
 // messages, calls the local previewAPI, and posts results / events back to
 // the parent window.

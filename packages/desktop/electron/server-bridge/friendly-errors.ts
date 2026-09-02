@@ -40,7 +40,9 @@ const VCS_FRIENDLY_ERROR =
  * Classify a version-history failure. Logs the full error under `logLabel`,
  * then returns the HTTP-shaped result: a lib author-friendly message becomes a
  * 422 passthrough; anything else becomes a terse 500 naming the operation.
- * Callers throw the SvelteKit `error(status, message)` with the return value.
+ * `status` is the legacy HTTP-shaped field described above; callers
+ * (`electron/api/vcs.ts`'s IPC handlers) throw a plain `Error(message)` with
+ * the return value's `.message` — IPC has no status-code concept to carry it.
  */
 export function friendlyVcsError(
   e: unknown,

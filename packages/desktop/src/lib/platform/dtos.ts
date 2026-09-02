@@ -21,8 +21,9 @@ import type { ProjectSource, ProjectCapabilities } from "gutterpress";
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
 // #44 has since shipped in full (EditorBuffer in editor/buffer-state.svelte.ts,
-// CrashRecoveryController, the /api/recovery/* routes below). `RecoveryEntry`
-// is the live DTO those routes return. `EditorBufferPhase` predates that work
+// CrashRecoveryController, the `recovery:write`/`recovery:clear`/`recovery:list`
+// typed IPC channels below). `RecoveryEntry` is the live DTO those channels
+// return. `EditorBufferPhase` predates that work
 // and has no importers — EditorBuffer declares its own identical copy of the
 // union locally instead of importing this one.
 

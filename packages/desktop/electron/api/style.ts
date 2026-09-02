@@ -3,8 +3,8 @@
  * (SFE-P5c2). Ports `src/routes/api/style/set-active/+server.ts` verbatim.
  *
  * This is the CSS editor's project-styling surface (the manifest's active
- * `styles:` list) — not `checkCss` print-safety linting, which stays
- * `api.lint.checkCss` (a server route; P5c4).
+ * `styles:` list) — not `checkCss` print-safety linting, which stays on the
+ * separate `lint:checkCss` typed IPC channel (`electron/api/lint.ts`; P5c4).
  */
 import { loadApiLib } from "./lib-loader";
 import { requireProjectDir } from "./validation";

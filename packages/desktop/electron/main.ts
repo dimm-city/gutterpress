@@ -1221,7 +1221,8 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-// Prefs/settings hooks for server routes (Phase 2B). Built here because
+// Prefs/settings hooks for the `app:*` typed IPC channels (originally built
+// for server routes in Phase 2B, restored to IPC by SFE-P5c1). Built here because
 // scanForProjects's closure needs discoverScanDeps, which is only assembled
 // right above — a real dependency, not the ordering LANDMINE it used to be:
 // this object is no longer registered on its own the moment it's built, so
@@ -1282,7 +1283,9 @@ const appImageHooksImpl: AppImageHooks = {
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// loadLib + operationLogPath for VCS SvelteKit server routes.
+// loadLib + operationLogPath for the vcs:* typed IPC handlers in
+// electron/api/vcs.ts (see the comment a few lines below for the SvelteKit
+// server-route history this hooks object predates).
 const vcsHooksImpl: VcsHooks<LibModule> = { loadLib, operationLogPath };
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
@@ -1517,9 +1520,10 @@ const savePathsImpl = createSavePathsService();
 
 // ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
 // The renderer calls setAutoSync(true|false) from the Settings panel via the
-// SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
-// write, no push stream or live-BrowserWindow need, so it doesn't belong on
-// IPC). We persist the flag into settings.versionHistory.autoSync and, if
+// `sync:setAutoSync` typed IPC channel (SFE-P5c3 restored this pure settings
+// write to IPC after ARCH review #8 had briefly moved it off IPC onto the
+// now-deleted `sync/set-auto-sync/+server.ts` route). We persist the flag
+// into settings.versionHistory.autoSync and, if
 // re-enabled, re-arm the periodic safety timer for the currently open project
 // (unlatch conflict if any, since the user explicitly requested to resume).
 const syncSettingsHooksImpl: SyncSettingsHooks = {

@@ -80,8 +80,9 @@
  *   capability map for the per-type accounting.
  *
  * Plain request/response DTOs the seam does NOT reference — the ~30 shapes
- * server routes return (plugin manager, theme manager, style resolver, media
- * panel, problems panel, project classification, …) — live in `./dtos.ts`
+ * the typed IPC capability modules return (plugin manager, theme manager,
+ * style resolver, media panel, problems panel, project classification, …) —
+ * live in `./dtos.ts`
  * (untouched by this run; P5c's surface). IPC payload types shared with the
  * Electron host process (and mirrored into `electron/bridge-types.ts`) live
  * in `./shared-types.ts` (also untouched by this run). This file re-exports
@@ -116,8 +117,8 @@ import type {
   LogFileEntry,
   // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
   // DTOs. These ~13 shapes already lived in `./dtos` (the established home
-  // for "plain request/response shapes a server route returns" — see this
-  // file's own header) before this run; ElectronBridge just needs to
+  // for "plain data shapes the typed IPC capability modules return" — see
+  // this file's own header) before this run; ElectronBridge just needs to
   // reference them now that the transport under them is IPC.
   TemplateInfo,
   SavedTemplateInfo,

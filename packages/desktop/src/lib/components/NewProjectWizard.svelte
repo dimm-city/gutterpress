@@ -324,9 +324,9 @@
    *
    * A true first-run default (an OS Documents folder via the host's
    * `defaultProjectSearchRoots()`, already used by discover-projects) needs
-   * a renderer-reachable route that does not exist yet — out of scope here
-   * (no new `src/routes/api/**` files in this change); (1)/(2) cover every
-   * returning writer, which is the common case.
+   * a renderer-reachable IPC channel that does not exist yet — out of scope
+   * here (no new `electron/api/*.ts` handlers in this change); (1)/(2) cover
+   * every returning writer, which is the common case.
    */
   async function loadDefaultParentDir() {
     if (!isDesktop()) return;
