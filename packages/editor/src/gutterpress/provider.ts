@@ -169,10 +169,10 @@ export function createGutterpressBlockProvider(
    * marker's name. Consumed in order per kind, matching the order the
    * markers appear in.
    */
-  const pluginWrappers = new Map<string, { tag: string; attributes: Record<string, string> }[]>();
+  const pluginWrappers = new Map<string, { tag: string; attributes: Record<string, string> }[][]>();
   for (const container of projection.pluginContainers ?? []) {
     const list = pluginWrappers.get(container.kind) ?? [];
-    list.push({ tag: container.tag, attributes: { ...container.attributes } });
+    list.push(container.wrappers.map((w) => ({ tag: w.tag, attributes: { ...w.attributes } })));
     pluginWrappers.set(container.kind, list);
   }
   /** AST ids of this render's top-level blocks, from `groupBlocks`. */
@@ -292,21 +292,24 @@ export function createGutterpressBlockProvider(
           if (ends) break;
           end += 1;
         }
-        // The pipeline's own wrapper when the projection captured one;
+        // The pipeline's own wrappers when the projection captured them;
         // otherwise the convention-derived fallback, which is right for a
         // plugin that names its wrapper after the marker and harmless for
-        // one that does not.
+        // one that does not. A decorated container is several nested
+        // wrappers, mounted outermost first over the same blocks.
         const emitted = takeWrapper(marker.kind);
-        const attrs = emitted ? { ...emitted.attributes } : pluginContainerAttributes(marker);
-        const { class: pluginClass, ...pluginAttrs } = attrs;
+        const chain = emitted ?? [{ tag: "div", attributes: pluginContainerAttributes(marker) }];
         if (end > i + 1) {
-          groups.push({
-            start: i + 1,
-            end,
-            key: `${marker.kind}:${blocks[i]!.ast.id}`,
-            tagName: emitted?.tag,
-            className: pluginClass,
-            attributes: pluginAttrs,
+          chain.forEach((wrapper, depth) => {
+            const { class: pluginClass, ...pluginAttrs } = { ...wrapper.attributes };
+            groups.push({
+              start: i + 1,
+              end,
+              key: `${marker.kind}:${depth}:${blocks[i]!.ast.id}`,
+              tagName: wrapper.tag,
+              className: pluginClass,
+              attributes: pluginAttrs,
+            });
           });
         }
         continue;

@@ -434,48 +434,125 @@ export interface ProjectionDiagnostic {
  * 25. Reporting the wrapper the pipeline ACTUALLY emitted is the only way an
  * editor can reproduce it for an arbitrary plugin.
  */
-/** One opening tag, alone in an `html_block` — the shape a plugin's container marker becomes. */
-const OPENING_TAG_RE = /^\s*<([a-z][\w-]*)((?:\s+[^<>]*)?)>\s*$/i;
 const ATTR_RE = /([a-zA-Z_:][-\w:.]*)\s*=\s*"([^"]*)"/g;
+const TAG_RE = /<(\/?)([a-z][\w-]*)((?:\s+[^<>]*?)?)(\/?)>/gi;
+/** Elements that never have a closing tag, so they never leave a wrapper open. */
+const VOID_TAGS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+/**
+ * The elements an `html_block` leaves OPEN, outermost first — the wrappers
+ * the blocks after it will be rendered inside.
+ *
+ * A plugin's container marker becomes one `html_block` in the token stream,
+ * and its content is whatever HTML that plugin writes: a lone opening tag
+ * for a simple wrapper, or a whole opening fragment for a decorated one (the
+ * design guide's `@skill` emits a card shell, a fully closed title bar, and
+ * two more opening divs in one token). Reading the unclosed tags is what
+ * distinguishes the two from a self-contained block (`<div
+ * class="dc-card-heading">…</div>`, which wraps nothing) and from a bare
+ * `</div>` closer, without needing to know what any plugin emits.
+ */
+function unclosedWrappers(html: string): { tag: string; attributes: Record<string, string> }[] {
+  const open: { tag: string; attributes: Record<string, string> }[] = [];
+  for (const m of html.matchAll(TAG_RE)) {
+    const tag = m[2]!.toLowerCase();
+    if (m[1]) {
+      // A closer with nothing open in this token closes a wrapper an EARLIER
+      // token opened, which is a container ending, not one beginning.
+      if (!open.length) return [];
+      const at = open.map((w) => w.tag).lastIndexOf(tag);
+      if (at < 0) return [];
+      open.length = at;
+      continue;
+    }
+    if (m[4] || VOID_TAGS.has(tag)) continue;
+    const attributes: Record<string, string> = {};
+    for (const a of (m[3] ?? "").matchAll(ATTR_RE)) attributes[a[1]!] = a[2]!;
+    open.push({ tag, attributes });
+  }
+  return open;
+}
+
+/** An opening plugin marker, with the 0-based source line it sits on. */
+interface MarkerSite {
+  readonly kind: string;
+  readonly line: number;
+}
 
 /**
  * The container elements a document's plugins opened, in document order.
  *
- * A plugin container marker (`@specialty`) is replaced in the token stream
- * by the wrapper the plugin emits, as a single opening tag in an
- * `html_block`. Matching them back to their marker by KIND rather than by
- * position is what keeps an author's own raw `<div class="colophon-grid">`
- * from being mistaken for one: a wrapper counts as a container for kind `k`
- * only when one of its classes IS `k` or ends with `-k`, which is the naming
- * every plugin following core's marker convention already uses
- * (`dc-specialty` for `@specialty`).
+ * ATTRIBUTION IS POSITIONAL, not by name. A plugin container marker is
+ * REPLACED in the token stream by the wrapper the plugin emits, so the
+ * wrapper itself carries no source evidence (`map: null` — a plugin builds
+ * its tokens by hand). What does carry evidence is everything AROUND it: the
+ * content tokens the plugin left alone still have their own `token.map`, so
+ * an emitted wrapper is bracketed by the last mapped token before it and the
+ * first mapped token after it, and the marker whose line falls in that gap
+ * is the marker it came from. Nothing else in the gap can be confused for
+ * it: an author's own raw `<div>` keeps its map and is never in a gap.
+ *
+ * The kind-in-the-class convention is kept as a TIE-BREAK for a gap holding
+ * more than one marker (`@specialty` and `@specialty-intro` on consecutive
+ * lines), because a plugin that names its wrapper after the marker says
+ * which one it meant. Where it says nothing — the design guide's `@skill`
+ * emits `dc-skill-card` — the markers and the wrappers in the gap are paired
+ * in the order they appear, which is the order the plugin wrote them in.
  */
 function collectPluginContainers(tokens: readonly Token[], source: string): PluginContainer[] {
-  const kinds = new Set<string>();
-  for (const line of source.split("\n")) {
+  const sites: MarkerSite[] = [];
+  source.split("\n").forEach((line, index) => {
     const trimmed = line.trim();
-    if (!trimmed.startsWith("@")) continue;
+    if (!trimmed.startsWith("@")) return;
     const parsed = parseMarkerLine(trimmed, { allowUnknownKinds: true }) as
       | { kind: string; unknownKind?: boolean }
       | null;
-    if (parsed?.unknownKind) kinds.add(parsed.kind);
-  }
-  if (kinds.size === 0) return [];
+    // A closer ends a container; it never opens one.
+    if (parsed?.unknownKind && !parsed.kind.startsWith("end-")) sites.push({ kind: parsed.kind, line: index });
+  });
+  if (!sites.length) return [];
+
+  /** The first source line claimed by a mapped token at or after `from`. */
+  const nextMappedLine = (from: number): number => {
+    for (let i = from; i < tokens.length; i++) {
+      const map = tokens[i]!.map;
+      if (map) return map[0];
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
 
   const out: PluginContainer[] = [];
-  for (const token of tokens) {
+  const claimed = sites.map(() => false);
+  /** The last source line already accounted for by a mapped token. */
+  let floor = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.map) {
+      floor = Math.max(floor, token.map[1]);
+      continue;
+    }
     if (token.type !== "html_block") continue;
-    const m = OPENING_TAG_RE.exec(token.content);
-    if (!m) continue;
-    const attributes: Record<string, string> = {};
-    for (const a of m[2]!.matchAll(ATTR_RE)) attributes[a[1]!] = a[2]!;
-    const classes = (attributes["class"] ?? "").split(/\s+/).filter(Boolean);
-    // Longest kind first, so `@specialty-card` is not claimed by `@specialty`.
-    const kind = [...kinds]
-      .sort((a, b) => b.length - a.length)
-      .find((k) => classes.some((c) => c === k || c.endsWith(`-${k}`)));
-    if (!kind) continue;
-    out.push({ kind, tag: m[1]!.toLowerCase(), attributes });
+    const wrappers = unclosedWrappers(token.content);
+    if (!wrappers.length) continue;
+    const limit = nextMappedLine(i + 1);
+    // Every marker still unclaimed that this wrapper could have come from.
+    const candidates: number[] = [];
+    for (let k = 0; k < sites.length; k++) {
+      const line = sites[k]!.line;
+      if (!claimed[k] && line >= floor && line < limit) candidates.push(k);
+    }
+    if (!candidates.length) continue;
+    const classes = (wrappers[0]!.attributes["class"] ?? "").split(/\s+/).filter(Boolean);
+    const named = candidates.find((k) => {
+      const kind = sites[k]!.kind;
+      return classes.some((c) => c === kind || c.endsWith(`-${kind}`));
+    });
+    const chosen = named ?? candidates[0]!;
+    claimed[chosen] = true;
+    out.push({ kind: sites[chosen]!.kind, wrappers });
   }
   return out;
 }
@@ -483,8 +560,15 @@ function collectPluginContainers(tokens: readonly Token[], source: string): Plug
 export interface PluginContainer {
   /** The marker kind this wrapper belongs to (`specialty` for `dc-specialty`). */
   readonly kind: string;
-  readonly tag: string;
-  readonly attributes: Readonly<Record<string, string>>;
+  /**
+   * The nested wrappers this marker opened, OUTERMOST FIRST. A plugin that
+   * decorates its container emits more than one (`dc-skill-card` >
+   * `dc-card-body` > `dc-card-inner`), and the blocks after the marker are
+   * inside all of them — a book's CSS sizes its content against the
+   * innermost, so reproducing only the outermost leaves the content wider
+   * than the page prints it.
+   */
+  readonly wrappers: readonly { readonly tag: string; readonly attributes: Readonly<Record<string, string>> }[];
 }
 
 export interface GutterpressProjection {
