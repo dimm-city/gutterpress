@@ -86,9 +86,14 @@ beforeAll(() => {
 // a real regression this file's derived loops cannot catch. This assertion
 // pins the approved surface explicitly, independent of whatever
 // `package.json#exports` currently says, so a removal fails loudly here
-// instead of just generating fewer tests.
+// instead of just generating fewer tests. `./viewer` is the on-screen
+// pagination engine, added for the desktop's paged editor
+// (`packages/desktop/src/lib/editor/paged-surface.ts`), which fragments the
+// live editor document with the SAME engine the preview uses — that shared
+// engine is what makes editor and preview agree, so losing this subpath
+// would be a real regression too.
 test("the public subpath surface is exactly the D11-approved set", () => {
-  expect(new Set(SUBPATHS)).toEqual(new Set([".", "./api", "./render", "./plugins"]));
+  expect(new Set(SUBPATHS)).toEqual(new Set([".", "./api", "./render", "./plugins", "./viewer"]));
   for (const sp of SUBPATHS) {
     expect(Object.keys(PKG.exports[sp]!).sort()).toEqual(["default", "types"]);
   }

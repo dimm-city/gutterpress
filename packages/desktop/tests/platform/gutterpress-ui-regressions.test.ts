@@ -95,7 +95,11 @@ test("a persisted narrow Edit tab cannot open the editor without an explicit act
     src.indexOf("let editorPaneOpen = $derived("),
     src.indexOf("let splitGridColumns = $derived("),
   );
-  expect(derived).toContain("editorVisible &&");
+  // On a WIDE screen the editor pane is always mounted now — it is the
+  // reader as well as the editor — so the mode no longer gates it. What is
+  // left to gate is the narrow single-pane case, where a persisted "edit"
+  // tab must still not be the thing that reveals the editor.
+  expect(derived).toContain('!isNarrow || paneMode === "edit"');
   expect(src).toContain("class:show-edit={isNarrow && editorPaneOpen}");
   expect(src).toContain("class:show-view={isNarrow && !editorPaneOpen}");
 });
@@ -443,7 +447,11 @@ test("the workspace layout derives from one mode enum, in exactly one direction"
   // The three derivations ARE the rule — read them off the source.
   expect(src).toContain('mode === "viewer" && !isNarrow ? "two-column" : "single"');
   expect(src).toContain('let previewVisible = $derived(mode !== "focus")');
-  expect(src).toContain('let editorVisible = $derived(mode !== "viewer")');
+  // The editor pane is mounted in every mode (it is the editor AND the
+  // reader), so the mode no longer decides whether it is on screen — only
+  // whether it is editable.
+  expect(src).toContain('let editorEditable = $derived(mode !== "viewer")');
+  expect(src).not.toContain("editorVisible");
   // `isNarrow` clamps the derived value; it is not a second decider, and the
   // duplicated 1280 width heuristic that used to be one is gone.
   expect(src).not.toContain("1280");

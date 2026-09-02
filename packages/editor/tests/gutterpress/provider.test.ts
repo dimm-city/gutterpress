@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createEditorProjection, createMarkdownRenderer } from "gutterpress/render";
-import type { BlockAstNode, CustomBlockRendering } from "@dimm-city/vscode-markdown-editor";
+import type { BlockAstNode } from "@dimm-city/vscode-markdown-editor";
 import type { GutterpressProjection, ProjectedBlock } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh } from "../../src/gutterpress/match.ts";
 import { buildChipPlan } from "../../src/gutterpress/plan.ts";

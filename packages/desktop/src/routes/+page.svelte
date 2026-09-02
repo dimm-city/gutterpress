@@ -455,10 +455,8 @@
     const restore = paneViewRestore;
     paneViewRestore = null;
     if (restore) setMode(restore.mode);
-    if (editorVisible) {
-      void ensureEditorFile();
-      focusEditorWhenReady();
-    }
+    void ensureEditorFile();
+    focusEditorWhenReady();
   }
   function showProjectLog(filePath: string | null): void {
     logFilePath = filePath;
@@ -1038,7 +1036,9 @@
   // stays until that parity is trusted.
   let previewVisible = $derived(mode !== "focus");
   /** `focus` is the editor without the viewer, so the editor shows in both. */
-  let editorVisible = $derived(true);
+  // The editor pane is mounted in EVERY mode now — it is both the editor and
+  // the reader — so what still varies with mode is whether it is EDITABLE.
+  let editorEditable = $derived(mode !== "viewer");
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -1168,7 +1168,6 @@
     editorView === "activity" ||
       (!!lifecycle.currentDir &&
         lifecycle.sourceMode === "folder" &&
-        editorVisible &&
         (!isNarrow || paneMode === "edit")),
   );
   // ── Global find (Ctrl+F) — VIEWER only (owner ruling 2026-08-15) ──────────
@@ -1214,7 +1213,7 @@
   /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
    * loads: no-ops when it's already loading, loaded, or failed. */
   function loadEditorModule() {
-    if (!editorVisible || !lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
+    if (!lifecycle.currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
     editorModuleLoading = true;
     import("$lib/components/MarkdownEditor.svelte")
       .then((m) => {
@@ -2276,8 +2275,8 @@
   // called only this function, so a book opened while the workspace was
   // already in Edit mode filled the buffer behind a pane still showing
   // "Loading editor…" — nothing on that path ever imported the component.
-  // `loadEditorModule()` self-guards on `editorVisible`, so this stays a no-op
-  // while the book is being previewed in viewer mode.
+  // `loadEditorModule()` self-guards on an already-loaded module, so repeat
+  // calls are free.
   async function ensureEditorFile() {
     if (!lifecycle.currentDir || !isDesktop()) return;
     loadEditorModule();
@@ -2367,7 +2366,7 @@
     }
     // Closing the editor always lands on the viewer — there is no stored
     // "what was showing before" to consult, and nothing else it could mean.
-    if (editorVisible) {
+    if (editorEditable) {
       setMode("viewer");
       return;
     }
@@ -2429,7 +2428,7 @@
     // wide = the editor split).
     if (isNarrow) {
       setPaneMode("edit");
-    } else if (!editorVisible) {
+    } else if (!editorEditable) {
       setMode("editor");
     }
     void selectEditorFile(p.filePath).then((selected) => {
@@ -3187,7 +3186,7 @@
       // Only steal focus if the editor was previously closed.
       // Callers that need a default file request it explicitly; navigation
       // callers already have a target and must not race a background default.
-      openEditorPane({ focus: !editorVisible, ensureFile: false });
+      openEditorPane({ focus: !editorEditable, ensureFile: false });
     }
   }
 
@@ -3522,7 +3521,7 @@
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
         selectEditorFile(path);
-        if (!editorVisible && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+        if (!editorEditable && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
         }
