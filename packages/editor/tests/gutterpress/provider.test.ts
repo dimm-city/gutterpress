@@ -483,6 +483,43 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     expect(provider.renderCustomBlock(FAKE_NODE, "Ordinary paragraph text, not projected.\n\n")).toBeUndefined();
   });
 
+  test("a plugin's wrappers mount where the pipeline put them, anchored to the authored blocks they hold", () => {
+    // A card plugin's shape: at every h4 it opens a card around the heading
+    // and a body after it, closing both at the next h4; the last card runs
+    // to the end of the document. The projection records each wrapper by
+    // the text + offset of the first block inside and the first block after.
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        { tag: "div", attributes: { class: "dc-skill-card", name: "fast-talk" }, open: { text: "#### Fast Talk", offset: 0 }, close: { text: "#### Next", offset: 300 } },
+        { tag: "div", attributes: { class: "dc-card-body" }, open: { text: "Body.", offset: 100 }, close: { text: "#### Next", offset: 300 } },
+        { tag: "div", attributes: { class: "dc-skill-card", name: "next" }, open: { text: "#### Next", offset: 300 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["#### Fast Talk\n", "Body.\n", "> Flavor.\n", "#### Next\n", "Body 2.\n"]))!;
+    expect(groups).toEqual([
+      { start: 0, end: 3, key: "plugin:0", tagName: "div", className: "dc-skill-card", attributes: { name: "fast-talk" } },
+      { start: 1, end: 3, key: "plugin:1", tagName: "div", className: "dc-card-body", attributes: {} },
+      { start: 3, end: 5, key: "plugin:2", tagName: "div", className: "dc-skill-card", attributes: { name: "next" } },
+    ]);
+  });
+
+  test("a plugin wrapper whose anchor block is not in this render is left out, and identical anchor text resolves by nearest offset", () => {
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        // Its opening block was just edited away: nothing to anchor to.
+        { tag: "aside", attributes: { class: "gone" }, open: { text: "#### Edited", offset: 0 }, close: { text: "Tail.", offset: 400 } },
+        // Two blocks read "Body." -- the offset picks the second one.
+        { tag: "div", attributes: { class: "second" }, open: { text: "Body.", offset: 310 }, close: { text: "Tail.", offset: 400 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["#### Kept\n", "Body.\n", "Middle.\n", "Body.\n", "Tail.\n"]))!;
+    expect(groups).toEqual([{ start: 3, end: 4, key: "plugin:1", tagName: "div", className: "second", attributes: {} }]);
+  });
+
   test("needsRefresh() reflects the projection's own sourceVersion", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(7), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     expect(provider.needsRefresh(7)).toBe(false);

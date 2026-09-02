@@ -254,7 +254,7 @@ export declare interface BlockViewOptions {
      * Never called for an active block (its source is shown verbatim);
      * a block re-renders from scratch when it becomes inactive again.
      */
-    readonly decorateInactiveBlock?: (element: HTMLElement, node: BlockAstNode, sourceText: string) => void;
+    readonly decorateInactiveBlock?: (element: HTMLElement, node: BlockAstNode, sourceText: string, absoluteStart: number) => void;
     /**
      * gp-fork: afterDocumentMount. Called synchronously on every document
      * render, right after the block views are mounted under the document

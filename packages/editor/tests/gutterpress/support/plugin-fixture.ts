@@ -66,10 +66,9 @@ export const ASIDE_RE = /^@@aside\s+(.+)$/;
  *   - `true` — copies `token.map` from the consumed `paragraph_open`'s own
  *     map (some plugins preserve it) — the evidence-bearing case
  *     `editor-projection.ts` classifies directly as `plugin-region`.
- *   - `false` — emits the open token with NO map/meta at all, mirroring
- *     markers.js's OWN chapter-opener token (`new state.Token(...)`, no
- *     evidence) — the case `editor-projection.ts` can only refuse (Lane B's
- *     origin-recovery integration point, unbuilt as of this run).
+ *   - `false` — emits the open token with NO map/meta at all AND strips the
+ *     consumed `inline` token's map, so origin recovery has nothing to work
+ *     from either — the partial-evidence case `editor-projection.ts` refuses.
  */
 export function asideMarkerPlugin(keepEvidence: boolean): LoadedPlugin {
   const plugin: GutterpressPlugin = (md) => {
@@ -89,7 +88,17 @@ export function asideMarkerPlugin(keepEvidence: boolean): LoadedPlugin {
         }
         const open = new state.Token("plugin_aside_open", "aside", 1);
         open.attrSet("data-aside-label", match[1]!);
-        if (keepEvidence) open.map = tok.map;
+        if (keepEvidence) {
+          open.map = tok.map;
+        } else {
+          // Origin recovery (`plugin-origin.ts`) now reads the consumed
+          // `inline` token's map as evidence, so a map-less opener alone is
+          // no longer enough to be refused. Strip that range too so the
+          // removed run carries no evidence at all — the partial-evidence
+          // shape the projection still refuses by name, which is what the
+          // no-evidence fixture exists to exercise.
+          next!.map = null;
+        }
         out.push(open);
         out.push(new state.Token("plugin_aside_close", "aside", -1));
         i += 2; // consumed paragraph_open + inline + paragraph_close

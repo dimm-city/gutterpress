@@ -21,6 +21,8 @@
 
 /** A well-formed inline tag. Deliberately strict, so prose like `a < b` is left alone. */
 const TAG_RE = /<\/?[a-zA-Z][\w-]*(?:\s[^<>]*)?>/g;
+/** A raw `<br>` in any of its spellings. */
+const BR_RE = /^<br\s*\/?>$/i;
 
 /** Class applied to a hidden tag run — `editor-css.ts` gives it `display: none`. */
 export const INLINE_HTML_TAG_CLASS = "gp-inline-html-tag";
@@ -47,6 +49,13 @@ export function hideInlineHtmlTags(element: HTMLElement): void {
     const matches = [...text.data.matchAll(TAG_RE)];
     if (!matches.length) continue;
     const fragment = doc.createDocumentFragment();
+    // A raw line break is the one tag whose whole meaning is layout: the
+    // page breaks the line there, so the block does too. The break is a
+    // bare element with no attributes, so this is still no trust surface.
+    // It goes after the fork's own glue span when the tag sits inside one
+    // (a table cell's ` <br> ` is glue to the fork), which is hidden whole.
+    const glue = text.parentElement?.closest(".md-glue");
+    let breaks = 0;
     let at = 0;
     for (const match of matches) {
       const start = match.index ?? 0;
@@ -56,9 +65,14 @@ export function hideInlineHtmlTags(element: HTMLElement): void {
       span.setAttribute("aria-hidden", "true");
       span.textContent = match[0];
       fragment.appendChild(span);
+      if (BR_RE.test(match[0])) {
+        if (glue) breaks += 1;
+        else fragment.appendChild(doc.createElement("br"));
+      }
       at = start + match[0].length;
     }
     if (at < text.data.length) fragment.appendChild(doc.createTextNode(text.data.slice(at)));
     text.replaceWith(fragment);
+    for (; breaks > 0; breaks--) glue!.after(doc.createElement("br"));
   }
 }

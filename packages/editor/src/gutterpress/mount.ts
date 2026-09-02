@@ -18,6 +18,9 @@ import { decorateAttrsTrailer } from "./attrs.ts";
 import { hideInlineHtmlTags } from "./inline-html.ts";
 import { markTightList } from "./tight-list.ts";
 import { promoteTableHeader } from "./table-header.ts";
+import { stripHiddenMarkup } from "./hidden-markup.ts";
+import { applyPipelineAttributes, buildPipelineAttributeIndex } from "./pipeline-attrs.ts";
+import { applyInlineWrappers, buildInlineWrapperIndex } from "./inline-wrappers.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -107,6 +110,9 @@ export function mountGutterpressEditor(
     isLocked: () => locked,
   });
 
+  const pipelineAttributes = buildPipelineAttributeIndex(options.projection, host.getSnapshot().text);
+  const inlineWrappers = buildInlineWrapperIndex(options.projection, host.getSnapshot().text);
+
   const build = (readonly: boolean): EditorMount =>
     mountEditor(container, host, {
       onDiagnostic: options.onDiagnostic,
@@ -116,14 +122,22 @@ export function mountGutterpressEditor(
       groupBlocks: provider.groupBlocks,
       themeClassName: options.themeClassName,
       showReadonlyToggle: options.showReadonlyToggle,
-      decorateInactiveBlock: (element, node, sourceText) => {
+      decorateInactiveBlock: (element, node, sourceText, absoluteStart) => {
+        // The locked view's DOM is made the page's first — a table's rows in
+        // their tbody, the fork's hidden syntax gone — so that the pipeline's
+        // attributes, named by the page's own paths, find their elements.
+        if (readonly) {
+          stripHiddenMarkup(element);
+          promoteTableHeader(element, node);
+        }
+        applyPipelineAttributes(element, sourceText, pipelineAttributes, absoluteStart);
         decorateAttrsTrailer(element, node, sourceText);
         // Both halves of "show what the book shows": the attrs trailer applied
         // rather than printed, and raw inline tags hidden rather than wrapped
         // onto a line the printed page does not have.
         hideInlineHtmlTags(element);
         markTightList(element, node, sourceText);
-        if (readonly) promoteTableHeader(element, node);
+        applyInlineWrappers(element, sourceText, inlineWrappers);
       },
       afterDocumentMount: options.afterDocumentMount,
     });

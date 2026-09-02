@@ -651,12 +651,22 @@ export default function plugin(md, pluginOptions = {}) {
         this.frames.push(frame);
       },
 
-      /** Pop the frame of `kind` (wherever it sits) and emit its close token. */
-      _pop(kind) {
+      /**
+       * Pop the frame of `kind` (wherever it sits) and emit its close token,
+       * carrying the 1-based line of the marker that closed it as
+       * `meta.line` (the same threading as the open tokens; the EOF drain
+       * has no line). The editor projection reads it to end a plugin's
+       * wrapper at the scope's closing line rather than past it.
+       * @param {ScopeKind} kind
+       * @param {number} [line]
+       */
+      _pop(kind, line) {
         const at = this.frames.findIndex((f) => f.kind === kind);
         if (at === -1) return;
         this.frames.splice(at, 1);
-        out.push(new state.Token(`layout_${kind}_close`, 'div', -1));
+        const t = new state.Token(`layout_${kind}_close`, 'div', -1);
+        if (line) t.meta = { line };
+        out.push(t);
       },
 
       /**
@@ -665,14 +675,15 @@ export default function plugin(md, pluginOptions = {}) {
        * case (e.g. closing 'page' while only a section is open leaves the
        * section alone), matching the historical close helpers.
        * @param {ScopeKind} kind
+       * @param {number} [line] the 1-based line of the marker doing the closing
        */
-      close(kind) {
+      close(kind, line) {
         if (!this.has(kind)) return;
         for (const inner of SCOPE_CLOSE_ORDER) {
           if (inner === kind) break;
-          this._pop(inner);
+          this._pop(inner, line);
         }
-        this._pop(kind);
+        this._pop(kind, line);
       },
 
       /** The EOF drain: close every open scope, innermost kind first. */
@@ -911,7 +922,7 @@ export default function plugin(md, pluginOptions = {}) {
       const line = meta.__line || 0;
 
       if (kind === 'chapter') {
-        stack.close('chapter');
+        stack.close('chapter', line);
         openChapter(meta);
         continue;
       }
@@ -920,20 +931,20 @@ export default function plugin(md, pluginOptions = {}) {
         if (stack.has('spread')) {
           warn(state.env, line, 'nested_spread', '@spread encountered while another spread is open; closing the previous spread automatically.', meta);
         }
-        stack.close('spread');
+        stack.close('spread', line);
         openSpread(meta);
         continue;
       }
 
       if (kind === 'page') {
-        stack.close('page');
+        stack.close('page', line);
         openPage(meta);
         continue;
       }
 
       if (kind === 'section') {
         warnIfEmptyDecoratedSection('section', line);
-        stack.close('section');
+        stack.close('section', line);
 
         // A @section with no open @page is VALID AUTHORING and warns about
         // nothing. Audited 2026-08-12 across both real books: all 17
@@ -991,7 +1002,7 @@ export default function plugin(md, pluginOptions = {}) {
         if (!cls.includes('gp-continued')) cls.push('gp-continued');
         contMeta.attrs.class = cls.join(' ');
 
-        stack.close('section');
+        stack.close('section', line);
         openSection(contMeta);
         continue;
       }
@@ -1040,7 +1051,7 @@ export default function plugin(md, pluginOptions = {}) {
 
       if (kind === 'end-section') {
         warnIfEmptyDecoratedSection('end-section', line);
-        stack.close('section');
+        stack.close('section', line);
         continue;
       }
     }

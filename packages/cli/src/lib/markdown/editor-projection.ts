@@ -340,9 +340,9 @@
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "./renderer";
+import { KNOWN_KINDS } from "./markers.js";
 import { SOURCE_CHAPTER_ATTR, SOURCE_RANGE_ATTR } from "./source-range";
 import { registerPluginOriginCapture, resolvePluginTokenOrigin } from "./plugin-origin";
-import { parseMarkerLine } from "./markers.js";
 
 /** D1/D6 — Gutterpress sparse-projection schema version. Bump only via an explicit decision-record amendment. */
 export const PROJECTION_SCHEMA_VERSION = 1 as const;
@@ -484,99 +484,409 @@ export function htmlFragmentNesting(html: string): HtmlFragmentNesting {
   return { opened, closed };
 }
 
-/** An opening plugin marker, with the 0-based source line it sits on. */
-interface MarkerSite {
-  readonly kind: string;
-  readonly line: number;
+/**
+ * One authored block, named two ways: by its exact text (what the editor's
+ * own parse of the same document produces for that block, trailing
+ * whitespace aside) and by its offset. The text is what survives an edit
+ * elsewhere in the document; the offset is what tells two identical blocks
+ * apart. A consumer matches on the text and breaks a tie by nearest offset.
+ */
+export interface BlockAnchor {
+  readonly text: string;
+  readonly offset: number;
 }
 
 /**
- * The container elements a document's plugins opened, in document order.
- *
- * ATTRIBUTION IS POSITIONAL, not by name. A plugin container marker is
- * REPLACED in the token stream by the wrapper the plugin emits, so the
- * wrapper itself carries no source evidence (`map: null` — a plugin builds
- * its tokens by hand). What does carry evidence is everything AROUND it: the
- * content tokens the plugin left alone still have their own `token.map`, so
- * an emitted wrapper is bracketed by the last mapped token before it and the
- * first mapped token after it, and the marker whose line falls in that gap
- * is the marker it came from. Nothing else in the gap can be confused for
- * it: an author's own raw `<div>` keeps its map and is never in a gap.
- *
- * The kind-in-the-class convention is kept as a TIE-BREAK for a gap holding
- * more than one marker (`@specialty` and `@specialty-intro` on consecutive
- * lines), because a plugin that names its wrapper after the marker says
- * which one it meant. Where it says nothing — the design guide's `@skill`
- * emits `dc-skill-card` — the markers and the wrappers in the gap are paired
- * in the order they appear, which is the order the plugin wrote them in.
+ * A wrapper element a plugin opened around authored blocks — see
+ * {@link collectPluginContainers}.
  */
-function collectPluginContainers(tokens: readonly Token[], source: string): PluginContainer[] {
-  const sites: MarkerSite[] = [];
-  source.split("\n").forEach((line, index) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("@")) return;
-    const parsed = parseMarkerLine(trimmed, { allowUnknownKinds: true }) as
-      | { kind: string; unknownKind?: boolean }
-      | null;
-    // A closer ends a container; it never opens one.
-    if (parsed?.unknownKind && !parsed.kind.startsWith("end-")) sites.push({ kind: parsed.kind, line: index });
-  });
-  if (!sites.length) return [];
+export interface PluginContainer {
+  readonly tag: string;
+  readonly attributes: Readonly<Record<string, string>>;
+  /** The first authored block INSIDE the wrapper. */
+  readonly open: BlockAnchor;
+  /** The first authored block AFTER the wrapper; absent when it runs to the end of the document. */
+  readonly close?: BlockAnchor;
+}
 
-  /** The first source line claimed by a mapped token at or after `from`. */
-  const nextMappedLine = (from: number): number => {
-    for (let i = from; i < tokens.length; i++) {
-      const map = tokens[i]!.map;
-      if (map) return map[0];
-    }
-    return Number.MAX_SAFE_INTEGER;
+/**
+ * Attributes the pipeline left on an authored block that survived every
+ * plugin — see {@link collectBlockAttributes}.
+ */
+export interface BlockAttributes {
+  readonly from: number;
+  readonly to: number;
+  /**
+   * Which element inside the block carries them: empty for the block's own
+   * element, else a child path of `tag:nth-of-type(n)` steps down from it
+   * (`tbody:nth-of-type(1) > tr:nth-of-type(3)` for a table's third body
+   * row). Counted the way the block's HTML nests, so the same path names
+   * the same element in the editor's rendering of the block.
+   */
+  readonly path: string;
+  readonly attributes: Readonly<Record<string, string>>;
+}
+
+/** A blank line inside a run: what splits it into more than one block. */
+const BLANK_LINE_RE = /\n[ \t]*\n/;
+/**
+ * For each wrapper `htmlFragmentNesting(html)` leaves open, in the same
+ * order: does content follow its opening tag — text, or an element the
+ * fragment closes (a label span, an image) — rather than only more opening
+ * tags and whitespace?
+ */
+function openersWithContent(html: string): boolean[] {
+  const open: { tag: string; content: boolean }[] = [];
+  let at = 0;
+  const textBefore = (end: number) => {
+    if (html.slice(at, end).trim()) for (const o of open) o.content = true;
   };
-
-  const out: PluginContainer[] = [];
-  const claimed = sites.map(() => false);
-  /** The last source line already accounted for by a mapped token. */
-  let floor = 0;
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (token.map) {
-      floor = Math.max(floor, token.map[1]);
+  for (const m of html.matchAll(TAG_RE)) {
+    textBefore(m.index!);
+    at = m.index! + m[0].length;
+    const tag = m[2]!.toLowerCase();
+    if (m[1]) {
+      const i = open.map((o) => o.tag).lastIndexOf(tag);
+      if (i >= 0) {
+        open.length = i;
+        for (const o of open) o.content = true;
+      }
       continue;
     }
-    if (token.type !== "html_block") continue;
-    const { opened: wrappers } = htmlFragmentNesting(token.content);
-    if (!wrappers.length) continue;
-    const limit = nextMappedLine(i + 1);
-    // Every marker still unclaimed that this wrapper could have come from.
-    const candidates: number[] = [];
-    for (let k = 0; k < sites.length; k++) {
-      const line = sites[k]!.line;
-      if (!claimed[k] && line >= floor && line < limit) candidates.push(k);
+    if (m[4] || VOID_TAGS.has(tag)) {
+      for (const o of open) o.content = true;
+      continue;
     }
-    if (!candidates.length) continue;
-    const classes = (wrappers[0]!.attributes["class"] ?? "").split(/\s+/).filter(Boolean);
-    const named = candidates.find((k) => {
-      const kind = sites[k]!.kind;
-      return classes.some((c) => c === kind || c.endsWith(`-${kind}`));
+    open.push({ tag, content: false });
+  }
+  textBefore(html.length);
+  return open.map((o) => o.content);
+}
+
+/** The 1-based source line a layout token's marker was on (`markers.js` threads it as `meta.line`), if known. */
+function layoutTokenLine(token: Token): number | null {
+  const line = (token.meta as { line?: unknown } | null)?.line;
+  return typeof line === "number" && Number.isInteger(line) && line >= 1 ? line : null;
+}
+
+/** The source-line range a token carries as evidence, if any (see `source-range.ts`). */
+function evidenceLines(token: Token): readonly [number, number] | null {
+  if (token.nesting === -1) return null;
+  const attr = tokenAttr(token, SOURCE_RANGE_ATTR);
+  return attr ? parseSourceRangeAttr(attr) : null;
+}
+
+/**
+ * The container elements a document's plugins opened around its authored
+ * blocks, in nesting order (an outer wrapper before the one it holds).
+ *
+ * A plugin's wrapper is an `html_block` it built by hand, with no evidence
+ * of its own — but the authored blocks around it still carry theirs, and
+ * they are what a wrapper is anchored to: it opens at the first authored
+ * block inside it and closes at the first one after it. Nothing about the
+ * marker that caused the wrapper is needed, and nothing about the plugin:
+ * a wrapper a design guide opens at a heading (its skill cards open at
+ * every `####`, not at `@skill`) anchors exactly like one it opens at a
+ * marker line, and one that closes before the next heading closes there.
+ * Which tags an `html_block` leaves open, and how many it closes, is read
+ * from the HTML itself ({@link htmlFragmentNesting}).
+ *
+ * Only a top-level block is an anchor — the editor groups top-level blocks,
+ * and a wrapper a plugin opened around the paragraphs INSIDE a list item is
+ * not one it can mount. A wrapper with no authored block inside it wraps
+ * nothing and is dropped.
+ */
+function collectPluginContainers(
+  tokens: readonly Token[],
+  source: string,
+  starts: readonly number[],
+  /** Which authored range each recovered block of plugin HTML stands in for (see the projection's own walk). */
+  recovered: ReadonlyMap<Token, readonly [number, number]>,
+): PluginContainer[] {
+  interface Open {
+    readonly tag: string;
+    readonly attributes: Record<string, string>;
+    readonly seq: number;
+    /** How many layout scopes were open where this wrapper opened. */
+    readonly depth: number;
+    open?: BlockAnchor;
+    close?: BlockAnchor;
+  }
+  const anchorForRange = ([from, to]: readonly [number, number]): BlockAnchor => ({ text: source.slice(from, to).trimEnd(), offset: from });
+  const anchorFor = (lines: readonly [number, number]): BlockAnchor => anchorForRange(charRangeForLines(starts, source, lines[0], lines[1]));
+  const stack: Open[] = [];
+  const done: Open[] = [];
+  let pendingOpen: Open[] = [];
+  let pendingClose: Open[] = [];
+  let seq = 0;
+  /** How many layout scopes (`@section`, `@page`, …) are open. */
+  let depth = 0;
+  const closeAt = (anchor: BlockAnchor): void => {
+    for (const c of pendingClose) {
+      c.close = anchor;
+      done.push(c);
+    }
+    pendingClose = [];
+  };
+  for (const token of tokens) {
+    if (token.level === 0) {
+      const lines = evidenceLines(token);
+      if (lines) {
+        if (token.type.startsWith("layout_") && token.nesting === 1) depth += 1;
+        const anchor = anchorFor(lines);
+        for (const c of pendingOpen) {
+          c.open = anchor;
+          stack.push(c);
+        }
+        closeAt(anchor);
+        pendingOpen = [];
+        continue;
+      }
+      // A layout scope's closer (`@end-section`) is a block of the editor's
+      // too, and a wrapper opened inside the scope ends there at the latest
+      // — never at the first block after the scope, which would reach
+      // across its boundary — whether the plugin closed it just before or
+      // left it open.
+      const closerLine = token.type.startsWith("layout_") && token.nesting === -1 ? layoutTokenLine(token) : null;
+      if (closerLine !== null) {
+        const closing = depth;
+        depth = Math.max(0, depth - 1);
+        while (stack.length && stack[stack.length - 1]!.depth >= closing) pendingClose.push(stack.pop()!);
+        pendingOpen = pendingOpen.filter((c) => c.depth < closing);
+        closeAt(anchorFor([closerLine - 1, closerLine]));
+        continue;
+      }
+    }
+    if (token.type !== "html_block" || token.map) continue;
+    // Plugin HTML that stands in for an authored line (`@callout …` became
+    // the callout's opening tag and label) is that line's own block in the
+    // editor: the wrapper it opens begins WITH that block, so the label the
+    // block renders sits inside the wrapper the way it does on the page, and
+    // the wrapper its counterpart closes ends at the closing line's block.
+    // Only a run that is one block can be that anchor: two marker lines in a
+    // row, consumed by two rules, are recovered as one run whose text is no
+    // block of the editor's, and a wrapper from such a run is anchored to
+    // the authored blocks around it instead, like one from HTML that stands
+    // in for nothing.
+    const own = recovered.get(token);
+    const ownAnchor = own && !BLANK_LINE_RE.test(source.slice(own[0], own[1]).trimEnd()) ? anchorForRange(own) : null;
+    const { opened, closed } = htmlFragmentNesting(token.content);
+    // The wrapper begins with the marker's block only when that block has
+    // something to show inside it (the callout's label). An opener that is
+    // nothing but tags begins with the first authored block instead: the
+    // page's `.dc-path-shell > h3:first-child` names that block, and an
+    // empty block in front of it would take its place.
+    const withContent = ownAnchor ? openersWithContent(token.content) : [];
+    for (let i = 0; i < closed; i++) {
+      // Closing an element that never held an authored block: an empty
+      // wrapper, not a container. Otherwise the innermost open one closes.
+      if (pendingOpen.length) {
+        pendingOpen.pop();
+        continue;
+      }
+      const c = stack.pop();
+      if (!c) break;
+      pendingClose.push(c);
+    }
+    if (ownAnchor) closeAt(ownAnchor);
+    opened.forEach((w, i) => {
+      const c: Open = { tag: w.tag, attributes: { ...w.attributes }, seq: seq++, depth };
+      if (ownAnchor && withContent[i]) {
+        c.open = ownAnchor;
+        stack.push(c);
+      } else {
+        pendingOpen.push(c);
+      }
     });
-    const chosen = named ?? candidates[0]!;
-    claimed[chosen] = true;
-    out.push({ kind: sites[chosen]!.kind, wrappers });
+  }
+  // A wrapper still open at the end of the document runs to its end; one
+  // that closed after the last authored block does too.
+  for (const c of pendingClose) done.push(c);
+  for (const c of stack) done.push(c);
+  // A wrapper whose first block inside is also its first block after held
+  // nothing: an empty box the region's own HTML already renders.
+  return done
+    .filter((c): c is Open & { open: BlockAnchor } => c.open !== undefined && c.close?.offset !== c.open.offset)
+    .sort(
+      (a, b) =>
+        a.open.offset - b.open.offset ||
+        (b.close?.offset ?? Number.MAX_SAFE_INTEGER) - (a.close?.offset ?? Number.MAX_SAFE_INTEGER) ||
+        a.seq - b.seq,
+    )
+    .map((c) => ({ tag: c.tag, attributes: c.attributes, open: c.open, ...(c.close ? { close: c.close } : {}) }));
+}
+
+/** Self-closing block token types that carry range evidence and can carry attributes. */
+const ATTRIBUTABLE_SELF_CLOSING_TYPES = new Set<string>(["hr", "fence", "code_block", "html_block"]);
+
+/** The attributes a token carries that the author's document could, or null when it carries none. */
+function authoredAttributes(token: Token): Record<string, string> | null {
+  const attributes: Record<string, string> = {};
+  for (const [name, value] of token.attrs ?? []) {
+    if (!NON_AUTHORED_TOKEN_ATTRS.has(name)) attributes[name] = value;
+  }
+  return Object.keys(attributes).length ? attributes : null;
+}
+
+/** One open element inside a block, for `collectBlockAttributes`'s path walk. */
+interface ElementFrame {
+  /** Its `tag:nth-of-type(n)` step; null for a token that renders no element of its own. */
+  readonly step: string | null;
+  /**
+   * Whether a null step is see-through — a tight list's hidden paragraph
+   * puts its content straight into the item — or a plugin's own element
+   * the editor cannot name, under which no path is known.
+   */
+  readonly transparent: boolean;
+  /** How many children of each tag this element has opened so far. */
+  readonly counts: Map<string, number>;
+}
+
+/**
+ * The attributes the pipeline left on the authored blocks that survived it,
+ * and on the elements inside them.
+ *
+ * A plugin that WRAPS rather than rewrites — leaves the author's heading a
+ * heading and adds a class to it, or a `data-tier` on each row of the
+ * author's table — produces a page whose blocks the editor already renders
+ * from source; the only thing the editor cannot derive is the attribute.
+ * This carries it, keyed by the block's own evidence range and the path to
+ * the element within it, so the editor can put it back on the element it
+ * builds for the same block. Blocks are the top-level ones, for the same
+ * reason as {@link collectPluginContainers}: those are the elements the
+ * editor can name; inside one, an element is named by its tag and position
+ * among its siblings of that tag, which a tight list's hidden paragraph
+ * (no element in either rendering) does not disturb. The evidence keys
+ * `source-range.ts` adds are not attributes of the author's document and
+ * are left out.
+ */
+function collectBlockAttributes(tokens: readonly Token[], source: string, starts: readonly number[]): BlockAttributes[] {
+  const out: BlockAttributes[] = [];
+  /** The open top-level block's char range, while inside one the editor can name. */
+  let range: readonly [number, number] | null = null;
+  const frames: ElementFrame[] = [];
+  const pathOf = (step: string): string | null => {
+    const steps: string[] = [];
+    for (const frame of frames.slice(1)) {
+      if (frame.step) steps.push(frame.step);
+      else if (!frame.transparent) return null;
+    }
+    steps.push(step);
+    return steps.join(" > ");
+  };
+  const stepOf = (token: Token): string => {
+    const parent = frames[frames.length - 1]!;
+    const n = (parent.counts.get(token.tag) ?? 0) + 1;
+    parent.counts.set(token.tag, n);
+    return `${token.tag}:nth-of-type(${n})`;
+  };
+  for (const token of tokens) {
+    if (token.type.startsWith("layout_")) continue;
+    if (token.level === 0) {
+      range = null;
+      frames.length = 0;
+      if (!(BASE_PIPELINE_OPEN_TOKEN_TYPES.has(token.type) || ATTRIBUTABLE_SELF_CLOSING_TYPES.has(token.type))) continue;
+      const lines = evidenceLines(token);
+      if (!lines) continue;
+      const [from, to] = charRangeForLines(starts, source, lines[0], lines[1]);
+      const attributes = authoredAttributes(token);
+      if (attributes) out.push({ from, to, path: "", attributes });
+      if (token.nesting === 1) {
+        range = [from, to];
+        frames.push({ step: "", transparent: false, counts: new Map() });
+      }
+      continue;
+    }
+    if (!range) continue;
+    if (token.nesting === -1) {
+      frames.pop();
+      continue;
+    }
+    if (token.nesting === 1) {
+      const known = BASE_PIPELINE_OPEN_TOKEN_TYPES.has(token.type);
+      const step = known && !token.hidden ? stepOf(token) : null;
+      const attributes = step ? authoredAttributes(token) : null;
+      const path = step && attributes ? pathOf(step) : null;
+      if (path && attributes) out.push({ from: range[0], to: range[1], path, attributes });
+      frames.push({ step, transparent: known && token.hidden, counts: new Map() });
+      continue;
+    }
+    if (ATTRIBUTABLE_SELF_CLOSING_TYPES.has(token.type)) {
+      const attributes = authoredAttributes(token);
+      const path = pathOf(stepOf(token));
+      if (path && attributes) out.push({ from: range[0], to: range[1], path, attributes });
+    }
   }
   return out;
 }
 
-export interface PluginContainer {
-  /** The marker kind this wrapper belongs to (`specialty` for `dc-specialty`). */
-  readonly kind: string;
-  /**
-   * The nested wrappers this marker opened, OUTERMOST FIRST. A plugin that
-   * decorates its container emits more than one (`dc-skill-card` >
-   * `dc-card-body` > `dc-card-inner`), and the blocks after the marker are
-   * inside all of them — a book's CSS sizes its content against the
-   * innermost, so reproducing only the outermost leaves the content wider
-   * than the page prints it.
-   */
-  readonly wrappers: readonly { readonly tag: string; readonly attributes: Readonly<Record<string, string>> }[];
+/**
+ * An inline element a plugin wrapped around a run of the author's own text
+ * inside a block — see {@link collectInlineWrappers}.
+ */
+export interface InlineWrapper {
+  /** The block's range (its evidence), the same key as {@link BlockAttributes}. */
+  readonly from: number;
+  readonly to: number;
+  /** The text the plugin wrapped, exactly as the author wrote it. */
+  readonly text: string;
+  readonly tag: string;
+  readonly attributes: Readonly<Record<string, string>>;
+}
+
+/** Inline token types markdown-it renders itself, whose output is never a plugin's wrapper. */
+const CORE_INLINE_TYPES = new Set<string>(["text", "code_inline", "softbreak", "hardbreak", "image", "html_inline"]);
+const WRAPPED_TEXT_RE = /^<([a-z][\w-]*)((?:\s+[^<>]*?)?)>([\s\S]*)<\/\1>$/i;
+
+/**
+ * The inline elements plugins wrapped around runs of the author's own text.
+ *
+ * A plugin that marks a phrase (`ROLL THE DIE!` into a styled span) does it
+ * with a token of its own that renders as one element around the text,
+ * leaving the text as written. The editor renders inline content from
+ * source and cannot know the element, so this names it — by the block's
+ * range, the exact text, and the element — for the editor to put around
+ * the same text in its own rendering of the block. Read from the render,
+ * not the token type: a token is a plugin's wrapper exactly when its
+ * rendering is one element whose content is the token's own text.
+ */
+function collectInlineWrappers(
+  tokens: readonly Token[],
+  source: string,
+  starts: readonly number[],
+  md: MarkdownIt,
+  env: unknown,
+): InlineWrapper[] {
+  const out: InlineWrapper[] = [];
+  const seen = new Set<string>();
+  let range: readonly [number, number] | null = null;
+  for (const token of tokens) {
+    if (token.level === 0 && !token.type.startsWith("layout_")) {
+      const lines = token.nesting !== -1 ? evidenceLines(token) : null;
+      range = lines ? charRangeForLines(starts, source, lines[0], lines[1]) : null;
+      if (token.nesting === -1) range = null;
+    }
+    if (!range || token.type !== "inline" || !token.children) continue;
+    for (const child of token.children) {
+      if (child.nesting !== 0 || !child.content || CORE_INLINE_TYPES.has(child.type)) continue;
+      let html: string;
+      try {
+        html = md.renderer.renderInline([child], md.options, env as Record<string, unknown>);
+      } catch {
+        continue;
+      }
+      const m = WRAPPED_TEXT_RE.exec(html.trim());
+      if (!m || m[3] !== md.utils.escapeHtml(child.content)) continue;
+      const attributes: Record<string, string> = {};
+      for (const a of (m[2] ?? "").matchAll(ATTR_RE)) attributes[a[1]!] = a[2]!;
+      const wrapper: InlineWrapper = { from: range[0], to: range[1], text: child.content, tag: m[1]!.toLowerCase(), attributes };
+      const key = JSON.stringify(wrapper);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(wrapper);
+    }
+  }
+  return out;
 }
 
 export interface GutterpressProjection {
@@ -602,11 +912,23 @@ export interface GutterpressProjection {
    */
   readonly limited?: true;
   /**
-   * Container elements this document's PLUGINS opened, in document order —
+   * Container elements this document's PLUGINS opened, in nesting order —
    * see {@link PluginContainer}. Empty for a document with no plugin
    * containers, which is every project that uses only core's markers.
    */
   readonly pluginContainers: readonly PluginContainer[];
+  /**
+   * Attributes the pipeline left on authored top-level blocks — see
+   * {@link BlockAttributes}. Empty for a document whose blocks carry only
+   * what the author wrote in them.
+   */
+  readonly blockAttributes: readonly BlockAttributes[];
+  /**
+   * Inline elements plugins wrapped around runs of authored text inside
+   * blocks — see {@link InlineWrapper}. Empty for a document whose inline
+   * content is markdown-it's own.
+   */
+  readonly inlineWrappers: readonly InlineWrapper[];
 }
 
 export interface CreateEditorProjectionOptions {
@@ -813,7 +1135,12 @@ function pluginRegionLinesLookAuthored(
    * plugin: 51 of 69 recoveries in one chapter of the Dimm City Field Guide,
    * each one a block quote or an ordered list the plugin legitimately
    * replaced. The other two checks apply to both, and the nested-marker one
-   * is what still refuses a run that swallowed a Gutterpress marker line.
+   * is what still refuses a run that swallowed a Gutterpress marker line —
+   * one of core's own kinds (`@page`, `@end-section`, …), whose meaning the
+   * layout transform owns. A plugin's own vocabulary (`@end-outcome` closing
+   * the paragraph the `@outcome` macro consumed) is the region's content,
+   * not a swallowed marker, and is exactly what such a run is expected to
+   * contain.
    */
   claimed: boolean,
 ): boolean {
@@ -825,10 +1152,13 @@ function pluginRegionLinesLookAuthored(
   if (claimed && /^[ \t]*(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])/.test(firstLineText)) return false;
   for (let line = fromLine + 1; line < toLine; line++) {
     const lineText = source.slice(lineStartOffset(starts, source, line), lineStartOffset(starts, source, line + 1));
-    if (/^[ \t]*@/.test(lineText)) return false;
+    if (CORE_MARKER_LINE_RE.test(lineText)) return false;
   }
   return true;
 }
+
+/** A line that is one of core's own markers — the kinds `markers.js` transforms. */
+const CORE_MARKER_LINE_RE = new RegExp(`^[ \\t]*@(?:${KNOWN_KINDS.join("|")})(?=[\\s{.#]|$)`);
 
 /**
  * Every nesting===1 "open" token type Gutterpress's OWN fixed base pipeline
@@ -1229,6 +1559,8 @@ export function createEditorProjection(
   const diagnostics: ProjectionDiagnostic[] = [];
   /** Plugin HTML whose authored range was recovered, keyed by that range. */
   const recoveredRegions = new Map<string, { from: number; to: number; html: string }>();
+  /** The same, by the token: which authored range each block of plugin HTML stands in for. */
+  const recoveredTokens = new Map<Token, readonly [number, number]>();
 
   // D13 — per-call cap state (see "── D13 resource caps ──" above). Never
   // module-level: scoped fresh to this one createEditorProjection call.
@@ -1328,6 +1660,7 @@ export function createEditorProjection(
           const run = recoveredRegions.get(key);
           if (run) run.html += token.content;
           else recoveredRegions.set(key, { from, to, html: token.content });
+          recoveredTokens.set(token, [from, to]);
           continue;
         }
         diagnostics.push({
@@ -1582,7 +1915,9 @@ export function createEditorProjection(
     blocks,
     generated,
     diagnostics,
-    pluginContainers: collectPluginContainers(tokens, source),
+    pluginContainers: collectPluginContainers(tokens, source, starts, recoveredTokens),
+    blockAttributes: collectBlockAttributes(tokens, source, starts),
+    inlineWrappers: collectInlineWrappers(tokens, source, starts, md, env),
     // D13 — omit the key entirely when not limited (optional-field
     // convention, not `limited: false`; see the field's own doc comment).
     ...(limited ? { limited: true as const } : {}),

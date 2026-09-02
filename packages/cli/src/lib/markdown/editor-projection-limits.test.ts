@@ -376,6 +376,8 @@ describe("D13 caps never throw and never mutate blocks already emitted", () => {
       generated: [],
       diagnostics: [],
       pluginContainers: [],
+      blockAttributes: [],
+      inlineWrappers: [],
     });
   });
 });

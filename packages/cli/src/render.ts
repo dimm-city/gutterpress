@@ -55,4 +55,7 @@ export type {
   CreateEditorProjectionOptions,
   HtmlFragmentNesting,
   PluginContainer,
+  BlockAnchor,
+  BlockAttributes,
+  InlineWrapper,
 } from "./lib/markdown/editor-projection";

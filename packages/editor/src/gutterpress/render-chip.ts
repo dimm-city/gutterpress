@@ -60,6 +60,7 @@
  */
 import type { CustomBlockRendering, SourceSegment } from "@dimm-city/vscode-markdown-editor";
 import type { ChipPlan } from "./plan.ts";
+import { htmlFragmentNesting } from "gutterpress/render";
 
 /** Root class every chip element carries; also the CSS/test-query prefix for every part below it. */
 export const CHIP_ROOT_CLASS = "gp-block-chip";
@@ -168,6 +169,18 @@ function renderSanitizedHtml(doc: Document, html: string, className: string): HT
   const wrap = el(doc, "div", className);
   const tpl = doc.createElement("template");
   tpl.innerHTML = html;
+  // Plugin HTML that opens a wrapper it does not close (`<div class="callout">
+  // <span class="label">Note</span>` standing in for a `@callout` line) is
+  // the wrapper's opening plus the content that leads it. The wrapper itself
+  // is mounted around the blocks it holds (`provider.ts`'s `groupBlocks`, from
+  // the projection's own containers), with this block as its first; what
+  // this block renders is only the content, never a second copy of the
+  // wrapper for the parser to close early.
+  for (let unclosed = htmlFragmentNesting(html).opened.length; unclosed > 0; unclosed--) {
+    const wrapper = tpl.content.lastElementChild;
+    if (!wrapper) break;
+    wrapper.replaceWith(...Array.from(wrapper.childNodes));
+  }
   const walker = doc.createTreeWalker(tpl.content, 1 /* NodeFilter.SHOW_ELEMENT */);
   const doomed: Element[] = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {

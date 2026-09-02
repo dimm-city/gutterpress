@@ -422,6 +422,8 @@ describe("validateHostToWebviewMessage — 'presentation-input' projection field
     generated: [],
     diagnostics: [],
     pluginContainers: [],
+    blockAttributes: [],
+    inlineWrappers: [],
   };
 
   test("valid control passes, with every projection field present", () => {

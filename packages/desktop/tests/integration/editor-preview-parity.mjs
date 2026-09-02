@@ -99,7 +99,7 @@ writeFileSync(
 );
 writeFileSync(
   join(userDataDir, "app-settings.json"),
-  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "editor" } }),
+  JSON.stringify({ settingsSchemaVersion: 2, preview: { mode: "editor", defaultZoom: "1" } }),
 );
 
 const mainJs = join(desktopDir, "out", "main", "main.js");
@@ -131,7 +131,12 @@ try {
   page.setDefaultTimeout(60_000);
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
-    w.setSize(1800, 1000);
+    // Wide enough that BOTH panes hold a Letter page at 1:1. The paged
+    // surface fits a page narrower than its pane by zooming the stage down,
+    // and CSS zoom changes layout (see prepareBook): at 1800px the editor
+    // pane came out a hair under 1:1 and one dense chapter paginated a page
+    // longer than it does at 1:1.
+    w.setSize(2560, 1400);
   });
   await page.waitForSelector(".file-item, .toc-item", { timeout: 120_000 });
   const close = page.locator('button[aria-label="Close this screen"]');
@@ -205,6 +210,26 @@ try {
    * guess about the slowest of them.
    */
   async function settled(quietMs = 400, timeoutMs = 60_000) {
+    // The counter can hold still while a plate is still on its way (the
+    // art's relayout comes when the image loads, which is not on the
+    // layout counter's clock), so the editor's fonts and images are waited
+    // for first — the same wait the book side gets.
+    await page
+      .evaluate(async () => {
+        await document.fonts?.ready;
+        await Promise.all(
+          [...document.querySelectorAll(".rich-editor-host img")]
+            .filter((img) => !img.complete)
+            .map(
+              (img) =>
+                new Promise((resolve) => {
+                  img.addEventListener("load", resolve, { once: true });
+                  img.addEventListener("error", resolve, { once: true });
+                }),
+            ),
+        );
+      })
+      .catch(() => {});
     const deadline = Date.now() + timeoutMs;
     let last = -1;
     let stableSince = 0;
@@ -238,45 +263,96 @@ try {
     throw new Error("no paginated preview frame appeared — nothing to compare against");
   }
 
-  const frame = await bookFrame();
+  let frame = await bookFrame();
   log(`preview frame: ${frame.url()}`);
-  await frame.evaluate(() => window.Gutterpress?.setSpread?.(false));
 
   /**
-   * The book's own page counts are read ONCE, so they have to be read after
-   * the viewer has finished paginating — not after a fixed sleep. A book
-   * whose art or fonts are still arriving paginates again afterwards, and
-   * reading through that made the BOOK's own answer move between runs (a
-   * role chapter reported 23 pages on one run and 24 on the next), which
-   * turned real agreement into a coin flip.
+   * Put the book in the state its page counts are read in: single pages,
+   * every font and plate loaded, and laid out at 1:1.
+   *
+   * 1:1 is the zoom the PDF is laid out at. The preview pane fits the page
+   * to its width (`--gutterpress-zoom` ≈ 0.7 here), and CSS `zoom` changes
+   * layout, not just its rendering: Chromium snaps every border to whole
+   * device pixels in the zoomed space, so a 1pt table rule becomes 1.4px at
+   * 0.7 and 1px at 1:1 — measured as a 5.8px difference over one
+   * fourteen-row table, enough to move a page break in a dense chapter. The
+   * editor pane is wider than a page at this window size and already at
+   * 1:1. The relayout waits for the fonts: one before they arrive
+   * paginates fallback faces and is not repeated when they do, which made
+   * the book's own count move between runs.
    */
-  await frame.evaluate(async () => {
-    await document.fonts?.ready;
-    await Promise.all(
-      [...document.images]
-        .filter((img) => !img.complete)
-        .map(
-          (img) =>
-            new Promise((resolve) => {
-              img.addEventListener("load", resolve, { once: true });
-              img.addEventListener("error", resolve, { once: true });
-            }),
-        ),
-    );
-  });
-  for (let last = -1, stableSince = Date.now(), deadline = Date.now() + 60_000; Date.now() < deadline; ) {
-    const now = await frame.evaluate(() => document.querySelectorAll(".gp-sheet").length).catch(() => -1);
-    if (now !== last) {
-      last = now;
-      stableSince = Date.now();
-    } else if (now > 0 && Date.now() - stableSince >= 600) {
-      break;
+  async function prepareBook() {
+    await frame.evaluate(async () => {
+      window.Gutterpress?.setSpread?.(false);
+      await document.fonts?.ready;
+      await Promise.all(
+        [...document.images]
+          .filter((img) => !img.complete)
+          .map(
+            (img) =>
+              new Promise((resolve) => {
+                img.addEventListener("load", resolve, { once: true });
+                img.addEventListener("error", resolve, { once: true });
+              }),
+          ),
+      );
+      document.documentElement.style.setProperty("--gutterpress-zoom", "1");
+      document.body.style.removeProperty("--gutterpress-fit-zoom");
+      window.Gutterpress?.refresh?.();
+      window.Gutterpress?.setSpread?.(false);
+    });
+    // The book's own page counts are read ONCE, so they have to be read
+    // after the viewer has finished paginating — not after a fixed sleep.
+    for (let last = -1, stableSince = Date.now(), deadline = Date.now() + 60_000; Date.now() < deadline; ) {
+      const now = await frame.evaluate(() => document.querySelectorAll(".gp-sheet").length);
+      if (now !== last) {
+        last = now;
+        stableSince = Date.now();
+      } else if (now > 0 && Date.now() - stableSince >= 600) {
+        break;
+      }
+      await sleep(100);
     }
-    await sleep(100);
   }
 
-  // The book's own answer for every chapter, in one call.
-  const bookPages = await frame.evaluate(() => {
+  /**
+   * Evaluate in the book, surviving the app swapping its preview frame under
+   * us (a re-render replaces the iframe): re-acquire the frame, put it back
+   * in the measured state, and try again.
+   */
+  async function inBook(fn, attempts = 3) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await frame.evaluate(fn);
+      } catch (error) {
+        if (attempt >= attempts || !/detached|closed|context/i.test(String(error))) throw error;
+        log(`preview frame was replaced (${String(error).split("\n")[0]}); re-acquiring`);
+        frame = await bookFrame();
+        await prepareBook();
+      }
+    }
+  }
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await prepareBook();
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !/detached|closed|context/i.test(String(error))) throw error;
+      log(`preview frame was replaced during setup; re-acquiring`);
+      frame = await bookFrame();
+    }
+  }
+
+  /**
+   * The app renders its preview twice on startup (the first frame is
+   * replaced once the project is fully loaded), and a read that lands on the
+   * first frame reports pages of a book that is not the final one — one run
+   * in three read a chapter a page short. So the read is trusted only once
+   * the frame it came from has survived a moment; otherwise the new frame
+   * is prepared and read instead.
+   */
+  const readBookPages = () => {
     const api = window.Gutterpress;
     const out = {};
     const sources = new Set(
@@ -299,7 +375,17 @@ try {
       out[src] = hi >= lo ? { pages: hi - lo + 1, first: lo } : null;
     }
     return out;
-  });
+  };
+  let bookPages;
+  for (let attempt = 1; ; attempt++) {
+    bookPages = await inBook(readBookPages);
+    await sleep(1500);
+    const live = await bookFrame();
+    if (live === frame || attempt >= 4) break;
+    log("preview frame was replaced after its pages were read; reading the new one");
+    frame = live;
+    await prepareBook();
+  }
 
   const chapters = await page
     .locator(".file-item")
@@ -321,7 +407,7 @@ try {
       await page.click('button[aria-label="Read"]').catch(() => {});
       await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
     }
-    await settled();
+    await settled(800);
 
     const editorPages = await page.evaluate(
       () => document.querySelectorAll(".rich-editor-host .gp-sheet").length,

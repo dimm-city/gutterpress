@@ -4833,7 +4833,7 @@ class sn extends oe {
          * block's source (e.g. markdown-it-attrs `{#id .class}` trailers).
          * Never for an active block: its source is on screen verbatim. See
          * PATCHES.md Patch 4. */
-        p === !1 && _ !== g && t?.decorateInactiveBlock?.(_.element, f.ast, Es(f.ast));
+        p === !1 && _ !== g && t?.decorateInactiveBlock?.(_.element, f.ast, Es(f.ast), e.children[m].absoluteStart);
         const w = e.children[m].diffKind;
         _.element.classList.toggle("md-diff-added", w === "added"), _.element.classList.toggle("md-diff-modified", w === "modified");
       }

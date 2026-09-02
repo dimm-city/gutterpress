@@ -10,6 +10,12 @@
  * `thead` — so in the editor the header row lost its own styling AND changed
  * the table's column widths, which re-wrapped every cell under it.
  *
+ * The body rows get the same treatment: markdown-it puts them in a `tbody`
+ * and never emits the delimiter row at all, so a book that names a row by
+ * its position (`tbody > tr:nth-of-type(3)`, which is how the pipeline's
+ * own row attributes reach the editor) or stripes rows by parity counts
+ * from the same rows the page does.
+ *
  * Locked only: this rewrites the elements the fork maps a caret into, and the
  * reader's view is the one where there is no caret to map. The fork rebuilds
  * a block from its source whenever it becomes active, so nothing here
@@ -42,5 +48,12 @@ export function promoteTableHeader(element: HTMLElement, node: { readonly kind: 
     const head = doc.createElement("thead");
     row.replaceWith(head);
     head.appendChild(row);
+  }
+  for (const delimiter of Array.from(table.querySelectorAll(":scope > tr.md-table-delimiter-row"))) delimiter.remove();
+  const bodyRows = Array.from(table.children).filter((child) => child.tagName === "TR");
+  if (bodyRows.length) {
+    const body = doc.createElement("tbody");
+    bodyRows[0]!.replaceWith(body);
+    for (const bodyRow of bodyRows) body.appendChild(bodyRow);
   }
 }

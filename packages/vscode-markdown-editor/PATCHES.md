@@ -1131,8 +1131,12 @@ active block still shows its source verbatim, as the fork always did.
 
 **What.** After a top-level block view is built and its active/inactive
 classes are set, if the block is inactive AND the view is new (not reused
-by identity), `options.decorateInactiveBlock(element, ast, sourceText)` is
-called once. A reused view was decorated when it was built; a block that
+by identity), `options.decorateInactiveBlock(element, ast, sourceText,
+absoluteStart)` is called once. `absoluteStart` is the block's offset in
+the document (the same value Patch 3's group candidates carry): the host
+matches a block to the pipeline's record of it by its text, and two blocks
+with the same text (a skill card's heading repeated for its continuation)
+are told apart only by where they are. A reused view was decorated when it was built; a block that
 becomes active is rebuilt (fresh view data), and rebuilt again when it goes
 inactive, so decoration always follows a complete default rendering.
 

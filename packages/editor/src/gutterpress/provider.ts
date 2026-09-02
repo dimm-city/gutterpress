@@ -162,30 +162,6 @@ function rawHtmlNesting(candidate: BlockGroupCandidate): { opened: readonly { ta
   return htmlFragmentNesting(candidate.sourceText);
 }
 
-/**
- * The wrapper a PLUGIN's own container marker opens.
- *
- * A project plugin's markers are containers just as core's are — the Dimm
- * City plugin's `@specialty .augmerc` wraps a role's whole spread, and its
- * CSS sizes the art inside it. Chipping the marker without building that
- * wrapper leaves the content unwrapped: those portraits rendered at their
- * natural 690px against the book's 80px, and one chapter came out 39 pages
- * against 25.
- *
- * Core cannot know what element the plugin emits, so this follows the
- * convention core documents and plugins mirror: the kind as a class, plus
- * the author's own classes and id. A plugin that emits some other class
- * gets a wrapper its CSS does not match — no worse than the nothing it had
- * before, and right for every plugin that follows the convention.
- */
-function pluginContainerAttributes(marker: ParsedMarker): Record<string, string> {
-  const authored = (marker.attrs["class"] ?? "").split(/\s+/).filter(Boolean);
-  const out: Record<string, string> = { class: [marker.kind, ...authored].join(" ") };
-  const id = marker.attrs["id"];
-  if (id) out["id"] = id;
-  return out;
-}
-
 function mergeClass(existing: string | undefined, extra: string): string {
   const classes = (existing ?? "").split(/\s+/).filter(Boolean);
   if (extra && !classes.includes(extra)) classes.push(extra);
@@ -197,19 +173,6 @@ export function createGutterpressBlockProvider(
   opts: CreateGutterpressBlockProviderOptions,
 ): GutterpressBlockProvider {
   const index: BlockIndex = buildBlockIndex(projection, opts.source);
-  /**
-   * The wrappers the project's plugins actually opened, per kind, in
-   * document order — the pipeline's own answer, so the editor reproduces a
-   * plugin's `dc-specialty` rather than guessing `specialty` from the
-   * marker's name. Consumed in order per kind, matching the order the
-   * markers appear in.
-   */
-  const pluginWrappers = new Map<string, { tag: string; attributes: Record<string, string> }[][]>();
-  for (const container of projection.pluginContainers ?? []) {
-    const list = pluginWrappers.get(container.kind) ?? [];
-    list.push(container.wrappers.map((w) => ({ tag: w.tag, attributes: { ...w.attributes } })));
-    pluginWrappers.set(container.kind, list);
-  }
   /** AST ids of this render's top-level blocks, from `groupBlocks`. */
   let topLevel: ReadonlySet<number> = new Set();
 
@@ -295,18 +258,6 @@ export function createGutterpressBlockProvider(
    * immediately) is not emitted: it would be a wrapper around no blocks.
    */
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
-    // Each render consumes the wrappers from the top; the queues are rebuilt
-    // per render so a re-render sees the same document the last one did.
-    const takeWrapper = (() => {
-      const cursors = new Map<string, number>();
-      return (kind: string) => {
-        const list = pluginWrappers.get(kind);
-        if (!list) return undefined;
-        const at = cursors.get(kind) ?? 0;
-        cursors.set(kind, at + 1);
-        return list[at];
-      };
-    })();
     topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
     /** Every marker each top-level block carries, in source order. */
     const markers = blocks.map((candidate) => markersOf(candidate.ast, candidate.sourceText));
@@ -322,46 +273,10 @@ export function createGutterpressBlockProvider(
 
     markers.forEach((blockMarkers, i) => {
       for (const marker of blockMarkers) {
-      if (marker.unknownKind) {
-        // A plugin's own container. It runs to its `@end-<kind>`, to the
-        // next `@<kind>` (the auto-close every such plugin documents), or to
-        // the end of the core scope enclosing it — a new page or section
-        // ends it, because the plugin's own wrapper cannot span one.
-        if (closedKindOf(marker)) continue; // a closer opens nothing
-        let end = i + 1;
-        while (end < blocks.length) {
-          const others = markers[end]!;
-          const ends = others.some(
-            (m) =>
-              closedKindOf(m) === marker.kind ||
-              (m.unknownKind && m.kind === marker.kind) ||
-              (!m.unknownKind && CONTAINER_KINDS.has(scopeKindOf(m))),
-          );
-          if (ends) break;
-          end += 1;
-        }
-        // The pipeline's own wrappers when the projection captured them;
-        // otherwise the convention-derived fallback, which is right for a
-        // plugin that names its wrapper after the marker and harmless for
-        // one that does not. A decorated container is several nested
-        // wrappers, mounted outermost first over the same blocks.
-        const emitted = takeWrapper(marker.kind);
-        const chain = emitted ?? [{ tag: "div", attributes: pluginContainerAttributes(marker) }];
-        if (end > i + 1) {
-          chain.forEach((wrapper, depth) => {
-            const { class: pluginClass, ...pluginAttrs } = { ...wrapper.attributes };
-            groups.push({
-              start: i + 1,
-              end,
-              key: `${marker.kind}:${depth}:${blocks[i]!.ast.id}`,
-              tagName: wrapper.tag,
-              className: pluginClass,
-              attributes: pluginAttrs,
-            });
-          });
-        }
-        continue;
-      }
+      // A plugin's own marker opens nothing here: the wrapper the plugin
+      // emitted for it is mounted below, anchored to the authored blocks it
+      // holds, which is the only evidence of where it really is.
+      if (marker.unknownKind) continue;
       const kind = scopeKindOf(marker);
       if (!CONTAINER_KINDS.has(kind)) continue;
 
@@ -392,6 +307,42 @@ export function createGutterpressBlockProvider(
         groups.push({ start: i + 1, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
       }
       }
+    });
+
+    /**
+     * The block whose text is the anchor's, breaking a tie by nearest
+     * offset: the text is what survives an edit elsewhere, the offset is
+     * what tells two identical blocks apart.
+     */
+    const locate = (anchor: { readonly text: string; readonly offset: number }): number => {
+      let best = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      blocks.forEach((candidate, i) => {
+        if (candidate.sourceText.trimEnd() !== anchor.text) return;
+        const distance = Math.abs(candidate.absoluteStart - anchor.offset);
+        if (distance < bestDistance) {
+          best = i;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    };
+    // The wrappers the project's plugins opened, exactly where the pipeline
+    // put them: from the first authored block inside each to the first one
+    // after it. A plugin that opens its card at every heading is reproduced
+    // as faithfully as one that opens a panel at a marker line, because
+    // neither the marker nor the plugin is consulted — only the blocks.
+    // Already in nesting order (outer first), which is the order the fork
+    // nests equal ranges in. A wrapper whose anchor is not in this render
+    // (its block was just edited) is left out until the projection catches
+    // up, never guessed.
+    (projection.pluginContainers ?? []).forEach((container, i) => {
+      const start = locate(container.open);
+      if (start < 0) return;
+      const end = container.close ? locate(container.close) : blocks.length;
+      if (end < 0 || end <= start) return;
+      const { class: className, ...attributes } = { ...container.attributes };
+      groups.push({ start, end, key: `plugin:${i}`, tagName: container.tag, className, attributes });
     });
 
     blocks.forEach((candidate, i) => {
