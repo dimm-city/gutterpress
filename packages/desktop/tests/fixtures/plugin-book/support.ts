@@ -153,6 +153,16 @@ export function noEvidenceCalloutPlugin(): LoadedPlugin {
         open.attrSet("class", "gp-callout");
         open.attrSet("data-callout-label", match[1]!);
         // Deliberately NO `open.map = tok.map` — the no-evidence shape.
+        //
+        // And deliberately unrecoverable: the origin mechanism can bound a
+        // consumed run from the tokens around it, so a map-less token is not
+        // refused merely for being map-less. Stripping the consumed `inline`
+        // token's own range leaves a removed token that carries no evidence
+        // and is not a structural closer — genuinely partial evidence, one of
+        // the six shapes `plugin-origin.ts` refuses by name, and what this
+        // fixture needs to keep being: the REFUSED region other tests edit
+        // inside of.
+        next.map = null;
         out.push(open);
         out.push(new state.Token("plugin_callout_close", "div", -1));
         i += 2; // consumed paragraph_open + inline + paragraph_close
