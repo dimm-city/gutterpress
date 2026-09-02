@@ -31,5 +31,5 @@ export type {
 export { decorate } from "./engine/viewer/decorate.ts";
 export type { DecorationApi } from "./engine/viewer/decorate.ts";
 
-export { extract } from "./engine/shared/gcpm-extract.ts";
+export { extract, resolvePage } from "./engine/shared/gcpm-extract.ts";
 export type { GcpmModel, PageGeometry } from "./engine/shared/gcpm-extract.ts";

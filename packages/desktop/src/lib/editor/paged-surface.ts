@@ -24,6 +24,8 @@ import {
   injectBreakMapping,
   injectViewerCss,
   paginate,
+  PX_PER_PT,
+  resolvePage,
   type DecorationApi,
   type GcpmModel,
 } from "gutterpress/viewer";
@@ -59,6 +61,8 @@ function modelFor(css: string): GcpmModel {
 export function createPagedSurface(bookCss: string, doc: Document = document): PagedSurface {
   injectViewerCss(doc);
   const model = modelFor(bookCss);
+  /** The book's default page width in CSS px — known from the model, before anything is laid out. */
+  const pageWidthPx = resolvePage(model).geometry.width * PX_PER_PT;
   // On screen a page box is a multicol COLUMN, so the book's forced page
   // breaks have to be re-expressed as column breaks — exactly what the
   // preview does inside `fragmentDocument`. Without this the editor
@@ -68,7 +72,9 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   const listeners = new Set<(totalPages: number) => void>();
   let pages = 0;
   let decoration: DecorationApi | undefined;
+  let layout: ReturnType<typeof paginate> | undefined;
   let resize: ResizeObserver | undefined;
+  let fontsSettled = false;
   let disposed = false;
 
   /**
@@ -76,32 +82,74 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
    * as the standalone viewer's own `fitZoom()` does — `.gp-stage`'s `zoom`
    * multiplies `--gutterpress-fit-zoom` in. Without it a Letter page (816px)
    * simply overflows a 450px editor pane and the author sees a sliver.
+   *
+   * This runs BEFORE pagination, and the page width comes from the MODEL
+   * rather than from a rendered strip. `zoom` changes used values, so a
+   * zoom applied after fragmenting means every page count was measured at
+   * the previous zoom: the cover paginated into two pages at 1:1 and then
+   * shrank to fit one, leaving a phantom second page. Ordering it first is
+   * what makes the editor's page count match the book's.
    */
-  function fit(stage: HTMLElement, documentElement: HTMLElement): void {
-    const strip = documentElement.querySelector<HTMLElement>(".gp-strip");
-    const pageW = strip ? parseFloat(getComputedStyle(strip).getPropertyValue("--gp-page-w")) : NaN;
+  function fit(stage: HTMLElement): void {
     const host = stage.parentElement?.parentElement;
     const available = (host?.clientWidth ?? 0) - STAGE_PADDING * 2;
-    if (!Number.isFinite(pageW) || pageW <= 0 || available <= 0) return;
-    stage.style.setProperty("--gutterpress-fit-zoom", String(Math.min(1, available / pageW)));
+    if (!Number.isFinite(pageWidthPx) || pageWidthPx <= 0 || available <= 0) return;
+    stage.style.setProperty("--gutterpress-fit-zoom", String(Math.min(1, available / pageWidthPx)));
+  }
+
+  /**
+   * Re-paginate OUTSIDE the editor's own render (fonts arriving, the pane
+   * resizing). It must go through `relayout()`, not a fresh `paginate()`:
+   * the document is currently in its paginated shape, and fragmenting it
+   * again would wrap the previous run wrappers in new ones. `relayout()`
+   * restores the flat document first, which is what makes a re-run
+   * idempotent — without it the page count climbed on every resize.
+   */
+  function refresh(documentElement: HTMLElement): void {
+    if (disposed || !documentElement.isConnected) return;
+    if (!layout) {
+      run(documentElement);
+      return;
+    }
+    const stage = documentElement.parentElement;
+    if (stage) fit(stage);
+    layout.relayout();
+    applySpreadMode(layout.strips, false);
+    decoration?.redraw();
+    pages = layout.totalPages;
+    for (const listener of listeners) listener(pages);
   }
 
   function run(documentElement: HTMLElement): void {
     const stage = documentElement.parentElement;
-    if (stage) stage.classList.add(STAGE_CLASS);
-    const layout = paginate(model, { root: documentElement });
+    if (stage) {
+      stage.classList.add(STAGE_CLASS);
+      fit(stage);
+    }
+    layout = paginate(model, { root: documentElement });
     // Single-page view is a ONE-COLUMN wrap, not the unwrapped default: the
     // unwrapped strip lays every page out in one long horizontal row. Must
     // run before `decorate`, which positions sheets from the wrap geometry.
     applySpreadMode(layout.strips, false);
     decoration = decorate(layout, { canvasRoots: [documentElement] });
-    if (stage) {
-      fit(stage, documentElement);
-      if (!resize) {
-        resize = new ResizeObserver(() => fit(stage, documentElement));
-        const host = stage.parentElement?.parentElement;
-        if (host) resize.observe(host);
-      }
+    // A book's own webfonts load asynchronously, and text measured in a
+    // fallback face breaks into different pages than the real one — the
+    // editor would sit one page long until the next edit re-rendered it.
+    // Re-paginate once, the first time the fonts are actually ready.
+    if (!fontsSettled) {
+      fontsSettled = true;
+      void doc.fonts?.ready
+        .then(() => refresh(documentElement))
+        .catch(() => {
+          // No font API, or a face failed to load — what is on screen stands.
+        });
+    }
+    if (stage && !resize) {
+      // A resize changes the fit zoom, which changes how much fits on a
+      // page — so the whole pagination is redone, not just the scale.
+      resize = new ResizeObserver(() => refresh(documentElement));
+      const host = stage.parentElement?.parentElement;
+      if (host) resize.observe(host);
     }
     pages = layout.totalPages;
     for (const listener of listeners) listener(pages);
@@ -130,6 +178,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     },
     dispose() {
       disposed = true;
+      layout = undefined;
       resize?.disconnect();
       resize = undefined;
       listeners.clear();

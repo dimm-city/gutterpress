@@ -104,14 +104,13 @@ export const GUTTERPRESS_EDITOR_CSS = `
   .gp-block-chip:not(.gp-block-chip--plugin-region):not(.gp-block-chip--raw-html) {
   display: none;
 }
+/* The container wrappers carry the book's own classes, so the book's CSS
+   sizes them. They get NOTHING here that affects layout: MARKER_CSS gives
+   a page/spread wrapper a min-height of the full content box, so a stray
+   margin or padding of ours pushes the box past its own page and spills it
+   into a second column — which is exactly how the cover came out two pages
+   long against the book's one. */
 .md-block-group {
   position: relative;
-}
-.md-block-group.page,
-.md-block-group.spread {
-  margin: 0.75em 0;
-  padding: 0.5em 0.75em;
-  outline: 1px dashed rgba(76, 110, 245, 0.35);
-  outline-offset: 2px;
 }
 `;
