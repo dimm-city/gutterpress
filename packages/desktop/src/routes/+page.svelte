@@ -1376,14 +1376,34 @@
     };
   }
 
+  /**
+   * The open project's directory, waiting for it if an open is in flight.
+   *
+   * A file can be chosen while the project is still opening — the file list
+   * is on screen before `startFolderPreview` resolves, and clicking a
+   * chapter then built its projection with no project to build it against.
+   * That produced a plugin-less, book-CSS-less document, which never
+   * rebuilds: the editor showed an unstyled, unpaginated chapter for the
+   * rest of the session, and only switching files fixed it. Waiting is the
+   * whole fix — the projection belongs to a project, so it waits for one.
+   */
+  async function projectDirWhenReady(timeoutMs = 30_000): Promise<string | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (!lifecycle.currentDir && lifecycle.busy && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return lifecycle.currentDir;
+  }
+
   async function buildRichProjection(
     content: string,
     sourceVersion: number,
   ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
-    if (isDesktop() && lifecycle.currentDir) {
+    const projectDir = isDesktop() ? await projectDirWhenReady() : null;
+    if (projectDir) {
       try {
         const outcome = await buildEditorProjection({
-          projectDir: lifecycle.currentDir,
+          projectDir,
           content,
           sourceVersion,
         });
