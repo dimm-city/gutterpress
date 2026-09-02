@@ -125,6 +125,16 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
+/* The fork puts a table in a shrink-to-fit scroll box, so it can show the
+   active-block glow around a table wider than the page. A book's own
+   table { width: 100% } then resolves against that shrink-to-fit box instead
+   of the page column, and a three-column table came out 198px wide against
+   the book's 655px. Locked, no block is ever active and the glow buys
+   nothing, so the box takes the width the book's table expects. It stays a
+   scroll box, so a table genuinely wider than the column still scrolls. */
+.md-editor.md-readonly .md-table-wrapper {
+  width: auto;
+}
 /* A tight list item's content is inline in the book's HTML and a block in the
    fork's (see tight-list.ts for how a tight list is recognized). A book that
    draws its own bullets with li::before then puts an inline marker in front of
