@@ -269,11 +269,34 @@ export async function countLinkAnnotations(
 // Text (replaces pdftotext) — single pass, memoized per document
 // ---------------------------------------------------------------------------
 
-interface TextPass {
+/** One non-whitespace text run's exact string plus its extents, in PDF points. */
+export interface TextRun {
+  /** Verbatim run string (never normalized/rounded) — pdf.js item `str`. */
+  s: string;
+  /** Baseline origin x — item `transform[4]`. */
+  x: number;
+  /** Baseline origin y — item `transform[5]`. */
+  y: number;
+  /** Advance width, "in device space" per pdf.js (points, at the unscaled
+   *  viewport this module always reads at — see getPageSize). */
+  w: number;
+  /** Glyph height, same space as `w`. */
+  h: number;
+}
+
+export interface TextPass {
   /** Non-whitespace-stripped text per page (index 0 = page 1). */
   textByPage: string[];
   /** Every text run's baseline origin, for layout-variance analysis. */
   positions: Array<{ x: number; y: number }>;
+  /**
+   * Every non-whitespace text run's exact string + extents, per page (index
+   * 0 = page 1) — same filter as `positions` above (whitespace-only items
+   * excluded), plus the run's width/height. Added for the render-parity gate
+   * (render-parity.ts's `extractReport`); `textByPage`/`positions` are
+   * untouched and still hold their original values.
+   */
+  runsByPage: TextRun[][];
 }
 const textCache = new WeakMap<PDFDocumentProxy, Promise<TextPass>>();
 
@@ -283,25 +306,37 @@ export function getTextPass(doc: PDFDocumentProxy): Promise<TextPass> {
     p = (async () => {
       const textByPage: string[] = [];
       const positions: Array<{ x: number; y: number }> = [];
+      const runsByPage: TextRun[][] = [];
       for (let i = 1; i <= doc.numPages; i++) {
         try {
           const page = await doc.getPage(i);
           const tc = await page.getTextContent();
           let pageText = "";
+          const runs: TextRun[] = [];
           for (const item of tc.items) {
-            const it = item as { str?: string; transform?: number[] };
+            const it = item as {
+              str?: string;
+              transform?: number[];
+              width?: number;
+              height?: number;
+            };
             if (typeof it.str !== "string") continue;
             pageText += it.str;
             if (it.transform && it.str.trim().length > 0) {
-              positions.push({ x: it.transform[4]!, y: it.transform[5]! });
+              const x = it.transform[4]!;
+              const y = it.transform[5]!;
+              positions.push({ x, y });
+              runs.push({ s: it.str, x, y, w: it.width ?? 0, h: it.height ?? 0 });
             }
           }
           textByPage.push(pageText);
+          runsByPage.push(runs);
         } catch {
           textByPage.push("");
+          runsByPage.push([]);
         }
       }
-      return { textByPage, positions };
+      return { textByPage, positions, runsByPage };
     })();
     textCache.set(doc, p);
   }
@@ -313,22 +348,29 @@ export function getTextPass(doc: PDFDocumentProxy): Promise<TextPass> {
 // One pass per document, memoized.
 // ---------------------------------------------------------------------------
 
-interface ImageRef {
+export interface ImageRef {
   /** XObject resource name (or "(inline)" for inline images). */
   name: string;
   /** Rendered width/height on the page, in points (from the CTM). */
   placedW: number;
   placedH: number;
+  /**
+   * Placed origin, in points — the CTM's translation components (`ctm[4]`,
+   * `ctm[5]`). Added for the render-parity gate (render-parity.ts); `name`/
+   * `placedW`/`placedH`/`page` are untouched.
+   */
+  x: number;
+  y: number;
   /** 1-based page number. */
   page: number;
 }
 
-interface FontRef {
+export interface FontRef {
   name: string;
   embedded: boolean;
 }
 
-interface OpPass {
+export interface OpPass {
   imagesByPage: Map<number, ImageRef[]>;
   fonts: FontRef[];
 }
@@ -409,6 +451,8 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
               name,
               placedW: Math.hypot(ctm[0]!, ctm[1]!),
               placedH: Math.hypot(ctm[2]!, ctm[3]!),
+              x: ctm[4]!,
+              y: ctm[5]!,
               page: i,
             });
           } else if (fn === OPS.setFont) {

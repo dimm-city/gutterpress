@@ -32,7 +32,7 @@ const check: Check = {
   id: "source.markdown.layout-markers",
   name: "Layout Markers",
   description:
-    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand",
+    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand, plus any unknown gp-* class",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
