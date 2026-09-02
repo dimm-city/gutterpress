@@ -1,6 +1,6 @@
 {
   "name": "@dimm-city/gutterpress-vscode",
-  "version": "0.11.0-experimental.0",
+  "version": "0.11.0-alpha.0",
   "description": "Gutterpress rich-editing custom text editor for VS Code (Experimental — SFE-P3c: host<->webview protocol, document gateway, build step). See docs/plans/source-first-editor-enterprise-refactor.md.",
   "private": true,
   "type": "commonjs",

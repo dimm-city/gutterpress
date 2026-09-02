@@ -5,27 +5,35 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.11.0] - 2026-09-02
+## [0.11.0-alpha.0] - 2026-09-02
+
+An alpha: the paged editor is new, and editor↔page agreement is still being
+worked on real books. The preview remains the print authority — where the two
+disagree, the preview is right.
 
 ### Added
 
-- **A source-first rich editor, in the desktop app and as an Experimental VS
-  Code extension.** Both are built on the same shared, framework-free editor
-  package (`@dimm-city/gutterpress-editor`), so a chapter edits the same way
-  wherever you open it. The desktop app's Edit pane now offers **Source** and
-  **Rich** modes for Markdown files, switchable per document; Rich mode gives
-  you an ordinary word-processor-style surface — headings, lists,
-  blockquotes, bold/italic/strike, links, images, tables, code — while your
-  file on disk stays exact Markdown. Your Gutterpress layout markers
-  (`@chapter`, `@page`, `@spread`, `@section`, page and column breaks) show
-  up as recognizable chips in Rich mode rather than raw `@` syntax, and
-  project-plugin regions render the way your plugin actually presents
-  them, with an "Edit source" fallback for any region the editor can't map
-  back to your Markdown safely rather than guessing. A rich edit only ever
-  changes the exact text you touched — opening and closing a document, or
-  switching between Source and Rich, changes zero bytes. A document over
-  2 MiB opens in Source mode automatically rather than loading Rich mode
-  slowly or unreliably.
+- **A paginated, source-first editor in the desktop app, and an Experimental
+  VS Code extension.** Both are built on the same shared, framework-free
+  editor package (`@dimm-city/gutterpress-editor`), so a chapter edits the
+  same way wherever you open it. On desktop a Markdown chapter now edits ON
+  THE PAGE: the editor lays your document out with your book's own `@page`
+  geometry and your own stylesheets, paginated by the same engine that
+  paginates the preview, so you write inside the pages you are going to
+  print. Your layout markers (`@chapter`, `@page`, `@spread`, `@section`,
+  page and column breaks) show up as chips rather than raw `@` syntax, and
+  project-plugin regions render the way your plugin actually presents them,
+  with an "Edit source" fallback for any region the editor cannot map back
+  to your Markdown safely rather than guessing. An edit only ever changes
+  the exact text you touched — opening and closing a document, or switching
+  modes, changes zero bytes. A document over 2 MiB opens in the raw-Markdown
+  surface automatically rather than loading the paged one slowly or
+  unreliably.
+- **One mode control: Edit, Read, Focus.** Edit is the paged editor;
+  Read is the same editor locked, which paginates exactly like the printed
+  page; Focus is the raw-Markdown surface (CodeMirror) with the preview out
+  of the way, and is where a non-Markdown file always opens. There is no
+  second Rich/Source toggle beside the editor toolbar any more.
 - **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
   published separately, Experimental). It registers an optional
   "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the
@@ -51,7 +59,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Breaking: the preview no longer edits your document.** Right-click →
   "Edit this block", the click-to-edit overlay, and the image/link
   properties dialogs reachable from the preview's context menu are gone —
-  edit in the Source or Rich editor instead, both of which now cover
+  edit in the paged or raw-Markdown editor instead, both of which now cover
   everything those preview actions used to do (including changing an
   *existing* image's or link's properties, which neither editor could do
   before this release). Everything else about the preview is unchanged:

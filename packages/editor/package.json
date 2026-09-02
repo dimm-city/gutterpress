@@ -1,6 +1,6 @@
 {
   "name": "@dimm-city/gutterpress-editor",
-  "version": "0.11.0-experimental.0",
+  "version": "0.11.0-alpha.0",
   "description": "Framework-free, browser-safe source-edit contracts and shared editor core for Gutterpress (Experimental \u2014 SFE-P1a). See docs/plans/source-first-editor-enterprise-refactor.md.",
   "private": true,
   "type": "module",
