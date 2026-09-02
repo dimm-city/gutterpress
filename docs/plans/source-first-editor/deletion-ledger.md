@@ -18,7 +18,7 @@ against them.
 | Desktop HTTP routes (`+server.ts`) | 104 | 0 (SFE-P5c1 `fs`/`dialog`/`shell`/`log`/`app` migrated to typed IPC — 35 routes deleted, ratchet re-baselined 104→69; SFE-P5c2 `project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` migrated — 37 more deleted, ratchet re-baselined 69→32; SFE-P5c3 `remote`/`sync`/`publish` migrated; SFE-P5c4 migrated `updater`/`recovery`/`doctor`/`lint`/`status`/`api`/`_lib` remnants and every route still standing, ratchet re-baselined 32→10→0 — route count is ZERO, this pair's stated finish line. Re-derived at HEAD `0758cb9e`: `find packages/desktop/src/routes -name "+server.ts" \| wc -l` → 0, and `packages/desktop/src/routes/api` no longer exists) | −104 |
 | IPC handlers (`ipcMain.handle`) | 12 (`secureHandle` registrations — the sole `ipcMain.handle` call site is 1; see baseline.md §4.2) | 120 (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`, every match a real registration — the generic function's own declaration, `function secureHandle<Args …>(`, does not match the literal substring; re-derived at HEAD `0758cb9e`) — the deliberate counterpart of the routes row above: baseline 12 → 13 before this run started (`feat(p3): plugin-aware rich-editor projection`, SFE-P3e's multi-line `api:editorProjection` registration, main.ts:1779 — outside this ledger row's P5c write ownership), then SFE-P5c1 added 39 (`fs`/`dialog`/`shell`/`log`/`app`, 13→52), SFE-P5c2 added 37 (`project`/`manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style`, 52→89), and SFE-P5c3+SFE-P5c4 together added 31 more (`remote`/`sync`/`publish`, then `updater`/`recovery`/`doctor`/`lint`/`status`, and every route still standing, 89→120); route migration is complete — this row and the routes row above have now converged: every deleted route became one or more IPC registrations, plus the one pre-existing P3e handler | +108 |
 | Preview mutation protocol messages | 5 — the `beginBlockEdit`/`endBlockEdit` command pair plus the `blockEditRequested`/`blockEditFinished`/`blockEditStateChanged` event triplet ONLY (mutation-inventory.md §1.1–§1.2). Does NOT include the separate `contextMenuRequested` event or `getContextTargetAt` command (mutation-inventory.md §1.5, added in repair round 1): those are read/target-resolution messages the context-menu path uses, not mutations, and may survive past P4 as part of the read-only context menu D8 keeps. | 0 (SFE-P4 `6080b4a4`; `getProtocolVersion()` v8 → v9, book side) — all five identifiers verified absent from `previewAPI` and from the bridge/shell relay; `contextMenuRequested`/`getContextTargetAt` were never counted in the baseline (see the baseline note in this row) and survive unchanged, still serving the read-only context menu D8 keeps | −5 |
-| `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions, 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
+| `Platform`/`HostServices` methods | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined with one override; platform-inventory.md §1–§2's 30/21 figures predate `buildEditorProjection` and are re-derived here against the current tree, per this map's own preamble) | 0 — SFE-P5b `Platform`/`HostServices` interfaces deleted entirely; the 31 members resolved to: 20 moved to 5 new capability-module plain functions (this cell records only the fate of these 31 original locator members at P5b time — it is not a total capability-module count; SFE-P5c later added 7 more `*-capability.ts` modules for bounded contexts that were never `Platform`/`HostServices` members, bringing the repo-wide total to 12 by HEAD — see this ledger's SFE-P7 zero-remnant section), 4 collapsed into their sole consumer (`onNativeThemeUpdated` inlined in `theme.svelte.ts`; `readFile`/`writeFile`/`statFile` replaced by `EditorBuffer`'s own narrow `EditorBufferFs` satisfied by `api.fs`), 5 found dead with search proof and deleted (`saveSnapshot`, `openFolder`, `listDir`, `getSecret`, `setSecret`), 1 kept only as an `ElectronBridge` type field with no capability wrapper (`apiVersion` — genuinely on `window.electron`, zero desktop-app readers), 1 dropped with the deleted `ElectronAdapter` class itself (the `platform: "electron"` discriminant — never read by app code either). Full accounting: `capability-map.md` §2. | −31 (interface surface); underlying real capability count: 20 (as plain functions) + 1 (type field) = 21 of the original 31 still reachable; 5 deleted outright; 4 still reachable through their consumer (collapsed, not translated to a module); the 1 discriminant is not a behavior deletion — nothing consumed it before this run either |
 | Production LOC (workspace `src/`) | 426 files / 85,668 lines (strict `src/` only); 471 files / 94,859 lines workspace-wide incl. `packages/desktop/electron/`; see baseline.md §4.5 | — | — |
 | Test LOC | 316 files / 76,861 lines (at baseline SHA; see baseline.md §4.6) | — | — |
 | Dependencies (workspace, prod) | 41 (summed across packages: cli 28, desktop 13, open-design-plugin 0; see baseline.md §4.7) | — | — |
@@ -3324,3 +3324,830 @@ citation. Round 2: approve, 0 confirmed.
 
 Gate: see the SFE-P6 run spec's Gate section (report-only, run after this
 checkpoint was assembled; results recorded there).
+
+---
+
+## SFE-P7 Lane A — 2026-09-02 — Zero-remnant verification, final measured metrics, commit ledger
+
+Lane A deliverable for run `SFE-P7`
+(`docs/plans/source-first-editor/runs/SFE-P7.md`, Lane A row and details
+paragraph). HEAD at the time this section was written: `2ba5ca0a93db02ad562bd074ce04033b4b1d3aaa`
+(branch `claude/sonnet-opus-agent-workflow-4s81ps`), the SFE-P6 close-out
+commit. Every command below was run from the repository root against this
+tree; `rg` (ripgrep 14.1.0) is used for the repo-wide greps because it
+respects `.gitignore`/`.git` by default, avoiding the false hits a raw
+`grep -r` picks up from `node_modules`, `.svelte-kit/output`, `dist/`, and
+`.git/objects` (a raw `grep --exclude-dir=.git` was tried first and still
+leaked a `.git/objects/pack/*.pack` hit on binary-detection; every count
+below is the `rg` figure, not that leak).
+
+### 1. Zero-remnant verification (repo-wide)
+
+Per the P4 D15 ruling (`docs/plans/source-first-editor/runs/SFE-P4.md`,
+"D15 residuals ruling"; full text quoted in the deletion ledger's SFE-P4
+section above, "Sanctioned residuals"), a hit on a deleted identifier is
+sanctioned in exactly three classes, and unsanctioned otherwise:
+
+1. **A version-history comment in production source** that names the
+   deletion by identifier (e.g. "X was deleted in SFE-Pn").
+2. **A test that asserts ABSENCE at runtime** via the literal identifier
+   string (an `undefined` check, an "unknown command" rejection, a header
+   comment citing what the test proves is gone).
+3. **Historical/planning docs** under `docs/plans/**` (run specs, the
+   deletion ledger, inventories, `pr158-lessons.md`) that name every
+   identifier as history, per that ruling's own text: "the docs/plans
+   history and this spec keep the names."
+
+This run's spec paraphrases the ruling as two classes ("absence-asserting
+tests and version-history comments"); the actual P4 ruling (quoted above)
+has three, the third being `docs/plans/**` history. This section applies
+the real three-class ruling, extended by exactly two judgment calls, each
+stated where it is used: (a) `CHANGELOG.md` entries describing a past
+release accurately, by date, as it worked at the time — the same spirit as
+class 3, applied to the one non-`docs/plans` file that is definitionally a
+historical record; (b) an identifier appearing only inside another,
+currently-live symbol of the same name in a different subsystem (a
+namespace collision, not a residual) — flagged explicitly, not silently
+folded into class 1-3.
+
+A hit outside these classes is a **CONFIRMED DEFECT**: reported below, not
+fixed (production code is outside this lane's write ownership).
+
+**Self-reference note.** The counts below were captured before this lane's
+own edits to `deletion-ledger.md` §"Baseline counts" and `docs/adr/{0009,
+0012,0016}.md` (the cross-reference/count fixes in §5 below and this
+section itself) landed in the tree. Those edits necessarily discuss the
+same deleted identifiers this section sweeps for — that discussion is class
+3 (historical/planning-doc) by construction, the same as every other
+`docs/plans/**`/`docs/adr/**` hit already counted below. A reviewer
+re-running any command in this section against the final committed tree
+will see modestly higher totals than pasted here, confined entirely to
+this section's own and the three ADR edits' text; verify the delta lands
+in exactly those files (`deletion-ledger.md`, `docs/adr/0009-*.md`,
+`docs/adr/0012-*.md`, `docs/adr/0016-*.md`) before treating any increase as
+a new finding.
+
+#### 1.1 Preview mutation protocol v≤8 message names
+
+Five identifiers (`beginBlockEdit`, `endBlockEdit`, `blockEditRequested`,
+`blockEditFinished`, `blockEditStateChanged` — mutation-inventory.md
+§1.1-§1.2, the exact set the P4 D15 ruling covers; NOT `contextMenuRequested`/
+`getContextTargetAt`, which were never counted as mutations and survive by
+design).
+
+```console
+$ rg -c 'beginBlockEdit' . | awk -F: '{s+=$2} END{print s}'   # 74, 13 files
+$ rg -c 'endBlockEdit' . | awk -F: '{s+=$2} END{print s}'     # 57, 13 files
+$ rg -c 'blockEditRequested' . | awk -F: '{s+=$2} END{print s}'   # 23, 10 files
+$ rg -c 'blockEditFinished' . | awk -F: '{s+=$2} END{print s}'    # 22, 9 files
+$ rg -c 'blockEditStateChanged' . | awk -F: '{s+=$2} END{print s}' # 29, 8 files
+```
+
+File-level union (13 files total across all five identifiers):
+
+| File | Class |
+|---|---|
+| `packages/cli/src/assets/preview/scripts/preview-interface.js` | 1 — the v9 version-history comment block (lines 734-753), the ONLY production-source hit for any of the five |
+| `packages/desktop/tests/editor/preview-separability-mutation-inert.test.ts` | 2 — asserts `api.beginBlockEdit`/`endBlockEdit` are `undefined` and that dispatching them fails as "Unknown command" |
+| `packages/desktop/tests/editor/preview-navigation-protocol.test.ts` | 2 — asserts `beginBlockEdit` no longer triggers a focus special case |
+| `packages/desktop/tests/preview-interface.test.mjs` | 2 — same absence assertion, book-side harness |
+| `packages/desktop/tests/preview-shell-regression.test.mjs` | 2 — asserts a stray `blockEditStateChanged` no longer holds a swap |
+| `CHANGELOG.md` (line 195) | (b) — a dated 0.10.x release-notes entry describing the v8 addition as it was AT THAT RELEASE; historical by construction, same spirit as class 3 |
+| `docs/plans/source-first-editor-enterprise-refactor.md`, `baseline.md`, `deletion-ledger.md`, `runs/SFE-P4.md`, `mutation-inventory.md`, `docs/inline-editing-plan.md`, `docs/adr/0009-inline-editing-source-ranges.md`, `docs/adr/0012-preview-read-only.md` | 3 — plan/decision-record history |
+| `packages/cli/dist/preview-interface-s4ax92ac.js` | not a repo hit — untracked, `.gitignore`d build output (`git ls-files --error-unmatch` fails on it; `.gitignore:47`) mirroring the same class-1 comment in its source; excluded from the repo-wide count above by `rg`'s default ignore behavior, confirmed separately with `git check-ignore -v` |
+
+**Classification: clean.** No hit outside classes 1/2/3/(b).
+
+#### 1.2 `InlineEditController`
+
+```console
+$ rg -c 'InlineEditController' . | awk -F: '{s+=$2} END{print s}'   # 52, 14 files
+```
+
+Zero hits under any `packages/*/src`. All 14 files are
+`packages/desktop/tests/editor/{parity-replacements,
+preview-separability-mutation-inert,context-menu-controller}.test.ts`
+(class 2 — two are header comments naming the deletion, one is an absence
+assertion; already classified by the P4 ledger's own residual list, "Sanctioned
+residuals" §2) plus 11 `docs/plans/**`/`docs/adr/0012` files (class 3).
+
+**Classification: clean.**
+
+#### 1.3 `CommitEngine`
+
+```console
+$ rg -c 'CommitEngine' . | awk -F: '{s+=$2} END{print s}'   # 59, 19 files
+```
+
+One production-source hit: `packages/desktop/src/routes/+page.svelte`,
+lines 1042/1049/1050 — a JSDoc comment on the `hasFile`/`applyRangeEditIn`
+type members explaining they were "Added for `CommitEngine`... `CommitEngine`
+was removed in 0.11 (SFE-P4)" (class 1, verified by reading the surrounding
+20 lines — comment only, no live reference). The same three
+`packages/desktop/tests/editor/*.test.ts` files as §1.2 (class 2) and 15
+`docs/plans/**`/`docs/adr/{0009,0012}` files (class 3) account for the rest.
+
+**Classification: clean.**
+
+#### 1.4 `selection-search` (deleted in SFE-P4 round-1 repair, `0944088b`)
+
+```console
+$ rg -c 'selection-search' . | awk -F: '{s+=$2} END{print s}'   # 10, 3 files
+```
+
+`deletion-ledger.md`, `runs/SFE-P4.md`, `acceptance.md` — all class 3. Zero
+hits under `packages/`.
+
+**Classification: clean.**
+
+#### 1.5 `WebAdapter` / service worker / web app manifest / IndexedDB persistence (PWA, P5a)
+
+```console
+$ rg -c 'WebAdapter' . | awk -F: '{s+=$2} END{print s}'   # 126, 26 files
+$ rg -c 'service-worker\.ts|serviceWorker' . 2>/dev/null   # (no output — 0 hits)
+$ rg -c 'manifest\.webmanifest|rel="manifest"' .            # (no output — 0 hits)
+$ rg -c 'IndexedDB|indexedDB' .                              # (no output — 0 hits)
+$ find packages/desktop -iname "service-worker*"             # (no output)
+$ ls packages/desktop/static/                                 # icons  (only)
+```
+
+Service worker, web manifest, and IndexedDB persistence: **zero repo-wide
+hits, clean.**
+
+`WebAdapter` (126 occurrences, 26 files):
+
+| Location | Class |
+|---|---|
+| `packages/desktop/src/lib/components/SyncStatusPill.svelte`, `platform/index.ts`, `settings.svelte.ts`, `routes/+layout.svelte` | 1 — "was deleted", "SFE-P5a deleted the dormant browser host" |
+| `packages/cli/scripts/build-engine-bundles.mjs` | 1 — "both deleted in SFE-P5a (D10)" |
+| `knip.jsonc` | 1 — "dropped out of this list in P5a with the PWA/WebAdapter code" |
+| `packages/cli/dist/{platform,render}.d.ts`, `dist/lib/markdown/{renderer,assemble,index}.d.ts` | untracked build output, gitignored, mirrors the six `packages/cli/src` files below |
+| `docs/plans/**`, `docs/adr/{0014,0016}`, `CLAUDE.md`, `CHANGELOG.md`, `docs/ux-design-contract.md`, `docs/pwa-webadapter-plan.md` | 3 |
+| `packages/cli/src/render.ts:7-9`, `platform.ts:6,94`, `lib/markdown/assemble.ts:10,120`, `lib/markdown/plugins.ts:26`, `lib/markdown/index.ts:53`, `lib/markdown/renderer.ts:8` | **CONFIRMED DEFECT — see §5.1** |
+
+#### 1.6 `getPlatform` / `ElectronAdapter` / `HostServices` (P5b)
+
+```console
+$ rg -c '\bgetPlatform\b' . | awk -F: '{s+=$2} END{print s}'   # 100, 33 files
+$ rg -c 'ElectronAdapter' . | awk -F: '{s+=$2} END{print s}'   # 47, 21 files
+$ rg -c '\bHostServices\b' . | awk -F: '{s+=$2} END{print s}'  # 152, 45 files
+```
+
+`getPlatform` — every `packages/desktop/src/lib/**` and `tests/**` hit
+verified by reading the line (all comments: "Replaces the corresponding
+`getPlatform()` members...", "deleted that locator: `getPlatform()`..."; sample
+verified: `app-lifecycle-capability.ts`, `desktop-document-host.ts`,
+`editor-projection-capability.ts`, `build-preview-capability.ts`,
+`platform/contract.ts`, `platform/index.ts`, `remote-capability.ts`,
+`updater-capability.ts`, `vite.config.ts` — class 1); `docs/**`/`CLAUDE.md`
+class 3. One CONFIRMED DEFECT: `packages/cli/src/index.ts:41-47` — see §5.2.
+
+`ElectronAdapter` — `packages/desktop/src/lib/platform/{contract,index}.ts`,
+`export/build-preview-capability.ts` ("the old `ElectronAdapter`"),
+`editor/buffer-state.svelte.ts` ("on `ElectronAdapter`, forwarded... That
+indirection died"), and 7 `tests/**` files all verified class 1; `docs/**`
+class 3. One CONFIRMED DEFECT: `packages/desktop/electron/auto-sync/orchestrator.ts:76`
+— see §5.3.
+
+`HostServices` (152 occurrences) resolves to **two unrelated symbols
+sharing one name** — flagged as judgment call (b), not folded into 1-3
+silently:
+
+- The **deleted** renderer-side `Platform`/`HostServices` locator
+  (`packages/desktop/src/lib/platform/{contract,dtos,index}.ts`, 8
+  occurrences) — all class 1, e.g. `contract.ts:4-8`: "Through 0.10.x this
+  file defined the broad `Platform`/`HostServices` service-locator
+  contract... SFE-P5b deleted that locator... the `Platform` and
+  `HostServices` interfaces... are all gone."
+- A **live, unrelated** main-process type of the same name,
+  `packages/desktop/electron/server-bridge/host-services.ts`'s
+  `HostServices` — the "single typed host/route seam" (ARCH review #31)
+  that `registerHostServices()`/`getXHooks()` accessors use, consumed today
+  by `electron/api/*.ts` (verified:
+  `grep -rln "getPrefsHooks\|getRemoteHooks\|getVcsHooks\|getMediaHooks\|
+  getAppHooks\|getHostHooks\|getWatchHooks\|getWriteHooks\|
+  getSyncSettingsHooks\|getUpdaterHooks\|getRecoveryHooks\|getFsGuardHooks"
+  packages/desktop/electron/api/*.ts` returns `electron/api/{app,fs,
+  git-identity-args,log,media,publish,recovery,remote,updater,validation,
+  vcs}.ts` — 11 of the 24 `electron/api/*.ts` registrar files, all IPC
+  handler modules, none a defunct SvelteKit route). This
+  accounts for the bulk of the 152: `electron/server-bridge/host-services.ts`
+  itself plus `electron/main.ts` (the only two `electron/` files that
+  literally contain the word — the other `server-bridge/*-hooks.ts` files
+  reference `getXHooks()`, not `HostServices` by name), `tests/platform/*.test.ts`
+  (23 files, verified by per-file `rg -c`) plus
+  `tests/support/host-services-fake.ts`, and `packages/cli/src/platform.ts`
+  (a doc comment naming the desktop's `HostServices` as a sibling concept —
+  itself part of the same stale header as §5.1's defect, not counted twice
+  here), `out/main/main.js` (untracked build output). None of these
+  reference the DELETED locator; they are a different, live component that
+  happens to share a name introduced independently (ARCH review #31 predates
+  this deletion). No defect.
+- `docs/plans/**`, `docs/adr/0016`, `CLAUDE.md`, `CHANGELOG.md` — class 3.
+
+**Classification: clean except the two production-comment defects named
+above and cross-referenced in §5.**
+
+#### 1.7 `src/routes/api` / `+server.ts` / `src/lib/api.ts` / `fetch("/api` (P5c/P5d)
+
+```console
+$ test -d packages/desktop/src/routes/api && echo EXISTS || echo ABSENT   # ABSENT
+$ find packages/desktop/src/routes -type f                                  # +layout.svelte, +layout.ts, +page.svelte only
+$ rg -c '\+server\.ts' . | awk -F: '{s+=$2} END{print s}'        # 118, 66 files (see breakdown)
+$ rg -c 'src/lib/api\.ts' . | awk -F: '{s+=$2} END{print s}'     # 40, 11 files
+$ rg -c 'fetch\(.\/api' . | awk -F: '{s+=$2} END{print s}'       # 21, 6 files
+```
+
+Both target files/directories are confirmed absent. The `+server.ts`
+occurrences are overwhelmingly provenance comments in the files that
+replaced the deleted routes — sampled across every `electron/api/*.ts` file
+and every `tests/platform/*-ipc.test.ts` file (theme.ts: "Ports
+`src/routes/api/theme/{...}/+server.ts` verbatim"; fs.ts: "Ports
+`src/routes/api/fs/{...}/+server.ts`"; log-ipc.test.ts: "migrated off
+`src/routes/api/log/read/+server.ts`, deleted"; dialog-ipc.test.ts:
+"..., deleted).") — class 1/2 throughout the sample. `tools/check-architecture.mjs`
+(the LIVE route-ratchet enforcer, baseline `0` per
+`tools/architecture-baseline.json`) and `tools/check-architecture.test.mjs`
+(constructs synthetic `.../+server.ts` path strings to test the ratchet
+logic itself, never real files) are the active enforcement mechanism, an
+extension of class 2's spirit (the check re-asserts absence — route count
+`≤ 0` — on every run). `src/lib/api.ts` (the literal, narrower path form)
+occurrences: `knip.jsonc` ("`src/lib/api.ts` — the typed `fetch("/api/…")`
+client this bullet used to protect — was deleted in SFE-P5c4... struck from
+this list"), `packages/desktop/README.md` ("No more `src/routes/api/**`
+SvelteKit routes or `src/lib/api.ts`"), and
+`packages/desktop/src/lib/api.contract-dto.type-test.ts` (class 2 — a
+compile-time type-assertion file whose own header explains "`src/lib/api.ts`
+must consume the shared contract DTOs" as a now-historical constraint,
+`api.ts`'s deletion itself confirmed by its 2026-09-01 SFE-P5c4 note two
+lines below) — all class 1/2. (The broader, unanchored pattern `lib/api\.ts`
+additionally matches `platform/dtos.ts` and `errors.ts`'s "moved here from
+`$lib/api.ts`" provenance notes — also class 1, not repeated here since the
+narrower command above is what was actually run.) One CONFIRMED DEFECT:
+`packages/vscode-extension/src/project/discover.ts:11` — see §5.4.
+
+**Classification: clean except the one defect named above and
+cross-referenced in §5.**
+
+#### 1.8 `sveltekit-host` / `adapter-node` / bearer token / loopback proxy (P5d)
+
+```console
+$ rg -c 'sveltekit-host' . | awk -F: '{s+=$2} END{print s}'   # 34, 7 files
+$ rg -c 'adapter-node' . | awk -F: '{s+=$2} END{print s}'     # 54, 17 files (incl. node_modules/.bun stale install artifacts, see note)
+$ rg -i -c 'bearer token' . | awk -F: '{s+=$2} END{print s}'  # 23, 12 files
+$ rg -i -l 'loopback' .                                        # 28 files
+$ node -e "console.log(require('./packages/desktop/package.json').devDependencies['@sveltejs/adapter-node'])"  # undefined
+$ grep -c '"@sveltejs/adapter-node"' bun.lock                  # 0
+```
+
+`sveltekit-host` — `packages/desktop/tests/platform/app-protocol.test.ts`
+(class 2, "replaced the adapter-node loopback server + proxy"), five
+`docs/plans/**`/`docs/adr/0015` files (class 3). `adapter-node` —
+`packages/desktop/README.md`, `electron/app-protocol.ts`,
+`tests/platform/{main-boot-and-splash,app-protocol}.test.ts` (class 1/2:
+"SFE-P5d replaced adapter-node...", "adapter-node loopback server failed
+to start" — an async step that no longer exists), `docs/plans/**` (class 3);
+`node_modules/.bun/@sveltejs+adapter-node@5.5.7.../` is a stale, unpruned
+local install artifact (not in `bun.lock`, not in
+`packages/desktop/package.json` dependencies — `@sveltejs/adapter-static`
+is the only adapter listed; confirmed zero `bun.lock` matches) — an
+environment staleness note, not a repo defect; a fresh
+`bun install --frozen-lockfile` would not recreate it.
+
+"bearer token" (case-insensitive, 23 hits) — `packages/desktop/electron/{main,app-protocol}.ts`
+(class 1: "no bearer token, no proxy request", "the deleted bearer token
+protected"), `docs/**`, `CLAUDE.md`, `CHANGELOG.md`, `packages/desktop/README.md` (class 3).
+
+"loopback" (28 files) splits into two groups: the desktop's own class-1
+comments (`main.ts`, `app-protocol.ts`, two `tests/platform/*.test.ts`
+files, `README.md`, `CLAUDE.md`, `docs/releases/0.11.0.md`) AND **an
+unrelated, live feature that
+happens to use the same English word** (judgment call (b)):
+`packages/cli/src/lib/remote-auth/{transport,test-access,github-auth,
+sync-messages,clone}.ts` (+ their `.test.ts` files) use "loopback" to mean
+a git-over-`http://` credential-transmission-safety check
+(`isCredentialTransmissionSafe`, unrelated to Electron transport),
+`packages/cli/src/preview/http-server.test.ts` and
+`packages/editor/tests/browser-harness/{index,server}.ts` mean the CLI's
+own legitimate local dev/test server, and
+`packages/open-design-plugin/plugin/README.md` means the CLI preview's own
+URL. None of these is a residual of the deleted sveltekit-host loopback
+bind; verified by reading each hit's line.
+
+**Classification: clean.** No hit outside classes 1/2/3/(b), and the one
+environment-only staleness note is not a repo defect.
+
+#### 1.9 `markdown-it-container` (removal CLAUDE.md pins)
+
+```console
+$ rg -c 'markdown-it-container' . | awk -F: '{s+=$2} END{print s}'   # 6, 5 files
+$ node -e "const p=require('./packages/cli/package.json'); console.log(!!p.dependencies['markdown-it-container'])"  # false
+$ grep -c 'markdown-it-container' bun.lock                              # 0
+```
+
+`docs/ARCHITECTURE.md:248` ("// markdown-it-container removed 2026-05-17;
+@-marker family is canonical" — a comment inside a fenced code example, not
+live code), `CLAUDE.md`, `docs/plans/source-first-editor/runs/SFE-P1b-decision.md`,
+`examples/gutterpress-user-guide/05-plugins.md` ("was removed in
+2026-05-17. Use `@`-prefixed markers instead"),
+`docs/migrations/2026-05-removing-container-syntax.md` — all class 1/3
+(the migration doc is a dedicated historical record of the removal by
+design). No dependency, no `bun.lock` entry, no import.
+
+**Classification: clean.**
+
+### 2. Nine-metric measured before/after
+
+Baseline SHA `ea7b60d50340b75b9c58666e5063bcbbbb666576`
+(`origin/main`, per `baseline.md` §1.1). AFTER measured at HEAD
+`2ba5ca0a93db02ad562bd074ce04033b4b1d3aaa`. Where the exact baseline command
+no longer applies (files moved to new packages the baseline predates: this
+program itself created `packages/editor`, `packages/vscode-extension`,
+`packages/vscode-markdown-editor` — none existed at the baseline SHA), the
+adjusted command is stated and both a baseline-scope-identical figure and a
+whole-current-workspace figure are given so neither reading is silently
+chosen for the reader.
+
+#### 2.1 Desktop HTTP route count
+
+```console
+$ find packages/desktop/src/routes/api -name '+server.ts' 2>/dev/null | wc -l
+0
+$ test -d packages/desktop/src/routes/api && echo EXISTS || echo ABSENT
+ABSENT
+```
+
+| | Baseline (baseline.md §4.1) | HEAD |
+|---|---:|---:|
+| Desktop HTTP routes | 104 | **0** |
+
+#### 2.2 IPC handler count
+
+Baseline command (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`)
+no longer measures the same thing: SFE-P6b moved 118 of 120 registrations
+out of `main.ts` into `electron/api/*.ts` registrars (ADR 0016; §5 fix
+above). Adjusted command — count unique `secureHandle("channel", ...)`
+first-argument literals across the whole `electron/` tree, handling the four
+call sites whose channel string is on the line after `secureHandle(`:
+
+```console
+$ rg -U -oP 'secureHandle\(\s*"(?P<ch>[^"]+)"' packages/desktop/electron/ --replace '$ch' | sort -u | wc -l
+120
+```
+
+(One doc-comment in `editor-projection.ts:256` quotes
+`secureHandle("api:editorProjection"` inside a `/** */` block; it dedupes
+into the same channel name as the real multi-line registration two lines
+below, so it does not inflate the count — verified by inspecting the
+`uniq -c` output, which shows every channel exactly once.)
+
+| | Baseline (baseline.md §4.2) | HEAD |
+|---|---:|---:|
+| IPC handlers (`secureHandle` registrations) | 12 | **120** |
+
+This matches SFE-P6's own Checkpoint D figure ("the full 120-channel
+`secureHandle` surface is byte-identical between `b7242a71` and post-P6
+HEAD") and ADR 0015's "12 → 120" — independently re-derived here, not
+copied.
+
+#### 2.3 Preview mutation protocol message count
+
+```console
+$ grep -n "getProtocolVersion" packages/cli/src/assets/preview/scripts/preview-interface.js
+754:    getProtocolVersion: function () { return 9; },
+```
+
+Same identifiers as §1.1, all five confirmed absent from `previewAPI`.
+
+| | Baseline (baseline.md §6) | HEAD |
+|---|---:|---:|
+| Preview mutation protocol messages | 5 | **0** |
+
+#### 2.4 `Platform`/`HostServices` method count
+
+The desktop-side locator (`Platform = PlatformAdapter & HostServices`,
+consumed via `getPlatform()`) is deleted entirely (§1.6). The CLI's own,
+unrelated `PlatformAdapter` (`packages/cli/src/platform.ts`) — never part
+of the desktop's deleted locator's own definition, only combined into it on
+the desktop side — is untouched:
+
+```console
+$ awk '/export interface PlatformAdapter/,0' packages/cli/src/platform.ts | awk '/^}/{exit} {print}' | grep -cE '^\s{2}(readonly )?[a-zA-Z][a-zA-Z0-9]*[?]?[(:]'
+9
+```
+
+(members: `platform`, `openFolder`, `readFile`, `writeFile`, `listDir`,
+`statFile`, `watchFolder`, `getSecret`, `setSecret` — unchanged from
+baseline; this file was not touched by any P5b/P5c/P5d lane. It is the CLI's
+own thin platform seam, not the desktop's deleted locator, and its comment
+header is the subject of the §5.1 defect — the interface's own member list
+is accurate, only its prose is stale.)
+
+| | Baseline (baseline.md §5, ledger row) | HEAD |
+|---|---:|---:|
+| Desktop `Platform`/`HostServices` locator members | 31 (9 `PlatformAdapter` + 22 `HostServices`, combined) | **0** — interface deleted entirely (§1.6) |
+| CLI `PlatformAdapter` members (separate, unrelated type) | 9 | **9** — unchanged |
+
+#### 2.5 Production LOC
+
+Baseline command scope (`packages/cli/src`, `packages/desktop/src`,
+`packages/desktop/electron`) still applies verbatim and is given first for
+direct comparison; two packages this program created
+(`packages/editor`, `packages/vscode-extension`) did not exist at baseline,
+so a second, whole-current-workspace figure is given alongside it — omitting
+them would hide real, plan-mandated (D4) product surface, and folding them
+into the baseline-scope row without saying so would misrepresent what the
+baseline command measured.
+
+```console
+$ find packages/cli/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' | wc -l
+192
+$ find packages/cli/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' -print0 | xargs -0 cat | wc -l
+47284
+$ find packages/desktop/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' | wc -l
+136
+$ find packages/desktop/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' -print0 | xargs -0 cat | wc -l
+39144
+$ find packages/desktop/electron -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' | wc -l
+72
+$ find packages/desktop/electron -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' -print0 | xargs -0 cat | wc -l
+13498
+$ find packages/editor/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' | wc -l
+35
+$ find packages/editor/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' -print0 | xargs -0 cat | wc -l
+6229
+$ find packages/vscode-extension/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' | wc -l
+16
+$ find packages/vscode-extension/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' -print0 | xargs -0 cat | wc -l
+4015
+$ find packages/vscode-markdown-editor/src -type f -name '*.ts' 2>/dev/null | wc -l
+0   # CSS theme/contrib assets only (8 .css files) — D5's "no fork needed" outcome; 0 TS/JS production LOC
+```
+
+| Scope | Baseline files/lines | HEAD files/lines | Δ |
+|---|---:|---:|---:|
+| `packages/cli/src` (production-only) | 189 / 45,523 | 192 / 47,284 | +3 / +1,761 |
+| `packages/desktop/src` | 237 / 40,145 | 136 / 39,144 | **−101 / −1,001** |
+| `packages/desktop/electron` | 45 / 9,191 | 72 / 13,498 | +27 / +4,307 |
+| **Baseline-scope subtotal** | **471 / 94,859** | **400 / 99,926** | **−71 files / +5,067 lines** |
+| `packages/editor/src` (new package, D4) | n/a (did not exist) | 35 / 6,229 | new |
+| `packages/vscode-extension/src` (new package, D4) | n/a (did not exist) | 16 / 4,015 | new |
+| **Whole-current-workspace total** | **471 / 94,859** | **451 / 110,170** | **−20 files / +15,311 lines** |
+
+This is the raw workspace-wide figure, not a claim about AC-22/success
+criterion 22, which is scoped to the combined P4-P6 SIMPLIFICATION phases
+only (ADR 0016's own Consequences section makes the same point about its
+own subrun) — the whole-program total is net-positive because P1-P3 built a
+new editor package and a new VS Code extension before P4-P6 deleted the
+preview-mutation/PWA/HTTP-transport/broad-locator machinery those new
+surfaces made obsolete. Whether the narrower P4-P6-scoped claim holds is
+Lane B/the acceptance sweep's question, not re-litigated here; this row
+gives the whole-program number the metric asks for, honestly.
+
+#### 2.6 Test LOC
+
+```console
+$ find packages/cli/src -type f \( -name '*.test.ts' -o -name '*.spec.ts' \) | wc -l  &&  find packages/cli/src -type f \( -name '*.test.ts' -o -name '*.spec.ts' \) -print0 | xargs -0 cat | wc -l
+153 / 40070
+$ find packages/cli/tests -type f \( -name '*.ts' -o -name '*.js' -o -name '*.mjs' \) | wc -l  &&  find packages/cli/tests -type f \( -name '*.ts' -o -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 cat | wc -l
+5 / 671
+$ find packages/desktop/tests -type f \( -name '*.ts' -o -name '*.js' -o -name '*.mjs' -o -name '*.svelte' \) | wc -l  &&  find packages/desktop/tests -type f \( -name '*.ts' -o -name '*.js' -o -name '*.mjs' -o -name '*.svelte' \) -print0 | xargs -0 cat | wc -l
+331 / 54514
+$ wc -l packages/open-design-plugin/plugin.test.ts
+164
+$ find packages/editor/tests packages/editor/src -type f \( -name '*.test.ts' -o -name '*.spec.ts' \) | wc -l  &&  same -print0 | xargs -0 cat | wc -l
+25 / 3528
+$ find packages/vscode-extension/tests packages/vscode-extension/src -type f \( -name '*.test.ts' -o -name '*.spec.ts' \) | wc -l  &&  same -print0 | xargs -0 cat | wc -l
+14 / 3734
+```
+
+| Package | Baseline (baseline.md §4.6, baseline-SHA figure) | HEAD |
+|---|---:|---:|
+| `gutterpress` (cli), co-located `src/` | 149 / 37,493 | 153 / 40,070 |
+| `gutterpress` (cli), `tests/` | 4 / 480 | 5 / 671 |
+| `@dimm-city/gutterpress-desktop`, `tests/` | 162 / 38,724 | 331 / 54,514 |
+| `@dimm-city/gutterpress-open-design-plugin` | 1 / 164 | 1 / 164 |
+| `@dimm-city/gutterpress-editor` (new) | n/a | 25 / 3,528 |
+| `@dimm-city/gutterpress-vscode` (new) | n/a | 14 / 3,734 |
+| **Baseline-scope subtotal** | **316 / 76,861** | **490 / 95,419** |
+| **Whole-current-workspace total** | **316 / 76,861** | **529 / 102,681** |
+
+Test LOC grew substantially — expected and correct direction for this
+program: the source-edit contract, sparse projection, and every deletion's
+absence proof are all new behavior/regression tests (D15: "every deletion
+claim requires... passing behavior tests"), and P4-P6 explicitly forbid
+deleting a safety test without replacing it (Lane rules: "Deletion runs may
+not delete safety tests until replacement behavior tests are already
+green"). A shrinking test suite would be the actual red flag here, not this
+growth.
+
+#### 2.7 Module/file count
+
+Defined here as total production + test file count (the metric distinct
+from LOC — module/concept count, not line count), summing the Files
+columns of §2.5 and §2.6 above:
+
+| | Baseline | HEAD (baseline-scope) | HEAD (whole workspace) |
+|---|---:|---:|---:|
+| Production files | 471 | 400 | 451 |
+| Test files | 316 | 490 | 529 |
+| **Module/file count total** | **787** | **890** | **980** |
+
+A complementary, coarser reading — distinct workspace packages
+(`workspaces` glob `packages/*` in root `package.json`):
+
+```console
+$ ls packages/ | wc -l
+6
+```
+
+Baseline: 3 (`cli`, `desktop`, `open-design-plugin`). HEAD: 6 (+`editor`,
+`+vscode-extension`, `+vscode-markdown-editor` — all three are D4/D5-named
+plan deliverables, not incidental growth).
+
+#### 2.8 Dependency count
+
+```console
+$ for p in cli desktop editor vscode-extension open-design-plugin vscode-markdown-editor; do node -e "console.log(Object.keys(require('./packages/$p/package.json').dependencies||{}).length)"; done
+28
+14
+2
+2
+0
+11
+```
+
+| Package | Baseline prod deps | HEAD prod deps |
+|---|---:|---:|
+| `gutterpress` (cli) | 28 | 28 |
+| `@dimm-city/gutterpress-desktop` | 13 | 14 (+`@dimm-city/gutterpress-editor`, D4's own workspace dependency) |
+| `@dimm-city/gutterpress-open-design-plugin` | 0 | 0 |
+| `@dimm-city/gutterpress-editor` (new) | n/a | 2 |
+| `@dimm-city/gutterpress-vscode` (new) | n/a | 2 |
+| `vscode-markdown-editor` (new, D5's internal fork/vendor package, `private: true`) | n/a | 11 (`@vscode/codicons`, `@vscode/diff`, `@vscode/observables`, `katex`, `micromark` + 6 `micromark-extension-*`) |
+| **Baseline-scope subtotal** (cli+desktop+odp) | **41** | **42** |
+| **Whole-current-workspace total** | **41** | **57** |
+
+Lockfile total (all resolved packages, deduplicated — the other side of
+this metric):
+
+```console
+$ awk '/^  "packages": {/{flag=1; next} flag && /^  }/{flag=0} flag' bun.lock | grep -cE '^\s{4}"[^"]+": \['
+880
+$ bun pm ls --all | wc -l
+881
+```
+
+| | Baseline (baseline.md §4.8) | HEAD |
+|---|---:|---:|
+| Lockfile package count | 909 | **880** |
+
+Net **−29** resolved packages despite three new workspace packages each
+adding their own dependency trees — the PWA/adapter-node/broad-locator
+deletions removed more transitive weight than the new editor/extension/fork
+packages added.
+
+#### 2.9 Architecture-check count
+
+At the baseline SHA, `tools/check-architecture.mjs` did not exist:
+
+```console
+$ git cat-file -e ea7b60d50340b75b9c58666e5063bcbbbb666576:tools/check-architecture.mjs 2>&1
+fatal: path 'tools/check-architecture.mjs' exists on disk, but not in 'ea7b60d5...'
+$ git show ea7b60d50340b75b9c58666e5063bcbbbb666576:package.json | grep -c '"check:'
+0
+```
+
+At HEAD:
+
+```console
+$ grep -c '"check:' package.json
+3
+$ grep '"check:\|"knip"' package.json
+"knip": "(cd packages/desktop && bunx svelte-kit sync) && knip --include files,dependencies,unlisted,binaries",
+"check:generated-files": "node tools/check-generated-files.mjs",
+"check:architecture": "node tools/check-architecture.mjs",
+"check:vendored": "node packages/vscode-markdown-editor/scripts/verify-vendored.mjs"
+```
+
+| | Baseline | HEAD |
+|---|---:|---:|
+| `check:*` root scripts | 0 | **3** |
+
+`check:architecture` alone enforces 4 named rules (prosemirror-family ban;
+desktop HTTP route ratchet; D4 import direction; future-package rules for
+`packages/editor`/`packages/vscode-extension`) — each producing its own
+PASS/FAIL/SKIP/WARN line every run
+(`tools/check-architecture.mjs` header, rules 1-4). Counting rules instead
+of scripts: **0 → 4** (architecture rules) **+ 3** (other `check:*` scripts)
+**+ 1** (`knip`, pre-existing at baseline but its `knip.jsonc` config now
+carries dedicated `packages/desktop` entry-point exemptions this program's
+new surfaces required, alongside `check:architecture` rule 4's own,
+separate future-package coverage for `packages/editor`/
+`packages/vscode-extension`) — however counted, this program added
+verification infrastructure where the baseline had none;
+this is the one metric in this section that is EXPECTED to grow, not
+shrink, as the complexity-reduction counterpart of the deletion metrics
+above.
+
+### 3. Final commit SHAs
+
+Sourced from `docs/plans/source-first-editor/acceptance.md`'s per-run
+`"baseSha"`/`"headSha"` JSON fields (read-only for this lane), each verified
+to exist with `git cat-file -t <sha>` and the base→head chain verified with
+`git merge-base --is-ancestor`.
+
+```console
+$ git cat-file -t <sha>   # run once per SHA below; "commit" for every one except the two flagged
+$ git merge-base --is-ancestor <prev-run-head> <this-run-base>   # exit 0 for every consecutive pair from SFE-P1b onward
+```
+
+| Run | Base SHA | Head SHA | `cat-file -t` | Chain from prior head |
+|---|---|---|---|---|
+| SFE-P0a | `764613ec090892080e54f2aeaaceb92b12f3ca3e` | `63d9d5da3a1df0813ddbac61dd2dc8022cfab298` | commit / commit | n/a (program start) |
+| SFE-P0b | `095119569ac22f5410d1ad2320c117d4bb10ae0b` ⚠ | `b61045f7987ca1cc6699456519d281be8e2951a9` | commit / commit | OK (verified via the corrected SHA — see note) |
+| SFE-P1a | `ebe2c24f34cc4881b3ad068393288517548b60ab` ⚠ | `42189c13a2edb70e2fc5ccb24a429da916a0a3e3` | commit / commit | OK (verified via the corrected SHA) |
+| SFE-P1b | `a8a93c0c8f9023808925b8713a418d41a34d5205` | `5cc160612cbffca49e5c8887cd3d95a59bdd4e94` | commit / commit | OK |
+| SFE-P1b2 | `00806d8c05cf2b2e044280729feabf726a6d1f0c` | `2aa10f43bffdfeed4d0702df26281f97c311aafd` | commit / commit | OK |
+| SFE-P1c | `85874a9ae8d210541b209cc868ad67218ad5dbec` | `95034a8b902561e2990b1b775b9b101e65c08ac1` | commit / commit | OK |
+| SFE-P2a | `d6c3a2b56b593fd73b839388fc9fb3c121c5f744` | `fbc2862a22289306b26674d0098939df38394295` | commit / commit | OK |
+| SFE-P2b | `065d55f0da1dea842597b19b70299a7246dc8ee8` | `6bf082d12c6ab2b2280683e37c140493cd0c650e` | commit / commit | OK |
+| SFE-P2c | `d0de018d2f77c869e09b3cf4611c942c83521402` | `a9fb0090e9b1105a842a6bf5cc118c103be9c0be` | commit / commit | OK |
+| SFE-P3ab | `62fa1457a75c4002c93c801d8c244a4c89e2a0f3` | `daef08cf73bc24304996d0bc2dd084d8b3a3a3a5` | commit / commit | OK |
+| SFE-P3d-parity | `079efe490acb32bae6629ed6cfe7755c603c4f6f` | `b9ca42a978bee0139b2afbd9e44e70a63ff80010` | commit / commit | OK |
+| SFE-P3e | `cf66572c55dbf1f1d7ce3448fb226cdd8915dcaa` | `317bb490337d9af950902f31784cb1ac13029d41` | commit / commit | OK |
+| SFE-P3c | `a3e0da882f1bffb3c3cff9ec9f226de96428ab7e` | `0768ab7ffa16826369125aff8d0c0ec159d2c9b4` | commit / commit | OK |
+| SFE-P3d-sweep+P3f | `bc98a23f9920d718bacf817fcae657a69a781e4f` | `873e9d94e5939a7a2600c0571831c2d8c5f37bb9` | commit / commit | OK |
+| SFE-P4 | `cf5dacda3ceeb918dbd4b26856985f821747a3fe` | `81b482c3b477951cc5469796d7ec006deefc3451` | commit / commit | OK |
+| SFE-P5a | `c33868f88d3da0c7f55ac4d95603de449ab04f6e` | `c6704b5248e86976f25638246b3a59e20bfd2cbd` | commit / commit | OK |
+| SFE-P5b | `951623d76de6d0d39d8037642fdbaa018a32cce2` | `7f369ad223a564326abedd62a50ad0b0385ec9c5` | commit / commit | OK |
+| SFE-P5c | `dc900e96703aae6a5ffd9d39e4b5d037e662bceb` | `f1f369e13d322f6b0dc85d07c5df51261d0d2d25` | commit / commit | OK |
+| SFE-P5d | `d609218879d27fb5aa01d45c02f3308596f98a0f` | `e44381446a6e2d76b198903f912356536d260e2c` | commit / commit | OK |
+| SFE-P6 | `b7242a714f3fe758ffe6aa9a3553b47d703da851` | `fc6f543aaf840559eadac6143c832c7e62900a02` | commit / commit | OK |
+| SFE-P7 (this run, in progress) | `fc6f543aaf840559eadac6143c832c7e62900a02` (via `2ba5ca0a`, P6's docs close-out) | `2ba5ca0a93db02ad562bd074ce04033b4b1d3aaa` (HEAD at time of writing; not final) | commit / commit | OK |
+
+⚠ **Two recorded `baseSha` values in `acceptance.md` do not exist verbatim**:
+SFE-P0b's `"0951195669ab9082cb90409b9c05f3c9bf2077b9"` and SFE-P1a's
+`"ebe2c24f42e34a2b4d21df3fca8964355a99209c"` both fail
+`git cat-file -t` — neither is a real object in this repository. Both
+share their first 8 hex characters with a real commit (`09511956` →
+`docs(p0): close out SFE-P0a`; `ebe2c24f` → `docs(p0): close out SFE-P0b`)
+whose subject line matches exactly what that run's base commit should be —
+the chain is genuinely intact (`git merge-base --is-ancestor
+<prior-head> <8-char-prefix>` returns exit 0 for both), so this is a
+**recording defect in `acceptance.md`'s stored SHA strings** (corrupted
+past the 8th hex character), not a broken or fabricated history. The table
+above uses the real, `git`-verified full SHA for both rows. `acceptance.md`
+is outside this lane's write ownership (per the run spec's Lane table);
+reported here and in the structured lane report for whichever lane/reviewer
+owns that file to correct.
+
+Every other recorded `baseSha`/`headSha` (18 further base values, 20 head
+values, all abbreviated to 8 characters in `acceptance.md`) resolved to a
+real, unique commit and the base→head→next-base chain holds unbroken from
+SFE-P1b through SFE-P6.
+
+### 4. Proposal records swept
+
+Checked every file under `docs/plans/**` plus the two top-level `*-plan.md`
+documents for an open/proposed status requiring resolution:
+
+| Document | Status found | Disposition |
+|---|---|---|
+| `docs/pwa-webadapter-plan.md` | Already `CLOSED 2026-09-01 (0.11, SFE-P5a, plan D10)` | No action — already resolved |
+| `docs/inline-editing-plan.md` | Already `SHIPPED 2026-08-24, REMOVED 2026-09-01 (0.11, SFE-P4)` | No action — already resolved |
+| `docs/plans/source-first-editor-enterprise-refactor.md` (the master plan) | No formal status field; opens "This plan is ready for execution. It contains no unresolved design decisions." | Not touched — still the actively governing document through this very run (P7 is its own final phase, not yet complete pending Lane B/C/the acceptance sweep); marking it terminal from inside Lane A, before those other lanes finish, would be premature and outside a documentation lane's authority over the plan's own binding text |
+| `docs/plans/source-first-editor/upstream-issue-measurement.md` | `Status: ready to file... Not yet submitted` | Left as-is — accurately self-describes a genuinely open external action (filing a `microsoft/vscode-packages` issue) that nothing in this run changes; forcing ACCEPTED/RESOLVED/SUPERSEDED would misstate reality more than an honest "still pending" does. Confirmed real and current by reading `packages/vscode-markdown-editor/PATCHES.md`: the fork this issue is a removal-trigger condition for is still vendored and active |
+| `docs/plans/source-first-editor/upstream-issue-render-custom-block.md` | `Status: ready to file... Not yet submitted` | Same disposition as above, same reason |
+| `docs/plans/source-first-editor/{guardrails,capability-map,mutation-inventory,platform-inventory,parity-matrix,p3d-sweep-audit,pr158-lessons,baseline}.md` | Point-in-time inventories/audits/reference records, not proposals awaiting a decision | Not "proposal records" in the sense this item asks about — no status field to resolve |
+| `docs/remaining-work.md` | "Living document" for a **different** program (native rendering engine / Paged.js tracker, DC design guide) | Out of scope — unrelated to source-first-editor |
+
+No proposal record within this lane's write ownership, or found open and
+belonging to this program, was left unresolved without a stated reason.
+
+### 5. Confirmed defects (production-source residues outside the sanctioned classes)
+
+Four confirmed defects, all stale doc comments in production source files
+outside this lane's write ownership (`packages/cli/src`,
+`packages/vscode-extension/src`, `packages/desktop/electron`) — reported
+here per the run spec ("do NOT fix production code"), not fixed.
+
+#### 5.1 `packages/cli/src/{render.ts,platform.ts,lib/markdown/{assemble,plugins,index,renderer}.ts}` — six files describing a deleted `WebAdapter` as live/forthcoming
+
+All six files carry comments written when the PWA (#33) was still a future
+plan, never updated after `WebAdapter` was built (SFE-earlier) and then
+deleted (SFE-P5a):
+
+- `render.ts:7-9`: "This is what the desktop's `WebAdapter` imports (a
+  *value* import that stays PWA-clean), so the in-browser live preview
+  (#33) can render the opened project entirely client-side" — present
+  tense; there is no `WebAdapter` importing this anymore.
+- `platform.ts:1-15`: "The desktop talks to its host through ONE seam...
+  Today the only host is Electron... When the PWA lands (0.6.0, #...), a
+  `WebAdapter`... drops in behind the same interface" and "implements them
+  in `electron-adapter.ts` / `web-adapter.ts`" — both named files are
+  deleted (`electron-adapter.ts` in SFE-P5b, `web-adapter.ts` in SFE-P5a);
+  the "ONE seam" this describes (`Platform = PlatformAdapter & HostServices`
+  via `getPlatform()`) is itself deleted. Confirmed dead on the consumer
+  side too: `rg -rn '\bPlatformAdapter\b' packages/desktop/src
+  packages/desktop/electron` returns only 3 comment mentions, zero live
+  imports — the type this file exports is still publicly re-exported by
+  `packages/cli/src/index.ts:32` (`export type { PlatformAdapter, ... }`)
+  but nothing in this repository consumes it any longer.
+- `platform.ts:94`: "`WebAdapter` throws here until 0.6.0" (on
+  `watchFolder`) — same staleness.
+- `assemble.ts:10,120`, `plugins.ts:26`, `index.ts:53`, `renderer.ts:8`: all
+  describe "the browser/PWA `WebAdapter`" as a present-or-future consumer
+  of the render core.
+
+**Failure scenario:** a future contributor reading these six files (the
+canonical entry points to `gutterpress`'s node-free render core) would
+reasonably conclude `WebAdapter` still exists somewhere in the desktop
+package and go looking for it, or would preserve PWA-shaped code paths in
+this core "for `WebAdapter`'s sake" when no such consumer exists — exactly
+the kind of coupling CLAUDE.md's "design for deletion" principle (§0 /
+Gutterpress Primary Goals) warns against, applied here to an internal
+architecture comment rather than a shim.
+
+#### 5.2 `packages/cli/src/index.ts:41-47` — doubly-stale comment on the `checkCss` export
+
+```
+// Per CLAUDE.md §8, `checkCss` runs HOST-SIDE ONLY — the `api/lint/check-css`
+// server route imports it (postcss pulls in `node:url` etc., which crashes if
+// bundled into the SPA renderer per the 0.4.0-beta.4 incident); the editor's
+// lint gutter calls `getPlatform().checkCss(...)` over that route, never this
+// export directly.
+```
+
+Both factual claims are now false: there is no `api/lint/check-css` server
+route (`src/routes/api/**` deleted whole in SFE-P5c/P5d — §1.7), and
+`getPlatform()` is deleted (SFE-P5b — §1.6). CLAUDE.md's OWN current text
+(§8, "The canonical fix when node code is needed by the UI") describes the
+real current path: `checkCss` runs behind the `lint:checkCss` IPC channel,
+called by `$lib/lint/lint-capability.ts`'s `checkCss(...)` through the
+shared bridge accessor — verified live:
+`packages/desktop/electron/api/lint.ts` registers `secureHandle("lint:checkCss", ...)`
+and `packages/desktop/src/lib/lint/lint-capability.ts` is one of the 12
+capability modules (§2.9-adjacent finding). **Failure scenario:** identical
+to §5.1 — a reader trusts this comment's architecture description of its
+own package's most-referenced export and either "fixes" the wrong thing or
+miscites the desktop's lint-gutter wiring in a bug report.
+
+#### 5.3 `packages/desktop/electron/auto-sync/orchestrator.ts:76` — present-tense reference to deleted `ElectronAdapter`
+
+```
+* Payload emitted on the `sync:status` channel. Must match the `SyncStatus`
+* shape in contract.ts EXACTLY — ElectronAdapter.onSyncStatus forwards the raw
+* push payload to the renderer typed as SyncStatus with no transform.
+```
+
+`ElectronAdapter` is deleted (SFE-P5b — §1.6); nothing named
+`ElectronAdapter.onSyncStatus` exists to forward anything. The real current
+consumer of the `sync:status` push channel is
+`packages/desktop/src/lib/remote/remote-capability.ts` (one of the 12
+capability modules, D16). **Failure scenario:** a contributor changing
+`SyncStatusPayload`'s shape searches for `ElectronAdapter.onSyncStatus` to
+verify the renderer-side contract stays in sync, finds nothing, and either
+skips the check or wastes time confirming the class is really gone before
+locating the real consumer.
+
+#### 5.4 `packages/vscode-extension/src/project/discover.ts:11` — present-tense reference to a deleted route file
+
+```
+* {@link findGutterpressProject} is a thin wrapper over the REAL, public
+* `hasProjectManifest` from the `gutterpress` package (AP-26: ... the exact
+* function `packages/desktop/src/routes/api/app/classify-project/+server.ts`
+* already uses for the identical "does this folder have a project" question
+```
+
+Written during SFE-P3c, before SFE-P5c/P5d deleted `src/routes/api/**`
+whole (§1.7). The named file no longer exists; the real current caller of
+the same `hasProjectManifest` function for the identical question is
+`packages/desktop/electron/api/app.ts`'s `app:classifyProject` IPC handler
+— confirmed: `rg -l 'classify-project|hasProjectManifest'
+packages/desktop/electron packages/cli/src` returns exactly
+`electron/api/app.ts`, `cli/src/api/index.ts`, `cli/src/lib/manifest.ts`;
+no `+server.ts` anywhere. **Failure scenario:** a VS Code extension
+maintainer verifying "does the extension's project-discovery logic really
+match the desktop's" follows this citation to a file that does not exist,
+loses the actual cross-reference, and either skips the parity check or
+re-derives it from scratch.
+
+### 6. Verification run for this lane's own changes
+
+This lane wrote only files listed in its write-ownership boundary
+(`deletion-ledger.md`, this section; `docs/adr/0009-inline-editing-source-ranges.md`,
+`docs/adr/0012-preview-read-only.md`, `docs/adr/0016-narrow-feature-owned-capabilities.md`
+— cross-reference fixes). No production or test file was touched, so there
+is no package-scoped typecheck or test file narrower than the repo-wide
+check that applies:
+
+```console
+$ bun run typecheck
+```
+
+(exit code and output recorded in the structured lane report's
+`verification` array, not duplicated here.) Every command in §1-§3 above
+was re-run at the HEAD SHA stated in this section's header and its output
+pasted verbatim above; none is summarized from memory or a prior lane's
+claim.

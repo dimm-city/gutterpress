@@ -496,11 +496,14 @@ protocol handler that reads the static build tree straight off disk —
 including out of the packaged asar — and returns file bytes directly: no
 local HTTP server, no proxy, no bearer token (ADR 0015). Every host
 capability is a runtime-validated `secureHandle(...)` IPC channel
-(~120 registrations), organized by bounded context into
-`electron/api/*.ts` (fs, dialog, shell, log, app, project, manifest, tpl,
-snip, media, plugin, theme, vcs, style, updater, recovery, doctor, lint,
-remote, publish — one registrar function per file) plus a handful of
-bespoke registrars colocated with handler logic that needs a live object
+(~120 registrations) built by the one shared wrapper
+`electron/server-bridge/secure-handle.ts`'s `createSecureHandle(...)`
+(constructed once in `main.ts`, then handed identically to every
+registrar), organized by bounded context into `electron/api/*.ts` (fs,
+fs-watch, dialog, shell, log, app, project, manifest, tpl, snip, media,
+plugin, theme, vcs, style, updater, recovery, doctor, lint, remote,
+publish — one registrar function per file) plus a handful of bespoke
+registrars colocated with handler logic that needs a live object
 (`electron/export/controller.ts`, `electron/preview/controller.ts`,
 `electron/editor-projection.ts`, `electron/pdf-export.ts`,
 `electron/github-device-flow-registrar.ts`). A narrow separate set of
@@ -524,7 +527,7 @@ instantiates the ~16 feature controllers (project/document/preview/build/
 export/media/publishing/remote-sync/settings/diagnostics — one
 `*-controller.svelte.ts` per feature boundary, e.g. `ExportController`,
 `ProjectSessionController`, `EditorFileSession`, `RichModeController`,
-`ContextMenuController`) plus the ~20 capability modules above, coordinates
+`ContextMenuController`) plus the twelve capability modules above, coordinates
 top-level selection and pane layout, and renders the shell. Cross-feature
 coordination (global keyboard routing, the rich/source command router,
 markdown-file-launch handling) stays explicit in the root by design — the
@@ -738,7 +741,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 
 | Subpath | Ships | Real consumer today |
 |---|---|---|
-| `.` | The full library (`dist/index.js`) | The CLI itself; the desktop's `electron/main.ts` and every `electron/api/*.ts` registrar via a shared cached `import("gutterpress")` (`electron/api/lib-loader.ts`); `packages/vscode-extension` |
+| `.` | The full library (`dist/index.js`) | The CLI itself; the desktop's every `electron/api/*.ts` registrar via a shared cached `import("gutterpress")` (`electron/api/lib-loader.ts`) — `electron/main.ts` reaches the same package through its own private, identically-shaped `loadLib()`/`libPromise` cache, not through `lib-loader.ts` (each caches its own `import("gutterpress")` once per process); `packages/vscode-extension` |
 | `./api` | Manifest/style config mutation surface (`dist/api/index.js`) | Desktop `electron/api/*.ts` handlers, via the same shared-cache pattern (`loadApiLib()`) |
 | `./render` | The browser-safe, Node-free rendering + Gutterpress projection boundary (`dist/render.js`) — ADR 0011 | `packages/editor` (projection types/consumers), `packages/vscode-extension` (projection types, protocol messages), the desktop's `electron/editor-projection.ts` |
 | `./plugins` | The plugin loader (`loadPlugins`/`loadPluginsWithCss`, `dist/plugins.js`) | The desktop's `electron/editor-projection.ts` (its host-side rich-editor projection builder — this subpath's original motivating consumer, added in SFE-P3e) and `packages/vscode-extension`'s `src/project/projection.ts`, both loading a project's real (receipt-verified, degrade-and-report) plugins outside the CLI's own build/preview path |
@@ -756,9 +759,11 @@ was switched to the real export when it was added (deletion ledger,
 `gutterpress/project`, `gutterpress/build`, `gutterpress/preview`,
 `gutterpress/publish`, `gutterpress/vcs`. None has a current consumer: every
 existing host (the desktop's Electron main process, the VS Code extension)
-reaches those areas of the library through the bare `gutterpress` import
-(`electron/api/lib-loader.ts`'s shared `loadLib()` cache is a deliberate
-one-import-for-the-whole-library design, not an oversight), and a
+reaches those areas of the library through the bare `gutterpress` import —
+`electron/api/lib-loader.ts`'s shared `loadLib()` cache for the
+`electron/api/*.ts` registrars, `electron/main.ts`'s own private,
+identically-shaped `loadLib()` for itself — each a deliberate
+one-import-for-the-whole-library design, not an oversight, and a
 repository-wide search finds zero import sites for any of the five narrower
 specifiers. Per D11's own rule ("add narrower subpath exports only where
 current consumers justify them") and the plan's lane discipline against

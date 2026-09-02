@@ -7,10 +7,10 @@
  * The DECISION logic in this file is `vscode`-free by design:
  * {@link findGutterpressProject} is a thin wrapper over the REAL, public
  * `hasProjectManifest` from the `gutterpress` package (AP-26: "reuse the
- * authoritative project-source resolver" — the exact function
- * `packages/desktop/src/routes/api/app/classify-project/+server.ts` already
- * uses for the identical "does this folder have a project" question, so a
- * plain folder with no manifest and an opened project agree everywhere),
+ * authoritative project-source resolver" — the exact function the desktop's
+ * `app:classifyProject` IPC handler (`packages/desktop/electron/api/app.ts`)
+ * already uses for the identical "does this folder have a project" question,
+ * so a plain folder with no manifest and an opened project agree everywhere),
  * and {@link resolveActiveProjectDir}/{@link resolveProjectForCommand} are
  * pure path arithmetic plus one string-shaped result. All three are
  * trivially unit-testable with plain strings/temp directories — no

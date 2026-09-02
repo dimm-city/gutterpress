@@ -7,7 +7,8 @@
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
- *   - in the browser (the PWA WebAdapter, #33) with a File System Access reader.
+ *   - in the browser (the desktop SPA via `gutterpress/render`, or a future
+ *     web package per ADR 0014) with a host-supplied reader.
  *
  * This is the "fix the core primitive" split (CLAUDE.md §0/§6): the file-reading
  * wrapper is the ONLY node-coupled part of the old `renderChapters`, so the pure
@@ -117,8 +118,8 @@ export interface AssembleBookHtmlOptions {
    * chapter id used for `data-chapter-src`, so a host can attribute a warning
    * to the exact source file. Additive/optional — omitting it reproduces the
    * prior throwaway-env behavior exactly, so this cannot change output for
-   * existing callers (e.g. the desktop's WebAdapter, which still gets a plain
-   * `Promise<string>` back).
+   * existing callers (e.g. browser consumers of `gutterpress/render`, which
+   * still get a plain `Promise<string>` back).
    */
   onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
   /**

@@ -44,7 +44,17 @@ multi-consumer or real-marshalling reason for a module got one:
 modules, no classes, no injection framework, each importing DTOs it owns
 where that created no cycle (two of five did; three deliberately deferred
 to `platform/contract.ts`, documented in that file's own header rather than
-spread thin for uniformity's sake alone).
+spread thin for uniformity's sake alone). **This ADR records the shape SFE-P5b
+itself introduced (five modules, mapped from the deleted locator); it is not
+a claim about the total module count today.** The same `*-capability.ts`
+pattern this decision established was reused, unchanged in kind, by the
+later SFE-P5c HTTP-to-IPC migration for bounded contexts that were never
+`Platform`/`HostServices` members (`files`, `project-config`, `publish`,
+`vcs`, `lint`, `recovery`, `doctor`) — seven more modules applying the same
+decision, not a departure from it. The current total is 12
+(`find packages/desktop/src/lib -name "*-capability.ts" ! -name "*.test.ts"
+| wc -l`); see the deletion ledger's SFE-P7 zero-remnant section for the
+verified count at HEAD.
 
 **One shared accessor, `platform/bridge.ts`, is the only module allowed to
 touch `window.electron`.** It does the Electron-presence check and throws
@@ -74,13 +84,24 @@ outright rather than given a capability-module home nothing would ever
 call.
 
 **Electron's own main process gets the parallel split** (SFE-P6b, same
-run group): the ~120 `secureHandle` registrations that used to sit inline
-in `electron/main.ts` moved into per-context `register*Handlers` functions
-colocated with their handler logic (`electron/api/*.ts` and a handful of
-bespoke registrars for export/preview/editor-projection/PDF-export/GitHub
-device flow) — the renderer-side and main-side halves of ADR 0015's IPC
-surface are both organized by bounded context now, not by which file
-happened to accrete the registration first.
+run group): 118 of the 120 `secureHandle` registrations that used to sit
+inline in `electron/main.ts` moved into per-context `register*Handlers`
+functions colocated with their handler logic (`electron/api/*.ts` and a
+handful of bespoke registrars for export/preview/editor-projection/
+PDF-export/GitHub device flow) — the renderer-side and main-side halves of
+ADR 0015's IPC surface are both organized by bounded context now, not by
+which file happened to accrete the registration first. **Two registrations
+stay inline in `main.ts` by design, not oversight:** `app:flushDone` closes
+over `activeRendererFlush`, a `main.ts`-local variable tied to the
+unsaved-changes close-gate's lifecycle (`electron/main.ts`, "Unsaved-changes
+close gate" section), and `app:openMarkdownFileReady` closes over
+`markdownFileLaunchQueue`, the `main.ts`-local file-association launch queue
+that must exist before `app.whenReady()` and survive across window/reload
+cycles — both would need that state
+threaded out through a registrar parameter for zero behavioral gain, so they
+were kept where the state already lives (verify with
+`rg 'secureHandle\(' packages/desktop/electron/main.ts` — exactly these
+two).
 
 ## Consequences
 

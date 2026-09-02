@@ -2,6 +2,16 @@
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P4
 
+> **Supersedes, in part:** [ADR 0009](0009-inline-editing-source-ranges.md)'s
+> decision 3 (the `CommitEngine` clean-buffer/generation commit gate) and the
+> v8 bridge-protocol addition folded into decision 5 (`beginBlockEdit`/
+> `endBlockEdit` and their three events). ADR 0009's decisions 1-2
+> (`data-source-range` carrying `token.map` verbatim; layout markers
+> threading `token.meta.line`) are **not** superseded — they continue to
+> serve navigation, source reveal, and editor threading unchanged, and ADR
+> 0009 itself is not marked superseded (see its own 2026-09-01 status note,
+> which cross-references this ADR).
+
 ## Context
 
 Before the source-first rich editor existed, the paginated preview was the
@@ -38,7 +48,11 @@ finders (`findImageToken`/`resolveLinkToken`/`makeLinkToken`), and the
 `beginBlockEdit`/`endBlockEdit` protocol pair with its three events were
 deleted in P4, not deprecated in place — the plan's deletion policy is that
 "compatibility code may not survive past its named deletion run." The
-preview bridge protocol version dropped from v8 to v9 to record the removal.
+preview bridge protocol version advanced from v8 to v9 (`getProtocolVersion()`
+now returns `9`, `packages/cli/src/assets/preview/scripts/preview-interface.js:754`)
+to record the removal — the version number moved up, not down; "dropped"
+here names what was removed from the protocol, not the direction the version
+counter moved.
 Shared image/link editing logic that both preview and the editors used
 (`findImageWrapper`/`rewriteImageToken`/`rewriteLinkToken`/`spliceToken`/
 `findImageTokenAtOffset`/`findLinkTokenAtOffset`, in

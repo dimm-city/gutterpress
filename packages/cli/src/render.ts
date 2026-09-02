@@ -4,10 +4,12 @@
  * §1/§8 / ADR 0004: this entry deliberately exposes ONLY the browser-safe
  * markdown→HTML→book.html pieces. It transitively imports markdown-it + its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and pure helpers
- * — and NOTHING from `node:*`/`fs`/`path`/`url`. This is what the desktop's WebAdapter imports
- * (a *value* import that stays PWA-clean), so the in-browser live preview (#33)
- * can render the opened project entirely client-side with no localhost server
- * and no puppeteer.
+ * — and NOTHING from `node:*`/`fs`/`path`/`url`. The desktop SPA's rich-editor
+ * modules (`rich-doc-host-controller`, `caret-token-commands`, `RichEditor`)
+ * value-import this subpath in the browser, and a future separate web package
+ * would consume it the same way (ADR 0014) — which is why the build compiles it
+ * as its own non-split graph and `scripts/check-render-pure.mjs` fails the
+ * build if any Node builtin reaches its closure.
  *
  * The CLI build path keeps using `renderChapters` / `renderChaptersToFile` from
  * `./lib/markdown/index.ts` (the node wrapper around this same core).

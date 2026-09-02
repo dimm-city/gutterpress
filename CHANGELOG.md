@@ -5,6 +5,78 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-02
+
+### Added
+
+- **A source-first rich editor, in the desktop app and as an Experimental VS
+  Code extension.** Both are built on the same shared, framework-free editor
+  package (`@dimm-city/gutterpress-editor`), so a chapter edits the same way
+  wherever you open it. The desktop app's Edit pane now offers **Source** and
+  **Rich** modes for Markdown files, switchable per document; Rich mode gives
+  you an ordinary word-processor-style surface — headings, lists,
+  blockquotes, bold/italic/strike, links, images, tables, code — while your
+  file on disk stays exact Markdown. Your Gutterpress layout markers
+  (`@chapter`, `@page`, `@spread`, `@section`, page and column breaks) show
+  up as recognizable chips in Rich mode rather than raw `@` syntax, and
+  project-plugin regions render the way your plugin actually presents
+  them, with an "Edit source" fallback for any region the editor can't map
+  back to your Markdown safely rather than guessing. A rich edit only ever
+  changes the exact text you touched — opening and closing a document, or
+  switching between Source and Rich, changes zero bytes. A document over
+  2 MiB opens in Source mode automatically rather than loading Rich mode
+  slowly or unreliably.
+- **The Gutterpress VS Code extension** (`@dimm-city/gutterpress-vscode`,
+  published separately, Experimental). It registers an optional
+  "Gutterpress Markdown Editor" — reachable via *Reopen With…*, never the
+  default for `.md` files — built on the same shared editor as the desktop
+  app, with its own **Gutterpress: Build**, **Gutterpress: Preview**, and
+  **Gutterpress: Open Source** commands. It works on a plain Markdown file
+  with no Gutterpress project nearby (ordinary rich editing only); open it
+  inside a Gutterpress project and layout markers and plugin regions come
+  alive the same way they do on desktop. In an untrusted VS Code workspace,
+  ordinary Markdown editing still works but project plugins do not execute
+  and unsafe raw HTML is not rendered. See `docs/vscode-extension.md`.
+- **`gutterpress/plugins`** — a new public subpath export exposing the same
+  plugin loader the CLI's own build and preview already use
+  (`loadPlugins`/`loadPluginsWithCss`), for hosts (the VS Code extension,
+  and now the desktop app itself) that need to load a project's plugins
+  without going through the CLI. `gutterpress`, `gutterpress/api`, and
+  `gutterpress/render` are unchanged.
+
+### Changed
+
+- **Breaking: the preview no longer edits your document.** Right-click →
+  "Edit this block", the click-to-edit overlay, and the image/link
+  properties dialogs reachable from the preview's context menu are gone —
+  edit in the Source or Rich editor instead, both of which now cover
+  everything those preview actions used to do (including changing an
+  *existing* image's or link's properties, which neither editor could do
+  before this release). Everything else about the preview is unchanged:
+  click a block to jump to it in the editor, click-to-source, text
+  selection and copy, opening a link or image, page navigation, and the
+  Problems panel. The preview remains the print/layout authority — what you
+  see there is still what `gutterpress build` prints.
+- **The desktop app is a single process again.** Earlier builds ran a small
+  local HTTP server inside Electron (with its own session token) alongside
+  the app's IPC bridge, to serve the app's own interface and handle some
+  requests. That server, its token, and the request-forwarding proxy in
+  front of it are gone: the packaged app now serves its interface directly
+  off disk and every host operation — files, dialogs, project data, build,
+  preview, plugins, sync, publishing, and the rest — goes through one typed,
+  validated channel. Nothing you do in the app changes; this removes a
+  local network listener from the packaged app entirely.
+
+### Removed
+
+- **The floating "future PWA" groundwork inside the desktop package is
+  gone.** It was never a shipped feature — an in-browser folder-open path,
+  in-browser preview, and browser-storage persistence, dormant since it was
+  first scaffolded — and has been deleted rather than finished. A future
+  web version of Gutterpress, if built, will be its own package built
+  against the same shared editor and rendering libraries this release
+  introduces, not a mode hiding inside the desktop app.
+
 ## [0.10.2] - 2026-08-25
 
 ### Added

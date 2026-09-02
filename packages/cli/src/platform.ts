@@ -1,29 +1,26 @@
 /**
  * Platform abstraction contract (GitHub #41).
  *
- * The desktop talks to its host through ONE seam so that the app code never
- * branches on `electron` vs `web` directly. Today the only host is Electron
- * (IPC + native dialogs). When the PWA lands (0.6.0, #...), a `WebAdapter`
- * backed by the File System Access API drops in behind the same interface and
- * the app code does not change.
+ * Filesystem/host primitive types shared between the lib and the desktop.
+ * The desktop's renderer never touches these operations directly: they are
+ * implemented host-side in the Electron main process and exposed to the SPA
+ * as typed IPC (CLAUDE.md §8); the SPA sees only DTO types via `import type`.
  *
  * This module is **types only** — it is imported by the browser SPA via
  * `import type`, so it must never pull in a Node runtime dependency.
  *
- * Canonical home: `gutterpress`. The desktop re-exports these types
- * from `src/lib/platform/` and implements them in `electron-adapter.ts` /
- * `web-adapter.ts`. Keep the implementations in lockstep with this contract.
+ * Canonical home: `gutterpress`. The desktop re-exports these types from
+ * `src/lib/platform/contract.ts`. (The former `Platform` service locator and
+ * its `electron-adapter.ts`/`web-adapter.ts` implementations were deleted in
+ * 0.11 — SFE-P5a/P5b; ADR 0014/0016.)
  */
 
 /**
- * The narrow set of capabilities whose implementation genuinely differs between
- * a desktop (Electron) host and a browser (PWA) host: native dialogs, raw file
- * IO, filesystem watching, and OS-keychain-backed secrets.
- *
- * Host RPC services that are *also* host-divergent (preview/build/doctor/prefs/
- * updater) are modelled separately as {@link HostServices} so this primitive
- * surface stays small and easy to reason about. The full thing the app consumes
- * is {@link Platform} = `PlatformAdapter & HostServices`.
+ * The narrow set of host capabilities that need native/OS access: native
+ * dialogs, raw file IO, filesystem watching, and OS-keychain-backed secrets.
+ * The desktop implements each operation in the Electron main process; the
+ * wider host RPC surface lives in the desktop's own
+ * `electron/server-bridge/host-services.ts`, not here.
  */
 /**
  * Filesystem metadata for a single path (GitHub #44 — external-edit detection).
@@ -91,8 +88,8 @@ export interface PlatformAdapter {
   /**
    * Watch a folder for changes, invoking `cb` on each change.
    * @returns an unsubscribe function.
-   * Web has no general recursive-watch primitive — `WebAdapter` throws here
-   * until 0.6.0. Electron wiring lands with the in-app editor (#38).
+   * Implemented host-side by the Electron main process (the folder-watch
+   * wiring in `electron/main.ts` + `electron/api/fs-watch.ts`).
    */
   watchFolder(path: string, cb: () => void): () => void;
 

@@ -34,7 +34,11 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 > unaffected and remain the current design**: `data-source-range` carrying
 > `token.map` verbatim, and layout markers threading `token.meta.line`, still
 > serve navigation (click-to-source), source reveal, and editor threading —
-> none of that depended on there being a write path. See
+> none of that depended on there being a write path.
+> [ADR 0012](0012-preview-read-only.md) is the current decision record for
+> the replacement (the read-only preview and why decisions 3/5's write path
+> is gone); this note and that ADR cite each other rather than either
+> silently assuming the reader has found the other. See
 > [`docs/inline-editing-plan.md`](../inline-editing-plan.md)'s 2026-09-01
 > status note and the deletion ledger's "SFE-P4" entry
 > (`../plans/source-first-editor/deletion-ledger.md`) for the measured
