@@ -19,10 +19,13 @@ import { app, safeStorage } from "electron";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-/** Mirrors the lib's HostCredential (kept local; lib ships behind a dyn import). */
+/** Mirrors the lib's HostCredential (kept local; lib ships behind a dyn import).
+ * `"google-oauth"` was added for the gdrive publish provider (#221) — this
+ * local mirror and the lib's `remote-auth/token-store.ts` are intentionally
+ * duplicated and must be updated together (see that file's header). */
 export interface HostCredential {
   host: string;
-  kind: "github-oauth" | "token";
+  kind: "github-oauth" | "token" | "google-oauth";
   token: string;
   username?: string;
   label?: string;
@@ -31,7 +34,7 @@ export interface HostCredential {
 
 interface StoredEntry {
   host: string;
-  kind: "github-oauth" | "token";
+  kind: "github-oauth" | "token" | "google-oauth";
   /** base64 ciphertext of the token (safeStorage.encryptString). */
   tokenCipher: string;
   username?: string;
@@ -284,7 +287,7 @@ export const electronTokenStore = {
   listRedacted(): Promise<
     Array<{
       host: string;
-      kind: "github-oauth" | "token";
+      kind: "github-oauth" | "token" | "google-oauth";
       username?: string;
       label?: string;
       createdAt: number;

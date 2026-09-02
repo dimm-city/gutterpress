@@ -67,6 +67,8 @@ import type {
   SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
@@ -653,6 +655,23 @@ export class WebAdapter implements Platform {
   }
 
   connectGitHubCancel(): Promise<{ ok: boolean }> {
+    return Promise.resolve({ ok: true });
+  }
+
+  // ── Google Drive publish connect (#221) — desktop-only; no web
+  // implementation yet (dormant-PWA convention: an explicit, friendly reject
+  // rather than the generic NOT_IMPL text, since this capability has a
+  // concrete near-term "not yet, but here's why" message worth giving the
+  // author instead of a bare feature-flag stub).
+  connectGoogleStart(_account?: string): Promise<GoogleConnectStartResult> {
+    return Promise.reject(new Error("Connecting Google Drive isn't available in the browser yet."));
+  }
+
+  connectGoogleWait(): Promise<GoogleConnectResult> {
+    return Promise.reject(new Error("Connecting Google Drive isn't available in the browser yet."));
+  }
+
+  connectGoogleCancel(): Promise<{ ok: boolean }> {
     return Promise.resolve({ ok: true });
   }
 

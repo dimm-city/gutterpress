@@ -73,3 +73,6 @@ packages/desktop/version.json
 # Local-only plan/history docs (moved out of the repo to keep assets small)
 .docs-archive/
 packages/cli/final-check.mjs
+
+# GitHub Pages build output (tools/build-site.mjs); published by .github/workflows/pages.yml
+_site/

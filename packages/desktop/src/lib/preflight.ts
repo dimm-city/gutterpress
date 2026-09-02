@@ -69,6 +69,28 @@ export interface PreflightRow {
   provider?: string;
 }
 
+// ── Wizard step-navigation decision (#221 C4) ───────────────────────────────
+
+/**
+ * Whether stepping INTO the wizard's Preflight step should (re)run the
+ * checks. Only FORWARD navigation counts as "entering" it for rerun purposes
+ * (first arrival via Next, mirrored by the explicit Re-run button which calls
+ * the run directly) — stepping BACK into Preflight from the Publish step must
+ * leave any "publish anyway" override the author already granted alone. A
+ * shared `back()`/`next()` → `enterStep()` path (added for the #221 D9
+ * destinations-refresh-on-enter behavior) had made BOTH directions rerun and
+ * silently clear that override; this is the pure decision the wizard's
+ * `enterStep` defers to, so the direction rule is unit-testable without a
+ * Svelte render harness.
+ */
+export function entersPreflightForward(
+  direction: "forward" | "back",
+  targetIndex: number,
+  totalSteps: number,
+): boolean {
+  return direction === "forward" && targetIndex === totalSteps - 2;
+}
+
 function isEditableSource(path: string): boolean {
   return /\.(?:css|md|markdown|yaml|yml|txt)$/i.test(path);
 }

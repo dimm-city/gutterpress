@@ -15,7 +15,7 @@ Eight chapters take you from first install to published, production-ready print 
 5. [Plugins](#ch-plugins) — Adding, installing, writing, and loading order for markdown-it plugins
 6. [Validation & Best Practices](#ch-validation) — 34 print checks, CLI usage, file organization, production workflow
 7. [System Setup](#ch-system) — Required external tools, per-platform install, troubleshooting
-8. [Publishing](#ch-publishing) — Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, or Shopify
+8. [Publishing](#ch-publishing) — Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, Shopify, or Google Drive
 
 ---
 

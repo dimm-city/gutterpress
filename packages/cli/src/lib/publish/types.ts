@@ -40,7 +40,8 @@ export type PublishProviderId =
   | "drivethrurpg"
   | "kdp"
   | "azure-swa"
-  | "shopify";
+  | "shopify"
+  | "gdrive";
 
 /**
  * How the provider integrates:
@@ -59,8 +60,20 @@ export interface PublishProviderInfo {
   /** Human name ("itch.io"). */
   label: string;
   kind: PublishProviderKind;
-  /** The artifact format this provider publishes. */
+  /** The artifact format this provider publishes BY DEFAULT — and, for every
+   * provider except those declaring {@link formats}, the ONLY one it ever
+   * publishes. */
   format: PublishArtifactFormat;
+  /**
+   * Formats this provider can ALSO publish, when it supports more than one
+   * (#221 phase 3, D8 — currently only gdrive: `["pdf", "html"]`). Absent for
+   * every other provider, which keeps them on the single fixed `format`
+   * above with no behavior change. When present, the author's manifest
+   * `publish.<id>.format` (validated against this list) picks the EFFECTIVE
+   * format for one publish request — see `run-publish.ts`'s
+   * `resolvePublishFormat`.
+   */
+  formats?: PublishArtifactFormat[];
   /** One-line author-facing description of what publishing here does. */
   description: string;
   /** The provider's author-editable manifest settings. */
@@ -79,6 +92,30 @@ export interface PublishProviderInfo {
     tokenUrl?: string;
     /** Author-facing hint ("Paste an API key from …"). */
     hint?: string;
+    /**
+     * How the credential is acquired. "token" (default, and every provider's
+     * behavior before this field existed): the author pastes an API key,
+     * verified by {@link connectPublishProvider}(pasted-token flow). "oauth":
+     * there is no key to paste — the credential comes from an interactive
+     * browser consent flow (see `google-auth.ts`'s `GoogleAuthProvider` for
+     * the gdrive precedent). UIs branch on this to swap the paste-a-key form
+     * for a "Connect …" button; {@link connectPublishProvider} REJECTS oauth
+     * providers outright so the old paste-a-token path can never store an
+     * unverifiable credential for one (#221).
+     */
+    connect?: "token" | "oauth";
+  };
+  /**
+   * Present when the provider has a notion of "existing places to publish
+   * into" that a UI can let the author pick or create (gdrive: Drive
+   * folders) — precedent: the existing optional `listProducts`. `label` is
+   * the author-facing noun ("Folder"); `canCreate` says whether
+   * {@link PublishProvider.createDestination} is implemented. Absent for
+   * providers with no such concept.
+   */
+  destinations?: {
+    label: string;
+    canCreate: boolean;
   };
 }
 
@@ -254,6 +291,14 @@ export interface PublishProvider {
     productId: string,
     metadata: PublishListingMetadata,
   ): Promise<PublishProduct>;
+  /**
+   * Existing places this provider can publish into (gdrive: app-visible
+   * Drive folders). UIs render a picker when this is implemented — see
+   * {@link PublishProviderInfo.destinations}.
+   */
+  listDestinations?(req: PublishRequest): Promise<PublishProduct[]>;
+  /** Create a new destination (gdrive: a Drive folder at My Drive root). */
+  createDestination?(req: PublishRequest, name: string): Promise<PublishProduct>;
 }
 
 /**

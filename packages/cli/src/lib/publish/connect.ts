@@ -13,6 +13,7 @@
  *      any previously working key exactly as it was.
  */
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
+import { revokeGoogleCredential } from "./google-auth.ts";
 import { publishProviderFor } from "./registry.ts";
 import { resolvePublishRequest } from "./run-publish.ts";
 import { publishCredentialKey, type PublishDeps } from "./types.ts";
@@ -64,6 +65,16 @@ export async function connectPublishProvider(
       `${info.label} needs no API key — just publish when you're ready.`,
     );
   }
+  if (info.credential.connect === "oauth") {
+    // This provider has no key to paste — it connects through a browser
+    // consent flow (google-auth.ts's GoogleAuthProvider is the gdrive
+    // implementation). Reject here rather than storing an unverifiable
+    // pasted value under its credential host.
+    throw new Error(
+      `${info.label} connects through your browser, not a pasted key — run ` +
+        `"gutterpress publish --provider ${info.id} --connect" or use the desktop app's Connect button.`,
+    );
+  }
   const token = options.token.trim();
   if (!token) throw new Error("Paste an API key first.");
 
@@ -109,4 +120,40 @@ export async function connectPublishProvider(
 
   await deps.tokenStore.set(key, candidate);
   return { connected: true, providerId: info.id };
+}
+
+export interface DisconnectPublishCredentialOptions {
+  /**
+   * Await the best-effort revoke before returning. The CLI passes `true` (a
+   * one-shot process can afford to wait before printing success); the
+   * desktop's disconnect routes leave this `false` (the default) so "Remove
+   * this key" resolves immediately even offline, with the revoke — which
+   * carries its own ~10s network timeout — running in the background.
+   */
+  awaitRevoke?: boolean;
+}
+
+/**
+ * Delete a stored credential by its TokenStore key, one implementation
+ * shared by every disconnect entry point (the CLI's `--disconnect`, and the
+ * desktop's publish:disconnect + remote:disconnectHost routes — this key
+ * shape covers both a publish provider's compound `<host>#<account>` key and
+ * a plain remote-host key). The local delete always happens; before it, when
+ * the stored credential's `kind` supports a provider-side revoke (today only
+ * `google-oauth`, via `revokeGoogleCredential` — the same slot a future
+ * revocable oauth provider would use), a best-effort revoke is attempted.
+ * `revokeGoogleCredential` never throws, so a failed revoke can never block
+ * or fail the local delete.
+ */
+export async function disconnectPublishCredential(
+  key: string,
+  deps: Pick<PublishDeps, "tokenStore" | "fetch">,
+  options: DisconnectPublishCredentialOptions = {},
+): Promise<void> {
+  const existing = await deps.tokenStore.get(key);
+  await deps.tokenStore.delete(key);
+  if (existing?.kind === "google-oauth") {
+    const revoke = revokeGoogleCredential(existing.token, { fetchImpl: deps.fetch });
+    if (options.awaitRevoke) await revoke;
+  }
 }

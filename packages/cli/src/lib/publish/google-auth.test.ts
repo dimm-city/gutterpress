@@ -1,0 +1,517 @@
+import { test, expect } from "bun:test";
+import http from "node:http";
+import {
+  GoogleAuthProvider,
+  grantedScopesInclude,
+  pkceChallengeFromVerifier,
+  resolveGoogleClientId,
+  resolveGoogleClientSecret,
+  GOOGLE_NOT_CONFIGURED_MESSAGE,
+} from "./google-auth";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+interface Harness {
+  provider: GoogleAuthProvider;
+  requests: Array<{ url: string; body?: Record<string, string> }>;
+}
+
+/** A provider whose token/about fetches are scripted, with a real
+ * `node:http` loopback listener underneath (NOT mocked) — the tests below
+ * drive it with real `fetch()` calls simulating the browser redirect. */
+function scriptedProvider(
+  opts: {
+    tokenResponse?: unknown;
+    tokenStatus?: number;
+    aboutBody?: unknown;
+    /** HTTP status for the about.get answer (default 200). */
+    aboutStatus?: number;
+    clientSecret?: string;
+    timeoutMs?: number;
+  } = {},
+): Harness {
+  const requests: Array<{ url: string; body?: Record<string, string> }> = [];
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url);
+    let body: Record<string, string> | undefined;
+    if (init?.body) {
+      body = Object.fromEntries(new URLSearchParams(String(init.body)));
+    }
+    requests.push({ url: u, body });
+    if (u.includes("oauth2.googleapis.com/token")) {
+      return jsonResponse(
+        opts.tokenResponse ?? {
+          access_token: "test-access-token",
+          refresh_token: "sensitive-refresh-value",
+          expires_in: 3599,
+          scope: "https://www.googleapis.com/auth/drive.file",
+        },
+        opts.tokenStatus ?? 200,
+      );
+    }
+    if (u.includes("drive/v3/about")) {
+      return jsonResponse(
+        opts.aboutBody ?? { user: { emailAddress: "author@example.com" } },
+        opts.aboutStatus ?? 200,
+      );
+    }
+    throw new Error(`unexpected url ${u}`);
+  }) as unknown as typeof fetch;
+  const provider = new GoogleAuthProvider({
+    clientId: "test-client-id",
+    clientSecret: opts.clientSecret ?? "test-client-secret",
+    fetchImpl,
+    openBrowser: async () => {}, // never actually spawn a browser in tests
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+  });
+  return { provider, requests };
+}
+
+/** Start connect() and resolve once onAuthUrl fires, without racing the
+ * listener's async `listen()` startup. */
+async function captureAuthUrl(provider: GoogleAuthProvider, signal?: AbortSignal) {
+  let resolveUrl!: (u: string) => void;
+  const urlPromise = new Promise<string>((res) => {
+    resolveUrl = res;
+  });
+  const donePromise = provider.connect({
+    onAuthUrl: (u) => resolveUrl(u),
+    ...(signal ? { signal } : {}),
+  });
+  // Mark the promise "handled" immediately so a natural race between the
+  // caller's redirect fetch() and this rejection can't trip Bun's
+  // unhandled-rejection detection before the caller attaches its own
+  // assertion below.
+  donePromise.catch(() => {});
+  const authUrl = await urlPromise;
+  return { authUrl, donePromise };
+}
+
+test("happy path: real loopback listener + real fetch redirect completes the flow, PKCE verifier matches the challenge", async () => {
+  const { provider, requests } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+
+  expect(parsed.origin).toBe("https://accounts.google.com");
+  expect(parsed.pathname).toBe("/o/oauth2/v2/auth");
+  expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(parsed.searchParams.get("access_type")).toBe("offline");
+  expect(parsed.searchParams.get("prompt")).toBe("consent");
+  // ONE scope, on purpose: more than one turns Google's consent screen
+  // granular (a Drive checkbox that can be left unticked); the account email
+  // comes from Drive's about.get, so no sign-in scope is needed.
+  expect(parsed.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/drive.file");
+  const state = parsed.searchParams.get("state")!;
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  expect(redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+
+  // Drive the REAL loopback listener with a real fetch() request, exactly as
+  // the browser would after the user clicks Allow.
+  const res = await fetch(`${redirectUri}/?code=fake-auth-code&state=${state}`);
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain("connected");
+
+  const cred = await donePromise;
+  expect(cred.host).toBe("gdrive");
+  expect(cred.kind).toBe("google-oauth");
+  expect(cred.token).toBe("sensitive-refresh-value"); // the REFRESH token is what's stored, D4
+  expect(cred.username).toBe("author@example.com");
+  expect(cred.label).toBe("Google Drive — author@example.com");
+
+  const tokenReq = requests.find((r) => r.url.includes("oauth2.googleapis.com/token"));
+  expect(tokenReq?.body?.client_id).toBe("test-client-id");
+  expect(tokenReq?.body?.client_secret).toBe("test-client-secret");
+  expect(tokenReq?.body?.code).toBe("fake-auth-code");
+  expect(tokenReq?.body?.grant_type).toBe("authorization_code");
+
+  // PKCE correctness: the challenge sent in the auth URL is really the
+  // sha256(verifier) of the verifier sent to the token endpoint.
+  const challenge = parsed.searchParams.get("code_challenge")!;
+  const verifier = tokenReq?.body?.code_verifier ?? "";
+  expect(verifier.length).toBeGreaterThan(20);
+  expect(pkceChallengeFromVerifier(verifier)).toBe(challenge);
+});
+
+test("a mismatched state is REJECTED and the token endpoint is never called (never proceeds)", async () => {
+  const { provider, requests } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+
+  await fetch(`${redirectUri}/?code=fake-auth-code&state=an-attacker-controlled-state`);
+
+  await expect(donePromise).rejects.toThrow(/security check|state mismatch/i);
+  expect(requests.some((r) => r.url.includes("oauth2.googleapis.com/token"))).toBe(false);
+});
+
+test("the correct state IS accepted (state round-trips through a real redirect)", async () => {
+  const { provider } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=fake-auth-code&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+});
+
+test("error= query param (the user declined consent) is rejected with a friendly message", async () => {
+  const { provider, requests } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+
+  await fetch(`${redirectUri}/?error=access_denied&state=${state}`);
+
+  await expect(donePromise).rejects.toThrow(/declined/i);
+  expect(requests.length).toBe(0);
+});
+
+test("cancel via AbortSignal rejects the flow with a friendly message", async () => {
+  const controller = new AbortController();
+  const { provider } = scriptedProvider();
+  const { donePromise } = await captureAuthUrl(provider, controller.signal);
+  controller.abort();
+  await expect(donePromise).rejects.toThrow(/canceled/i);
+});
+
+test("an already-aborted signal rejects immediately without waiting", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const { provider } = scriptedProvider();
+  const { donePromise } = await captureAuthUrl(provider, controller.signal);
+  await expect(donePromise).rejects.toThrow(/canceled/i);
+});
+
+test("a fired deadline (browser never redirects) rejects with a friendly timeout message", async () => {
+  const { provider } = scriptedProvider({ timeoutMs: 30 });
+  const { donePromise } = await captureAuthUrl(provider);
+  await expect(donePromise).rejects.toThrow(/timed out/i);
+});
+
+test("connect() fails EARLY — no listener bound at all — when no client id/secret is configured", async () => {
+  let fetchCalled = false;
+  const provider = new GoogleAuthProvider({
+    clientId: "",
+    clientSecret: "",
+    fetchImpl: (async () => {
+      fetchCalled = true;
+      throw new Error("should never fetch");
+    }) as unknown as typeof fetch,
+    openBrowser: async () => {},
+  });
+  let urlShown = false;
+  await expect(
+    provider.connect({ onAuthUrl: () => (urlShown = true) }),
+  ).rejects.toThrow(GOOGLE_NOT_CONFIGURED_MESSAGE);
+  expect(urlShown).toBe(false);
+  expect(fetchCalled).toBe(false);
+});
+
+test("connect() fails early when only the client id (no secret) is configured — Google requires both for a Desktop client", async () => {
+  const provider = new GoogleAuthProvider({
+    clientId: "has-an-id",
+    clientSecret: "",
+    fetchImpl: (async () => {
+      throw new Error("should never fetch");
+    }) as unknown as typeof fetch,
+    openBrowser: async () => {},
+  });
+  await expect(provider.connect({ onAuthUrl: () => {} })).rejects.toThrow(
+    GOOGLE_NOT_CONFIGURED_MESSAGE,
+  );
+});
+
+test("no thrown error message anywhere contains the client secret or the refresh token value", async () => {
+  const SECRET = "CLIENT-SECRET-MUST-NOT-LEAK-ANYWHERE";
+  const messages: string[] = [];
+
+  // Case 1: state mismatch.
+  {
+    const { provider } = scriptedProvider({ clientSecret: SECRET });
+    const { authUrl, donePromise } = await captureAuthUrl(provider);
+    const parsed = new URL(authUrl);
+    await fetch(`${parsed.searchParams.get("redirect_uri")}/?code=x&state=WRONG`);
+    await donePromise.catch((e: Error) => messages.push(e.message));
+  }
+
+  // Case 2: consent declined.
+  {
+    const { provider } = scriptedProvider({ clientSecret: SECRET });
+    const { authUrl, donePromise } = await captureAuthUrl(provider);
+    const parsed = new URL(authUrl);
+    const redirectUri = parsed.searchParams.get("redirect_uri")!;
+    const state = parsed.searchParams.get("state")!;
+    await fetch(`${redirectUri}/?error=access_denied&state=${state}`);
+    await donePromise.catch((e: Error) => messages.push(e.message));
+  }
+
+  // Case 3: the token endpoint rejects the exchange (invalid_client).
+  {
+    const { provider } = scriptedProvider({
+      clientSecret: SECRET,
+      tokenResponse: { error: "invalid_client" },
+      tokenStatus: 400,
+    });
+    const { authUrl, donePromise } = await captureAuthUrl(provider);
+    const parsed = new URL(authUrl);
+    const redirectUri = parsed.searchParams.get("redirect_uri")!;
+    const state = parsed.searchParams.get("state")!;
+    await fetch(`${redirectUri}/?code=x&state=${state}`);
+    await donePromise.catch((e: Error) => messages.push(e.message));
+  }
+
+  expect(messages.length).toBe(3);
+  for (const m of messages) {
+    expect(m).not.toContain(SECRET);
+    expect(m).not.toContain("sensitive-refresh-value");
+    expect(m).not.toContain("test-access-token");
+  }
+});
+
+test("a missing refresh_token in the token response is a hard failure (D4 requires one to store)", async () => {
+  const { provider } = scriptedProvider({
+    tokenResponse: { access_token: "at-only", expires_in: 3599 },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  await expect(donePromise).rejects.toThrow(/refresh token/i);
+});
+
+test("email lookup failure is non-fatal — connect still succeeds without a labeled email", async () => {
+  const { provider } = scriptedProvider({ aboutBody: {} });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBeUndefined();
+  expect(cred.label).toBe("Google Drive");
+});
+
+// The 0.10.5 bring-up: a fresh OAuth client in a Cloud project with the Drive
+// API disabled. about.get answered 403 accessNotConfigured, the best-effort
+// email lookup swallowed it, connect reported success — and every later Drive
+// call failed with a bare "HTTP 403" nobody could act on.
+
+test("a 403 from about.get during connect FAILS the connect with Google's reason — nothing is stored for a token that can't use Drive", async () => {
+  const { provider } = scriptedProvider({
+    aboutStatus: 403,
+    aboutBody: {
+      error: {
+        code: 403,
+        message:
+          "Google Drive API has not been used in project 1234 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=1234 then retry.",
+        errors: [{ domain: "usageLimits", reason: "accessNotConfigured", message: "Access Not Configured." }],
+      },
+    },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const err = await donePromise.then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toContain("Google Drive rejected the new connection (HTTP 403, accessNotConfigured).");
+  expect(err!.message).toMatch(/Drive API isn't enabled/);
+  expect(err!.message).toContain("drive.googleapis.com/overview?project=1234");
+  // Never a token value — the message is what the author sees and what the log keeps.
+  expect(err!.message).not.toContain("sensitive-refresh-value");
+  expect(err!.message).not.toContain("test-access-token");
+});
+
+test("a 5xx from about.get during connect stays non-fatal — connect succeeds without a labeled email", async () => {
+  const { provider } = scriptedProvider({ aboutStatus: 503, aboutBody: { error: { message: "backend" } } });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBeUndefined();
+  expect(cred.label).toBe("Google Drive");
+});
+
+// A5: a request carrying neither "code" nor "error" (a browser
+// preconnect/speculative probe, or a stray manual hit on the loopback port)
+// must not be treated as the final OAuth answer — the flow keeps waiting.
+
+test("a stray request with neither code nor error is ignored — the flow keeps waiting for the real callback (A5)", async () => {
+  const { provider } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+
+  // Fires first, before the real redirect — must not settle the flow.
+  const strayRes = await fetch(`${redirectUri}/`);
+  expect(strayRes.status).toBe(204);
+
+  // Race the flow's promise against a short delay: it must still be
+  // pending (neither resolved nor rejected) after the stray request.
+  const pendingSentinel = Symbol("still-pending");
+  const outcome = await Promise.race([
+    donePromise.then(
+      () => "resolved" as const,
+      () => "rejected" as const,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(pendingSentinel), 50)),
+  ]);
+  expect(outcome).toBe(pendingSentinel);
+
+  // Now the real redirect arrives and the flow completes normally.
+  const res = await fetch(`${redirectUri}/?code=fake-auth-code&state=${state}`);
+  expect(res.status).toBe(200);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+});
+
+test("a bad-state request is still rejected exactly as before — the A5 fix only changes the neither-param case (A5 regression guard)", async () => {
+  const { provider, requests } = scriptedProvider();
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+
+  await fetch(`${redirectUri}/?code=fake-auth-code&state=an-attacker-controlled-state`);
+
+  await expect(donePromise).rejects.toThrow(/security check|state mismatch/i);
+  expect(requests.some((r) => r.url.includes("oauth2.googleapis.com/token"))).toBe(false);
+});
+
+// A6: a bind failure (port exhaustion, a sandboxed environment blocking
+// loopback binds, …) must reject connect() promptly with a friendly
+// message, not hang forever.
+
+test("a loopback bind failure rejects connect() promptly with a friendly message instead of hanging (A6)", async () => {
+  // Occupy a real port on 127.0.0.1 first, then point the provider's
+  // listener at that exact same port so its own bind fails with EADDRINUSE.
+  const occupied = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    occupied.once("error", reject);
+    occupied.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = occupied.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  try {
+    const provider = new GoogleAuthProvider({
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      fetchImpl: (async () => {
+        throw new Error("should never fetch");
+      }) as unknown as typeof fetch,
+      openBrowser: async () => {},
+      port,
+    });
+
+    await expect(provider.connect({ onAuthUrl: () => {} })).rejects.toThrow(
+      /couldn't start the local sign-in listener/i,
+    );
+  } finally {
+    await new Promise<void>((resolve) => occupied.close(() => resolve()));
+  }
+});
+
+// A token issued without the Drive scope is a sign-in that looks successful
+// and answers 403 to every Drive call. Requesting a single scope keeps
+// Google's consent screen from offering a partial grant (the 0.10.5 bring-up
+// hit exactly that with three scopes requested); this is the backstop.
+
+test("a token granted WITHOUT the drive.file scope fails connect before any Drive call, and stores nothing", async () => {
+  const { provider, requests } = scriptedProvider({
+    tokenResponse: {
+      access_token: "test-access-token",
+      refresh_token: "sensitive-refresh-value",
+      expires_in: 3599,
+      scope: "openid https://www.googleapis.com/auth/userinfo.email",
+    },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const err = await donePromise.then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(err).toBeInstanceOf(Error);
+  expect(err!.message).toMatch(/didn't include the Google Drive permission/);
+  expect(err!.message).toMatch(/Connect Google Drive again/);
+  expect(err!.message).not.toContain("sensitive-refresh-value");
+  // Refused on the token response alone — Drive was never asked.
+  expect(requests.some((r) => r.url.includes("drive/v3/about"))).toBe(false);
+});
+
+test("a token response with no scope field at all is tolerated (about.get is the backstop)", async () => {
+  const { provider } = scriptedProvider({
+    tokenResponse: { access_token: "test-access-token", refresh_token: "sensitive-refresh-value", expires_in: 3599 },
+  });
+  const { authUrl, donePromise } = await captureAuthUrl(provider);
+  const parsed = new URL(authUrl);
+  const redirectUri = parsed.searchParams.get("redirect_uri")!;
+  const state = parsed.searchParams.get("state")!;
+  await fetch(`${redirectUri}/?code=x&state=${state}`);
+  const cred = await donePromise;
+  expect(cred.token).toBe("sensitive-refresh-value");
+  expect(cred.username).toBe("author@example.com");
+});
+
+test("grantedScopesInclude reads a space-delimited grant list and treats an absent one as unknown", () => {
+  const drive = "https://www.googleapis.com/auth/drive.file";
+  expect(grantedScopesInclude(`${drive} openid`, drive)).toBe(true);
+  expect(grantedScopesInclude(`openid  ${drive}`, drive)).toBe(true);
+  expect(grantedScopesInclude("openid https://www.googleapis.com/auth/userinfo.email", drive)).toBe(false);
+  expect(grantedScopesInclude("https://www.googleapis.com/auth/drive.file.readonly", drive)).toBe(false);
+  expect(grantedScopesInclude(undefined, drive)).toBe(true);
+});
+
+// ADR 0011: the production client is embedded as the default. Resolution is
+// explicit option → env var → embedded default, where a PRESENT but empty
+// option or env var means "no client" (it does not fall through) — that is
+// how an unconfigured build, and the not-configured tests above, are
+// expressed now that the defaults are no longer blank.
+
+test("resolveGoogleClientId/Secret fall through to the embedded production client only when nothing is present", () => {
+  const savedId = process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+  const savedSecret = process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+  try {
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    // Absent everywhere → the embedded Desktop-app client (never blank now).
+    expect(resolveGoogleClientId()).toMatch(/\.apps\.googleusercontent\.com$/);
+    expect(resolveGoogleClientSecret()).not.toBe("");
+    // Explicit wins, including an explicit empty string.
+    expect(resolveGoogleClientId("explicit-id")).toBe("explicit-id");
+    expect(resolveGoogleClientId("")).toBe("");
+    expect(resolveGoogleClientSecret("")).toBe("");
+    // Env wins over the default, including a present-but-empty value.
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "env-id";
+    expect(resolveGoogleClientId()).toBe("env-id");
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "";
+    expect(resolveGoogleClientId()).toBe("");
+    // Explicit still beats env.
+    expect(resolveGoogleClientId("explicit-id")).toBe("explicit-id");
+  } finally {
+    if (savedId === undefined) delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    else process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = savedId;
+    if (savedSecret === undefined) delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    else process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = savedSecret;
+  }
+});

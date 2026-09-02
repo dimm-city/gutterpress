@@ -50,6 +50,8 @@ import { POST as publishSetConfig } from "../../src/routes/api/publish/set-confi
 import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
+import { POST as publishDestinationsList } from "../../src/routes/api/publish/destinations/list/+server";
+import { POST as publishDestinationsCreate } from "../../src/routes/api/publish/destinations/create/+server";
 import { POST as themeApply } from "../../src/routes/api/theme/apply/+server";
 import { POST as themeRemove } from "../../src/routes/api/theme/remove/+server";
 import { POST as themeReadCss } from "../../src/routes/api/theme/read-css/+server";
@@ -98,6 +100,8 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "publish/connect", handler: publishConnect as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", token: "tok" }) },
   { name: "publish/list", handler: publishList as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
+  { name: "publish/destinations/list", handler: publishDestinationsList as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
+  { name: "publish/destinations/create", handler: publishDestinationsCreate as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive", name: "New folder" }) },
   { name: "theme/apply", handler: themeApply as RouteHandler, body: (d) => ({ projectDir: d, target: { kind: "builtin", id: "classic" } }) },
   { name: "theme/remove", handler: themeRemove as RouteHandler, body: (d) => ({ projectDir: d, id: "some-theme" }) },
   { name: "theme/read-css", handler: themeReadCss as RouteHandler, body: (d) => ({ projectDir: d, source: { kind: "project", id: "some-theme" } }) },

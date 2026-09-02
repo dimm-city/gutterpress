@@ -29,6 +29,9 @@ export const POST: RequestHandler = defineRoute<
         credentialHost: info.credential.host || null,
         tokenUrl: info.credential.tokenUrl ?? null,
         hint: info.credential.hint ?? null,
+        // #221 — "oauth" swaps Connections' add-a-key form for a Connect
+        // button; null/absent is every provider's existing paste-a-key path.
+        connectKind: info.credential.connect === 'oauth' ? 'oauth' : null,
       }));
     }),
 });

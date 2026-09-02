@@ -25,6 +25,8 @@ export type {
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,

@@ -24,7 +24,7 @@ export interface HostCredential {
   /** Remote host the credential authenticates against, e.g. "github.com". */
   host: string;
   /** How the credential was acquired (drives re-auth UX, not transport). */
-  kind: "github-oauth" | "token";
+  kind: "github-oauth" | "token" | "google-oauth";
   /** The secret token value. NEVER log this. */
   token: string;
   /** Login/username associated with the token, when known. */

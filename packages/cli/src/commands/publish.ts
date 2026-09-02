@@ -1,9 +1,12 @@
 import { defineCommand } from "citty";
 import path from "node:path";
+import { fstatSync } from "node:fs";
 import {
   log,
   FileTokenStore,
   connectPublishProvider,
+  connectGoogleDrive,
+  disconnectPublishCredential,
   listPublishProviders,
   publishProviderFor,
   publishConnectionStatus,
@@ -11,6 +14,8 @@ import {
   listPublishAccounts,
   runPublish,
   openPath,
+  loadManifestWithPath,
+  resolvePublishFormat,
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
@@ -28,12 +33,14 @@ import {
  *   gutterpress publish --list                         # providers + connection status
  *   gutterpress publish --provider itch --connect      # store an API key (token via
  *                                                   #   --token, env var, or piped stdin)
+ *   gutterpress publish --provider gdrive --connect    # oauth providers: opens the
+ *                                                   #   browser instead — nothing to paste
  *   gutterpress publish --provider itch --disconnect   # forget the stored key
  *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
  *
  * Credentials live in the 0600 user-config credential store (never in the
  * project); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
- * SHOPIFY_ADMIN_TOKEN) override it for CI.
+ * SHOPIFY_ADMIN_TOKEN, GDRIVE_REFRESH_TOKEN) override it for CI.
  */
 
 async function readTokenFromStdin(): Promise<string> {
@@ -41,6 +48,26 @@ async function readTokenFromStdin(): Promise<string> {
   let data = "";
   for await (const chunk of process.stdin) data += chunk;
   return data.trim();
+}
+
+/**
+ * Cheap, non-blocking check for "the caller redirected something into
+ * stdin" (a pipe or a `< file` redirect) — used only to detect a likely
+ * `--token`-style paste attempt aimed at an oauth provider (B1). Unlike
+ * {@link readTokenFromStdin} this never reads/consumes the stream: it just
+ * stats fd 0, so it can't block waiting on a stdin that's open but idle
+ * (an interactive TTY session, or a plain inherited stdin with nothing
+ * piped in) — the exact shape a real "run --connect and let the browser
+ * flow start" invocation has.
+ */
+function stdinLooksPiped(): boolean {
+  if (process.stdin.isTTY) return false;
+  try {
+    const st = fstatSync(0);
+    return st.isFIFO() || st.isFile();
+  } catch {
+    return false;
+  }
 }
 
 function emitResult(result: RunPublishResult, json: boolean): void {
@@ -83,7 +110,7 @@ const commandArgs = {
   },
   provider: {
     type: "string",
-    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify",
+    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify | gdrive",
   },
   list: { type: "boolean", description: "List providers and connection status" },
   connect: {
@@ -120,7 +147,7 @@ export default defineCommand({
   meta: {
     name: "publish",
     description:
-      "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify)",
+      "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive)",
   },
   args: commandArgs,
   async run({ args, rawArgs }) {
@@ -143,17 +170,40 @@ export default defineCommand({
     };
 
     if (args.list) {
+      // B2: a provider that declares a `formats` array (today, only gdrive)
+      // can have its EFFECTIVE format overridden per-project by the manifest
+      // (`publish.<id>.format`) — resolvePublishFormat (run-publish.ts) is
+      // the one place that logic lives, shared with the actual publish run.
+      // --list takes the same project-dir/--manifest inputs every other
+      // subcommand does, so that context IS available here; load the
+      // manifest best-effort (a missing/unreadable one just falls back to
+      // each provider's static default, same as before this fix).
+      const projectDir = path.resolve((args.project as string | undefined) ?? ".");
+      const manifestArg = typeof args.manifest === "string" ? args.manifest : undefined;
+      let publishSettings: Record<string, unknown> = {};
+      try {
+        const { manifest } = await loadManifestWithPath(manifestArg ?? projectDir, {
+          explicit: manifestArg !== undefined,
+        });
+        publishSettings = (manifest.publish ?? {}) as Record<string, unknown>;
+      } catch {
+        // No manifest, or an invalid --manifest path: fall back to each
+        // provider's static `format` below, exactly like before this fix.
+      }
+
       const providers = listPublishProviders();
       const rows = await Promise.all(
         providers.map(async (p) => {
           const status = await publishConnectionStatus(p, deps);
           // Saved named accounts (default + named) for a credentialed provider.
           const accounts = p.credential.required ? await listPublishAccounts(p, deps) : [];
+          const providerConfig =
+            (publishSettings[p.id] as Record<string, unknown> | undefined) ?? {};
           return {
             id: p.id,
             label: p.label,
             kind: p.kind,
-            format: p.format,
+            format: resolvePublishFormat(p, providerConfig),
             connected: status.connected,
             accounts,
           };
@@ -180,7 +230,7 @@ export default defineCommand({
     const providerId = typeof args.provider === "string" ? args.provider : "";
     if (!providerId) {
       log.error(
-        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
+        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify|gdrive> (or --list).",
       );
       process.exit(EXIT_CODES.USAGE);
     }
@@ -196,7 +246,11 @@ export default defineCommand({
     const account = typeof args.account === "string" ? args.account.trim() : "";
 
     if (args.disconnect) {
-      await store.delete(publishCredentialKey(provider.info.credential.host, account));
+      const key = publishCredentialKey(provider.info.credential.host, account);
+      // Best-effort revoke at Google before returning (D4/D6) — the CLI is a
+      // one-shot process, so unlike the desktop's disconnect routes it can
+      // afford to wait for the whole thing to finish before printing success.
+      await disconnectPublishCredential(key, deps, { awaitRevoke: true });
       log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
       return;
     }
@@ -206,6 +260,51 @@ export default defineCommand({
         log.info(
           `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
         );
+        return;
+      }
+      if (provider.info.credential.connect === "oauth") {
+        // No key to paste — an interactive browser consent flow instead.
+        // Today gdrive is the only oauth provider; connectGoogleDrive() is
+        // the shared implementation (CLI here, desktop in Phase 2).
+        //
+        // B1: an author who reaches for --token out of habit (it works for
+        // every other provider) — or who has the provider's env var set, or
+        // pipes a key via stdin — gets no explanation today: this branch
+        // used to return before connectPublishProvider's own oauth rejection
+        // could ever run. Catch the same three signals here and fail with
+        // the same guidance, WITHOUT starting the browser flow. When none of
+        // the three are present, fall through to the browser flow exactly as
+        // before — no opt-out flag required for the common case.
+        const envVar = provider.info.credential.envVar;
+        const tokenGiven = typeof args.token === "string" && args.token.trim().length > 0;
+        const envGiven = !!(envVar && process.env[envVar]?.trim());
+        const stdinGiven = tokenGiven || envGiven ? false : stdinLooksPiped();
+        if (tokenGiven || envGiven || stdinGiven) {
+          log.error(
+            `${provider.info.label} connects through your browser, not a pasted key — ` +
+              `drop --token${envVar ? ` and unset ${envVar}` : ""}${stdinGiven ? " and remove the piped input" : ""}, then run ` +
+              `"gutterpress publish --provider ${provider.info.id} --connect".`,
+          );
+          process.exit(EXIT_CODES.USAGE);
+        }
+        try {
+          const result = await connectGoogleDrive(
+            { ...(account ? { account } : {}) },
+            deps,
+            {
+              onAuthUrl: (url) => {
+                log.info("Opening your browser to connect Google Drive…");
+                log.info(`If it didn't open, visit: ${url}`);
+              },
+            },
+          );
+          log.success(
+            `Connected ${provider.info.label}${account ? ` (${account})` : ""}${result.email ? ` — ${result.email}` : ""}.`,
+          );
+        } catch (e) {
+          log.error(e instanceof Error ? e.message : String(e));
+          process.exit(EXIT_CODES.FINDINGS);
+        }
         return;
       }
       const envVar = provider.info.credential.envVar;

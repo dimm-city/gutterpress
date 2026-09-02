@@ -25,6 +25,10 @@ export interface LibPublishProviderInfo {
   label: string;
   kind: 'api' | 'guided';
   format: 'pdf' | 'html';
+  /** #221 phase 3, D8 — present only for a provider that supports more than
+   *  one format (gdrive: ["pdf", "html"]); absent for every other provider,
+   *  which keeps them fixed on `format` above. */
+  formats?: Array<'pdf' | 'html'>;
   description: string;
   configFields: Array<{ key: string; label: string; placeholder?: string }>;
   credential: {
@@ -33,7 +37,31 @@ export interface LibPublishProviderInfo {
     envVar?: string;
     tokenUrl?: string;
     hint?: string;
+    /** #221 — "token" (default/absent) = pasted-key connect; "oauth" = the
+     *  browser consent flow (gdrive). Drives the wizard's connect UI branch. */
+    connect?: 'token' | 'oauth';
   };
+  /** #221 — present when the provider has a folder/destination picker. */
+  destinations?: {
+    label: string;
+    canCreate: boolean;
+  };
+}
+
+/** One existing destination a provider can publish into (#221, gdrive: a
+ *  Drive folder). Mirrors the lib's `PublishProduct`. */
+export interface LibPublishDestination {
+  id: string;
+  title: string;
+  url?: string;
+}
+
+/** The subset of a live provider object the destinations routes call —
+ *  narrower than the lib's real `PublishProvider` (only what's needed here). */
+export interface LibPublishProviderHandle {
+  info: LibPublishProviderInfo;
+  listDestinations?(req: unknown): Promise<LibPublishDestination[]>;
+  createDestination?(req: unknown, name: string): Promise<LibPublishDestination>;
 }
 
 /**
@@ -58,7 +86,31 @@ interface LibPublishSavedAccount {
 
 export interface PublishLibModule {
   listPublishProviders?(): LibPublishProviderInfo[];
-  publishProviderFor?(id: string): { info: LibPublishProviderInfo };
+  publishProviderFor?(id: string): LibPublishProviderHandle;
+  /**
+   * Resolve the {@link PublishRequest}-shaped object a provider's
+   * `listDestinations`/`createDestination` (and, in principle, any other
+   * provider method) needs — #221's destinations routes are the only current
+   * callers. `unknown` here is intentional: the real shape is the lib's
+   * `PublishRequest`, and these routes only ever pass it straight through to
+   * a provider method, never read its fields themselves.
+   */
+  resolvePublishRequest?(
+    options: { projectDir: string; providerId: string },
+    deps: PublishRouteDeps,
+  ): Promise<unknown>;
+  /** Best-effort revoke at Google (never throws) — used by disconnect for
+   *  `kind: "google-oauth"` credentials, mirroring the CLI's `--disconnect`. */
+  revokeGoogleCredential?(refreshToken: string): Promise<void>;
+  /** Delete a stored credential by its TokenStore key, best-effort revoking
+   *  it first when its kind supports one (currently google-oauth) — the one
+   *  shared implementation behind this route AND remote:disconnectHost.
+   *  Never awaits the revoke itself (delete must resolve immediately, even
+   *  offline); falls back to a bare delete on an older lib without it. */
+  disconnectPublishCredential?(
+    key: string,
+    deps: Pick<PublishRouteDeps, 'tokenStore'>,
+  ): Promise<void>;
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
     deps: PublishRouteDeps,
@@ -108,4 +160,31 @@ export interface PublishLibModule {
 
 export function getHooks(): RemoteHooks<PublishLibModule, TokenStore> | null {
   return getRemoteHooks<PublishLibModule, TokenStore>();
+}
+
+/**
+ * The provider lookup + capability check + `PublishRequest` resolution the
+ * two destinations routes (`destinations/list`, `destinations/create`) both
+ * do identically before making their own, different, final call into the
+ * provider. `capability` names which optional method the caller is about to
+ * use, purely for the "can't do that" error message — the routes still call
+ * it themselves afterward.
+ */
+export async function resolveDestinationProvider(
+  hooks: NonNullable<ReturnType<typeof getHooks>>,
+  projectDir: string,
+  providerId: string,
+  capability: 'listDestinations' | 'createDestination',
+): Promise<{ provider: LibPublishProviderHandle; req: unknown }> {
+  const lib = await hooks.loadLib();
+  if (!lib.publishProviderFor || !lib.resolvePublishRequest) {
+    throw new Error('Publishing is not available in this version of the lib');
+  }
+  const provider = lib.publishProviderFor(providerId);
+  if (!provider[capability]) {
+    const reason = capability === 'listDestinations' ? 'has no folder picker' : "can't create new folders";
+    throw new Error(`${provider.info.label} ${reason}.`);
+  }
+  const req = await lib.resolvePublishRequest({ projectDir, providerId }, { tokenStore: hooks.tokenStore });
+  return { provider, req };
 }

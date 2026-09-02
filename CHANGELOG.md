@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-09-02
+
+### Added
+
+- **Publish straight to Google Drive** (#221). A new `gdrive` publish
+  provider joins itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps and
+  Shopify: click **Connect Google Drive** and approve in your browser — no
+  API key to create or paste — then pick or name a Drive folder and publish.
+  Publishing again updates the same file in place, so a share link you've
+  already sent stays valid, and you can move the folder anywhere in your own
+  Drive afterward without breaking anything. Gutterpress never changes who
+  can see the file; sharing stays entirely in Drive's own Share button. Both
+  the finished PDF and the zipped HTML export can be published this way.
+  `gutterpress publish --provider gdrive --connect` / `--provider gdrive`
+  work from the CLI too, with a `GDRIVE_REFRESH_TOKEN` env-var escape hatch
+  for CI. See [User Guide: Chapter 8 — Publishing](./examples/gutterpress-user-guide/08-publishing.md).
+
 ## [0.10.4] - 2026-08-30
 
 ### Fixed
