@@ -65,6 +65,10 @@ export interface GutterpressPluginDriver {
   /** Every `.md-block` element in the mounted document, in order. */
   blockCount(): number;
   blockClassName(index: number): string;
+  /** Client-space center of the i-th top-level block — a real point for
+   *  `page.mouse.click`, so a test can click into a block without a
+   *  `:nth-child` selector that a container wrapper would break. */
+  blockCenter(index: number): { x: number; y: number };
   /** `textContent` of the i-th `.md-block` -- used to prove a REFUSED region still renders its own real text (never silently dropped), not merely that it lacks a chip class. */
   blockTextContent(index: number): string;
 
@@ -124,7 +128,19 @@ function requireHost(): MemoryDocumentHost {
 function blockElements(): HTMLElement[] {
   const root = document.getElementById(CONTAINER_ID);
   if (!root) return [];
-  return Array.from(root.querySelectorAll<HTMLElement>(".md-document > .md-block"));
+  const doc = root.querySelector(".md-document");
+  if (!doc) return [];
+  // TOP-LEVEL blocks. A Gutterpress marker scope mounts its blocks inside a
+  // container element (`.md-block-group`, fork Patch 3), so "top level" is no
+  // longer "direct child of `.md-document`" — but it is still not "any
+  // descendant", which would also pick up the blocks a blockquote or a list
+  // item nests inside itself. Only container wrappers may sit in between.
+  return Array.from(doc.querySelectorAll<HTMLElement>(".md-block")).filter((block) => {
+    for (let el = block.parentElement; el && el !== doc; el = el.parentElement) {
+      if (!el.classList.contains("md-block-group")) return false;
+    }
+    return true;
+  });
 }
 
 function chipElements(): HTMLElement[] {
@@ -159,6 +175,12 @@ window.__gpGutterpressPlugin = {
     const el = blockElements()[index];
     if (!el) throw new Error(`plugin-region harness: no block at index ${index}`);
     return el.className;
+  },
+  blockCenter(index: number): { x: number; y: number } {
+    const el = blockElements()[index];
+    if (!el) throw new Error(`plugin-region harness: no block at index ${index}`);
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   },
   blockTextContent(index: number): string {
     const el = blockElements()[index];

@@ -33,6 +33,11 @@ import { openHarnessSession, waitForHarnessReady, type HarnessSession } from "..
 
 const entryPath = resolve(import.meta.dir, "support/plugin-entry.ts");
 
+async function clickBlock(index: number): Promise<void> {
+  const center = await harness.page.evaluate((i) => window.__gpGutterpressPlugin.blockCenter(i), index);
+  await harness.page.mouse.click(center.x, center.y);
+}
+
 let harness: HarnessSession;
 let closeHarness: () => Promise<void>;
 
@@ -116,8 +121,8 @@ async function requireCounts(blocks: number, chips: number): Promise<void> {
 }
 
 /** Enters `ASIDE_BLOCK_INDEX` via the proven bare-dom-fallback sequence: click the PRECEDING plain block, Home, ArrowDown -- lands caret exactly at the target block's own start (fork-hook.btest.ts case 5, re-verified live here for this module's own chip). */
-async function enterAsideBlock(selector: string): Promise<void> {
-  await harness.page.click(`${selector} .md-document > .md-block:nth-child(1)`);
+async function enterAsideBlock(): Promise<void> {
+  await clickBlock(0);
   await harness.page.keyboard.press("Home");
   await harness.page.keyboard.press("ArrowDown");
   await harness.page.waitForTimeout(50);
@@ -191,13 +196,13 @@ describe("plugin-region chip: a <script> payload in both source text and a view 
 
 describe("two-state: activation, deactivation restores the chip with zero drift", () => {
   test("entering the block via the proven bare-dom sequence shows the real source (chip gone); leaving without editing restores the exact same chip", async () => {
-    const selector = await mount(FIXTURE_SOURCE, true);
+    await mount(FIXTURE_SOURCE, true);
     await requireCounts(TOTAL_BLOCK_COUNT, 1);
 
     const originalHostText = await hostText();
     const originalVersion = await hostVersion();
 
-    await enterAsideBlock(selector);
+    await enterAsideBlock();
 
     // Active: the chip is gone, real source shown.
     await requireCounts(TOTAL_BLOCK_COUNT, 0);
@@ -211,7 +216,7 @@ describe("two-state: activation, deactivation restores the chip with zero drift"
     expect(await hostVersion()).toBe(originalVersion);
 
     // Deactivate: click the trailing paragraph.
-    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${TRAIL_BLOCK_INDEX + 1})`);
+    await clickBlock(TRAIL_BLOCK_INDEX);
     await harness.page.waitForTimeout(50);
 
     await requireCounts(TOTAL_BLOCK_COUNT, 1);
@@ -230,12 +235,12 @@ describe("two-state: activation, deactivation restores the chip with zero drift"
 
 describe("edit locality: caret entry lands at the block's own start; typing is a byte-exact prepend", () => {
   test("typing immediately after entering the block prepends exactly one character at the block's own start offset, nothing else moves", async () => {
-    const selector = await mount(FIXTURE_SOURCE, true);
+    await mount(FIXTURE_SOURCE, true);
     await requireCounts(TOTAL_BLOCK_COUNT, 1);
     const originalHostText = await hostText();
     expect(originalHostText.indexOf(ASIDE_LINE)).toBe(MARKER_START);
 
-    await enterAsideBlock(selector);
+    await enterAsideBlock();
     await harness.page.keyboard.type("X");
     await harness.page.waitForTimeout(50);
 
@@ -250,7 +255,7 @@ describe("edit locality: caret entry lands at the block's own start; typing is a
     // (G-11: the mounted projection's sourceVersion is now behind the live
     // host version), matching gutterpress.btest.ts's identical proof for
     // the marker-family kind.
-    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${TRAIL_BLOCK_INDEX + 1})`);
+    await clickBlock(TRAIL_BLOCK_INDEX);
     await harness.page.waitForTimeout(50);
     const editedBlockClassName = await blockClassName(ASIDE_BLOCK_INDEX);
     expect(editedBlockClassName).not.toContain("gp-block-chip");
@@ -290,7 +295,7 @@ describe("refused plugin-region (no source-range evidence): no chip anywhere, st
   });
 
   test("the refused span stays directly, plainly editable -- a real keystroke reaches the host with no activation step", async () => {
-    const selector = await mount(FIXTURE_SOURCE, false);
+    await mount(FIXTURE_SOURCE, false);
     await requireCounts(TOTAL_BLOCK_COUNT, 0);
     const originalHostText = await hostText();
     expect(originalHostText).toBe(FIXTURE_SOURCE);
@@ -299,7 +304,7 @@ describe("refused plugin-region (no source-range evidence): no chip anywhere, st
     // the SAME bare-dom-fallback navigation sequence still works here
     // because it is a plain, ordinary block, not because of any
     // chip-specific mechanism.
-    await enterAsideBlock(selector);
+    await enterAsideBlock();
     await harness.page.keyboard.type("X");
     await harness.page.waitForTimeout(50);
 

@@ -142,6 +142,17 @@ async function scriptRan(): Promise<boolean> {
 async function selectionOffsets(): Promise<{ from: number; to: number } | undefined> {
   return harness.page.evaluate(() => window.__gpGutterpress.getSelection());
 }
+/**
+ * Click the index-th block by its own center point rather than by
+ * `:nth-child`. A Gutterpress marker scope mounts its blocks inside a
+ * container element (`.md-block-group`), so a block's position among its
+ * PARENT's children is no longer its position in the document.
+ */
+async function clickBlock(index: number): Promise<void> {
+  const center = await blockCenter(index);
+  await harness.page.mouse.click(center.x, center.y);
+}
+
 async function blockCenter(index: number): Promise<{ x: number; y: number }> {
   return harness.page.evaluate((i) => window.__gpGutterpress.blockCenter(i), index);
 }
@@ -207,44 +218,58 @@ describe("mounted structure", () => {
 // section for the full evidence trail.
 // ---------------------------------------------------------------------------
 
-describe("ambiguous collision refusals: a duplicate occurrence never paints a chip on either location", () => {
-  test("a blockquoted duplicate glued directly under the real marker line, with NO blank separator, renders zero chips", async () => {
+/**
+ * A marker-looking line inside a blockquote or a list item is NOT a marker:
+ * the pipeline's own `layout_transform` transforms nothing nested inside a
+ * container, so the book renders it as plain text and the editor must too.
+ *
+ * These cases used to assert ZERO chips — the REAL top-level marker was
+ * suppressed as well, because chips were matched by TEXT against a
+ * projection snapshot and a duplicate elsewhere made the match ambiguous.
+ * The provider now classifies each top-level block on its own merits with
+ * the pipeline's own grammar (`parseMarkerLine`), so there is no ambiguity
+ * to fail closed on: the real marker chips, the nested lookalike does not.
+ * Suppressing the real one would make the editor disagree with the page,
+ * which is the failure this whole surface exists to avoid.
+ */
+describe("a marker-looking line nested in a container is not a marker", () => {
+  test("a blockquoted duplicate glued directly under the real marker line, with NO blank separator, chips the real marker and not the nested lookalike", async () => {
     // Round 1's blank-run chunk scan missed this shape: the real line and
     // the quoted line shared one blank-run chunk, so the chunk's own key
     // (the two lines joined) never equaled either line's key alone.
     await mount("@page splash\n> @page splash\n\nTail.\n");
-    await requireCounts(3, 0);
+    await requireCounts(3, 1);
   });
 
-  test("a duplicate marker line inside a LIST ITEM renders zero chips", async () => {
+  test("a duplicate marker line inside a LIST ITEM chips the real marker and not the nested lookalike", async () => {
     // Round 1 only stripped blockquote '>' markers, never list bullets --
     // this shape sailed straight through undetected.
     await mount("@page splash\n\n- item\n- @page splash\n\nTail.\n");
-    await requireCounts(3, 0);
+    await requireCounts(3, 1);
   });
 
-  test("a CRLF document with a blockquoted duplicate renders zero chips", async () => {
+  test("a CRLF document with a blockquoted duplicate chips the real marker and not the nested lookalike", async () => {
     // Round 1's blank-run regex only matched bare LF; \r\n\r\n never
     // matched it, so a CRLF document became one inert chunk and the
     // ambiguity check never ran.
     await mount("@page splash\r\n\r\n> @page splash\r\n\r\nTail.\r\n");
-    await requireCounts(3, 0);
+    await requireCounts(3, 1);
   });
 
-  test("SFE-P2b repair round 3: a blockquoted duplicate with TRAILING WHITESPACE renders zero chips", async () => {
+  test("SFE-P2b repair round 3: a blockquoted duplicate with TRAILING WHITESPACE chips the real marker and not the nested lookalike", async () => {
     // One character away from round 2's own passing fixture: match.ts's line
     // index and matchProjectedBlock's key normalized trailing whitespace
     // differently, so this shape painted a full structured chip live before
     // this fix.
     await mount("@page splash\n\n> @page splash   \n\nTail.\n");
-    await requireCounts(3, 0);
+    await requireCounts(3, 1);
   });
 
-  test("SFE-P2b repair round 3: a blockquoted duplicate with RESIDUAL INDENTATION renders zero chips", async () => {
+  test("SFE-P2b repair round 3: a blockquoted duplicate with RESIDUAL INDENTATION chips the real marker and not the nested lookalike", async () => {
     // CONTAINER_PREFIX_RE consumed at most one space/tab after '>', leaving
     // residual leading indentation that never equaled the owning block's key.
     await mount("@page splash\n\n>   @page splash\n\nTail.\n");
-    await requireCounts(3, 0);
+    await requireCounts(3, 1);
   });
 });
 
@@ -310,7 +335,7 @@ describe("raw-html chip", () => {
 
 describe("two-state: activation, deactivation restores the chip with zero drift", () => {
   test("clicking a segment activates the block (chip replaced by real source); merely clicking does not edit; clicking away restores the exact same chip", async () => {
-    const selector = await mount(FIXTURE_SOURCE);
+    await mount(FIXTURE_SOURCE);
     await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
 
     const originalHostText = await hostText();
@@ -331,7 +356,7 @@ describe("two-state: activation, deactivation restores the chip with zero drift"
     expect(await hostVersion()).toBe(originalVersion);
 
     // Deactivate: click the intro paragraph instead.
-    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${INTRO_BLOCK_INDEX + 1})`);
+    await clickBlock(INTRO_BLOCK_INDEX);
     await harness.page.waitForTimeout(50);
 
     await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
@@ -376,7 +401,7 @@ describe("edit locality on the marker line, then G-11 staleness once the host ve
   );
 
   test("afterward needsRefresh() is true and the edited block's chip does not reappear", async () => {
-    const selector = await mount(FIXTURE_SOURCE);
+    await mount(FIXTURE_SOURCE);
     await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
     const originalHostText = await hostText();
     expect(await needsRefresh()).toBe(false);
@@ -401,7 +426,7 @@ describe("edit locality on the marker line, then G-11 staleness once the host ve
     expect(await needsRefresh()).toBe(true);
 
     // Deactivate: click the trailing paragraph.
-    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${TRAIL_BLOCK_INDEX + 1})`);
+    await clickBlock(TRAIL_BLOCK_INDEX);
     await harness.page.waitForTimeout(50);
 
     // The just-edited block does NOT get its chip back -- the provider
@@ -558,7 +583,7 @@ describe("editing paragraphs immediately adjacent to a generated-view-anchoring 
   const PAGE_CHIP_INDEX_IN_CHIP_ORDER = 1;
 
   test("typing into the paragraph immediately BEFORE the generated-view-anchoring marker is a byte-exact local edit; the marker line (the generated view's own anchor) and the generated preview itself are completely untouched", async () => {
-    const selector = await mount(ADJACENT_SOURCE);
+    await mount(ADJACENT_SOURCE);
     await requireCounts(4, 2);
 
     // AP-21 liveness: the generated view is really there, with the exact
@@ -569,7 +594,7 @@ describe("editing paragraphs immediately adjacent to a generated-view-anchoring 
     const leadOffset = ADJACENT_SOURCE.indexOf("Lead text.");
     const withinBlock = 4; // lands between "Lead" and " text."
 
-    await harness.page.click(`${selector} .md-document > .md-block:nth-child(${LEAD_BLOCK_INDEX + 1})`);
+    await clickBlock(LEAD_BLOCK_INDEX);
     await harness.page.keyboard.press("Home");
     for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
     await harness.page.keyboard.type("Z");
@@ -598,16 +623,14 @@ describe("editing paragraphs immediately adjacent to a generated-view-anchoring 
   });
 
   test("typing into the paragraph immediately AFTER the generated-view-anchoring marker is likewise a byte-exact local edit, with the generated preview still intact", async () => {
-    const selector = await mount(ADJACENT_SOURCE);
+    await mount(ADJACENT_SOURCE);
     await requireCounts(4, 2);
     expect(await generatedPreviewText(PAGE_CHIP_INDEX_IN_CHIP_ORDER)).toBe(ADJACENT_GENERATED_HTML);
 
     const trailOffset = ADJACENT_SOURCE.indexOf("Trail text.");
     const withinBlock = 3; // lands between "Tra" and "il text."
 
-    await harness.page.click(
-      `${selector} .md-document > .md-block:nth-child(${TRAIL_ADJACENT_INDEX + 1})`,
-    );
+    await clickBlock(TRAIL_ADJACENT_INDEX);
     await harness.page.keyboard.press("Home");
     for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
     await harness.page.keyboard.type("Q");

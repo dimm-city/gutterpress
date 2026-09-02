@@ -53,6 +53,13 @@ import { renderChipPlan, renderCloseMarkerChip } from "./render-chip.ts";
 export interface CreateGutterpressBlockProviderOptions {
   readonly source: string;
   readonly ownerDocument: Document;
+  /**
+   * G-11 — LIVE staleness gate (see this file's header). Checked FIRST in
+   * `renderCustomBlock`, before any classification or DOM work, so a stale
+   * or D13-capped projection renders no chip at all and every block falls
+   * through to the fork's own default view.
+   */
+  readonly isStale?: () => boolean;
 }
 
 export interface GutterpressBlockProvider {
@@ -111,13 +118,34 @@ export function createGutterpressBlockProvider(
   opts: CreateGutterpressBlockProviderOptions,
 ): GutterpressBlockProvider {
   const index: BlockIndex = buildBlockIndex(projection, opts.source);
+  /** AST ids of this render's top-level blocks, from `groupBlocks`. */
+  let topLevel: ReadonlySet<number> = new Set();
 
   function renderCustomBlock(node: BlockAstNode, sourceText: string): CustomBlockRendering | undefined {
-    const marker = markerOf(node, sourceText);
+    // G-11 FIRST, before classification: a projection whose `sourceVersion`
+    // the document has moved past — or one D13 capped — describes a document
+    // that no longer exists, so it renders nothing at all rather than a chip
+    // whose generated preview would be showing outdated output.
+    if (opts.isStale?.()) return undefined;
+
+    // Only a TOP-LEVEL paragraph can be a marker: the pipeline's own
+    // `layout_transform` transforms nothing nested inside a blockquote or a
+    // list item, so a marker-looking line there is plain text in the book
+    // and must stay plain text here. `groupBlocks` is handed exactly the
+    // top-level blocks, and the fork calls it before it builds any view
+    // (fork Patch 3), so this set is populated by the time this runs.
+    const marker = topLevel.has(node.id) ? markerOf(node, sourceText) : null;
     if (marker) {
       if (marker.kind === "end-section") return renderCloseMarkerChip(opts.ownerDocument, sourceText);
+      // The projection is still the authority when it recognizes this exact
+      // line: it carries the pipeline's own generated views (a `@page`
+      // marker's chapter-opener, for instance), which text alone cannot
+      // produce. Text classification is the FALLBACK, for a marker the
+      // author has just typed or edited — the case the projection cannot
+      // describe because it predates the edit.
+      const match = matchProjectedBlock(index, sourceText);
       const kind = scopeKindOf(marker) as ProjectedBlockKind;
-      const block: ProjectedBlock = {
+      const block: ProjectedBlock = match?.block ?? {
         id: `marker:${kind}`,
         kind,
         from: 0,
@@ -125,7 +153,7 @@ export function createGutterpressBlockProvider(
         editMode: "structured",
         viewAttributes: markerElementAttributes(marker),
       };
-      return renderChipPlan(buildChipPlan(block, [], sourceText), opts.ownerDocument);
+      return renderChipPlan(buildChipPlan(block, match?.generatedPreviews ?? [], sourceText), opts.ownerDocument);
     }
 
     // Plugin regions and raw HTML still come from the projection (they need
@@ -138,6 +166,7 @@ export function createGutterpressBlockProvider(
   }
 
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
+    topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
     const markers = blocks.map((candidate) => markerOf(candidate.ast, candidate.sourceText));
     const groups: BlockGroupSpec[] = [];
     // The two context-dependent attribute rules markers.js applies while

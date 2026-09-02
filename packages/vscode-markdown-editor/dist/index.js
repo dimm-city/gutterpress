@@ -4729,6 +4729,17 @@ class sn extends oe {
     const o = new Map(
       e.children.filter((f) => f.kind === "block").map((f) => [f.view, f.isActive])
     ), r = s?.children, c = e.children.map((f) => f.view), { paired: a, unused: l } = nn(c, r ?? zr);
+    /* gp-fork: groupBlocks — the specs are computed BEFORE any block view is
+     * built, so a host that also implements `renderCustomBlock` already knows
+     * which blocks are top level by the time its first block is rendered.
+     * See PATCHES.md Patch 3. */
+    let gpCandidates = [], gpGroupSpecs;
+    if (t?.groupBlocks) {
+      e.children.forEach((f, m) => {
+        f.kind === "block" && gpCandidates.push({ index: m, ast: f.view.ast, sourceText: Es(f.view.ast), absoluteStart: f.absoluteStart });
+      });
+      gpGroupSpecs = t.groupBlocks(gpCandidates);
+    }
     let d;
     const u = c.map((f, m) => {
       const g = a.get(f);
@@ -4761,11 +4772,7 @@ class sn extends oe {
      * block changes. See PATCHES.md Patch 3. */
     let gpMountNodes = u.map((f) => f.mountNode), gpWrappers = s?._gpWrappers;
     if (t?.groupBlocks) {
-      const gpCandidates = [];
-      e.children.forEach((f, m) => {
-        f.kind === "block" && gpCandidates.push({ index: m, ast: f.view.ast, sourceText: Es(f.view.ast), absoluteStart: f.absoluteStart });
-      });
-      const gpGroups = t.groupBlocks(gpCandidates) ?? [];
+      const gpGroups = gpGroupSpecs ?? [];
       if (gpGroups.length > 0) {
         const gpResult = gpMountGroups(u, gpCandidates, gpGroups, gpWrappers);
         gpMountNodes = gpResult.nodes, gpWrappers = gpResult.wrappers;

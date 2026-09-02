@@ -94,6 +94,7 @@ export function mountGutterpressEditor(
   const provider = createGutterpressBlockProvider(options.projection, {
     source: host.getSnapshot().text,
     ownerDocument: doc,
+    isStale,
   });
 
   const mount = mountEditor(container, host, {

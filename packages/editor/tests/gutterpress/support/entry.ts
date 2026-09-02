@@ -150,7 +150,19 @@ function requireHost(): MemoryDocumentHost {
 function blockElements(): HTMLElement[] {
   const root = document.getElementById(CONTAINER_ID);
   if (!root) return [];
-  return Array.from(root.querySelectorAll<HTMLElement>(".md-document > .md-block"));
+  const doc = root.querySelector(".md-document");
+  if (!doc) return [];
+  // TOP-LEVEL blocks. A Gutterpress marker scope mounts its blocks inside a
+  // container element (`.md-block-group`, fork Patch 3), so "top level" is no
+  // longer "direct child of `.md-document`" — but it is still not "any
+  // descendant", which would also pick up the blocks a blockquote or a list
+  // item nests inside itself. Only container wrappers may sit in between.
+  return Array.from(doc.querySelectorAll<HTMLElement>(".md-block")).filter((block) => {
+    for (let el = block.parentElement; el && el !== doc; el = el.parentElement) {
+      if (!el.classList.contains("md-block-group")) return false;
+    }
+    return true;
+  });
 }
 
 function chipElements(): HTMLElement[] {

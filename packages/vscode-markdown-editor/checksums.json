@@ -30,7 +30,7 @@
     "src/view/themes/vscode-github.css": "8b857d871cdd157e95fbde4bb3e23717bc638d72666fd6301af2b4dc787b453f"
   },
   "patched": {
-    "dist/index.js": "f09d71e82d1419dba2dec8aaa7780c2c1447f35c402a4c0c28ef094491fb6352",
+    "dist/index.js": "990dc6f2994bd00f28dae381fca26304d6b47bdb8243eb7b5f5c02a1bd49d20d",
     "dist/index.d.ts": "9ec8c85760b5692b2f3c110f328d0a238a013845bd0e1979d85f3717c474116e"
   },
   "upstreamBaseline": {
