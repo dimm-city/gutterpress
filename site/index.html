@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gutterpress</title>
+    <meta
+      name="description"
+      content="Write a book in Markdown, lay it out with CSS, and export a print-ready PDF. A desktop app and CLI built on Chromium's CSS Paged Media engine."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,650;1,8..60,400&display=swap"
+    />
+    <link rel="stylesheet" href="./site.css" />
+  </head>
+  <body>
+    <header class="frame masthead">
+      <a class="wordmark" href="./">Gutterpress <small>Markdown &amp; CSS, typeset for print</small></a>
+      <nav aria-label="Site">
+        <ul class="nav">
+          <li><a href="https://github.com/dimm-city/gutterpress/releases/latest">Download</a></li>
+          <li><a href="https://github.com/dimm-city/gutterpress/tree/main/examples/gutterpress-user-guide">User guide</a></li>
+          <li><a href="https://github.com/dimm-city/gutterpress/blob/main/packages/cli/README.md">CLI</a></li>
+          <li><a href="./privacy/">Privacy</a></li>
+          <li><a href="https://github.com/dimm-city/gutterpress">GitHub</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="frame">
+      <section class="hero">
+        <h1>Write a book in Markdown. Lay it out with CSS. Export a <em>print-ready</em> PDF.</h1>
+        <p>
+          Gutterpress turns a folder of markdown files into a professionally typeset PDF: the kind you
+          send to an offset printer or a print-on-demand service. It uses a native Chromium print engine
+          and the W3C CSS Paged Media spec, so page breaks, running headers, columns, page numbers, and
+          bleed are handled for you.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/dimm-city/gutterpress/releases/latest">Download the desktop app</a>
+          <a class="button" href="https://github.com/dimm-city/gutterpress/tree/main/examples/gutterpress-user-guide">Read the user guide</a>
+        </div>
+      </section>
+
+      <section class="sheet" aria-labelledby="first-book">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="eyebrow">Your first book</span>
+        <h2 id="first-book">Three steps, no configuration</h2>
+        <ol class="steps">
+          <li>
+            <h3>Make a folder</h3>
+            <p>A couple of markdown files is enough.</p>
+            <pre><code>my-book/
+├─ chapter-01.md
+└─ chapter-02.md</code></pre>
+          </li>
+          <li>
+            <h3>Open it in Gutterpress</h3>
+            <p>Click <strong>Open Folder</strong>. A paginated preview updates live as you edit.</p>
+          </li>
+          <li>
+            <h3>Save PDF</h3>
+            <p>Done. Ready for a printer, a print-on-demand service, or publishing straight to Google Drive.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="band" aria-labelledby="what">
+        <span class="eyebrow">What it does</span>
+        <h2 id="what">Print production, from a text editor</h2>
+        <ul class="features">
+          <li><strong>Live preview</strong> with paginated layout: your book renders the way it will print, while you edit.</li>
+          <li><strong>PDF export</strong> from the app, or from the <code>gutterpress</code> CLI in scripts and CI.</li>
+          <li><strong>Print-ready output</strong>: PDF/X with CMYK and an ICC profile for offset printers, PDF/A for archives.</li>
+          <li><strong>Custom CSS for everything</strong>: typography, page size, margins, columns, running headers and footers, page numbers, bleed.</li>
+          <li><strong>Plugins</strong> for custom markdown: use any of hundreds of <code>markdown-it</code> plugins, or write your own.</li>
+          <li><strong>Validation</strong> before and after a build: image DPI, color space, font embedding, structural PDF checks.</li>
+          <li><strong>Publishing</strong> to itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, and Google Drive.</li>
+        </ul>
+      </section>
+
+      <section class="band" aria-labelledby="downloads">
+        <span class="eyebrow">Desktop app</span>
+        <h2 id="downloads">Self-contained, nothing else to install</h2>
+        <p class="note">
+          Every download is on the <a href="https://github.com/dimm-city/gutterpress/releases/latest">latest release</a>,
+          with SHA-256 checksums. The app bundles its own Chromium; no Node, Bun, or browser setup is needed.
+        </p>
+        <div class="table-scroll">
+          <table class="downloads">
+            <thead>
+              <tr>
+                <th scope="col">Platform</th>
+                <th scope="col">File</th>
+                <th scope="col">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Windows</td>
+                <td><code>Gutterpress-setup-win-x64.exe</code></td>
+                <td>Installer. The versioned <code>.zip</code> is a portable extract-and-run copy.</td>
+              </tr>
+              <tr>
+                <td>macOS, Apple Silicon</td>
+                <td><code>Gutterpress-&lt;version&gt;-arm64.dmg</code></td>
+                <td>Open the disk image, drag the app to Applications.</td>
+              </tr>
+              <tr>
+                <td>macOS, Intel</td>
+                <td><code>Gutterpress-&lt;version&gt;-x64.dmg</code></td>
+                <td>Same as above.</td>
+              </tr>
+              <tr>
+                <td>Linux</td>
+                <td><code>Gutterpress-&lt;version&gt;.AppImage</code></td>
+                <td><code>chmod +x</code> the file, then run it.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          The downloads are unsigned for now. Each release includes Gatekeeper and SmartScreen instructions;
+          see <a href="https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md">installing and verifying</a>.
+        </p>
+      </section>
+
+      <section class="band" aria-labelledby="cli">
+        <span class="eyebrow">Command line</span>
+        <h2 id="cli">The same engine, for scripts and CI</h2>
+        <div class="installs">
+          <div>
+            <h3>Homebrew (macOS and Linux)</h3>
+            <pre><code>brew tap dimm-city/gutterpress https://github.com/dimm-city/gutterpress.git
+brew install dimm-city/gutterpress/gutterpress</code></pre>
+          </div>
+          <div>
+            <h3>Scoop (Windows)</h3>
+            <pre><code>scoop bucket add gutterpress https://github.com/dimm-city/gutterpress.git
+scoop install gutterpress/gutterpress</code></pre>
+          </div>
+          <div>
+            <h3>npm</h3>
+            <pre><code>npm install -g gutterpress</code></pre>
+            <p>Node.js 22 or newer.</p>
+          </div>
+          <div>
+            <h3>Standalone binaries and Docker</h3>
+            <p>
+              Single-file binaries for Linux, macOS, and Windows are on every release, and a
+              <a href="https://github.com/dimm-city/gutterpress/blob/main/docs/docker.md">Docker image</a>
+              ships with all the print tools preinstalled.
+            </p>
+          </div>
+        </div>
+        <p class="note">
+          The CLI renders PDFs through a Chromium-based browser on the machine it runs on; some PDF/X and
+          validation features also use Ghostscript or qpdf. See
+          <a href="https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md">System setup</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="frame colophon">
+      <span>Gutterpress is open source, by <a href="https://github.com/dimm-city">Dimm City</a>.</span>
+      <span>
+        <a href="./privacy/">Privacy policy</a> ·
+        <a href="https://github.com/dimm-city/gutterpress/blob/main/CHANGELOG.md">Changelog</a> ·
+        <a href="https://github.com/dimm-city/gutterpress/issues">Issues</a>
+      </span>
+    </footer>
+  </body>
+</html>

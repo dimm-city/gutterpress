@@ -113,6 +113,11 @@ connect for every user of that build:
    project README as homepage, and a new `PRIVACY.md` (published via GitHub
    Pages) as the privacy policy, covering the `drive.file` scope, local-only
    token storage, and the absence of any Gutterpress server in the data path.
+   Published by `.github/workflows/pages.yml`, which renders the root
+   `PRIVACY.md` (the one source) into
+   <https://dimm-city.github.io/gutterpress/privacy/>; the site's landing
+   page, <https://dimm-city.github.io/gutterpress/>, serves as the homepage
+   URL.
 5. **Publish the consent screen to *In production*** once basic (brand)
    verification clears the "unverified app" interstitial. Until then,
    `Testing` mode works for development with two caveats to plan around:
