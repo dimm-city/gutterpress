@@ -15,6 +15,7 @@ import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
 import { GUTTERPRESS_EDITOR_CSS } from "./editor-css.ts";
 import { decorateAttrsTrailer } from "./attrs.ts";
+import { hideInlineHtmlTags } from "./inline-html.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -107,7 +108,13 @@ export function mountGutterpressEditor(
     groupBlocks: provider.groupBlocks,
     themeClassName: options.themeClassName,
     showReadonlyToggle: options.showReadonlyToggle,
-    decorateInactiveBlock: decorateAttrsTrailer,
+    decorateInactiveBlock: (element, node, sourceText) => {
+      decorateAttrsTrailer(element, node, sourceText);
+      // Both halves of "show what the book shows": the attrs trailer applied
+      // rather than printed, and raw inline tags hidden rather than wrapped
+      // onto a line the printed page does not have.
+      hideInlineHtmlTags(element);
+    },
     afterDocumentMount: options.afterDocumentMount,
   });
 

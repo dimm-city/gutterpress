@@ -97,6 +97,7 @@ const app = await electron.launch({
   timeout: 120_000,
 });
 
+const startedWholeRun = Date.now();
 const rows = [];
 let failures = 0;
 try {
@@ -113,13 +114,47 @@ try {
   // correctly shows "Select a file from the list to start editing", and a
   // gate that waits for a sheet there waits forever. Whether a project
   // auto-selects its first chapter is not this gate's subject.
-  await page.locator(".file-item").first().click();
+  // The first `.file-item` may be a FOLDER (the field guide lists
+  // `art-unplaced/` and `images/` before its chapters), and clicking one
+  // opens no document at all — the gate then waits out its whole timeout on
+  // an editor that was never given a file.
+  await page.locator(".file-item").filter({ hasText: /\.md$/i }).first().click();
   await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
 
   // Read mode: the locked editor is the one that must match the page.
   await page.click('button[aria-label="Read"]');
   await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
-  await sleep(2500);
+  await settled();
+
+  /**
+   * Wait for the editor to STOP re-paginating, rather than sleeping past it.
+   *
+   * The paged surface publishes every layout on the document element
+   * (`data-gp-layout`, `$lib/editor/paged-surface`), and it lays out more
+   * than once per document by design: once on render, again when the fonts
+   * arrive, again when the art loads. This waits for that counter to hold
+   * still, which is both faster than a fixed sleep and actually correct —
+   * the old fixed waits were minutes across a real book and still only a
+   * guess about the slowest of them.
+   */
+  async function settled(quietMs = 400, timeoutMs = 60_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = -1;
+    let stableSince = 0;
+    while (Date.now() < deadline) {
+      const now = await page
+        .evaluate(() => Number(document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? -1))
+        .catch(() => -1);
+      if (now !== last) {
+        last = now;
+        stableSince = Date.now();
+      } else if (now >= 0 && Date.now() - stableSince >= quietMs) {
+        return now;
+      }
+      await sleep(100);
+    }
+    return last;
+  }
 
   /** The preview's book frame — re-acquired after a mode switch, which can swap it. */
   async function bookFrame() {
@@ -177,28 +212,29 @@ try {
       log(`skip ${chapter}: not part of the built book`);
       continue;
     }
+    const startedAt = Date.now();
     await page.locator(".file-item", { hasText: chapter }).first().click();
     await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 60_000 });
     // A file switch remounts the editor, so re-assert the lock rather than
     // assuming it survived; the mode control is idempotent.
     const locked = async () => (await page.locator(".rich-editor-host .md-editor.md-readonly").count()) > 0;
-    for (let attempt = 0; attempt < 3 && !(await locked()); attempt++) {
+    if (!(await locked())) {
       await page.click('button[aria-label="Read"]').catch(() => {});
-      await sleep(1500);
+      await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
     }
-    if (!(await locked())) throw new Error(`${chapter}: the editor never locked`);
-    await sleep(2200);
+    await settled();
 
     const editorPages = await page.evaluate(
       () => document.querySelectorAll(".rich-editor-host .gp-sheet").length,
     );
+    const tookMs = Date.now() - startedAt;
     const ok = editorPages === book.pages;
     rows.push({ chapter, editorPages, bookPages: book.pages, ok });
-    if (ok) log(`ok   ${chapter}: ${editorPages} page(s)`);
+    if (ok) log(`ok   ${chapter}: ${editorPages} page(s) [${tookMs}ms]`);
     else {
       failures += 1;
       console.error(
-        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s), the book into ${book.pages}`,
+        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s), the book into ${book.pages} [${tookMs}ms]`,
       );
     }
   }
@@ -208,6 +244,6 @@ try {
   rmSync(fakeHome, { recursive: true, force: true });
 }
 
-log(`${rows.filter((r) => r.ok).length}/${rows.length} chapter(s) agree`);
+log(`${rows.filter((r) => r.ok).length}/${rows.length} chapter(s) agree in ${Math.round((Date.now() - startedWholeRun) / 1000)}s`);
 if (failures > 0) process.exit(1);
 process.exit(0);

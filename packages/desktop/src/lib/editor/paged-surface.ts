@@ -76,6 +76,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   let resize: ResizeObserver | undefined;
   let fontsSettled = false;
   let disposed = false;
+  let layoutCount = 0;
 
   /**
    * Scale the whole stage down when a page is wider than the pane, exactly
@@ -117,6 +118,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     applySpreadMode(layout.strips, false);
     decoration?.redraw();
     pages = layout.totalPages;
+    announce(documentElement);
     for (const listener of listeners) listener(pages);
   }
 
@@ -141,6 +143,25 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       img.addEventListener("load", settle, { once: true });
       img.addEventListener("error", settle, { once: true });
     }
+  }
+
+  /**
+   * Publish the pagination that just finished, on the document element.
+   *
+   * Anything watching from outside — a test, most of all — otherwise has no
+   * way to know the editor has settled, because pagination re-runs when
+   * fonts arrive, when art loads, and when the pane resizes. The only
+   * alternative is to sleep longer than the slowest of those and hope, which
+   * is exactly what the parity gate did: a fixed wait on every chapter of a
+   * book, minutes of them, and still a guess.
+   *
+   * `data-gp-pages` is the page count; `data-gp-layout` counts LAYOUTS, so a
+   * re-pagination landing on the same count is still observable.
+   */
+  function announce(documentElement: HTMLElement): void {
+    layoutCount += 1;
+    documentElement.dataset["gpPages"] = String(pages);
+    documentElement.dataset["gpLayout"] = String(layoutCount);
   }
 
   function run(documentElement: HTMLElement): void {
@@ -176,6 +197,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       if (host) resize.observe(host);
     }
     pages = layout.totalPages;
+    announce(documentElement);
     for (const listener of listeners) listener(pages);
   }
 

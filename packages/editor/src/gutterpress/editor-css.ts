@@ -123,6 +123,13 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
+/* An inline HTML tag the book renders rather than prints (see inline-html.ts).
+   Hidden in every mode a block is inactive in, exactly like the fork's own
+   markdown markers: the text between the tags stays, the tags do not take a
+   line the printed page has no room for. */
+.gp-inline-html-tag {
+  display: none;
+}
 /* Locked (reading) view: the fork keeps a hidden code fence's vertical
    footprint (visibility: hidden, not display: none) so a code block does not
    change height when the author clicks into it and the real fence lines appear.
