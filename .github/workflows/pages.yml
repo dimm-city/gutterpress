@@ -1,0 +1,69 @@
+name: Pages
+
+# Publishes the project site — the landing page and the privacy policy — to
+# GitHub Pages. The repository's Pages source is "GitHub Actions", so this
+# workflow's deploy job is the publish step; nothing is committed to a branch.
+#
+# The privacy policy is rendered from the root PRIVACY.md by tools/build-site.mjs
+# (one source, never a copy), and it is why the site exists: Google's OAuth
+# consent screen needs it at a stable public URL (ADR 0011). Its address is
+#   https://dimm-city.github.io/gutterpress/privacy/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "PRIVACY.md"
+      - "tools/build-site.mjs"
+      - "tools/build-site.test.mjs"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a queued newer deploy still runs after the current one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # markdown-it is resolved from packages/cli's dependency tree, so the
+      # workspace install is the only setup the build needs.
+      - uses: ./.github/actions/bun
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check the site build
+        run: node tools/build-site.test.mjs
+
+      - name: Build site
+        run: node tools/build-site.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
