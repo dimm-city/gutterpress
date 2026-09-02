@@ -120,6 +120,29 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     for (const listener of listeners) listener(pages);
   }
 
+  /**
+   * Re-paginate once the document's art has actually loaded.
+   *
+   * An image with no intrinsic size yet measures as a placeholder — near
+   * zero — so a page count taken before it loads is a page count for a
+   * document with its plates missing. This is the same problem the font
+   * wait above solves, and the same answer: let it settle, then lay it out
+   * again. Both a load and an error settle it; a broken reference is a real,
+   * final size too.
+   */
+  function awaitImages(documentElement: HTMLElement): void {
+    const pending = [...documentElement.querySelectorAll("img")].filter((img) => !img.complete);
+    if (pending.length === 0) return;
+    let left = pending.length;
+    const settle = (): void => {
+      if (--left === 0) refresh(documentElement);
+    };
+    for (const img of pending) {
+      img.addEventListener("load", settle, { once: true });
+      img.addEventListener("error", settle, { once: true });
+    }
+  }
+
   function run(documentElement: HTMLElement): void {
     const stage = documentElement.parentElement;
     if (stage) {
@@ -144,6 +167,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
           // No font API, or a face failed to load — what is on screen stands.
         });
     }
+    awaitImages(documentElement);
     if (stage && !resize) {
       // A resize changes the fit zoom, which changes how much fits on a
       // page — so the whole pagination is redone, not just the scale.

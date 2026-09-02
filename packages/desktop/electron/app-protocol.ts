@@ -24,9 +24,28 @@ import { protocol } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { isWithinAnyRootCanonical } from "./server-bridge/fs-guard";
 
 /** Only this app:// host is ever served — matches navigation-policy.ts's `APP_ORIGIN` ("app://local"), keeping one consistent origin for the whole security model (CSP, IPC sender checks, will-navigate). */
 export const APP_HOST = "local";
+
+/**
+ * URL prefix under which the OPEN PROJECT's own files are readable.
+ *
+ * The editor lays a chapter out with the book's own CSS, and that chapter
+ * refers to its art the way the book does — `images/chapter-00/art.png`,
+ * relative to the project. Rendered inside the app's own origin those
+ * resolve to `app://local/images/…` and 404, so every image in the editor
+ * collapsed to a broken-image box: a 502px plate became 24px, and the
+ * editor paginated a book it was not actually showing.
+ *
+ * Authorization is NOT a new source of truth here — the handler resolves
+ * against the same host-owned `projectRoots()` the fs IPC guard uses, and
+ * re-checks containment canonically (project content is user-writable, so
+ * a symlink out of the book is a real threat model here in a way it is not
+ * for the packaged build directory).
+ */
+export const PROJECT_ASSET_PREFIX = "/__project/";
 
 /**
  * Where the static SvelteKit build lives, packaged vs dev. Pure and
@@ -168,7 +187,33 @@ export function mimeTypeFor(filePath: string): string {
  * the privileged-scheme registration (`protocol.registerSchemesAsPrivileged`)
  * stays in main.ts, at its original point before `app.whenReady`.
  */
-export function registerAppProtocol(buildDir: string): void {
+export function registerAppProtocol(
+  buildDir: string,
+  projectRoots: () => readonly string[] = () => [],
+): void {
+  /**
+   * Serve one file from the open project (see {@link PROJECT_ASSET_PREFIX}).
+   * Resolved against the active book root, then canonically contained
+   * against every host-owned root before a single byte is read.
+   */
+  async function projectAsset(pathname: string): Promise<Response> {
+    const roots = projectRoots();
+    const bookRoot = roots[0];
+    if (!bookRoot) return new Response("Not Found", { status: 404 });
+    const relative = pathname.slice(PROJECT_ASSET_PREFIX.length);
+    const resolved = resolveAssetPath(bookRoot, relative);
+    if (resolved === null) return new Response("Not Found", { status: 404 });
+    if (!(await isWithinAnyRootCanonical(resolved, roots))) {
+      return new Response("Not Found", { status: 404 });
+    }
+    try {
+      const data = await readFile(resolved);
+      return new Response(data, { headers: { "Content-Type": mimeTypeFor(resolved) } });
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
+  }
+
   protocol.handle("app", async (req) => {
     const url = new URL(req.url);
     // Keep one consistent origin ("app://local") for the whole security
@@ -177,6 +222,9 @@ export function registerAppProtocol(buildDir: string): void {
     // otherwise a well-formed request this handler would receive.
     if (url.hostname !== APP_HOST) {
       return new Response("Not Found", { status: 404 });
+    }
+    if (url.pathname.startsWith(PROJECT_ASSET_PREFIX)) {
+      return projectAsset(decodeURIComponent(url.pathname));
     }
     const resolved = resolveAssetPath(buildDir, url.pathname);
     if (resolved === null) {

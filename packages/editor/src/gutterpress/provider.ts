@@ -89,6 +89,8 @@ interface ParsedMarker {
   readonly kind: string;
   readonly name: string | null;
   readonly attrs: Record<string, string>;
+  /** A kind core does not own — a project plugin's own branded marker. */
+  readonly unknownKind?: boolean;
 }
 
 /**
@@ -98,11 +100,25 @@ interface ParsedMarker {
  * keystroke and a marker must keep rendering as a marker through all of
  * them. A marker is a single-line paragraph whose first character is `@`.
  */
-function markerOf(node: { readonly kind: string } | undefined, sourceText: string): ParsedMarker | null {
-  if (node && node.kind !== "paragraph") return null;
-  const line = sourceText.trim();
-  if (!line.startsWith("@") || line.includes("\n")) return null;
-  return parseMarkerLine(line) as ParsedMarker | null;
+function markersOf(node: { readonly kind: string } | undefined, sourceText: string): ParsedMarker[] {
+  if (node && node.kind !== "paragraph") return [];
+  const lines = sourceText.trim().split("\n");
+  if (!lines.length || !lines[0]!.startsWith("@")) return [];
+  const markers: ParsedMarker[] = [];
+  for (const line of lines) {
+    // `allowUnknownKinds`: a project plugin's own marker (`@lede`, `@toc`) is
+    // layout syntax the book consumes, exactly like a core one. Classifying
+    // it as a marker is what keeps it off the editor's page — as body text
+    // it adds a line the printed page does not have. Only core kinds get
+    // structure (containers, breaks) below; an unknown kind gets a chip and
+    // nothing else, because core cannot know what the plugin did with it.
+    const parsed = parseMarkerLine(line.trim(), { allowUnknownKinds: true }) as ParsedMarker | null;
+    // EVERY line has to be a marker, or this is prose that merely starts
+    // with one.
+    if (!parsed) return [];
+    markers.push(parsed);
+  }
+  return markers;
 }
 
 const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue" ? "section" : marker.kind);
@@ -134,9 +150,16 @@ export function createGutterpressBlockProvider(
     // and must stay plain text here. `groupBlocks` is handed exactly the
     // top-level blocks, and the fork calls it before it builds any view
     // (fork Patch 3), so this set is populated by the time this runs.
-    const marker = topLevel.has(node.id) ? markerOf(node, sourceText) : null;
+    // The pipeline reads markers LINE by line, so two of them on consecutive
+    // lines are two markers — while this editor's parser sees one paragraph.
+    // Rejecting a multi-line block left `@page`/`@section` written without a
+    // blank line between them printed as body text on the editor's page.
+    const markers = topLevel.has(node.id) ? markersOf(node, sourceText) : [];
+    const marker = markers[0];
     if (marker) {
-      if (marker.kind === "end-section") return renderCloseMarkerChip(opts.ownerDocument, sourceText);
+      if (markers.length === 1 && marker.kind === "end-section") {
+        return renderCloseMarkerChip(opts.ownerDocument, sourceText);
+      }
       // The projection is still the authority when it recognizes this exact
       // line: it carries the pipeline's own generated views (a `@page`
       // marker's chapter-opener, for instance), which text alone cannot
@@ -144,7 +167,7 @@ export function createGutterpressBlockProvider(
       // author has just typed or edited — the case the projection cannot
       // describe because it predates the edit.
       const match = matchProjectedBlock(index, sourceText);
-      const kind = scopeKindOf(marker) as ProjectedBlockKind;
+      const kind = (marker.unknownKind ? "plugin-marker" : scopeKindOf(marker)) as ProjectedBlockKind;
       const block: ProjectedBlock = match?.block ?? {
         id: `marker:${kind}`,
         kind,
@@ -167,7 +190,11 @@ export function createGutterpressBlockProvider(
 
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
     topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
-    const markers = blocks.map((candidate) => markerOf(candidate.ast, candidate.sourceText));
+    /** Every marker each top-level block carries, in source order. */
+    const markers = blocks.map((candidate) => markersOf(candidate.ast, candidate.sourceText));
+    /** Does any marker in block `i` close a scope of `kind`? */
+    const closesAt = (i: number, closers: ReadonlySet<string>): boolean =>
+      markers[i]!.some((m) => !m.unknownKind && closers.has(scopeKindOf(m)));
     const groups: BlockGroupSpec[] = [];
     // The two context-dependent attribute rules markers.js applies while
     // walking (see `markerElementAttributes`'s doc): pages inherit the open
@@ -175,10 +202,11 @@ export function createGutterpressBlockProvider(
     let chapterCounterClass = "";
     let lastSectionAttrs: Record<string, string> | undefined;
 
-    markers.forEach((marker, i) => {
-      if (!marker) return;
+    markers.forEach((blockMarkers, i) => {
+      for (const marker of blockMarkers) {
+      if (marker.unknownKind) continue;
       const kind = scopeKindOf(marker);
-      if (!CONTAINER_KINDS.has(kind)) return;
+      if (!CONTAINER_KINDS.has(kind)) continue;
 
       let attrs: Record<string, string> = { ...markerElementAttributes(marker) };
       if (marker.kind === "continue" && lastSectionAttrs) {
@@ -194,16 +222,19 @@ export function createGutterpressBlockProvider(
       const closers = CLOSED_BY[kind as ContainerKind];
       let end = i + 1;
       while (end < blocks.length) {
-        const other = markers[end];
-        if (other && closers.has(scopeKindOf(other))) break;
-        if (kind === "section" && other?.kind === "end-section") {
+        if (closesAt(end, closers)) break;
+        if (kind === "section" && markers[end]!.some((m) => m.kind === "end-section")) {
           end += 1; // the explicit closer belongs to the section it closes
           break;
         }
         end += 1;
       }
       const { class: className, ...attributes } = attrs;
+      // The key carries the KIND as well as the block: one block can open
+      // two scopes (`@page` and `@section` on consecutive lines), and two
+      // groups sharing a key would be one wrapper reused for both.
       groups.push({ start: i, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
+      }
     });
     return groups;
   }

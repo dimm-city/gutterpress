@@ -32,14 +32,35 @@ export function parseAttrsTrailer(sourceText: string): { readonly attrs: Record<
   return { attrs, classes, id, trailer: m[0] };
 }
 
+/**
+ * An image trailer binds to the IMAGE, not to the paragraph around it.
+ *
+ * markdown-it-attrs attaches `{...}` to the inline element it directly
+ * follows, so `![art](a.png){.gp-pin .gp-bottom}` pins the IMAGE — and the
+ * pin takes it out of flow, which is why the paragraph around it is zero
+ * height in the book. Applying those classes to the paragraph instead left
+ * the image in flow at full height: on the field guide's first chapter one
+ * plate measured 581px in the editor against 260px in the book, and the two
+ * paginated differently from that point on.
+ *
+ * A trailer separated from the image by whitespace is a BLOCK trailer (the
+ * author wrote it as a line-level annotation), which is the other spelling
+ * the same book uses.
+ */
+const IMAGE_TRAILER_RE = /!\[[^\]]*\]\([^)]*\)\{[^{}\n]*\}$/;
+
 /** `decorateInactiveBlock` for headings and paragraphs: apply the trailer, hide its text. */
 export function decorateAttrsTrailer(element: HTMLElement, node: { readonly kind: string }, sourceText: string): void {
   if (node.kind !== "heading" && node.kind !== "paragraph") return;
   const parsed = parseAttrsTrailer(sourceText);
   if (!parsed) return;
-  if (parsed.id) element.id = parsed.id;
-  for (const cls of parsed.classes) element.classList.add(cls);
-  for (const [k, v] of Object.entries(parsed.attrs)) element.setAttribute(k, v);
+  const image = IMAGE_TRAILER_RE.test(sourceText.trimEnd())
+    ? element.querySelector("img")
+    : null;
+  const target: HTMLElement = image ?? element;
+  if (parsed.id) target.id = parsed.id;
+  for (const cls of parsed.classes) target.classList.add(cls);
+  for (const [k, v] of Object.entries(parsed.attrs)) target.setAttribute(k, v);
 
   // Remove the trailer from the LAST text node(s). The text before it keeps
   // its node identity, so the fork's click-to-caret mapping for that text

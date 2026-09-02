@@ -44,6 +44,7 @@
   import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
   import type { GutterpressProjection } from "gutterpress/render";
   import { createPagedSurface } from "$lib/editor/paged-surface";
+  import { projectAssetBase, resolveProjectAssets } from "$lib/editor/project-assets";
   import { reportError } from "$lib/diagnostics/report";
 
   let {
@@ -54,6 +55,8 @@
     onDiagnostic,
     paged = false,
     onPaginated,
+    projectDir = null,
+    filePath = null,
   }: {
     /**
      * The document this mount reads/writes through — the D3/D7
@@ -81,9 +84,20 @@
     /** Paginate the live document with the book's own `@page` geometry (`$lib/editor/paged-surface`). */
     paged?: boolean;
     onPaginated?: (totalPages: number) => void;
+    /** The open project's root, so the document's own relative art resolves (`$lib/editor/project-assets`). */
+    projectDir?: string | null;
+    /** The open document's path, so art relative to a chapter in a subfolder resolves the way the book resolves it. */
+    filePath?: string | null;
   } = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
+
+  // Derived, not captured: Svelte would otherwise freeze the value this
+  // component saw at construction. A file switch remounts this component
+  // anyway (the host is rebuilt and keyed on), so in practice it is read
+  // once per document — but a captured prop is a bug waiting for the first
+  // time that stops being true.
+  const assetBase = $derived(projectAssetBase(projectDir, filePath));
 
   // Set once in onMount, cleared once on unmount — a plain instance field,
   // not `$state` (see the header: this component owns no REACTIVE state;
@@ -133,7 +147,13 @@
           themeClassName: extraCss ? null : undefined,
           // Read/Edit is a workspace decision, not a per-editor toggle.
           showReadonlyToggle: false,
-          afterDocumentMount: surface?.onDocumentMount,
+          afterDocumentMount: (documentElement: HTMLElement) => {
+            // Art first, pagination second: an unresolved image measures as
+            // a 24px broken-image box, and a page count taken from that is
+            // a page count for a document the author is not reading.
+            resolveProjectAssets(documentElement, assetBase);
+            surface?.onDocumentMount(documentElement);
+          },
         })
       : mountEditor(container, host, { readonly, extraCss, onDiagnostic, showReadonlyToggle: false });
     mountHandle = mount;

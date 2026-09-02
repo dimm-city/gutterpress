@@ -162,7 +162,7 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function parseMarkerLine(line) {
+export function parseMarkerLine(line, options = {}) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
 
@@ -204,7 +204,25 @@ export function parseMarkerLine(line) {
   const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@continue" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);
 
-  if (!KNOWN_KINDS.includes(kind)) return null;
+  // `allowUnknownKinds` accepts a marker whose KIND core does not own.
+  //
+  // The marker grammar is the authoring surface project plugins are told to
+  // extend (CLAUDE.md §5), and they do: the Dimm City plugin inlines this
+  // exact grammar and adds `@lede`, `@toc`, `@sidebar`. Core must keep
+  // rejecting those — it cannot transform a marker it knows nothing about,
+  // and a bare `@word` has to stay ordinary text in a plain Markdown
+  // document — but a HOST that only needs to CLASSIFY a line does not have
+  // that constraint. The editor is that host: a plugin's marker line is
+  // layout syntax the book never prints, so showing it as body text puts a
+  // line on the editor's page that the printed page does not have, and the
+  // two paginate differently for every marker in the book.
+  //
+  // Constrained to a marker-SHAPED head (`@lower-case-word`) so an ordinary
+  // paragraph opening with an `@` handle is not swept up by it.
+  if (!KNOWN_KINDS.includes(kind)) {
+    if (!options.allowUnknownKinds || !/^[a-z][a-z0-9-]*$/.test(kind)) return null;
+    return { kind, name: null, attrs: {}, unknownKind: true };
+  }
 
   if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section' || kind === 'continue') {
     return { kind, name: null, attrs: {} };

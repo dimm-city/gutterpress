@@ -3700,6 +3700,8 @@
                       onDiagnostic={showRichDiagnostic}
                       paged={true}
                       readonly={mode === "viewer"}
+                      projectDir={lifecycle.currentDir}
+                      filePath={editorFilePath}
                     />
                   {/key}
                 {:else if richEditorModuleFailed}

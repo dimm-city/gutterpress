@@ -1887,7 +1887,10 @@ app.whenReady().then(async () => {
   }
   // Registered unconditionally (harmless in dev mode, where the window never
   // navigates to app://) — matches the pre-P5d registerAppProtocol call site.
-  registerAppProtocol(buildDir);
+  // The open project's own files are readable under app://local/__project/
+  // so the editor can show a chapter's art. Same roots the fs IPC guard
+  // authorizes against — never a second source of truth.
+  registerAppProtocol(buildDir, () => fsGuardImpl.projectRoots());
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;
