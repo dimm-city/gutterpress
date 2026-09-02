@@ -560,47 +560,86 @@ Ran 18 tests across 1 file. [5.63s]
 
 ### 4.3 `check:no-preview-editing` — repo-wide re-run
 
-Same identifier set the deletion ledger's SFE-P4 section used
-(`InlineEditController|CommitEngine|commitRangePatch|beginBlockEdit|endBlockEdit`),
-widened to the full repo (not just `packages/*/src`) per this run's
-instruction to run it repo-wide:
+Round-1 repair correction: the version of this section previously here
+used only 5 of the 5 deleted preview-mutation identifiers this command is
+supposed to cover — `InlineEditController|CommitEngine|commitRangePatch|
+beginBlockEdit|endBlockEdit` — which omits all three deleted protocol
+message names (`blockEditRequested`, `blockEditFinished`,
+`blockEditStateChanged`). It also mis-stated the per-directory breakdown
+(claiming 17 `docs/` hits, all in two files) and misapplied the P4 D15
+ruling as two residual classes where the ruling itself
+(`docs/plans/source-first-editor/runs/SFE-P4.md`, "D15 residuals ruling",
+quoted in the deletion ledger's SFE-P4 section) states three — the third
+being `docs/plans/**` historical/planning documents, which is where the
+overwhelming majority of hits actually land. Both defects are fixed below
+by re-running fresh against the full 8-identifier set and classifying every
+hit against the real three-class ruling, matching the more careful
+per-identifier sweep the deletion ledger's own §1.1 already performs for
+this exact identifier set (cross-referenced there, not duplicated here).
 
 ```
-$ grep -rn -E 'InlineEditController|CommitEngine|commitRangePatch|beginBlockEdit|endBlockEdit' \
-    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git .
+$ grep -rn -E 'InlineEditController|CommitEngine|commitRangePatch|beginBlockEdit|endBlockEdit|blockEditRequested|blockEditFinished|blockEditStateChanged' \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git . | wc -l
+242
 ```
 
-**184 raw hits** (`.gitignore` already excludes `node_modules`/`dist` from
-ripgrep's own defaults; `--exclude-dir` flags are belt-and-suspenders).
-Breakdown by top-level directory: `CHANGELOG.md` (1), `docs/` (17, all in
-`docs/inline-editing-plan.md` and `docs/adr/0009-inline-editing-source-ranges.md`
-— both explicitly-historical planning/ADR documents), `packages/` (7
-files — the only ones that matter for a "no live implementation" claim).
+(`.gitignore` already excludes `node_modules`/`dist` from ripgrep's own
+defaults; `--exclude-dir` flags are belt-and-suspenders. Counted with plain
+`grep`, not `rg`, to match this section's own prior command exactly; the
+deletion ledger's §1.1 uses `rg -c` per-identifier and arrives at the same
+13-file union for the five-message subset.)
 
-The 7 `packages/` files, every hit inspected:
+**242 raw hits, by class:**
 
-- `packages/desktop/src/routes/+page.svelte` — 3 hits, all inside a
-  block comment naming what was removed and when (SFE-P4).
-- `packages/desktop/tests/editor/parity-replacements.test.ts` — 5 hits,
-  all in comments describing what the test replaces.
-- `packages/desktop/tests/editor/preview-separability-mutation-inert.test.ts` —
-  12 hits: mix of describing comments and **absence-asserting test code**
-  (`expect(api.beginBlockEdit).toBeUndefined()`,
-  `expect(r30?.error).toBe("Unknown command: beginBlockEdit")`).
-- `packages/desktop/tests/editor/preview-navigation-protocol.test.ts` — 5
-  hits, comments + one test name asserting the deleted command is now a
-  no-op.
-- `packages/desktop/tests/editor/context-menu-controller.test.ts` — 1 hit,
-  comment.
-- `packages/desktop/tests/preview-interface.test.mjs` — 3 hits,
-  absence-asserting (`assert.equal(api.beginBlockEdit, undefined, …)`).
-- `packages/cli/src/assets/preview/scripts/preview-interface.js` — 2 hits,
-  version-history comment (`// v8: in-flow block editing. ADDED…`).
+- **Class 3 (docs/plans/** historical/planning docs) — 189 hits, 18 files**:
+  `deletion-ledger.md` (60), `mutation-inventory.md` (49),
+  `docs/inline-editing-plan.md` (16), `source-first-editor-enterprise-refactor.md`
+  (11), `runs/SFE-P4.md` (10), `docs/adr/0012-preview-read-only.md` (10),
+  `docs/adr/0009-inline-editing-source-ranges.md` (8), `p7-sweeps.md` — this
+  file, self-reference (5), `p3d-sweep-audit.md` (4), `parity-matrix.md` (3),
+  `baseline.md` (3), `runs/SFE-P7.md` (2), `runs/SFE-P0a.md` (2),
+  `acceptance.md` (2), `docs/releases/0.11.0.md` (1), `runs/SFE-P3e.md` (1),
+  `runs/SFE-P3d-parity.md` (1), `runs/SFE-P3ab.md` (1) — every one names the
+  deleted identifiers as history, per the ruling's own text ("the
+  docs/plans history and this spec keep the names").
+- **Class (b) (dated release record)** — `CHANGELOG.md` (1): a past-release
+  changelog entry describing the v8 addition as it read at that release —
+  historical by construction, same spirit as class 3.
+- **`packages/` (production/test code) — 52 hits, 8 files, every hit
+  inspected:**
+  - `packages/desktop/tests/editor/preview-separability-mutation-inert.test.ts`
+    (25) — mix of describing comments and **absence-asserting test code**
+    (`expect(api.beginBlockEdit).toBeUndefined()`,
+    `expect(r30?.error).toBe("Unknown command: beginBlockEdit")`).
+  - `packages/desktop/tests/editor/preview-navigation-protocol.test.ts` (6)
+    — comments + one test name asserting the deleted command is now a
+    no-op.
+  - `packages/desktop/tests/preview-shell-regression.test.mjs` (5) — class
+    2, absence-asserting: this file was ABSENT from the pre-repair version
+    of this section entirely because the old 5-identifier pattern never
+    searched for the three protocol message names it uses (it asserts a
+    stray `blockEditStateChanged` no longer holds a preview swap).
+  - `packages/desktop/tests/editor/parity-replacements.test.ts` (5) — all
+    in comments describing what the test replaces.
+  - `packages/cli/src/assets/preview/scripts/preview-interface.js` (4) —
+    class 1, version-history comments (`// v8: in-flow block editing.
+    ADDED…`, `// v9: … REMOVED`).
+  - `packages/desktop/tests/preview-interface.test.mjs` (3) —
+    absence-asserting (`assert.equal(api.beginBlockEdit, undefined, …)`).
+  - `packages/desktop/src/routes/+page.svelte` (3) — a block comment naming
+    what was removed and when (SFE-P4).
+  - `packages/desktop/tests/editor/context-menu-controller.test.ts` (1) —
+    comment.
 
-Every one of the 184 hits falls into the two accepted residual classes from
-the D15/P4 ruling — **version-history comments** and **absence-asserting
-tests** — with zero hits defining or exporting any of the five identifiers
-as live, callable production code. This confirms the property.
+Every one of the 242 hits falls into the three accepted residual classes
+from the D15/P4 ruling — version-history comments (class 1),
+absence-asserting tests (class 2), and `docs/plans/**` history (class 3,
+plus the one dated-changelog judgment call, (b)) — with zero hits defining
+or exporting any of the eight identifiers as live, callable production
+code. This confirms the property, and the widened pattern additionally
+confirms `check:no-preview-editing` would have caught a live
+`preview-shell-regression.test.mjs` regression that the narrower
+5-identifier pattern this section previously used could not see.
 
 ### 4.4 `check:no-desktop-pwa` — repo-wide re-run
 
@@ -610,44 +649,53 @@ widened to the full repo:
 
 ```
 $ grep -rn -E 'WebAdapter|InMemoryWebStore|FileSystemDirectoryHandle|showDirectoryPicker|web-fs|web-store' \
-    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git .
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git . | wc -l
+189
 ```
 
-**177 raw hits.** Breakdown: `CHANGELOG.md` (1), `CLAUDE.md` (1, this
-project's own architecture doc narrating the P5a deletion), `docs/` (13,
-mostly `docs/pwa-webadapter-plan.md` — explicitly marked closed/historical
-at its own top), `knip.jsonc` (1, a comment explaining why an old
-allowlist entry was dropped), `packages/` (11 — the ones that matter).
+**189 raw hits**, applying the P4 D15 ruling's real three-class scheme
+(§4.3 above), not the two-class paraphrase the pre-repair version of this
+section used:
 
-The 11 `packages/` hits, every one inspected:
-
-- `packages/desktop/src/lib/components/SyncStatusPill.svelte`,
+- **Class 3 (`docs/plans/**`/`docs/adr/**` historical/planning docs) — 178
+  hits, 14 files:** `deletion-ledger.md` (63), `platform-inventory.md`
+  (30), `docs/pwa-webadapter-plan.md` (29, explicitly marked
+  closed/historical at its own top), `docs/adr/0014-future-web-product-is-a-separate-package.md`
+  (11), `source-first-editor-enterprise-refactor.md` (10), `guardrails.md`
+  (9), `capability-map.md` (8), `p7-sweeps.md` — this file, self-reference,
+  count as it stood before this section's own rewrite (6), `runs/SFE-P5a.md`
+  (4), `acceptance.md` (3), `docs/ux-design-contract.md` (2),
+  `docs/releases/0.11.0.md` (1), `runs/SFE-P7.md` (1),
+  `docs/adr/0016-narrow-feature-owned-capabilities.md` (1).
+- **Class (b) (dated release/architecture record) — `CHANGELOG.md` (1),
+  `CLAUDE.md` (3)**: CLAUDE.md's own "Monorepo layout" section narrates the
+  P5a/P5d deletions by date, in the same historical spirit as class 3.
+- **`knip.jsonc` (2)** — a comment explaining why an old allowlist entry
+  was dropped; not production code, not a residual.
+- **`packages/` (production/test code) — 5 hits, 5 files, every one
+  inspected:** `packages/desktop/src/lib/components/SyncStatusPill.svelte`,
   `packages/desktop/src/lib/platform/index.ts`,
   `packages/desktop/src/lib/settings.svelte.ts`,
-  `packages/desktop/src/routes/+layout.svelte` — 4 hits total, all
+  `packages/desktop/src/routes/+layout.svelte` (1 hit each) — class 1,
   comments narrating the SFE-P5a/P5b deletion (desktop-side, matches the
-  named property directly).
-- `packages/cli/src/render.ts`, `packages/cli/src/platform.ts` (2 hits),
-  `packages/cli/src/lib/markdown/assemble.ts` (2 hits),
-  `packages/cli/src/lib/markdown/plugins.ts`,
-  `packages/cli/src/lib/markdown/index.ts`,
-  `packages/cli/src/lib/markdown/renderer.ts`,
-  `packages/cli/scripts/build-engine-bundles.mjs` — 7 hits, all comments in
-  the **lib** (`packages/cli`), not the desktop app. These describe why the
-  lib's runtime stays Node-free/browser-safe (`gutterpress/render`) so a
-  **future, separate, not-yet-built** web package (per D10: "A future
-  browser product is not implemented inside `packages/desktop`… it is a
-  separate package") could one day reuse it. These are a different thing
-  from the deleted desktop `WebAdapter` — they are forward-looking
-  lib-architecture comments, not remnants of the removed desktop
-  implementation — and none of them define, import, or reference the
-  deleted class/module. Noted here for precision since they matched the
-  grep pattern, not because they represent a violation.
+  named property directly); `packages/cli/scripts/build-engine-bundles.mjs`
+  (1 hit) — class 1, a comment explaining why the generator's copy step
+  changed. **Zero hits remain in `packages/cli/src/{render.ts,platform.ts,
+  lib/markdown/{assemble,plugins,index,renderer}.ts}`** — those six files
+  were the subject of deletion-ledger §5.1's confirmed defect (present-tense
+  `WebAdapter` prose) and no longer match this pattern at all after the
+  integrator's fix landed in this run's own commit; the pre-repair version
+  of this section still listed 7 hits across those files because it was
+  written before that fix landed in the tree it was measuring.
 
 Zero hits anywhere define, export, or import a live `WebAdapter` class,
 `web-fs`/`web-store` module, or `InMemoryWebStore`; zero calls to
 `showDirectoryPicker()`; zero references to `FileSystemDirectoryHandle` as
-an actual type in use. This confirms the property.
+an actual type in use. This confirms the property. (Self-reference note,
+matching the deletion ledger's own §1 preamble: this section's rewrite
+necessarily discusses the swept identifiers itself, so a reviewer
+re-running the command above against the final committed tree will see a
+modestly higher total than 189, confined to this section's own text.)
 
 ### 4.5 Verdict
 
@@ -663,8 +711,14 @@ production or test code was touched, so there is nothing in
 `packages/**` for this lane to typecheck. The "verification" for this
 lane's claims *is* every command above: each ran to completion in this
 sandbox with the recorded exit code, and every count quoted in this
-document (18 pass, 228 files, 8,856 asar entries, 184/177 grep hits, 14/14
+document (18 pass, 228 files, 8,856 asar entries, 242/189 grep hits, 14/14
 validate checks, etc.) was read directly from that command's own output,
 not retyped from memory or an earlier run. Raw logs and JSON outputs
 supporting every number above are preserved in this session's scratch
 directory (`.../scratchpad/p7-sweeps/`) for re-derivation if needed.
+
+Round-1 repair note: §4.3/§4.4's grep counts (242/189) were re-run and
+corrected during repair — see those sections' own notes for what changed
+(the 4.3 pattern now covers all 5 deleted preview-mutation protocol
+messages, not 2 of them; both sections now classify `docs/plans/**` hits
+as the P4 D15 ruling's third class instead of omitting it).

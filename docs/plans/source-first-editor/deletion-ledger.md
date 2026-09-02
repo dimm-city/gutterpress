@@ -3781,7 +3781,16 @@ $ find packages/vscode-extension/src -type f \( -name '*.ts' -o -name '*.svelte'
 $ find packages/vscode-extension/src -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.js' \) ! -name '*.test.ts' ! -name '*.spec.ts' -print0 | xargs -0 cat | wc -l
 4015
 $ find packages/vscode-markdown-editor/src -type f -name '*.ts' 2>/dev/null | wc -l
-0   # CSS theme/contrib assets only (8 .css files) — D5's "no fork needed" outcome; 0 TS/JS production LOC
+0   # src/ is CSS theme/contrib assets only (8 .css files), 0 TS/JS — but this
+    # is NOT "no fork needed": D5's gate outcome was that a fork WAS needed
+    # (ADR 0013: "It carries two patches"; PATCHES.md documents ten hunks
+    # against upstream). The fork's actual vendored+patched code lives in
+    # the TRACKED dist/ tree, not src/ — see below, not folded into the
+    # production-LOC totals.
+$ git ls-files packages/vscode-markdown-editor/dist | wc -l
+17
+$ wc -l packages/vscode-markdown-editor/dist/index.js
+8974 packages/vscode-markdown-editor/dist/index.js
 ```
 
 | Scope | Baseline files/lines | HEAD files/lines | Δ |
@@ -3792,6 +3801,7 @@ $ find packages/vscode-markdown-editor/src -type f -name '*.ts' 2>/dev/null | wc
 | **Baseline-scope subtotal** | **471 / 94,859** | **400 / 99,926** | **−71 files / +5,067 lines** |
 | `packages/editor/src` (new package, D4) | n/a (did not exist) | 35 / 6,229 | new |
 | `packages/vscode-extension/src` (new package, D4) | n/a (did not exist) | 16 / 4,015 | new |
+| `packages/vscode-markdown-editor/dist` (D5 internal fork, VENDORED not authored — excluded from every subtotal above) | n/a (did not exist) | 17 files / ~8,974 (`index.js` alone; `git ls-files … | xargs wc -l` over all 17 tracked files: 20,868 including `.map`/`.d.ts`) | new, not counted |
 | **Whole-current-workspace total** | **471 / 94,859** | **451 / 110,170** | **−20 files / +15,311 lines** |
 
 This is the raw workspace-wide figure, not a claim about AC-22/success
@@ -3803,6 +3813,20 @@ preview-mutation/PWA/HTTP-transport/broad-locator machinery those new
 surfaces made obsolete. Whether the narrower P4-P6-scoped claim holds is
 Lane B/the acceptance sweep's question, not re-litigated here; this row
 gives the whole-program number the metric asks for, honestly.
+
+**Stated, justified exclusion:** `packages/vscode-markdown-editor/dist`
+(the D5 internal fork's tracked build output, ~9k lines) is deliberately
+excluded from every LOC total in this section. It is vendored, patched
+upstream code (ADR 0013: two patches, ten hunks against
+`@vscode/markdown-editor`), not code this program authored, and none of
+the "production LOC" totals above are meant to measure vendored third-party
+output — the same reason `node_modules` is excluded. It is real,
+committed, shipped code, though, so it is named on its own line above
+rather than silently zeroed, correcting the prior "0 TS/JS production LOC"
+framing (round-1 repair — that framing both inverted D5's actual gate
+outcome, which found a fork WAS needed, and missed that the fork's real
+code lives in the tracked `dist/` tree, not the empty `src/` this command
+scans).
 
 #### 2.6 Test LOC
 
@@ -4030,7 +4054,21 @@ belonging to this program, was left unresolved without a stated reason.
 Four confirmed defects, all stale doc comments in production source files
 outside this lane's write ownership (`packages/cli/src`,
 `packages/vscode-extension/src`, `packages/desktop/electron`) — reported
-here per the run spec ("do NOT fix production code"), not fixed.
+here per the run spec ("do NOT fix production code"), as found at the
+commit that recorded them (not fixed by this lane).
+
+**Disposition — fixed by the integrator in the same commit as this record,
+`ea2610b3`** (see that commit's message, "Integrator:" paragraph): all four
+production-source defects below (§5.1–§5.4) were corrected in
+`ea2610b3` — `packages/cli/src/{render.ts,platform.ts,lib/markdown/
+{assemble,plugins,index,renderer}.ts}`, `packages/cli/src/index.ts`,
+`packages/desktop/electron/auto-sync/orchestrator.ts`, and
+`packages/vscode-extension/src/project/discover.ts` all now describe the
+current IPC/capability seams instead of the deleted `WebAdapter`/
+`ElectronAdapter`/`+server.ts` surfaces. The snippets quoted in §5.1–§5.4
+below are the PRE-FIX text as it read at the commit this section
+documents — they no longer appear in the tree at `ea2610b3` or later; do
+not use them to locate current code.
 
 #### 5.1 `packages/cli/src/{render.ts,platform.ts,lib/markdown/{assemble,plugins,index,renderer}.ts}` — six files describing a deleted `WebAdapter` as live/forthcoming
 
@@ -4132,6 +4170,59 @@ maintainer verifying "does the extension's project-discovery logic really
 match the desktop's" follows this citation to a file that does not exist,
 loses the actual cross-reference, and either skips the parity check or
 re-derives it from scratch.
+
+#### 5.5 The same defect class, found in a dozen more production files by a P7-repair-round-1 review (fixed in this repair round)
+
+§1.6/§1.7 above **sampled** `+server.ts`/"server route" hits across
+`electron/api/*.ts` rather than enumerating every file, which is how the
+following survived §5.1–§5.4's sweep. All were present-tense descriptions
+of a deleted `src/routes/api/**`/`+server.ts`/`HostServices` surface
+(SFE-P5c/P5d), fixed in the same repair round that added this subsection —
+each now names the real `secureHandle(...)` IPC channel or registrar file:
+
+- `packages/cli/src/lib/theme-import.ts:10` — named the deleted
+  `api/theme/import-from-file` server route; now names
+  `theme:importFromFile`/`theme:importFromFolder`
+  (`packages/desktop/electron/api/theme.ts`).
+- `packages/cli/src/api/index.ts:333` — named the deleted
+  `/api/publish/*` server routes; now names the `publish:*` typed IPC
+  channels (`packages/desktop/electron/api/publish.ts`).
+- `packages/cli/src/lib/plugin-manager.ts:17` — named "a thin SvelteKit
+  server route"; now names the `plugin:*` typed IPC channels
+  (`packages/desktop/electron/api/plugin.ts`).
+- `packages/desktop/electron/server-bridge/{app,host,media,prefs,vcs,watch,write}-hooks.ts`
+  (one hit each; `app-hooks.ts` had two) — each header described its hooks
+  as being for "`X:*` server routes"; each now names the real
+  `electron/api/*.ts` registrar/typed-IPC-channel set that calls its
+  `getXHooks()` accessor (verified per file with `rg -l 'getXHooks'
+  packages/desktop/electron/api`).
+- `packages/desktop/electron/server-bridge/host-services.ts:56` (and the
+  adjacent "~40 route files" claim a few lines above it) — "the SvelteKit
+  handler's server routes" / "route files"; now names the typed IPC
+  handlers (`electron/api/*.ts`'s `secureHandle(...)` registrars, ~40 call
+  sites across 15 registrar files, recounted with `rg -rl`/`rg -rn
+  "get[A-Za-z]*Hooks\("`).
+- `packages/desktop/src/lib/editor/css-editor.ts:6` — named
+  `PlatformAdapter.readFile`/`writeFile`, a type with zero desktop
+  consumers (confirmed: `rg -rn '\bPlatformAdapter\b' packages/desktop`
+  returns only comment mentions); now names the real path,
+  `$lib/files/files-capability`'s `readFile`/`writeFile` over `fs:*` typed
+  IPC.
+- `packages/desktop/src/lib/platform/dtos.ts:83` — `{@link
+  HostServices.listSnapshotsPage}`, linking to an interface deleted in
+  SFE-P5b; now cites `vcs:listSnapshotsPage`
+  (`ElectronBridge.vcs.listSnapshotsPage` in `contract.ts`, called from
+  `$lib/vcs/vcs-capability.ts`).
+- `packages/desktop/src/lib/platform/dtos.ts:456` — `` `GET
+  /api/app/appimage-integration` ``, a route deleted whole in P5c/P5d; now
+  cites the `app:appImageIntegrationStatus` typed IPC channel
+  (`packages/desktop/electron/api/app.ts:363`).
+
+`packages/desktop/electron/preload.ts:72`'s "migrated to SvelteKit server
+routes" was re-checked and confirmed NOT a defect — it is a dated
+version-history line describing a past migration step, the same class the
+run's own zero-remnant sweep (§1.7) already treats as sanctioned; left
+unchanged.
 
 ### 6. Verification run for this lane's own changes
 

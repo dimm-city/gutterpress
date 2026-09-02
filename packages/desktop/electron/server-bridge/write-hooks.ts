@@ -1,9 +1,10 @@
 /**
- * Shared write-side-effect hooks for fs:writeFile server route.
+ * Shared write-side-effect hooks for the `fs:writeFile` typed IPC channel
+ * (`electron/api/fs.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getWriteHooks()` is a thin derived selector over
- * it, retrieving the live reference the route uses to trigger the
+ * it, retrieving the live reference the handler uses to trigger the
  * auto-snapshot/sync debounce that lives in main.
  */
 

@@ -1,5 +1,6 @@
 /**
- * Shared version-history hooks for vcs:* server routes.
+ * Shared version-history hooks for the `vcs:*` typed IPC channels
+ * (`electron/api/vcs.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getVcsHooks()` is a thin derived selector over it.

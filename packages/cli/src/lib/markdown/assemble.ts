@@ -7,8 +7,11 @@
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
- *   - in the browser (the desktop SPA via `gutterpress/render`, or a future
- *     web package per ADR 0014) with a host-supplied reader.
+ *   - because it is node-free, it CAN run in a browser host with a
+ *     caller-supplied `readText` (via `gutterpress/render`, or a future web
+ *     package per ADR 0014) — there is no browser caller of
+ *     `assembleBookHtml` today; every current `gutterpress/render` browser
+ *     consumer uses the render/projection exports, not this one.
  *
  * This is the "fix the core primitive" split (CLAUDE.md §0/§6): the file-reading
  * wrapper is the ONLY node-coupled part of the old `renderChapters`, so the pure
@@ -118,8 +121,9 @@ export interface AssembleBookHtmlOptions {
    * chapter id used for `data-chapter-src`, so a host can attribute a warning
    * to the exact source file. Additive/optional — omitting it reproduces the
    * prior throwaway-env behavior exactly, so this cannot change output for
-   * existing callers (e.g. browser consumers of `gutterpress/render`, which
-   * still get a plain `Promise<string>` back).
+   * existing callers — including a future browser caller of `assembleBookHtml`
+   * via `gutterpress/render` (none exists today; see this file's header),
+   * which would still get a plain `Promise<string>` back.
    */
   onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
   /**

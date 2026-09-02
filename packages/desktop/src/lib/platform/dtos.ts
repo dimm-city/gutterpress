@@ -80,7 +80,7 @@ export interface ProjectClassification {
 // shared-types.ts (re-exported by contract.ts). ListSnapshotsOptions is a
 // renderer-only request shape, so it stays here.
 
-/** Paging inputs for {@link HostServices.listSnapshotsPage}. */
+/** Paging inputs for `vcs:listSnapshotsPage` (`ElectronBridge.vcs.listSnapshotsPage` in `contract.ts`, called from `$lib/vcs/vcs-capability.ts`). */
 export interface ListSnapshotsOptions {
   /** Max entries per page (host default: 100). */
   limit?: number;
@@ -453,7 +453,7 @@ export interface AppImageIntegrationPaths {
   icon: string;
 }
 
-/** `GET /api/app/appimage-integration` — supported/installed/repair state. */
+/** `app:appImageIntegrationStatus` typed IPC channel — supported/installed/repair state. */
 export interface AppImageIntegrationStatus {
   /** Linux + packaged + running from an AppImage. The Settings action renders only when true. */
   supported: boolean;

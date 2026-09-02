@@ -3,7 +3,8 @@
  *
  * The CSS editor is a LANGUAGE-MODE layer on the existing #38 editor, not a
  * new editor or a new platform capability. File load/save already go through
- * `PlatformAdapter.readFile`/`writeFile` in `+page.svelte`.
+ * `$lib/files/files-capability`'s `readFile`/`writeFile` (`fs:*` typed IPC)
+ * in `+page.svelte`.
  *
  *  - {@link languageForPath} picks the CodeMirror language from a file's
  *    extension. The editor holds the language in a `Compartment` so switching

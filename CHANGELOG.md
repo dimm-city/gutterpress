@@ -41,8 +41,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   plugin loader the CLI's own build and preview already use
   (`loadPlugins`/`loadPluginsWithCss`), for hosts (the VS Code extension,
   and now the desktop app itself) that need to load a project's plugins
-  without going through the CLI. `gutterpress`, `gutterpress/api`, and
-  `gutterpress/render` are unchanged.
+  without going through the CLI. `gutterpress` and `gutterpress/api` are
+  unchanged; `gutterpress/render` gained the projection surface the shared
+  editor consumes (`createEditorProjection`, `PROJECTION_SCHEMA_VERSION`,
+  `inlineSourceMetaOf`, `sourceTokenOccurrenceAt` and their types).
 
 ### Changed
 

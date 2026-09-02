@@ -330,7 +330,8 @@ export type {
 } from "../lib/source-provider.ts";
 
 // ── Publish providers (#35) — node-side only; the renderer reaches these
-// through the desktop's /api/publish/* server routes. ─────────────────────────
+// through the desktop's `publish:*` typed IPC channels
+// (`packages/desktop/electron/api/publish.ts`). ─────────────────────────
 export {
   runPublish,
   resolvePublishRequest,

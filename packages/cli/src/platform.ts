@@ -45,13 +45,13 @@ export interface FileWriteResult {
 }
 
 export interface PlatformAdapter {
-  /** Which host backs this adapter. Lets the rare unavoidable branch be explicit. */
-  readonly platform: "electron" | "web";
+  /** Which host backs this adapter. Electron is the only implementation left. */
+  readonly platform: "electron";
 
   /**
    * Prompt the user to choose a project folder.
    * @returns the absolute path, or `null` if the user cancelled.
-   * Electron: native directory dialog. Web: File System Access API.
+   * Electron: native directory dialog.
    */
   openFolder(): Promise<string | null>;
 
@@ -73,7 +73,7 @@ export interface PlatformAdapter {
    * List the immediate entries of a directory (single level, no recursion).
    * @returns each entry's `name`, absolute `path`, and whether it `isDir`.
    * Editor seam for #38 (file-tree sidebar). Electron: `node:fs/promises`
-   * `readdir`. Web: File System Access API (0.6.0).
+   * `readdir`.
    */
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
 
@@ -81,7 +81,7 @@ export interface PlatformAdapter {
    * Stat a file by absolute path (GitHub #44). Used by the editor to confirm a
    * `watchFolder` event reflects a real on-disk change (mtime moved) versus the
    * self-echo of our own `writeFile`. Resolves with `exists: false` rather than
-   * rejecting when the path is absent. Web throws until 0.6.0 (FS Access API).
+   * rejecting when the path is absent.
    */
   statFile(path: string): Promise<FileStat>;
 
@@ -95,7 +95,7 @@ export interface PlatformAdapter {
 
   /**
    * Read a secret by key (e.g. a GitHub token). Lands with #12.
-   * Electron: OS keychain via `safeStorage`. Web: encrypted localStorage.
+   * Electron: OS keychain via `safeStorage`.
    */
   getSecret(key: string): Promise<string | null>;
 

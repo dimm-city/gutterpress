@@ -252,16 +252,21 @@ open link/image, diagnostics, and page controls remain; in-flow
 rewriting were deleted in P4 (protocol v8→v9) — see the deletion ledger's
 `SFE-P4` section for the search proofs.
 
-Preview↔print agreement is proven by `packages/cli/scripts/native-parity-gate.ts`
-(`bun run parity:gate` in `packages/cli`), which compares the live viewer's
-rendering against the same document's printed output with an empty
-allowlist — the preview may re-present the author's document, but per the
-project's architecture rules (`CLAUDE.md`) it may never re-decide what the
-document means. This is a distinct gate from the now-deleted
-`tools/check-parity.mjs`, which proved a different property (that every
-preview mutation action reachable before P4 had a replacement editor
-command) and was deleted once P4 removed the mutation surface it audited
-(deletion ledger, `SFE-P3e`).
+Preview↔print agreement is CI-wired to be proven by
+`packages/cli/scripts/native-parity-gate.ts` (`bun run parity:gate` in
+`packages/cli`), which compares the live viewer's rendering against the
+same document's printed output with an empty allowlist — the preview may
+re-present the author's document, but per the project's architecture rules
+(`CLAUDE.md`) it may never re-decide what the document means. It must stay
+green there; it could not be run in this program's sandbox (Chromium 148+
+required, sandbox has 141.0.7390.37 — see `p7-sweeps.md` §1.1), so no green
+run of this script is recorded in this program's own evidence. This is a
+distinct gate from `tools/check-parity.mjs`, which proved a different
+property (that every preview mutation action reachable before P4 had a
+replacement editor command) and was deleted in `SFE-P3e`, before P4 removed
+the mutation surface it audited, once that run's replacement parity
+evidence landed (acceptance.md's SFE-P3e record: "tools/check-parity.mjs +
+check-parity.test.mjs + root script + 2 CI steps deleted (-2,142 LOC)").
 
 ## Where each binding decision is recorded
 
