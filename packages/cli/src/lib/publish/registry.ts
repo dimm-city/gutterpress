@@ -5,6 +5,7 @@
  */
 import { azureSwaProvider } from "./providers/azure-swa.ts";
 import { drivethrurpgProvider } from "./providers/drivethrurpg.ts";
+import { gdriveProvider } from "./providers/gdrive.ts";
 import { itchProvider } from "./providers/itch.ts";
 import { kdpProvider } from "./providers/kdp.ts";
 import { shopifyProvider } from "./providers/shopify.ts";
@@ -20,6 +21,7 @@ const PROVIDERS: Record<PublishProviderId, PublishProvider> = {
   kdp: kdpProvider,
   "azure-swa": azureSwaProvider,
   shopify: shopifyProvider,
+  gdrive: gdriveProvider,
 };
 
 /** All providers' static descriptions, in display order. */

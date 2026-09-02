@@ -15,8 +15,9 @@
 // appLogPath() names it.
 //
 // Deliberately NOT a logging framework: no levels, no transports, no config,
-// no filtering. Two entry points sharing one writer, one file, one size cap.
-// Nothing leaves the machine.
+// no filtering. Three entry points (two below, plus the shared error filters
+// in server-bridge/friendly-errors.ts through `AppHooks.logFailure`) sharing
+// one writer, one file, one size cap. Nothing leaves the machine.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
@@ -42,11 +43,14 @@ export function initAppLog(resolve: () => string): void {
 }
 
 /**
- * Append one timestamped line to the app log, restarting the file at the
- * cap instead of growing without bound. Never rejects — a logging failure
- * must not break the operation that was already happening.
+ * Append one timestamped line to the app log (the file only — no console),
+ * restarting the file at the cap instead of growing without bound. Never
+ * rejects — a logging failure must not break the operation that was already
+ * happening. Exported for a caller that has ALREADY printed the line to the
+ * console itself (server-bridge/friendly-errors.ts, via `AppHooks.logFailure`);
+ * the two entry points below print first, then call this.
  */
-async function writeLine(message: string): Promise<void> {
+export async function appendAppLog(message: string): Promise<void> {
   const file = resolveLogPath?.();
   if (!file) return;
   const line = `${new Date().toISOString()} ${message}\n`;
@@ -74,7 +78,7 @@ async function writeLine(message: string): Promise<void> {
  */
 export async function logAppError(message: string): Promise<void> {
   console.error(message);
-  await writeLine(message);
+  await appendAppLog(message);
 }
 
 /**
@@ -84,5 +88,5 @@ export async function logAppError(message: string): Promise<void> {
  */
 export async function logAppEvent(message: string): Promise<void> {
   console.log(message);
-  await writeLine(message);
+  await appendAppLog(message);
 }

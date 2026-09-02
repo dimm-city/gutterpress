@@ -78,20 +78,44 @@ interface SpreadReport {
   } | null;
 }
 
+/**
+ * Both fixtures assert the identical contract. The second exists because the
+ * first could not fail the way real books do: `spread-rows.html` has no forced
+ * `break-before` on the leading element of an EVEN-offset strip — the strips
+ * that receive `applySpreadMode`'s `.gp-wrap-spacer` — while core's MARKER_CSS
+ * gives EVERY marker book exactly that via `.page { break-before: page }`.
+ * That combination is what disarms the spacer (CSS-break-3 forced-break
+ * combining), and its absence here is why this suite stayed green while the
+ * field guide rendered every page one slot off its own sheet in 0.10.2. One
+ * CSS rule is the whole difference — see the fixture's header.
+ */
+const SPREAD_FIXTURES = [
+  {
+    fixture: "spread-rows.html",
+    title: "spread mode re-presents pages without moving content out of its own sheet",
+  },
+  {
+    fixture: "spread-rows-leading-break.html",
+    title:
+      "…and still does with a forced break-before on the first strip element (every marker book has one)",
+  },
+];
+
+for (const { fixture, title } of SPREAD_FIXTURES) {
 testIf(
-  "spread mode re-presents pages without moving content out of its own sheet",
+  title,
   async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-spread-test-"));
     try {
       await fsp.copyFile(
-        path.join(FIXTURES_DIR, "spread-rows.html"),
-        path.join(dir, "spread-rows.html")
+        path.join(FIXTURES_DIR, fixture),
+        path.join(dir, fixture)
       );
       await fsp.copyFile(
         await getAssetPath("engine/gutterpress-viewer.js"),
         path.join(dir, "gutterpress-viewer.js")
       );
-      const { url, close } = await serveDir(dir, "spread-rows.html");
+      const { url, close } = await serveDir(dir, fixture);
       try {
         const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
         const page = await browser.newPage();
@@ -371,3 +395,4 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS
 );
+}

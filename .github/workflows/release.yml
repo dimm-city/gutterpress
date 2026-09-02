@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release: 1.2.3 (stable), 1.2.3-beta.1, or 1.2.3-alpha.1. Only alpha/beta prerelease suffixes are accepted — they are the app's update channels (electron-updater treats anything else, e.g. rc, as a custom channel that strands its users). Stable releases must be dispatched from the default branch; prereleases may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies Windows and macOS binaries, then creates a GitHub release."
+        description: "Version to release: 1.2.3 (stable), 1.2.3-beta.1, or 1.2.3-alpha.1. Only alpha/beta prerelease suffixes are accepted — they are the app's update channels (electron-updater treats anything else, e.g. rc, as a custom channel that strands its users). Stable releases must be dispatched from the default branch; prereleases may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, then creates a GitHub release."
         required: true
         type: string
       skip_npm_publish:
@@ -449,7 +449,7 @@ jobs:
     # or this job is skipped (the desktop jobs are unconditional now, so no
     # success-or-skipped special-casing is needed anymore).
     needs:
-      [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac, verify-windows, verify-macos]
+      [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
@@ -512,57 +512,15 @@ jobs:
   # GITHUB_TOKEN (workflow_dispatch is the documented exception, which is why
   # the explicit dispatch works).
 
-  # ── 5b. Verify the Windows CLI binary actually runs ───────────────────────
-  # build-cli cross-compiles the Windows binary from ubuntu-latest, so it can
-  # only be smoke tested on real Windows. This makes the workflow description
-  # ("verifies on Windows") true.
-  verify-windows:
-    name: Verify Windows binary
-    needs: build-cli
-    runs-on: windows-latest
-    steps:
-      - name: Download Windows binary
-        uses: actions/download-artifact@v6
-        with:
-          name: gutterpress-cli-windows-x64.exe
-          path: dist/
-
-      - name: Run --version
-        shell: pwsh
-        run: |
-          & ".\dist\gutterpress-cli-windows-x64.exe" --version
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "gutterpress-cli-windows-x64.exe --version exited with code $LASTEXITCODE"
-            exit 1
-          }
-
-  # Cross-compiled Darwin binaries are executed on matching native runners.
-  # Both runner classes are standard and free for this public repository.
-  verify-macos:
-    name: Verify macOS binary / ${{ matrix.arch }}
-    needs: build-cli
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: macos-15-intel
-            artifact: gutterpress-cli-macos-x64
-          - arch: arm64
-            runner: macos-15
-            artifact: gutterpress-cli-macos-arm64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - name: Download macOS binary
-        uses: actions/download-artifact@v6
-        with:
-          name: ${{ matrix.artifact }}
-          path: dist/
-
-      - name: Run --version
-        run: |
-          chmod +x "dist/${{ matrix.artifact }}"
-          "dist/${{ matrix.artifact }}" --version
+  # The verify-windows / verify-macos jobs (three dedicated runners per
+  # release, two of them macOS) were REMOVED 2026-08-30 on the owner's call:
+  # zero failures in ~96 lifetime job-executions, including the #194
+  # Chromium-pin incident, where they skipped because Test had already failed
+  # — the incident was caught upstream, not by them. All they ever proved is
+  # that a cross-compiled Bun binary prints --version, which cross-compilation
+  # essentially never fails at; build-cli's linux-x64 leg already runs the
+  # substantive smoke (new/plugin add/build). Do not re-add per-OS verify
+  # runners without a recorded failure class they would have caught.
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
@@ -578,8 +536,6 @@ jobs:
       - build-desktop-windows
       - build-desktop-mac
       - publish-npm
-      - verify-windows
-      - verify-macos
     # `always()` exists ONLY so an intentionally-skipped publish-npm
     # (skip_npm_publish) doesn't skip the release; every build job must have
     # actually succeeded.
@@ -587,8 +543,6 @@ jobs:
       always() &&
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
-      needs.verify-windows.result == 'success' &&
-      needs.verify-macos.result == 'success' &&
        needs.build-desktop-linux.result == 'success' &&
        needs.build-desktop-windows.result == 'success' &&
        needs.build-desktop-mac.result == 'success' &&

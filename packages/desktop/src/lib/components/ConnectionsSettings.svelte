@@ -49,7 +49,14 @@
     getRemoteConnection,
     listHostConnections,
   } from "$lib/remote/remote-capability";
-  import { connect as connectPublishProvider, providers as fetchPublishProviders, type PublishProviderStaticInfo } from "$lib/publish/publish-capability";
+  import {
+    connect as connectPublishProvider,
+    connectGoogleCancel,
+    connectGoogleStart,
+    connectGoogleWait,
+    providers as fetchPublishProviders,
+    type PublishProviderStaticInfo,
+  } from "$lib/publish/publish-capability";
   import { friendlyHostError } from "$lib/errors";
   import type {
     HostConnectionInfo,
@@ -92,6 +99,11 @@
   let pubBusy = $state(false);
   let pubError = $state<string | null>(null);
   let pubNotice = $state<string | null>(null);
+  // OAuth connect (#221 D10) — the auth URL for "open again", and whether an
+  // oauth attempt (not a plain token connect) is in flight, so unmount only
+  // cancels a real Google connect.
+  let pubOauthAuthUrl = $state<string | null>(null);
+  let pubOauthInFlight = $state(false);
 
   // Two-step Remove confirm (L2 — a stored token is the most painful thing
   // to re-acquire, so removal arms in place and confirms on a second click).
@@ -106,6 +118,7 @@
       serverInputTimer = undefined;
       // A device flow left mid-poll must not keep polling after the tab closes.
       if (ghBusy) connectGitHubCancel().catch(() => {});
+      if (pubOauthInFlight) connectGoogleCancel().catch(() => {});
     };
   });
 
@@ -166,7 +179,19 @@
   }
   function accountLabelFor(e: HostConnectionInfo): string {
     const idx = e.host.indexOf("#");
-    return idx > -1 ? e.host.slice(idx + 1) : "default";
+    if (idx > -1) return e.host.slice(idx + 1);
+    // The default (unnamed) credential. For oauth-connected providers
+    // (gdrive) `username` is deliberately EMPTY on the default entry — the
+    // compound-key convention reserves `username` for a NAMED account's
+    // label, so the connected email lives only in `label`
+    // (e.g. "Google Drive — a@b.com", set by connect-google.ts). Recover it
+    // here for the badge instead of falling through to "default". Token-based
+    // providers never take this branch: their default entry's label is just
+    // the provider name, and the strip below would be a no-op anyway.
+    if (!e.username && e.kind === "google-oauth" && e.label) {
+      return e.label.replace(/^Google Drive\s*—\s*/, "");
+    }
+    return e.username || "default";
   }
 
   // ── GitHub device flow ──────────────────────────────────────────────────────
@@ -276,6 +301,46 @@
     }
   }
 
+  // ── Publishing key connect: oauth (#221 D10) — needs no open project; the
+  // credential is user-scoped, verified by construction (the token exchange
+  // itself), not against a book's manifest. ─────────────────────────────────
+  async function connectPublishOAuth() {
+    if (pubBusy || !pubProviderId) return;
+    pubBusy = true;
+    pubOauthInFlight = true;
+    pubError = null;
+    pubNotice = null;
+    try {
+      const { authUrl } = await connectGoogleStart(pubAccount.trim() || undefined);
+      pubOauthAuthUrl = authUrl;
+      await connectGoogleWait();
+      pubAccount = "";
+      const label = providers.find((p) => p.id === pubProviderId)?.label ?? pubProviderId;
+      pubNotice = `Connected ${label}.`;
+      await load();
+    } catch (e) {
+      pubError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      pubBusy = false;
+      pubOauthInFlight = false;
+      pubOauthAuthUrl = null;
+    }
+  }
+
+  async function cancelPublishOAuth() {
+    try {
+      await connectGoogleCancel();
+    } finally {
+      pubBusy = false;
+      pubOauthInFlight = false;
+      pubOauthAuthUrl = null;
+    }
+  }
+
+  function reopenPublishOAuthUrl() {
+    if (pubOauthAuthUrl) openExternal(pubOauthAuthUrl).catch(() => {});
+  }
+
   // ── Removal (raw store key — works for bare-host AND compound keys) ─────────
   function requestRemove(key: string) {
     const { state, confirmed } = requestInlineConfirm(confirmRemove, key);
@@ -353,7 +418,7 @@
     <!-- Publishing accounts -->
     <section class="conn-group">
       <h4>Publishing accounts</h4>
-      <p class="hint">API keys used to publish your books (itch.io, Azure Static Web Apps, Shopify…). Keys are stored once and available to every project.</p>
+      <p class="hint">Accounts used to publish your books (itch.io, Azure Static Web Apps, Shopify, Google Drive…). Connected once and available to every project.</p>
       {#each publishEntries as entry (entry.host)}
         <div class="conn-row">
           <span class="conn-name">
@@ -374,18 +439,38 @@
         <p class="hint muted">No publishing accounts yet.</p>
       {/each}
       <div class="add-form">
-        <select value={pubProviderId} onchange={(e) => (pubProviderId = (e.currentTarget as HTMLSelectElement).value)}>
+        <select value={pubProviderId} onchange={(e) => (pubProviderId = (e.currentTarget as HTMLSelectElement).value)} disabled={pubBusy}>
           {#each providers.filter((p) => p.credentialRequired) as p (p.id)}
             <option value={p.id}>{p.label}</option>
           {/each}
         </select>
-        <input type="password" placeholder="API key" value={pubToken} oninput={(e) => (pubToken = (e.currentTarget as HTMLInputElement).value)} />
-        <input type="text" placeholder="Account label (optional)" value={pubAccount} oninput={(e) => (pubAccount = (e.currentTarget as HTMLInputElement).value)} />
-        <button class="ghost" onclick={connectPublish} disabled={pubBusy || !projectDir || !pubProviderId || !pubToken.trim()}>
-          {pubBusy ? "Checking…" : "Add"}
-        </button>
+        {#if selectedProvider?.connectKind === "oauth"}
+          <!-- No key to paste — an interactive browser consent flow instead
+               (#221 D10). Unlike the paste-a-key form, this needs no open
+               project: the credential is user-scoped, not verified against a
+               book's manifest. -->
+          <input type="text" placeholder="Account label (optional)" value={pubAccount} oninput={(e) => (pubAccount = (e.currentTarget as HTMLInputElement).value)} disabled={pubBusy} />
+          <button class="ghost" onclick={connectPublishOAuth} disabled={pubBusy || !pubProviderId}>
+            {pubBusy ? "Waiting for your browser…" : "Connect"}
+          </button>
+        {:else}
+          <input type="password" placeholder="API key" value={pubToken} oninput={(e) => (pubToken = (e.currentTarget as HTMLInputElement).value)} />
+          <input type="text" placeholder="Account label (optional)" value={pubAccount} oninput={(e) => (pubAccount = (e.currentTarget as HTMLInputElement).value)} />
+          <button class="ghost" onclick={connectPublish} disabled={pubBusy || !projectDir || !pubProviderId || !pubToken.trim()}>
+            {pubBusy ? "Checking…" : "Add"}
+          </button>
+        {/if}
       </div>
-      {#if !projectDir}
+      {#if selectedProvider?.connectKind === "oauth"}
+        {#if selectedProvider?.hint}<p class="hint">{selectedProvider.hint}</p>{/if}
+        {#if pubOauthAuthUrl}
+          <p class="hint">
+            Waiting for your browser — choose your Google account and click Allow.
+            <button class="inline-link" onclick={reopenPublishOAuthUrl}>Open the sign-in page again</button>
+            <button class="inline-link" onclick={cancelPublishOAuth}>Cancel</button>
+          </p>
+        {/if}
+      {:else if !projectDir}
         <p class="hint muted">Open a project to add a publishing key — the key is checked with the platform first, and some checks read the project's settings. Saved keys work across all projects.</p>
       {/if}
       {#if selectedProvider?.tokenUrl}

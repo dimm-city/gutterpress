@@ -255,7 +255,26 @@ export async function remoteDisconnectHost(rawHost: unknown): Promise<{ ok: bool
     if (typeof rawHost !== "string" || !rawHost.trim()) {
       throw new Error("remote:disconnectHost requires a host");
     }
-    await hooks.tokenStore.delete(rawHost);
+    // This is the generic "remove any stored connection" path Settings →
+    // Connections uses for publish credentials too (bare `gdrive` or a named
+    // `gdrive#<account>` key), so a google-oauth one needs the same
+    // best-effort revoke-then-delete `publish:disconnect` has —
+    // disconnectPublishCredential is the shared implementation for both.
+    // `loadLib()` (#221 C6) only runs for a google-oauth credential —
+    // github.com/generic-forge disconnects (the common case here) never pay
+    // for it, and go straight to a plain local delete.
+    const existing = await hooks.tokenStore.get(rawHost);
+    if (existing?.kind === "google-oauth") {
+      const lib = await hooks.loadLib();
+      if (lib.disconnectPublishCredential) {
+        await lib.disconnectPublishCredential(rawHost, { tokenStore: hooks.tokenStore });
+      } else {
+        await hooks.tokenStore.delete(rawHost);
+        if (lib.revokeGoogleCredential) void lib.revokeGoogleCredential(existing.token);
+      }
+    } else {
+      await hooks.tokenStore.delete(rawHost);
+    }
     return { ok: true };
   });
 }

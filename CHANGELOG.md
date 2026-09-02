@@ -79,6 +79,85 @@ This project follows [Semantic Versioning](https://semver.org/).
   against the same shared editor and rendering libraries this release
   introduces, not a mode hiding inside the desktop app.
 
+## [0.10.5] - 2026-09-02
+
+### Added
+
+- **Publish straight to Google Drive** (#221). A new `gdrive` publish
+  provider joins itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps and
+  Shopify: click **Connect Google Drive** and approve in your browser — no
+  API key to create or paste — then pick or name a Drive folder and publish.
+  Publishing again updates the same file in place, so a share link you've
+  already sent stays valid, and you can move the folder anywhere in your own
+  Drive afterward without breaking anything. Gutterpress never changes who
+  can see the file; sharing stays entirely in Drive's own Share button. Both
+  the finished PDF and the zipped HTML export can be published this way.
+  `gutterpress publish --provider gdrive --connect` / `--provider gdrive`
+  work from the CLI too, with a `GDRIVE_REFRESH_TOKEN` env-var escape hatch
+  for CI. See [User Guide: Chapter 8 — Publishing](./examples/gutterpress-user-guide/08-publishing.md).
+
+## [0.10.4] - 2026-08-30
+
+### Fixed
+
+- **Two-page view and the PDF agree about how long your book is.** The preview
+  could report one page fewer than the PDF: where a block that must not be
+  split sat just past the bottom of a page, the preview pulled it back up onto
+  that page while the PDF moved it down to the next one. The preview now does
+  what the PDF does. On the Dimm City field guide that closes the gap exactly —
+  both now say 295 pages where the preview used to say 294.
+
+- **The build now warns about a decoration that pushes your page too wide.** If
+  something styled onto an element — a tab, a flourish, anything drawn with
+  `::before` or `::after` — sticks out past the page, Chromium quietly shrinks
+  the *entire* book to make it fit, and every measurement in it prints smaller
+  than you asked for. The check that exists to catch that could not see
+  decorations at all. It can now.
+
+- **…and a full-bleed page no longer hides over-wide content everywhere else.**
+  That same check compared every element against the widest page in the book,
+  so one edge-to-edge art page raised the bar for all of them and let genuinely
+  over-wide content through on ordinary pages. Each element is now measured
+  against the page it actually sits on.
+
+- **`gutterpress lint` was checking fewer stylesheets than the app's Problems
+  panel.** If your book set `engineStyles.native`, the command skipped that
+  sheet — the one loaded last, so the one whose rules win. On the Dimm City
+  field guide it checked 7 of 8 stylesheets and reported 34 risky print
+  properties where the panel reported 35; the finding it hid was a
+  `background-blend-mode` on the whole-sheet page background, the most
+  expensive thing in that book to print. Both surfaces now read the same list.
+
+### Changed
+
+- **`isolation` no longer reports as a rasterization risk.** It doesn't
+  rasterize anything — it creates a stacking context, which is what the
+  page-containment warning already told you, with the actual consequence
+  spelled out. One accurate warning instead of one accurate and one wrong.
+
+- **Core marker names are documented as reserved.** `@chapter`, `@spread`,
+  `@page`, `@section`, `@continue`, `@page-break`, `@column-break` and
+  `@end-section` belong to Gutterpress. A plugin marker sharing one of those
+  names never runs, because core claims the line before plugins are consulted
+  — silently, which cost a real book a page-split it had authored. Give plugin
+  markers a branded name (`@skill-continue`) and the collision can't happen.
+  Documented in the plugin guide and at the reservation itself; no behaviour
+  change.
+
+## [0.10.3] - 2026-08-29
+
+### Fixed
+
+- **Your pages sit on their own paper again in two-page view.** In 0.10.2 every
+  page's content was drawn one slot to the left of the sheet it belonged to, so
+  the first page landed beside its own paper instead of on it — appearing on the
+  left of the opening spread, on bare grey, with none of the page background a
+  book's design puts behind it. Every page after it was off by one the same way.
+  Two-page view now puts page one alone on the right, where a book opens, and
+  every page back on its own sheet. Single-page view was never affected, and no
+  PDF ever was: this was only how the preview arranged what it drew, so nothing
+  you have exported or published needs redoing.
+
 ## [0.10.2] - 2026-08-25
 
 ### Added

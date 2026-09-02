@@ -47,6 +47,7 @@ import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import { createSecureHandle } from "./server-bridge/secure-handle";
 import { registerGitHubDeviceFlowHandlers } from "./github-device-flow-registrar";
+import { registerGoogleConnectFlowHandlers } from "./google-connect-flow-registrar";
 // SFE-P5c1: fs/dialog/shell/log/app moved from SvelteKit HTTP routes to typed
 // IPC. Each module below is the main-process logic the deleted +server.ts
 // handlers used to run — see electron/api/*.ts's own header comments.
@@ -129,6 +130,7 @@ import { ExportController, registerExportHandlers } from "./export/controller";
 import { PreviewOpenController, registerPreviewHandlers, type PreviewHandle } from "./preview/controller";
 import { registerEditorProjectionHandlers } from "./editor-projection";
 import { GitHubDeviceFlow } from "./github-device-flow";
+import { GoogleConnectFlow } from "./google-connect-flow";
 import {
   MarkdownFileLaunchQueue,
   isMarkdownFilePath,
@@ -171,7 +173,7 @@ import {
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
-import { initAppLog, logAppEvent } from "./app-log";
+import { appendAppLog, initAppLog, logAppEvent } from "./app-log";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -981,6 +983,11 @@ const appHooksImpl: AppHooks = {
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     safeSend(channel, ...args);
   },
+  // The shared error filters already printed the line to the console; this
+  // puts it in the app log the Logs tab shows (file only, no double print).
+  logFailure: (line: string) => {
+    void appendAppLog(line);
+  },
 };
 // Wire the PDF-export progress sender to the live main window (the export
 // subsystem itself lives in electron/pdf-export.ts).
@@ -1425,6 +1432,22 @@ registerGitHubDeviceFlowHandlers(secureHandle, {
   githubDeviceFlow,
   showLinuxCredentialStorageNoticeOnce,
 });
+
+// The Google Drive OAuth "one connect at a time" state trio (#221,
+// docs/gdrive-publish-plan.md D10) — same shape as githubDeviceFlow above,
+// electron/google-connect-flow.ts. Opens the auth URL via the app's single
+// http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
+// defined above — the same one `shell:openExternal` calls); the credential
+// is stored under the "gdrive" host in the same electronTokenStore every
+// publish credential uses. Registered by its own thin registrar, like the
+// GitHub trio above (electron/google-connect-flow-registrar.ts).
+const googleConnectFlow = new GoogleConnectFlow({
+  loadLib,
+  tokenStore: electronTokenStore,
+  openExternal: desktopHooksImpl.openExternal,
+});
+
+registerGoogleConnectFlowHandlers(secureHandle, googleConnectFlow);
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"

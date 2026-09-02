@@ -882,12 +882,13 @@ scope to the 2 priority personas (Maya, Kai).
 
 ### Performance gates
 
-Measured against **named, checked-in fixtures** on a named reference machine,
-wired into the perf harness — tracked in **#107**. The re-render gate
-(`bench/novel-50p`, ≤300ms preview re-render) shipped in 0.8.0-beta.1 as an
-**advisory** gate in `tests/perf/rerender-latency-gate.mjs`; its
-`perf-baseline.json` median is still a **placeholder** awaiting a real capture
-via `npm run rerender-baseline`. `bench/zine-24p` is **not yet created**.
+The CI performance gates (`tests/perf/render-gate.mjs`,
+`rerender-latency-gate.mjs`, the `bench/` fixtures) were **removed 2026-08-30**
+on the owner's call: over their lifetime the render-speed gate's failures were
+100% infrastructure (its regression signature appeared in none of them) and
+the rerender gate never fired in 577 runs, while both cost a runner per PR and
+a recurring flake surface. The latency targets below remain the design intent;
+they are validated by usability testing, not by a wall-clock CI gate.
 
 | Metric | Target | Fixture / condition |
 |---|---|---|
@@ -1175,7 +1176,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 
 ### Quality-gate measurement
 - ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)
-- ⏳ Benchmark fixtures — `bench/novel-50p` + the advisory re-render gate (`tests/perf/rerender-latency-gate.mjs`) shipped in 0.8.0-beta.1; `bench/zine-24p` and a real (non-placeholder) `perf-baseline.json` median remain to be created — **#107**
+- ❌ Benchmark fixtures / CI perf gates — shipped in 0.8.0-beta.1, **removed 2026-08-30** (see "Performance gates" above); #107 closed by removal
 - 🆕 Quarterly usability-study protocol (owner, recruitment, 2 priority personas)
 - 🆕 Accessibility audit: axe-core automated + manual NVDA/VoiceOver passes per the matrix
 

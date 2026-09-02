@@ -28,7 +28,9 @@ import { createPickedFilesService } from "../../electron/server-bridge/picked-fi
 import { makeHostServices } from "../support/host-services-fake";
 import {
   publishConnect,
+  publishCreateDestination,
   publishDisconnect,
+  publishListDestinations,
   publishListProviders,
   publishPreflight,
   publishProviders,
@@ -178,8 +180,35 @@ describe("success paths call the lib with validated args", () => {
         credentialHost: "itch.io",
         tokenUrl: "https://itch.io/user/settings/api-keys",
         hint: null,
+        // #221 — a paste-a-key provider carries no oauth connect kind.
+        connectKind: null,
       },
     ]);
+  });
+
+  test("publishProviders reports connectKind 'oauth' for a browser-consent provider (#221)", async () => {
+    registerHostServices({
+      ...baseServices(),
+      remote: {
+        ...remoteBase,
+        loadLib: async () => ({
+          listPublishProviders: () => [
+            {
+              id: "gdrive",
+              label: "Google Drive",
+              kind: "api" as const,
+              format: "pdf" as const,
+              formats: ["pdf", "html"] as const,
+              description: "",
+              configFields: [],
+              credential: { required: true, host: "gdrive", connect: "oauth" as const },
+            },
+          ],
+        }),
+      } as never,
+    });
+    const [card] = await publishProviders();
+    expect(card).toMatchObject({ id: "gdrive", credentialHost: "gdrive", connectKind: "oauth" });
   });
 
   test("publishConnect trims the account label and forwards to lib.connectPublishProvider", async () => {
@@ -384,5 +413,72 @@ describe("publishRun: artifactPath scoping", () => {
     await expect(
       publishRun(bookDir, "itch", path.join("..", "..", "..", "elsewhere", "id_rsa"), undefined),
     ).rejects.toThrow("path is outside the open project");
+  });
+});
+
+// ── Destinations picker (#221 D9) — ported from the deleted
+// `publish/destinations/{list,create}` routes and their route-scoping rows ──
+
+describe("publish:destinations — scoping and provider capability", () => {
+  const provider = {
+    info: { id: "gdrive", label: "Google Drive", credential: { host: "gdrive" } },
+    listDestinations: async (req: unknown) => [{ id: "f1", title: `folder for ${JSON.stringify(req)}` }],
+    createDestination: async (_req: unknown, name: string) => ({ id: "new", title: name }),
+  };
+  const noPicker = { info: { id: "itch", label: "itch.io", credential: { host: "itch.io" } } };
+  const lib = {
+    publishProviderFor: (id: string) => (id === "gdrive" ? provider : noPicker),
+    resolvePublishRequest: async (opts: { projectDir: string; providerId: string }) => ({ resolvedFor: opts }),
+  };
+
+  test("both reject before the lib on a relative projectDir (validation stays literal)", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    await expect(publishListDestinations("rel/path", "gdrive")).rejects.toThrow(
+      "publish:destinations:list requires an absolute path, got: rel/path",
+    );
+    await expect(publishCreateDestination("rel/path", "gdrive", "New folder")).rejects.toThrow(
+      "publish:destinations:create requires an absolute path, got: rel/path",
+    );
+  });
+
+  test("both reject a projectDir outside the open project", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    await expect(publishListDestinations("/somewhere/else", "gdrive")).rejects.toThrow(
+      "publish:destinations:list: path is outside the open project",
+    );
+    await expect(publishCreateDestination("/somewhere/else", "gdrive", "x")).rejects.toThrow(
+      "publish:destinations:create: path is outside the open project",
+    );
+  });
+
+  test("listDestinations passes the lib-resolved PublishRequest straight through to the provider", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    const rows = await publishListDestinations("/abs/project", "gdrive");
+    expect(rows).toEqual([
+      { id: "f1", title: `folder for ${JSON.stringify({ resolvedFor: { projectDir: "/abs/project", providerId: "gdrive" } })}` },
+    ]);
+  });
+
+  test("createDestination trims the name and returns the provider's new destination", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    await expect(publishCreateDestination("/abs/project", "gdrive", "  Drafts  ")).resolves.toEqual({
+      id: "new",
+      title: "Drafts",
+    });
+  });
+
+  test("a provider without a picker fails with its label, verbatim (matches the friendly allowlist via 'paste'? no — via the generic path)", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    // "itch.io has no folder picker." carries `itch.io`, which the
+    // PUBLISH_FRIENDLY_ERROR allowlist matches — so it survives verbatim.
+    await expect(publishListDestinations("/abs/project", "itch")).rejects.toThrow("itch.io has no folder picker.");
+    await expect(publishCreateDestination("/abs/project", "itch", "x")).rejects.toThrow(
+      "itch.io can't create new folders.",
+    );
+  });
+
+  test("a blank name is rejected (genericized — the message is not on the allowlist)", async () => {
+    registerHostServices({ ...baseServices(), remote: { ...remoteBase, loadLib: async () => lib } as never });
+    await expect(publishCreateDestination("/abs/project", "gdrive", "   ")).rejects.toThrow(GENERIC_PUBLISH_ERROR);
   });
 });

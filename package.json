@@ -12,13 +12,11 @@
     "typecheck": "bun --filter '*' typecheck",
     "desktop:dev": "bun --cwd packages/desktop dev",
     "desktop:electron": "bun --cwd packages/desktop electron:dev",
-    "knip": "(cd packages/desktop && bunx svelte-kit sync) && knip --include files,dependencies,unlisted,binaries",
     "check:generated-files": "node tools/check-generated-files.mjs",
     "check:architecture": "node tools/check-architecture.mjs",
     "check:vendored": "node packages/vscode-markdown-editor/scripts/verify-vendored.mjs"
   },
   "devDependencies": {
-    "knip": "6.32.2",
     "playwright-core": "^1.60.0"
   },
   "overrides": {

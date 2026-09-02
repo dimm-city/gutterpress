@@ -1,0 +1,504 @@
+/* Gutterpress site — one stylesheet for the landing page and the rendered
+   markdown pages (privacy). Paper and ink, with rubrication: the red that
+   typeset books have used for headings and marks since before movable type. */
+
+:root {
+  color-scheme: light dark;
+  --paper: #fbfaf7;
+  --paper-raised: #ffffff;
+  --ink: #1b1a17;
+  --ink-soft: #55524b;
+  --rule: #e2ded4;
+  --rubric: #b8321f;
+  --rubric-ink: #ffffff;
+  --mark: #8d887c;
+  --code-bg: #f1eee6;
+  --measure: 66ch;
+  --display: "Fraunces", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --body: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #151412;
+    --paper-raised: #1e1c19;
+    --ink: #ebe7de;
+    --ink-soft: #b3ada0;
+    --rule: #34312b;
+    --rubric: #ff7a66;
+    --rubric-ink: #1b1a17;
+    --mark: #7d786d;
+    --code-bg: #24221e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: var(--rubric);
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.14em;
+}
+
+a:hover {
+  text-decoration-thickness: 0.12em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--rubric);
+  outline-offset: 3px;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+pre {
+  background: var(--code-bg);
+  padding: 0.9rem 1.1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* ── Frame ─────────────────────────────────────────────────────────────── */
+
+.frame {
+  width: min(100% - 2.5rem, 68rem);
+  margin-inline: auto;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem 2rem;
+  flex-wrap: wrap;
+  padding-block: 1.2rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.45rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* The desktop app's stamped GP monogram, in its two inks: dark ink for the
+   paper theme, cream for the dark one — the <picture> in the markup picks. */
+.brand-mark {
+  display: block;
+  flex: none;
+}
+
+.brand-mark img {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
+.wordmark small {
+  display: block;
+  font-family: var(--body);
+  font-weight: 400;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.nav a:hover,
+.nav a[aria-current="page"] {
+  color: var(--rubric);
+}
+
+.colophon {
+  margin-top: 4rem;
+  padding-block: 1.6rem 2.4rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2rem;
+  justify-content: space-between;
+}
+
+.colophon a {
+  color: inherit;
+}
+
+/* ── Landing ───────────────────────────────────────────────────────────── */
+
+.hero {
+  padding-block: 4rem 3rem;
+  display: grid;
+  gap: 1.4rem;
+  max-width: 44rem;
+}
+
+.hero h1 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: clamp(2.2rem, 5.2vw, 3.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.hero h1 em {
+  font-style: italic;
+  color: var(--rubric);
+}
+
+.hero p {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.7rem 1.25rem;
+  border-radius: 4px;
+  border: 1.5px solid var(--rubric);
+  color: var(--rubric);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+
+.button.primary {
+  background: var(--rubric);
+  color: var(--rubric-ink);
+}
+
+.button:hover {
+  text-decoration: underline;
+}
+
+/* The page motif: the three-step workflow, set inside a printer's sheet with
+   crop marks in the corners — the object Gutterpress exists to produce. */
+
+.sheet {
+  position: relative;
+  margin-block: 2rem 3.5rem;
+  padding: 2.4rem clamp(1.4rem, 4vw, 3rem);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+.sheet::before,
+.sheet::after,
+.sheet .mark::before,
+.sheet .mark::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--mark);
+  border-style: solid;
+  border-width: 0;
+}
+
+.sheet::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+  transform: translate(-16px, -16px);
+}
+
+.sheet::after {
+  top: -1px;
+  right: -1px;
+  border-top-width: 1px;
+  border-right-width: 1px;
+  transform: translate(16px, -16px);
+}
+
+.sheet .mark::before {
+  bottom: -1px;
+  left: -1px;
+  border-bottom-width: 1px;
+  border-left-width: 1px;
+  transform: translate(-16px, 16px);
+}
+
+.sheet .mark::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom-width: 1px;
+  border-right-width: 1px;
+  transform: translate(16px, 16px);
+}
+
+.sheet h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.6rem;
+  margin: 0 0 1.6rem;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1.8rem 2.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  counter-increment: step;
+}
+
+.steps li::before {
+  content: counter(step);
+  display: block;
+  font-family: var(--display);
+  font-size: 1.9rem;
+  line-height: 1;
+  color: var(--rubric);
+  margin-bottom: 0.5rem;
+}
+
+.steps h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.15rem;
+  margin: 0 0 0.35rem;
+}
+
+.steps p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.steps pre {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+}
+
+section.band {
+  padding-block: 1.5rem;
+}
+
+section.band h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 1rem;
+  text-wrap: balance;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rubric);
+  margin-bottom: 0.4rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem 2.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.features li {
+  padding-left: 1.1rem;
+  position: relative;
+  max-width: var(--measure);
+}
+
+.features li::before {
+  content: "¶";
+  position: absolute;
+  left: 0;
+  color: var(--rubric);
+}
+
+.features strong {
+  font-weight: 650;
+}
+
+.downloads {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.downloads th,
+.downloads td {
+  text-align: left;
+  padding: 0.6rem 0.8rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+.downloads th {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.installs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.2rem 2rem;
+}
+
+.installs h3 {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  margin: 0 0 0.4rem;
+}
+
+.installs p {
+  margin: 0.5rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.note {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  max-width: var(--measure);
+}
+
+/* ── Rendered markdown pages ───────────────────────────────────────────── */
+
+.prose {
+  max-width: var(--measure);
+  padding-block: 3rem 1rem;
+}
+
+.prose h1 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: clamp(2rem, 4.2vw, 2.8rem);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.2rem;
+  text-wrap: balance;
+}
+
+.prose h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.45rem;
+  margin: 2.4rem 0 0.7rem;
+  color: var(--rubric);
+  text-wrap: balance;
+}
+
+.prose h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  margin: 1.8rem 0 0.5rem;
+}
+
+.prose p,
+.prose li {
+  margin-block: 0.7rem;
+}
+
+.prose ul {
+  padding-left: 1.3rem;
+}
+
+.prose li::marker {
+  color: var(--rubric);
+}
+
+.prose strong {
+  font-weight: 650;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}

@@ -37,6 +37,8 @@ import type {
   AppSettings,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -80,6 +82,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishRunResult,
   PublishProviderStaticInfo,
   PreflightRow,
@@ -300,6 +303,9 @@ declare global {
           providerId: string,
           options?: { dryRun?: boolean; artifactPath?: string },
         ): Promise<PublishRunResult>;
+        // #221 D9 — provider-neutral destinations picker (gdrive: Drive folders).
+        listDestinations(projectDir: string, providerId: string): Promise<PublishDestination[]>;
+        createDestination(projectDir: string, providerId: string, name: string): Promise<PublishDestination>;
       };
 
       // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
@@ -326,6 +332,11 @@ declare global {
       // listRepoBooks, diagnoseProject, testRemoteAccess, connectGenericHost,
       // disconnectHost, listConnections, forgeTokenUrl, sync, cloneRepository
       // — SFE-P5c3: restored to typed IPC on the `remote` member above.
+      // Google Drive publish connect (#221) — same two-phase shape as GitHub
+      // above; Start resolves with the auth URL (no user code to display).
+      connectGoogleStart(account?: string): Promise<GoogleConnectStartResult>;
+      connectGoogleWait(): Promise<GoogleConnectResult>;
+      connectGoogleCancel(): Promise<{ ok: boolean }>;
       onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
       // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
       /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.

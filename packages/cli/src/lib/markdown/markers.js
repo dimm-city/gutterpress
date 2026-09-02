@@ -86,7 +86,24 @@ function isBareToken(token) {
   return token && !token.includes('=') && !token.startsWith('.') && !token.startsWith('#');
 }
 
-/** The marker kinds this module understands. Also the near-miss dictionary. */
+/**
+ * The marker kinds this module understands. Also the near-miss dictionary.
+ *
+ * These names are RESERVED TO CORE, and the reservation is silent: a name here
+ * is claimed during BLOCK parsing, which runs before user plugins register on
+ * `md.core.ruler.push`. A plugin that defines a marker of the same name is
+ * therefore never reached — core consumes the line first, the plugin's handler
+ * does not run, and nothing warns, because from the typo-detector's point of
+ * view the line was legitimately claimed (see the note above that rule).
+ *
+ * Observed in the field guide: a project plugin defined its own `@continue`
+ * for splitting skill cards across a page. Core owns `continue`, so both call
+ * sites emitted a core "used without an open @section" warning and the
+ * author's intended card split silently never happened. Branded names
+ * (`@skill-continue`) avoid the collision entirely, which is what the plugin
+ * rule in CLAUDE.md §5 means by project plugins adding BRANDED component
+ * markers.
+ */
 const KNOWN_KINDS = [
   'chapter',
   'spread',

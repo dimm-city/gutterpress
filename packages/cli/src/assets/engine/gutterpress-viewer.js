@@ -35,7 +35,6 @@
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
     contentEdgeRect: () => contentEdgeRect,
-    compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
     columnReserve: () => columnReserve,
@@ -112,8 +111,22 @@
 
    Scope: \`>\` means this only ever reached the flow root's OWN children, so a
    book whose atomic blocks sit inside \`@page\`/\`@section\` wrappers was never
-   affected — which is why removing it does not move the dc-op-manual field
-   guide's remaining 4-page divergence. That one is still open. */
+   affected — which is why removing it did not move the dc-op-manual field
+   guide's divergence.
+
+   That separate divergence is now PARTLY closed. Its cause was
+   \`compensateTrailingMarginsBeforeAvoids\`, a viewer shim built on the false
+   premise that print discards a trailing margin at a fragmentainer edge.
+   Measured with printToPDF on the shim's own fixture: print keeps the margin
+   and defers the avoid block (8 print pages; the viewer reported 6). Removing
+   it took the field guide from viewer 294 / PDF 295 to 295 / 295.
+
+   STILL OPEN, and NOT what that shim caused: an interior +1 then -1 pair,
+   opening after PDF p108 (inside Gutterdruid) and closing before p176
+   (Wirephreak), so roughly p109-p153 is one page out of register while the
+   totals still agree. Anchor it with image identity, not text — that PDF has
+   no extractable body text; \`rabbit-walking.png\` (1379x2530, unique) sits on
+   PDF p134 vs viewer folio 135. */
 
 /* View mode (\`applySpreadMode\` in fragment.ts): wraps this run's multicol
    columns into \`--gp-wrap-cols\` ROWS instead of one long row — 2 for
@@ -1092,6 +1105,8 @@
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
     for (const { el, prop } of sites) {
+      if (prop === "break-before" && el.style.breakBefore === "auto")
+        continue;
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
@@ -1225,6 +1240,14 @@
       pushRun(runs, undefined, trailing);
     return runs;
   }
+  var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
+  function clearLeadingForcedBreaks(strip) {
+    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
+      const cs = getComputedStyle(el);
+      if (FORCED_BREAK.test(cs.breakBefore))
+        el.style.breakBefore = "auto";
+    }
+  }
   function stabilizeFullHeightPageRoots(model, strips) {
     let stabilized = 0;
     for (const strip of strips) {
@@ -1305,87 +1328,6 @@
       delete el.dataset.gpOverflowYPriority;
     }
   }
-  function compensateTrailingMarginsBeforeAvoids(model, strips) {
-    const candidates = new Set;
-    for (const decl of model.breaks) {
-      if (decl.prop !== "break-inside" || !/^avoid(?:-|$)/.test(decl.value.trim()))
-        continue;
-      let els;
-      try {
-        els = Array.from(document.querySelectorAll(decl.selector));
-      } catch {
-        continue;
-      }
-      for (const el of els) {
-        if (el instanceof HTMLElement && el.closest(".gp-strip"))
-          candidates.add(el);
-      }
-    }
-    let compensated = 0;
-    const orderedCandidates = Array.from(candidates).sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
-    for (const el of orderedCandidates) {
-      if (!/^avoid(?:-|$)/.test(getComputedStyle(el).breakInside))
-        continue;
-      const prev = el.previousElementSibling;
-      const stripEl = el.closest(".gp-strip");
-      const strip = strips.find((item) => item.el === stripEl);
-      if (!prev || !stripEl || !strip)
-        continue;
-      const rects = Array.from(el.getClientRects());
-      const prevRects = Array.from(prev.getClientRects());
-      if (rects.length !== 1 || !prevRects.length)
-        continue;
-      const rect = rects[0];
-      const prevRect = prevRects.at(-1);
-      const stripRect = stripEl.getBoundingClientRect();
-      const { stride } = stripMetrics(stripEl);
-      const zoom = cssZoomOf(stripEl);
-      const colOf = (r) => Math.floor(((r.left - stripRect.left) / zoom + 1) / stride);
-      const currentCol = colOf(rect);
-      if (currentCol !== colOf(prevRect) + 1)
-        continue;
-      if (Math.abs(rect.top - stripRect.top) / zoom > 0.5)
-        continue;
-      const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
-      if (marginEnd <= 0.5)
-        continue;
-      const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top) / zoom;
-      const height = rect.height / zoom;
-      if (height > remaining + 0.5)
-        continue;
-      if (height + marginEnd <= remaining + 0.5)
-        continue;
-      prev.dataset.gpTrailingMargin = "compensated";
-      prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
-      prev.dataset.gpTrailingMarginPriority = prev.style.getPropertyPriority("margin-block-end");
-      prev.style.setProperty("margin-block-end", "0px");
-      compensated++;
-    }
-    return compensated;
-  }
-  function restoreTrailingMargins(doc = document) {
-    for (const el of Array.from(doc.querySelectorAll('[data-gp-trailing-margin="compensated"]')))
-      restoreTrailingMargin(el);
-  }
-  function restoreTrailingMargin(el) {
-    const value = el.dataset.gpTrailingMarginValue ?? "";
-    const priority = el.dataset.gpTrailingMarginPriority ?? "";
-    if (value)
-      el.style.setProperty("margin-block-end", value, priority);
-    else
-      el.style.removeProperty("margin-block-end");
-    delete el.dataset.gpTrailingMargin;
-    delete el.dataset.gpTrailingMarginValue;
-    delete el.dataset.gpTrailingMarginPriority;
-  }
-  function restoreIneffectiveTrailingMargins(strips) {
-    for (const prev of Array.from(document.querySelectorAll('[data-gp-trailing-margin="compensated"]'))) {
-      const target = prev.nextElementSibling;
-      if (!target || pageOf(target, strips) !== pageRangeOf(prev, strips)[1]) {
-        restoreTrailingMargin(prev);
-      }
-    }
-  }
   function runPageBox(model, name, warnings = []) {
     const right = resolvePage(model, { name, pseudos: ["right"] }).geometry;
     const left = resolvePage(model, { name, pseudos: ["left"] }).geometry;
@@ -1436,6 +1378,8 @@
         offset: 0
       });
     }
+    for (const s of strips)
+      clearLeadingForcedBreaks(s.el);
     return strips;
   }
   function compensateRepeatedHeaders(strips, maxPasses = 24) {
@@ -1742,14 +1686,12 @@
     await layoutReady;
     makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
-    compensateTrailingMarginsBeforeAvoids(model, strips);
     synthesizeColumnBreaks(model);
     measure(strips);
     const blanks = compensateRectoBreaks(model, strips);
     if (blanks)
       measure(strips);
     const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
-    restoreIneffectiveTrailingMargins(strips);
     const { totalPages } = measure(strips);
     const api = {
       model,
@@ -1762,7 +1704,6 @@
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
         restoreFullHeightPageRoots();
-        restoreTrailingMargins();
         restoreScrollContainers();
         unwrapStrips(strips);
         for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
@@ -1772,7 +1713,6 @@
         strips.push(...rebuilt);
         makeOverflowFragmentable(strips);
         stabilizeFullHeightPageRoots(model, strips);
-        compensateTrailingMarginsBeforeAvoids(model, strips);
         synthesizeColumnBreaks(model);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
@@ -1780,7 +1720,6 @@
           api.warnings = [
             ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
           ];
-        restoreIneffectiveTrailingMargins(strips);
         const r = measure(strips);
         api.totalPages = r.totalPages;
         api.blankPageIndices = blankPageIndices(strips);

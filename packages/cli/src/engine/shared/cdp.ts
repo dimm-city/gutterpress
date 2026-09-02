@@ -274,9 +274,19 @@ async function checkMilestoneAndWrap(
 function readDevToolsUrl(proc: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
     let buf = "";
+    // How long to wait for Chromium to print its DevTools websocket URL.
+    //
+    // This was 20s and was too tight on a loaded CI runner — a budget for
+    // "has the browser booted", not a correctness bound, so failing fast buys
+    // nothing. MEASURED: agent.first-letter.test.ts took 18709ms in the
+    // v0.10.3 release run (94% of the old budget) and then blew it at
+    // 20013ms in the next one, failing a release at the gate with the browser
+    // merely slow. The runner's own noise eats a visible slice of it: each
+    // "Failed to connect to the bus" retry in that log costs ~2s before
+    // startup proceeds.
     const timer = setTimeout(
       () => reject(new Error(`Chromium did not report a DevTools URL:\n${buf}`)),
-      20_000,
+      60_000,
     );
     proc.stderr!.on("data", (d) => {
       buf += String(d);

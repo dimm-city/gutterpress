@@ -524,6 +524,31 @@
               "description": "Label of the saved credential to use when more than one is stored for this provider."
             }
           }
+        },
+        "gdrive": {
+          "type": "object",
+          "description": "Google Drive publishing (uploads the finished PDF or zipped HTML export to a Drive folder)",
+          "properties": {
+            "folder": {
+              "type": "string",
+              "description": "Drive folder name to find-or-create at My Drive root. Ignored once folderId is recorded.",
+              "default": "Gutterpress"
+            },
+            "folderId": {
+              "type": "string",
+              "description": "Stable Drive folder id to upload into, picker-set in the desktop app or hand-recorded from the CLI's post-publish tip. Takes precedence over folder when present and the folder still exists."
+            },
+            "credential": {
+              "type": "string",
+              "description": "Label of the saved credential to use when more than one Google account is connected. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
+            },
+            "format": {
+              "type": "string",
+              "description": "Which build output to upload",
+              "enum": ["pdf", "html"],
+              "default": "pdf"
+            }
+          }
         }
       }
     },

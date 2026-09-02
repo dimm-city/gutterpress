@@ -116,7 +116,9 @@ smaller, more pages, different pagination) appears far from the cause.
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
   modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe
   way: GUTTERPRESS_CSS supplies `inset: 0` + explicit self-alignment, the
-  containing block is the `.page`/`.spread` the image sits in, and a
+  containing block is the image's nearest positioned ancestor — the
+  `.page`/`.spread` it sits in unless the theme positions something closer
+  (a card or component shell, which then frames the pin by design) — and a
   `pin_outside_page` parse-time warning fires when there is no such
   container (the preview would otherwise mask exactly that mistake — its
   strip wrapper is positioned and one page tall). Same caveat as Fix B: the

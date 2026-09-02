@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-desktop",
   "private": true,
-  "version": "0.10.2",
+  "version": "0.10.5",
   "type": "module",
   "main": "out/main/main.js",
   "desktopName": "city.dimm.gutterpress.desktop",
@@ -23,11 +23,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
-    "test:ui": "node tests/integration/run-ui.mjs",
-    "perf-gate": "node tests/perf/render-gate.mjs",
-    "rerender-gate": "node tests/perf/rerender-latency-gate.mjs",
-    "rerender-ci": "node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000",
-    "rerender-baseline": "node tests/perf/rerender-latency-gate.mjs --write-baseline"
+    "test:ui": "node tests/integration/run-ui.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",

@@ -211,12 +211,31 @@ Two rules keep pinning predictable:
   page to anchor to — the image would resolve against the whole document
   and can print on a completely different sheet, so the build and preview
   warn (`pin_outside_page`) when you do it.
-- **The pin anchors to the `@page` container.** Gutterpress sizes that
-  container to the page's own content box — the sheet less its margins — so
-  `.gp-bottom` sits on the bottom margin edge even when the page holds two
-  lines of text. The two only part company if one `@page` block runs long
-  and fragments across several sheets: there `.gp-bottom` means the bottom
-  of that whole block, not of each sheet.
+- **The pin anchors to the nearest enclosing frame.** Normally that is the
+  `@page` container: Gutterpress sizes it to the page's own content box —
+  the sheet less its margins — so `.gp-bottom` sits on the bottom margin
+  edge even when the page holds two lines of text. The two only part company
+  if one `@page` block runs long and fragments across several sheets: there
+  `.gp-bottom` means the bottom of that whole block, not of each sheet.
+- **A styled block between the image and the page can become the frame
+  instead — on purpose.** If your theme positions something closer than the
+  page (a card, a callout, a component shell), the pin anchors to *that*,
+  which is how you pin art to a card rather than to the sheet. It also means
+  an image pinned **inside** an `@section` (or any such block) will sit at
+  the corner of that block, not the page corner — which looks like the pin
+  "not reaching the page". If you want the sheet, author the image outside
+  the block, as page furniture:
+
+  ```markdown
+  @section .intro
+  ...the card's own text...
+  @end-section
+
+  ![Colophon mark](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+  ```
+
+  Only a pin with **no** enclosing frame at all is an error — that is the
+  `pin_outside_page` warning above.
 
 #### Pinning art to the paper's edge {#pinned-images-flush}
 

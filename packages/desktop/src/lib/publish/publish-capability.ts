@@ -28,7 +28,14 @@
  */
 import { bridge } from "$lib/platform/bridge";
 import { friendlyHostError } from "$lib/errors";
-import type { PublishProviderCard, PublishProviderStaticInfo, PublishRunResult } from "$lib/platform/contract";
+import type {
+  GoogleConnectResult,
+  GoogleConnectStartResult,
+  PublishDestination,
+  PublishProviderCard,
+  PublishProviderStaticInfo,
+  PublishRunResult,
+} from "$lib/platform/contract";
 import type { PreflightRow } from "$lib/preflight";
 
 export type { PublishProviderStaticInfo };
@@ -97,4 +104,43 @@ export function run(
   options?: { dryRun?: boolean; artifactPath?: string },
 ): Promise<PublishRunResult> {
   return call(bridge().publish.run(projectDir, providerId, options));
+}
+
+// ── Google Drive publish connect (#221 D10) ──────────────────────────────────
+// The bridge's connectGoogle* trio mirrors connectGitHub* (remote-capability.ts)
+// deliberately: one pattern for interactive OAuth connects. Start resolves with
+// the auth URL for a "didn't open? click here" fallback; Wait resolves once the
+// user approves in the browser; the credential never crosses the bridge.
+
+/** Begin the Google Drive OAuth connect flow. An optional `account` label
+ *  connects a NAMED credential (mirrors `connect`'s account label). */
+export function connectGoogleStart(account?: string): Promise<GoogleConnectStartResult> {
+  return call(bridge().connectGoogleStart(account));
+}
+
+/** Await user approval of the in-flight connect (redacted result). */
+export function connectGoogleWait(): Promise<GoogleConnectResult> {
+  return call(bridge().connectGoogleWait());
+}
+
+/** Cancel an in-flight connect attempt (user closed the dialog). */
+export function connectGoogleCancel(): Promise<{ ok: boolean }> {
+  return bridge().connectGoogleCancel();
+}
+
+// ── Destinations picker (#221 D9) — provider-neutral (gdrive: Drive folders) ─
+
+/** Existing places a provider can publish into. The wizard only calls this
+ *  when the provider's card carries `destinations` (see `listProviders`). */
+export function listDestinations(projectDir: string, providerId: string): Promise<PublishDestination[]> {
+  return call(bridge().publish.listDestinations(projectDir, providerId));
+}
+
+/** Create a new destination (gdrive: a Drive folder at My Drive root). */
+export function createDestination(
+  projectDir: string,
+  providerId: string,
+  name: string,
+): Promise<PublishDestination> {
+  return call(bridge().publish.createDestination(projectDir, providerId, name));
 }

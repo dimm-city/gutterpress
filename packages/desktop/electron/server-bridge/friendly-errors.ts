@@ -27,6 +27,23 @@
  * `electron/api/validation.ts`'s header); every caller uses only `.message`
  * to build a plain `Error`.
  */
+import { getAppHooks } from "./app-hooks";
+
+/**
+ * Log one failure line: to the console (the dev terminal) and, once main.ts
+ * has registered the host services, to the app log the Logs tab shows — so
+ * the "See the app log for details" every filter below promises is TRUE from
+ * this module's SvelteKit-bundle copy too, not only main.ts's own. (The two
+ * bundles share nothing but globalThis, which is how `getAppHooks` reaches
+ * main's writer.) A packaged app never shows its stderr, so before this the
+ * details the message pointed at existed nowhere an author could look — the
+ * 0.10.5 Google Drive bring-up hit exactly that. Before registration (`bun
+ * test`), console only.
+ */
+function logFailure(line: string): void {
+  console.error(line);
+  getAppHooks()?.logFailure?.(line);
+}
 
 // ── Version history (vcs:*) ──────────────────────────────────────────────────
 
@@ -50,9 +67,9 @@ export function friendlyVcsError(
   logLabel: string,
 ): { status: number; message: string } {
   const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[${logLabel}] failed: ${msg}`);
+  logFailure(`[${logLabel}] failed: ${msg}`);
   if (e instanceof Error && (e as Error & { stack?: string }).stack) {
-    console.error((e as Error & { stack?: string }).stack);
+    logFailure((e as Error & { stack?: string }).stack!);
   }
   if (VCS_FRIENDLY_ERROR.test(msg)) {
     return { status: 422, message: msg };
@@ -94,10 +111,10 @@ export async function handleRemoteErrors<T>(
     return await fn();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
-    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
+    logFailure(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
+    if (e instanceof Error && e.stack) logFailure(redactUrlCredentials(e.stack));
     if (e instanceof Error && (e as { cause?: unknown }).cause) {
-      console.error(`  cause: ${redactUrlCredentials(String((e as { cause?: unknown }).cause))}`);
+      logFailure(`  cause: ${redactUrlCredentials(String((e as { cause?: unknown }).cause))}`);
     }
     // Repair round 1 (D12): redact on the rethrow, not only the log. A
     // transport error matching the allowlist below can still carry a raw
@@ -120,8 +137,28 @@ export async function handleRemoteErrors<T>(
 // "Install the Azure SWA CLI…" style hints behind an "online repository"
 // message from the wrong domain. Token values never appear in publish lib
 // messages by construction (publish redaction invariant).
+// Google Drive (#221, docs/gdrive-publish-plan.md D10) adds its own
+// vocabulary: `\bgoogle\b` covers every author-facing message
+// google-auth.ts/google-drive.ts throw (not-configured, reconnect,
+// sign-in declined/canceled/timed out/state-mismatch, HTTP failures) since
+// each one names "Google" as a whole word — for the HTTP failures that is
+// ENFORCED by the lib's google-errors.ts (`googleApiFailure`), after
+// "Couldn't create the Drive folder …" once fell through to the generic
+// fallback for want of the word. The boundary keeps it from
+// matching unrelated RUN-TOGETHER identifiers like "googleapis.com" or
+// "GoogleDriveProvider" (no non-word character sits between "google" and the
+// text that follows, so \b never fires there). It is, however, wider than
+// "hand-written author-facing copy mentioning Google": `.` also counts as a
+// word boundary, so the pattern equally matches "google" wherever it appears
+// as a DOTTED segment — e.g. inside "accounts.google.com" or
+// "drive.google.com", which several of those same messages embed verbatim
+// (an OAuth error can echo the request URL). That's harmless by construction:
+// those URLs only ever carry the public client_id and PKCE challenge, never a
+// token or secret (see the redaction invariant above) — but it's a wider
+// match than "names Google as prose" implies, so don't read this as
+// "only matches hand-authored sentences."
 const PUBLISH_FRIENDLY_ERROR =
-  /api key|access token|didn't accept|deployment token|connect (itch|azure|shopify)|butler|swa cli|myshopify|shopify|itch\.io|kdp|drivethrurpg|build (the|it)|Gutterpress build|manifest|publish\.[a-z-]+|paste|couldn't reach|couldn't download|try again|not available in this version|needs no api key|book\.html|exit \d+|failed \(exit/i;
+  /api key|access token|didn't accept|deployment token|connect (itch|azure|shopify)|butler|swa cli|myshopify|shopify|itch\.io|kdp|drivethrurpg|build (the|it)|Gutterpress build|manifest|publish\.[a-z-]+|paste|couldn't reach|couldn't download|try again|not available in this version|needs no api key|book\.html|exit \d+|failed \(exit|\bgoogle\b/i;
 
 /**
  * Wrap a publish operation with the shared error-sanitization logic:
@@ -136,8 +173,8 @@ export async function handlePublishErrors<T>(
     return await fn();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
-    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
+    logFailure(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
+    if (e instanceof Error && e.stack) logFailure(redactUrlCredentials(e.stack));
     // Repair round 1 (D12): redact on the rethrow, not only the log — see the
     // matching comment on handleRemoteErrors above.
     if (PUBLISH_FRIENDLY_ERROR.test(msg)) throw new Error(redactUrlCredentials(msg));
@@ -183,8 +220,8 @@ export function friendlyAppImageError(
   logLabel: string,
 ): { status: number; message: string } {
   const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[${logLabel}] failed: ${msg}`);
-  if (e instanceof Error && e.stack) console.error(e.stack);
+  logFailure(`[${logLabel}] failed: ${msg}`);
+  if (e instanceof Error && e.stack) logFailure(e.stack);
 
   const code = (e as { code?: unknown } | null)?.code;
   if (typeof code === "string" && APPIMAGE_FS_MESSAGE[code]) {

@@ -213,9 +213,10 @@ export function columnReserve(offset: number, columnHeight: number): number | nu
  *
  * Processed in document order, remeasuring between insertions: an insertion
  * shifts every later break site, and a site that already lands at the top of
- * its column (the strip's own leading break, or the second half of a
- * wrapper/inner-heading pair that both carry the same forced break) needs no
- * spacer, which is what dedupes those pairs without extra bookkeeping.
+ * its column (the strip's own leading break — see `clearLeadingForcedBreaks`
+ * — or the second half of a wrapper/inner-heading pair that both carry the
+ * same forced break) needs no spacer, which is what dedupes those pairs
+ * without extra bookkeeping.
  */
 export function synthesizeColumnBreaks(model: GcpmModel): void {
   const sites: Array<{ el: Element; prop: string }> = [];
@@ -249,6 +250,14 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
     a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
   );
   for (const { el, prop } of sites) {
+    // `buildStrips()` already ran `clearLeadingForcedBreaks()`, which sets
+    // this exact inline style on a break-before element sitting on the
+    // strip's leading in-flow chain — a forced break there is spec-ignorable
+    // (CSS Fragmentation Module Level 3), and Chromium/WebKit already ignore
+    // it. Honour the same call here instead of re-deriving it from geometry,
+    // which a chapter opener with a non-zero margin-top would get wrong (see
+    // `clearLeadingForcedBreaks`'s own doc comment).
+    if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
     const strip = el.closest<HTMLElement>(".gp-strip");
     if (!strip) continue;
     // A forced page break is only valid between sibling boxes in the same
@@ -312,7 +321,7 @@ export function synthesizeColumnBreaks(model: GcpmModel): void {
  * nothing propagates), the outermost chain ancestor with a preceding
  * sibling when it doesn't, or null when the chain reaches the strip with no
  * preceding sibling anywhere: that is the strip's leading edge, where a
- * forced break is spec-ignorable.
+ * forced break is spec-ignorable (`clearLeadingForcedBreaks`'s call).
  *
  * The walk is deliberately conservative — it only steps up while the chain
  * is a plain in-flow first-child chain, since that is the only shape §3.1
@@ -490,6 +499,56 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
   return runs;
 }
 
+const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
+
+/**
+ * Neutralize a forced `break-before` sitting on the LEADING in-flow chain of a
+ * strip (the strip's first child, its first child, …).
+ *
+ * THIS IS A CHROMIUM REQUIREMENT — spread mode is broken without it. Read that
+ * before deleting this again: it was removed once (a2da1e1, 0.10.2) as a
+ * "WebKit-only accommodation" and shipped a regression that put every page's
+ * content one spread slot left of its own sheet, with page 1 rendering on bare
+ * stage with no `@page` background at all.
+ *
+ * Why it is load-bearing in Chromium. `applySpreadMode()` inserts a
+ * `.gp-wrap-spacer` (`break-after: column`) as a strip's FIRST child to push a
+ * recto-starting run into the right-hand slot. That spacer's break then shares
+ * a class-A boundary with the leading element's own `break-before` — and every
+ * real book has one, because core's `MARKER_CSS` gives every page
+ * `.page { break-before: page }`. Per CSS-break-3 §3.2 forced-break combining
+ * the strongest value on a boundary wins, `page` outranks `column`, and screen
+ * multicol has no page context for a `page` break to act on — so Chromium
+ * discards the combined break outright and the spacer occupies no slot. The
+ * sheet layer (`decorate.ts`, `slot = i + wrapGeometry().shift`) computes
+ * placement arithmetically and assumes the spacer worked, so content flows at
+ * shift 0 while paper is drawn at shift 1: every page lands on its
+ * predecessor's sheet. Clearing the leading break first is what keeps the
+ * spacer's `break-after` intact.
+ *
+ * Two consumers, only one of them our code. `synthesizeColumnBreaks()` reads
+ * the inline marker to skip spacer-insertion, and that read genuinely IS
+ * redundant — `propagatedBreakTarget()` re-derives the same skip. That is what
+ * made the removal look safe. The second consumer is Chromium's own layout
+ * engine, reading the neutralized computed style at the boundary
+ * `applySpreadMode()` creates LATER, after fragmentation; no amount of tracing
+ * our callers reveals it. So do not "simplify" this by deleting the writer and
+ * keeping the derivation — the persistent inline style IS the effect.
+ *
+ * The WebKit page-count divergence the original comment described was real but
+ * incidental: this is not a cross-browser accommodation and the Chromium-only
+ * ruling does not reach it (see CLAUDE.md — "a fallback that also corrects
+ * Chromium behaviour stays, on its Chromium merits").
+ *
+ * Guarded by `spread-leading-break.test.ts`, which fails without this.
+ */
+function clearLeadingForcedBreaks(strip: HTMLElement) {
+  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+    const cs = getComputedStyle(el);
+    if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+  }
+}
+
 /**
  * Keep a full-content-height named-page containing block on the page whose
  * geometry sized it.
@@ -610,8 +669,7 @@ export function makeOverflowFragmentable(strips: StripInfo[]): void {
     }
   }
   for (const { el, x, y } of todo) {
-    // Authored inline state is saved for refresh restoration, exactly as
-    // `compensateTrailingMarginsBeforeAvoids` saves margins — priority
+    // Authored inline state is saved for refresh restoration — priority
     // included, or an author's `overflow-x: auto !important` comes back
     // without its priority after a refresh.
     el.dataset.gpOverflow = "clipped";
@@ -638,110 +696,6 @@ function restoreScrollContainers(doc: Document = document): void {
     delete el.dataset.gpOverflowY;
     delete el.dataset.gpOverflowXPriority;
     delete el.dataset.gpOverflowYPriority;
-  }
-}
-
-/**
- * Match page-fragmentation's trailing-margin discard for an atomic block.
- *
- * Chromium versions disagree in multicol when a `break-inside: avoid*` block
- * would fit at the bottom of the previous column only if its preceding
- * sibling's trailing margin were discarded. Print pagination discards that
- * margin at the fragmentainer edge. Some multicol builds count it first and
- * defer the whole atomic block, adding a preview-only page.
- *
- * Correct only the demonstrated boundary: the avoid block is already at the
- * very top of the immediately following column, and its border-box fits the
- * previous column with the margin removed but not with it present. Runtimes
- * that already place the block on the previous column never match and are not
- * changed. Authored inline state is saved for refresh restoration.
- */
-export function compensateTrailingMarginsBeforeAvoids(
-  model: GcpmModel,
-  strips: StripInfo[],
-): number {
-  const candidates = new Set<HTMLElement>();
-  for (const decl of model.breaks) {
-    if (decl.prop !== "break-inside" || !/^avoid(?:-|$)/.test(decl.value.trim())) continue;
-    let els: Element[];
-    try {
-      els = Array.from(document.querySelectorAll(decl.selector));
-    } catch {
-      continue;
-    }
-    for (const el of els) {
-      if (el instanceof HTMLElement && el.closest(".gp-strip")) candidates.add(el);
-    }
-  }
-
-  let compensated = 0;
-  const orderedCandidates = Array.from(candidates).sort((a, b) =>
-    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
-  );
-  for (const el of orderedCandidates) {
-    if (!/^avoid(?:-|$)/.test(getComputedStyle(el).breakInside)) continue;
-    const prev = el.previousElementSibling as HTMLElement | null;
-    const stripEl = el.closest<HTMLElement>(".gp-strip");
-    const strip = strips.find((item) => item.el === stripEl);
-    if (!prev || !stripEl || !strip) continue;
-
-    const rects = Array.from(el.getClientRects());
-    const prevRects = Array.from(prev.getClientRects());
-    if (rects.length !== 1 || !prevRects.length) continue;
-    const rect = rects[0]!;
-    const prevRect = prevRects.at(-1)!;
-    const stripRect = stripEl.getBoundingClientRect();
-    const { stride } = stripMetrics(stripEl);
-    // Rects are zoom-scaled, stride is not — see cssZoomOf.
-    const zoom = cssZoomOf(stripEl);
-    const colOf = (r: DOMRect) => Math.floor(((r.left - stripRect.left) / zoom + 1) / stride);
-    const currentCol = colOf(rect);
-    if (currentCol !== colOf(prevRect) + 1) continue;
-    if (Math.abs(rect.top - stripRect.top) / zoom > 0.5) continue;
-
-    // marginEnd comes from getComputedStyle and is already unscaled; every
-    // rect-derived length here must be divided to match it (see cssZoomOf).
-    const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
-    if (marginEnd <= 0.5) continue;
-    const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top) / zoom;
-    const height = rect.height / zoom;
-    if (height > remaining + 0.5) continue;
-    if (height + marginEnd <= remaining + 0.5) continue;
-
-    prev.dataset.gpTrailingMargin = "compensated";
-    prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
-    prev.dataset.gpTrailingMarginPriority = prev.style.getPropertyPriority("margin-block-end");
-    prev.style.setProperty("margin-block-end", "0px");
-    compensated++;
-  }
-  return compensated;
-}
-
-function restoreTrailingMargins(doc: Document = document): void {
-  for (const el of Array.from(
-    doc.querySelectorAll<HTMLElement>('[data-gp-trailing-margin="compensated"]'),
-  )) restoreTrailingMargin(el);
-}
-
-function restoreTrailingMargin(el: HTMLElement): void {
-  const value = el.dataset.gpTrailingMarginValue ?? "";
-  const priority = el.dataset.gpTrailingMarginPriority ?? "";
-  if (value) el.style.setProperty("margin-block-end", value, priority);
-  else el.style.removeProperty("margin-block-end");
-  delete el.dataset.gpTrailingMargin;
-  delete el.dataset.gpTrailingMarginValue;
-  delete el.dataset.gpTrailingMarginPriority;
-}
-
-/** Drop a speculative correction if a later layout pass still deferred it. */
-function restoreIneffectiveTrailingMargins(strips: StripInfo[]): void {
-  for (const prev of Array.from(
-    document.querySelectorAll<HTMLElement>('[data-gp-trailing-margin="compensated"]'),
-  )) {
-    const target = prev.nextElementSibling;
-    if (!target || pageOf(target, strips) !== pageRangeOf(prev, strips)[1]) {
-      restoreTrailingMargin(prev);
-    }
   }
 }
 
@@ -850,6 +804,10 @@ export function buildStrips(
       offset: 0,
     });
   }
+  // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
+  // that inside the loop above would force one synchronous style recalc per
+  // strip right after that strip's own DOM writes.
+  for (const s of strips) clearLeadingForcedBreaks(s.el);
   return strips;
 }
 
@@ -1506,7 +1464,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   await layoutReady;
   makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
-  compensateTrailingMarginsBeforeAvoids(model, strips);
   synthesizeColumnBreaks(model);
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
@@ -1515,7 +1472,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     opts.compensateHeaders === false
       ? { tables: 0, passes: 0, warnings: [] }
       : compensateRepeatedHeaders(strips);
-  restoreIneffectiveTrailingMargins(strips);
   const { totalPages } = measure(strips);
   const api: GutterpressViewerApi = {
     model,
@@ -1537,7 +1493,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     // there is no separate "cheap" path to keep.
     relayout: () => {
       restoreFullHeightPageRoots();
-      restoreTrailingMargins();
       restoreScrollContainers();
       unwrapStrips(strips);
       for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
@@ -1547,7 +1502,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       strips.push(...rebuilt);
       makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
-      compensateTrailingMarginsBeforeAvoids(model, strips);
       synthesizeColumnBreaks(model);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);
@@ -1555,7 +1509,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
         api.warnings = [
           ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
         ];
-      restoreIneffectiveTrailingMargins(strips);
       const r = measure(strips);
       api.totalPages = r.totalPages;
       api.blankPageIndices = blankPageIndices(strips);

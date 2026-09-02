@@ -158,6 +158,8 @@ import type {
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -170,6 +172,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
@@ -204,6 +207,8 @@ export type {
   LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -215,6 +220,7 @@ export type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
@@ -331,6 +337,9 @@ export interface PublishProviderStaticInfo {
   credentialHost: string | null;
   tokenUrl: string | null;
   hint: string | null;
+  /** #221 — "oauth" = the browser consent flow (gdrive); null/absent = the
+   *  existing paste-an-API-key flow. Drives Connections' add-a-key branch. */
+  connectKind: "token" | "oauth" | null;
 }
 
 // ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
@@ -541,6 +550,25 @@ export interface ElectronBridge {
   connectGitHubWait(): Promise<RemoteConnection>;
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
+
+  // ── Google Drive publish connect (#221, docs/gdrive-publish-plan.md D10) ──
+  // Same two-phase shape as the GitHub trio above, mirrored deliberately (the
+  // recorded alternative — a route trio on the publish hooks bridge — was
+  // passed over so the app keeps ONE pattern for interactive OAuth connects).
+  // There is no user code to display: `connectGoogleStart` resolves with the
+  // auth URL the browser was (or should be) sent to, for a "didn't open?
+  // click here" fallback link. Reached from the SPA through
+  // `$lib/publish/publish-capability.ts`.
+
+  /** Begin the Google Drive OAuth connect flow; resolves with the auth URL to
+   *  offer as a fallback link. An optional `account` label connects a NAMED
+   *  credential (mirrors the publish token-paste flow's account label). */
+  connectGoogleStart(account?: string): Promise<GoogleConnectStartResult>;
+  /** Await user approval of the in-flight connect (the credential is stored
+   *  by the host — the renderer only ever sees this redacted result). */
+  connectGoogleWait(): Promise<GoogleConnectResult>;
+  /** Cancel an in-flight connect attempt (user closed the dialog). */
+  connectGoogleCancel(): Promise<{ ok: boolean }>;
 
   /** Subscribe to clone progress events. Returns an unsubscribe fn. (`cloneRemoteRepository`
    *  itself is the `remote.cloneRepository` member below — SFE-P5c3: restored to IPC.) */
@@ -829,5 +857,13 @@ export interface ElectronBridge {
       providerId: string,
       options?: { dryRun?: boolean; artifactPath?: string },
     ): Promise<PublishRunResult>;
+    /**
+     * Existing places a provider can publish into (#221 D9, gdrive: Drive
+     * folders) — provider-neutral; the wizard only calls this when the
+     * provider's card carries `destinations` (see `listProviders`).
+     */
+    listDestinations(projectDir: string, providerId: string): Promise<PublishDestination[]>;
+    /** Create a new destination (gdrive: a Drive folder at My Drive root). */
+    createDestination(projectDir: string, providerId: string, name: string): Promise<PublishDestination>;
   };
 }

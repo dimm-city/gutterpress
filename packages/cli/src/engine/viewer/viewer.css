@@ -63,8 +63,22 @@
 
    Scope: `>` means this only ever reached the flow root's OWN children, so a
    book whose atomic blocks sit inside `@page`/`@section` wrappers was never
-   affected — which is why removing it does not move the dc-op-manual field
-   guide's remaining 4-page divergence. That one is still open. */
+   affected — which is why removing it did not move the dc-op-manual field
+   guide's divergence.
+
+   That separate divergence is now PARTLY closed. Its cause was
+   `compensateTrailingMarginsBeforeAvoids`, a viewer shim built on the false
+   premise that print discards a trailing margin at a fragmentainer edge.
+   Measured with printToPDF on the shim's own fixture: print keeps the margin
+   and defers the avoid block (8 print pages; the viewer reported 6). Removing
+   it took the field guide from viewer 294 / PDF 295 to 295 / 295.
+
+   STILL OPEN, and NOT what that shim caused: an interior +1 then -1 pair,
+   opening after PDF p108 (inside Gutterdruid) and closing before p176
+   (Wirephreak), so roughly p109-p153 is one page out of register while the
+   totals still agree. Anchor it with image identity, not text — that PDF has
+   no extractable body text; `rabbit-walking.png` (1379x2530, unique) sits on
+   PDF p134 vs viewer folio 135. */
 
 /* View mode (`applySpreadMode` in fragment.ts): wraps this run's multicol
    columns into `--gp-wrap-cols` ROWS instead of one long row — 2 for

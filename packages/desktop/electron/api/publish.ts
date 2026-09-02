@@ -55,6 +55,10 @@ export interface LibPublishProviderInfo {
   label: string;
   kind: "api" | "guided";
   format: "pdf" | "html";
+  /** #221 phase 3, D8 — present only for a provider that supports more than
+   *  one format (gdrive: ["pdf", "html"]); absent for every other provider,
+   *  which keeps them fixed on `format` above. */
+  formats?: Array<"pdf" | "html">;
   description: string;
   configFields: Array<{ key: string; label: string; placeholder?: string }>;
   credential: {
@@ -63,7 +67,31 @@ export interface LibPublishProviderInfo {
     envVar?: string;
     tokenUrl?: string;
     hint?: string;
+    /** #221 — "token" (default/absent) = pasted-key connect; "oauth" = the
+     *  browser consent flow (gdrive). Drives the wizard's connect UI branch. */
+    connect?: "token" | "oauth";
   };
+  /** #221 — present when the provider has a folder/destination picker. */
+  destinations?: {
+    label: string;
+    canCreate: boolean;
+  };
+}
+
+/** One existing destination a provider can publish into (#221, gdrive: a
+ *  Drive folder). Mirrors the lib's `PublishProduct`. */
+export interface LibPublishDestination {
+  id: string;
+  title: string;
+  url?: string;
+}
+
+/** The subset of a live provider object the destinations handlers call —
+ *  narrower than the lib's real `PublishProvider` (only what's needed here). */
+export interface LibPublishProviderHandle {
+  info: LibPublishProviderInfo;
+  listDestinations?(req: unknown): Promise<LibPublishDestination[]>;
+  createDestination?(req: unknown, name: string): Promise<LibPublishDestination>;
 }
 
 /** Static publish-provider metadata (no project needed) — the electron-owned
@@ -81,6 +109,9 @@ export interface PublishProviderStaticInfo {
   credentialHost: string | null;
   tokenUrl: string | null;
   hint: string | null;
+  /** #221 — "oauth" = the browser consent flow (gdrive); null/absent = the
+   *  existing paste-an-API-key flow. Drives Connections' add-a-key branch. */
+  connectKind: "token" | "oauth" | null;
 }
 
 /** The dependency bag the lib's publish functions take (see the route's own). */
@@ -98,7 +129,28 @@ interface LibPublishSavedAccount {
 
 interface PublishLibModule {
   listPublishProviders?(): LibPublishProviderInfo[];
-  publishProviderFor?(id: string): { info: LibPublishProviderInfo };
+  publishProviderFor?(id: string): LibPublishProviderHandle;
+  /**
+   * Resolve the `PublishRequest`-shaped object a provider's
+   * `listDestinations`/`createDestination` needs — #221's destinations
+   * handlers are the only current callers. `unknown` is intentional: the
+   * real shape is the lib's `PublishRequest`, and these handlers only ever
+   * pass it straight through to a provider method, never read its fields.
+   */
+  resolvePublishRequest?(
+    options: { projectDir: string; providerId: string },
+    deps: PublishRouteDeps,
+  ): Promise<unknown>;
+  /** Best-effort revoke at Google (never throws) — used by disconnect for
+   *  `kind: "google-oauth"` credentials, mirroring the CLI's `--disconnect`. */
+  revokeGoogleCredential?(refreshToken: string): Promise<void>;
+  /** Delete a stored credential by its TokenStore key, best-effort revoking
+   *  it first when its kind supports one (currently google-oauth) — the one
+   *  shared implementation behind `publish:disconnect` AND
+   *  `remote:disconnectHost`. Never awaits the revoke itself (delete must
+   *  resolve immediately, even offline); an older lib without it falls back
+   *  to a bare delete. */
+  disconnectPublishCredential?(key: string, deps: Pick<PublishRouteDeps, "tokenStore">): Promise<void>;
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
     deps: PublishRouteDeps,
@@ -135,6 +187,32 @@ function requireHooks(): RemoteHooks<PublishLibModule, TokenStore> {
   return hooks;
 }
 
+/**
+ * The provider lookup + capability check + `PublishRequest` resolution the
+ * two destinations handlers both do identically before making their own,
+ * different, final call into the provider. `capability` names which optional
+ * method the caller is about to use, purely for the "can't do that" error
+ * message — the handlers still call it themselves afterward.
+ */
+async function resolveDestinationProvider(
+  hooks: RemoteHooks<PublishLibModule, TokenStore>,
+  projectDir: string,
+  providerId: string,
+  capability: "listDestinations" | "createDestination",
+): Promise<{ provider: LibPublishProviderHandle; req: unknown }> {
+  const lib = await hooks.loadLib();
+  if (!lib.publishProviderFor || !lib.resolvePublishRequest) {
+    throw new Error("Publishing is not available in this version of the lib");
+  }
+  const provider = lib.publishProviderFor(providerId);
+  if (!provider[capability]) {
+    const reason = capability === "listDestinations" ? "has no folder picker" : "can't create new folders";
+    throw new Error(`${provider.info.label} ${reason}.`);
+  }
+  const req = await lib.resolvePublishRequest({ projectDir, providerId }, { tokenStore: hooks.tokenStore });
+  return { provider, req };
+}
+
 /** Provider cards: static info + redacted connection status + manifest config. */
 export async function publishListProviders(rawProjectDir: unknown): Promise<unknown[]> {
   const hooks = requireHooks();
@@ -167,15 +245,26 @@ export async function publishListProviders(rawProjectDir: unknown): Promise<unkn
           label: info.label,
           kind: info.kind,
           format: info.format,
+          // #221 phase 3, D8 — present only for a provider that supports
+          // more than one format (gdrive); the wizard renders a PDF/Website
+          // choice only when this is set.
+          ...(info.formats && info.formats.length > 1 ? { formats: info.formats } : {}),
           description: info.description,
           fields: info.configFields,
           credentialRequired: info.credential.required,
           ...(info.credential.tokenUrl ? { tokenUrl: info.credential.tokenUrl } : {}),
           ...(info.credential.hint ? { hint: info.credential.hint } : {}),
+          // #221 — "oauth" swaps the wizard's paste-a-key form for a Connect
+          // button; absent/"token" is every provider's existing paste-a-key
+          // behavior, unchanged.
+          ...(info.credential.connect === "oauth" ? { connectKind: "oauth" as const } : {}),
           connected: status.connected,
           config,
           savedAccounts,
           selectedAccount,
+          // #221 D9 — present only for providers with a folder/destination
+          // picker (gdrive); the wizard renders the picker only when set.
+          ...(info.destinations ? { destinations: info.destinations } : {}),
         };
       }),
     );
@@ -199,6 +288,9 @@ export async function publishProviders(): Promise<PublishProviderStaticInfo[]> {
       credentialHost: info.credential.host || null,
       tokenUrl: info.credential.tokenUrl ?? null,
       hint: info.credential.hint ?? null,
+      // #221 — "oauth" swaps Connections' add-a-key form for a Connect
+      // button; null/absent is every provider's existing paste-a-key path.
+      connectKind: info.credential.connect === "oauth" ? ("oauth" as const) : null,
     }));
   });
 }
@@ -252,8 +344,63 @@ export async function publishDisconnect(
     const host = provider.info.credential.host;
     const account = typeof rawAccount === "string" ? rawAccount.trim() : "";
     const key = account && lib.publishCredentialKey ? lib.publishCredentialKey(host, account) : host;
-    await hooks.tokenStore.delete(key);
+    // disconnectPublishCredential (shared with remote:disconnectHost, and with
+    // the CLI's --disconnect via its own awaitRevoke:true) deletes the local
+    // credential FIRST (#221 C5), THEN starts a best-effort revoke at Google
+    // without awaiting it when the credential's kind supports one — so
+    // awaiting the call here still returns as soon as the local delete is
+    // done, while the revoke (its own ~10s network timeout) keeps running in
+    // the background.
+    if (lib.disconnectPublishCredential) {
+      await lib.disconnectPublishCredential(key, { tokenStore: hooks.tokenStore });
+    } else {
+      // Fallback for an older lib that predates the shared helper — same
+      // read/delete/revoke shape, just inlined.
+      const existing = await hooks.tokenStore.get(key);
+      await hooks.tokenStore.delete(key);
+      if (existing?.kind === "google-oauth" && lib.revokeGoogleCredential) {
+        void lib.revokeGoogleCredential(existing.token);
+      }
+    }
     return { ok: true };
+  });
+}
+
+/**
+ * Existing places a provider can publish into (#221 D9, gdrive: app-visible
+ * Drive folders) — provider-neutral by design (precedent: `publish:list`'s
+ * `listProducts`), so a future Dropbox/OneDrive provider needs no new
+ * channel. The wizard renders a picker only when `PublishProviderCard.destinations`
+ * is present (`publish:list` threads that flag from `info.destinations`).
+ */
+export async function publishListDestinations(
+  rawProjectDir: unknown,
+  rawProviderId: unknown,
+): Promise<LibPublishDestination[]> {
+  const hooks = requireHooks();
+  const projectDir = await requireProjectDir(rawProjectDir, "publish:destinations:list");
+  const providerId = typeof rawProviderId === "string" ? rawProviderId : undefined;
+  return handlePublishErrors("publish:destinations:list", async () => {
+    if (!providerId) throw new Error("publish:destinations:list requires { providerId }");
+    const { provider, req } = await resolveDestinationProvider(hooks, projectDir, providerId, "listDestinations");
+    return provider.listDestinations!(req);
+  });
+}
+
+/** Create a new destination (#221 D9, gdrive: a Drive folder at My Drive root). */
+export async function publishCreateDestination(
+  rawProjectDir: unknown,
+  rawProviderId: unknown,
+  rawName: unknown,
+): Promise<LibPublishDestination> {
+  const hooks = requireHooks();
+  const projectDir = await requireProjectDir(rawProjectDir, "publish:destinations:create");
+  const providerId = typeof rawProviderId === "string" ? rawProviderId : undefined;
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  return handlePublishErrors("publish:destinations:create", async () => {
+    if (!providerId || !name) throw new Error("publish:destinations:create requires { providerId, name }");
+    const { provider, req } = await resolveDestinationProvider(hooks, projectDir, providerId, "createDestination");
+    return provider.createDestination!(req, name);
   });
 }
 
@@ -404,5 +551,11 @@ export function registerPublishHandlers(secureHandle: SecureHandle): void {
     "publish:run",
     (_e, projectDir: unknown, providerId: unknown, artifactPath?: unknown, dryRun?: unknown) =>
       publishRun(projectDir, providerId, artifactPath, dryRun),
+  );
+  secureHandle("publish:listDestinations", (_e, projectDir: unknown, providerId: unknown) =>
+    publishListDestinations(projectDir, providerId),
+  );
+  secureHandle("publish:createDestination", (_e, projectDir: unknown, providerId: unknown, name: unknown) =>
+    publishCreateDestination(projectDir, providerId, name),
   );
 }

@@ -54,6 +54,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
 | **Install or verify a download** | [Installation and supported platforms](./docs/installing.md) |
+| **Read the privacy policy** (what Google Drive publishing can access) | [PRIVACY.md](./PRIVACY.md) · published at [dimm-city.github.io/gutterpress/privacy](https://dimm-city.github.io/gutterpress/privacy/) |
 | **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
 | Add custom markdown plugins | [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md) |
 | Refine a publication with Open Design | [Using Open Design with Gutterpress](./docs/open-design/using-open-design-with-gutterpress.md) |

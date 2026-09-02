@@ -309,6 +309,14 @@
     setConfig: (dir, providerId, values) => publish.setConfig(dir, providerId, values),
     connect: (dir, providerId, token, account) => publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => publish.disconnect(providerId, account),
+    // #221 D10 — the Google Drive OAuth connect trio (publish-capability's
+    // own members over the bridge's connectGoogle* trio).
+    connectGoogleStart: (account) => publish.connectGoogleStart(account),
+    connectGoogleWait: () => publish.connectGoogleWait(),
+    connectGoogleCancel: () => publish.connectGoogleCancel(),
+    // #221 D9 — provider-neutral destinations picker.
+    listDestinations: (dir, providerId) => publish.listDestinations(dir, providerId),
+    createDestination: (dir, providerId, name) => publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => publish.run(dir, providerId, options),
     pickPdfFile: () => pickPdfFileCapability(),
     openDirectory: () => openDirectoryCapability(),

@@ -4,6 +4,8 @@ import type {
   UpdaterStatus,
   DeviceCodeInfo,
   RemoteConnection,
+  GoogleConnectStartResult,
+  GoogleConnectResult,
   RemoteRepository,
   RemoteBranch,
   RepoBook,
@@ -50,6 +52,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
+  PublishDestination,
   PublishRunResult,
   PublishProviderStaticInfo,
   PreflightRow,
@@ -90,7 +93,13 @@ import type {
 // `doctor`, `lint` -- the LAST four route groups, taking the desktop HTTP
 // route count to zero. `updater.applyNow`/`onEvent` were already on this
 // bridge and are unchanged.
-const DESKTOP_API = 10;
+// 10 -> 11 (#221, merged from 0.10.5): added connectGoogleStart/Wait/Cancel
+// (the Google Drive publish provider's OAuth connect trio, mirroring
+// connectGitHubStart/Wait/Cancel) and `publish.listDestinations`/
+// `publish.createDestination` (the provider-neutral destinations picker).
+// 0.10.5 shipped the trio at its API 6 and the destinations pair as HTTP
+// routes; here the pair is typed IPC like the rest of `publish`.
+const DESKTOP_API = 11;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -460,6 +469,11 @@ contextBridge.exposeInMainWorld("electron", {
       options?: { dryRun?: boolean; artifactPath?: string },
     ): Promise<PublishRunResult> =>
       ipcRenderer.invoke("publish:run", projectDir, providerId, options?.artifactPath, options?.dryRun),
+    // #221 D9 — provider-neutral destinations picker (gdrive: Drive folders).
+    listDestinations: (projectDir: string, providerId: string): Promise<PublishDestination[]> =>
+      ipcRenderer.invoke("publish:listDestinations", projectDir, providerId),
+    createDestination: (projectDir: string, providerId: string, name: string): Promise<PublishDestination> =>
+      ipcRenderer.invoke("publish:createDestination", projectDir, providerId, name),
   },
 
   /**
@@ -525,6 +539,17 @@ contextBridge.exposeInMainWorld("electron", {
   // SFE-P5c3: restored to typed IPC on the `remote` namespaced block above
   // (request/reply operations only — the push channel below is unaffected,
   // run rule 8).
+
+  // ── Google Drive publish connect (#221) — same two-phase shape, no user
+  // code to display (Start resolves with the auth URL instead; Wait resolves
+  // when the user approves in the browser). Tokens never cross this bridge.
+  connectGoogleStart: (account?: string): Promise<GoogleConnectStartResult> =>
+    ipcRenderer.invoke("publish:connectGoogleStart", account),
+  connectGoogleWait: (): Promise<GoogleConnectResult> =>
+    ipcRenderer.invoke("publish:connectGoogleWait"),
+  connectGoogleCancel: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("publish:connectGoogleCancel"),
+
   /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),

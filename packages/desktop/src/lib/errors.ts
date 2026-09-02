@@ -291,6 +291,40 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
     return { summary: "Shopify rejected the publish request.", details: msg };
   }
 
+  // Google Drive (#221): the OAuth connection expired or was revoked.
+  // google-auth.ts's RECONNECT_MESSAGE / google-drive.ts's invalid_grant
+  // mapping already write this exact author-facing sentence before it ever
+  // reaches here — matched explicitly (not left to the generic passthrough
+  // below) so a bare `invalid_grant` from any path that bypasses that lib
+  // mapping still gets the same friendly copy instead of raw OAuth-error text.
+  if (/invalid_grant/i.test(msg)) {
+    return {
+      summary: "Your Google Drive connection expired or was revoked. Connect Google Drive again.",
+    };
+  }
+
+  // Google Drive (#221): out of storage. providers/gdrive.ts's upload()
+  // already fails fast with a specific "needs X but only Y is free" sentence
+  // before any bytes move — passed through as-is. Also catches the raw
+  // Drive API's `storageQuotaExceeded` reason in case it ever reaches here
+  // unmapped (e.g. a future call site that skips the provider's own check).
+  if (/your google drive is full/i.test(msg)) {
+    return { summary: msg };
+  }
+  if (/storageQuotaExceeded/i.test(msg)) {
+    return {
+      summary: "Your Google Drive is full — free up space (or choose a different folder) and try again.",
+      details: msg,
+    };
+  }
+
+  // Google Drive (#221): the configured folder was moved to trash or
+  // deleted. providers/gdrive.ts's D5 folderId resolution already writes a
+  // specific, friendly "pick the folder again" sentence — passed through.
+  if (/drive folder.*can.?t be found/i.test(msg)) {
+    return { summary: msg };
+  }
+
   // A request that never reached (or never returned from) the publish route
   // at all — the renderer's own `fetch()` failing, not a host response.
   if (/failed to fetch|networkerror|econnrefused|enotfound|fetch failed/i.test(msg)) {

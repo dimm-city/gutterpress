@@ -30,6 +30,7 @@
     preflightHeaderLevel,
     preflightCounts,
     categoryLabel,
+    entersPreflightForward,
     type PreflightRow,
   } from "$lib/preflight";
   import type { ProblemEntry } from "$lib/platform/dtos";
@@ -61,8 +62,21 @@
   let overrideConfirm = $state<InlineConfirmState>({});
   // Per-provider: is the "add another account" connect form open?
   let addingAccount = $state<Record<string, boolean>>({});
+  // Per-provider: is the inline "New folder…" name form open (#221 D9)?
+  let addingFolder = $state<Record<string, boolean>>({});
+  // Per-provider in-flight optimistic format pick (#221 C8). A plain
+  // `checked={controller.effectiveFormat(card) === fmt}` binding never
+  // re-runs when `selectFormat()` throws — nothing it reads changes, so a
+  // save failure left the clicked radio visually checked even though the
+  // controller's real format never changed. This needs to be a real,
+  // directly-read $state (read inline in the `{@const chosenFormat = …}`
+  // below) so Svelte tracks it as a dependency and reapplies `checked` on
+  // every settle — success or failure alike (`chooseFormat` below always
+  // clears it once `selectFormat` settles).
+  let pendingFormat = $state<Record<string, "pdf" | "html">>({});
 
   const ADD = "__add_account__";
+  const NEW_FOLDER = "__new_folder__";
   function showAddForm(card: PublishProviderCard): boolean {
     return addingAccount[card.id] === true || card.savedAccounts.length === 0;
   }
@@ -74,11 +88,44 @@
       void controller.selectCredential(card.id, value);
     }
   }
+  /** Choose the format for a multi-format card (#221 C8). Sets the optimistic
+   *  pick immediately so the click feels instant, then ALWAYS clears it once
+   *  `selectFormat` settles — on success the controller's own format now
+   *  matches what was picked; on failure this is what stops the radio from
+   *  staying visually checked on an option that was never actually saved. */
+  async function chooseFormat(card: PublishProviderCard, fmt: "pdf" | "html") {
+    pendingFormat = { ...pendingFormat, [card.id]: fmt };
+    try {
+      await controller.selectFormat(card.id, fmt);
+    } finally {
+      const rest = { ...pendingFormat };
+      delete rest[card.id];
+      pendingFormat = rest;
+    }
+  }
+
   async function doConnect(card: PublishProviderCard) {
     await controller.connectPublish(card.id);
     // Collapse the add form only on success (keep it open, with the error, so
     // the author can fix the key).
     if (!controller.publishError) addingAccount = { ...addingAccount, [card.id]: false };
+  }
+
+  function onDestinationSelect(card: PublishProviderCard, value: string) {
+    if (value === NEW_FOLDER) {
+      addingFolder = { ...addingFolder, [card.id]: true };
+      return;
+    }
+    addingFolder = { ...addingFolder, [card.id]: false };
+    const destination = (controller.publishDestinations[card.id] ?? []).find((d) => d.id === value);
+    if (destination) void controller.selectDestination(card.id, destination);
+  }
+
+  async function doCreateDestination(card: PublishProviderCard) {
+    await controller.createNewDestination(card.id);
+    // Collapse the inline form only on success (keep it open, with the
+    // error, so the author can fix the name).
+    if (!controller.publishError) addingFolder = { ...addingFolder, [card.id]: false };
   }
 
   const cards = $derived(controller.publishCards);
@@ -133,15 +180,26 @@
   function close() {
     onClose?.();
   }
-  function next() {
-    const target = Math.min(stepIndex + 1, totalSteps - 1);
+  /** Entering a step may need to react (no $effect — driven by these
+   *  step-change event handlers, CLAUDE.md §8): a FORWARD entry into the
+   *  Preflight step runs its checks; a connected setup step with a folder
+   *  picker (#221 D9) loads it, so revisiting the step after connecting (or
+   *  coming back to it) shows current folders without a manual refresh.
+   *  `direction` matters ONLY for the preflight rerun (C4 hardening) —
+   *  stepping BACK into Preflight from Publish must not re-run it and
+   *  silently clear an override the author already granted; see
+   *  `entersPreflightForward`'s doc comment for the full story. */
+  function enterStep(target: number, direction: "forward" | "back") {
     stepIndex = target;
-    // Entering the Preflight step runs the checks (no $effect — driven by the
-    // step-change event handler, CLAUDE.md §8).
-    if (target === totalSteps - 2) runPreflightNow();
+    if (entersPreflightForward(direction, target, totalSteps)) runPreflightNow();
+    const card = selectedCards[target - 1];
+    if (card?.connected && card.destinations) void controller.loadDestinations(card.id);
+  }
+  function next() {
+    enterStep(Math.min(stepIndex + 1, totalSteps - 1), "forward");
   }
   function back() {
-    stepIndex = Math.max(stepIndex - 1, 0);
+    enterStep(Math.max(stepIndex - 1, 0), "back");
   }
   function runPreflightNow() {
     // Re-running invalidates any prior "publish anyway" override.
@@ -249,6 +307,36 @@
       {@const busy = controller.publishBusyId === card.id}
       <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
 
+      {#if card.formats && card.formats.length > 1}
+        {@const chosenFormat = pendingFormat[card.id] ?? controller.effectiveFormat(card)}
+        <fieldset class="field fmt-choice">
+          <legend>What to publish</legend>
+          <ul class="dest-list">
+            {#each card.formats as fmt (fmt)}
+              <li>
+                <label class="dest" class:selected={chosenFormat === fmt}>
+                  <input
+                    type="radio"
+                    name={`pw-${card.id}-format`}
+                    checked={chosenFormat === fmt}
+                    onchange={() => chooseFormat(card, fmt)}
+                    disabled={busy}
+                  />
+                  <span class="dest-main">
+                    <span class="dest-name">{fmt === "pdf" ? "PDF" : "Website (HTML export)"}</span>
+                    <span class="dest-desc">
+                      {fmt === "pdf"
+                        ? "Upload the finished PDF file."
+                        : "Zip the website export into one file. Drive delivers files, not live sites — use Azure Static Web Apps to publish it as one."}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+        </fieldset>
+      {/if}
+
       {#if card.fields.length > 0}
         {#each card.fields as field (field.key)}
           <label class="field" for={`pw-${card.id}-${field.key}`}>
@@ -298,30 +386,99 @@
               />
             </label>
           {/if}
-          <label class="field" for={`pw-${card.id}-key`}>
-            <span>API key</span>
-            <div class="key-row">
-              <input
-                id={`pw-${card.id}-key`}
-                type="password"
-                placeholder="Paste API key"
-                value={controller.publishTokenDrafts[card.id] ?? ""}
-                oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
-                onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
-              />
-              <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
-            </div>
-            {#if card.tokenUrl}
-              <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
+          {#if card.connectKind === "oauth"}
+            <!-- No key to paste — an interactive browser consent flow instead
+                 (#221 D10). controller.googleAuthUrls[card.id] is set for the
+                 whole attempt (busy === true throughout), so its presence is
+                 what distinguishes "waiting for the browser" from "not yet
+                 started". -->
+            {@const authUrl = controller.googleAuthUrls[card.id]}
+            {#if busy && authUrl}
+              <p class="oauth-waiting">
+                <Icon name="refresh-cw" size={13} />
+                Waiting for your browser — choose your Google account and click Allow.
+              </p>
+              <div class="key-row">
+                <button class="link" onclick={() => controller.reopenGoogleAuthUrl(card.id)}>
+                  Open the sign-in page again <Icon name="external-link" size={12} />
+                </button>
+                <button class="dlg-ghost" onclick={() => controller.cancelGoogleOAuth(card.id)}>Cancel</button>
+              </div>
+            {:else}
+              <button
+                class="dlg-primary app-btn-primary dlg-primary-inline self-start"
+                onclick={() => controller.connectGoogleOAuth(card.id)}
+                disabled={busy}
+              >
+                Connect Google Drive
+              </button>
             {/if}
-          </label>
+          {:else}
+            <label class="field" for={`pw-${card.id}-key`}>
+              <span>API key</span>
+              <div class="key-row">
+                <input
+                  id={`pw-${card.id}-key`}
+                  type="password"
+                  placeholder="Paste API key"
+                  value={controller.publishTokenDrafts[card.id] ?? ""}
+                  oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
+                  onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
+                />
+                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
+              </div>
+              {#if card.tokenUrl}
+                <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
+              {/if}
+            </label>
+          {/if}
         {:else if card.connected}
+          {@const savedLabel = card.savedAccounts.find((a) => a.account === card.selectedAccount)?.label}
           <div class="conn-ok">
-            <span><Icon name="circle-check" size={14} /> Connected — reusing your saved key.</span>
+            <span>
+              <Icon name="circle-check" size={14} />
+              {#if card.connectKind === "oauth" && savedLabel}Connected — {savedLabel}.{:else}Connected — reusing your saved key.{/if}
+            </span>
             <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
           </div>
+          {#if card.destinations}
+            {@const destBusy = controller.destinationsBusyId[card.id] === true}
+            {@const dests = controller.publishDestinations[card.id] ?? []}
+            {@const currentFolderId = card.config.folderId ?? ""}
+            <label class="field" for={`pw-${card.id}-folder`}>
+              <span>{card.destinations.label}</span>
+              <select
+                id={`pw-${card.id}-folder`}
+                value={addingFolder[card.id] ? NEW_FOLDER : currentFolderId}
+                onchange={(e) => onDestinationSelect(card, e.currentTarget.value)}
+                disabled={destBusy || busy}
+              >
+                <option value="">{destBusy ? "Loading folders…" : "Choose a folder…"}</option>
+                {#each dests as d (d.id)}
+                  <option value={d.id}>{d.title}</option>
+                {/each}
+                {#if card.destinations.canCreate}
+                  <option value={NEW_FOLDER}>New folder…</option>
+                {/if}
+              </select>
+            </label>
+            {#if addingFolder[card.id]}
+              <div class="key-row">
+                <input
+                  type="text"
+                  placeholder="Folder name"
+                  value={controller.newDestinationDrafts[card.id] ?? ""}
+                  oninput={(e) => controller.setNewDestinationDraft(card.id, e.currentTarget.value)}
+                  onkeydown={(e) => { if (e.key === "Enter") doCreateDestination(card); }}
+                />
+                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
+              </div>
+            {/if}
+            {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
+            <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
+          {/if}
         {:else}
-          <p class="warn"><Icon name="triangle-alert" size={13} /> This account's key isn't saved yet — add it, or pick another account.</p>
+          <p class="warn"><Icon name="triangle-alert" size={13} /> This account {card.connectKind === "oauth" ? "isn't connected yet — connect it" : "'s key isn't saved yet — add it"}, or pick another account.</p>
         {/if}
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
@@ -589,6 +746,10 @@
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 
+  /* Format choice (#221 phase 3, D8) reuses the .dest-list row language —
+     border/margin reset since it's a <fieldset>, not the .field <label>. */
+  .fmt-choice { border: none; margin: 0; padding: 0; }
+  .fmt-choice legend { font-size: 12px; color: var(--app-text-muted); font-weight: 500; padding: 0; margin: 0 0 6px; }
   .dest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); cursor: pointer; }
   .dest:hover { background: var(--app-surface-hover); }
@@ -605,6 +766,8 @@
 
   .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text); }
   .conn-ok span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .oauth-waiting { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--app-text-secondary); }
 
   .pub-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .pub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
