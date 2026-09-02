@@ -6,7 +6,7 @@
  *   1. Opening a book while the workspace is ALREADY in Edit mode left the
  *      editor pane stuck on "Loading editor…" forever. The project-open
  *      pipeline called `ensureEditorFile()` (filling the buffer) but never
- *      `loadEditorModule()`, so the lazy CodeMirror chunk was never imported.
+ *      `loadEditorModule()`, so the lazy editor chunk was never imported.
  *      Only the *toggle* path called it — which is why
  *      editor-toggle-loads-module.pw.mjs stayed green through the bug.
  *
@@ -103,6 +103,16 @@ const require_ = createRequire(join(desktopDir, "package.json"));
 const PORT = 9600 + Math.floor(Math.random() * 250);
 
 const log = (m) => console.log(`[editor-opens] ${m}`);
+
+/**
+ * The workspace has two editing surfaces and either may be the live one: the
+ * paged editor (Edit/Read on a markdown file) or CodeMirror (Focus, and any
+ * non-markdown file). Every check below is about the EDITOR PANE — that it
+ * mounted, and what document it is showing — never about which surface won,
+ * so they address whichever is mounted rather than pinning the drive to one.
+ */
+const EDITOR_MOUNTED = `!!document.querySelector('.cm-editor, .rich-editor-host .md-editor')`;
+const EDITOR_TEXT = `(document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '')`;
 let child = null;
 let fakeHome = null;
 let bookDir = null;
@@ -304,15 +314,15 @@ await evalJs(`(() => {
 })()`);
 
 // ── CHECK 1 — the editor loads its module AND the first chapter's content ────
-const cmMounted = await poll(`!!document.querySelector('.cm-editor')`, 25000);
+const cmMounted = await poll(EDITOR_MOUNTED, 25000);
 check(cmMounted,
-  'DEFECT 1: opening a book in Edit mode must mount CodeMirror — pane stayed on "Loading editor…"');
+  'DEFECT 1: opening a book in Edit mode must mount an editor — pane stayed on "Loading editor…"');
 const cmHasContent = cmMounted &&
-  await poll(`(document.querySelector('.cm-content')?.textContent ?? '').includes('Alpha')`, 15000);
+  await poll(`${EDITOR_TEXT}.includes('Alpha')`, 15000);
 check(cmHasContent,
   "DEFECT 1: the editor must open showing the book's first chapter");
 if (cmMounted && await evalJs(`[...document.querySelectorAll('.editor-loading')].some(e => e.textContent.includes('Loading editor'))`)) {
-  check(false, '"Loading editor…" still visible alongside .cm-editor');
+  check(false, '"Loading editor…" still visible alongside the mounted editor');
 }
 
 // ── CHECK 2 — a single click on viewer content reveals it in the editor ─────
@@ -444,14 +454,14 @@ if (!cmHasContent) {
     `CONTROL: no source-mapped block from a second chapter was reachable in the viewer — ${JSON.stringify(targetDiag)}`,
   );
 } else {
-  const before = await evalJs(`document.querySelector('.cm-content')?.textContent?.slice(0, 60) ?? ''`);
+  const before = await evalJs(`${EDITOR_TEXT}.slice(0, 60)`);
   const cx = Math.round(clickTarget.frame.left + clickTarget.rect.left + Math.min(40, clickTarget.rect.width / 2));
   const cy = Math.round(clickTarget.frame.top + clickTarget.rect.top + Math.min(10, clickTarget.rect.height / 2));
   await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, x: cx, y: cy });
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, x: cx, y: cy });
   const marker = clickTarget.chapter.replace(/^\d+-|\.md$/g, "");
   const moved = await poll(
-    `(document.querySelector('.cm-content')?.textContent ?? '').toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
+    `${EDITOR_TEXT}.toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
     10000,
   );
   check(moved,
@@ -461,7 +471,7 @@ if (!cmHasContent) {
 await evalJs(`document.querySelector('#panel-tab-toc')?.click(); true`);
 await waitFor(`document.querySelectorAll('.toc-item').length > 0`, 20000, "CONTROL: TOC tab never listed any headings");
 const tocPick = await evalJs(`(() => {
-  const cur = document.querySelector('.cm-content')?.textContent ?? '';
+  const cur = document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '';
   const items = [...document.querySelectorAll('.toc-item')];
   const wanted = cur.includes('Gamma') ? 'Beta' : 'Gamma';
   const hit = items.find(b => b.textContent.includes(wanted));
@@ -489,7 +499,7 @@ await evalJs(`(() => {
   return true;
 })()`);
 const tocMovedEditor = await poll(
-  `(document.querySelector('.cm-content')?.textContent ?? '').includes(${JSON.stringify(tocPick.wanted)})`,
+  `${EDITOR_TEXT}.includes(${JSON.stringify(tocPick.wanted)})`,
   10000,
 );
 check(tocMovedEditor,

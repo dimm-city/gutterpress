@@ -2,6 +2,7 @@ import {
   EditorController,
   EditorModel,
   EditorView,
+  OffsetRange,
   StringValue,
   type EditorViewOptions,
 } from "@dimm-city/vscode-markdown-editor";
@@ -170,6 +171,15 @@ export interface VscodeEditorAdapter {
    * the smallest design that fully satisfies the specification").
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+  /**
+   * Scroll a D3 source range into view, centering it only when it is not
+   * already on screen — the package's own `revealRangeInCenterIfOutsideViewport`.
+   * Takes source offsets, like `getSelection`, and moves nothing but the
+   * scroll position: no caret, no selection, no edit. This is what a host's
+   * "take me to this line" navigation (an outline row, a diagnostic, a click
+   * in the preview) calls.
+   */
+  revealRange(from: number, to?: number): void;
 
   /**
    * Lock or unlock the mounted editor. The host owns this decision (the
@@ -369,6 +379,10 @@ export function createVscodeEditorAdapter(
       if (!selection) return undefined;
       const range = selection.range;
       return { from: range.start, to: range.endExclusive };
+    },
+
+    revealRange(from: number, to: number = from): void {
+      view.revealRangeInCenterIfOutsideViewport(OffsetRange.fromTo(from, Math.max(from, to)));
     },
   };
 }

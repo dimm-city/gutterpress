@@ -1446,12 +1446,13 @@
   // same way `editorRef` binds MarkdownEditor above: `{#key richDocHostCtrl.host}`
   // means a host rebuild destroys and recreates RichEditorComponent, so
   // Svelte resets this to `null` on unmount and repopulates it on the next
-  // mount — no manual bookkeeping needed here. Read ONLY for its
-  // `getSelection()` export (rich-commands.ts's header has the full design);
-  // this page never calls any other method on it.
+  // mount — no manual bookkeeping needed here. Read for its `getSelection()`
+  // export (rich-commands.ts's header has the full design), for the
+  // Read/Edit lock, and for line navigation (`revealLine`).
   let richEditorRef = $state<{
     getSelection: () => { readonly from: number; readonly to: number } | undefined;
     setReadonly: (readonly: boolean) => void;
+    revealLine: (line: number) => void;
   } | null>(null);
 
   /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
@@ -2112,10 +2113,29 @@
   function whenEditorReady(fn: () => void): void {
     let tries = 0;
     const attempt = () => {
-      if (editorRef) fn();
+      if (editorRef || richEditorRef) fn();
       else if (tries++ < 120) requestAnimationFrame(attempt);
     };
     requestAnimationFrame(attempt);
+  }
+
+  /**
+   * Scroll the open document to `line`, on whichever editing surface is
+   * mounted: the paged editor (Edit/Read) or CodeMirror (Focus, and any
+   * non-markdown file). Both address the same source, so navigation is a
+   * property of the workspace, not of one surface — before this, every
+   * "take me there" (an outline row, a click in the book, a diagnostic)
+   * silently did nothing whenever the paged editor was the live surface.
+   *
+   * `focus` places the caret, which only CodeMirror does; the paged editor
+   * scrolls without disturbing the caret or the selection either way.
+   */
+  function revealLineInLiveEditor(path: string, line: number, focus: boolean): void {
+    if (editorRef?.hasFile(path)) {
+      editorRef.revealLine(line, focus);
+      return;
+    }
+    if (richEditorRef && editorFilePath === path) richEditorRef.revealLine(line);
   }
 
   /**
@@ -2140,9 +2160,7 @@
     if (!chapter) {
       const path = editorFilePath;
       if (path) {
-        whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
-        });
+        whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
       }
       return;
     }
@@ -2153,9 +2171,7 @@
     if (path !== editorFilePath) {
       if (!(await selectEditorFile(path))) return;
     }
-    whenEditorReady(() => {
-      if (editorRef?.hasFile(path)) editorRef.revealLine(line, focus);
-    });
+    whenEditorReady(() => revealLineInLiveEditor(path, line, focus));
   }
 
   /**
@@ -2438,9 +2454,7 @@
     void selectEditorFile(p.filePath).then((selected) => {
       if (selected && p.line) {
         const path = p.filePath!;
-        whenEditorReady(() => {
-          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true);
-        });
+        whenEditorReady(() => revealLineInLiveEditor(path, p.line!, true));
       }
     });
     focusEditorWhenReady();

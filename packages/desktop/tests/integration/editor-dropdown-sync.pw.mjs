@@ -132,12 +132,30 @@ try {
   await electronApp.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setSize(1200, 800);
   });
-  await page.locator('[aria-label="Edit"]').waitFor({ state: "visible", timeout: 10_000 });
 
-  // Open the editor pane (auto-selects the first chapter file). The active
-  // file lives in the Files tab — its panel is display:none while Contents is
-  // active, so assert on the ATTACHED state and read textContent.
-  await page.locator('[aria-label="Edit"]').click();
+  /**
+   * Choose a workspace mode however the toolbar is currently laid out. Below
+   * a container width of 1150px the inline mode buttons collapse into a menu
+   * (AppToolbar's own "collapse stages"), and with the Contents panel open at
+   * 1200px the toolbar is on the far side of that line — so a drive that
+   * clicks only the inline button waits forever on a hidden element.
+   */
+  async function setMode(label) {
+    const inline = page.locator(`.mode-group [aria-label="${label}"]`);
+    if (await inline.isVisible().catch(() => false)) {
+      await inline.click();
+      return;
+    }
+    await page.locator('.mode-menu > summary').click();
+    await page.locator(`.mode-menu .menu-item:has-text("${label}")`).click();
+  }
+
+  // This drive is about the SOURCE editor: one file per document, byte-exact
+  // edits at the first and last line. That surface is Focus mode — Edit mounts
+  // the paged editor, which renders the book rather than the source and has no
+  // lines to click. The one-file invariant belongs to the shared buffer, so it
+  // holds for both surfaces; only Focus can be asserted line by line.
+  await setMode("Focus");
   await page.locator(".cm-editor").waitFor({ timeout: 15_000 });
   await page
     .locator(".file-item.active")

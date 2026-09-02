@@ -150,6 +150,8 @@ export interface EditorMount {
    * implementation.
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+  /** See `VscodeEditorAdapter.revealRange` — scrolls a source range into view, changing nothing else. */
+  revealRange(from: number, to?: number): void;
 
   /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
   setReadonly(readonly: boolean): void;
@@ -248,6 +250,7 @@ export function mountEditor(
       extraStyleEl?.remove();
     },
     getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
+    revealRange: (from: number, to?: number): void => adapter.revealRange(from, to),
     setReadonly: (readonly: boolean): void => adapter.setReadonly(readonly),
   };
 }

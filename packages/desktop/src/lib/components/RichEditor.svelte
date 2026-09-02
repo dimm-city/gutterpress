@@ -91,6 +91,7 @@
   let mountHandle:
     | {
         getSelection(): { readonly from: number; readonly to: number } | undefined;
+        revealRange(from: number, to?: number): void;
         setReadonly(readonly: boolean): void;
       }
     | undefined;
@@ -142,6 +143,27 @@
    */
   export function setReadonly(next: boolean): void {
     mountHandle?.setReadonly(next);
+  }
+
+  /**
+   * Scroll the 1-based source LINE into view. The workspace navigates by
+   * line (an outline row, a diagnostic, a click in the book), the mounted
+   * surface addresses source by OFFSET, and this component is the only
+   * place that holds the host to convert between them.
+   *
+   * Nothing but the scroll position moves: no caret, no selection, no edit
+   * — so this is safe to call while the editor is locked.
+   */
+  export function revealLine(line: number): void {
+    if (!mountHandle) return;
+    const text = host.getSnapshot().text;
+    let offset = 0;
+    for (let i = 1; i < line; i++) {
+      const next = text.indexOf("\n", offset);
+      if (next < 0) break;
+      offset = next + 1;
+    }
+    mountHandle.revealRange(offset);
   }
 </script>
 
