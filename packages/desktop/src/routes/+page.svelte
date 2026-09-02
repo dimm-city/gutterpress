@@ -2778,7 +2778,14 @@
       return restore;
     },
     refreshOutline: () => refreshOutline(),
-    refreshProblems: () => problemsController.refresh(),
+    refreshProblems: () => {
+      problemsController.refresh();
+      // The preview has rendered, so the project is genuinely up. If the open
+      // document was built before that — a chapter chosen while the project
+      // was still opening — it is missing its plugins and its book CSS, and
+      // nothing else would ever ask for them again.
+      richDocHostCtrl.rebuildIfDegraded();
+    },
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     scheduleMicrotask: (fn) => queueMicrotask(fn),

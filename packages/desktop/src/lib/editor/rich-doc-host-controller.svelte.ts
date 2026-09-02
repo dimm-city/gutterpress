@@ -96,6 +96,8 @@ export class RichDocHostController {
   private unsub: (() => void) | null = null;
   private epoch = 0;
   private pending: Promise<void> | null = null;
+  /** What the live host was built from, so a DEGRADED build can be redone. */
+  private built: { path: string; content: string } | null = null;
 
   constructor(deps: RichDocHostControllerDeps) {
     this.deps = deps;
@@ -127,6 +129,7 @@ export class RichDocHostController {
       this.pending = null;
       return;
     }
+    this.built = { path, content };
     const nextHost = new DesktopDocumentHost(content, { documentId: path });
     this.unsub = nextHost.subscribe((snapshot) => this.deps.onSnapshotChange(snapshot.text));
     this.pending = this.deps
@@ -142,6 +145,21 @@ export class RichDocHostController {
       });
   }
 
+  /**
+   * Rebuild if the live document was built WITHOUT the project's own CSS.
+   *
+   * A chapter chosen before its project finished opening gets a projection
+   * with no plugins and no book CSS — the document renders, but unstyled and
+   * unpaginated, and nothing afterwards asks for it again. It stayed that way
+   * for the rest of the session; only switching to another file recovered.
+   * The host calls this once the project is genuinely up, and it is a no-op
+   * for every document that was built properly in the first place.
+   */
+  rebuildIfDegraded(): void {
+    if (this.editorCss !== undefined || !this.built || this.pending) return;
+    this.rebuild(this.built.path, this.built.content);
+  }
+
   /** Drops the current host entirely (leaving rich mode). Supersedes any
    *  in-flight `rebuild()` the same way a later `rebuild()` call would. */
   dispose(): void {
@@ -152,5 +170,6 @@ export class RichDocHostController {
     this.projection = null;
     this.editorCss = undefined;
     this.pending = null;
+    this.built = null;
   }
 }

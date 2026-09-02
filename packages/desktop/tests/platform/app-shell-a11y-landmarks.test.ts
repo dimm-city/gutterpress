@@ -100,15 +100,19 @@ describe("EditorToolbar — the formatting toolbar is a labeled landmark", () =>
     // The recurring pattern for every `{#each ... as item}` button.
     const perItemLabels = (src.match(/aria-label=\{item\.ariaLabel\}/g) ?? []).length;
     expect(perItemLabels).toBeGreaterThanOrEqual(6);
-    // Standalone controls that are not driven by the item list.
+    // Standalone controls that are not driven by the item list. The
+    // rich/source toggle that used to sit here is deliberately absent: the
+    // workspace's own Edit/Read/Focus is the only surface control, and a
+    // second axis beside this toolbar meant one document had six reachable
+    // mode combinations.
     for (const label of [
       'aria-label="Heading level"',
       'aria-label="Insert layout block"',
       'aria-label="More formatting options"',
-      'aria-label={richMode ? "Switch to source editor" : "Switch to rich editor"}',
     ]) {
       expect(src).toContain(label);
     }
+    expect(src).not.toContain("Switch to rich editor");
   });
 
   test("the image/table insertion dialogs label every field, and surface errors as role=alert", () => {
