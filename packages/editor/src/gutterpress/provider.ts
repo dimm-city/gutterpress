@@ -60,6 +60,17 @@ export interface CreateGutterpressBlockProviderOptions {
    * through to the fork's own default view.
    */
   readonly isStale?: () => boolean;
+  /**
+   * Is the surface LOCKED (the reader's view)? Fork Patch 3's seam reaches
+   * every top-level block kind, but only a paragraph's own ViewData carries
+   * the block-level active/inactive bit, so for the others the host is what
+   * decides whether its rendering may stand in for the editable block. It
+   * may exactly when nothing is editable: locked, no block ever becomes
+   * active, so a heading or a list showing the pipeline's own output can
+   * never swallow a block the author is trying to edit. Unlocked, these
+   * kinds fall through to the fork's own views, unchanged.
+   */
+  readonly isLocked?: () => boolean;
 }
 
 export interface GutterpressBlockProvider {
@@ -68,6 +79,14 @@ export interface GutterpressBlockProvider {
   readonly groupBlocks: (blocks: readonly BlockGroupCandidate[]) => readonly BlockGroupSpec[] | undefined;
   readonly needsRefresh: (currentVersion: number) => boolean;
 }
+
+/**
+ * Block kinds fork Patch 3 reaches whose rendering is only ever substituted
+ * in the locked view — see `isLocked`. A paragraph and an unhandledBlock are
+ * NOT here: the fork gates those on their own `showMarkup`, so they are safe
+ * to substitute in either view.
+ */
+const LOCKED_ONLY_KINDS: ReadonlySet<string> = new Set(["heading", "blockQuote", "list", "table"]);
 
 type ContainerKind = "chapter" | "spread" | "page" | "section";
 const CONTAINER_KINDS: ReadonlySet<string> = new Set(["chapter", "spread", "page", "section"]);
@@ -243,6 +262,11 @@ export function createGutterpressBlockProvider(
       const nesting = htmlFragmentNesting(sourceText);
       if (nesting.opened.length || nesting.closed) return renderContainerTagChip(opts.ownerDocument, sourceText);
     }
+
+    // A heading/quote/list/table is substituted only in the reader's view,
+    // and only at the top level: a nested list's source can repeat a
+    // top-level one's, and the fork asks about nested blocks too.
+    if (LOCKED_ONLY_KINDS.has(node.kind) && !(opts.isLocked?.() && topLevel.has(node.id))) return undefined;
 
     // Plugin regions and raw HTML still come from the projection (they need
     // the pipeline's own rendering); matched by exact text, so an edit

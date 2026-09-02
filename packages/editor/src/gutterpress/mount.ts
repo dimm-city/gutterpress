@@ -9,7 +9,7 @@
  * byte-for-byte because the option did not exist yet).
  */
 import type { Diagnostic, EditorDocumentHost } from "../core/index.ts";
-import { mountEditor } from "../web/mount.ts";
+import { mountEditor, type EditorMount } from "../web/mount.ts";
 import { projectionNeedsRefresh } from "./match.ts";
 import { diagnosticForProjection } from "./projection-diagnostics.ts";
 import { createGutterpressBlockProvider } from "./provider.ts";
@@ -95,34 +95,65 @@ export function mountGutterpressEditor(
 
   const isStale = (): boolean => projectionNeedsRefresh(options.projection, host.getSnapshot().version);
 
+  // The lock is a live value, not the one this mount opened with: the host
+  // toggles it through `setReadonly` and the provider is consulted on every
+  // render after that.
+  let locked = options.readonly ?? false;
   const provider = createGutterpressBlockProvider(options.projection, {
     source: host.getSnapshot().text,
     ownerDocument: doc,
     isStale,
+    isLocked: () => locked,
   });
 
-  const mount = mountEditor(container, host, {
-    onDiagnostic: options.onDiagnostic,
-    readonly: options.readonly,
-    extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
-    renderCustomBlock: provider.renderCustomBlock,
-    groupBlocks: provider.groupBlocks,
-    themeClassName: options.themeClassName,
-    showReadonlyToggle: options.showReadonlyToggle,
-    decorateInactiveBlock: (element, node, sourceText) => {
-      decorateAttrsTrailer(element, node, sourceText);
-      // Both halves of "show what the book shows": the attrs trailer applied
-      // rather than printed, and raw inline tags hidden rather than wrapped
-      // onto a line the printed page does not have.
-      hideInlineHtmlTags(element);
-      markTightList(element, node, sourceText);
-    },
-    afterDocumentMount: options.afterDocumentMount,
-  });
+  const build = (readonly: boolean): EditorMount =>
+    mountEditor(container, host, {
+      onDiagnostic: options.onDiagnostic,
+      readonly,
+      extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
+      renderCustomBlock: provider.renderCustomBlock,
+      groupBlocks: provider.groupBlocks,
+      themeClassName: options.themeClassName,
+      showReadonlyToggle: options.showReadonlyToggle,
+      decorateInactiveBlock: (element, node, sourceText) => {
+        decorateAttrsTrailer(element, node, sourceText);
+        // Both halves of "show what the book shows": the attrs trailer applied
+        // rather than printed, and raw inline tags hidden rather than wrapped
+        // onto a line the printed page does not have.
+        hideInlineHtmlTags(element);
+        markTightList(element, node, sourceText);
+      },
+      afterDocumentMount: options.afterDocumentMount,
+    });
+
+  let mount = build(locked);
 
   return {
     dispose: (): void => mount.dispose(),
-    setReadonly: (readonly: boolean): void => mount.setReadonly(readonly),
+    /**
+     * Locking REBUILDS the surface rather than only flipping the fork's own
+     * readonly flag.
+     *
+     * The fork reuses a block view whose AST and selection-derived flags are
+     * unchanged, and the lock changes neither — so the blocks whose rendering
+     * the lock decides (fork Patch 6's heading/quote/list/table seam) would
+     * keep whichever rendering they were first built with. That is not a
+     * cosmetic lag: a reader who locks a chapter after opening it would see
+     * the editor's own markdown where the printed page shows the pipeline's
+     * output, and the two would paginate differently.
+     *
+     * A rebuild costs what opening a file costs, and loses no author state:
+     * the document lives in `host`, and the locked view has no caret to keep.
+     */
+    setReadonly: (readonly: boolean): void => {
+      if (readonly === locked) {
+        mount.setReadonly(readonly);
+        return;
+      }
+      locked = readonly;
+      mount.dispose();
+      mount = build(readonly);
+    },
     needsRefresh: isStale,
     getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
     revealRange: (from: number, to?: number): void => mount.revealRange(from, to),

@@ -1,6 +1,6 @@
 # PATCHES.md — the vendored `@vscode/markdown-editor` fork's patches
 
-This fork applies two patches on top of the unmodified, published
+This fork applies the patches below on top of the unmodified, published
 `@vscode/markdown-editor@0.0.2-85` artifact (re-pinned from 0.0.2-84 on
 2026-09-02: 0.0.2-85's vendored files (everything under dist/ and src/, and the README) are byte-identical to 0.0.2-84's — upstream's
 0.0.2-85 publish changed only package.json's version and gitHead, so every
@@ -1163,3 +1163,56 @@ element in the document (moving it is fine).
 ### Patch 5 upstreaming / removal trigger
 
 Delete when upstream exposes a post-mount/pre-measure hook.
+
+## Patch 6 — `renderCustomBlock` for every top-level block kind
+
+Patch 1 wired the `renderCustomBlock` seam into two arms of the view-factory
+switch: `paragraph` and `unhandledBlock`. Every other block kind — a
+heading, a block quote, a list, a table — constructed its upstream view
+unconditionally, so a host holding the pipeline's own rendering for one of
+those blocks had no way to show it. That is not a hypothetical: a project
+plugin that rewrites a block quote into a pull-quote, or an ordered list
+into cost-badged rows, produces a page whose blocks the editor could match
+by source range and still not render.
+
+Four hunks, one per arm, all identical in shape to Hunk 3's paragraph arm
+(same `Es(n.ast)` source text, same host-applies-`md-block` mirror, same
+`Zs(...)`/`D` segment handling, same fall-through to the unchanged upstream
+construction when the host returns `undefined`). Marked
+`/* gp-fork: renderCustomBlock */` like the arms Patch 1 added.
+
+### Hunk 14 — the `heading` arm
+### Hunk 15 — the `blockQuote` arm
+### Hunk 16 — the `list` arm
+### Hunk 17 — the `table` arm
+
+Each replaces
+
+```js
+    case "<kind>":
+      return new <Ctor>(n, e, N(t, <Ctor>));
+```
+
+with the same arm preceded by the seam consult.
+
+**No `!showMarkup` gate, and why that is not a weakening.** Hunk 3's
+paragraph arm consults the hook only while the block is inactive, which
+Hunks 1-2 made possible by threading the already-computed active/inactive
+bit onto `ParagraphViewData`. `HeadingViewData`, `BlockQuoteViewData`,
+`ListViewData` and `TableViewData` do not carry that bit either, and
+threading it onto four more classes would be a far larger patch than this
+seam needs — it would touch each class's fields, constructor and
+construction site, for a bit only Gutterpress reads.
+
+The decision moves to the HOST instead, which is the only side that knows
+whether its rendering may stand in for the editable block.
+`packages/editor/src/gutterpress/provider.ts` returns `undefined` for these
+four kinds unless the surface is LOCKED, where nothing ever becomes active
+and a substituted rendering therefore cannot swallow a block the author is
+trying to edit. Unlocked, these arms behave exactly as they did before this
+patch.
+
+**Removal trigger.** Same as Patch 1's: this whole file goes when upstream
+ships an equivalent generic block-render hook. If upstream ships one for
+paragraphs only, this patch stays until it covers every block kind.
+

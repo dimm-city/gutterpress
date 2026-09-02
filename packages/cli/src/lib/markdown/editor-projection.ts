@@ -1288,7 +1288,7 @@ export function createEditorProjection(
       diagnostics.push({
         category: "EDITOR_UNSUPPORTED_PROJECTION",
         reason:
-          "html_block token has no source-range evidence (data-source-range missing) and does not match the known chapter-opener generated fragment. Edit this content in source mode.",
+          "A block of HTML carries no source range, so the editor cannot show it where the page shows it — the content renders as the Markdown it was written from instead, and the two paginate differently. When a plugin built this HTML, give the token it creates the `map` of the tokens it replaced (`token.map = consumed.map`); the editor then renders exactly what the page does. Until then, edit this content in source mode.",
       });
       continue;
     }
@@ -1316,7 +1316,7 @@ export function createEditorProjection(
       if (!parsed) {
         diagnostics.push({
           category: "EDITOR_UNSUPPORTED_PROJECTION",
-          reason: `${token.type} token has no source-range evidence (map/meta.line missing). Edit this content in source mode.`,
+          reason: `A ${token.type} token carries no source range, so the editor cannot show this block where the page shows it. When a plugin created this token, give it the \`map\` of the tokens it replaced. Until then, edit this content in source mode.`,
         });
         continue;
       }

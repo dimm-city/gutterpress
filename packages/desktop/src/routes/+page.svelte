@@ -3584,7 +3584,15 @@
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
         selectEditorFile(path);
-        if (!editorEditable && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+        // Reading stays reading. The locked surface already shows whichever
+        // Markdown file is selected, so picking the next chapter in the tree
+        // is a reader's move, not an editing one — dropping them back into
+        // Edit for it both fights the choice they made and rebuilds every
+        // block view in the unlocked shape, which is not the one the printed
+        // page has. A non-Markdown file (a stylesheet) has no locked view of
+        // its own, so that still opens the editor.
+        const staysInReader = mode === "viewer" && isMarkdownPath(path);
+        if (!staysInReader && !editorEditable && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
           openEditorPane({ ensureFile: false });
         }

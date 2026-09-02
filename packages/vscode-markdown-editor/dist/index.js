@@ -3812,8 +3812,27 @@ function Y(n, e, t) {
       return n.ast.markerKind === "hardBreak" ? new yn(n, N(t, yn)) : new bn(n, N(t, bn));
     case "glue":
       return new Je(n, N(t, Je));
-    case "heading":
+    case "heading": {
+      /* gp-fork: renderCustomBlock — the same seam the paragraph and
+       * unhandledBlock arms carry, so a host that has the pipeline's own
+       * rendering for a block can show it whatever the block's kind is.
+       * No !showMarkup gate here: unlike a paragraph, this ViewData never
+       * carried the block-level active/inactive bit upstream, and adding
+       * it to four more ViewData classes would be a far larger patch than
+       * the seam needs. The HOST decides instead — it is the only side
+       * that knows whether its rendering may stand in for the editable
+       * block — and returns undefined when it must not, which falls
+       * through to the unchanged upstream construction below.
+       * See PATCHES.md Patch 6. */
+      if (e?.renderCustomBlock) {
+        const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
+        if (gpR) {
+          gpR.dom.classList.add("md-block");
+          return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
+      }
       return new En(n, e, N(t, En));
+    }
     case "paragraph": {
       /* gp-fork: renderCustomBlock — consulted only while inactive
        * (mirrors the codeBlock !e.showMarkup gate at the
@@ -3861,14 +3880,71 @@ function Y(n, e, t) {
       const s = n.ast.htmlComment;
       return s ? new Ln(n, s, e, N(t, Ln)) : new Sn(n, e, N(t, Sn));
     }
-    case "blockQuote":
+    case "blockQuote": {
+      /* gp-fork: renderCustomBlock — the same seam the paragraph and
+       * unhandledBlock arms carry, so a host that has the pipeline's own
+       * rendering for a block can show it whatever the block's kind is.
+       * No !showMarkup gate here: unlike a paragraph, this ViewData never
+       * carried the block-level active/inactive bit upstream, and adding
+       * it to four more ViewData classes would be a far larger patch than
+       * the seam needs. The HOST decides instead — it is the only side
+       * that knows whether its rendering may stand in for the editable
+       * block — and returns undefined when it must not, which falls
+       * through to the unchanged upstream construction below.
+       * See PATCHES.md Patch 6. */
+      if (e?.renderCustomBlock) {
+        const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
+        if (gpR) {
+          gpR.dom.classList.add("md-block");
+          return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
+      }
       return new xn(n, e, N(t, xn));
-    case "list":
+    }
+    case "list": {
+      /* gp-fork: renderCustomBlock — the same seam the paragraph and
+       * unhandledBlock arms carry, so a host that has the pipeline's own
+       * rendering for a block can show it whatever the block's kind is.
+       * No !showMarkup gate here: unlike a paragraph, this ViewData never
+       * carried the block-level active/inactive bit upstream, and adding
+       * it to four more ViewData classes would be a far larger patch than
+       * the seam needs. The HOST decides instead — it is the only side
+       * that knows whether its rendering may stand in for the editable
+       * block — and returns undefined when it must not, which falls
+       * through to the unchanged upstream construction below.
+       * See PATCHES.md Patch 6. */
+      if (e?.renderCustomBlock) {
+        const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
+        if (gpR) {
+          gpR.dom.classList.add("md-block");
+          return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
+      }
       return new In(n, e, N(t, In));
+    }
     case "listItem":
       return new Pn(n, e, N(t, Pn));
-    case "table":
+    case "table": {
+      /* gp-fork: renderCustomBlock — the same seam the paragraph and
+       * unhandledBlock arms carry, so a host that has the pipeline's own
+       * rendering for a block can show it whatever the block's kind is.
+       * No !showMarkup gate here: unlike a paragraph, this ViewData never
+       * carried the block-level active/inactive bit upstream, and adding
+       * it to four more ViewData classes would be a far larger patch than
+       * the seam needs. The HOST decides instead — it is the only side
+       * that knows whether its rendering may stand in for the editable
+       * block — and returns undefined when it must not, which falls
+       * through to the unchanged upstream construction below.
+       * See PATCHES.md Patch 6. */
+      if (e?.renderCustomBlock) {
+        const gpR = e.renderCustomBlock(n.ast, Es(n.ast));
+        if (gpR) {
+          gpR.dom.classList.add("md-block");
+          return new T(n, gpR.dom, gpR.segments ? Zs(n.ast, gpR.segments, n.ast.length) : D);
+        }
+      }
       return new Bn(n, e, N(t, Bn));
+    }
     case "tableRow":
       return new An(n, e, N(t, An));
     case "tableCell":

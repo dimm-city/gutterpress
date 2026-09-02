@@ -178,7 +178,7 @@ const MIXED_KIND_PROBE_TEXT = [
 // Case 4 — custom inactive Gutterpress block rendering (the fork's seam)
 // ---------------------------------------------------------------------------
 
-describe("case 4 — renderCustomBlock fires for the paragraph probe, and NOT for a heading/list/codeBlock in the same document", () => {
+describe("case 4 — renderCustomBlock fires for the paragraph probe; a heading/list the host declines, and a codeBlock it is never asked about, keep their own rendering", () => {
   test("the @page splash paragraph gets the custom chip; heading/list/codeBlock blocks keep their own default rendering untouched", async () => {
     await mount(MIXED_KIND_PROBE_TEXT, {
       customBlock: { label: "GP-BLOCK", mode: "label", chipFor: ["@page splash"] },
@@ -199,10 +199,12 @@ describe("case 4 — renderCustomBlock fires for the paragraph probe, and NOT fo
     expect(probe.className).not.toContain("md-paragraph");
     expect(probe.textContent).toBe("GP-BLOCK:paragraph");
 
-    // Negative: the OTHER kinds are byte-for-byte their normal selves --
-    // mounting a renderCustomBlock hook does not leak into arms the fork's
-    // patch never touched (PATCHES.md: only the "paragraph"/
-    // "unhandledBlock" arms of the view-factory switch are patched).
+    // Negative: the OTHER kinds are byte-for-byte their normal selves. For
+    // the heading and the list the fork now DOES consult the hook (PATCHES.md
+    // Patch 6 extended the seam to those arms), and this fixture's host
+    // chips only the paragraph -- so what this proves is the fall-through:
+    // a host that returns undefined leaves the upstream view exactly as it
+    // was. The codeBlock arm is not patched at all and never asks.
     expect(heading.kind).toBe("heading");
     expect(heading.className).toContain("md-heading");
     expect(heading.className).not.toContain("gpc-custom-chip");
@@ -217,13 +219,17 @@ describe("case 4 — renderCustomBlock fires for the paragraph probe, and NOT fo
     // really was consulted for SOMETHING in this document.
     const calls = await customBlockHookCalls();
     expect(calls.length).toBeGreaterThan(0);
-    // The gate's own structure already makes a "heading"/"list"/"codeBlock"
-    // call impossible (the switch arms the fork patches are exactly
-    // "paragraph"/"unhandledBlock" -- see PATCHES.md), but this is asserted
-    // empirically against the REAL pinned runtime, not merely inferred from
-    // reading the patch source.
+    // Which arms consult the hook, asserted empirically against the REAL
+    // pinned runtime rather than inferred from reading the patch source:
+    // the patched arms ask, and `codeBlock` -- which has its own
+    // `renderCustomCodeBlock` seam upstream and no `renderCustomBlock` one --
+    // never does.
+    const asked = new Set(calls.map((call) => call.kind));
+    expect(asked.has("heading")).toBe(true);
+    expect(asked.has("list")).toBe(true);
+    expect(asked.has("codeBlock")).toBe(false);
     for (const call of calls) {
-      expect(["paragraph", "unhandledBlock"]).toContain(call.kind);
+      expect(["paragraph", "unhandledBlock", "heading", "blockQuote", "list", "table"]).toContain(call.kind);
     }
   });
 });
