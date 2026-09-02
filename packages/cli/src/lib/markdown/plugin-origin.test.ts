@@ -701,7 +701,7 @@ describe("refusal matrix — shape 5: empty removed run (pure insertion / degene
   });
 });
 
-describe("refusal matrix — shape 6: partial evidence in the removed run", () => {
+describe("shape 6 — a structural closer needs no evidence of its own; anything else without one refuses", () => {
   function asideLikePlugin(): LoadedPlugin {
     const plugin = (md: MarkdownIt): void => {
       md.core.ruler.after("layout_transform", "partial_evidence_transform", (state) => {
@@ -719,12 +719,11 @@ describe("refusal matrix — shape 6: partial evidence in the removed run", () =
             out.push(tok);
             continue;
           }
-          // No .map/.meta on the replacement, and the removed run includes
+          // No .map/.meta on the replacement. The removed run includes
           // `paragraph_close`, which markdown-it itself never gives a .map
-          // (verified against rules_block/paragraph.mjs) — so this removed
-          // run can never satisfy "every removed token has complete
-          // evidence," by construction, regardless of what the plugin does
-          // to the open token.
+          // (verified against rules_block/paragraph.mjs) — the exact shape a
+          // real content-rewriting plugin produces, and the one rule 3 has to
+          // recover from the opener's own range.
           out.push(new state.Token("plugin_note_open", "div", 1));
           out.push(new state.Token("plugin_note_close", "div", -1));
           i += 2;
@@ -735,7 +734,7 @@ describe("refusal matrix — shape 6: partial evidence in the removed run", () =
     return { name: "partial-evidence-plugin", plugin, options: {} };
   }
 
-  test("consuming an ordinary paragraph_open/inline/paragraph_close triple always refuses — paragraph_close never carries evidence", () => {
+  test("consuming an ordinary paragraph_open/inline/paragraph_close triple recovers the triple's own range", () => {
     const source = "@@note\n\nTrailing paragraph.\n";
     const md = createMarkdownRenderer([asideLikePlugin()]);
 
@@ -743,9 +742,56 @@ describe("refusal matrix — shape 6: partial evidence in the removed run", () =
     expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_note_open");
 
     const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
-    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
-    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_note_open"));
-    expect(refusal).toBeDefined();
+    const region = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(region).toBeDefined();
+    // The consumed triple is exactly the `@@note` line.
+    expect(source.slice(region!.from, region!.to).trim()).toBe("@@note");
+
+    const env: Record<string, unknown> = {};
+    registerPluginOriginCapture(md);
+    const tokens = md.parse(source, env);
+    const openIdx = tokens.findIndex((t) => t.type === "plugin_note_open");
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, env);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.range).toEqual([0, 1]);
+  });
+
+  test("a removed token that is NOT a closer and carries no range still refuses", () => {
+    // A plugin whose own earlier output is consumed by a later rule leaves a
+    // map-less, nesting-0 token in the removed run — genuinely partial
+    // evidence, and the shape this check still exists for.
+    const stripMapPlugin = (): LoadedPlugin => {
+      const plugin = (md: MarkdownIt): void => {
+        md.core.ruler.after("layout_transform", "partial_evidence_strip", (state) => {
+          const out: typeof state.tokens = [];
+          for (let i = 0; i < state.tokens.length; i++) {
+            const tok = state.tokens[i]!;
+            const next = state.tokens[i + 1];
+            const closer = state.tokens[i + 2];
+            const isTarget =
+              tok.type === "paragraph_open" &&
+              next?.type === "inline" &&
+              closer?.type === "paragraph_close" &&
+              next.content === "@@note";
+            if (!isTarget) {
+              out.push(tok);
+              continue;
+            }
+            // The `inline` token keeps its position in the removed run but
+            // loses its evidence: nesting 0, no map, not a closer.
+            next.map = null;
+            out.push(new state.Token("plugin_note_open", "div", 1));
+            out.push(new state.Token("plugin_note_close", "div", -1));
+            i += 2;
+          }
+          state.tokens = out;
+        });
+      };
+      return { name: "partial-evidence-strip", plugin, options: {} };
+    };
+    const source = "@@note\n\nTrailing paragraph.\n";
+    const md = createMarkdownRenderer([stripMapPlugin()]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_note_open");
 
     const env: Record<string, unknown> = {};
     registerPluginOriginCapture(md);
@@ -755,8 +801,7 @@ describe("refusal matrix — shape 6: partial evidence in the removed run", () =
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toMatch(/partial evidence/i);
-      expect(result.reason).toMatch(/paragraph_close/);
-      expect(result.reason).toMatch(/partial_evidence_transform/);
+      expect(result.reason).toMatch(/inline/);
     }
   });
 });

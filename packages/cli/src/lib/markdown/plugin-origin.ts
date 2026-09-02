@@ -231,15 +231,24 @@
  *      packages/cli must not depend on packages/desktop, and this is a
  *      same-package, same-family duplication of a THIRD file's small,
  *      already-tested contract, not a second copy of `editor-projection.ts`
- *      itself). rule 3 requires COMPLETE evidence — literally every removed
- *      token, closes included. A `paragraph_close` never carries `token.map`
- *      in markdown-it itself (verified against `markdown-it/lib/
- *      rules_block/paragraph.mjs`), so a plugin that consumes an ordinary
- *      `paragraph_open`/`inline`/`paragraph_close` triple and emits a
- *      map-less replacement ALWAYS refuses here — a deliberate, honest
- *      consequence of reading rule 3's "every removed token" literally
- *      rather than carving out an exception for close tokens that would
- *      itself be a guess about which tokens "should" need evidence.
+ *      itself). rule 3 requires evidence on every removed token that CAN
+ *      carry one; the single exception is a structural closer
+ *      (`nesting === -1`).
+ *
+ *      That exception is not a guess about which tokens "should" need
+ *      evidence — it is what markdown-it is. A `*_close` token never carries
+ *      `token.map` (verified against `markdown-it/lib/rules_block/
+ *      paragraph.mjs`), and its extent is its opener's, which is in the same
+ *      removed run by construction: a run bounded by SURVIVING tokens on
+ *      both sides cannot hold half a pair without the other half also having
+ *      been consumed. Reading "every removed token" to include closers made
+ *      rule 3 refuse every run that consumed a paragraph, a heading, a quote
+ *      or a list — which is every run a real content-rewriting plugin
+ *      produces. Measured on one chapter of the Dimm City Field Guide: 110
+ *      of 111 recoveries refused on a `paragraph_close`, and the mechanism
+ *      recovered nothing it was built to recover. A removed token with no
+ *      range that is NOT a closer is still genuinely partial evidence and
+ *      still refuses, as does a run whose every token lacks one.
  *
  * Every refusal reason names the offending plugin core-rule NAME when
  * exactly one is identifiable in the bracketed region (via the SAME
@@ -797,22 +806,70 @@ export function resolvePluginTokenOriginFromSnapshot(
     }
   }
 
-  // Shape 6 — PARTIAL EVIDENCE: every removed token must carry its own
-  // complete range evidence, closes included (see header PART 2, shape 6).
+  // NESTED RUN — the removed run lies INSIDE a markdown container the plugin
+  // did not touch (a blockquote whose own open token survived, a list item,
+  // a table cell). Its range is real, but it is not a top-level block's: the
+  // editor would render the plugin's fragment in place of the ENCLOSING
+  // block and drop the container the book keeps. Summing `nesting` over
+  // everything before the left anchor gives the depth the run starts at.
+  //
+  // `layout_*` tokens are excluded: Gutterpress's own page/section scopes
+  // wrap nearly every line in a real book, and the editor represents them as
+  // mounted container groups around flat blocks, not as nesting a block sits
+  // inside.
+  let runDepth = 0;
+  for (let i = 0; i <= beforeLeftIdx; i++) {
+    const t = before[i]!;
+    if (t.type.startsWith("layout_")) continue;
+    runDepth += t.nesting;
+  }
+  if (runDepth > 0) {
+    return {
+      ok: false,
+      reason:
+        `Refusing: the region consumed by ${rule} to produce "${token.type}" is nested ` +
+        `inside a container the plugin left in place, so its range is not a top-level ` +
+        `block's. Edit this content in source mode.`,
+    };
+  }
+
+  // Shape 6 — PARTIAL EVIDENCE: every removed token must carry its own range
+  // evidence, EXCEPT a structural closer (see header PART 2, shape 6).
+  //
+  // markdown-it never gives a `*_close` token a map — a closer's extent is
+  // its opener's, and the opener is in the same removed run by construction
+  // (a run bounded by surviving tokens cannot contain half a pair without
+  // that half's partner also being consumed). Demanding one anyway refused
+  // every run that consumed a paragraph, a heading, a quote or a list, which
+  // is every run a real content-rewriting plugin produces: on one chapter of
+  // the Dimm City Field Guide 110 of 111 recoveries refused on a
+  // `paragraph_close`. A token with NO range that is not a closer is
+  // genuinely partial evidence and still refuses.
   const ranges: Array<readonly [number, number]> = [];
   for (const removed of removedRun) {
     const range = resolveTokenRange(removed);
     if (!range) {
+      if (removed.nesting === -1) continue;
       return {
         ok: false,
         reason:
           `Refusing: the region consumed by ${rule} to produce "${token.type}" contains a ` +
           `token ("${removed.type}") with no source-range evidence of its own (map/` +
-          `meta.line missing) — rule 3 requires COMPLETE evidence on every removed token, ` +
-          `not just some (partial evidence). Edit this content in source mode.`,
+          `meta.line missing) and it is not a structural closer — rule 3 requires evidence ` +
+          `on every removed token that can carry one, not just some (partial evidence). ` +
+          `Edit this content in source mode.`,
       };
     }
     ranges.push(range);
+  }
+  if (!ranges.length) {
+    return {
+      ok: false,
+      reason:
+        `Refusing: the region consumed by ${rule} to produce "${token.type}" carries no ` +
+        `source-range evidence at all — nothing removed there can bound the region. Edit ` +
+        `this content in source mode.`,
+    };
   }
 
   const from = Math.min(...ranges.map((r) => r[0]));

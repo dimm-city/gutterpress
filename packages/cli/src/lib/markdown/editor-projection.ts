@@ -798,13 +798,31 @@ function pluginRegionLinesLookAuthored(
   starts: readonly number[],
   fromLine: number,
   toLine: number,
+  /**
+   * Was this range CLAIMED by the token (a `data-source-range` the plugin
+   * put there), or RECOVERED from object identity across the plugin's own
+   * core-rule boundary?
+   *
+   * The container-prefixed first line below is a sanity check on a CLAIM: a
+   * claimed range starting at a `>` or a list bullet is the shape of a claim
+   * that anchored to a nested block instead of the top-level one. A recovery
+   * is not a claim — it is the union of the ranges of the tokens the plugin
+   * actually consumed, bounded on both sides by tokens it did not touch — and
+   * a consumed top-level blockquote or list starts with exactly those
+   * characters. Applying the check there refused every real content-rewriting
+   * plugin: 51 of 69 recoveries in one chapter of the Dimm City Field Guide,
+   * each one a block quote or an ordered list the plugin legitimately
+   * replaced. The other two checks apply to both, and the nested-marker one
+   * is what still refuses a run that swallowed a Gutterpress marker line.
+   */
+  claimed: boolean,
 ): boolean {
   if (toLine > starts.length) return false;
   const firstLineText = source.slice(
     lineStartOffset(starts, source, fromLine),
     lineStartOffset(starts, source, fromLine + 1),
   );
-  if (/^[ \t]*(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])/.test(firstLineText)) return false;
+  if (claimed && /^[ \t]*(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])/.test(firstLineText)) return false;
   for (let line = fromLine + 1; line < toLine; line++) {
     const lineText = source.slice(lineStartOffset(starts, source, line), lineStartOffset(starts, source, line + 1));
     if (/^[ \t]*@/.test(lineText)) return false;
@@ -918,7 +936,7 @@ function resolvePluginRegionOrigin(
     [fromLine, toLine] = result.range;
     claim = "recovered origin";
   }
-  if (!pluginRegionLinesLookAuthored(source, starts, fromLine, toLine)) {
+  if (!pluginRegionLinesLookAuthored(source, starts, fromLine, toLine, parsedRange !== null)) {
     return {
       ok: false,
       reason:
@@ -1209,6 +1227,8 @@ export function createEditorProjection(
   const blocks: ProjectedBlock[] = [];
   const generated: GeneratedView[] = [];
   const diagnostics: ProjectionDiagnostic[] = [];
+  /** Plugin HTML whose authored range was recovered, keyed by that range. */
+  const recoveredRegions = new Map<string, { from: number; to: number; html: string }>();
 
   // D13 — per-call cap state (see "── D13 resource caps ──" above). Never
   // module-level: scoped fresh to this one createEditorProjection call.
@@ -1285,6 +1305,41 @@ export function createEditorProjection(
         continue;
       }
 
+      // A plugin that REPLACED authored blocks with hand-built HTML leaves
+      // its tokens no evidence of their own — a plugin builds tokens with a
+      // null map. The origin mechanism recovers the exact authored range
+      // anyway, from object identity across the plugin's own core-rule
+      // boundary (see `plugin-origin.ts`): the tokens the plugin did not
+      // touch are the same OBJECTS before and after, so the run it removed is
+      // bounded by the nearest survivor on each side. That is evidence, not
+      // inference, and it refuses by name in all six shapes where the diff
+      // cannot support it.
+      //
+      // A plugin commonly emits SEVERAL blocks of HTML for one removed run
+      // (an ordered list becoming one row per item). They all recover the
+      // same range, so they are accumulated into one region carrying the
+      // pipeline's own output for that run, in document order — never one
+      // block per fragment, which would be several blocks claiming one range.
+      if (opts.trusted) {
+        const origin = resolvePluginRegionOrigin(token, null, env, starts, source);
+        if (origin.ok) {
+          const [from, to] = origin.range;
+          const key = `${from}:${to}`;
+          const run = recoveredRegions.get(key);
+          if (run) run.html += token.content;
+          else recoveredRegions.set(key, { from, to, html: token.content });
+          continue;
+        }
+        diagnostics.push({
+          category: "EDITOR_UNSUPPORTED_PROJECTION",
+          reason:
+            `A block of HTML carries no source range and none could be recovered: ${origin.reason} ` +
+            "The content renders as the Markdown it was written from instead, and the two paginate " +
+            "differently. When a plugin built this HTML, giving the token it creates the `map` of the " +
+            "tokens it replaced is what removes the guesswork. Until then, edit this content in source mode.",
+        });
+        continue;
+      }
       diagnostics.push({
         category: "EDITOR_UNSUPPORTED_PROJECTION",
         reason:
@@ -1492,6 +1547,33 @@ export function createEditorProjection(
     // plugins, an unrecognized project-plugin token also falls through
     // here, completely unwalked — exactly P2b's behavior, unchanged (header
     // "TRUST GATE" / "Untrusted context").
+  }
+
+  // Emitted after the walk so a recovered region is complete before it
+  // becomes a block, and so a range some other block already claims is left
+  // alone — this module's ranges never overlap.
+  for (const run of recoveredRegions.values()) {
+    if (blocks.some((block) => run.from < block.to && block.from < run.to)) {
+      diagnostics.push({
+        category: "EDITOR_UNSUPPORTED_PROJECTION",
+        reason:
+          "A plugin's recovered HTML region covers source another block already claims — refusing " +
+          "to project overlapping blocks. Edit this content in source mode.",
+      });
+      continue;
+    }
+    if (blockCapReached(blocks, diagnostics)) {
+      limited = true;
+      break;
+    }
+    blocks.push({
+      id: `plugin-region:${run.from}:${run.to}`,
+      kind: "plugin-region",
+      from: run.from,
+      to: run.to,
+      editMode: "source",
+      inactiveHtml: capHtmlPayload(run.html, diagnostics, htmlBudget),
+    });
   }
 
   return {

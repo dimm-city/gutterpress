@@ -193,7 +193,7 @@ describe("evidence-bearing plugin-region (this lane's own scope, in full)", () =
 // ── no-evidence: typed refusal, Lane B's integration point ──────────────
 
 describe("no-evidence plugin token: typed refusal, no block, document stays projectable", () => {
-  test("a plugin token with no token.map/meta.line becomes a diagnostic naming its type, never a block", () => {
+  test("a plugin token with no token.map/meta.line has its consumed range recovered from object identity", () => {
     const source = "@@aside Untracked note\n\nTrailing paragraph still here.\n";
     const md = createMarkdownRenderer([asideMarkerPlugin(false)]);
 
@@ -202,23 +202,15 @@ describe("no-evidence plugin token: typed refusal, no block, document stays proj
 
     const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
 
-    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
-    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"));
-    expect(refusal).toBeDefined();
-    expect(refusal!.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
-    // SFE-P2c repair round 1 (finding 2): the diagnostic now carries
-    // plugin-origin.ts's OWN rule-named refusal reason end to end — not
-    // one fixed generic string for every rule-4 shape. This document's
-    // shape is "partial evidence" (the consumed paragraph_close never
-    // carries token.map), and the offending core rule is named directly.
-    expect(refusal!.reason).toMatch(/partial evidence/i);
-    expect(refusal!.reason).toMatch(/aside_plugin_transform/);
-
-    // Fail-closed, not fail-blocked: the projection itself is still valid
-    // and the document remains fully editable as plain markdown (this run's
-    // own module contract — never throw).
+    // The token carries no evidence of its own, but the tokens the plugin
+    // did NOT touch are the same objects on both sides of its core rule, so
+    // the run it consumed is bounded — and that run is exactly the `@@aside`
+    // line it replaced.
+    const region = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(region).toBeDefined();
+    expect(source.slice(region!.from, region!.to).trim()).toBe("@@aside Untracked note");
+    expect(projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"))).toBeUndefined();
     expect(projection.schemaVersion).toBe(1);
-    expect(projection.blocks).toHaveLength(0);
   });
 });
 
@@ -259,7 +251,7 @@ describe("survivor tokens project unchanged around a mix of plugin and core-mark
     expect(source.slice(breakBlock.from, breakBlock.to)).toBe("@page-break\n");
   });
 
-  test("a no-evidence plugin-region's refusal does not disturb the surrounding @page/@page-break projections", () => {
+  test("a recovered no-evidence plugin-region sits disjoint between the surrounding @page/@page-break projections", () => {
     const source = [
       "@page one",
       "",
@@ -272,11 +264,15 @@ describe("survivor tokens project unchanged around a mix of plugin and core-mark
     expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_aside_open");
 
     const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
-    assertSortedNonOverlapping(projection, source);
 
-    expect(projection.blocks.map((b) => b.kind)).toEqual(["page", "page-break"]);
-    const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_aside_open"));
-    expect(refusal).toBeDefined();
+    const kinds = projection.blocks.map((b) => b.kind).sort();
+    expect(kinds).toEqual(["page", "page-break", "plugin-region"]);
+    const region = projection.blocks.find((b) => b.kind === "plugin-region")!;
+    expect(source.slice(region.from, region.to).trim()).toBe("@@aside Untracked note");
+    for (const other of projection.blocks) {
+      if (other === region) continue;
+      expect(region.from < other.to && other.from < region.to).toBe(false);
+    }
   });
 });
 
@@ -539,7 +535,11 @@ describe("shape 2 -- container-prefix over-claim (a marker line nested under a b
     expect(projection.blocks).toHaveLength(0);
     const refusal = projection.diagnostics.find((d) => d.reason.includes("plugin_tip_open"));
     expect(refusal).toBeDefined();
-    expect(refusal!.reason).toMatch(/container-prefixed|corroborate against source/i);
+    // The recovered range IS the `> ---` line, and it is real — what makes
+    // it unprojectable is that the blockquote around it survived, so
+    // rendering the plugin's fragment for the enclosing block would drop
+    // the quote.
+    expect(refusal!.reason).toMatch(/nested inside a container/i);
   });
 
   test("Lane-B recovered path: 'A.\\n\\n> ---\\n\\nB.\\n' (blockquoted mid-document) refuses the same way", () => {
