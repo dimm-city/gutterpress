@@ -16,7 +16,7 @@ can replace this document without changing the boundaries themselves.
 ### 1. The shared editor package — `packages/editor/`
 
 The framework-free, browser-safe source-first rich editor
-(`@dimm-city/gutterpress-editor`, Experimental — ADR 0013). Imports
+(`@dimm-city/gutterpress-editor`, Experimental — ADR 0014). Imports
 `@vscode/markdown-editor` (via the internal fork,
 `packages/vscode-markdown-editor/`) and `gutterpress/render` only; no
 Svelte, Electron, `vscode`, or `node:*` imports (plan D4).
@@ -25,14 +25,14 @@ Svelte, Electron, `vscode`, or `node:*` imports (plan D4).
 — `packages/desktop` and `packages/vscode-extension` — and must be
 reasoned about against both, not just whichever host the change was
 motivated by. A behavior change to the source-edit contract
-(`DocumentSnapshot`/`SourceEdit`/`ApplyEditResult`, ADR 0011) or the
+(`DocumentSnapshot`/`SourceEdit`/`ApplyEditResult`, ADR 0012) or the
 projection consumption surface is a public-contract change per the plan's
 lane rules ("a public contract change lands with types, runtime validation,
 tests, documentation, and compatibility notes") even though the package is
 Experimental — Experimental means the *version* carries no stability
 promise yet, not that a breaking change is unreviewed. Changes confined to
 `packages/vscode-markdown-editor/` (the fork) must stay within
-`PATCHES.md`'s documented hunks — see ADR 0013's fork discipline.
+`PATCHES.md`'s documented hunks — see ADR 0014's fork discipline.
 
 ### 2. The VS Code extension — `packages/vscode-extension/`
 
@@ -55,12 +55,12 @@ desktop does for the same operation.
 ### 3. The desktop renderer (the SPA) — `packages/desktop/src/`
 
 The Svelte/SvelteKit single-page app, built statically via
-`@sveltejs/adapter-static` (ADR 0015). Contains zero host/platform code by
+`@sveltejs/adapter-static` (ADR 0016). Contains zero host/platform code by
 architectural requirement (root `CLAUDE.md` §8): no runtime `gutterpress`
 value-imports, no `node:*`/`fs`/`path`/`url`/`child_process`/`postcss`
 imports, and every host capability is reached through exactly one seam —
 the typed IPC capability modules under `src/lib/*/*-capability.ts` over the
-shared `src/lib/platform/bridge.ts` accessor (ADR 0016).
+shared `src/lib/platform/bridge.ts` accessor (ADR 0017).
 
 **Review expectation:** the one non-negotiable check for any change here is
 the renderer-purity boundary — does this PR add a value import that pulls
@@ -78,7 +78,7 @@ module (see boundary 4's "Adding a new host capability" walkthrough in
 The main process and preload bridge: lifecycle, windows, OS integration,
 security policy (CSP, origin/navigation policy, the `app://` protocol
 handler), and typed IPC registration (`electron/api/*.ts` plus a handful of
-bespoke per-context registrars — ADR 0015, ADR 0016). `main.ts` is a
+bespoke per-context registrars — ADR 0016, ADR 0017). `main.ts` is a
 composition root — it constructs services and registers handlers, and
 should not grow new domain workflow logic of its own (plan D10/P6b).
 

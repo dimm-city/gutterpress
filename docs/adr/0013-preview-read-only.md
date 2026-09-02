@@ -1,4 +1,4 @@
-# ADR 0012 — The paginated preview is read-only
+# ADR 0013 — The paginated preview is read-only
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P4
 
@@ -30,7 +30,7 @@ the preview's line/character indexing at risk of resolving against the
 wrong occurrence of a repeated block — `CommitEngine`'s clean-buffer gate
 existed specifically because no slice comparison can detect that
 misalignment (ADR 0009 §3). Once a real rich editor exists with its own
-source-edit contract (ADR 0011), the preview no longer needs to be a second,
+source-edit contract (ADR 0012), the preview no longer needs to be a second,
 harder-to-verify place authors mutate source from.
 
 ## Decision
@@ -62,7 +62,7 @@ editor's shared command layer (`caret-token-commands.ts`), not the preview.
 **Preview owns pagination; the rich editor does not have to reproduce it**
 (plan D8). Exact pagination, print CSS, margin boxes, page furniture, and
 PDF parity stay the preview's sole responsibility. The rich editor optimizes
-writing and structural editing and is judged against the standards ADR 0011
+writing and structural editing and is judged against the standards ADR 0012
 sets, not against pixel-identical page layout.
 
 **A PDF-preview mode is not a substitute for the live viewer.** Showing the
@@ -89,7 +89,7 @@ not a PDF viewer").
   tests, deletion-ledger "SFE-P4" entry) without weakening what a
   non-technical author can do in preview: the four read-only actions D8
   keeps cover navigation and copy, and everything else routes to an editor
-  that already has a verified source-edit contract (ADR 0011).
+  that already has a verified source-edit contract (ADR 0012).
 - One residual from this deletion is tracked, not silently dropped: the
   `data-gp-source-token`/`data-gp-source-occurrence` HTML attributes
   `inline-source.ts` still emits (and `preview-interface.js` still reads

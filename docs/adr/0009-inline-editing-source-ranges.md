@@ -35,7 +35,7 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 > `token.map` verbatim, and layout markers threading `token.meta.line`, still
 > serve navigation (click-to-source), source reveal, and editor threading —
 > none of that depended on there being a write path.
-> [ADR 0012](0012-preview-read-only.md) is the current decision record for
+> [ADR 0013](0013-preview-read-only.md) is the current decision record for
 > the replacement (the read-only preview and why decisions 3/5's write path
 > is gone); this note and that ADR cite each other rather than either
 > silently assuming the reader has found the other. See
@@ -46,8 +46,8 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
-> repository (`docs/adr/` holds 0008 through 0016 — 0002/0004/0005/0006/0007
-> remain absent; **updated 2026-09-01, SFE-P6c:** ADR 0014 and ADR 0016 now
+> repository (`docs/adr/` holds 0008 through 0017 — 0002/0004/0005/0006/0007
+> remain absent; **updated 2026-09-01, SFE-P6c:** ADR 0015 and ADR 0017 now
 > carry the current record for the platform/host-portability topic ADR 0004
 > used to cover). ADR 0005 in particular is
 > cited as the home of the preview bridge protocol. Rather than amend a missing

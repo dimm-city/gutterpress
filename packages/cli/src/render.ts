@@ -12,7 +12,7 @@
  * `test:browser`). (`rich-doc-host-controller.svelte.ts` and `RichEditor.svelte`
  * only `import type` from this subpath — erased at build, so they add no
  * runtime weight to the browser bundle.) A future separate web package would
- * consume it the same way (ADR 0014) — which is why the build compiles it
+ * consume it the same way (ADR 0015) — which is why the build compiles it
  * as its own non-split graph and `scripts/check-render-pure.mjs` fails the
  * build if any Node builtin reaches its closure.
  *

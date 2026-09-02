@@ -39,7 +39,7 @@ finding, not a reason to add scripts unilaterally.
 - **Real-VS-Code activation** deviation: `@vscode/test-electron` is
   network-blocked in this sandbox; extension evidence is the harness suite.
 - Record debt named in Checkpoint D advisory 4 (stale capability counts,
-  registrar enumeration omissions, rename fossils, ADR 0015/0016 "all
+  registrar enumeration omissions, rename fossils, ADR 0016/0017 "all
   moved" phrasing) — Lane A fixes items that are one-line record
   corrections in files it owns; anything wider is recorded as an open
   advisory, not silently absorbed.
@@ -76,7 +76,7 @@ Lane details:
   program. `docs/architecture/source-first-editor.md` is the plan-named
   final output: the source-first architecture as it now IS (document
   session, sparse projection, plugin origin/trust, rich-mode desktop
-  wiring, VS Code extension, read-only preview), pointing at ADRs 0011–0016
+  wiring, VS Code extension, read-only preview), pointing at ADRs 0012–0017
   — descriptive, not historical narrative.
 - **Lane C.** Every command actually run, with exit code and counts; a
   sweep that cannot run in this sandbox records the attempt verbatim.
@@ -198,7 +198,7 @@ gate "proves" agreement while this run's own sweep records it BLOCKED with
 no green run in the program's evidence; (7) the p7-sweeps §4.3/§4.4 grep
 breakdowns did not reproduce and §4.3's pattern missed 3 of 5 deleted
 protocol messages; (9) ledger §2.5 scored the vendored fork as "no fork
-needed, 0 LOC" against ADR 0013 and its own §2.8; (10) the architecture
+needed, 0 LOC" against ADR 0014 and its own §2.8; (10) the architecture
 doc mis-dated the `check-parity.mjs` deletion; (11) the release notes'
 P5a "~−3,100" contradicted the ledger's audited −2,546.
 

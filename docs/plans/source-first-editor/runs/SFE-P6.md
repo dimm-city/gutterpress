@@ -79,7 +79,7 @@ guard; 12/12 stayed green) while the ledger claimed the replacement covered
 the same races; (4) `preload-surface.test.ts` counted registrars that were
 never invoked toward the 120; (5) `package-exports.test.ts` was a
 self-referential oracle — deleting a subpath deleted its own coverage,
-contradicting its header; (6) ADR 0013 described seven hunks / one seam
+contradicting its header; (6) ADR 0014 described seven hunks / one seam
 against PATCHES.md's ten hunks / two patches, omitting Patch 2's core
 render-loop change; (7) the ledger's stale-ADR decline was proven on a
 subset presented as repo-wide, and this run created a new file citing the
@@ -96,7 +96,7 @@ that test fails); `preload-surface.test.ts` asserts every exported
 floor); the export test pins `SUBPATHS` to the literal set
 `{'.', './api', './render', './plugins'}` × `['default','types']`
 (sabotage-proven: deleting `./plugins` from package.json fails exactly one
-assertion; 18 pass); ADR 0013 rewritten to the ten-hunk / two-patch reality
+assertion; 18 pass); ADR 0014 rewritten to the ten-hunk / two-patch reality
 with the removal trigger restated as two independent conditions; the
 stale-ADR decline re-proven repo-wide (106 files / 193 occurrences, every
 number independently reproduced) with per-area dispositions, and the
@@ -152,7 +152,7 @@ export surface is the pinned set `{'.', './api', './render', './plugins'}`
 × `['default','types']`, sabotage-proven by
 `tests/integration/package-exports.test.ts` (18 cases), and
 `gutterpress/plugins` has its real consumer in the desktop's
-editor-projection loader. Records landed: ADRs 0011–0016,
+editor-projection loader. Records landed: ADRs 0012–0017,
 `docs/OWNERSHIP.md`, `docs/vscode-extension.md`, the `ARCHITECTURE.md`
 final pass, and the repo-wide stale-ADR disposition (106 files / 193
 occurrences, per-area reasoning). Checkpoint D is assembled in the

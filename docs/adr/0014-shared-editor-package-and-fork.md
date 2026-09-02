@@ -1,4 +1,4 @@
-# ADR 0013 — One shared, framework-free editor package for desktop and VS Code
+# ADR 0014 — One shared, framework-free editor package for desktop and VS Code
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a, P3c, P3f
 
@@ -7,7 +7,7 @@ Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a,
 > that record does not exist in this repository (see ADR 0009's "Note on
 > predecessors" and the deletion ledger's SFE-P5a entry). Where those
 > comments describe the desktop/VS Code host-portability boundary, this ADR
-> and ADR 0016 are the current record.
+> and ADR 0017 are the current record.
 
 ## Context
 
@@ -31,7 +31,7 @@ gap requires Gutterpress-specific syntax or broad rewrites.
 **`packages/editor` (`@dimm-city/gutterpress-editor`, Experimental in
 0.11.0) is the one framework-free, browser-safe editor package.** It
 imports `@vscode/markdown-editor` (via the fork below) and
-`gutterpress/render` (ADR 0011's projection), and nothing else host-shaped —
+`gutterpress/render` (ADR 0012's projection), and nothing else host-shaped —
 no Svelte, Electron, `vscode`, or `node:fs` imports (plan D4). Desktop wraps
 it in a thin Svelte shell; the VS Code extension wraps it in a webview
 bootstrap. Both hosts mount the exact same package.
@@ -130,7 +130,7 @@ adapter.
   discipline root `CLAUDE.md` applies to rendering-engine shims applies here
   to this fork).
 - The fork remains an internal package, not a public Gutterpress API
-  (D5) — `gutterpress`'s own public exports (ADR 0011, and this run's
+  (D5) — `gutterpress`'s own public exports (ADR 0012, and this run's
   subpath work) never re-export it.
 - Case 6's original pointer-drag assertion against the unforked package was
   found tautological during review (it could not distinguish a correct
@@ -155,4 +155,4 @@ adapter.
   a fence Gutterpress's own marker syntax deliberately never uses (root
   `CLAUDE.md` §5: block-container syntax was removed from core), turning a
   display need into a source-shape requirement — exactly the
-  transform-origin/display-mapping hazard ADR 0011 and G-05 warn against.
+  transform-origin/display-mapping hazard ADR 0012 and G-05 warn against.

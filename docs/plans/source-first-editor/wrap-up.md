@@ -28,7 +28,7 @@ per-criterion evidence is `docs/plans/source-first-editor/acceptance.md`'s
   future-package rules).
 - **P1** — shared editor contracts; `@dimm-city/gutterpress-editor` and
   VS Code extension package skeletons; the vendored-fork decision (D5,
-  ADR 0013) with `PATCHES.md` + byte-pinned verification; the pure
+  ADR 0014) with `PATCHES.md` + byte-pinned verification; the pure
   document session.
 - **P2** — standard Markdown rich editor; the sparse Gutterpress
   projection (`gutterpress/render`'s new projection surface); plugin
@@ -47,7 +47,7 @@ per-criterion evidence is `docs/plans/source-first-editor/acceptance.md`'s
 - **P6** — both composition roots slimmed behaviour-identically
   (`+page.svelte` 4,739→4,543; `main.ts` 2,188→1,965; IPC surface
   byte-identical, reviewer-verified); pinned public export surface;
-  ADRs 0011–0016, ownership records.
+  ADRs 0012–0017, ownership records.
 - **P7** — zero-remnant verification, nine-metric measured before/after,
   release records, real-book/packaged sweeps, and the final acceptance
   sweep.
@@ -73,13 +73,13 @@ per-criterion evidence is `docs/plans/source-first-editor/acceptance.md`'s
 ## Architecture changes
 
 - One host seam: ~120 runtime-validated `secureHandle` IPC channels
-  across 26 registrar modules; renderer stays PWA-clean (ADR 0015).
+  across 26 registrar modules; renderer stays PWA-clean (ADR 0016).
 - Narrow feature-owned capability modules replace the service locator
-  (ADR 0016); adapter-static + `app://` replace adapter-node + loopback
+  (ADR 0017); adapter-static + `app://` replace adapter-node + loopback
   server + bearer token.
 - Shared editor package consumed by desktop and VS Code; exact source is
-  the only authoritative document; sparse projection (ADR 0011/0013).
-- A future web product is a separate package, not a mode (ADR 0014).
+  the only authoritative document; sparse projection (ADR 0012/0014).
+- A future web product is a separate package, not a mode (ADR 0015).
 
 ## Deleted complexity
 

@@ -9,7 +9,7 @@
  *     (see `renderChapters` in `./index.ts`); and
  *   - because it is node-free, it CAN run in a browser host with a
  *     caller-supplied `readText` (via `gutterpress/render`, or a future web
- *     package per ADR 0014) — there is no browser caller of
+ *     package per ADR 0015) — there is no browser caller of
  *     `assembleBookHtml` today; every current `gutterpress/render` browser
  *     consumer uses the render/projection exports, not this one.
  *

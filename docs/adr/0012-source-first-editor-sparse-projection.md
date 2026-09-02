@@ -1,4 +1,4 @@
-# ADR 0011 — Source-first editor: exact Markdown plus a sparse projection
+# ADR 0012 — Source-first editor: exact Markdown plus a sparse projection
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1c, P2a, P2b, P2c
 
@@ -80,7 +80,7 @@ any time.
   additive work on the projection, never a redesign of the source-edit core.
 - The same contract is reusable by any host (desktop, VS Code, or a test
   harness) because it depends on nothing but a snapshot and an edit
-  function — see ADR 0013 for how the desktop and VS Code hosts share the
+  function — see ADR 0014 for how the desktop and VS Code hosts share the
   editor built on this contract.
 
 ## Alternatives rejected

@@ -1,10 +1,10 @@
-# ADR 0014 — A future browser product is a separate package, not a mode of the desktop app
+# ADR 0015 — A future browser product is a separate package, not a mode of the desktop app
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P5a
 
 > **Closes:** `docs/pwa-webadapter-plan.md` (status-noted CLOSED 2026-09-01,
-> kept as history, not resumable). **Related:** ADR 0013 (the editor package
-> this future product would actually reuse) and ADR 0016 (the capability
+> kept as history, not resumable). **Related:** ADR 0014 (the editor package
+> this future product would actually reuse) and ADR 0017 (the capability
 > seam this ADR's deletion made possible).
 
 ## Context
@@ -33,13 +33,13 @@ it, and a silent fallback that hides a real host being unavailable.
 `InMemoryWebStore`), the service worker (`src/service-worker.ts`) and its
 registration, and every PWA-only test and dead-code exemption were deleted
 outright in P5a — not stubbed, not feature-flagged off. `getPlatform()`
-(itself later deleted per ADR 0016) stopped falling back to a web
+(itself later deleted per ADR 0017) stopped falling back to a web
 implementation and instead threw `DesktopHostRequiredError` off-Electron:
 failing loudly and immediately beats silently selecting a partial product.
 
 **When a web product is built, it is a new, separate package** — the plan
 names it explicitly: built against `@dimm-city/gutterpress-editor` (ADR
-0013) and `gutterpress/render` (ADR 0011) as its public surfaces, from
+0014) and `gutterpress/render` (ADR 0012) as its public surfaces, from
 scratch, rather than by finishing `WebAdapter`. Nothing in this deletion
 touches the *renderer/host split* requirement that makes such a package
 possible later: the desktop SPA still contains zero platform/host code and
@@ -60,12 +60,12 @@ whether a PWA ever ships from `packages/desktop`.
   runtime occurrences).
 - A future web package starts from `@dimm-city/gutterpress-editor` and
   `gutterpress/render` — both already framework-free and Node-free
-  respectively (ADR 0011, ADR 0013) — rather than inheriting
+  respectively (ADR 0012, ADR 0014) — rather than inheriting
   Electron-shaped assumptions baked into a resurrected `WebAdapter`.
 - Several source comments in `packages/desktop/src/**` still cite "ADR
   0004" (platform abstraction) by a number that does not exist in this
   repository — a pre-existing gap (confirmed absent before this plan
-  began; see ADR 0009's "Note on predecessors"). This ADR and ADR 0016 are
+  began; see ADR 0009's "Note on predecessors"). This ADR and ADR 0017 are
   the current record for that topic; the dangling in-source citations
   themselves are frozen source outside this run's write ownership and are
   recorded, not silently left unmentioned (deletion ledger, SFE-P5a "ADR
@@ -81,10 +81,10 @@ whether a PWA ever ships from `packages/desktop`.
 - **Finish `WebAdapter` into a real PWA now** — out of scope for 0.11.0 (plan
   "out of scope: shipping a browser PWA in 0.11.0") and would have meant
   building a second host adapter against the desktop's pre-rich-editor
-  architecture, immediately stale once ADR 0011/0013's editor package
+  architecture, immediately stale once ADR 0012/0014's editor package
   landed.
 - **A generic host abstraction covering Electron and a hypothetical browser
-  host simultaneously** — rejected by the same reasoning as ADR 0016's
+  host simultaneously** — rejected by the same reasoning as ADR 0017's
   rejection of a broad service locator: a seam justified by a host that
   does not exist yet is speculative abstraction, not a boundary a real
   consumer needs today.

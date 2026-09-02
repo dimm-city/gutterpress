@@ -12,7 +12,7 @@
  * Canonical home: `gutterpress`. The desktop re-exports these types from
  * `src/lib/platform/contract.ts`. (The former `Platform` service locator and
  * its `electron-adapter.ts`/`web-adapter.ts` implementations were deleted in
- * 0.11 — SFE-P5a/P5b; ADR 0014/0016.)
+ * 0.11 — SFE-P5a/P5b; ADR 0015/0017.)
  */
 
 /**

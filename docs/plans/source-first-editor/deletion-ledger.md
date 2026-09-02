@@ -46,7 +46,7 @@ against them.
 | Loopback bearer token/proxy | Secure local server | Server absent | P5d | symbol search | Removes attack/failure mode — **DONE (SFE-P5d, this run)**: `AUTH_HEADER`/`isAuthorizedRequest`/`withTokenAuth`/`skAuthToken` (the per-session `randomBytes(32)` token) and `buildProxyRequest`/the `fetch`-based proxy in `registerAppProtocol` all deleted with `sveltekit-host.ts`; the "app-host validation tied only to the proxy" (the pre-fix host check existed to gate what got proxied) is replaced by a new, differently-reasoned host check in `app-protocol.ts` that gates what gets served from disk (kept for origin-identity consistency with `APP_ORIGIN`, not proxy protection — see that file's header). Security-equivalence statement and the traversal-refusal proof are in this run's own section below. |
 | Route-only DTO duplication | HTTP transport shapes | Capability/IPC contracts | P5c/P5d | type search | Fewer models — **DONE (SFE-P5c)**: the HTTP-route-only DTO shapes were retired during the P5c migration itself (each subrun's rule 6 landed callers on the bounded context's capability module rather than a route-shaped type; `dtos.ts`'s surviving members carry "moved here from `$lib/api.ts`" provenance notes recording the consolidation). Nothing route-shaped remained for SFE-P5d to find or delete: `grep -rn "RouteOnly\|RouteResponse\|RouteRequest" packages/desktop/src packages/desktop/electron` → zero hits, and this run's `knip` pass (files/dependencies/unlisted/binaries — see the verification table below) flags no orphaned type module. |
 | Tracked generated directories | Build output in source | CI-generated only | P0b | git ls-files proof | Cleaner repository |
-| Stale ADR references/comments | Historical architecture drift | Current ADRs | P6c/P7 | doc link check | Discoverable rationale — **PARTIALLY DONE (SFE-P6c)**: the six plan-named ADRs (0011–0016) were added, and ADR 0009's own "Note on predecessors" was updated to point at ADR 0014/0016 for the platform-abstraction topic the missing "ADR 0004" used to cover. The dangling in-source "ADR 0004"/"ADR 0006" citations scattered through `packages/desktop/src/**` (frozen, outside this run's write ownership) are NOT edited — see the SFE-P6c section below for the search proof and why this is a documented decline, not an oversight. |
+| Stale ADR references/comments | Historical architecture drift | Current ADRs | P6c/P7 | doc link check | Discoverable rationale — **PARTIALLY DONE (SFE-P6c)**: the six plan-named ADRs (0012–0017) were added, and ADR 0009's own "Note on predecessors" was updated to point at ADR 0015/0017 for the platform-abstraction topic the missing "ADR 0004" used to cover. The dangling in-source "ADR 0004"/"ADR 0006" citations scattered through `packages/desktop/src/**` (frozen, outside this run's write ownership) are NOT edited — see the SFE-P6c section below for the search proof and why this is a documented decline, not an oversight. |
 | Duplicate local-file plugin loader (desktop) | `gutterpress/plugins` subpath was missing when `electron/editor-projection.ts` needed one | `gutterpress/plugins` (SFE-P3e) | P3e | import/symbol search | One loader — **DONE, already landed in SFE-P3e** (commit `7a5e9f8e`, well before this P6c run): `packages/cli/src/plugins.ts` re-exports the real `loadPlugins`/`loadPluginsWithCss`, and `electron/editor-projection.ts` imports from `gutterpress/plugins` with no local duplicate. SFE-P6c (this run) re-verified this is still true against the current tree (search proof below) rather than re-doing work already done — see the SFE-P6c section. |
 | Workflow logic in `+page.svelte` | Organic composition growth | Feature-owned controllers | P6a | responsibility review | Smaller composition root |
 | Workflow logic in Electron `main.ts` | Organic host growth | Bounded services | P6b | responsibility review | Smaller composition root |
@@ -3014,7 +3014,7 @@ pinned-surface assertion).
 
 #### ADRs (the run specification's item 4)
 
-Six new records, `docs/adr/0011`–`0016` (continuing the existing
+Six new records, `docs/adr/0012`–`0017` (continuing the existing
 0008/0009/0010 numbering), each following the established ADR
 0008/0009/0010 format (Date, Status, Context, Decision, Consequences,
 Alternatives rejected) and each citing the run(s) that implemented the
@@ -3023,12 +3023,12 @@ the run(s) that implemented it":
 
 | ADR | Title | Implemented by |
 |---|---|---|
-| 0011 | Source-first editor and sparse projection | SFE-P1a, P1c, P2a, P2b, P2c |
-| 0012 | Preview is read-only | SFE-P4 |
-| 0013 | Shared desktop/VS Code editor package (+ the fork decision) | SFE-P1a, P1b, P1b2, P3a, P3c |
-| 0014 | Future web product is a separate package | SFE-P5a |
-| 0015 | Electron single-IPC transport | SFE-P5c (P5c1–P5c4), P5d |
-| 0016 | Narrow feature-owned capabilities | SFE-P5b (+ SFE-P6b's parallel Electron-main-side split) |
+| 0012 | Source-first editor and sparse projection | SFE-P1a, P1c, P2a, P2b, P2c |
+| 0013 | Preview is read-only | SFE-P4 |
+| 0014 | Shared desktop/VS Code editor package (+ the fork decision) | SFE-P1a, P1b, P1b2, P3a, P3c |
+| 0015 | Future web product is a separate package | SFE-P5a |
+| 0016 | Electron single-IPC transport | SFE-P5c (P5c1–P5c4), P5d |
+| 0017 | Narrow feature-owned capabilities | SFE-P5b (+ SFE-P6b's parallel Electron-main-side split) |
 
 Line counts: 103 / 99 / 122 / 90 / 100 / 125 respectively (6 files,
 639 lines total) — each intentionally kept to roughly a page per the run
@@ -3040,10 +3040,10 @@ above) each ADR draws from and cites rather than restates.
 **Stale ADR reference resolved**: ADR 0009's own "Note on predecessors"
 (which already documented that `CLAUDE.md`/`docs/ux-design-contract.md`
 cite ADRs 0002/0004/0005/0006/0007, none present in this repository) is
-updated to record that ADR 0014 and ADR 0016 now carry the current record
+updated to record that ADR 0015 and ADR 0017 now carry the current record
 for the platform/host-portability topic the missing "ADR 0004" used to
 cover, and to correct its own file-count claim ("`docs/adr/` holds 0008,
-0009 and 0010" → "0008 through 0016").
+0009 and 0010" → "0008 through 0017").
 
 **Stale ADR references NOT resolved, and why**: the P6c-original pass of
 this section proved its decline only against `packages/desktop/src/**` and
@@ -3088,7 +3088,7 @@ was CREATED by this run (P6b) and its "ADR 0006" citation is a new dangling
 reference this run introduced, not an inherited one — fixed directly (its
 header now names the feature by issue number only, with a note pointing at
 ADR 0009's "Note on predecessors" and this entry, matching the ADR
-0014/0016 footnote pattern rather than repeating a citation to a record
+0015/0017 footnote pattern rather than repeating a citation to a record
 that was never authored). The other five files' citations (`main.ts`,
 `credential-store.ts`, `api/remote.ts`, `api/vcs.ts`,
 `export/controller.ts`) predate this run and are declined for the same
@@ -3134,8 +3134,8 @@ Changes:
   (`packages/vscode-markdown-editor`) that did not exist when this section
   was last written.
 - **New "Desktop Application Architecture" section**: the static-renderer/
-  typed-IPC transport (ADR 0015), the narrow capability-module seam (ADR
-  0016), and both composition roots (`electron/main.ts`'s registrar list,
+  typed-IPC transport (ADR 0016), the narrow capability-module seam (ADR
+  0017), and both composition roots (`electron/main.ts`'s registrar list,
   `+page.svelte`'s ~16 feature controllers) as they exist after SFE-P6a/
   P6b — this section did not exist before this run; the desktop app had no
   architecture-document coverage of its post-P5/P6 shape at all.
@@ -3219,12 +3219,12 @@ file).
 | File | Lines | Kind |
 |---|---:|---|
 | `packages/cli/tests/integration/package-exports.test.ts` | 163 | new |
-| `docs/adr/0011-source-first-editor-sparse-projection.md` | 103 | new |
-| `docs/adr/0012-preview-read-only.md` | 99 | new |
-| `docs/adr/0013-shared-editor-package-and-fork.md` | 122 | new |
-| `docs/adr/0014-future-web-product-is-a-separate-package.md` | 90 | new |
-| `docs/adr/0015-electron-single-ipc-transport.md` | 100 | new |
-| `docs/adr/0016-narrow-feature-owned-capabilities.md` | 125 | new |
+| `docs/adr/0012-source-first-editor-sparse-projection.md` | 103 | new |
+| `docs/adr/0013-preview-read-only.md` | 99 | new |
+| `docs/adr/0014-shared-editor-package-and-fork.md` | 122 | new |
+| `docs/adr/0015-future-web-product-is-a-separate-package.md` | 90 | new |
+| `docs/adr/0016-electron-single-ipc-transport.md` | 100 | new |
+| `docs/adr/0017-narrow-feature-owned-capabilities.md` | 125 | new |
 | `docs/OWNERSHIP.md` | 108 | new |
 | `docs/vscode-extension.md` | 140 | new |
 | `docs/ARCHITECTURE.md` | +156 / −11 | modified |
@@ -3275,7 +3275,7 @@ functions under `electron/` in total, every one asserted called from
 `main.ts` by `tests/platform/preload-surface.test.ts` (mutation-proven:
 commenting out one registration fails exactly that test), with two
 registrations deliberately left inline in `main.ts` (recorded as an
-advisory against ADR 0015/0016's "all moved" phrasing). The review's
+advisory against ADR 0016/0017's "all moved" phrasing). The review's
 central identity check: the full 120-channel `secureHandle` surface is
 **byte-identical** between `b7242a71` and post-P6 HEAD (independent
 full-tree channel extraction at both SHAs, diff clean).
@@ -3300,7 +3300,7 @@ fix).
 **Confirmed findings fixed during review**: 7 (round 1) — the CI dist
 break, the updater registrar's Electron hard-import, the untested
 `.finally` epoch guard, the registrar-liveness gap, the self-referential
-export oracle, ADR 0013's fork-story contradiction, and the
+export oracle, ADR 0014's fork-story contradiction, and the
 subset-presented-as-repo-wide stale-ADR decline plus a dangling ADR 0006
 citation. Round 2: approve, 0 confirmed.
 
@@ -3315,7 +3315,7 @@ citation. Round 2: approve, 0 confirmed.
    packaged-product sweep.
 4. Record debt (non-blocking, from the review's advisories): stale
    capability-module counts in three records, `ARCHITECTURE.md`'s registrar
-   enumeration omissions, rename fossils in eight files, ADR 0015/0016's
+   enumeration omissions, rename fossils in eight files, ADR 0016/0017's
    "all moved" over-statement, and the deferred-publish keystroke-drop
    window (already canonized by test as intended, tracked under the D13
    follow-ups).
@@ -3375,7 +3375,7 @@ fixed (production code is outside this lane's write ownership).
 
 **Self-reference note.** The counts below were captured before this lane's
 own edits to `deletion-ledger.md` §"Baseline counts" and `docs/adr/{0009,
-0012,0016}.md` (the cross-reference/count fixes in §5 below and this
+0013,0017}.md` (the cross-reference/count fixes in §5 below and this
 section itself) landed in the tree. Those edits necessarily discuss the
 same deleted identifiers this section sweeps for — that discussion is class
 3 (historical/planning-doc) by construction, the same as every other
@@ -3384,7 +3384,7 @@ re-running any command in this section against the final committed tree
 will see modestly higher totals than pasted here, confined entirely to
 this section's own and the three ADR edits' text; verify the delta lands
 in exactly those files (`deletion-ledger.md`, `docs/adr/0009-*.md`,
-`docs/adr/0012-*.md`, `docs/adr/0016-*.md`) before treating any increase as
+`docs/adr/0013-*.md`, `docs/adr/0017-*.md`) before treating any increase as
 a new finding.
 
 #### 1.1 Preview mutation protocol v≤8 message names
@@ -3413,7 +3413,7 @@ File-level union (13 files total across all five identifiers):
 | `packages/desktop/tests/preview-interface.test.mjs` | 2 — same absence assertion, book-side harness |
 | `packages/desktop/tests/preview-shell-regression.test.mjs` | 2 — asserts a stray `blockEditStateChanged` no longer holds a swap |
 | `CHANGELOG.md` (line 195) | (b) — a dated 0.10.x release-notes entry describing the v8 addition as it was AT THAT RELEASE; historical by construction, same spirit as class 3 |
-| `docs/plans/source-first-editor-enterprise-refactor.md`, `baseline.md`, `deletion-ledger.md`, `runs/SFE-P4.md`, `mutation-inventory.md`, `docs/inline-editing-plan.md`, `docs/adr/0009-inline-editing-source-ranges.md`, `docs/adr/0012-preview-read-only.md` | 3 — plan/decision-record history |
+| `docs/plans/source-first-editor-enterprise-refactor.md`, `baseline.md`, `deletion-ledger.md`, `runs/SFE-P4.md`, `mutation-inventory.md`, `docs/inline-editing-plan.md`, `docs/adr/0009-inline-editing-source-ranges.md`, `docs/adr/0013-preview-read-only.md` | 3 — plan/decision-record history |
 | `packages/cli/dist/preview-interface-s4ax92ac.js` | not a repo hit — untracked, `.gitignore`d build output (`git ls-files --error-unmatch` fails on it; `.gitignore:47`) mirroring the same class-1 comment in its source; excluded from the repo-wide count above by `rg`'s default ignore behavior, confirmed separately with `git check-ignore -v` |
 
 **Classification: clean.** No hit outside classes 1/2/3/(b).
@@ -3429,7 +3429,7 @@ Zero hits under any `packages/*/src`. All 14 files are
 preview-separability-mutation-inert,context-menu-controller}.test.ts`
 (class 2 — two are header comments naming the deletion, one is an absence
 assertion; already classified by the P4 ledger's own residual list, "Sanctioned
-residuals" §2) plus 11 `docs/plans/**`/`docs/adr/0012` files (class 3).
+residuals" §2) plus 11 `docs/plans/**`/`docs/adr/0013` files (class 3).
 
 **Classification: clean.**
 
@@ -3445,7 +3445,7 @@ type members explaining they were "Added for `CommitEngine`... `CommitEngine`
 was removed in 0.11 (SFE-P4)" (class 1, verified by reading the surrounding
 20 lines — comment only, no live reference). The same three
 `packages/desktop/tests/editor/*.test.ts` files as §1.2 (class 2) and 15
-`docs/plans/**`/`docs/adr/{0009,0012}` files (class 3) account for the rest.
+`docs/plans/**`/`docs/adr/{0009,0013}` files (class 3) account for the rest.
 
 **Classification: clean.**
 
@@ -3482,7 +3482,7 @@ hits, clean.**
 | `packages/cli/scripts/build-engine-bundles.mjs` | 1 — "both deleted in SFE-P5a (D10)" |
 | `knip.jsonc` | 1 — "dropped out of this list in P5a with the PWA/WebAdapter code" |
 | `packages/cli/dist/{platform,render}.d.ts`, `dist/lib/markdown/{renderer,assemble,index}.d.ts` | untracked build output, gitignored, mirrors the six `packages/cli/src` files below |
-| `docs/plans/**`, `docs/adr/{0014,0016}`, `CLAUDE.md`, `CHANGELOG.md`, `docs/ux-design-contract.md`, `docs/pwa-webadapter-plan.md` | 3 |
+| `docs/plans/**`, `docs/adr/{0015,0017}`, `CLAUDE.md`, `CHANGELOG.md`, `docs/ux-design-contract.md`, `docs/pwa-webadapter-plan.md` | 3 |
 | `packages/cli/src/render.ts:7-9`, `platform.ts:6,94`, `lib/markdown/assemble.ts:10,120`, `lib/markdown/plugins.ts:26`, `lib/markdown/index.ts:53`, `lib/markdown/renderer.ts:8` | **CONFIRMED DEFECT — see §5.1** |
 
 #### 1.6 `getPlatform` / `ElectronAdapter` / `HostServices` (P5b)
@@ -3543,7 +3543,7 @@ silently:
   reference the DELETED locator; they are a different, live component that
   happens to share a name introduced independently (ARCH review #31 predates
   this deletion). No defect.
-- `docs/plans/**`, `docs/adr/0016`, `CLAUDE.md`, `CHANGELOG.md` — class 3.
+- `docs/plans/**`, `docs/adr/0017`, `CLAUDE.md`, `CHANGELOG.md` — class 3.
 
 **Classification: clean except the two production-comment defects named
 above and cross-referenced in §5.**
@@ -3602,7 +3602,7 @@ $ grep -c '"@sveltejs/adapter-node"' bun.lock                  # 0
 
 `sveltekit-host` — `packages/desktop/tests/platform/app-protocol.test.ts`
 (class 2, "replaced the adapter-node loopback server + proxy"), five
-`docs/plans/**`/`docs/adr/0015` files (class 3). `adapter-node` —
+`docs/plans/**`/`docs/adr/0016` files (class 3). `adapter-node` —
 `packages/desktop/README.md`, `electron/app-protocol.ts`,
 `tests/platform/{main-boot-and-splash,app-protocol}.test.ts` (class 1/2:
 "SFE-P5d replaced adapter-node...", "adapter-node loopback server failed
@@ -3685,7 +3685,7 @@ ABSENT
 
 Baseline command (`grep -c 'secureHandle(' packages/desktop/electron/main.ts`)
 no longer measures the same thing: SFE-P6b moved 118 of 120 registrations
-out of `main.ts` into `electron/api/*.ts` registrars (ADR 0016; §5 fix
+out of `main.ts` into `electron/api/*.ts` registrars (ADR 0017; §5 fix
 above). Adjusted command — count unique `secureHandle("channel", ...)`
 first-argument literals across the whole `electron/` tree, handling the four
 call sites whose channel string is on the line after `secureHandle(`:
@@ -3707,7 +3707,7 @@ below, so it does not inflate the count — verified by inspecting the
 
 This matches SFE-P6's own Checkpoint D figure ("the full 120-channel
 `secureHandle` surface is byte-identical between `b7242a71` and post-P6
-HEAD") and ADR 0015's "12 → 120" — independently re-derived here, not
+HEAD") and ADR 0016's "12 → 120" — independently re-derived here, not
 copied.
 
 #### 2.3 Preview mutation protocol message count
@@ -3783,7 +3783,7 @@ $ find packages/vscode-extension/src -type f \( -name '*.ts' -o -name '*.svelte'
 $ find packages/vscode-markdown-editor/src -type f -name '*.ts' 2>/dev/null | wc -l
 0   # src/ is CSS theme/contrib assets only (8 .css files), 0 TS/JS — but this
     # is NOT "no fork needed": D5's gate outcome was that a fork WAS needed
-    # (ADR 0013: "It carries two patches"; PATCHES.md documents ten hunks
+    # (ADR 0014: "It carries two patches"; PATCHES.md documents ten hunks
     # against upstream). The fork's actual vendored+patched code lives in
     # the TRACKED dist/ tree, not src/ — see below, not folded into the
     # production-LOC totals.
@@ -3806,7 +3806,7 @@ $ wc -l packages/vscode-markdown-editor/dist/index.js
 
 This is the raw workspace-wide figure, not a claim about AC-22/success
 criterion 22, which is scoped to the combined P4-P6 SIMPLIFICATION phases
-only (ADR 0016's own Consequences section makes the same point about its
+only (ADR 0017's own Consequences section makes the same point about its
 own subrun) — the whole-program total is net-positive because P1-P3 built a
 new editor package and a new VS Code extension before P4-P6 deleted the
 preview-mutation/PWA/HTTP-transport/broad-locator machinery those new
@@ -3817,7 +3817,7 @@ gives the whole-program number the metric asks for, honestly.
 **Stated, justified exclusion:** `packages/vscode-markdown-editor/dist`
 (the D5 internal fork's tracked build output, ~9k lines) is deliberately
 excluded from every LOC total in this section. It is vendored, patched
-upstream code (ADR 0013: two patches, ten hunks against
+upstream code (ADR 0014: two patches, ten hunks against
 `@vscode/markdown-editor`), not code this program authored, and none of
 the "production LOC" totals above are meant to measure vendored third-party
 output — the same reason `node_modules` is excluded. It is real,
@@ -4331,7 +4331,7 @@ origin remains in `packages/*/src` or `packages/desktop/electron`.
 
 This lane wrote only files listed in its write-ownership boundary
 (`deletion-ledger.md`, this section; `docs/adr/0009-inline-editing-source-ranges.md`,
-`docs/adr/0012-preview-read-only.md`, `docs/adr/0016-narrow-feature-owned-capabilities.md`
+`docs/adr/0013-preview-read-only.md`, `docs/adr/0017-narrow-feature-owned-capabilities.md`
 — cross-reference fixes). No production or test file was touched, so there
 is no package-scoped typecheck or test file narrower than the repo-wide
 check that applies:

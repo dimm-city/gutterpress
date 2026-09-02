@@ -30,7 +30,7 @@
 | AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Evidenced for P0b (generated-file + architecture checks wired into the CI build job, each with a self-test proving pass and fail paths; P6 additions pending) — Implementation: `tools/check-architecture.mjs`, `tools/check-generated-files.mjs`, wired in `.github/workflows/ci.yml`. |
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending — Implementation: `docs/plans/source-first-editor/deletion-ledger.md` (this run's final nine-metric section is Lane A's own deliverable). |
 | AC-21 | Real-book regression gate green | P3/P7 | User guide, advanced book, field guide evidence | Evidenced for P3 (SFE-P3d-parity: full user guide, design-guide book, validation example and a plugin-using fixture book — 28 chapters total; the field guide is gitignored and out of corpus, and the final P7 sweep remains) — Implementation: `packages/cli/scripts/native-parity-gate.ts`; corpus at `examples/gutterpress-user-guide/`, `examples/with-design-guide/`, `examples/with-validation/`. |
-| AC-22 | Documentation complete | P7 | Doc link and example lint | Pending — Implementation: `docs/architecture/source-first-editor.md`, `docs/vscode-extension.md`, `docs/adr/0011`–`0016`, `docs/ARCHITECTURE.md`. |
+| AC-22 | Documentation complete | P7 | Doc link and example lint | Pending — Implementation: `docs/architecture/source-first-editor.md`, `docs/vscode-extension.md`, `docs/adr/0012`–`0017`, `docs/ARCHITECTURE.md`. |
 | AC-23 | Security boundaries preserved | P2/P3/P5 | CSP, trust, IPC validation, secret scan tests | Evidenced for P2 and the desktop P3 boundary (SFE-P2c security review: host-only plugin execution, inert plugin HTML, fail-closed trust gate; SFE-P3e: rich-mode plugins execute only in main for the opened project — the same trust decision the preview already exercises — over one validated IPC channel whose projectDir must equal the host's own workspace root; SFE-P3c: nonced CSP with fixed base and dist-scoped roots proven inert in real Chromium, both-side message validation, workspace-trust-gated plugin loading with a path-containment refusal, sanitized wire errors; P5 boundaries pending) — Implementation: `packages/cli/src/lib/markdown/plugin-origin.ts` + `packages/desktop/electron/editor-projection.ts` (host-only plugin execution); `packages/vscode-extension/src/webview/index.ts` (CSP); `packages/desktop/electron/server-bridge/secure-handle.ts` (sender-validated IPC). |
 | AC-24 | Performance budgets met | P3d | Recorded benchmark results | **Measured — NOT met** (SFE-P3d-sweep/P3f: 25 KiB within the 100 ms p95 budget; 250 KiB p95 ~545–632 ms and 1 MiB p95 ~2.3 s, root-caused to the fork's whole-document geometry remeasurement; the sound Patch 2 helps end-of-document typing only. The budget assertion stays red in `test:perf`; follow-ups: benchmark navigation fix, delta-translation patch variant, then the located-not-proven EditContext residual. Sandbox caveat: not the CI reference runner) — Implementation: `packages/editor/tests/perf/perf-sweep.btest.ts`, `perf-control.btest.ts` (run via `packages/editor`'s `test:perf`); the vendored fix attempt is `packages/vscode-markdown-editor/PATCHES.md` Patch 2. |
 
@@ -821,12 +821,12 @@
     "R1: the .finally epoch guard in RichDocHostController was mutation-provably untested; a new race case pins it (reviewer re-mutated: exactly that test fails)",
     "R1: preload-surface.test.ts counted registrars never invoked; now asserts every exported register*Handlers is called in main.ts (mutation-proven, >20 liveness floor)",
     "R1: package-exports.test.ts was a self-referential oracle; now pins the literal surface {'.','./api','./render','./plugins'} x [default,types] (sabotage-proven, 18 cases)",
-    "R1: ADR 0013 said seven hunks / one seam vs PATCHES.md's ten hunks / two patches; rewritten to the two-patch reality with a two-condition removal trigger",
+    "R1: ADR 0014 said seven hunks / one seam vs PATCHES.md's ten hunks / two patches; rewritten to the two-patch reality with a two-condition removal trigger",
     "R1: the stale-ADR decline was proven on a subset presented as repo-wide, and a new file cited nonexistent ADR 0006; re-proven repo-wide (106 files / 193 occurrences) with per-area dispositions"
   ],
   "advisories": [
     "R2 (both record-accuracy, disposed at close-out): ledger's P6c table kept pre-repair counts (annotated in place); repair report attached full-suite counts to the --isolate command (correct counts recorded in the review log)",
-    "Carried to P7: plan-named check:package-exports script does not exist (mapping recorded in the SFE-P7 spec); stale capability-module counts, registrar-enumeration omissions, rename fossils, ADR 0015/0016 'all moved' phrasing; two registrations deliberately inline in main.ts"
+    "Carried to P7: plan-named check:package-exports script does not exist (mapping recorded in the SFE-P7 spec); stale capability-module counts, registrar-enumeration omissions, rename fossils, ADR 0016/0017 'all moved' phrasing; two registrations deliberately inline in main.ts"
   ],
   "gate": {
     "commands": [
@@ -1481,7 +1481,7 @@ performance follow-ups (AC-24 below).
 ### AC-22 — Documentation complete
 
 - **Implementation:** `docs/architecture/source-first-editor.md`,
-  `docs/vscode-extension.md`, `docs/adr/0011`-`0016`, `docs/ARCHITECTURE.md`,
+  `docs/vscode-extension.md`, `docs/adr/0012`-`0017`, `docs/ARCHITECTURE.md`,
   `CHANGELOG.md`, `docs/releases/0.11.0.md` — all verified present, and all
   six ADRs present as separate files.
 - **Doc-link evidence (re-derived here):** every relative link in

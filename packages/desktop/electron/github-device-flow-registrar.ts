@@ -2,7 +2,7 @@
  * remote:connectGitHubStart / remote:connectGitHubWait /
  * remote:connectGitHubCancel — IPC handlers for the managed GitHub OAuth
  * device flow (#15), extracted from electron/main.ts (SFE-P6b). "ADR 0006"
- * does not exist in this repository (`docs/adr/` holds 0008 through 0016 —
+ * does not exist in this repository (`docs/adr/` holds 0008 through 0017 —
  * see ADR 0009's "Note on predecessors" and the deletion ledger's SFE-P6c
  * "Stale ADR references NOT resolved" entry); no ADR added by this run
  * covers the managed-GitHub-integration/device-flow topic either, so this

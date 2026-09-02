@@ -4,7 +4,7 @@
 is a VS Code extension that opens Markdown files in the same source-first
 rich editor the desktop app uses. It exists to prove — continuously, not as
 a one-off demo — that the shared editor package
-(`@dimm-city/gutterpress-editor`, ADR 0013) is a real, host-portable
+(`@dimm-city/gutterpress-editor`, ADR 0014) is a real, host-portable
 component, and to give Gutterpress authors a rich-editing option inside an
 existing editor they may already use for the rest of a project's files.
 
@@ -45,12 +45,12 @@ the 0.11.0 release (plan D1/D11). Concretely:
   trust, and builds a plugin-aware editor projection
   (`gutterpress/render`'s `createEditorProjection` +
   `gutterpress/plugins`'s `loadPluginsWithCss` — the same D11 subpath
-  exports the desktop host uses for the identical job, see ADR 0011).
+  exports the desktop host uses for the identical job, see ADR 0012).
 
 ## Host ownership (D9)
 
 The extension host and the webview have a hard, one-directional boundary,
-matching the desktop's IPC boundary in spirit (ADR 0015/0016) even though
+matching the desktop's IPC boundary in spirit (ADR 0016/0017) even though
 the transport here is VS Code's own webview messaging, not Electron IPC:
 
 - **The extension host owns**: the real `TextDocument`, `WorkspaceEdit`
@@ -58,13 +58,13 @@ the transport here is VS Code's own webview messaging, not Electron IPC:
   events, project/manifest discovery, trusted plugin loading, and the
   build/preview/open-source commands.
 - **The webview owns**: the editor model/view/controller (the shared
-  package from ADR 0013), selection, local view state, and toolbar/chrome —
+  package from ADR 0014), selection, local view state, and toolbar/chrome —
   and nothing else. It has **no filesystem or Node access**; every message
   it sends is runtime-validated at the boundary (`src/protocol/validate.ts`,
   `src/protocol/messages.ts`) before the host acts on it.
 - A source edit made in the webview crosses the boundary as an explicit
   `[from, to)` replacement against an expected document version (ADR
-  0011's source-edit contract) — never a semantic document the host has to
+  0012's source-edit contract) — never a semantic document the host has to
   reconcile.
 
 ## Trust model
@@ -94,7 +94,7 @@ Gutterpress-specific trust prompt of its own.
 
 The webview mounts `@dimm-city/gutterpress-editor`, which in turn depends
 on `@dimm-city/vscode-markdown-editor` — a minimal internal fork of
-`@vscode/markdown-editor@0.0.2-84` (ADR 0013 has the full compatibility-gate
+`@vscode/markdown-editor@0.0.2-84` (ADR 0014 has the full compatibility-gate
 record). The fork carries **two** independent patches
 (`packages/vscode-markdown-editor/PATCHES.md`):
 
@@ -146,6 +146,6 @@ host documentation for running an unpacked extension).
 
 See `docs/ARCHITECTURE.md`'s "Monorepo packages" section for how
 `packages/vscode-extension` relates to `packages/editor`, `packages/cli`,
-and `packages/desktop`, and `docs/adr/0013-shared-editor-package-and-fork.md`
+and `packages/desktop`, and `docs/adr/0014-shared-editor-package-and-fork.md`
 for why one editor package serves both hosts instead of two independent
 implementations.

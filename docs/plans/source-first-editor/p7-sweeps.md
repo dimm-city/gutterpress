@@ -594,7 +594,7 @@ deletion ledger's §1.1 uses `rg -c` per-identifier and arrives at the same
 - **Class 3 (docs/plans/** historical/planning docs) — 189 hits, 18 files**:
   `deletion-ledger.md` (60), `mutation-inventory.md` (49),
   `docs/inline-editing-plan.md` (16), `source-first-editor-enterprise-refactor.md`
-  (11), `runs/SFE-P4.md` (10), `docs/adr/0012-preview-read-only.md` (10),
+  (11), `runs/SFE-P4.md` (10), `docs/adr/0013-preview-read-only.md` (10),
   `docs/adr/0009-inline-editing-source-ranges.md` (8), `p7-sweeps.md` — this
   file, self-reference (5), `p3d-sweep-audit.md` (4), `parity-matrix.md` (3),
   `baseline.md` (3), `runs/SFE-P7.md` (2), `runs/SFE-P0a.md` (2),
@@ -660,13 +660,13 @@ section used:
 - **Class 3 (`docs/plans/**`/`docs/adr/**` historical/planning docs) — 178
   hits, 14 files:** `deletion-ledger.md` (63), `platform-inventory.md`
   (30), `docs/pwa-webadapter-plan.md` (29, explicitly marked
-  closed/historical at its own top), `docs/adr/0014-future-web-product-is-a-separate-package.md`
+  closed/historical at its own top), `docs/adr/0015-future-web-product-is-a-separate-package.md`
   (11), `source-first-editor-enterprise-refactor.md` (10), `guardrails.md`
   (9), `capability-map.md` (8), `p7-sweeps.md` — this file, self-reference,
   count as it stood before this section's own rewrite (6), `runs/SFE-P5a.md`
   (4), `acceptance.md` (3), `docs/ux-design-contract.md` (2),
   `docs/releases/0.11.0.md` (1), `runs/SFE-P7.md` (1),
-  `docs/adr/0016-narrow-feature-owned-capabilities.md` (1).
+  `docs/adr/0017-narrow-feature-owned-capabilities.md` (1).
 - **Class (b) (dated release/architecture record) — `CHANGELOG.md` (1),
   `CLAUDE.md` (3)**: CLAUDE.md's own "Monorepo layout" section narrates the
   P5a/P5d deletions by date, in the same historical spirit as class 3.

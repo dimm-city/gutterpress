@@ -1,7 +1,7 @@
 # Source-first editor architecture
 
 > Plan: [`docs/plans/source-first-editor-enterprise-refactor.md`](../plans/source-first-editor-enterprise-refactor.md)
-> Decision records: [ADR 0011](../adr/0011-source-first-editor-sparse-projection.md)–[0016](../adr/0016-narrow-feature-owned-capabilities.md)
+> Decision records: [ADR 0012](../adr/0012-source-first-editor-sparse-projection.md)–[0017](../adr/0017-narrow-feature-owned-capabilities.md)
 > VS Code extension detail: [`docs/vscode-extension.md`](../vscode-extension.md)
 
 This document describes the source-first rich-editing architecture as it
@@ -15,7 +15,7 @@ document for where the code lives and how the pieces fit, the ADR for why.
 
 ## The document session
 
-Exact Markdown source is the only authoritative document (ADR 0011). Every
+Exact Markdown source is the only authoritative document (ADR 0012). Every
 other representation — CodeMirror's buffer, the rich editor's DOM, the
 Gutterpress projection, the read-only preview, the outline, diagnostics —
 is derived from it and may be discarded and rebuilt at any time. No
@@ -63,7 +63,7 @@ Both hosts mount the identical framework-free editor: `mountEditor` from
 `mountGutterpressEditor` from `packages/editor/src/gutterpress/mount.ts`
 where a Gutterpress projection is available. Neither desktop nor VS Code
 defines its own editing surface or command vocabulary — see
-[ADR 0013](../adr/0013-shared-editor-package-and-fork.md).
+[ADR 0014](../adr/0014-shared-editor-package-and-fork.md).
 
 ### The `@vscode/markdown-editor` fork
 
@@ -77,7 +77,7 @@ complete diff against the pinned upstream version — two patches, ten hunks
 total — the `CustomBlockRendering`/`renderCustomBlock` seam Gutterpress's
 projection layer uses (Patch 1) and a measurement-path fix for large
 documents (Patch 2, `SFE-P3f`), plus each patch's own upstreaming/removal
-trigger. See [ADR 0013](../adr/0013-shared-editor-package-and-fork.md) for
+trigger. See [ADR 0014](../adr/0014-shared-editor-package-and-fork.md) for
 why direct consumption was insufficient and why the fork stays narrow.
 
 ## The sparse Gutterpress projection
@@ -85,7 +85,7 @@ why direct consumption was insufficient and why the fork stays narrow.
 The editor does not maintain a second Markdown AST. It projects only the
 Gutterpress-specific information the base Markdown editor cannot derive —
 layout markers, generated views, plugin regions, raw HTML — as source
-ranges layered on top of the same source-first model (ADR 0011). Projection
+ranges layered on top of the same source-first model (ADR 0012). Projection
 output can be discarded and rebuilt at any time; there is no projection
 state an editing session depends on surviving.
 
@@ -154,7 +154,7 @@ projection cannot prove editable stays read-only with an explicit
 
 The Electron shell is a single process talking to itself over one
 validated boundary — no local HTTP server, no proxy, no bearer token
-([ADR 0015](../adr/0015-electron-single-ipc-transport.md)):
+([ADR 0016](../adr/0016-electron-single-ipc-transport.md)):
 
 - **Renderer** — `packages/desktop/src/` is a SvelteKit SPA built statically
   via `@sveltejs/adapter-static` (`build/index.html`, `build/_app/**`, no
@@ -172,9 +172,9 @@ validated boundary — no local HTTP server, no proxy, no bearer token
   `remote/remote-capability.ts`, `update/updater-capability.ts`, and
   `vcs/vcs-capability.ts`. There is no broad `Platform`/`HostServices`
   locator and no `getPlatform()` — see
-  [ADR 0016](../adr/0016-narrow-feature-owned-capabilities.md) for why the
+  [ADR 0017](../adr/0017-narrow-feature-owned-capabilities.md) for why the
   locator was deleted rather than trimmed, and
-  [ADR 0014](../adr/0014-future-web-product-is-a-separate-package.md) for
+  [ADR 0015](../adr/0015-future-web-product-is-a-separate-package.md) for
   why no PWA/browser host lives here either.
 - **Host** — `packages/desktop/electron/app-protocol.ts` registers a
   custom `app://` protocol handler that reads the static build tree
@@ -246,7 +246,7 @@ this section is the map into the source:
 ## Read-only preview and the parity gate
 
 The paginated preview is the print/layout authority and carries no editing
-affordances after `0.11.0` (ADR 0012). Preview navigation, selection/copy,
+affordances after `0.11.0` (ADR 0013). Preview navigation, selection/copy,
 open link/image, diagnostics, and page controls remain; in-flow
 `contenteditable`, block-edit commands, and preview-specific source
 rewriting were deleted in P4 (protocol v8→v9) — see the deletion ledger's
@@ -272,9 +272,9 @@ check-parity.test.mjs + root script + 2 CI steps deleted (-2,142 LOC)").
 
 | Decision | ADR |
 |---|---|
-| Exact source + sparse projection is the document model | [0011](../adr/0011-source-first-editor-sparse-projection.md) |
-| The paginated preview is read-only | [0012](../adr/0012-preview-read-only.md) |
-| One shared, framework-free editor package (and the fork) | [0013](../adr/0013-shared-editor-package-and-fork.md) |
-| A future web product is a separate package | [0014](../adr/0014-future-web-product-is-a-separate-package.md) |
-| Electron converges on one transport: typed IPC | [0015](../adr/0015-electron-single-ipc-transport.md) |
-| Narrow, feature-owned capabilities replace the `Platform` locator | [0016](../adr/0016-narrow-feature-owned-capabilities.md) |
+| Exact source + sparse projection is the document model | [0012](../adr/0012-source-first-editor-sparse-projection.md) |
+| The paginated preview is read-only | [0013](../adr/0013-preview-read-only.md) |
+| One shared, framework-free editor package (and the fork) | [0014](../adr/0014-shared-editor-package-and-fork.md) |
+| A future web product is a separate package | [0015](../adr/0015-future-web-product-is-a-separate-package.md) |
+| Electron converges on one transport: typed IPC | [0016](../adr/0016-electron-single-ipc-transport.md) |
+| Narrow, feature-owned capabilities replace the `Platform` locator | [0017](../adr/0017-narrow-feature-owned-capabilities.md) |

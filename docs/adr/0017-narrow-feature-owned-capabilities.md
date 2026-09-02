@@ -1,4 +1,4 @@
-# ADR 0016 — Narrow, feature-owned capability modules replace the `Platform` service locator
+# ADR 0017 — Narrow, feature-owned capability modules replace the `Platform` service locator
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P5b (see also SFE-P6b for the parallel Electron-main-side registrar split)
 
@@ -15,7 +15,7 @@ broad service locator: `getPlatform()` returned a `Platform` object
 combining a 9-member `PlatformAdapter` (narrow, lib-defined primitives) and
 a 22-member `HostServices` (a desktop-only RPC surface), selected between
 an `ElectronAdapter` and the dormant `WebAdapter` (deleted separately, ADR
-0014). A single `getPlatform()` import gave a caller access to updater
+0015). A single `getPlatform()` import gave a caller access to updater
 control, GitHub device-flow, sync status, preview/build/export, editor
 projection, filesystem primitives, and more — regardless of which one
 capability that caller actually needed.
@@ -58,7 +58,7 @@ verified count at HEAD.
 
 **One shared accessor, `platform/bridge.ts`, is the only module allowed to
 touch `window.electron`.** It does the Electron-presence check and throws
-`DesktopHostRequiredError` off-Electron (ADR 0014's "fail loudly, not
+`DesktopHostRequiredError` off-Electron (ADR 0015's "fail loudly, not
 partially" principle applied to every capability, not only theme). Every
 capability module calls `bridge()`; nothing else does.
 
@@ -89,7 +89,7 @@ inline in `electron/main.ts` moved into per-context `register*Handlers`
 functions colocated with their handler logic (`electron/api/*.ts` and a
 handful of bespoke registrars for export/preview/editor-projection/
 PDF-export/GitHub device flow) — the renderer-side and main-side halves of
-ADR 0015's IPC surface are both organized by bounded context now, not by
+ADR 0016's IPC surface are both organized by bounded context now, not by
 which file happened to accrete the registration first. **Two registrations
 stay inline in `main.ts` by design, not oversight:** `app:flushDone` closes
 over `activeRendererFlush`, a `main.ts`-local variable tied to the
@@ -121,7 +121,7 @@ two).
   itself — the plan's net-negative requirement (success criterion 22) is
   scoped to the combined P4–P6 phases, not this one subrun in isolation,
   and P5 as a whole remains deeply net-negative once P5a's ~1,900-line PWA
-  deletion (ADR 0014) is counted alongside it.
+  deletion (ADR 0015) is counted alongside it.
 - `getPlatformCapabilities()` (`build-preview-capability.ts`) is the one
   place a capability's *return value* never varies but the *act of calling*
   `bridge()` still matters — it preserves the exact synchronous

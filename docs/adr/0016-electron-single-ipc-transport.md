@@ -1,4 +1,4 @@
-# ADR 0015 — Electron converges on one transport: typed IPC
+# ADR 0016 — Electron converges on one transport: typed IPC
 
 Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P5c (P5c1–P5c4), P5d
 
@@ -68,7 +68,7 @@ before all corresponding route callers are migrated").
 ## Consequences
 
 - One transport, one DTO shape per capability, one place
-  (`electron/api/*.ts` + a handful of bespoke registrars — see ADR 0016)
+  (`electron/api/*.ts` + a handful of bespoke registrars — see ADR 0017)
   that owns argument validation for a given operation.
 - The packaged app has no local network listener at all in the desktop's
   own process — a smaller and simpler attack surface than "loopback server
@@ -76,7 +76,7 @@ before all corresponding route callers are migrated").
 - `tools/check-render-purity.mjs` now scans the *entire* `build/` tree with
   no `build/client/`-only carve-out, because there is no `build/server/` /
   `build/handler.js` sibling left to exclude — the static-renderer
-  requirement (ADR 0014's renderer/host split) and the transport
+  requirement (ADR 0015's renderer/host split) and the transport
   requirement reinforce the same invariant from two directions.
 - Route-only DTO duplication was retired during the migration itself (each
   P5c subrun landed its callers on the owning capability/IPC contract
