@@ -125,6 +125,19 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
+/* The fork keeps the blank lines BETWEEN blocks in the DOM as a hidden inline
+   span, so that revealing them near the caret does not change any height. Its
+   newline collapses, so inside a paragraph it costs nothing — but a span is an
+   element, and one sitting at the top level before the first page container is
+   an element with a box where the book has nothing at all. The fragmenter
+   reads that as content on the default page and opens a whole blank leading
+   sheet for it (measured: the field guide's front matter paginated 5 pages
+   against the book's 4). Locked, no block ever becomes active, so the
+   reservation buys nothing and the span can go. */
+.md-editor.md-readonly .md-glue-blockGap.md-glue-hidden,
+.md-editor.md-readonly .md-glue-blockBreak.md-glue-hidden {
+  display: none;
+}
 /* The fork puts a table in a shrink-to-fit scroll box, so it can show the
    active-block glow around a table wider than the page. A book's own
    table { width: 100% } then resolves against that shrink-to-fit box instead

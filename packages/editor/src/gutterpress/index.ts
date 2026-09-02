@@ -9,3 +9,4 @@ export * from "./provider.ts";
 export * from "./mount.ts";
 export * from "./editor-css.ts";
 export * from "./tight-list.ts";
+export * from "./table-header.ts";

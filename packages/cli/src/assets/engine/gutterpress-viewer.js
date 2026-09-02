@@ -1247,10 +1247,16 @@
   }
   var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
   function clearLeadingForcedBreaks(strip) {
-    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
+    let el = strip.firstElementChild;
+    while (el) {
       const cs = getComputedStyle(el);
+      if (cs.display === "none") {
+        el = el.nextElementSibling;
+        continue;
+      }
       if (FORCED_BREAK.test(cs.breakBefore))
         el.style.breakBefore = "auto";
+      el = el.firstElementChild;
     }
   }
   function stabilizeFullHeightPageRoots(model, strips) {
@@ -1261,9 +1267,16 @@
       const stripHeight = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-content-h"));
       if (!(stripHeight > 0))
         continue;
-      for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
-        if (directPageName(el, model) !== strip.page)
+      let el = strip.el.firstElementChild;
+      while (el) {
+        if (getComputedStyle(el).display === "none") {
+          el = el.nextElementSibling;
           continue;
+        }
+        if (directPageName(el, model) !== strip.page) {
+          el = el.firstElementChild;
+          continue;
+        }
         const cs = getComputedStyle(el);
         const height = parseFloat(cs.height);
         const rootRects = el.getClientRects();

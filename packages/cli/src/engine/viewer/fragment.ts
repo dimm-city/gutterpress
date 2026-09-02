@@ -566,9 +566,21 @@ const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
  * Guarded by `spread-leading-break.test.ts`, which fails without this.
  */
 function clearLeadingForcedBreaks(strip: HTMLElement) {
-  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+  let el: Element | null = strip.firstElementChild;
+  while (el) {
     const cs = getComputedStyle(el);
+    // An element that generates no box cannot be what a column starts with,
+    // so the leading chain continues at its next SIBLING. The rich editor
+    // mounts a marker's chip ahead of the container it opens and hides it in
+    // the reader's view, which put exactly such an element at the head of the
+    // strip: the run stopped there, the container's own forced break survived,
+    // and the chapter opened on a blank page.
+    if (cs.display === "none") {
+      el = el.nextElementSibling;
+      continue;
+    }
     if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+    el = el.firstElementChild;
   }
 }
 
@@ -604,12 +616,18 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
     // explodeChildren() may leave shallow author shells around the element
     // that directly owns `page:`. Only the leading chain can collapse a margin
     // through the run's block-start edge.
-    for (
-      let el = strip.el.firstElementChild as HTMLElement | null;
-      el;
-      el = el.firstElementChild as HTMLElement | null
-    ) {
-      if (directPageName(el, model) !== strip.page) continue;
+    let el = strip.el.firstElementChild as HTMLElement | null;
+    while (el) {
+      // Box-less shells are not part of the leading chain — see
+      // `clearLeadingForcedBreaks` for the same rule and why it is needed.
+      if (getComputedStyle(el).display === "none") {
+        el = el.nextElementSibling as HTMLElement | null;
+        continue;
+      }
+      if (directPageName(el, model) !== strip.page) {
+        el = el.firstElementChild as HTMLElement | null;
+        continue;
+      }
       const cs = getComputedStyle(el);
       const height = parseFloat(cs.height);
       const rootRects = el.getClientRects();

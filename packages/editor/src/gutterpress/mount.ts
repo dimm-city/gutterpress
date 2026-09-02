@@ -17,6 +17,7 @@ import { GUTTERPRESS_EDITOR_CSS } from "./editor-css.ts";
 import { decorateAttrsTrailer } from "./attrs.ts";
 import { hideInlineHtmlTags } from "./inline-html.ts";
 import { markTightList } from "./tight-list.ts";
+import { promoteTableHeader } from "./table-header.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -122,6 +123,7 @@ export function mountGutterpressEditor(
         // onto a line the printed page does not have.
         hideInlineHtmlTags(element);
         markTightList(element, node, sourceText);
+        if (readonly) promoteTableHeader(element, node);
       },
       afterDocumentMount: options.afterDocumentMount,
     });
