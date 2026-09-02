@@ -170,6 +170,14 @@ export interface VscodeEditorAdapter {
    * the smallest design that fully satisfies the specification").
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+
+  /**
+   * Lock or unlock the mounted editor. The host owns this decision (the
+   * desktop's Read/Edit control), and it can change while the editor is
+   * mounted — without this the toggle only took effect on the NEXT mount,
+   * so switching to Read left the current document editable.
+   */
+  setReadonly(readonly: boolean): void;
 }
 
 /**
@@ -342,6 +350,10 @@ export function createVscodeEditorAdapter(
   });
 
   return {
+    setReadonly(readonly: boolean): void {
+      if (disposed) return;
+      model.readonlyMode.set(readonly, undefined, undefined);
+    },
     dispose(): void {
       if (disposed) return;
       disposed = true;

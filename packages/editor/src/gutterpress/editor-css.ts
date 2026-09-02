@@ -81,9 +81,27 @@ export const GUTTERPRESS_EDITOR_CSS = `
 .gp-block-chip__rendered {
   display: contents;
 }
-/* Locked (reading) view: the marker chips are authoring affordances, so the
-   page shows exactly what prints. */
-.md-editor.md-readonly .gp-block-chip {
+/* A break marker is a real forced break in the book, so it must be one here
+   too: the chip stands in for the pipeline's own gp-page-break /
+   gp-column-break element (which MARKER_CSS hides), and carries that
+   element's break behaviour instead of hiding with it. Without this the
+   editor simply ignores the break markers and paginates differently from
+   the page. */
+.md-block.gp-block-chip--page-break {
+  break-before: page;
+}
+.md-block.gp-block-chip--column-break {
+  break-after: column;
+}
+
+/* Locked (reading) view: a MARKER chip is an authoring affordance and takes
+   vertical space the printed page does not, so the locked view drops it and
+   paginates exactly like the book (proved by
+   packages/desktop/tests/integration/editor-preview-parity.mjs). A
+   plugin-region / raw-html chip is NOT dropped: what it shows is the
+   pipeline's own rendered output, which does print. */
+.md-editor.md-readonly
+  .gp-block-chip:not(.gp-block-chip--plugin-region):not(.gp-block-chip--raw-html) {
   display: none;
 }
 .md-block-group {

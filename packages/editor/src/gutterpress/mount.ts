@@ -53,6 +53,8 @@ export interface GutterpressEditorMount {
    * are unaffected.
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+  /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
+  setReadonly(readonly: boolean): void;
 }
 
 /**
@@ -108,6 +110,7 @@ export function mountGutterpressEditor(
 
   return {
     dispose: (): void => mount.dispose(),
+    setReadonly: (readonly: boolean): void => mount.setReadonly(readonly),
     needsRefresh: isStale,
     getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
   };

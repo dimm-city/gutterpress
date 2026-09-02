@@ -21,6 +21,7 @@ import {
   applySpreadMode,
   decorate,
   extract,
+  injectBreakMapping,
   injectViewerCss,
   paginate,
   type DecorationApi,
@@ -58,6 +59,12 @@ function modelFor(css: string): GcpmModel {
 export function createPagedSurface(bookCss: string, doc: Document = document): PagedSurface {
   injectViewerCss(doc);
   const model = modelFor(bookCss);
+  // On screen a page box is a multicol COLUMN, so the book's forced page
+  // breaks have to be re-expressed as column breaks — exactly what the
+  // preview does inside `fragmentDocument`. Without this the editor
+  // silently ignores every `@page` / `@page-break` and paginates
+  // differently from the page it is meant to be showing.
+  injectBreakMapping(model, doc);
   const listeners = new Set<(totalPages: number) => void>();
   let pages = 0;
   let decoration: DecorationApi | undefined;

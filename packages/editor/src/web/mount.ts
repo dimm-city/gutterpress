@@ -150,6 +150,9 @@ export interface EditorMount {
    * implementation.
    */
   getSelection(): { readonly from: number; readonly to: number } | undefined;
+
+  /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
+  setReadonly(readonly: boolean): void;
 }
 
 /**
@@ -168,6 +171,9 @@ export interface EditorMount {
  * D2's "opening ... changes zero bytes" — see `createVscodeEditorAdapter`'s
  * own doc comment for the exact mechanism.
  */
+/** Cascade layer the vendored fork's own CSS lives in — see `mountEditor`. */
+export const FORK_CSS_LAYER = "gp-fork";
+
 export function mountEditor(
   container: Element,
   host: EditorDocumentHost,
@@ -196,9 +202,18 @@ export function mountEditor(
   // Injected BEFORE the adapter/view is constructed, so the view's first
   // layout pass already sees the real chrome CSS rather than a flash of
   // unstyled content.
+  // The fork's own CSS goes in a CASCADE LAYER, and the host's `extraCss`
+  // (a Gutterpress book's stylesheets) stays unlayered, so the book always
+  // wins — regardless of specificity. Without this the fork's `.md-block
+  // { margin: 0 }` (0,1,0) silently beats a book's `p { margin: 1em 0 }`
+  // (0,0,1) and the editor packs paragraphs tighter than the page does,
+  // which shows up immediately as a page-count divergence against the
+  // preview (`packages/desktop/tests/integration/editor-preview-parity.mjs`).
+  // The fork's FUNCTIONAL rules are all `.md-*`-classed, which a book never
+  // selects, so only typography actually changes hands.
   const baseStyleEl = doc.createElement("style");
   baseStyleEl.setAttribute("data-gp-editor-css", "fork-base");
-  baseStyleEl.textContent = `${FORK_EDITOR_BASE_CSS}\n${FORK_DEFAULT_THEME_CSS}`;
+  baseStyleEl.textContent = `@layer ${FORK_CSS_LAYER} {\n${FORK_EDITOR_BASE_CSS}\n${FORK_DEFAULT_THEME_CSS}\n}`;
   styleHost.appendChild(baseStyleEl);
 
   let extraStyleEl: Element | undefined;
@@ -233,5 +248,6 @@ export function mountEditor(
       extraStyleEl?.remove();
     },
     getSelection: (): { readonly from: number; readonly to: number } | undefined => adapter.getSelection(),
+    setReadonly: (readonly: boolean): void => adapter.setReadonly(readonly),
   };
 }

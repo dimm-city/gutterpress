@@ -1032,9 +1032,11 @@
   let modeBeforeFocus: "editor" | "viewer" | null = null;
   /** The viewer is hidden in `focus` and nowhere else. */
   // The paged editor IS the view (`$lib/editor/paged-surface`): Read is that
-  // same editor, locked. The separate paginated preview pane is kept only
-  // for Edit, side by side, while the two are being compared.
-  let previewVisible = $derived(mode === "editor");
+  // same editor, locked. The paginated preview pane stays alongside it in
+  // both Edit and Read — it is the REFERENCE the editor's own pagination is
+  // checked against (`tests/integration/editor-preview-parity.mjs`), and it
+  // stays until that parity is trusted.
+  let previewVisible = $derived(mode !== "focus");
   /** `focus` is the editor without the viewer, so the editor shows in both. */
   let editorVisible = $derived(true);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
@@ -1450,6 +1452,7 @@
   // this page never calls any other method on it.
   let richEditorRef = $state<{
     getSelection: () => { readonly from: number; readonly to: number } | undefined;
+    setReadonly: (readonly: boolean) => void;
   } | null>(null);
 
   /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
@@ -3207,6 +3210,9 @@
     if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
     mode = next;
+    // Read/Edit locks or unlocks the MOUNTED paged editor. The mount reads
+    // `readonly` once, so this has to be told, not derived.
+    richEditorRef?.setReadonly(next === "viewer");
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }

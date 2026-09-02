@@ -89,7 +89,10 @@
   // `getSelection()` below only needs a stable reference to read through,
   // never a render trigger).
   let mountHandle:
-    | { getSelection(): { readonly from: number; readonly to: number } | undefined }
+    | {
+        getSelection(): { readonly from: number; readonly to: number } | undefined;
+        setReadonly(readonly: boolean): void;
+      }
     | undefined;
 
   onMount(() => {
@@ -129,6 +132,16 @@
    *  component keeps no cached copy. */
   export function getSelection(): { readonly from: number; readonly to: number } | undefined {
     return mountHandle?.getSelection();
+  }
+
+  /**
+   * Lock/unlock the MOUNTED editor. Called from the workspace's Read/Edit
+   * handler (`setMode`) rather than reacting to the `readonly` prop: the
+   * prop is only read at mount time, so before this existed switching to
+   * Read left the open document editable until the next file switch.
+   */
+  export function setReadonly(next: boolean): void {
+    mountHandle?.setReadonly(next);
   }
 </script>
 
