@@ -3193,9 +3193,9 @@ natively), and real build/test commands read from `package.json`'s own
 |---|---:|---|
 | `bun run typecheck` (repo root) | 0 | Clean across all 4 workspace packages (`gutterpress`, `@dimm-city/gutterpress-editor`, `@dimm-city/gutterpress-desktop`, `@dimm-city/gutterpress-vscode`) |
 | `cd packages/cli && bun run build` | 0 | `dist/plugins.js`/`dist/plugins.d.ts` present alongside `dist/index.js`, `dist/api/index.js`, `dist/render.js`; `check-render-pure.mjs` passes as part of the build |
-| `cd packages/cli && bun run test` | 0 | 1930 pass, 60 skip (no Chromium in this environment — pre-existing, unrelated to this lane), 0 fail, 45,683 expect() calls across 156 files, including the new `tests/integration/package-exports.test.ts` (17/17) |
+| `cd packages/cli && bun run test` | 0 | 1930 pass, 60 skip (no Chromium in this environment — pre-existing, unrelated to this lane), 0 fail, 45,683 expect() calls across 156 files, including the new `tests/integration/package-exports.test.ts` (17/17 as this lane shipped it; the review's round-1 repair added a pinned-surface case — 18/18 thereafter) |
 | `cd packages/cli && bun run typecheck` | 0 | `tsc --noEmit`, targeted re-run for this lane's own package |
-| `cd packages/cli && bun test tests/integration/package-exports.test.ts` | 0 | 17 pass, 0 fail, 9 expect() calls — targeted re-run of the one file this lane added |
+| `cd packages/cli && bun test tests/integration/package-exports.test.ts` | 0 | 17 pass, 0 fail, 9 expect() calls — targeted re-run of the one file this lane added, as of this lane's HEAD. (Historical: the review's round-1 repair later added the pinned-surface case, making the file 18 pass / 14 expect() calls — the counts in the P6 review log are the current ones.) |
 | `cd packages/desktop && bun run test` | 0 | 5,911 pass, 1 skip, 0 fail, 15,277 expect() calls across 163 files — identical counts to SFE-P6b's own verification, confirming this lane's doc-only desktop-adjacent changes (none touch `packages/desktop/src` or `electron/main.ts`, both frozen) introduced no regression |
 | `cd packages/editor && bun run test` | 0 | 3,038 pass, 0 fail, 11,816 expect() calls across 26 files |
 | `bun run check:architecture` (repo root) | 0 | All 4 rules PASS (prosemirror-ban, desktop-route-ratchet at baseline 0, D4 import direction, future-package rules for `packages/editor`/`packages/vscode-extension`) |
@@ -3236,3 +3236,91 @@ production code (the one deletion this run's report might otherwise
 imply — the desktop's duplicate plugin loader — was already deleted by
 SFE-P3e, not by this run). No production LOC change in `packages/cli/src`
 or `packages/desktop` is claimed or made by this lane.
+
+---
+
+## Checkpoint D — 2026-09-02 — SFE-P6: composition and package consolidation
+
+Assembled by the integrator after the SFE-P6 review's round-2 approve
+(`de4445d2`). Every number below is derived from git at the named SHAs, not
+carried from lane reports.
+
+**Completed run and commit SHAs.** SFE-P6 is three commits on
+`claude/sonnet-opus-agent-workflow-4s81ps`, base `b7242a71`:
+`fa8ea498` (P6a+P6b — both composition roots slimmed, zero behavior
+change), `52d099b3` (P6c — export tests, six ADRs, architecture and
+ownership records), `de4445d2` (review round-1 repairs, all seven confirmed
+findings). Run diffstat `b7242a71..de4445d2`: 56 files, +3,887 / −1,008.
+
+**Composition-root reductions** (`git show <sha>:<file> | wc -l`):
+
+| Root | `b7242a71` | `de4445d2` | Δ |
+|---|---:|---:|---:|
+| `packages/desktop/src/routes/+page.svelte` | 4,739 | 4,543 | −196 |
+| `packages/desktop/electron/main.ts` | 2,188 | 1,965 | −223 |
+
+(The interim post-P6b figure was 1,957; the round-1 repair added the
+`applyNow` hook wiring — `installNow` import + `updaterHooksImpl` line —
+which is the correct cost of removing `electron/api/updater.ts`'s hard
+Electron import.) Extractions landed in their feature owners:
+`src/lib/editor/rich-doc-host-controller.svelte.ts` (156 lines, with a
+378-line race-scenario test whose epoch-guard case is mutation-proven) and
+`src/lib/routes/problems-controller.svelte.ts` (105 lines, 169-line test)
+on the renderer side; on the host side the registration blocks joined the
+`electron/api/*` handler modules they belonged to.
+
+**Module graph / IPC surface.** 24 modules under
+`packages/desktop/electron/api/`; 26 exported `register*Handlers`
+functions under `electron/` in total, every one asserted called from
+`main.ts` by `tests/platform/preload-surface.test.ts` (mutation-proven:
+commenting out one registration fails exactly that test), with two
+registrations deliberately left inline in `main.ts` (recorded as an
+advisory against ADR 0015/0016's "all moved" phrasing). The review's
+central identity check: the full 120-channel `secureHandle` surface is
+**byte-identical** between `b7242a71` and post-P6 HEAD (independent
+full-tree channel extraction at both SHAs, diff clean).
+
+**Public exports.** `packages/cli/package.json#exports` is the pinned set
+`{'.', './api', './render', './plugins'}` × `['default', 'types']`,
+asserted literally by `tests/integration/package-exports.test.ts`
+(18 pass; sabotage-proven — removing `./plugins` fails exactly one
+assertion). `gutterpress/plugins` gained its real consumer: the desktop's
+`electron/api/editor-projection.ts` uses the real loader (duplicate deleted
+in SFE-P3e). Other D11 subpaths declined with per-subpath justification in
+the P6c lane section above. `gutterpress/render` stays node-free
+(`scripts/check-render-pure.mjs` in the cli build).
+
+**Architecture checks at approve.** `check:architecture` 4/4 rules PASS
+(route ratchet holds at baseline 0), `knip` clean, root typecheck clean
+across all four workspaces, desktop 5,915 pass / 1 skip / 0 fail,
+`tests/platform` clean under `bun test --isolate`, CI's `test` job now
+builds `packages/cli` dist before the cli filter (the round-1 live-break
+fix).
+
+**Confirmed findings fixed during review**: 7 (round 1) — the CI dist
+break, the updater registrar's Electron hard-import, the untested
+`.finally` epoch guard, the registrar-liveness gap, the self-referential
+export oracle, ADR 0013's fork-story contradiction, and the
+subset-presented-as-repo-wide stale-ADR decline plus a dangling ADR 0006
+citation. Round 2: approve, 0 confirmed.
+
+**Final pre-acceptance advisories carried to P7:**
+
+1. `bun run check:package-exports` — the plan's P7 gate names this script;
+   it does not exist. The coverage lives in `packages/cli`'s test suite;
+   P7 either adds the script alias or records the substitution.
+2. AC-24 stands **Measured — NOT met** (D13 250 KiB p95 budget; three
+   ordered follow-ups recorded in the P3f close-out).
+3. AC-16's packaged-asar smoke half remains open for P7's
+   packaged-product sweep.
+4. Record debt (non-blocking, from the review's advisories): stale
+   capability-module counts in three records, `ARCHITECTURE.md`'s registrar
+   enumeration omissions, rename fossils in eight files, ADR 0015/0016's
+   "all moved" over-statement, and the deferred-publish keystroke-drop
+   window (already canonized by test as intended, tracked under the D13
+   follow-ups).
+5. A11y gaps from the P3d sweep (no ARIA landmark on the rich surface; no
+   `<main>`/skip-link) remain open items for the wrap-up.
+
+Gate: see the SFE-P6 run spec's Gate section (report-only, run after this
+checkpoint was assembled; results recorded there).
