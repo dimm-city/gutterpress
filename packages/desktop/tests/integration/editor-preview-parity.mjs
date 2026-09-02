@@ -134,6 +134,13 @@ try {
           blocks: document.querySelectorAll(".rich-editor-host .md-block").length,
           layouts: document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? null,
           loading,
+          // Is the book's own CSS in the document at all? Without it the
+          // editor cannot paginate (there is no @page geometry to read), and
+          // "no page appeared" looks identical to a layout that failed.
+          bookCss: Math.max(0, ...[...document.querySelectorAll("style")].map((el) => el.textContent?.length ?? 0)),
+          docFont: getComputedStyle(document.querySelector(".rich-editor-host .md-document") ?? document.body).fontFamily.slice(0, 40),
+          sheets: document.querySelectorAll(".rich-editor-host .gp-sheet").length,
+          stage: !!document.querySelector(".rich-editor-host .gp-stage"),
           activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
           mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
         };
