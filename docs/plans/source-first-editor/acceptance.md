@@ -25,7 +25,7 @@
 | AC-14 | Dormant PWA deleted | P5a | File/dependency/search proof | **Evidenced** (SFE-P5a: WebAdapter/web-fs/web-store/fsa.d.ts/service-worker/web manifest and four test suites deleted with pasted search proofs; getPlatform() fails loudly off-Electron; the build step that silently regenerated the orphaned viewer bundle fixed at the generator; ~-3,100 LOC net) |
 | AC-15 | Narrow capabilities replace Platform | P5b | Consumer inventory and import proof | **Evidenced** (SFE-P5b: getPlatform()/Platform/HostServices/ElectronAdapter deleted; five feature-owned capability modules over one bridge accessor; two deliberate collapses into sole consumers; five dead members deleted with proofs; the full inventory and api.ts→P5c assignment in capability-map.md, audited by the review) |
 | AC-16 | HTTP transport deleted | P5c/P5d | Route/client/server search and packaged smoke | Evidenced for the route/client/server search half (SFE-P5c: 104 → 0 routes across four subruns, api.ts deleted, every operation on validated typed IPC, two D12 leaks caught and fixed in review; SFE-P5d: adapter-node/sveltekit-host.ts/the loopback server/bearer token deleted with search proofs, adapter-static + app-protocol.ts in place, traversal-refusal tests including the win32 containment case). **Packaged smoke still pending**: SFE-P5d's own smoke evidence ran Electron unpackaged (`out/main/main.js` directly, `app.isPackaged === false`), so `resolveBuildDir`'s asar branch (`process.resourcesPath/app.asar/build`) is covered only by a unit test stubbing `process.resourcesPath`, not by a running packaged app; a real `npm run dist:linux` + `electron-driver.pw.mjs <packaged-exe>` run remains open |
-| AC-17 | Composition roots reduced | P6 | Responsibility review and module tests | Pending |
+| AC-17 | Composition roots reduced | P6 | Responsibility review and module tests | Evidenced (SFE-P6: `+page.svelte` 4,739→4,543, `main.ts` 2,188→1,965; extractions in feature owners with race-scenario/controller tests; 26 registrars liveness-asserted; 120-channel IPC surface byte-identical across the refactor, reviewer-verified) |
 | AC-18 | Public compatibility preserved | All | CLI/API/build/preview/publish gates | Pending |
 | AC-19 | Architecture CI active | P0b/P6 | CI workflow and deliberate-failure proof | Evidenced for P0b (generated-file + architecture checks wired into the CI build job, each with a self-test proving pass and fail paths; P6 additions pending) |
 | AC-20 | Net complexity reduced | P7 | Final deletion ledger and measured diff | Pending |
@@ -799,5 +799,48 @@
   "acceptanceUpdates": ["AC-16: route/client/server halves evidenced; packaged-smoke half pending (P7)"],
   "deletionLedgerUpdates": ["sveltekit-host (236 lines), bearer token, proxy, adapter-node deleted; app-protocol.ts (222) is the surviving boundary with traversal proofs; all-of-P5 net −3,621 LOC across 313 files"],
   "checkpointSummary": "The desktop app is one process talking to itself over one validated boundary: no server, no token, no proxy, no locator, no second host. Checkpoint C is assembled in the run spec; the one honest asterisk is that packaged-asar smoke is unit-proven, not driven, and P7 owns closing it."
+}
+```
+
+### SFE-P6 — Composition roots, public exports, architecture records (Checkpoint D)
+
+```json
+{
+  "status": "complete",
+  "baseSha": "b7242a71",
+  "headSha": "fc6f543a",
+  "history": [
+    "fa8ea498 refactor(p6): slim both composition roots — zero behavior change",
+    "52d099b3 docs(p6): P6c — export tests, six ADRs, architecture and ownership records",
+    "de4445d2 fix(p6): address review findings (round 1)",
+    "fc6f543a docs(p6): review log, Checkpoint D, and the SFE-P7 run specification"
+  ],
+  "confirmedFindings": [
+    "R1: live CI break — the new package-exports test hard-throws without a built dist/ that CI's test job never built; fixed with a build:library step before the cli test filter",
+    "R1: electron/api/updater.ts hard-imported Electron at module load, breaking the hooks-only registrar pattern (green in-suite only via cross-file mock leakage); fixed by adding applyNow to UpdaterHooks — isolate runs clean",
+    "R1: the .finally epoch guard in RichDocHostController was mutation-provably untested; a new race case pins it (reviewer re-mutated: exactly that test fails)",
+    "R1: preload-surface.test.ts counted registrars never invoked; now asserts every exported register*Handlers is called in main.ts (mutation-proven, >20 liveness floor)",
+    "R1: package-exports.test.ts was a self-referential oracle; now pins the literal surface {'.','./api','./render','./plugins'} x [default,types] (sabotage-proven, 18 cases)",
+    "R1: ADR 0013 said seven hunks / one seam vs PATCHES.md's ten hunks / two patches; rewritten to the two-patch reality with a two-condition removal trigger",
+    "R1: the stale-ADR decline was proven on a subset presented as repo-wide, and a new file cited nonexistent ADR 0006; re-proven repo-wide (106 files / 193 occurrences) with per-area dispositions"
+  ],
+  "advisories": [
+    "R2 (both record-accuracy, disposed at close-out): ledger's P6c table kept pre-repair counts (annotated in place); repair report attached full-suite counts to the --isolate command (correct counts recorded in the review log)",
+    "Carried to P7: plan-named check:package-exports script does not exist (mapping recorded in the SFE-P7 spec); stale capability-module counts, registrar-enumeration omissions, rename fossils, ADR 0015/0016 'all moved' phrasing; two registrations deliberately inline in main.ts"
+  ],
+  "gate": {
+    "commands": [
+      "install (frozen, 806 pkgs) / typecheck (4 workspaces) / cli build (render-pure) + 1931:60 / editor 3038 unit + 121 browser (9 suites) / vscode-extension 228 / desktop 5915:1 + check (693 files, 0 errors) + lint + build (adapter-static, purity 144 files) + electron:build (node --check) / architecture 4/4 (ratchet 0==0) / generated-files (1267) / vendored (26 hashes, 33 files) / knip — all 16 exit 0 at fc6f543a"
+    ],
+    "passed": true
+  },
+  "acceptanceUpdates": [
+    "AC-17 evidenced: both roots reduced with extractions in feature owners, 26 registrars liveness-asserted, 120-channel IPC surface byte-identical across the refactor (reviewer-verified)",
+    "AC-18 advanced: pinned public export surface with sabotage-proven test; final P7 sweep remains"
+  ],
+  "deletionLedgerUpdates": [
+    "Checkpoint D assembled: +page.svelte 4,739->4,543 (-196), main.ts 2,188->1,965 (-223), run diffstat 56 files +3,887/-1,008, five advisories carried to P7"
+  ],
+  "checkpointSummary": "The two composition roots now compose: features own their workflows, registration lives beside the handlers, and the whole refactor is provably behavior-identical (byte-identical IPC surface, every suite green). The export surface is pinned by a test that fails when a subpath disappears. The review earned its keep — a live CI break and four guard/oracle weakenings never reached the branch history unfixed."
 }
 ```

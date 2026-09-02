@@ -122,3 +122,39 @@ non-blocking record debt; the keystroke-drop window during deferred publish
 is already tracked under the D13 follow-ups. None block P6's
 behavior-identity claim, which the reviewer verified independently of the
 records.
+
+## Gate results
+
+PASS — all 16 commands exit 0 at `fc6f543a` (tree content identical to the
+approve SHA `de4445d2`; the one commit between them is docs-only): install
+(frozen, 806 packages, no changes); typecheck (4 workspaces); cli build
+(render-pure gate) + 1931 pass / 60 skip / 0 fail; editor 3038 unit + 121
+browser (9 suites) + purity; vscode-extension 228; desktop 5915 pass /
+1 skip / 0 fail + check (693 files, 0 errors) + lint (app-tokens 59/59) +
+build (adapter-static, render purity 144 files) + electron:build
+(`node --check` on main.js/preload.cjs); architecture 4/4 rules (route
+ratchet 0==0); generated-files (1,267 tracked); vendored (24 unpatched
+byte-identical + 2 patched at reviewed state, 26 hashes / 33 files); knip
+clean. The desktop suite's "disk full" lines are the
+auto-snapshot-scheduler test's deliberate simulated-failure fixture, not
+errors.
+
+## Run result
+
+Both composition roots compose instead of own: `+page.svelte` 4,739→4,543
+and `main.ts` 2,188→1,965, with the extracted pieces in their feature
+owners (`rich-doc-host-controller.svelte.ts`, `problems-controller.svelte.ts`,
+and the registration blocks joined to their `electron/api/*` handler
+modules — 26 registrars, every one liveness-asserted from `main.ts`). The
+120-channel IPC surface is byte-identical across the run
+(reviewer-verified by full-tree extraction at both SHAs). The public
+export surface is the pinned set `{'.', './api', './render', './plugins'}`
+× `['default','types']`, sabotage-proven by
+`tests/integration/package-exports.test.ts` (18 cases), and
+`gutterpress/plugins` has its real consumer in the desktop's
+editor-projection loader. Records landed: ADRs 0011–0016,
+`docs/OWNERSHIP.md`, `docs/vscode-extension.md`, the `ARCHITECTURE.md`
+final pass, and the repo-wide stale-ADR disposition (106 files / 193
+occurrences, per-area reasoning). Checkpoint D is assembled in the
+deletion ledger. Commits: `fa8ea498` (P6a+P6b), `52d099b3` (P6c),
+`de4445d2` (repairs), `fc6f543a` (close-out docs).
