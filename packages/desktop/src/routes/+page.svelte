@@ -1328,6 +1328,8 @@
   const richDocHostCtrl = new RichDocHostController({
     buildProjection: buildRichProjection,
     onSnapshotChange: onEditorChange,
+    onDegradedRebuild: (path) =>
+      reportError(`rebuilding ${path}: its first projection had no book CSS`),
   });
 
   /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
@@ -1400,6 +1402,14 @@
     sourceVersion: number,
   ): Promise<{ projection: GutterpressProjection; editorCss: string | undefined }> {
     const projectDir = isDesktop() ? await projectDirWhenReady() : null;
+    if (!projectDir) {
+      // Worth a log line: everything downstream of this — the book's CSS, its
+      // plugins, and therefore pagination — is absent, and the document looks
+      // merely "plain" rather than broken.
+      reportError(
+        `rich projection built with no project (desktop=${isDesktop()}, currentDir=${lifecycle.currentDir}, busy=${lifecycle.busy})`,
+      );
+    }
     if (projectDir) {
       try {
         const outcome = await buildEditorProjection({

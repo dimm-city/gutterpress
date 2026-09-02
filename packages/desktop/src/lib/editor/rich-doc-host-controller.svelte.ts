@@ -79,6 +79,8 @@ export interface RichDocHostControllerDeps {
    *  — `rich-mode.svelte.ts`'s header explains why this convergence is
    *  explicit rather than structural. */
   onSnapshotChange(text: string): void;
+  /** Called when a document built WITHOUT the book's CSS is rebuilt — worth a log line, since it means the first build was degraded. */
+  onDegradedRebuild?(path: string): void;
 }
 
 export class RichDocHostController {
@@ -157,6 +159,7 @@ export class RichDocHostController {
    */
   rebuildIfDegraded(): void {
     if (this.editorCss !== undefined || !this.built || this.pending) return;
+    this.deps.onDegradedRebuild?.(this.built.path);
     this.rebuild(this.built.path, this.built.content);
   }
 

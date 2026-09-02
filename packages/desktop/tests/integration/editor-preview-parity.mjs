@@ -147,6 +147,18 @@ try {
       })
       .catch(() => null);
     console.error(`[parity] editor never paginated — pane state: ${JSON.stringify(state)}`);
+    // The app's own log, which is where its renderer faults land now.
+    try {
+      const { readdirSync, readFileSync } = await import("node:fs");
+      const logDir = join(userDataDir, "logs");
+      for (const name of readdirSync(logDir)) {
+        if (!name.endsWith(".log")) continue;
+        const body = readFileSync(join(logDir, name), "utf8").trim().split("\n").slice(-12).join("\n");
+        console.error(`[parity] ${name}:\n${body}`);
+      }
+    } catch (logErr) {
+      console.error(`[parity] no app log to read: ${logErr}`);
+    }
     throw e;
   }
 
