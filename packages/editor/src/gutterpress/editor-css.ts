@@ -63,11 +63,26 @@ export const GUTTERPRESS_EDITOR_CSS = `
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.gp-block-chip--plugin-region,
-.gp-block-chip--raw-html {
+/* A plugin-region / raw-html chip is not a chip at all: what it shows is the
+   pipeline's own rendered output, which prints. It must therefore add NOTHING
+   of its own — the book has no element here, so any box this contributes is a
+   box the printed page does not have.
+
+   The class selector alone lost to .md-block.gp-block-chip above, which is
+   one specificity step higher, so none of this applied: the pipeline's output
+   was laid out as FLEX ITEMS inside a padded, bordered chip. A skill card's
+   flavor paragraph came out 420px wide against the book's 480px, every line
+   under it re-wrapped, and the cards grew past the page height and split where
+   the book keeps them whole. Matching the base rule's specificity is what
+   makes the reset win. */
+.md-block.gp-block-chip--plugin-region,
+.md-block.gp-block-chip--raw-html {
   display: block;
+  gap: 0;
+  margin: 0;
   padding: 0;
-  border-left: 0;
+  border: 0;
+  border-radius: 0;
   background: none;
   font: inherit;
   color: inherit;
