@@ -16,6 +16,7 @@ import { createGutterpressBlockProvider } from "./provider.ts";
 import { GUTTERPRESS_EDITOR_CSS } from "./editor-css.ts";
 import { decorateAttrsTrailer } from "./attrs.ts";
 import { hideInlineHtmlTags } from "./inline-html.ts";
+import { markTightList } from "./tight-list.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -114,6 +115,7 @@ export function mountGutterpressEditor(
       // rather than printed, and raw inline tags hidden rather than wrapped
       // onto a line the printed page does not have.
       hideInlineHtmlTags(element);
+      markTightList(element, node, sourceText);
     },
     afterDocumentMount: options.afterDocumentMount,
   });

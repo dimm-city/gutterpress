@@ -123,6 +123,18 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
+/* A tight list item's content is inline in the book's HTML and a block in the
+   fork's (see tight-list.ts for how a tight list is recognized). A book that
+   draws its own bullets with li::before then puts an inline marker in front of
+   a block child, which CSS wraps in an anonymous block of its own: one extra
+   line for every item of every tight list. Rendering the item's paragraph
+   inline puts the bullet back on the item's own first line and drops the
+   paragraph's vertical margins, which is exactly how the book's bare list text
+   behaves. Locked only: the fork measures an active item's caret from that
+   paragraph's own box. */
+.md-editor.md-readonly .md-list.gp-list-tight li > .md-paragraph {
+  display: inline;
+}
 /* An inline HTML tag the book renders rather than prints (see inline-html.ts).
    Hidden in every mode a block is inactive in, exactly like the fork's own
    markdown markers: the text between the tags stays, the tags do not take a

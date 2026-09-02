@@ -8,3 +8,4 @@ export * from "./plan.ts";
 export * from "./provider.ts";
 export * from "./mount.ts";
 export * from "./editor-css.ts";
+export * from "./tight-list.ts";

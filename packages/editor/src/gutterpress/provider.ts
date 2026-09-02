@@ -229,6 +229,23 @@ export function createGutterpressBlockProvider(
     return renderChipPlan(plan, opts.ownerDocument);
   }
 
+  /**
+   * A container holds the blocks AFTER its marker, never the marker itself.
+   *
+   * In the book a marker line produces the wrapper; it leaves nothing inside
+   * it. Mounting the marker's own chip as the wrapper's first child made the
+   * editor disagree with every structural selector a book writes about its
+   * first and last child — the design guide styles a section heading with
+   * `.section > h3:first-child` (a full-bleed banner with negative margins)
+   * and closes its cards with `.dc-card-body > p:last-child`. With a chip in
+   * the way none of them matched, and a heading came out at the fork theme's
+   * own size instead of the book's. `display: none` does not help:
+   * `:first-child` counts elements, not boxes. The same reasoning excludes
+   * `@end-section` from the section it closes.
+   *
+   * An empty group (a marker with nothing after it, or `@section` closed
+   * immediately) is not emitted: it would be a wrapper around no blocks.
+   */
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
     // Each render consumes the wrappers from the top; the queues are rebuilt
     // per render so a re-render sees the same document the last one did.
@@ -282,14 +299,16 @@ export function createGutterpressBlockProvider(
         const emitted = takeWrapper(marker.kind);
         const attrs = emitted ? { ...emitted.attributes } : pluginContainerAttributes(marker);
         const { class: pluginClass, ...pluginAttrs } = attrs;
-        groups.push({
-          start: i,
-          end,
-          key: `${marker.kind}:${blocks[i]!.ast.id}`,
-          tagName: emitted?.tag,
-          className: pluginClass,
-          attributes: pluginAttrs,
-        });
+        if (end > i + 1) {
+          groups.push({
+            start: i + 1,
+            end,
+            key: `${marker.kind}:${blocks[i]!.ast.id}`,
+            tagName: emitted?.tag,
+            className: pluginClass,
+            attributes: pluginAttrs,
+          });
+        }
         continue;
       }
       const kind = scopeKindOf(marker);
@@ -310,17 +329,17 @@ export function createGutterpressBlockProvider(
       let end = i + 1;
       while (end < blocks.length) {
         if (closesAt(end, closers)) break;
-        if (kind === "section" && markers[end]!.some((m) => m.kind === "end-section")) {
-          end += 1; // the explicit closer belongs to the section it closes
-          break;
-        }
+        // `@end-section` closes the section and is not inside it.
+        if (kind === "section" && markers[end]!.some((m) => m.kind === "end-section")) break;
         end += 1;
       }
       const { class: className, ...attributes } = attrs;
       // The key carries the KIND as well as the block: one block can open
       // two scopes (`@page` and `@section` on consecutive lines), and two
       // groups sharing a key would be one wrapper reused for both.
-      groups.push({ start: i, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
+      if (end > i + 1) {
+        groups.push({ start: i + 1, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
+      }
       }
     });
     return groups;

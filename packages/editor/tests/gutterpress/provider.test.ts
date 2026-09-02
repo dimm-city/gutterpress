@@ -415,29 +415,39 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
   const candidates = (lines: readonly string[]) =>
     lines.map((sourceText, i) => ({ ast: { kind: "paragraph", id: i } as unknown as BlockAstNode, sourceText, absoluteStart: i * 100 }));
 
-  test("a section runs to its @end-section (inclusive) and carries the pipeline's class/data attributes", () => {
+  test("a section holds the blocks between its marker and its @end-section, and carries the pipeline's class/data attributes", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const groups = provider.groupBlocks(candidates(["@section intro .lede\n", "Body.\n", "More body.\n", "@end-section\n", "After.\n"]))!;
     expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({ start: 0, end: 4, className: "section lede", attributes: { "data-section": "intro" } });
+    // Neither the opening marker (block 0) nor its closer (block 3) is inside
+    // the wrapper: in the book the marker line PRODUCES the section and leaves
+    // nothing in it, which is what a book's own `.section > h3:first-child`
+    // and `> :last-child` rules are written against.
+    expect(groups[0]).toMatchObject({ start: 1, end: 3, className: "section lede", attributes: { "data-section": "intro" } });
+  });
+
+  test("a marker with nothing after it opens no wrapper", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    expect(provider.groupBlocks(candidates(["Text.\n", "@section\n"]))).toEqual([]);
+    expect(provider.groupBlocks(candidates(["@section\n", "@end-section\n"]))).toEqual([]);
   });
 
   test("a page closes at the next page, and the sections inside it nest within it", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const groups = provider.groupBlocks(candidates(["@page one\n", "@section a\n", "Text.\n", "@section b\n", "Text.\n", "@page two\n", "Text.\n"]))!;
     expect(groups.map((g) => [g.className, g.start, g.end])).toEqual([
-      ["page", 0, 5],
-      ["section", 1, 3],
-      ["section", 3, 5],
-      ["page", 5, 7],
+      ["page", 1, 5],
+      ["section", 2, 3],
+      ["section", 4, 5],
+      ["page", 6, 7],
     ]);
   });
 
   test("@continue inherits the previous section's attributes plus gp-continued; pages inherit the chapter counter class", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const groups = provider.groupBlocks(candidates(["@chapter ch=3\n", "@page\n", "@section .sidebar\n", "Text.\n", "@continue\n", "Text.\n"]))!;
-    expect(groups.find((g) => g.start === 1)?.className).toBe("page chapter-3");
-    expect(groups.find((g) => g.start === 4)?.className).toBe("section sidebar gp-continued");
+    expect(groups.find((g) => g.className === "page chapter-3")?.start).toBe(2);
+    expect(groups.find((g) => g.start === 5)?.className).toBe("section sidebar gp-continued");
   });
 
   test("prose and non-paragraph blocks are never markers", () => {
