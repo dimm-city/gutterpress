@@ -35,8 +35,8 @@
  * Exit 0 when every chapter agrees, 1 otherwise.
  */
 import { createRequire } from "node:module";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -62,8 +62,34 @@ if (!existsSync(srcBook)) {
  * against the book where it lives, for pointing this gate at a real one.
  */
 const inPlace = process.argv.includes("--in-place");
-const bookDir = inPlace ? srcBook : mkdtempSync(join(tmpdir(), "gutterpress-parity-"));
-if (!inPlace) cpSync(srcBook, bookDir, { recursive: true });
+
+/**
+ * Copy the book AND whatever it reaches for outside itself.
+ *
+ * A manifest that says `../dc-design-guide/css/dc-tokens.css` is describing a
+ * normal layout: one design system shared by several books beside it. Copying
+ * the book alone left every one of those references dangling, the projection
+ * failed with "Missing stylesheet", and the editor then had no `@page`
+ * geometry to paginate with at all — which reads from outside as "the editor
+ * never paginated" and cost several runs to tell apart from a real fault.
+ */
+function copyBookWithSiblings() {
+  const root = mkdtempSync(join(tmpdir(), "gutterpress-parity-"));
+  const dest = join(root, basename(srcBook));
+  cpSync(srcBook, dest, { recursive: true });
+  let manifest = "";
+  for (const name of ["manifest.yaml", "manifest.yml"]) {
+    const at = join(srcBook, name);
+    if (existsSync(at)) manifest = readFileSync(at, "utf8");
+  }
+  for (const sibling of new Set([...manifest.matchAll(/\.\.\/([^/\s"']+)\//g)].map((m) => m[1]))) {
+    const from = resolve(srcBook, "..", sibling);
+    if (existsSync(from)) cpSync(from, join(root, sibling), { recursive: true });
+  }
+  return dest;
+}
+
+const bookDir = inPlace ? srcBook : copyBookWithSiblings();
 const fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-parity-home-"));
 const userDataDir = join(fakeHome, "userData");
 mkdirSync(userDataDir, { recursive: true });
