@@ -1,10 +1,10 @@
 {
   "name": "@dimm-city/vscode-markdown-editor",
-  "version": "0.0.2-84.gp.1",
+  "version": "0.0.2-85.gp.1",
   "type": "module",
   "private": true,
   "license": "MIT",
-  "description": "Internal Gutterpress fork of @vscode/markdown-editor@0.0.2-84 (SFE-P1b), carrying the minimal renderCustomBlock seam. Not published; see NOTICE and PATCHES.md.",
+  "description": "Internal Gutterpress fork of @vscode/markdown-editor@0.0.2-85 (SFE-P1b; re-pinned from 0.0.2-84, byte-identical), carrying the minimal renderCustomBlock seam and the SFE-P3f measurement patch. Not published; see NOTICE and PATCHES.md.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": [
@@ -74,18 +74,18 @@
   },
   "gutterpressFork": {
     "upstreamName": "@vscode/markdown-editor",
-    "upstreamVersion": "0.0.2-84",
-    "upstreamGitHead": "b5fd5cda44376c118dd383f8c03ac4f6a06c648e",
+    "upstreamVersion": "0.0.2-85",
+    "upstreamGitHead": "c04545f2b72446a3b2fd76bf9085aca5a009ad1f",
     "upstreamRepository": {
       "type": "git",
       "url": "https://github.com/microsoft/vscode-packages",
       "directory": "vscode-team-tools/packages/markdown-editor"
     },
     "vendoredFrom": {
-      "tarball": "https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-84.tgz",
-      "integrity": "sha512-CD/FrfJTNnc3nVrdE6oVjHP+e12/4Ie84eaxSOSLkf7QhktkLhdrYFHz+tJ45jn9wGARMl41Bz0emnUSru80OA=="
+      "tarball": "https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-85.tgz",
+      "integrity": "sha512-9mtAwdyzDqrPAPDcupyu2iahyZU4V3gvzxhS5rvbThRkARJshQOiHkIhQNuO0LgkVEy2pwWoKa+AKE+qfx7xzA=="
     },
-    "patch": "renderCustomBlock — see PATCHES.md",
+    "patches": "renderCustomBlock (SFE-P1b) + measurement (SFE-P3f) — see PATCHES.md",
     "removalTrigger": "Delete this fork when upstream ships an equivalent generic block-render hook (BlockViewOptions gaining a paragraph/unhandledBlock custom-render seam), or when the seam is upstreamed as a PR. See docs/plans/source-first-editor/runs/SFE-P1b.md."
   }
 }

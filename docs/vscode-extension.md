@@ -94,7 +94,7 @@ Gutterpress-specific trust prompt of its own.
 
 The webview mounts `@dimm-city/gutterpress-editor`, which in turn depends
 on `@dimm-city/vscode-markdown-editor` — a minimal internal fork of
-`@vscode/markdown-editor@0.0.2-84` (ADR 0014 has the full compatibility-gate
+`@vscode/markdown-editor@0.0.2-85` (ADR 0014 has the full compatibility-gate
 record). The fork carries **two** independent patches
 (`packages/vscode-markdown-editor/PATCHES.md`):
 

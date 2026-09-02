@@ -24,7 +24,7 @@ import type { MountOptions } from "./support/entry.ts";
  * adapter/host/DOM behavior.
  *
  * Static API evidence gathered before writing this file (verified live
- * against the exact installed 0.0.2-84 `dist/index.js`/`dist/index.d.ts`,
+ * against the exact installed 0.0.2-85 `dist/index.js`/`dist/index.d.ts`,
  * not assumed from package declarations — I-01):
  *   - The editor's ROOT element (`.md-editor`) is NOT `contenteditable`; it
  *     is a plain, focusable (`tabIndex = 0`) `<div>`. All real text input

@@ -1,7 +1,10 @@
 # PATCHES.md — the vendored `@vscode/markdown-editor` fork's patches
 
 This fork applies two patches on top of the unmodified, published
-`@vscode/markdown-editor@0.0.2-84` artifact:
+`@vscode/markdown-editor@0.0.2-85` artifact (re-pinned from 0.0.2-84 on
+2026-09-02: 0.0.2-85's vendored files (everything under dist/ and src/, and the README) are byte-identical to 0.0.2-84's — upstream's
+0.0.2-85 publish changed only package.json's version and gitHead, so every
+hash in `checksums.json` and every hunk below carries over unchanged):
 
 1. **`renderCustomBlock`** (Hunks 1-7 below) — the custom-block-rendering
    seam specified by `docs/plans/source-first-editor/runs/SFE-P1b.md` and
@@ -32,7 +35,8 @@ tarball without refetching it — is recorded in `checksums.json`'s
 All line numbers below are from the patched `dist/index.js` /
 `dist/index.d.ts` in THIS package. The run specification's "Recorded facts"
 cited unpatched-baseline line numbers (`3795-3810`, `4290`, `4438-4446`,
-`4474`/`4580`) from a prior lane's exploration of the same 0.0.2-84 build —
+`4474`/`4580`) from a prior lane's exploration of the same 0.0.2-84 build
+(byte-identical to the 0.0.2-85 artifact now pinned) —
 those matched byte-for-byte against the freshly re-verified tarball used to
 vendor this package (see `NOTICE`), confirming the citations. Every patch
 site below was located by grepping for the DISTINCTIVE STRING LITERALS named

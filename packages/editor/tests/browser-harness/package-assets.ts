@@ -49,7 +49,7 @@ export interface HarnessCssAssets {
  * asset). Resolving it FROM `@vscode/markdown-editor`'s own installed
  * directory (`Bun.resolveSync(specifier, markdownEditorPkgRoot)`) reuses
  * markdown-editor's real, already-installed dependency graph instead —
- * verified live against the exact pinned 0.0.2-84 runtime — so this harness
+ * verified live against the exact pinned 0.0.2-85 runtime — so this harness
  * adds ZERO new devDependencies to `packages/editor/package.json` for CSS
  * loading (package.json wiring note: "add needed devDeps ONLY if truly
  * required").

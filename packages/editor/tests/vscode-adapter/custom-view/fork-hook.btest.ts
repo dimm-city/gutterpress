@@ -12,7 +12,7 @@ import type { CustomBlockHookCall, CustomViewMountOptions } from "./support/entr
  * `renderCustomBlock` seam (`packages/vscode-markdown-editor/PATCHES.md`
  * hunks 1–6), against the vendored fork this run's Lane A patched. Where
  * `probe.btest.ts` (SFE-P1b Lane C) proved D5 cases 4 and 5 FAIL against
- * the unpatched, published `@vscode/markdown-editor@0.0.2-84` runtime for
+ * the unpatched, published `@vscode/markdown-editor@0.0.2-85` runtime for
  * a paragraph-shaped Gutterpress marker line and an unhandled-block probe,
  * THIS file proves them PASS against the fork's new seam — the "turn cases
  * 4 and 5 green" deliverable named in the run specification

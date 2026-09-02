@@ -56,9 +56,11 @@ custom-block/view hook is absent... failure of unrelated optional styling
 does not justify a fork"): the missing seam was narrow, precisely named, and
 had a direct precedent already shipping in the package (`renderMath`'s
 segment-mapping return shape). `packages/vscode-markdown-editor`
-(`@dimm-city/vscode-markdown-editor@0.0.2-84.gp.1`) is the resulting minimal
+(`@dimm-city/vscode-markdown-editor@0.0.2-85.gp.1`) is the resulting minimal
 internal fork. It carries **two** patches, applied on top of the unmodified,
-published `0.0.2-84` artifact and fully itemized in
+published `0.0.2-85` artifact (re-pinned 2026-09-02 from `0.0.2-84`, whose
+vendored files are byte-identical — only upstream's package.json version and
+gitHead changed) and fully itemized in
 `packages/vscode-markdown-editor/PATCHES.md`:
 
 - **Patch 1 — `renderCustomBlock`** (Hunks 1-7): adds one new option,

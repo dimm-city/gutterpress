@@ -8,7 +8,7 @@
  *   1. "unpatched" files — every vendored file EXCEPT dist/index.js and
  *      dist/index.d.ts — must still byte-match the sha256 recorded in
  *      checksums.json.unpatched, which was computed at vendor time directly
- *      from the published @vscode/markdown-editor@0.0.2-84 tarball, BEFORE
+ *      from the published @vscode/markdown-editor@0.0.2-85 tarball, BEFORE
  *      any patch was applied. A match proves this file is still exactly
  *      what npm published — no silent local edit.
  *
@@ -217,7 +217,7 @@ async function main() {
     for (const f of failures) console.error(`  - ${f}`);
     console.error(
       "\n[verify-vendored] An 'unpatched' mismatch means a vendored file no longer matches the published " +
-        "@vscode/markdown-editor@0.0.2-84 tarball. A 'patched' mismatch means dist/index.js or dist/index.d.ts " +
+        "@vscode/markdown-editor@0.0.2-85 tarball. A 'patched' mismatch means dist/index.js or dist/index.d.ts " +
         "no longer matches the reviewed gp-fork patch state. A 'completeness' failure means a git-tracked file " +
         "in this package is not accounted for in checksums.json at all — either a new file was added without a " +
         "manifest entry, or an existing entry was removed from checksums.json. See PATCHES.md.",

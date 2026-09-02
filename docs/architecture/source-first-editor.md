@@ -67,7 +67,7 @@ defines its own editing surface or command vocabulary — see
 
 ### The `@vscode/markdown-editor` fork
 
-The rich-editing surface itself is `@vscode/markdown-editor@0.0.2-84`
+The rich-editing surface itself is `@vscode/markdown-editor@0.0.2-85`
 consumed through one adapter (`packages/editor/src/vscode-adapter/`), plus
 a minimal internal fork, `packages/vscode-markdown-editor/`
 (`@dimm-city/vscode-markdown-editor`, never a public Gutterpress export).

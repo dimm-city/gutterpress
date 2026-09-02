@@ -10,7 +10,7 @@ import { chromium, type Browser } from "playwright-core";
  * playwright install." `playwright-core` itself is not declared in
  * `packages/editor/package.json` — it is a root workspace devDependency
  * that resolves from `packages/editor` via bun's hoisting (verified live
- * against the exact installed 0.0.2-84 runtime environment before writing
+ * against the exact installed 0.0.2-85 runtime environment before writing
  * this file), so no duplicate devDependency is added here (package.json
  * wiring note: "do NOT duplicate deps that hoist").
  *

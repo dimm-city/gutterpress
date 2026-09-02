@@ -49,9 +49,9 @@
  * a diff of those two upstream files, not of this package's own logic.
  *
  * Pinned fork version this copy was taken from (packages/vscode-markdown-editor
- * /package.json's `gutterpressFork` block): upstreamVersion 0.0.2-84,
+ * /package.json's `gutterpressFork` block): upstreamVersion 0.0.2-85,
  * upstreamGitHead b5fd5cda44376c118dd383f8c03ac4f6a06c648e, fork version
- * 0.0.2-84.gp.1.
+ * 0.0.2-85.gp.1.
  */
 
 /**
