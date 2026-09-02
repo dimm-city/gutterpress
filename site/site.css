@@ -101,21 +101,38 @@ pre code {
 
 .masthead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1.5rem 2rem;
   flex-wrap: wrap;
-  padding-block: 1.4rem 1.2rem;
+  padding-block: 1.2rem 1.1rem;
   border-bottom: 1px solid var(--rule);
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
   font-family: var(--display);
   font-weight: 600;
   font-size: 1.45rem;
+  line-height: 1.15;
   letter-spacing: -0.01em;
   color: var(--ink);
   text-decoration: none;
+}
+
+/* The desktop app's stamped GP monogram, in its two inks: dark ink for the
+   paper theme, cream for the dark one — the <picture> in the markup picks. */
+.brand-mark {
+  display: block;
+  flex: none;
+}
+
+.brand-mark img {
+  display: block;
+  width: 44px;
+  height: 44px;
 }
 
 .wordmark small {
