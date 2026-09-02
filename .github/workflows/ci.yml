@@ -100,6 +100,109 @@ jobs:
         working-directory: packages/cli
         run: bun scripts/native-parity-gate.ts
 
+  # Enforces "core is a no-op for the un-migrated book" (0.10.6 milestone,
+  # gutterpress#252) by building the SAME fixture sources with the base
+  # branch's CLI and the PR's CLI in one job (one Chromium) and comparing the
+  # two PDFs page-for-page. A report captured on a different Chromium/runner
+  # drifts by fractions of a point and produces false diffs — a same-job pair
+  # never does (see docs/render-parity-gate.md).
+  #
+  # `pull_request` only: this needs a base commit to diff against, and a push
+  # to main/develop/release/** has no "before" side.
+  #
+  # dc-op-manual (the real field guide this milestone is about) is private
+  # and ungated here — see docs/render-parity-gate.md's "same-job A/B
+  # rationale" section. This job is the public floor: the two example books
+  # shipped in this repo, gated on every PR. The real book's own CI
+  # (dc-op-manual) runs the same tool against its own baselines.
+  render-parity:
+    name: Render parity (public fixtures)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      # Base into its own `base/` checkout so the head checkout's own working
+      # tree — the `examples/` sources BOTH CLIs render below — never moves
+      # under a later step. Only the CLI differs between the two builds; the
+      # fixture content does not, which is what isolates a core-only change.
+      - name: Checkout PR head
+        uses: actions/checkout@v5
+
+      - name: Checkout PR base
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies (head)
+        run: bun install
+
+      - name: Install dependencies (base)
+        run: bun install
+        working-directory: base
+
+      # NOTE: never use `bun --cwd <pkg> run <script>` — on Bun 1.3.x that
+      # form prints `bun run` usage and EXITS 0 without running the script
+      # (see the Build job's own note below in this file). `working-directory`
+      # + `bun run <script>` is the robust form.
+      - name: Build head CLI
+        working-directory: packages/cli
+        run: bun run build
+
+      - name: Build base CLI
+        working-directory: base/packages/cli
+        run: bun run build
+
+      # Same step, same reasoning as the Test job above: pin
+      # PUPPETEER_EXECUTABLE_PATH to the runner image's Chrome so both builds
+      # below render with the IDENTICAL Chromium.
+      - name: Configure Puppeteer to use system Chrome
+        run: |
+          echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+
+      # Plain `--format pdf` (never pdfx here — the gate reads nothing from
+      # PDF/X, and pdfx needs Ghostscript + an ICC profile this job has no use
+      # for). Both CLIs render the HEAD checkout's own fixture sources, so a
+      # PDF diff below can only come from the CLI itself, not from the content.
+      - name: Build public fixtures with base + head CLI
+        run: |
+          set -e
+          mkdir -p /tmp/render-parity/base /tmp/render-parity/head
+          for fixture in examples/gutterpress-user-guide examples/with-design-guide/book-01 examples/with-design-guide/design-guide; do
+            slug=$(basename "$fixture")
+            echo "== $fixture (base) =="
+            node base/packages/cli/dist/cli.js build "$fixture" --format pdf --out "/tmp/render-parity/base/$slug.pdf"
+            echo "== $fixture (head) =="
+            node packages/cli/dist/cli.js build "$fixture" --format pdf --out "/tmp/render-parity/head/$slug.pdf"
+          done
+
+      # Runs every fixture even if an earlier one fails, so one PR gets the
+      # full picture instead of stopping at the first offender; the job still
+      # fails overall on any unwaived diff.
+      - name: Compare base vs head render for each fixture
+        working-directory: packages/cli
+        run: |
+          status=0
+          for fixture in gutterpress-user-guide book-01 design-guide; do
+            echo "== $fixture =="
+            bun scripts/render-parity.ts compare \
+              "/tmp/render-parity/base/$fixture.pdf" \
+              "/tmp/render-parity/head/$fixture.pdf" \
+              --waive scripts/render-parity-waivers.json \
+              --out "/tmp/render-parity/$fixture-diff.json" || status=$?
+          done
+          exit $status
+
+      - name: Upload render-parity PDFs + reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: render-parity-public-fixtures
+          path: /tmp/render-parity
+          if-no-files-found: warn
+
   build:
     name: Build
     runs-on: ubuntu-latest

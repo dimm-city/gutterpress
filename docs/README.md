@@ -73,6 +73,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **My CSS looks right but nothing painted in the PDF**
 → [Known limitations](./known-limitations.md) — the browser-level gaps that fail silently
 
+**Check whether a core change moved any rendered page**
+→ [Render-parity gate](./render-parity-gate.md) — usage, report/waiver format, CI wiring
+
 ## Quick Reference
 
 ### Common Commands
@@ -138,6 +141,7 @@ docs/
 ├── migrations/                            # Migration guides
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
+├── render-parity-gate.md                  # Render-parity CI gate: usage, report/waiver format
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides
