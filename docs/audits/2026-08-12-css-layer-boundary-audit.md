@@ -1,5 +1,32 @@
 # CSS layer-boundary audit — gutterpress core vs dc-design-guide vs field-guide
 
+> **RE-VERIFIED 2026-09-01 against `dc-op-manual@main`** (gutterpress#229/#230).
+> The "FINAL B/C/E RECONCILIATION" block below reported the `.section` panel-chrome
+> inversion and `.dc-rules-definition`'s deletion as landed. Re-checked directly
+> against the current tree, both claims do not hold, and one held only in part:
+> - `.dc-panel` / `.dc-panel-sections` **do not exist anywhere in the tree**. Bare
+>   `.section::before`/`::after` still paints panel chrome by default (opt-out, not
+>   the claimed opt-in inversion), with five live suppression sites carrying it
+>   forward: `.section.tabbed::after`, `.section.dc-column-panel::before/::after`,
+>   `.section.dc-card-grid::before/::after`, `.page-intro > .section::before/::after`,
+>   and `.page-credits .section.credits-colophon::before/::after`. (The `.dc-panel`
+>   string IS in the tree, but as `.dc-block.dc-panel` — an unrelated `@block`
+>   component variant, not a section-chrome class; a plain string search would
+>   misread this as confirming the old claim.)
+> - `.section.dc-rules-definition` is **back in the tree**, fully defined in both
+>   `page-templates.css` and `dc-components.css` (a duplicated definition, not a
+>   single one), with 0 uses in either book's markdown.
+> - Confirmed as reported: the `.gp-columns-2`/`.gp-columns-3` unification held,
+>   and `.col-split` is gone from every theme/plugin CSS file and both books'
+>   markdown — but the machinery it depends on (`env.__colSplitDepth`, the
+>   `.col`-wrapper render branch) is still live in core's own `markers.js`,
+>   unused by either flagship book (2026-09-01 CSS architecture review, C9).
+>
+> Current state, including these regressions and the rest of the tree, is
+> tracked in `docs/audits/2026-09-01-css-architecture-review.md` — read that
+> document for what is true today. Nothing below this note is corrected in
+> place; it is left as the historical record the note above supersedes.
+
 > **CORRECTIONS — verified independently 2026-08-12, after the audit was written.**
 > Counts below were re-measured against both books' built DOM:
 > - The field guide's `.two-column` usage is **19** (14 of them on `.section`), not 5 — the audit understated it ~4x.

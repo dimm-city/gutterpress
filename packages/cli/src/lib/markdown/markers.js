@@ -1138,8 +1138,21 @@ export default function plugin(md, pluginOptions = {}) {
 /**
  * The minimal CSS the DOM this module emits requires. Author utility
  * vocabulary lives in gutterpress-css.ts — see the ownership note above.
- * Consumers should inject this into <head> after their user stylesheets so
- * the layout contract (page/section/column breaks) wins at equal specificity.
+ *
+ * The real contract (#227; a prior version of this paragraph said the
+ * opposite and was stale — 2026-09-01 CSS architecture review, C4):
+ * consumers inject this FIRST, wrapped in `@layer gp.marker` (assemble.ts
+ * declares `@layer gp.marker, gp.vocab;` before both core blocks). Author
+ * CSS — plugin CSS, every project stylesheet, anything loaded via
+ * `engineStyles.native` — stays UNLAYERED, and per the CSS Cascade Layers
+ * spec unlayered CSS always wins over layered CSS regardless of selector
+ * specificity. That is what makes "author wins" true now, not injection
+ * order. The `:where()` wrapping on the break/orphan/sizing rules below is
+ * a NARROWER, still-necessary guarantee that survives the layer: it keeps
+ * this block from out-specificity-ing whatever ELSE an author writes
+ * (their own plain `.section { break-inside: ... }`, say) — a concern
+ * `@layer` doesn't touch, since two unlayered rules still settle by
+ * ordinary specificity between themselves.
  *
  * `.page`/`.spread` are given `position: relative` so they are the containing
  * block for any abspos descendant: a mispinned `bottom: 0` now fails LOCALLY
