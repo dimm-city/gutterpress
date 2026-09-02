@@ -219,6 +219,22 @@ function send(method, params = {}) {
     ws.send(JSON.stringify({ id, method, params }));
   });
 }
+/**
+ * A deterministic viewport, because CHECK 2 clicks the book at real
+ * coordinates. Without one the drive inherits whatever size the host window
+ * happens to get — and below the 820px narrow breakpoint the workspace shows
+ * ONE pane, so in Edit mode the book is not on screen at all: the in-frame
+ * probe still finds a target (it queries the preview's own DOM) while the
+ * mouse click lands on whatever is actually painted there. That is a check
+ * that fails for a reason having nothing to do with what it tests.
+ */
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 1400,
+  height: 900,
+  deviceScaleFactor: 1,
+  mobile: false,
+});
+
 async function evalJs(expression) {
   const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   if (r.result?.exceptionDetails) {
@@ -460,12 +476,36 @@ if (!cmHasContent) {
   await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, x: cx, y: cy });
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, x: cx, y: cy });
   const marker = clickTarget.chapter.replace(/^\d+-|\.md$/g, "");
+  // 25s, not 10s: a file switch on the paged editor rebuilds the document
+  // host, builds a fresh projection and re-paginates the chapter before the
+  // new text is on screen — strictly more work than CodeMirror's swap, which
+  // is what the original 10s budget was written for. The elapsed time is
+  // logged so a run that creeps toward the limit is visible before it fails.
+  const startedAt = Date.now();
   const moved = await poll(
     `${EDITOR_TEXT}.toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
-    10000,
+    25000,
   );
+  // A coordinate-driven click that misses says nothing about the behaviour
+  // under test, so a failure reports where it actually landed: the point, the
+  // frame it was computed from, the workspace layout, and whether the FILE
+  // followed even though the text did not (which would separate "the click
+  // never arrived" from "the editor did not reload").
+  const landing = moved ? null : await evalJs(`(() => {
+    const f = document.querySelector('iframe');
+    const r = f ? f.getBoundingClientRect() : null;
+    const hit = document.elementFromPoint(${cx}, ${cy});
+    return {
+      win: { w: window.innerWidth, h: window.innerHeight },
+      frame: r ? { l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null,
+      activeFile: document.querySelector('.file-item.active .file-name')?.textContent?.trim() ?? null,
+      hitAtClick: hit ? hit.tagName + '.' + String(hit.className).slice(0, 40) : null,
+    };
+  })()`);
   check(moved,
-    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor (it still showed "${before.slice(0, 34)}…")`);
+    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor ` +
+    `(it still showed "${before.slice(0, 34)}…"; clicked ${cx},${cy} — ${JSON.stringify(landing)})`);
+  if (moved) log(`the click moved the editor to ${clickTarget.chapter} in ${Date.now() - startedAt}ms`);
 }
 // ── CHECK 3 — a TOC click navigates BOTH panes ──────────────────────────────
 await evalJs(`document.querySelector('#panel-tab-toc')?.click(); true`);
