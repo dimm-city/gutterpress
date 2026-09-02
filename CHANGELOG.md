@@ -53,6 +53,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   Both were fixes individual books had been carrying privately; they belong in
   Gutterpress, and a new book with big art gets them without knowing they exist.
 
+- **`render-parity.ts extract` no longer hangs after it finishes.** On a large
+  book it wrote a correct report and then never exited, holding the terminal
+  (or a CI step) until something killed it — measured on a 131MB, 247-page
+  book whose report was complete after ten seconds while the process ran on
+  until SIGKILL. The runtime keeps a PDF.js worker alive that no library-level
+  teardown reaches, so `extract` now exits explicitly once its report is
+  written, exactly as `compare` always has. `compare` was never affected,
+  which is why every CI gate stayed green.
+
 
 ## [0.10.5] - 2026-09-02
 
