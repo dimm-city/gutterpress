@@ -48,7 +48,7 @@ function containerPlugin(emit: Readonly<Record<string, string>>): LoadedPlugin {
       state.tokens = out;
     });
   };
-  return { name: "container-fixture", plugin, options: undefined };
+  return { name: "container-fixture", plugin, options: {} };
 }
 
 const project = (source: string, emit: Readonly<Record<string, string>>) =>
