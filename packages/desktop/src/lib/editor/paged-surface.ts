@@ -49,7 +49,14 @@ const modelCache = new Map<string, GcpmModel>();
 function modelFor(css: string): GcpmModel {
   const cached = modelCache.get(css);
   if (cached) return cached;
-  const model = extract(css);
+  // `:scope` as well as `:root`: the book's CSS reaches the editor scoped
+  // into the document element, with its `:root` rules rewritten to `:scope`
+  // (`composeEditorCss`). The `@page` rules are hoisted out of that scope
+  // and still reference the book's own custom properties, so without this a
+  // book whose page geometry is expressed in variables — `@page { margin:
+  // var(--page-margin) ... }` — throws here and the editor silently stops
+  // paginating altogether.
+  const model = extract(css, { rootSelectors: [":root", ":scope"] });
   // One entry is enough: the book's CSS is stable while a project is open,
   // and a stale entry would pin a whole GCPM model per edit of the theme.
   modelCache.clear();

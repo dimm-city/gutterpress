@@ -538,6 +538,29 @@ const CHAPTER_OPENER_CONTENT_RE = /^<div class="chapter-opener" data-chapter-lab
 /** Attrs added to marker-family tokens by a rule OTHER than markers.js itself — never authored, so never surfaced as `viewAttributes` (AP-06; see header). */
 const NON_AUTHORED_TOKEN_ATTRS = new Set<string>([SOURCE_RANGE_ATTR, SOURCE_CHAPTER_ATTR]);
 
+/**
+ * One attribute of a token, read without assuming the token is a markdown-it
+ * `Token` INSTANCE.
+ *
+ * Every token the core parser produces has `attrGet`, but a plugin may push a
+ * plain object shaped like a token instead — nothing in markdown-it's plugin
+ * contract requires the class, and real plugins do it. Calling the method
+ * blindly threw `token.attrGet is not a function` and took the WHOLE
+ * projection down with it, so the desktop editor fell back to its
+ * plugin-less, book-CSS-less build: the author's own styling and pagination
+ * vanished from the editor, under a diagnostic that blamed their manifest.
+ * One plugin token is not a reason to stop understanding the document.
+ */
+function tokenAttr(token: Token, name: string): string | null {
+  if (typeof token.attrGet === "function") return token.attrGet(name);
+  const attrs = (token as { attrs?: readonly (readonly [string, string])[] | null }).attrs;
+  if (!Array.isArray(attrs)) return null;
+  for (const pair of attrs) {
+    if (Array.isArray(pair) && pair[0] === name) return pair[1] ?? null;
+  }
+  return null;
+}
+
 /** Every token attr except the render-graph's own bookkeeping keys (AP-06 — see header). `undefined` when nothing is left, so `ProjectedBlock.viewAttributes` stays a clean optional. */
 function extractViewAttributes(token: Token): Readonly<Record<string, string>> | undefined {
   if (!token.attrs || token.attrs.length === 0) return undefined;
@@ -914,7 +937,7 @@ function pluginRegionContainsProjectableBlock(
     const t = tokens[i]!;
     const isMarkerFamily = Boolean(OPEN_KIND_BY_TOKEN_TYPE[t.type] ?? BREAK_KIND_BY_TOKEN_TYPE[t.type]);
     const isRawHtml = t.type === "html_block";
-    if ((isMarkerFamily || isRawHtml) && t.attrGet(SOURCE_RANGE_ATTR)) return true;
+    if ((isMarkerFamily || isRawHtml) && tokenAttr(t, SOURCE_RANGE_ATTR)) return true;
   }
   return false;
 }
@@ -1036,7 +1059,7 @@ export function createEditorProjection(
     const token = tokens[tokenIndex]!;
 
     if (token.type === "html_block") {
-      const rangeAttr = token.attrGet(SOURCE_RANGE_ATTR);
+      const rangeAttr = tokenAttr(token, SOURCE_RANGE_ATTR);
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
       if (parsed) {
         const [from, to] = charRangeForLines(starts, source, parsed[0], parsed[1]);
@@ -1124,7 +1147,7 @@ export function createEditorProjection(
 
     const kind = OPEN_KIND_BY_TOKEN_TYPE[token.type] ?? BREAK_KIND_BY_TOKEN_TYPE[token.type];
     if (kind) {
-      const rangeAttr = token.attrGet(SOURCE_RANGE_ATTR);
+      const rangeAttr = tokenAttr(token, SOURCE_RANGE_ATTR);
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
       if (!parsed) {
         diagnostics.push({
@@ -1195,7 +1218,7 @@ export function createEditorProjection(
     // `opts.trusted` so the untrusted default degrades to EXACTLY P2b's
     // silent fallthrough below (see header "TRUST GATE").
     if (opts.trusted && token.nesting === 1 && !BASE_PIPELINE_OPEN_TOKEN_TYPES.has(token.type)) {
-      const rangeAttr = token.attrGet(SOURCE_RANGE_ATTR);
+      const rangeAttr = tokenAttr(token, SOURCE_RANGE_ATTR);
       const parsed = rangeAttr ? parseSourceRangeAttr(rangeAttr) : null;
       // EVIDENCE-BEARING case (this lane, A): the plugin preserved its own
       // `token.map`/`token.meta.line`, so `source_range.ts` — which runs

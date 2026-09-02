@@ -47,13 +47,23 @@ const { _electron: electron } = require_("playwright-core");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[parity] ${m}`);
 
-const srcBook = resolve(process.argv[2] ?? join(desktopDir, "tests", "fixtures", "plugin-book"));
+const bookArg = process.argv.slice(2).find((a) => !a.startsWith("--"));
+const srcBook = resolve(bookArg ?? join(desktopDir, "tests", "fixtures", "plugin-book"));
 if (!existsSync(srcBook)) {
   console.error(`[parity] FAIL: no book at ${srcBook}`);
   process.exit(1);
 }
-const bookDir = mkdtempSync(join(tmpdir(), "gutterpress-parity-"));
-cpSync(srcBook, bookDir, { recursive: true });
+/**
+ * The gate normally works on a COPY so a run cannot touch the book. A real
+ * project often reaches outside its own folder for the things that decide
+ * its pages — the Dimm City Field Guide's stylesheets and its plugin live in
+ * a sibling directory — and a copy of the book alone leaves those dangling,
+ * so the editor gets no book CSS and paginates nothing. `--in-place` runs
+ * against the book where it lives, for pointing this gate at a real one.
+ */
+const inPlace = process.argv.includes("--in-place");
+const bookDir = inPlace ? srcBook : mkdtempSync(join(tmpdir(), "gutterpress-parity-"));
+if (!inPlace) cpSync(srcBook, bookDir, { recursive: true });
 const fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-parity-home-"));
 const userDataDir = join(fakeHome, "userData");
 mkdirSync(userDataDir, { recursive: true });
@@ -99,7 +109,12 @@ try {
   await page.waitForSelector(".file-item, .toc-item", { timeout: 120_000 });
   const close = page.locator('button[aria-label="Close this screen"]');
   if (await close.count()) await close.first().click().catch(() => {});
-  await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 90_000 });
+  // Open a file before waiting for a page: with none open the editor pane
+  // correctly shows "Select a file from the list to start editing", and a
+  // gate that waits for a sheet there waits forever. Whether a project
+  // auto-selects its first chapter is not this gate's subject.
+  await page.locator(".file-item").first().click();
+  await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
 
   // Read mode: the locked editor is the one that must match the page.
   await page.click('button[aria-label="Read"]');
@@ -189,7 +204,7 @@ try {
   }
 } finally {
   await app.close().catch(() => {});
-  rmSync(bookDir, { recursive: true, force: true });
+  if (!inPlace) rmSync(bookDir, { recursive: true, force: true });
   rmSync(fakeHome, { recursive: true, force: true });
 }
 

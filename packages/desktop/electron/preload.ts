@@ -584,6 +584,11 @@ contextBridge.exposeInMainWorld("electron", {
   buildEditorProjection: (args: EditorProjectionHostArgs): Promise<EditorProjectionOutcome> =>
     ipcRenderer.invoke("api:editorProjection", args),
 
+  // One renderer-side fault, into the app's own log file — the one the Logs
+  // tab shows and an author can hand over. See `appLogRendererError`.
+  logRendererError: (message: string): Promise<void> =>
+    ipcRenderer.invoke("app:logRendererError", message),
+
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
     cb: (data: ExportProgressEvent) => void

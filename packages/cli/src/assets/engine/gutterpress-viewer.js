@@ -482,7 +482,7 @@
     }
     return out;
   }
-  function extract(css) {
+  function extract(css, options = {}) {
     const model = {
       pageRules: [],
       stringSets: [],
@@ -494,7 +494,7 @@
       warnings: []
     };
     walk(css, model);
-    resolveGeometryVars(model, collectRootCustomProperties(css));
+    resolveGeometryVars(model, collectRootCustomProperties(css, options.rootSelectors ?? [":root"]));
     const names = new Set;
     for (const r of model.pageRules)
       if (r.name)
@@ -514,7 +514,7 @@
     "bleed",
     "marks"
   ];
-  function collectRootCustomProperties(css) {
+  function collectRootCustomProperties(css, rootSelectors) {
     const props = new Map;
     const walkForRoot = (body) => {
       for (const rule of scanRules(body)) {
@@ -527,7 +527,7 @@
         }
         if (!prelude.startsWith("@")) {
           const selectors = splitTopLevel(prelude, ",");
-          if (selectors.some((s) => s.trim() === ":root")) {
+          if (selectors.some((s) => rootSelectors.includes(s.trim()))) {
             const decls = parseDeclarations(ruleBody);
             for (const [k, v] of Object.entries(decls)) {
               if (k.startsWith("--"))

@@ -10,6 +10,7 @@
  * store (`updatePrefs`/`updateSettings` — never a bare read+write pair, which
  * used to race concurrent writers, audit A2).
  */
+import { logAppError } from "../app-log";
 import { getAppHooks } from "../server-bridge/app-hooks";
 import { getAppImageHooks, getDesktopHooks } from "../server-bridge/host-hooks";
 import { getPrefsHooks, type PrefsHooks } from "../server-bridge/prefs-hooks";
@@ -328,8 +329,30 @@ export async function appImageIntegrationRemove(): Promise<AppImageRemoveResult>
   return withFriendlyAppImageError("app/appimage-integration", () => hooks.remove());
 }
 
+/**
+ * Record one renderer-side fault in the app's own log.
+ *
+ * The log existed but only the MAIN process could write to it, so everything
+ * that actually goes wrong where the author is looking — the editor failing
+ * to paginate, a mount throwing, an unhandled rejection — left no trace at
+ * all. "Send me your log" then returned a file that said the app started and
+ * nothing else; the fault had to be reproduced by hand instead of read. This
+ * is the renderer's way in: one line, same file, same cap.
+ *
+ * Trimmed and length-capped here rather than trusted: this is an IPC
+ * boundary, and a renderer loop must not be able to fill the log file with
+ * one enormous entry.
+ */
+export async function appLogRendererError(message: unknown): Promise<void> {
+  const text = typeof message === "string" ? message : String(message ?? "");
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  await logAppError(`[renderer] ${trimmed.slice(0, 4000)}`);
+}
+
 /** Register the app:* IPC channels (SFE-P6b). */
 export function registerAppHandlers(secureHandle: SecureHandle): void {
+  secureHandle("app:logRendererError", (_e, message: unknown) => appLogRendererError(message));
   secureHandle("app:getDesktopPrefs", () => appGetDesktopPrefs());
   secureHandle("app:setDesktopPrefs", (_e, prefs: unknown) =>
     appSetDesktopPrefs(prefs as Record<string, unknown>),

@@ -372,6 +372,7 @@ declare global {
       // to a discriminated EditorProjectionOutcome, never a `.code`-tagged
       // rejection (review round 2 — see electron/editor-projection.ts).
       buildEditorProjection(args: EditorProjectionHostArgs): Promise<EditorProjectionOutcome>;
+      logRendererError(message: string): Promise<void>;
       // Event subscriptions
       // M29: ExportProgressEvent used to be hand-duplicated here — it is now
       // the single shared-types.ts type (re-exported via bridge-types.ts),

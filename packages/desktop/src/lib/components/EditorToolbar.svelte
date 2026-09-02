@@ -70,21 +70,16 @@
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
     /**
-     * Whether the RICH editing surface is the currently mounted one
-     * (SFE-P3ab, G-10: "the active surface owns the authoring workflow").
-     * Changes what the "Insert image" button does (see `onOpenImageProperties`
-     * below) — every other toolbar item fires the same `onAction` either way,
-     * with `+page.svelte` deciding which surface actually receives it.
+     * Whether the PAGED editing surface is the currently mounted one
+     * (G-10: "the active surface owns the authoring workflow"). Its only
+     * remaining job is to pick which "Insert image" flow runs (see
+     * `onOpenImageProperties` below) — every other toolbar item fires the
+     * same `onAction` either way, with `+page.svelte` deciding which surface
+     * actually receives it. It is NOT a control: the workspace's own
+     * Edit/Read/Focus decides the surface, and the toggle that used to sit
+     * beside this toolbar is gone.
      */
     richMode = false,
-    /**
-     * Gates the visible source/rich mode-switch control — the same
-     * `gp:experimental-rich-editor` flag `+page.svelte` reads (still off by
-     * default this run). `undefined`/`false` hides the control entirely, so
-     * existing callers that do not pass it see no change.
-     */
-    richModeAvailable = false,
-    onToggleRichMode,
     /**
      * Opens the FULL `ImagePropertiesDialog` flow instead of this
      * component's own simpler (width/position/size/shape) inline dialog —
@@ -100,8 +95,6 @@
     onSave?: () => void;
     projectDir?: string | null;
     richMode?: boolean;
-    richModeAvailable?: boolean;
-    onToggleRichMode?: () => void;
     onOpenImageProperties?: () => void;
   } = $props();
 
@@ -609,24 +602,6 @@
     {/if}
   </div>
 
-  {#if richModeAvailable}
-    <!-- SFE-P3ab, deliverable (4) — the visible source/rich mode control
-         Lane A deliberately left for this lane. Gated on the same
-         experimental flag `+page.svelte` reads (still off by default).
-         `aria-pressed` reflects "rich" as the pressed/"on" state, matching a
-         toggle-button convention rather than a two-state radio pair — only
-         one control, so there is nothing to roving-focus between. -->
-    <button
-      class="tb-btn tb-mode-toggle"
-      onclick={() => onToggleRichMode?.()}
-      aria-pressed={richMode}
-      title={richMode ? "Rich editor — click to switch to source" : "Source editor — click to switch to rich (experimental)"}
-      aria-label={richMode ? "Switch to source editor" : "Switch to rich editor"}
-    >
-      <Icon name={richMode ? "pen-line" : "code"} size={14} />
-      <span class="tb-mode-label">{richMode ? "Rich" : "Source"}</span>
-    </button>
-  {/if}
 </div>
 {/if}
 
@@ -979,26 +954,6 @@
     .tb-more-wrap {
       display: flex;
     }
-  }
-
-  /* ── Rich/source mode toggle (SFE-P3ab, experimental) ────────────────────── */
-  .tb-mode-toggle {
-    margin-left: 6px;
-    gap: 4px;
-    padding-left: 7px;
-    padding-right: 8px;
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
-  }
-  .tb-mode-toggle[aria-pressed="true"] {
-    background: var(--app-control-active-bg);
-    border-color: var(--app-focus-ring);
-  }
-  .tb-mode-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
   }
 
   /* ── Image insert dialog ──────────────────────────────────────────────────── */

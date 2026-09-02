@@ -12,6 +12,7 @@
   import type { MarkdownFileLaunchEvent } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
+  import { installErrorReporting, reportError } from "$lib/diagnostics/report";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
@@ -1276,16 +1277,6 @@
     return !!path && /\.(md|markdown)$/i.test(path);
   }
 
-  // Hidden/experimental gate (run spec: "off by default this run"). No new
-  // settings subsystem — a `localStorage` flag flipped by hand, read once on
-  // mount (client-only). With the flag unset (the overwhelming common case)
-  // `richModeAvailable` stays false and nothing below this comment ever
-  // runs: the CodeMirror path loads exactly what it does today.
-  // The rich editor is THE markdown editing surface; source (CodeMirror)
-  // stays as the fallback for refused projections, oversize files and
-  // non-markdown files.
-  const richModeAvailable = true;
-
   // Mirrors the MarkdownEditor lazy-import pattern immediately above: the
   // rich editor's chunk (the `@vscode/markdown-editor` fork + its adapter)
   // is real weight, so it is imported dynamically the first time rich mode
@@ -1377,11 +1368,13 @@
    *  editable), and switching to source mode would not fix a broken
    *  manifest — a heads-up notice, not an action prompt, matching
    *  `pluginLoadFailedDiagnostic`'s own reasoning. */
-  const RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC: Diagnostic = {
-    category: "EDITOR_PLUGIN_LOAD_FAILED",
-    message:
-      "This project's plugins could not be loaded for the rich editor (its manifest.yaml may be invalid), so plugin regions show as plain text here. Fix the manifest, then reopen this file.",
-  };
+  function projectionFailedDiagnostic(reason: string): Diagnostic {
+    return {
+      category: "EDITOR_PLUGIN_LOAD_FAILED",
+      message:
+        `The rich editor could not read this file with the project's plugins, so plugin regions show as plain text and the book's own styling is not applied here. ${reason}`.trim(),
+    };
+  }
 
   async function buildRichProjection(
     content: string,
@@ -1425,7 +1418,12 @@
         if (outcome.code === "EDITOR_FILE_TOO_LARGE") {
           showRichDiagnostic(RICH_MODE_FILE_TOO_LARGE_DIAGNOSTIC);
         } else {
-          showRichDiagnostic(RICH_MODE_PROJECTION_FAILED_DIAGNOSTIC);
+          // The host's own message, not a guess about it. This branch used
+          // to tell every author their manifest.yaml might be invalid — the
+          // real failure was a plugin token the projection could not read,
+          // and the wrong message sent the search to the wrong file.
+          reportError(`rich projection failed: ${outcome.message}`);
+          showRichDiagnostic(projectionFailedDiagnostic(outcome.message));
         }
       } catch (e) {
         // Anything else — a genuinely unexpected IPC/contract failure, not
@@ -1540,6 +1538,19 @@
     }
   }
 
+  /**
+   * Keep the surface controller in step with the ONE mode control.
+   *
+   * `RichModeController` still exists for the invariant it asserts — exactly
+   * one editing surface mounted at a time (see its header) — but it no
+   * longer holds a user PREFERENCE anyone can set independently: which
+   * surface is live is derived from Edit/Read/Focus and the open file's
+   * type, and this is the single place that tells the controller so.
+   */
+  function syncRichSurface(): void {
+    setRichMode(richSurfaceActive ? "rich" : "source");
+  }
+
   // ── Rich-mode command wiring (SFE-P3ab, Lane B) ──────────────────────────
   //
   // Diagnostics reaching this app from rich mode come from two places: an
@@ -1564,7 +1575,7 @@
       "error",
       undefined,
       diagnostic.safeAction
-        ? { label: diagnostic.safeAction, onClick: () => setRichMode("source") }
+        ? { label: diagnostic.safeAction, onClick: () => setMode("focus") }
         : undefined,
     );
   }
@@ -1932,12 +1943,18 @@
    * counts as active so the rich pane's own "select a file" placeholder
    * keeps showing while the preference is "rich", matching prior behavior.
    */
-  // Focus mode is the raw-Markdown surface: CodeMirror, no pagination, no
-  // chips — the technical view. Everything else edits on the paged editor.
+  // ONE mode control decides the surface, and it is the workspace's own
+  // Edit / Read / Focus. Focus is the raw-Markdown surface (CodeMirror: no
+  // pagination, no chips — the technical view); Edit and Read are both the
+  // paged editor, unlocked and locked. A second "Rich / Source" toggle used
+  // to sit in the editor toolbar on top of this, so the same document had
+  // two independent mode axes and six reachable combinations to reason
+  // about; it is gone, and this derivation is what replaced it.
+  //
+  // A non-markdown file (CSS, YAML) has no paged surface at all and always
+  // opens on CodeMirror, whatever the workspace mode says.
   let richSurfaceActive = $derived(
-    richMode.mode === "rich" &&
-      mode !== "focus" &&
-      (editorFilePath === null || isMarkdownPath(editorFilePath)),
+    mode !== "focus" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
   );
 
   function showEditorContent(path: string, content: string): void {
@@ -1947,7 +1964,7 @@
     // external replacement landing (acceptExternal's onContentReplaced) —
     // D7 groups both under "not undoable into the prior file", so rich
     // mode responds to either the same way: a fresh epoch, fresh host.
-    if (richMode.mode === "rich") {
+    if (richSurfaceActive || richMode.mode === "rich") {
       richMode.onFileSwitch();
       // SFE-P3ab review round 1 (CONFIRMED finding): rich mode has no
       // surface for a non-markdown file — see `isMarkdownPath`'s header.
@@ -2464,6 +2481,10 @@
   // calls client.injectStyles).
 
   onMount(() => {
+    // Before anything else can fail: from here on an uncaught error, an
+    // unhandled rejection and every console.error land in the app's own log
+    // file, which is the file an author can actually hand over.
+    installErrorReporting();
     getDoctorDiagnostics()
       .then((data) => {
         diagnosticsTools = data.tools ?? [];
@@ -2843,21 +2864,6 @@
         e.preventDefault();
         toggleEditor();
       }
-      // Rich mode toggle (SFE-P3ab) — hidden/experimental, inert unless
-      // richModeAvailable was flipped on via the gp:experimental-rich-editor
-      // localStorage flag. Not part of resolveGlobalShortcut's vocabulary
-      // (another lane's file) — checked directly.
-      if (
-        richModeAvailable &&
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        e.altKey &&
-        e.key.toLowerCase() === "r"
-      ) {
-        e.preventDefault();
-        setRichMode(richMode.mode === "rich" ? "source" : "rich");
-        return;
-      }
       // Block movement (SFE-P3ab, Lane A) — Alt+Shift+ArrowUp/Down moves
       // the block the live rich-mode caret is currently in
       // (`blockIndexAtOffset` + `applyBlockMove`, rich-commands.ts). Rich
@@ -3230,6 +3236,8 @@
     // Read/Edit locks or unlocks the MOUNTED paged editor. The mount reads
     // `readonly` once, so this has to be told, not derived.
     richEditorRef?.setReadonly(next === "viewer");
+    // Entering or leaving Focus changes WHICH surface is mounted.
+    syncRichSurface();
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
@@ -3630,8 +3638,6 @@
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
               richMode={richSurfaceActive}
-              richModeAvailable={richModeAvailable}
-              onToggleRichMode={() => setRichMode(richMode.mode === "rich" ? "source" : "rich")}
               onOpenImageProperties={() => void openRichImageProperties()}
               onAction={(action, payload) => {
                 if (action === "snippet") {

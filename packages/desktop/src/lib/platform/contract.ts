@@ -615,6 +615,8 @@ export interface ElectronBridge {
    * review round 2 — see that type's own doc comment for why).
    */
   buildEditorProjection(args: EditorProjectionArgs): Promise<EditorProjectionOutcome>;
+  /** Append one renderer-side fault to the app's own log file (`$lib/diagnostics/report`). */
+  logRendererError(message: string): Promise<void>;
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;

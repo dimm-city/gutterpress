@@ -44,6 +44,7 @@
   import type { Diagnostic, EditorDocumentHost } from "@dimm-city/gutterpress-editor/core";
   import type { GutterpressProjection } from "gutterpress/render";
   import { createPagedSurface } from "$lib/editor/paged-surface";
+  import { reportError } from "$lib/diagnostics/report";
 
   let {
     host,
@@ -98,7 +99,28 @@
 
   onMount(() => {
     if (!container) return;
-    const surface = paged && extraCss ? createPagedSurface(extraCss, container.ownerDocument) : undefined;
+    // A pagination failure must be REPORTED, never swallowed into a
+    // silently-unpaginated editor. `createPagedSurface` reads the book's own
+    // `@page` geometry, so it throws on CSS this engine cannot resolve — and
+    // the author is the only one who can fix that, so they have to be told
+    // which rule it was. The document still mounts and stays editable.
+    let surface: ReturnType<typeof createPagedSurface> | undefined;
+    if (paged && extraCss) {
+      try {
+        surface = createPagedSurface(extraCss, container.ownerDocument);
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        reportError(`the editor could not paginate this book: ${reason}`);
+        onDiagnostic?.({
+          // The closest STABLE D14 category (diagnostics.ts forbids inventing
+          // one): the editor cannot give this document its rich, paginated
+          // projection, and falls back to showing it whole.
+          category: "EDITOR_UNSUPPORTED_PROJECTION",
+          message: `This book's page setup could not be read, so the editor is showing it unpaginated. ${reason}`,
+          safeAction: "Fix the @page rule this names, then reopen the file",
+        });
+      }
+    }
     if (surface && onPaginated) surface.onPaginated(onPaginated);
     const mount = projection
       ? mountGutterpressEditor(container, host, {
@@ -176,5 +198,27 @@
     height: 100%;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /*
+   * Height, all the way down to the fork's own scroller.
+   *
+   * The mounted editor sizes itself to its CONTENT — `.md-editor` grew to the
+   * full 4313px of a chapter inside a 932px pane — and its scrolling
+   * container only scrolls if something above it says how tall it may be.
+   * Nothing did, so the pane clipped the document at its own height and the
+   * author could not reach page two of their own book by any means.
+   *
+   * `:global` because this styles the fork's DOM, which Svelte's scoping
+   * cannot reach. It sets height only: no display, no padding, nothing that
+   * would change how the editor lays its content out.
+   */
+  .rich-editor-host :global(.md-editor) {
+    height: 100%;
+    min-height: 0;
+  }
+  .rich-editor-host :global(.md-editor-content) {
+    max-height: 100%;
+    overflow: auto;
   }
 </style>
