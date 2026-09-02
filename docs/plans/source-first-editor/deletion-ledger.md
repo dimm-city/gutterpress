@@ -2593,10 +2593,17 @@ locator — D4), `$state` fields read directly by the template/root
   shim `rich-mode.test.ts` already uses — it could not import the old
   4,739-line `.svelte` file), plus a new edit-forwarding suite the old
   file's model couldn't exercise (no real `DesktopDocumentHost` in a
-  hand-rolled harness). Its own structural pin now checks that
-  `+page.svelte` DELEGATES to the controller (imports it, instantiates
-  it, calls `.rebuild()`/`.dispose()`/`.whenSettled()`) rather than
-  having reintroduced the algorithm inline — the same protective intent,
+  hand-rolled harness). SFE-P6 round-1 repair added one more case the
+  first pass of the port had missed: "a superseded build's .finally does
+  not clear `pending` while a NEWER build is still in flight — whenSettled()
+  called after B resolves still waits for C", which pins `rebuild()`'s
+  `.finally(() => { if (epoch === this.epoch) this.pending = null; })`
+  guard specifically — mutating that line to an unconditional
+  `this.pending = null;` makes the new test (and only that test) fail.
+  Its own structural pin now checks that `+page.svelte` DELEGATES to the
+  controller (imports it, instantiates it, calls
+  `.rebuild()`/`.dispose()`/`.whenSettled()`) rather than having
+  reintroduced the algorithm inline — the same protective intent,
   retargeted at the code's new location. One deliberate reduction: the
   old file's explicit "guardEnabled: false" sabotage variant (AP-21/G-12,
   proving the hand-rolled MODEL's assertions were not vacuous) has no
@@ -2942,10 +2949,9 @@ with one line each in the report"), none of the five is added.
 
 #### Export tests (the run specification's item 3)
 
-New: `packages/cli/tests/integration/package-exports.test.ts` (163 lines).
+New: `packages/cli/tests/integration/package-exports.test.ts`.
 Reads `package.json#exports` directly (no hardcoded subpath list, so a
-future addition or removal is covered automatically) and proves, per
-declared subpath:
+future ADDITION is covered automatically) and proves, per declared subpath:
 
 1. **Resolves under Node** — spawns `node --input-type=module -e
    "import('<specifier>')"` with `cwd` set to `packages/cli` itself, relying
@@ -2973,17 +2979,38 @@ zero-subpath exports map, a missing `dist/index.js`, or a zero-file
 `npm pack` result each throw a specific, actionable error rather than
 letting the rest of the suite pass vacuously.
 
+**Round-1 repair (this run) — the derived loops above are blind to
+REMOVAL**: every one of the four items above derives its target set FROM
+`package.json#exports` (`SUBPATHS = Object.keys(PKG.exports)`), so deleting
+a subpath — `./plugins`, the very one this run added because
+`electron/editor-projection.ts` and `vscode-extension/src/project/
+projection.ts` are real consumers — or dropping a `types`/`default`
+condition under one, just shrinks the derived set: the suite stays green
+with one fewer generated test, contradicting the file's own header and this
+section's original "addition or removal is covered automatically" claim.
+Added a fifth, explicitly pinned assertion (`test("the public subpath
+surface is exactly the D11-approved set", ...)`) that checks `SUBPATHS`
+against the literal set `[".", "./api", "./render", "./plugins"]` and each
+subpath's condition keys against `["default", "types"]`, independent of
+whatever `package.json#exports` currently says — this is the one assertion
+in the file that a removal actually fails.
+
 **Sabotage-verified this gate can fail** (G-12), not merely asserted to:
 `mv dist/plugins.js dist/plugins.js.bak` before the built dist was restored
-turned 3 of 17 tests red (`node can import "gutterpress/plugins"`, `bun can
-import "gutterpress/plugins"`, `"./plugins" (default) — ./dist/plugins.js
-is packed`) with an actionable failure message naming the missing file;
-restoring the file returned the suite to 17/17 green. Full log kept in this
-lane's own working notes, not committed (the sabotage was never itself
-part of the committed test file).
+turned 3 of the derived tests red (`node can import "gutterpress/plugins"`,
+`bun can import "gutterpress/plugins"`, `"./plugins" (default) —
+./dist/plugins.js is packed`) with an actionable failure message naming the
+missing file; restoring the file returned the suite to fully green. Full log
+kept in this lane's own working notes, not committed (the sabotage was never
+itself part of the committed test file). The round-1 repair separately
+verified the NEW pinned-surface assertion specifically: deleting
+`exports["./plugins"]` from a scratch copy of `package.json` failed only
+that one assertion (`SUBPATHS` no longer contained `./plugins`), which the
+four pre-existing derived items could not have caught on their own.
 
 Final run: `cd packages/cli && bun test tests/integration/package-exports.test.ts`
-→ **17 pass, 0 fail, 9 expect() calls**.
+→ **18 pass, 0 fail** (17 from the four original items + the round-1
+pinned-surface assertion).
 
 #### ADRs (the run specification's item 4)
 
@@ -3018,31 +3045,78 @@ for the platform/host-portability topic the missing "ADR 0004" used to
 cover, and to correct its own file-count claim ("`docs/adr/` holds 0008,
 0009 and 0010" → "0008 through 0016").
 
-**Stale ADR references NOT resolved, and why**: a repo-wide search finds
-41 files / 63 occurrences of the literal strings "ADR 0004" or "ADR 0006"
-inside `packages/desktop/src/**` doc comments (`SnippetPicker.svelte`,
-`StatusBar.svelte`, `chapter-path.ts`, `source-range.ts`,
-`image-classes.ts`, and 36 others):
+**Stale ADR references NOT resolved, and why**: the P6c-original pass of
+this section proved its decline only against `packages/desktop/src/**` and
+presented that as the whole picture. Round-1 repair re-ran the search
+repo-wide, across all five historically-missing ADR numbers
+(0002/0004/0005/0006/0007), not just 0004/0006:
 
 ```
-$ grep -rln "ADR 0004\|ADR 0006" packages/desktop/src --include="*.ts" --include="*.svelte" | wc -l
-41
-$ grep -rn "ADR 0004\|ADR 0006" packages/desktop/src --include="*.ts" --include="*.svelte" | wc -l
-63
+$ grep -rln "ADR 0002\|ADR 0004\|ADR 0005\|ADR 0006\|ADR 0007" packages \
+    --include=*.ts --include=*.svelte --include=*.js --include=*.md | grep -v node_modules | wc -l
+106
+$ grep -rn  "ADR 0002\|ADR 0004\|ADR 0005\|ADR 0006\|ADR 0007" packages \
+    --include=*.ts --include=*.svelte --include=*.js --include=*.md | grep -v node_modules | wc -l
+193
 ```
 
-`packages/desktop/src/**` is frozen (out of this lane's write ownership —
-"MUST NOT WRITE" per the run's lane assignment, "frozen post-P6a"). This is
-not a new defect this run introduces or fails to catch: SFE-P5a's own Lane C
-found and recorded the identical situation for ADR 0004 specifically
-("restoring or authoring an ADR is outside this lane's write ownership" —
-deletion ledger's SFE-P5a "ADR statusing" section) and left it unresolved
-for the same boundary reason. "ADR 0006" (a GitHub device-flow / Advanced
-Setup record) is a topic none of this run's six new ADRs cover, so there is
-no new ADR to redirect those citations to either — restoring or authoring
-ADR 0006 itself is out of this run's scope (the plan names six specific
-ADRs, not an open-ended backfill of every historically-deleted record).
-Recorded here, not silently left unmentioned, per this ledger's own
+193 occurrences repo-wide, not 63: `packages/cli` carries 103, and
+`packages/desktop` carries the remaining 90 — of which 67 are under
+`packages/desktop/src/**` (the original 41-file / 63-occurrence count below
+used a narrower `ADR 0004\|ADR 0006`-only, `.ts`/`.svelte`-only search, which
+is why the two numbers differ) and **9 are under `packages/desktop/electron/**`
+— NOT frozen for this run** (`export/controller.ts:239`, `api/remote.ts:65,164,278`,
+`api/vcs.ts:121`, `credential-store.ts:2`, `main.ts:1299,1353`), a scope this
+section previously omitted entirely.
+
+**`packages/desktop/src/**` (67 occurrences, 41 files / 63 for the narrower
+ADR-0004/0006-only count — `SnippetPicker.svelte`, `StatusBar.svelte`,
+`chapter-path.ts`, `source-range.ts`, `image-classes.ts`, and dozens more)
+is frozen** (out of this lane's write ownership — "MUST NOT WRITE" per the
+run's lane assignment, "frozen post-P6a"), so this decline's freeze
+rationale applies ONLY to that subtree. This is not a new defect this run
+introduces or fails to catch: SFE-P5a's own Lane C found and recorded the
+identical situation for ADR 0004 specifically ("restoring or authoring an
+ADR is outside this lane's write ownership" — deletion ledger's SFE-P5a
+"ADR statusing" section) and left it unresolved for the same boundary
+reason.
+
+**`packages/desktop/electron/**` (9 occurrences, 6 files) is NOT frozen —
+P6b rewrote this tree — so the freeze rationale above does not cover it.**
+Disposed separately: one of the six files, `github-device-flow-registrar.ts`,
+was CREATED by this run (P6b) and its "ADR 0006" citation is a new dangling
+reference this run introduced, not an inherited one — fixed directly (its
+header now names the feature by issue number only, with a note pointing at
+ADR 0009's "Note on predecessors" and this entry, matching the ADR
+0014/0016 footnote pattern rather than repeating a citation to a record
+that was never authored). The other five files' citations (`main.ts`,
+`credential-store.ts`, `api/remote.ts`, `api/vcs.ts`,
+`export/controller.ts`) predate this run and are declined for the same
+reason as the frozen subtree below them: "ADR 0006" (a GitHub device-flow /
+Advanced Setup / remote-sync record) is a topic none of this run's six new
+ADRs cover, so there is no new ADR to redirect those citations to —
+restoring or authoring ADR 0006 itself is out of this run's scope (the plan
+names six specific ADRs, not an open-ended backfill of every
+historically-deleted record). Being outside a WRITE FREEZE does not by
+itself obligate rewriting 5 more pre-existing citations to a record this
+run has no mandate to author.
+
+**`packages/cli` (103 occurrences) is declined for the same reason,
+repo-wide**: the large majority (93 of 103, sampled) are "ADR 0002" (PDF
+validation) and "ADR 0006"/"ADR 0006 D2-D7" (git/remote-auth/sync
+architecture: `src/lib/remote-auth/**`, `src/lib/publish/types.ts`,
+`src/api/index.ts`, and others) citations that predate this run by a wide
+margin — none of this run's six new ADRs cover the PDF-validation or
+git/remote-auth/sync topics either, so the same "no ADR to redirect to,
+authoring one is out of scope" reasoning applies without modification.
+`packages/cli` is not write-frozen for this run the way `desktop/src` is,
+but "not frozen" is not the same claim as "in scope" — none of this run's
+six ADRs, `docs/ARCHITECTURE.md` pass, or CODEOWNERS item names
+`packages/cli`'s git/remote-auth/PDF-validation comments as something this
+run corrects.
+
+Recorded here in full — not silently left unmentioned, and not understated
+by scoping the search narrower than the claim — per this ledger's own
 standard of honesty about what was and was not fixed.
 
 #### `docs/ARCHITECTURE.md` (the run specification's item 5)

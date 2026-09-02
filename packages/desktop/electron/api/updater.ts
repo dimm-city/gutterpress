@@ -10,13 +10,19 @@
  * user-initiated (non-silent) form" contract.
  *
  * This is the run's "collapse the fan-out" subject (P5c4 SPECIAL WEIGHT 1):
- * these three operations move from the HTTP route client to the bridge
- * alongside `applyNow`/`onEvent`, so `updater-capability.ts` becomes
- * single-transport — see that module's header for the renderer-side half.
+ * these four operations move from the HTTP route client to the bridge, so
+ * `updater-capability.ts` becomes single-transport — see that module's
+ * header for the renderer-side half. `applyNow` joined this file (rather
+ * than staying a direct `installNow()` call) in the SFE-P6b repair round:
+ * like every other `electron/api/*.ts` module, this file must stay
+ * Electron-runtime free (it loads and its handlers run under plain
+ * `bun test`, no Electron host present) — a top-level
+ * `import { installNow } from "../updater"` would drag `electron/updater.ts`'s
+ * own top-level `import "electron"` in with it. `applyNow` is reached
+ * through `UpdaterHooks` exactly like getStatus/check/download.
  */
 import { getUpdaterHooks } from "../server-bridge/updater-hooks";
 import type { UpdaterStatus } from "../../src/lib/platform/shared-types";
-import { installNow } from "../updater";
 import type { SecureHandle } from "../server-bridge/secure-handle";
 
 function requireHooks() {
@@ -40,16 +46,19 @@ export async function updaterDownload(): Promise<UpdaterStatus> {
   return requireHooks().download();
 }
 
-/**
- * Register the updater:* IPC channels (SFE-P6b). `updater:applyNow` calls
- * `installNow()` (electron/updater.ts) directly rather than through
- * `UpdaterHooks` — it has no main.ts-only state of its own to reach through
- * the collapsed host object, unlike getStatus/check/download (see that
- * module's header on `initUpdater()`'s process-wide state).
- */
+/** Quit and install the downloaded update. */
+export async function updaterApplyNow(): Promise<{
+  applied: boolean;
+  version?: string;
+  error?: string;
+}> {
+  return requireHooks().applyNow();
+}
+
+/** Register the updater:* IPC channels (SFE-P6b). */
 export function registerUpdaterHandlers(secureHandle: SecureHandle): void {
   secureHandle("updater:getStatus", () => updaterGetStatus());
   secureHandle("updater:check", () => updaterCheck());
   secureHandle("updater:download", () => updaterDownload());
-  secureHandle("updater:applyNow", () => installNow());
+  secureHandle("updater:applyNow", () => updaterApplyNow());
 }

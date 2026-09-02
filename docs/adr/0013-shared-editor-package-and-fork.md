@@ -1,6 +1,6 @@
 # ADR 0013 — One shared, framework-free editor package for desktop and VS Code
 
-Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a, P3c
+Date: 2026-09-01 · Status: accepted · Implemented by: SFE-P1a, P1b, P1b2, P3a, P3c, P3f
 
 > **Supersedes, in part:** the (missing) platform-abstraction ADR that
 > `CLAUDE.md` and several desktop source comments still cite as "ADR 0004" —
@@ -57,26 +57,58 @@ does not justify a fork"): the missing seam was narrow, precisely named, and
 had a direct precedent already shipping in the package (`renderMath`'s
 segment-mapping return shape). `packages/vscode-markdown-editor`
 (`@dimm-city/vscode-markdown-editor@0.0.2-84.gp.1`) is the resulting minimal
-internal fork:
+internal fork. It carries **two** patches, applied on top of the unmodified,
+published `0.0.2-84` artifact and fully itemized in
+`packages/vscode-markdown-editor/PATCHES.md`:
 
-- Adds one new option, `renderCustomBlock`, gated identically to the two
-  existing hooks (`!showMarkup` only) and reachable for the `"paragraph"`
-  and `"unhandledBlock"` AST arms specifically — the two arms P1b proved
-  have no seam today. No other view kind is touched.
-- Its return shape (`CustomBlockRendering { dom, segments? }`) is a direct,
-  non-math-specific rename of the package's own `MathRendering`/
-  `MathSourceSegment`, reusing the package's existing `Zs()` per-character
-  tiling helper rather than inventing a parallel mechanism.
-- Seven hunks total against upstream (`packages/vscode-markdown-editor/
-  PATCHES.md`): four behavioral in `dist/index.js`, three type-only in
-  `dist/index.d.ts`. No Gutterpress vocabulary anywhere in the patch, no
-  unrelated reformatting of upstream code, MIT notices retained, upstream
-  version and source recorded — matching every one of D5's fork
-  requirements.
-- Re-running the full D5 suite against the patched runtime (SFE-P1b2) turned
-  cases 4 and 5 from FAIL to PASS, with `segments` genuinely wired (not
-  deferred) for character-accurate caret entry and pointer-drag precision
-  matching the keyboard baseline.
+- **Patch 1 — `renderCustomBlock`** (Hunks 1-7): adds one new option,
+  `renderCustomBlock`, gated identically to the two existing hooks
+  (`!showMarkup` only) and reachable for the `"paragraph"` and
+  `"unhandledBlock"` AST arms specifically — the two arms P1b proved have no
+  seam today. No other view KIND is touched by this patch (a paragraph's own
+  `ViewData` gains one already-computed field it previously discarded before
+  view-construction — Hunks 1-2 — but no other block type's view or the
+  render loop itself is touched). Its return shape
+  (`CustomBlockRendering { dom, segments? }`) is a direct, non-math-specific
+  rename of the package's own `MathRendering`/`MathSourceSegment`, reusing
+  the package's existing `Zs()` per-character tiling helper rather than
+  inventing a parallel mechanism. Four hunks are behavioral in
+  `dist/index.js`, three are type-only in `dist/index.d.ts`.
+- **Patch 2 — `measurement`** (Hunks 8-10, SFE-P3f — the D13 250 KiB p95
+  budget fix): three behavioral hunks, all in `dist/index.js`, none in
+  `dist/index.d.ts`. Unlike Patch 1, this patch DOES touch the package's
+  core render loop: `gpTranslateVisualLineMap` is a new helper (Hunk 8),
+  `_publishMeasurements` — the sole producer of every consumer's measured
+  layout, per `PATCHES.md`'s own consumer map — gains an `incremental`
+  parameter (Hunk 9), and its `_renderAutorun` call site is updated to pass
+  it (Hunk 10). The patch translates a cached, correct `visualLineMap`
+  instead of re-walking the DOM for a block whose rendered subtree is
+  provably unchanged; every block still gets a complete measurement
+  published at the same point in the render cycle as before — see
+  `PATCHES.md`'s "Patch 2" section for the full consumer-safety argument and
+  the `absoluteStart`-keyed cache-reuse guard (`gpReusable`) that makes the
+  translation exact rather than approximate.
+
+Ten hunks total against upstream, across the two files the fork touches
+(`dist/index.js`, `dist/index.d.ts`) — not seven against one story. Both
+patches keep MIT notices, upstream version, and source recorded, and add no
+unrelated reformatting of upstream code — matching D5's fork requirements.
+"No Gutterpress vocabulary" describes the package's PUBLIC surface (option
+names, return shapes: `renderCustomBlock`, `CustomBlockRendering`) — the
+patch SITES themselves are deliberately marked with `/* gp-fork:
+renderCustomBlock */` / `/* gp-fork: measurement */` comments and, in Patch
+2, `gp`-prefixed internal identifiers (`gpTranslateVisualLineMap`,
+`gpReusable`) precisely so a patch site is unambiguous to find and diff
+against upstream; these are patch-site markers, not authoring vocabulary
+leaking into the package's behavior or API.
+
+Re-running the full D5 suite against the Patch-1-patched runtime (SFE-P1b2)
+turned cases 4 and 5 from FAIL to PASS, with `segments` genuinely wired (not
+deferred) for character-accurate caret entry and pointer-drag precision
+matching the keyboard baseline. Patch 2 (SFE-P3f) was added later, against a
+different D-decision (D13's performance budget), and is verified by its own
+differential proof (`docs/plans/source-first-editor/p3d-sweep-audit.md`,
+"Lane D") rather than the D5 suite.
 
 **No application code outside `packages/editor/src/vscode-adapter/` imports
 package internals** (D5), of either the upstream package or the fork — the
@@ -89,10 +121,14 @@ adapter.
   `packages/editor` (a selection bug, a projection-consumer bug) is fixed
   for both desktop and VS Code simultaneously, by construction.
 - The fork is bounded and auditable: `PATCHES.md` is the complete diff
-  against a named upstream version, so an upstream release that ships an
-  equivalent generic hook natively is a small, provable deletion (the same
-  "thin over capable, design for deletion" discipline root `CLAUDE.md`
-  applies to rendering-engine shims applies here to this fork).
+  against a named upstream version, so upstream shipping either of two
+  independent things natively is a small, provable deletion of the matching
+  patch — Patch 1 (`renderCustomBlock`) needs an equivalent generic
+  custom-block hook, Patch 2 (`measurement`) needs `_publishMeasurements`
+  to skip unchanged blocks on its own — and unforking the package entirely
+  requires BOTH, not one (the same "thin over capable, design for deletion"
+  discipline root `CLAUDE.md` applies to rendering-engine shims applies here
+  to this fork).
 - The fork remains an internal package, not a public Gutterpress API
   (D5) — `gutterpress`'s own public exports (ADR 0011, and this run's
   subpath work) never re-export it.

@@ -1,7 +1,11 @@
 /**
  * IPC-handler tests for `electron/api/updater.ts` (SFE-P5c4 — migrated off
  * `src/routes/api/updater/{get-status,check,download}/+server.ts`, deleted).
- * `applyNow`/`onEvent` were already IPC and are untouched.
+ * `onEvent` is a push channel with no request/reply handler here and is
+ * untouched by this file. `applyNow` was already IPC before SFE-P5c4 and
+ * (SFE-P6b) now runs through the same `UpdaterHooks` bag as getStatus/
+ * check/download instead of a direct `installNow()` import — see
+ * `electron/api/updater.ts`'s header for why.
  *
  * Ports the "updater server routes" describe block from the deleted
  * `migrated-ipc-routes.test.ts` — same 503-equivalent "hooks not
@@ -12,7 +16,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
-import { updaterGetStatus, updaterCheck, updaterDownload } from "../../electron/api/updater";
+import {
+  updaterGetStatus,
+  updaterCheck,
+  updaterDownload,
+  updaterApplyNow,
+} from "../../electron/api/updater";
 
 async function messageOf(p: Promise<unknown>): Promise<string | null> {
   try {
@@ -55,6 +64,12 @@ describe("updater:getStatus / updater:check / updater:download", () => {
     expect(message).toBe("Updater hooks not registered");
   });
 
+  test("applyNow: rejects when updater hooks are not registered (host-disconnected)", async () => {
+    registerHostServices(baseServices());
+    const message = await messageOf(updaterApplyNow());
+    expect(message).toBe("Updater hooks not registered");
+  });
+
   test("getStatus: calls hooks.getStatus and returns its result", async () => {
     const fakeStatus = {
       currentVersion: "1.0.0",
@@ -66,7 +81,12 @@ describe("updater:getStatus / updater:check / updater:download", () => {
     };
     registerHostServices({
       ...baseServices(),
-      updater: { getStatus: () => fakeStatus, check: async () => fakeStatus, download: async () => fakeStatus },
+      updater: {
+        getStatus: () => fakeStatus,
+        check: async () => fakeStatus,
+        download: async () => fakeStatus,
+        applyNow: async () => ({ applied: false }),
+      },
     });
     expect(await updaterGetStatus()).toEqual(fakeStatus);
   });
@@ -90,6 +110,7 @@ describe("updater:getStatus / updater:check / updater:download", () => {
           return fakeStatus;
         },
         download: async () => fakeStatus,
+        applyNow: async () => ({ applied: false }),
       },
     });
     expect(await updaterCheck()).toEqual(fakeStatus);
@@ -107,8 +128,38 @@ describe("updater:getStatus / updater:check / updater:download", () => {
     };
     registerHostServices({
       ...baseServices(),
-      updater: { getStatus: () => fakeStatus, check: async () => fakeStatus, download: async () => fakeStatus },
+      updater: {
+        getStatus: () => fakeStatus,
+        check: async () => fakeStatus,
+        download: async () => fakeStatus,
+        applyNow: async () => ({ applied: false }),
+      },
     });
     expect(await updaterDownload()).toEqual(fakeStatus);
+  });
+
+  test("applyNow: calls hooks.applyNow and returns its result", async () => {
+    let calls = 0;
+    const fakeResult = { applied: true, version: "1.1.0" };
+    registerHostServices({
+      ...baseServices(),
+      updater: {
+        getStatus: () => {
+          throw new Error("not needed for this test");
+        },
+        check: async () => {
+          throw new Error("not needed for this test");
+        },
+        download: async () => {
+          throw new Error("not needed for this test");
+        },
+        applyNow: async () => {
+          calls++;
+          return fakeResult;
+        },
+      },
+    });
+    expect(await updaterApplyNow()).toEqual(fakeResult);
+    expect(calls).toBe(1);
   });
 });

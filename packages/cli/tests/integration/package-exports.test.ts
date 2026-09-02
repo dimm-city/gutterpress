@@ -1,9 +1,12 @@
 /**
  * Package export surface gate (D11 / SFE-P6c).
  *
- * Proves three things about the PUBLISHED package (not source, `dist/`),
- * derived directly from `package.json#exports` so a future subpath addition
- * or removal is covered automatically without touching this file:
+ * Proves four things about the PUBLISHED package (not source, `dist/`).
+ * The first three are derived directly from `package.json#exports`, so a
+ * future subpath ADDITION is covered automatically without touching this
+ * file; a future REMOVAL is a different case those derived loops cannot see
+ * (they shrink along with `package.json#exports` and stay green) — the
+ * fourth item below is what catches that:
  *
  *   1. Every declared subpath resolves under a real Node.js resolver AND a
  *      real Bun resolver, using the package's own self-reference (Node/Bun
@@ -26,6 +29,11 @@
  *      still being missing from what gets published, if `package.json#files`
  *      drifts. `npm pack --dry-run --json` is the authoritative packing
  *      simulation (no network, no tag, nothing written to disk).
+ *   4. The subpath surface itself is exactly the D11-approved set
+ *      (`.`, `./api`, `./render`, `./plugins`), each with both a `types` and
+ *      a `default` condition — pinned explicitly rather than derived, so
+ *      deleting `exports["./plugins"]` (or any other subpath/condition)
+ *      fails this assertion instead of just generating fewer tests above.
  *
  * Requires `dist/` to already be built (`bun run build`) — this test proves
  * the export SURFACE, not the build step; a missing dist/ fails loudly with
@@ -63,6 +71,26 @@ beforeAll(() => {
       `package-exports.test.ts: ${entryFile ?? "dist/index.js"} does not exist. ` +
         `This test proves the EXPORT SURFACE against a built dist/ — run "bun run build" in packages/cli first.`,
     );
+  }
+});
+
+// SFE-P6 round-1 repair: every loop above derives its target set FROM
+// `package.json#exports` itself (`SUBPATHS = Object.keys(PKG.exports)`), so
+// this file proves addition is covered automatically but is structurally
+// blind to REMOVAL — deleting a subpath (or a `types`/`default` condition
+// under one) just shrinks the derived set and the whole suite stays green,
+// with one fewer test silently generated. `./plugins` in particular is the
+// D11 subpath SFE-P6c added specifically because it has real consumers
+// (packages/desktop/electron/editor-projection.ts,
+// packages/vscode-extension/src/project/projection.ts) — losing it would be
+// a real regression this file's derived loops cannot catch. This assertion
+// pins the approved surface explicitly, independent of whatever
+// `package.json#exports` currently says, so a removal fails loudly here
+// instead of just generating fewer tests.
+test("the public subpath surface is exactly the D11-approved set", () => {
+  expect(new Set(SUBPATHS)).toEqual(new Set([".", "./api", "./render", "./plugins"]));
+  for (const sp of SUBPATHS) {
+    expect(Object.keys(PKG.exports[sp]!).sort()).toEqual(["default", "types"]);
   }
 });
 

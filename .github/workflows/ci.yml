@@ -72,6 +72,15 @@ jobs:
         run: |
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
+      # tests/integration/package-exports.test.ts resolves gutterpress/* subpaths
+      # against a real build (dist/{index,api/index,render,plugins}.js + .d.ts) —
+      # it hard-fails (not skips, per AP-21) when dist/ is missing. build:library
+      # emits everything package.json#exports points at; mirrors the same
+      # prerequisite the `build`/`desktop-test`/`type-check` jobs already document.
+      - name: Build packages/cli dist (package-exports.test.ts resolves gutterpress/*)
+        working-directory: packages/cli
+        run: bun run build:library
+
       - name: Run tests
         run: bun --filter gutterpress test
 

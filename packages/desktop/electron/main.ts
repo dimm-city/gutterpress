@@ -101,6 +101,7 @@ import {
   download as downloadUpdate,
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
+  installNow,
 } from "./updater";
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
 import {
@@ -1550,19 +1551,26 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
 };
 
-// ── Updater status/check/download hooks (ARCH review #8, SFE-P5c4) ─────────
-// getStatus/checkForUpdates/download (electron/updater.ts) are plain
-// functions with no main.ts-only state of their OWN — but electron/updater.ts
-// itself has main-bundle-only mutable state (phase/lastError/…) populated by
-// the one initUpdater() call below. `electron/api/updater.ts`'s IPC handlers
-// reach THIS process's initialized instance through the same collapsed host
-// object as everything else. `check()` is always the user-initiated
-// (non-silent) form — the silent background recheck stays a direct call
-// inside main.ts, sharing the same underlying module state.
+// ── Updater status/check/download/applyNow hooks (ARCH review #8, SFE-P5c4,
+// SFE-P6b) ───────────────────────────────────────────────────────────────
+// getStatus/checkForUpdates/download/installNow (electron/updater.ts) are
+// plain functions with no main.ts-only state of their OWN — but
+// electron/updater.ts itself has main-bundle-only mutable state
+// (phase/lastError/…) populated by the one initUpdater() call below.
+// `electron/api/updater.ts`'s IPC handlers reach THIS process's initialized
+// instance through the same collapsed host object as everything else —
+// `applyNow` included, so that api/updater.ts (like every other
+// electron/api/*.ts module) never needs a top-level `import "../updater"`,
+// which would drag electron/updater.ts's own top-level `import "electron"`
+// into a module that must stay loadable under plain `bun test`. `check()`
+// is always the user-initiated (non-silent) form — the silent background
+// recheck stays a direct call inside main.ts, sharing the same underlying
+// module state.
 const updaterHooksImpl: UpdaterHooks = {
   getStatus: () => getUpdaterStatus(),
   check: () => checkForUpdates(),
   download: () => downloadUpdate(),
+  applyNow: () => installNow(),
 };
 
 // ── ONE registration for the entire host/route seam (ARCH review #31) ───────

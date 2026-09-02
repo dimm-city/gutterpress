@@ -256,6 +256,51 @@ describe("RichDocHostController — whenSettled()", () => {
     await ctrl.whenSettled();
     expect(settled).toBe(true);
   });
+
+  test("a superseded build's .finally does not clear `pending` while a NEWER build is still in flight — whenSettled() called after B resolves still waits for C", async () => {
+    // Pins the epoch guard inside rebuild()'s `.finally(() => { if (epoch
+    // === this.epoch) this.pending = null; })` — see that method's source.
+    // Without the `epoch === this.epoch` check, B's `.finally` would null
+    // `this.pending` unconditionally the moment B settles, even though
+    // `this.pending` was reassigned to C's (still in-flight) promise by the
+    // later rebuild() call. A `whenSettled()` call made AFTER that point
+    // would then see `this.pending === null` and resolve immediately,
+    // returning to its caller (e.g. `+page.svelte`'s `selectEditorFile`)
+    // before the rebuilt host has actually published — the exact SFE-P3e
+    // round-2 bug `whenSettled()` exists to close, reintroduced one level
+    // deeper. This differs from the "resolution order reversed" test above:
+    // that one only proves the PUBLISHED value ends up correct; this one
+    // proves the `pending` bookkeeping itself survives a superseded build
+    // resolving first, independent of what gets published.
+    const builder = fakeBuilder();
+    const ctrl = new RichDocHostController({
+      buildProjection: builder.buildProjection,
+      onSnapshotChange: () => {},
+    });
+
+    ctrl.rebuild("/proj/b.md", "B content");
+    ctrl.rebuild("/proj/c.md", "C content");
+
+    // B (epoch 1, superseded) resolves first and fully settles — its
+    // `.then` AND `.finally` both run — before whenSettled() is even called.
+    builder.resolve(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    let settled = false;
+    void ctrl.whenSettled().then(() => (settled = true));
+    await Promise.resolve();
+    // THE LOAD-BEARING ASSERTION: `pending` must still be C's promise here,
+    // so whenSettled() must not have resolved yet.
+    expect(settled).toBe(false);
+    expect(ctrl.host).toBeNull(); // C hasn't published yet either
+
+    builder.resolve(1);
+    await ctrl.whenSettled();
+    expect(settled).toBe(true);
+    expect(ctrl.host?.getSnapshot().text).toBe("C content");
+  });
 });
 
 describe("RichDocHostController — edit forwarding", () => {

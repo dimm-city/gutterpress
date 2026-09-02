@@ -95,21 +95,32 @@ Gutterpress-specific trust prompt of its own.
 The webview mounts `@dimm-city/gutterpress-editor`, which in turn depends
 on `@dimm-city/vscode-markdown-editor` — a minimal internal fork of
 `@vscode/markdown-editor@0.0.2-84` (ADR 0013 has the full compatibility-gate
-record). The fork adds exactly one generic hook
-(`renderCustomBlock`, gated identically to the package's own pre-existing
-`renderCustomCodeBlock`/`renderMath` hooks) that the upstream package does
-not expose today.
+record). The fork carries **two** independent patches
+(`packages/vscode-markdown-editor/PATCHES.md`):
 
-**Removal trigger:** if a future `@vscode/markdown-editor` release ships an
-equivalent generic custom-block rendering hook natively,
-`packages/vscode-markdown-editor` should be deleted and
-`packages/editor`'s adapter re-pointed at the upstream package directly —
+- **`renderCustomBlock`** (SFE-P1b/P1b2) — one generic hook, gated
+  identically to the package's own pre-existing
+  `renderCustomCodeBlock`/`renderMath` hooks, that the upstream package does
+  not expose today.
+- **`measurement`** (SFE-P3f) — a performance fix to the package's own
+  render loop (`_publishMeasurements`/`_renderAutorun`) that skips
+  re-measuring a block's DOM geometry when its rendered subtree is provably
+  unchanged, closing the D13 250 KiB p95 budget miss the unpatched package's
+  unconditional per-keystroke remeasurement caused.
+
+**Removal trigger — both conditions, not one:** unforking
+`packages/vscode-markdown-editor` and re-pointing `packages/editor`'s
+adapter at the upstream package directly requires a future
+`@vscode/markdown-editor` release to ship BOTH an equivalent generic
+custom-block rendering hook AND a way to skip remeasuring an unchanged
+block — solving only one leaves the other patch (and the fork) in place.
 `packages/vscode-markdown-editor/PATCHES.md` is the complete, bounded diff
-against the pinned upstream version, so that deletion is a small, provable
-change, not a re-audit of the whole dependency. This extension never
-imports the fork (or the unforked upstream package) directly; it only ever
-sees `@dimm-city/gutterpress-editor`'s own public surface, so the fork's
-removal is invisible to this package's own code.
+against the pinned upstream version for both patches, so removing either
+one (once upstream ships its equivalent) is a small, provable change, not a
+re-audit of the whole dependency. This extension never imports the fork (or
+the unforked upstream package) directly; it only ever sees
+`@dimm-city/gutterpress-editor`'s own public surface, so the fork's removal
+is invisible to this package's own code.
 
 ## Build and test
 
