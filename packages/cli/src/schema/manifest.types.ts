@@ -7,6 +7,13 @@ export interface PluginConfig {
   version?: string;
   /** Named module export to use when the package has no default plugin export. */
   export?: string;
+  /**
+   * Load order (default 100). Higher loads first; built-in plugins always
+   * load before any user plugin regardless of this value. Advanced/rarely
+   * needed: a plugin needs the LOWER of two priorities to see tokens the
+   * other one produces, since it must load (and run) after it — see
+   * examples/gutterpress-user-guide/05-plugins.md#plugin-load-order.
+   */
   priority?: number;
   options?: Record<string, unknown>;
   /**
@@ -98,15 +105,13 @@ export interface GutterpressManifest {
   engine?: "paged" | "native";
   /**
    * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
-   * only list that still applies; `.paged` is accepted-but-ignored (a warning
-   * fires if it has entries).
+   * only list this type declares; a manifest that still carries `.paged`
+   * (dual-engine era, pre-0.10.7) keeps parsing — `resolveConfig` reads it
+   * through a widened cast and warns once — but it is no longer part of the
+   * authored/autocompleted shape (see `manifest.schema.json`, which drops it
+   * too), since the native engine is the only engine.
    */
   engineStyles?: {
-    /**
-     * Accepted for backward-compatible manifest parsing only; entries here are
-     * ignored with a warning.
-     */
-    paged?: string[];
     native?: string[];
   };
   /**
@@ -159,6 +164,13 @@ export interface GutterpressManifest {
       markdownlint?: string | false;
       htmlhint?: string | false;
       stylelint?: string | false;
+      /**
+       * Path to a CSS ownership contract (#232), or `false` to disable
+       * `source.css-ownership`. Optional — absent means no contract, so the
+       * check reports nothing. Default discovery: `.gutterpress/css-contract.yaml`
+       * (or `.yml`) in the project root. See docs/css-ownership-contract.md.
+       */
+      cssOwnership?: string | false;
       /**
        * @deprecated `:::name` container syntax was removed 2026-05-17 and the
        * callout-validation check it gated was removed at the same time. This
@@ -261,6 +273,7 @@ export interface ResolvedConfig {
       markdownlint: string | false | null;
       htmlhint: string | false | null;
       stylelint: string | false | null;
+      cssOwnership: string | false | null;
     };
     assets: {
       maxImageSize: number;

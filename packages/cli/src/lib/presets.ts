@@ -84,6 +84,7 @@ export const DTRPG_PRESET: VendorPreset = {
       markdownlint: null,
       htmlhint: null,
       stylelint: null,
+      cssOwnership: null,
     },
     assets: {
       maxImageSize: 10_000_000,
@@ -180,6 +181,7 @@ export const BOOK_PRESET: VendorPreset = {
       markdownlint: null,
       htmlhint: null,
       stylelint: null,
+      cssOwnership: null,
     },
     assets: {
       maxImageSize: 10_000_000,

@@ -44,7 +44,7 @@ A bare string is treated as either a **file path** or an **npm package name**:
 | `version` | string | — | Exact version of a project-local npm plugin installed by Gutterpress. |
 | `export` | string | — | Named module export to use when the package has no default plugin export. |
 | `options` | object | `{}` | Passed as the second argument to the plugin function. |
-| `priority` | number | `100` | Higher loads first. Built-in plugins always run before user plugins. |
+| `priority` | number | `100` | Advanced, rarely needed — see [Plugin Load Order](#plugin-load-order). Controls load order between YOUR plugins: higher loads first; built-in plugins always run before any user plugin regardless of this value. |
 
 @end-section
 
@@ -222,10 +222,27 @@ plugins:
 
 ## Plugin Load Order
 
-1. Built-in plugins (fixed order as listed above)
-2. User plugins from the manifest, sorted by `priority` descending (higher first), then in manifest order for ties
+Most manifests never need to think about load order at all: plugins that
+don't inspect each other's output can list `priority` at its default (or omit
+it) and it just works. Read on only if two of your plugins actually interact.
 
-If a user plugin needs to inspect tokens produced by another user plugin, set its `priority` lower so it runs later.
+**A plugin sees another plugin's tokens only if it loads *after* it — which
+means giving it the *lower* `priority` number of the two.** Plugins register
+their token transforms with markdown-it in load order, and a transform
+registered earlier runs first during parsing. So if plugin B needs to see
+tokens plugin A produces, A must load first — the higher-priority plugin — and
+B, which needs the lower priority, runs later and sees A's output.
+
+Full order:
+
+1. Built-in plugins (fixed order as listed above) — these always run before
+   any user plugin, so a user plugin's transforms always see core's markers
+   already expanded.
+2. User plugins from the manifest, sorted by `priority` descending (higher
+   first), then in manifest order for ties.
+
+`priority` is an advanced escape hatch for that one case, not something most
+plugin authors or manifest authors will ever set.
 
 ## Error Handling
 
