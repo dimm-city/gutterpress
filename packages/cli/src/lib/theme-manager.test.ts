@@ -15,6 +15,7 @@ import {
   revertTheme,
   themeStyleList,
   THEMES_DIR,
+  themeEngineStyleList,
 } from "./theme-manager";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `theme-manager-tests-${Date.now()}`);
@@ -290,6 +291,15 @@ describe("theme-manager", () => {
       expect(themeStyleList({})).toEqual(["theme.css"]);
       expect(themeStyleList({ styles: [] })).toEqual(["theme.css"]);
       expect(themeStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
+    });
+
+    test("a declared sheet outside the theme folder is rejected (a theme is self-contained by contract)", () => {
+      expect(() => themeStyleList({ styles: ["../outside.css"] })).toThrow(/inside the theme folder/);
+      expect(() => themeStyleList({ styles: ["/etc/passwd"] })).toThrow(/inside the theme folder/);
+      expect(() => themeEngineStyleList({ engineStyles: { native: ["css/../../x.css"] } })).toThrow(
+        /inside the theme folder/,
+      );
+      expect(themeStyleList({ styles: ["css/tokens.css"] })).toEqual(["css/tokens.css"]);
     });
 
     function writeMultiSheetTheme(dir: string, id: string, opts: { engineStyles?: string[] } = {}): void {

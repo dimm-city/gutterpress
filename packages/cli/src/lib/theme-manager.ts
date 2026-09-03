@@ -193,7 +193,20 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
   const declared = Array.isArray(meta.styles)
     ? meta.styles.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
-  return declared.length > 0 ? declared : ["theme.css"];
+  return declared.length > 0 ? declared.map((s) => assertInsideThemeFolder(s, "styles")) : ["theme.css"];
+}
+
+/**
+ * A declared sheet must live INSIDE the theme folder. A theme is
+ * self-contained by contract (apply copies the whole folder), and an imported
+ * package is untrusted input: a `../` or absolute entry would make apply read
+ * a file from anywhere on disk into the book.
+ */
+function assertInsideThemeFolder(rel: string, field: string): string {
+  if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
+    throw new Error(`theme.json ${field} entry "${rel}" must be a path inside the theme folder.`);
+  }
+  return rel;
 }
 
 /**
@@ -205,7 +218,9 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
  */
 export function themeEngineStyleList(meta: ThemeMetadata): string[] {
   return Array.isArray(meta.engineStyles?.native)
-    ? meta.engineStyles.native.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    ? meta.engineStyles.native
+        .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        .map((s) => assertInsideThemeFolder(s, "engineStyles.native"))
     : [];
 }
 
