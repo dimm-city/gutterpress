@@ -94,6 +94,25 @@ downloading a third-party plugin.
 
 ## Writing a Plugin
 
+### Start from the scaffold
+
+```sh
+gutterpress new "Field Notes" --kind plugin
+cd field-notes && bun install && bun test
+```
+
+That produces a complete, runnable package: `gutterpress.json`, a `plugin.js` with one declarative container and one hand-written rule, component CSS with public `:root` tokens, an insertable snippet, and a fixture test you run with `bun test`. Its README explains which conventions are load-bearing and why — class prefixing, why you cannot import `gutterpress` at runtime, and where your CSS belongs in the cascade.
+
+Use `--prefix` to choose the class prefix it claims (it defaults to the package slug):
+
+```sh
+gutterpress new "Field Notes" --kind plugin --prefix fn-
+```
+
+The rest of this chapter explains what the scaffold contains.
+
+### By hand
+
 A Gutterpress plugin is a standard markdown-it plugin. The minimum is one exported function:
 
 ```js
@@ -282,6 +301,6 @@ Gutterpress **fails the build** on plugin errors. Silent skipping was the previo
 
 ## Reference Example
 
-The Dimm City Field Guide plugin — a full-featured reference (~1,800 lines) covering custom markers, block rules, token transforms, and CSS shipping — used to live in this repo under `examples/dc-design-guide/`. That example has moved to the `dc-op-manual` repo (`dc-op-manual/dc-design-guide/`); see it there for a worked example of what a complex plugin looks like. Most real-world plugins are far smaller.
+**The template is the scaffold**: `gutterpress new "My Plugin" --kind plugin`. It is small on purpose, every convention in it is one you should keep, and its test suite runs with `bun test` from the moment it is created.
 
-Treat it as a demonstration of the plugin API surface, not a template to copy wholesale.
+For a look at what a large plugin becomes, the Dimm City Field Guide plugin (~1,800 lines — custom markers, block rules, token transforms, CSS shipping) lives in the `dc-op-manual` repo under `dc-op-manual/dc-design-guide/`. Read it to see the scale a mature plugin reaches; do not copy it as a starting point. Most real-world plugins are far smaller, and the scaffold is where they should start.
