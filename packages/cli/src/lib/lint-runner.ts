@@ -9,6 +9,18 @@ import { loadPluginsWithCss } from "./markdown/plugins";
 export interface LintRunnerOptions {
   files?: string;
   manifest?: string;
+  /**
+   * Pre-loaded, absolute plugin `styles` file paths (#262) — supplied by the
+   * build pipeline (`build-runner.ts`'s `runQualityGates`, via
+   * `loadBuildPlugins`) so this call does not load plugins a second time in
+   * the same build. `undefined` (the default — every standalone
+   * `gutterpress lint` invocation) makes this function load plugins itself,
+   * exactly as before, with the same degrade-and-report (warn-and-skip)
+   * behavior for a plugin that fails to load. An explicit `[]` from a caller
+   * that already knows there is nothing to add is honored as-is, not treated
+   * as "unset".
+   */
+  pluginStylePaths?: string[];
 }
 
 export interface LintRunnerResult {
@@ -54,17 +66,27 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     const projectFiles = relStyles.map((rel) => resolve(manifestDir, rel));
 
     // #238: a plugin's file-based `styles` are a real, lintable CSS surface
-    // now too — no longer an opaque string printsafe never saw. Loaded
-    // degrade-and-report: a plugin that can't load is a WARNING here, not a
-    // reason to fail `gutterpress lint` outright (that fail-fast bar belongs
-    // to build/export, not this pre-flight check — see loadPlugins' doc
-    // comment on the two failure modes). Already-absolute paths pass through
-    // untouched below.
-    const { pluginStylePaths } = await loadPluginsWithCss(
-      resolved.plugins,
-      manifestDir,
-      (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
-    );
+    // now too — no longer an opaque string printsafe never saw.
+    //
+    // #262: when the build's quality-gate stage already loaded plugins for
+    // this exact manifest (build-runner.ts's loadBuildPlugins), it passes the
+    // resolved paths in directly and this skips loading them a second time —
+    // an npm-vendored plugin's vendor-tree verification
+    // (plugin-vendor.ts's verifyVendoredPlugin/computeVendorTreeDigest) is
+    // not free. A standalone `gutterpress lint` run has no such preload, so
+    // it loads plugins itself here, same as always: degrade-and-report — a
+    // plugin that can't load is a WARNING here, not a reason to fail
+    // `gutterpress lint` outright (that fail-fast bar belongs to build/export,
+    // not this pre-flight check — see loadPlugins' doc comment on the two
+    // failure modes). Already-absolute paths pass through untouched below.
+    let pluginStylePaths = opts.pluginStylePaths;
+    if (pluginStylePaths === undefined) {
+      ({ pluginStylePaths } = await loadPluginsWithCss(
+        resolved.plugins,
+        manifestDir,
+        (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
+      ));
+    }
 
     files = [...projectFiles, ...pluginStylePaths].filter((f) => !f.endsWith(".min.css"));
   }
