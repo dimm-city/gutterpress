@@ -497,7 +497,7 @@ export interface BlockAnchor {
 }
 
 /**
- * A wrapper element a plugin opened around authored blocks — see
+ * A wrapper element a plugin opened around authored blocks -  see
  * {@link collectPluginContainers}.
  */
 export interface PluginContainer {
@@ -511,7 +511,7 @@ export interface PluginContainer {
 
 /**
  * Attributes the pipeline left on an authored block that survived every
- * plugin — see {@link collectBlockAttributes}.
+ * plugin -  see {@link collectBlockAttributes}.
  */
 export interface BlockAttributes {
   readonly from: number;
@@ -531,8 +531,8 @@ export interface BlockAttributes {
 const BLANK_LINE_RE = /\n[ \t]*\n/;
 /**
  * For each wrapper `htmlFragmentNesting(html)` leaves open, in the same
- * order: does content follow its opening tag — text, or an element the
- * fragment closes (a label span, an image) — rather than only more opening
+ * order: does content follow its opening tag -  text, or an element the
+ * fragment closes (a label span, an image) -  rather than only more opening
  * tags and whitespace?
  */
 function openersWithContent(html: string): boolean[] {
@@ -581,7 +581,7 @@ function evidenceLines(token: Token): readonly [number, number] | null {
  * blocks, in nesting order (an outer wrapper before the one it holds).
  *
  * A plugin's wrapper is an `html_block` it built by hand, with no evidence
- * of its own — but the authored blocks around it still carry theirs, and
+ * of its own -  but the authored blocks around it still carry theirs, and
  * they are what a wrapper is anchored to: it opens at the first authored
  * block inside it and closes at the first one after it. Nothing about the
  * marker that caused the wrapper is needed, and nothing about the plugin:
@@ -591,7 +591,7 @@ function evidenceLines(token: Token): readonly [number, number] | null {
  * Which tags an `html_block` leaves open, and how many it closes, is read
  * from the HTML itself ({@link htmlFragmentNesting}).
  *
- * Only a top-level block is an anchor — the editor groups top-level blocks,
+ * Only a top-level block is an anchor -  the editor groups top-level blocks,
  * and a wrapper a plugin opened around the paragraphs INSIDE a list item is
  * not one it can mount. A wrapper with no authored block inside it wraps
  * nothing and is dropped.
@@ -619,7 +619,7 @@ function collectPluginContainers(
   let pendingOpen: Open[] = [];
   let pendingClose: Open[] = [];
   let seq = 0;
-  /** How many layout scopes (`@section`, `@page`, …) are open. */
+  /** How many layout scopes (`@section`, `@page`, ...) are open. */
   let depth = 0;
   const closeAt = (anchor: BlockAnchor): void => {
     for (const c of pendingClose) {
@@ -644,8 +644,8 @@ function collectPluginContainers(
       }
       // A layout scope's closer (`@end-section`) is a block of the editor's
       // too, and a wrapper opened inside the scope ends there at the latest
-      // — never at the first block after the scope, which would reach
-      // across its boundary — whether the plugin closed it just before or
+      // -  never at the first block after the scope, which would reach
+      // across its boundary -  whether the plugin closed it just before or
       // left it open.
       const closerLine = token.type.startsWith("layout_") && token.nesting === -1 ? layoutTokenLine(token) : null;
       if (closerLine !== null) {
@@ -658,7 +658,7 @@ function collectPluginContainers(
       }
     }
     if (token.type !== "html_block" || token.map) continue;
-    // Plugin HTML that stands in for an authored line (`@callout …` became
+    // Plugin HTML that stands in for an authored line (`@callout ...` became
     // the callout's opening tag and label) is that line's own block in the
     // editor: the wrapper it opens begins WITH that block, so the label the
     // block renders sits inside the wrapper the way it does on the page, and
@@ -733,8 +733,8 @@ interface ElementFrame {
   /** Its `tag:nth-of-type(n)` step; null for a token that renders no element of its own. */
   readonly step: string | null;
   /**
-   * Whether a null step is see-through — a tight list's hidden paragraph
-   * puts its content straight into the item — or a plugin's own element
+   * Whether a null step is see-through -  a tight list's hidden paragraph
+   * puts its content straight into the item -  or a plugin's own element
    * the editor cannot name, under which no path is known.
    */
   readonly transparent: boolean;
@@ -746,9 +746,9 @@ interface ElementFrame {
  * The attributes the pipeline left on the authored blocks that survived it,
  * and on the elements inside them.
  *
- * A plugin that WRAPS rather than rewrites — leaves the author's heading a
+ * A plugin that WRAPS rather than rewrites -  leaves the author's heading a
  * heading and adds a class to it, or a `data-tier` on each row of the
- * author's table — produces a page whose blocks the editor already renders
+ * author's table -  produces a page whose blocks the editor already renders
  * from source; the only thing the editor cannot derive is the attribute.
  * This carries it, keyed by the block's own evidence range and the path to
  * the element within it, so the editor can put it back on the element it
@@ -822,7 +822,7 @@ function collectBlockAttributes(tokens: readonly Token[], source: string, starts
 
 /**
  * An inline element a plugin wrapped around a run of the author's own text
- * inside a block — see {@link collectInlineWrappers}.
+ * inside a block -  see {@link collectInlineWrappers}.
  */
 export interface InlineWrapper {
   /** The block's range (its evidence), the same key as {@link BlockAttributes}. */
@@ -844,8 +844,8 @@ const WRAPPED_TEXT_RE = /^<([a-z][\w-]*)((?:\s+[^<>]*?)?)>([\s\S]*)<\/\1>$/i;
  * A plugin that marks a phrase (`ROLL THE DIE!` into a styled span) does it
  * with a token of its own that renders as one element around the text,
  * leaving the text as written. The editor renders inline content from
- * source and cannot know the element, so this names it — by the block's
- * range, the exact text, and the element — for the editor to put around
+ * source and cannot know the element, so this names it -  by the block's
+ * range, the exact text, and the element -  for the editor to put around
  * the same text in its own rendering of the block. Read from the render,
  * not the token type: a token is a plugin's wrapper exactly when its
  * rendering is one element whose content is the token's own text.
@@ -912,20 +912,20 @@ export interface GutterpressProjection {
    */
   readonly limited?: true;
   /**
-   * Container elements this document's PLUGINS opened, in nesting order —
+   * Container elements this document's PLUGINS opened, in nesting order - 
    * see {@link PluginContainer}. Empty for a document with no plugin
    * containers, which is every project that uses only core's markers.
    */
   readonly pluginContainers: readonly PluginContainer[];
   /**
-   * Attributes the pipeline left on authored top-level blocks — see
+   * Attributes the pipeline left on authored top-level blocks -  see
    * {@link BlockAttributes}. Empty for a document whose blocks carry only
    * what the author wrote in them.
    */
   readonly blockAttributes: readonly BlockAttributes[];
   /**
    * Inline elements plugins wrapped around runs of authored text inside
-   * blocks — see {@link InlineWrapper}. Empty for a document whose inline
+   * blocks -  see {@link InlineWrapper}. Empty for a document whose inline
    * content is markdown-it's own.
    */
   readonly inlineWrappers: readonly InlineWrapper[];
@@ -1135,8 +1135,8 @@ function pluginRegionLinesLookAuthored(
    * plugin: 51 of 69 recoveries in one chapter of the Dimm City Field Guide,
    * each one a block quote or an ordered list the plugin legitimately
    * replaced. The other two checks apply to both, and the nested-marker one
-   * is what still refuses a run that swallowed a Gutterpress marker line —
-   * one of core's own kinds (`@page`, `@end-section`, …), whose meaning the
+   * is what still refuses a run that swallowed a Gutterpress marker line - 
+   * one of core's own kinds (`@page`, `@end-section`, ...), whose meaning the
    * layout transform owns. A plugin's own vocabulary (`@end-outcome` closing
    * the paragraph the `@outcome` macro consumed) is the region's content,
    * not a swallowed marker, and is exactly what such a run is expected to
@@ -1157,7 +1157,7 @@ function pluginRegionLinesLookAuthored(
   return true;
 }
 
-/** A line that is one of core's own markers — the kinds `markers.js` transforms. */
+/** A line that is one of core's own markers -  the kinds `markers.js` transforms. */
 const CORE_MARKER_LINE_RE = new RegExp(`^[ \\t]*@(?:${KNOWN_KINDS.join("|")})(?=[\\s{.#]|$)`);
 
 /**

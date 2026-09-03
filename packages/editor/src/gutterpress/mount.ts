@@ -123,8 +123,8 @@ export function mountGutterpressEditor(
       themeClassName: options.themeClassName,
       showReadonlyToggle: options.showReadonlyToggle,
       decorateInactiveBlock: (element, node, sourceText, absoluteStart) => {
-        // The locked view's DOM is made the page's first — a table's rows in
-        // their tbody, the fork's hidden syntax gone — so that the pipeline's
+        // The locked view's DOM is made the page's first -  a table's rows in
+        // their tbody, the fork's hidden syntax gone -  so that the pipeline's
         // attributes, named by the page's own paths, find their elements.
         if (readonly) {
           stripHiddenMarkup(element);

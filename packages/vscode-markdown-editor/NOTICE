@@ -1,5 +1,5 @@
 This package, @dimm-city/vscode-markdown-editor, is an internal Gutterpress
-fork of @vscode/markdown-editor@0.0.2-85, published by Microsoft Corporation
+fork of @vscode/markdown-editor@0.0.2-87, published by Microsoft Corporation
 under the MIT License. The upstream package declares "license": "MIT" in its
 own package.json; the published npm tarball ships no separate LICENSE file,
 so the MIT license text below is reproduced from the standard MIT template
@@ -33,18 +33,22 @@ Provenance
 ----------
 
 Upstream package:    @vscode/markdown-editor
-Upstream version:    0.0.2-85 (re-pinned 2026-09-02 from 0.0.2-84; every
-                      vendored file is byte-identical between the two)
+Upstream version:    0.0.2-87 (re-pinned 2026-09-03 from 0.0.2-85, itself
+                      re-pinned 2026-09-02 from 0.0.2-84; dist/index.js and
+                      dist/index.d.ts are byte-identical across all three,
+                      so every patch carries over; 0.0.2-87 changed only
+                      dist/web-editors.js, .d.ts and .js.map, which this
+                      fork vendors unpatched and Gutterpress does not import)
 Upstream source:     microsoft/vscode-packages, directory
                       vscode-team-tools/packages/markdown-editor
-Upstream commit:     c04545f2b72446a3b2fd76bf9085aca5a009ad1f (package.json
+Upstream commit:     d9273d06982df9665363145e27b502205abe2ba1 (package.json
                       "gitHead" field, as published)
-Vendored from:       https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-85.tgz
-Tarball integrity:   sha512-9mtAwdyzDqrPAPDcupyu2iahyZU4V3gvzxhS5rvbThRkARJshQOiHkIhQNuO0LgkVEy2pwWoKa+AKE+qfx7xzA==
+Vendored from:       https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-87.tgz
+Tarball integrity:   sha512-c1T5c2p2btf8NGVARkDN/qGezyZ25xCL/2KXqwsQeh9NmcH4bPZi2CtaeaLmQU2EyHS7WpdYKcIdwGMrJstLEg==
                       (verified against the registry's recorded
                       dist.integrity for this exact version at vendor time;
                       also cross-checked by sha1 against dist.shasum,
-                      ed3fcb3b29d920b5ebfed8a3cdba286c72dd10ef)
+                      dcd62737850c848421dc399d5fba802eef9958c4)
 
 This fork was vendored from the PUBLISHED, BUNDLED NPM ARTIFACT
 (dist/index.js, dist/index.d.ts, and the other dist/ and src/*.css files

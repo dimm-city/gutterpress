@@ -9,7 +9,7 @@ import type { CustomViewMountOptions } from "./support/entry.ts";
 
 /**
  * SFE-P1b Lane C — real-Chromium spikes proving or disproving D5 cases 4, 5,
- * and 6 against the exact pinned `@vscode/markdown-editor@0.0.2-85` runtime
+ * and 6 against the exact pinned `@vscode/markdown-editor@0.0.2-87` runtime
  * (I-01: "exercise the exact pinned runtime", not package declarations).
  *
  * Probes (matching the run spec exactly):

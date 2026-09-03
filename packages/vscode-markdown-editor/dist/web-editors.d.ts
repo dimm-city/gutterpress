@@ -1,4 +1,5 @@
 import { ContentType } from '@vscode/web-editors';
+import { HostTransport } from '@vscode/web-editors';
 import { IDisposable } from '@vscode/observables';
 
 export declare interface CodeBlockEditorProviderDefinition {
@@ -71,8 +72,11 @@ declare interface IEmbeddedCodeEditorFactory {
     create(language: string, infoString: string, initialContent: string): IEmbeddedCodeEditor | undefined;
 }
 
+export declare type IframeEmbeddedEditorHostTransport = HostTransport & IDisposable;
+
 export declare interface IframeEmbeddedEditorProvider extends CodeBlockEditorProviderDefinition {
     readonly resolve: (infoString: string) => Promise<ResolvedIframeEmbeddedEditor | undefined>;
+    readonly createHostTransport?: (runtimeKey: string) => IframeEmbeddedEditorHostTransport;
 }
 
 export declare type IframeEmbeddedEditorProviderSelector = CodeBlockEditorSelector;
@@ -113,6 +117,7 @@ declare class OffsetRange {
 
 declare class PhysicalIframe implements IDisposable {
     private readonly _descriptor;
+    private readonly _hostTransport;
     private readonly _frameRoot;
     private readonly _scriptNonce;
     private readonly _themeCss;
@@ -122,9 +127,10 @@ declare class PhysicalIframe implements IDisposable {
     private _host;
     private _transport;
     private _pendingEditor;
+    private _reportedHeight;
     private _disposed;
     private readonly _onWindowMessage;
-    constructor(pool: PhysicalIframePool, _descriptor: ResolvedIframeEmbeddedEditor, frameLayer: HTMLElement, _frameRoot: HTMLElement, _scriptNonce: string | undefined, _themeCss: string | (() => string) | undefined);
+    constructor(pool: PhysicalIframePool, _descriptor: ResolvedIframeEmbeddedEditor, _hostTransport: IframeEmbeddedEditorHostTransport | undefined, frameLayer: HTMLElement, _frameRoot: HTMLElement, _scriptNonce: string | undefined, _themeCss: string | (() => string) | undefined);
     bind(editor: VirtualizedIframeEmbeddedEditor): void;
     unbind(): void;
     layout(editor: VirtualizedIframeEmbeddedEditor): void;
@@ -132,16 +138,19 @@ declare class PhysicalIframe implements IDisposable {
     private _setup;
     private _getThemeCss;
     private _postTheme;
+    private _applyReportedHeight;
 }
 
 declare class PhysicalIframePool implements IDisposable {
+    private readonly _provider;
     private readonly _frameLayer;
     private readonly _frameRoot;
     private readonly _scriptNonce;
     private readonly _themeCss;
+    private readonly _iframeBootstrapUrl;
     readonly descriptor: ResolvedIframeEmbeddedEditor;
     private readonly _frames;
-    constructor(descriptor: ResolvedIframeEmbeddedEditor, _frameLayer: HTMLElement, _frameRoot: HTMLElement, _scriptNonce: string | undefined, _themeCss: string | (() => string) | undefined);
+    constructor(_provider: IframeEmbeddedEditorProvider, descriptor: ResolvedIframeEmbeddedEditor, _frameLayer: HTMLElement, _frameRoot: HTMLElement, _scriptNonce: string | undefined, _themeCss: string | (() => string) | undefined, _iframeBootstrapUrl: string | undefined);
     get leasedFrames(): number;
     get idleFrames(): number;
     acquire(editor: VirtualizedIframeEmbeddedEditor): void;
@@ -154,6 +163,9 @@ declare class PhysicalIframePool implements IDisposable {
 
 export declare interface ResolvedIframeEmbeddedEditor {
     readonly html: string;
+    readonly runtimeKey: string;
+    readonly resourceBaseUrl?: string;
+    readonly hostTransport?: boolean;
     readonly contentType?: ContentType;
     readonly initialHeight?: number;
     readonly sandbox?: IframeSandboxOptions;
@@ -274,6 +286,8 @@ export declare interface VirtualizedIframeEmbeddedEditorOptions {
     readonly frameRoot?: HTMLElement;
     readonly scriptNonce?: string;
     readonly themeCss?: string | (() => string);
+    /** Optional same-origin document URL to load before writing the iframe content. */
+    readonly iframeBootstrapUrl?: string;
     readonly defaultHeight?: number;
     readonly onAmbiguous?: (language: string, providers: readonly CodeBlockEditorProviderDefinition[]) => void;
     readonly onDidChange?: () => void;

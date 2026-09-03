@@ -492,8 +492,60 @@ export default function plugin(md, pluginOptions = {}) {
       );
     }
 
+    // A marker line is a block of its own here, whatever sits on the lines
+    // around it: this rule interrupts a paragraph above and ends before the
+    // line below. Plain markdown has no such rule - a marker with no blank
+    // line between it and a paragraph line is one paragraph with it, which
+    // is what the source-first editor's own parser (and any other markdown
+    // renderer) sees. Say so, so the author adds the blank line.
+    const gluedAbove = startLine > 0 && !state.isEmpty(startLine - 1) && !isBlockBoundaryLine(state, startLine - 1);
+    const gluedBelow = startLine + 1 < endLine && !state.isEmpty(startLine + 1) && !terminatesParagraph(state, startLine + 1, endLine);
+    if (gluedAbove || gluedBelow) {
+      const where = gluedAbove && gluedBelow ? 'the lines above and below it' : gluedAbove ? 'the line above it' : 'the line below it';
+      warn(
+        state.env,
+        startLine + 1,
+        'marker_glued',
+        `@${parsed.kind} has no blank line between it and ${where}. Gutterpress separates them on the page, but plain markdown (and the editor's own parser) reads a marker and the paragraph text next to it as one paragraph. Put a blank line before and after the marker.`,
+        parsed
+      );
+    }
+
     state.line = startLine + 1;
     return true;
+  }
+
+  /**
+   * Would markdown-it end a paragraph before `line`? The paragraph rule's own
+   * test: an indented or dedented line continues the paragraph, and otherwise
+   * every rule that may interrupt a paragraph (this file's marker rule among
+   * them, so a marker under a marker is fine) is asked in silent mode.
+   */
+  function terminatesParagraph(state, line, endLine) {
+    if (state.sCount[line] - state.blkIndent > 3) return false;
+    if (state.sCount[line] < 0) return false;
+    for (const rule of state.md.block.ruler.getRules('paragraph')) {
+      if (rule(state, line, endLine, true)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Is `line` one that closes itself - a marker, a heading, a fence, a
+   * thematic break, a table row, raw HTML - rather than paragraph text a
+   * following marker line would be glued to? Text, a list item's text and a
+   * quoted line are the shapes that fuse.
+   */
+  function isBlockBoundaryLine(state, line) {
+    const text = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]).trim();
+    return (
+      parseMarkerLine(text) !== null ||
+      /^#{1,6}(\s|$)/.test(text) ||
+      /^(`{3,}|~{3,})/.test(text) ||
+      /^([-*_])(\s*\1){2,}$/.test(text) ||
+      /^\|/.test(text) ||
+      /^<\/?[A-Za-z]/.test(text)
+    );
   }
 
   md.block.ruler.before('paragraph', 'layout_marker', markerBlock, {

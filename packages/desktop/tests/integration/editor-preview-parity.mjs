@@ -213,7 +213,7 @@ try {
     // The counter can hold still while a plate is still on its way (the
     // art's relayout comes when the image loads, which is not on the
     // layout counter's clock), so the editor's fonts and images are waited
-    // for first — the same wait the book side gets.
+    // for first -  the same wait the book side gets.
     await page
       .evaluate(async () => {
         await document.fonts?.ready;
@@ -271,10 +271,10 @@ try {
    * every font and plate loaded, and laid out at 1:1.
    *
    * 1:1 is the zoom the PDF is laid out at. The preview pane fits the page
-   * to its width (`--gutterpress-zoom` ≈ 0.7 here), and CSS `zoom` changes
+   * to its width (`--gutterpress-zoom` ~ 0.7 here), and CSS `zoom` changes
    * layout, not just its rendering: Chromium snaps every border to whole
    * device pixels in the zoomed space, so a 1pt table rule becomes 1.4px at
-   * 0.7 and 1px at 1:1 — measured as a 5.8px difference over one
+   * 0.7 and 1px at 1:1 -  measured as a 5.8px difference over one
    * fourteen-row table, enough to move a page break in a dense chapter. The
    * editor pane is wider than a page at this window size and already at
    * 1:1. The relayout waits for the fonts: one before they arrive
@@ -302,7 +302,7 @@ try {
       window.Gutterpress?.setSpread?.(false);
     });
     // The book's own page counts are read ONCE, so they have to be read
-    // after the viewer has finished paginating — not after a fixed sleep.
+    // after the viewer has finished paginating -  not after a fixed sleep.
     for (let last = -1, stableSince = Date.now(), deadline = Date.now() + 60_000; Date.now() < deadline; ) {
       const now = await frame.evaluate(() => document.querySelectorAll(".gp-sheet").length);
       if (now !== last) {
@@ -347,7 +347,7 @@ try {
   /**
    * The app renders its preview twice on startup (the first frame is
    * replaced once the project is fully loaded), and a read that lands on the
-   * first frame reports pages of a book that is not the final one — one run
+   * first frame reports pages of a book that is not the final one -  one run
    * in three read a chapter a page short. So the read is trusted only once
    * the frame it came from has survived a moment; otherwise the new frame
    * is prepared and read instead.

@@ -48,6 +48,11 @@ describe("source.markdown.layout-markers", () => {
     expect(results.find((r) => r.code === "unknown_marker")!.line).toBe(9);
   });
 
+  test("a marker glued to its paragraph is a line-numbered warning", async () => {
+    const results = await runOn("@section\ntext\n\n@end-section\n");
+    expect(results.map((r) => [r.code, r.line, r.severity])).toEqual([["marker_glued", 1, "warning"]]);
+  });
+
   test("a document with well-formed markers produces no findings", async () => {
     expect(await runOn("@page cover .a #id\n\ntext\n\n@section {.two-column}\n\ntext\n")).toEqual([]);
   });

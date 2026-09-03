@@ -1,10 +1,15 @@
 # PATCHES.md — the vendored `@vscode/markdown-editor` fork's patches
 
 This fork applies the patches below on top of the unmodified, published
-`@vscode/markdown-editor@0.0.2-85` artifact (re-pinned from 0.0.2-84 on
-2026-09-02: 0.0.2-85's vendored files (everything under dist/ and src/, and the README) are byte-identical to 0.0.2-84's — upstream's
-0.0.2-85 publish changed only package.json's version and gitHead, so every
-hash in `checksums.json` and every hunk below carries over unchanged):
+`@vscode/markdown-editor@0.0.2-87` artifact (re-pinned from 0.0.2-85 on
+2026-09-03, and from 0.0.2-84 on 2026-09-02). Across all three versions
+`dist/index.js` and `dist/index.d.ts` - the only two files the patches
+touch - are byte-identical, so every hunk below and every `patched` /
+`upstreamBaseline` hash in `checksums.json` carries over unchanged; the
+0.0.2-87 publish changed `dist/web-editors.js`, `.d.ts` and `.js.map`
+(vendored unpatched, rehashed, and not imported by Gutterpress) and
+package.json's version and gitHead. Upstream's `latest` dist-tag still
+points at 0.0.2-0; the pin follows the `next` line:
 
 1. **`renderCustomBlock`** (Hunks 1-7 below) — the custom-block-rendering
    seam specified by `docs/plans/source-first-editor/runs/SFE-P1b.md` and
@@ -13,8 +18,18 @@ hash in `checksums.json` and every hunk below carries over unchanged):
    geometry-remeasurement fix specified by
    `docs/plans/source-first-editor/runs/SFE-P3f.md`. Marked
    `/* gp-fork: measurement */`.
+3. **`groupBlocks`** (Hunks 11-13, "## Patch 3") — container mounting for
+   Gutterpress scopes and plugin wrappers. Marked `/* gp-fork: groupBlocks */`.
+4. **`decorateInactiveBlock`** (Hunks 14-15, "## Patch 4") — a per-block
+   hook for source-derived presentation. Marked
+   `/* gp-fork: decorateInactiveBlock */`.
+5. **`afterDocumentMount`** (Hunks 16-17, "## Patch 5") — a pre-measurement
+   hook for the host's pagination. Marked `/* gp-fork: afterDocumentMount */`.
+6. **`renderCustomBlock` for every block kind** (Hunks 18-21, "## Patch 6")
+   — the Patch 1 seam reaching the heading, block quote, list and table
+   arms. Marked `/* gp-fork: renderCustomBlock */`.
 
-Every hunk in both patches is additive (no reformatting, no renaming, no
+Every hunk in every patch is additive (no reformatting, no renaming, no
 unrelated edits). Only two files are touched: `dist/index.js` and
 `dist/index.d.ts` (Patch 2 touches only `dist/index.js`).
 `scripts/verify-vendored.mjs` checks
@@ -44,6 +59,55 @@ in the run spec (`"md-block md-paragraph"`, `"unhandledBlock"`,
 `renderCustomCodeBlock`), not by trusting the line numbers alone, per the run
 spec's own instruction — the numbers happened to still match because this
 fork was vendored from the same exact version.
+
+## Inventory — every place the vendored files differ from upstream
+
+The whole divergence from the published `@vscode/markdown-editor` artifact
+is the 22 hunks in `dist/index.js` and the 4 hunks in `dist/index.d.ts`
+listed here; every other vendored file is byte-identical to the tarball
+(`scripts/verify-vendored.mjs` proves both halves on every run). Each row
+names the patch, the hunk as numbered in the sections below, the marker
+comment carried in the code, and an ANCHOR: a string that is unique in the
+patched file and sits inside the hunk, so a hunk is found by grepping for
+it and never by a line number. Regenerate the list against a fresh tarball
+with:
+
+    npm pack @vscode/markdown-editor@<pinned version> && tar xzf *.tgz
+    diff package/dist/index.js dist/index.js
+    diff --strip-trailing-cr package/dist/index.d.ts dist/index.d.ts
+
+`dist/index.js`, in file order:
+
+| Patch | Hunk | Marker | Anchor |
+|---|---|---|---|
+| 2 measurement | 8 | `gp-fork: measurement` | `function gpTranslateVisualLineMap(` |
+| 6 renderCustomBlock | 18 | `gp-fork: renderCustomBlock` | `case "heading":` arm, `e?.renderCustomBlock` consult |
+| 1 renderCustomBlock | 3 | `gp-fork: renderCustomBlock` | `case "paragraph":` arm, `n.showMarkup` guard |
+| 1 renderCustomBlock | 4 | `gp-fork: renderCustomBlock` | `intercepts BEFORE the Ln (html` |
+| 6 renderCustomBlock | 19 | `gp-fork: renderCustomBlock` | `case "blockQuote":` arm |
+| 6 renderCustomBlock | 20 | `gp-fork: renderCustomBlock` | `case "list":` arm |
+| 6 renderCustomBlock | 21 | `gp-fork: renderCustomBlock` | `case "table":` arm |
+| 3 groupBlocks | 11 | `gp-fork: groupBlocks` | `gpCandidates`, `gpGroupSpecs` in `sn.create` |
+| 4 decorateInactiveBlock | 14 | `gp-fork: decorateInactiveBlock` | `t?.decorateInactiveBlock?.(_.element, f.ast, Es(f.ast), e.children[m].absoluteStart)` |
+| 3 groupBlocks + 5 afterDocumentMount | 11, 16 | `gp-fork: groupBlocks`, `gp-fork: afterDocumentMount` | `gpMountGroups(i, u, gpGroupSpecs)` then `t?.afterDocumentMount?.(i)` |
+| 3 groupBlocks | 12 | `gp-fork: groupBlocks` | `function gpMountGroups(` |
+| 1 renderCustomBlock | 1 | `gp-fork: renderCustomBlock` | `Xr` (ParagraphViewData) `constructor(e, t, s)` with `showMarkup` |
+| 1 renderCustomBlock | 2 | `gp-fork: renderCustomBlock` | `new Xr(i, e.showMarkup, F(i.children, ee(e), t))` |
+| 2 measurement | 10 | `gp-fork: measurement` | `this._publishMeasurements(p, !0)` |
+| 2 measurement | 9 | `gp-fork: measurement` | `_publishMeasurements(e, t = !1)` and the `incremental` translate |
+
+`dist/index.d.ts`, in file order:
+
+| Patch | Hunk | Anchor |
+|---|---|---|
+| 1, 3, 4, 5 | 5, 13, 15, 17 | the `renderCustomBlock`, `groupBlocks`, `decorateInactiveBlock`, `afterDocumentMount` members of `BlockViewOptions` |
+| 1, 3 | 6, 13 | `CustomBlockRendering`, `SourceSegment`, `BlockGroupCandidate`, `BlockGroupSpec` |
+| 1 | 7 | `ParagraphViewData` documentation and `constructor(ast, showMarkup, content)` |
+
+Patch 4's hook signature grew a fourth argument, `absoluteStart` (the
+block's offset in the document, the same value the group candidates
+carry), when the host needed to tell two blocks with the same text apart;
+that is part of Hunk 14 and Hunk 15, not a new hunk.
 
 ## Why four hunks, not two
 
@@ -1179,16 +1243,16 @@ plugin that rewrites a block quote into a pull-quote, or an ordered list
 into cost-badged rows, produces a page whose blocks the editor could match
 by source range and still not render.
 
-Four hunks, one per arm, all identical in shape to Hunk 3's paragraph arm
+Four hunks (18-21; Patches 4 and 5 own 14-17), one per arm, all identical in shape to Hunk 3's paragraph arm
 (same `Es(n.ast)` source text, same host-applies-`md-block` mirror, same
 `Zs(...)`/`D` segment handling, same fall-through to the unchanged upstream
 construction when the host returns `undefined`). Marked
 `/* gp-fork: renderCustomBlock */` like the arms Patch 1 added.
 
-### Hunk 14 — the `heading` arm
-### Hunk 15 — the `blockQuote` arm
-### Hunk 16 — the `list` arm
-### Hunk 17 — the `table` arm
+### Hunk 18 — the `heading` arm
+### Hunk 19 — the `blockQuote` arm
+### Hunk 20 — the `list` arm
+### Hunk 21 — the `table` arm
 
 Each replaces
 

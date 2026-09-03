@@ -15,7 +15,7 @@
  * Locked, no block is ever clicked into, so nothing needs to keep its size
  * for the reveal; the fork rebuilds every block from source when the view
  * unlocks (`mount.ts` disposes and rebuilds on that toggle), so nothing
- * removed here is missed. What stays is the glue inside text — a softbreak's
+ * removed here is missed. What stays is the glue inside text -  a softbreak's
  * hidden newline is the whitespace the page has there too.
  */
 
@@ -32,7 +32,7 @@ export function stripHiddenMarkup(element: HTMLElement): void {
     if (!parent) continue;
     // Glue between rows and items is structure; the blank lines after a
     // block and the whitespace at either end of one are nothing the page
-    // renders — and an image is the page's `p > img:only-child` only once
+    // renders -  and an image is the page's `p > img:only-child` only once
     // the newline glue after it is gone.
     const blank = !(glue.textContent ?? "").trim();
     const atEdge = glue === parent.firstChild || glue === parent.lastChild;

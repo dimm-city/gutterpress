@@ -212,7 +212,7 @@ export function createVscodeEditorAdapter(
   let known: DocumentSnapshot = host.getSnapshot();
 
   // `EditorModel`'s only public constructor is zero-argument (verified
-  // against the installed 0.0.2-85 runtime — see this run's report) — the
+  // against the installed 0.0.2-87 runtime (dist/index.js byte-identical to 0.0.2-85) — see this run's report) — the
   // model starts holding an empty `StringValue` internally, and
   // `replaceSourceText` is the package's own documented "install the
   // host's authoritative text" seam ("Replace the source with an

@@ -331,7 +331,7 @@ export function createGutterpressBlockProvider(
     // put them: from the first authored block inside each to the first one
     // after it. A plugin that opens its card at every heading is reproduced
     // as faithfully as one that opens a panel at a marker line, because
-    // neither the marker nor the plugin is consulted — only the blocks.
+    // neither the marker nor the plugin is consulted -  only the blocks.
     // Already in nesting order (outer first), which is the order the fork
     // nests equal ranges in. A wrapper whose anchor is not in this render
     // (its block was just edited) is left out until the projection catches

@@ -9,7 +9,7 @@
  * source without them. The projection carries each one keyed by the
  * block's evidence range and the path to the element inside the block
  * (`GutterpressProjection.blockAttributes`), and this applies them to the
- * block the fork built for the same source text — matched by exact text,
+ * block the fork built for the same source text -  matched by exact text,
  * the way every other projected block is, so an edit elsewhere in the
  * document never moves it. Two blocks with the same text cannot be told
  * apart: they get the attributes only when the pipeline gave both the

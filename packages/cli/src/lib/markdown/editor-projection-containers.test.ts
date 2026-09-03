@@ -1,5 +1,5 @@
 /**
- * `collectPluginContainers` and `collectBlockAttributes` — what a plugin
+ * `collectPluginContainers` and `collectBlockAttributes` -  what a plugin
  * that WRAPS authored blocks (rather than rewriting them) leaves for the
  * editor to reproduce: the wrappers it opened, anchored to the authored
  * blocks they hold, and the attributes it put on blocks that survived.
@@ -87,9 +87,9 @@ const anchors = (source: string, emit?: Readonly<Record<string, string>>) =>
   project(source, emit).pluginContainers.map((c) => [c.attributes["class"], c.open.text, c.close?.text ?? null]);
 
 /**
- * A `@box` … `@end-box` macro of the @callout shape: the opening marker
+ * A `@box` ... `@end-box` macro of the @callout shape: the opening marker
  * paragraph becomes the wrapper's opening tag plus a label span, the closing
- * marker its closing tag, neither carrying a map — the blocks between are
+ * marker its closing tag, neither carrying a map -  the blocks between are
  * left as the author wrote them.
  */
 const boxPlugin: GutterpressPlugin = (md) => {
@@ -173,7 +173,7 @@ describe("collectPluginContainers", () => {
   test("html that closes what it opens wraps nothing, and an empty wrapper is dropped", () => {
     expect(anchors("@toc\n\nBody.\n", { toc: '<nav class="dc-toc"><a href="#a">A</a></nav>\n' })).toEqual([]);
     // Two marker lines with nothing between them are one recovered run whose
-    // HTML is the complete, empty box — the region renders it; there is
+    // HTML is the complete, empty box -  the region renders it; there is
     // nothing for a container to hold.
     expect(anchors("@panel\n\n@end-panel\n\nBody.\n", { panel: '<div class="dc-panel">\n', "end-panel": "</div>\n" })).toEqual([]);
   });
@@ -242,7 +242,7 @@ describe("collectBlockAttributes", () => {
     // The @outcome shape: the whole macro is one paragraph (no blank lines),
     // whose last line is the plugin's closing marker; the plugin replaces it
     // with generated HTML carrying no map. Only a line that is one of core's
-    // own markers counts as a swallowed marker — and the layout transform
+    // own markers counts as a swallowed marker -  and the layout transform
     // lifts those out of a paragraph before any plugin registered after it
     // runs, so a run recovered across such a plugin cannot contain one.
     const ladderPlugin: GutterpressPlugin = (md) => {
