@@ -96,6 +96,7 @@
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
+    activeTheme: (dir) => api.theme.getActive(dir),
     readFile: (path) => api.fs.readFile(path),
     writeFile: (path, content) => api.fs.writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),

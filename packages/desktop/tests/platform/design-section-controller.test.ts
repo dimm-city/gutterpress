@@ -392,3 +392,54 @@ test("a stylesheet that is entirely @internal tokens loads as empty (the panel's
   expect(h.ctrl.tokens).toEqual([]);
   expect(h.ctrl.designError).toBeNull();
 });
+
+// ── #239: the active theme's tokensFile picks the sheet the panel edits ──────
+
+function themeGlueController(opts: { theme: { id: string; tokensFile: string } | null }) {
+  const styles: ProjectStyle[] = [
+    { path: "/proj/themes/dc/css/tokens.css", displayName: "themes/dc/css/tokens.css", active: true },
+    { path: "/proj/themes/dc/css/identity.css", displayName: "themes/dc/css/identity.css", active: true },
+  ];
+  const css = new Map<string, string>([
+    ["/proj/themes/dc/css/tokens.css", ":root { --a: 1; }\n"],
+    ["/proj/themes/dc/css/identity.css", ":root { --b: 2; }\n"],
+  ]);
+  return new DesignSectionController({
+    projectDir: () => "/proj",
+    listStyles: () => Promise.resolve(styles),
+    activeTheme: () =>
+      Promise.resolve(
+        opts.theme
+          ? {
+              id: opts.theme.id,
+              name: "DC",
+              description: "",
+              kind: "project" as const,
+              styles: ["css/tokens.css", "css/identity.css"],
+              tokensFile: opts.theme.tokensFile,
+            }
+          : null,
+      ),
+    readFile: (p) => Promise.resolve(css.get(p) ?? ""),
+    writeFile: () => Promise.resolve(undefined),
+  });
+}
+
+test("loadDesign edits the sheet the active theme names as tokensFile (#239)", async () => {
+  const ctrl = themeGlueController({ theme: { id: "dc", tokensFile: "css/identity.css" } });
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/identity.css");
+  expect(ctrl.tokens.map((t) => t.name)).toEqual(["--b"]);
+});
+
+test("loadDesign falls back to the first active sheet when no theme is applied (#239)", async () => {
+  const ctrl = themeGlueController({ theme: null });
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/tokens.css");
+});
+
+test("loadDesign falls back when the theme's tokensFile is not in the editable list (#239)", async () => {
+  const ctrl = themeGlueController({ theme: { id: "other", tokensFile: "theme.css" } });
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/tokens.css");
+});

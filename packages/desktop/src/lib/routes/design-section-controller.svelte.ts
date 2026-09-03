@@ -34,7 +34,7 @@
  * and `parseStyleTokens` already parses, entirely client-side.
  */
 
-import type { ProjectStyle, StyleToken } from "$lib/platform/dtos";
+import type { ProjectStyle, StyleToken, ThemeInfo } from "$lib/platform/dtos";
 import {
   parseStyleTokens,
   applyTokenUpdates,
@@ -46,6 +46,11 @@ export interface DesignSectionDeps {
   projectDir: () => string | null;
   /** Resolve the project's editable stylesheets (the active set + fallbacks). */
   listStyles: (projectDir: string) => Promise<ProjectStyle[]>;
+  /**
+   * The project's active theme, or null when none is applied (#239). When the
+   * theme names a `tokensFile`, that sheet is the one the panel edits.
+   */
+  activeTheme?: (projectDir: string) => Promise<ThemeInfo | null>;
   /** Read a file as UTF-8 text. Path is absolute. */
   readFile: (path: string) => Promise<string>;
   /** Write UTF-8 content to a file. Path is absolute. */
@@ -165,7 +170,8 @@ export class DesignSectionController {
     this.tokens = [];
     try {
       const list = await this.deps.listStyles(projectDir);
-      const active = list.find((x) => x.active) ?? list[0];
+      const active =
+        (await this.tokenSheetOf(projectDir, list)) ?? list.find((x) => x.active) ?? list[0];
       if (!active) {
         this.cssPath = null;
         this.cssName = "";
@@ -183,6 +189,20 @@ export class DesignSectionController {
     } finally {
       this.designLoading = false;
     }
+  }
+
+  /**
+   * #239 — the sheet the active theme declares as its token surface
+   * (`theme.json` `tokensFile`), when it is in the editable list; null
+   * otherwise, and the caller falls back to the first active sheet. A failed
+   * lookup is treated as "no theme" rather than blocking the panel.
+   */
+  private async tokenSheetOf(projectDir: string, list: ProjectStyle[]): Promise<ProjectStyle | null> {
+    if (!this.deps.activeTheme) return null;
+    const theme = await this.deps.activeTheme(projectDir).catch(() => null);
+    if (!theme?.tokensFile) return null;
+    const suffix = `/themes/${theme.id}/${theme.tokensFile}`;
+    return list.find((x) => x.path.replace(/\\/g, "/").endsWith(suffix)) ?? null;
   }
 
   // ── Debounced, serialized token writes ──────────────────────────────────────

@@ -181,6 +181,10 @@ export interface ThemeInfo {
   kind: "builtin" | "project";
   /** Optional preview image path relative to the theme folder. */
   preview?: string | null;
+  /** Stylesheets the theme declares, relative to its folder, in cascade order (#239). */
+  styles: string[];
+  /** The declared sheet whose `:root` is the Design panel's token surface (#239). */
+  tokensFile: string;
 }
 
 /** Which theme to apply: a built-in id, or a project theme already on disk. */
