@@ -286,6 +286,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
   test("allowedCallouts is deprecated, ignored, and absent from the resolved validate.source object", () => {
     const config = resolveConfig({}, { validate: { source: { allowedCallouts: ["note"] } } });
     expect(Object.keys(config.validate.source).sort()).toEqual([
+      "cssOwnership",
       "htmlhint",
       "markdownlint",
       "stylelint",

@@ -71,6 +71,7 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.markdownlint");
     expect(sourceIds).toContain("source.htmlhint");
     expect(sourceIds).toContain("source.stylelint");
+    expect(sourceIds).toContain("source.css-ownership");
     expect(sourceIds).toContain("source.links.local-refs");
     expect(sourceIds).toContain("source.accessibility.alt-text");
     expect(sourceIds).toContain("source.accessibility.heading-order");
@@ -193,7 +194,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 8 source + 7 asset + 4 heuristic = 34
+    // 15 pdf + 9 source + 7 asset + 4 heuristic = 35
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -203,8 +204,10 @@ describe("Check Registry", () => {
     // CSS-text scan was both redundant with that and strictly worse: it
     // treated commented-out @font-face blocks as live, never percent-decoded
     // (so a correct url("Source%20Sans%20Pro.ttf") failed the build), and
-    // mis-diagnosed protocol-relative //host/f.woff2 refs.)
-    expect(all.length).toBe(34);
+    // mis-diagnosed protocol-relative //host/f.woff2 refs;
+    // source.css-ownership added 0.10.7 (#232) — optional CSS ownership
+    // contract, reports nothing without a project-supplied contract file.)
+    expect(all.length).toBe(35);
   });
 });
 

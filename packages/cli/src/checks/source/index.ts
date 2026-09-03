@@ -2,6 +2,7 @@
 import "./markdownlint";
 import "./htmlhint";
 import "./stylelint";
+import "./css-ownership";
 import "./local-refs";
 import "./accessibility-alt-text";
 import "./accessibility-heading-order";

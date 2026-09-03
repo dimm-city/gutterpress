@@ -240,7 +240,7 @@ engine: paged
 ```
 
 #### `engineStyles` (object)
-Engine-conditional stylesheets, appended after `styles`. `.native` is the only list that still applies; `.paged` is accepted-but-ignored, like `engine` above. This was the per-book migration mechanism while both engines existed — a book whose chrome was coupled to one engine's DOM declared the other engine's replacement furniture here. Loaded last, so the furniture wins the cascade.
+Engine-conditional stylesheets, appended after `styles`. `.native` is the only list this field has — the native engine is the only engine, so there is nothing left to condition on. This was the per-book migration mechanism while both engines existed — a book whose chrome was coupled to one engine's DOM declared the other engine's replacement furniture here. Loaded last, so the furniture wins the cascade. A manifest that still carries `.paged` from that era keeps loading (one warning, ignored), but the key is gone from the schema and the resolved type.
 
 ```yaml
 engineStyles:
@@ -249,7 +249,7 @@ engineStyles:
 ```
 
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
 ```yaml
 styles:
@@ -261,7 +261,7 @@ markdown-it plugins to load, highest `priority` first. Each entry is either a sh
 
 A string is treated as a local file path when it starts with `./`, `../`, `/` or a Windows drive letter, or when it contains a path separator and ends in `.js`/`.mjs`/`.cjs`; otherwise it is an npm package name.
 
-An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it). The explicit npm installer records an exact `version` and vendors a receipt-backed runtime dependency tree under `plugins/npm/`; builds verify and resolve pinned entries there without network access.
+An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`; advanced and rarely needed — higher loads first, and a plugin needs the *lower* number to see another plugin's output, since it must load after it), `options`, and `enabled` (set `false` to keep the entry but skip loading it). The explicit npm installer records an exact `version` and vendors a receipt-backed runtime dependency tree under `plugins/npm/`; builds verify and resolve pinned entries there without network access.
 
 ```yaml
 plugins:
@@ -335,7 +335,7 @@ Preflight configuration.
 
 - `enabled` (boolean) - Default `true`.
 - `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
+- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `cssOwnership`: a path to a CSS ownership contract, or `false` to disable `source.css-ownership`; absent means no contract, so the check reports nothing by default (see [CSS ownership contract](./css-ownership-contract.md)). `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
 - `assets` (object) - `maxImageSize`, `minImageDpi`, `allowedColorSpaces`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
 - `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
 - `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.
