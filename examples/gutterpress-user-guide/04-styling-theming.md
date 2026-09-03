@@ -120,7 +120,9 @@ order, at the position the previous theme held, and appends the
 list. Switching or removing the theme removes the whole block. Import checks
 that every declared sheet exists and passes the print-safety rules. A
 `theme.json` without `styles` means `["theme.css"]`, so existing themes need
-no change, and `tokensFile` defaults to the first entry in `styles`.
+no change, and `tokensFile` defaults to the first entry in `styles`. A folder import
+accepts a theme with no `theme.css` at all; a zip import still needs one to
+find the package root.
 
 ## Font Loading
 
