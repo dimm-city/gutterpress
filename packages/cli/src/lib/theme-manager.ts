@@ -160,11 +160,14 @@ export interface ThemeInfo {
    * extension also has a plugin half" rather than staying silent about it.
    */
   markdown?: string;
-  /** #241 — declared-relative path to a component catalog file (#242),
-   *  informational only (same rationale as {@link markdown}). */
+  /** #241 — declared-relative path to a component catalog file, informational
+   *  only (same rationale as {@link markdown}); no catalog reader consumes
+   *  this yet. */
   components?: string;
-  /** #241 — declared-relative path to a snippets folder (#240), informational
-   *  only (same rationale as {@link markdown}). */
+  /** #241 — declared-relative path to a snippets folder, informational only
+   *  on THIS type (same rationale as {@link markdown} — the theme verbs
+   *  don't load it). The active theme's copy of this field IS consumed,
+   *  by `snippets.ts`'s `listMergedSnippets` (#242) via `getActiveTheme`. */
   snippets?: string;
 }
 

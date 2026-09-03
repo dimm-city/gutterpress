@@ -1121,9 +1121,12 @@ function extensionMetadata(meta: ExtensionMetadata): GutterpressPluginMetadata |
  * they would for two files in one plain `styles` export).
  *
  * `tokensFile`/`components`/`snippets` are parsed and validated (existence +
- * containment, via `resolveExtension`) but not otherwise consumed here —
- * #240/#242 are where a component registry / snippet picker would read them
- * off a future "list installed extensions" surface.
+ * containment, via `resolveExtension`) but not otherwise consumed HERE —
+ * `snippets.ts`'s `listMergedSnippets` (#242) is the actual snippet-picker
+ * consumer, reached through its own `listInstalledExtensions` (which reads
+ * `extension-manifest.ts`'s `readExtensionMeta` directly, tolerantly, rather
+ * than through this throwing `resolveExtension` call); a `components.yaml`
+ * catalog reader is the remaining consumer still to be built.
  */
 async function loadExtensionFromDir(
   extensionDir: string,
