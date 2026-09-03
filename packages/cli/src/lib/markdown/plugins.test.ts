@@ -428,6 +428,34 @@ describe("plugin loader", () => {
       expect((md as MarkdownIt & { __fullExtension?: boolean }).__fullExtension).toBe(true);
     });
 
+    // #240 × #241 regression. `createMarkdownRenderer` builds the declared-
+    // marker registry from `LoadedPlugin.markers`, and this loader path did
+    // not carry the field: a plugin loaded as a FOLDER had every declared
+    // marker silently dropped — `@callout` parsed as a plain paragraph, no
+    // warning — while the identical module loaded by a direct
+    // `path: …/plugin.js` worked. The two load paths must agree.
+    test("a folder's markdown entry keeps its `markers` export (#240)", async () => {
+      writeExtension(
+        "declares-markers",
+        { name: "Declares Markers", markdown: "plugin.js" },
+        {
+          "plugin.js": `export default function (md) {};
+             export const markers = { "note-box": { tag: "aside", class: "nb-note-box" } };`,
+        },
+      );
+
+      const viaFolder = await loadPlugin(cfg({ path: "declares-markers" }), TMP_ROOT);
+      const viaFile = await loadPlugin(
+        cfg({ path: "declares-markers/plugin.js" }),
+        TMP_ROOT,
+      );
+
+      expect(viaFolder.markers).toEqual({
+        "note-box": { tag: "aside", class: "nb-note-box" },
+      });
+      expect(viaFolder.markers).toEqual(viaFile.markers!);
+    });
+
     test("extension-declared styles are ordered BEFORE the module's own `styles` export", async () => {
       writeExtension(
         "ordered-styles",
