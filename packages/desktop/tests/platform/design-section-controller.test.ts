@@ -72,10 +72,10 @@ interface Harness {
   projectDir: string | null;
 }
 
-function make(over: Partial<{ cssPath: string; noProject: boolean }> = {}): Harness {
+function make(over: Partial<{ cssPath: string; noProject: boolean; css: string }> = {}): Harness {
   const cssPath = over.cssPath ?? "/proj/styles/theme.css";
   const fs = new FakeFs();
-  fs.files.set(cssPath, ROOT_CSS);
+  fs.files.set(cssPath, over.css ?? ROOT_CSS);
   const timer = new FakeTimer();
   const onError = spy();
   const onEditRawCss = spy();
@@ -319,4 +319,76 @@ test("a stylesheet switch during a token-write commit never redirects the old sh
   expect(writes.map((w) => w.path)).toEqual([OLD]);
   expect(files.get(NEW)).toBe(NEW_ORIGINAL);
   expect(files.get(OLD)).toContain("--heading-color: #00ff00;");
+});
+
+// ── Theme-curated groups (issue #244) ───────────────────────────────────────
+//
+// `parseStyleTokens` (unit-tested on its own in style-tokens.test.ts) does the
+// annotation scanning; these tests cover what the CONTROLLER does with the
+// result — claiming grouped tokens out of the heuristic buckets and exposing
+// them, in source order, via `customGroups`.
+
+test("an unannotated stylesheet produces no custom groups (no regression)", async () => {
+  const h = make(); // ROOT_CSS carries no annotation comments
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.customGroups).toEqual([]);
+  expect(h.ctrl.colorTokens.map((t) => t.name)).toEqual(["--heading-color"]);
+  expect(h.ctrl.sizeTokens.map((t) => t.name)).toEqual(["--body-size"]);
+});
+
+test("customGroups buckets @group-annotated tokens in first-seen order and excludes them from the heuristic getters", async () => {
+  const css = [
+    ":root {",
+    "  /* @group Colors */",
+    "  --color-accent: #2b4c7e;",
+    "  /* @group Typography */",
+    "  --font-body: Georgia, serif;",
+    "  /* @group Colors */",
+    "  --color-secondary: #112233;",
+    "  --plain-size: 1rem;", // no annotation — stays heuristic
+    "}",
+  ].join("\n");
+  const h = make({ css });
+  await h.ctrl.loadDesign();
+
+  expect(h.ctrl.customGroups.map((g) => g.name)).toEqual(["Colors", "Typography"]);
+  expect(h.ctrl.customGroups[0]!.tokens.map((t) => t.name)).toEqual([
+    "--color-accent",
+    "--color-secondary",
+  ]);
+  expect(h.ctrl.customGroups[1]!.tokens.map((t) => t.name)).toEqual(["--font-body"]);
+
+  // Claimed by a custom group -> not also duplicated into the heuristic buckets.
+  expect(h.ctrl.colorTokens).toEqual([]);
+  expect(h.ctrl.fontTokens).toEqual([]);
+  // The unannotated token still falls through to its heuristic bucket.
+  expect(h.ctrl.sizeTokens.map((t) => t.name)).toEqual(["--plain-size"]);
+});
+
+test("fontTokens is a controller getter that also respects @group exclusion", async () => {
+  const css = `:root {\n  --font-body: Georgia, serif;\n  --font-display: Impact, sans-serif;\n}\n`;
+  const h = make({ css });
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.fontTokens.map((t) => t.name)).toEqual(["--font-body", "--font-display"]);
+});
+
+test("@internal tokens never reach the controller's tokens list", async () => {
+  const css = [
+    ":root {",
+    "  --color-accent: #2b4c7e;",
+    "  /* @internal */",
+    "  --dc-skill-tab-shape: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);",
+    "}",
+  ].join("\n");
+  const h = make({ css });
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent"]);
+});
+
+test("a stylesheet that is entirely @internal tokens loads as empty (the panel's 'no settings yet' state)", async () => {
+  const css = `:root {\n  /* @internal */\n  --dc-skill-tab-shape: polygon(0 0, 1px 1px);\n}\n`;
+  const h = make({ css });
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.tokens).toEqual([]);
+  expect(h.ctrl.designError).toBeNull();
 });

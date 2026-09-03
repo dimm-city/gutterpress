@@ -2,18 +2,26 @@
   /**
    * Design-tokens sub-section of the merged "Look & style" section (UX review
    * M35 — see AppearanceSection's header comment for the merge rationale).
-   * The guided `:root` custom-property editor (fonts + colors + sizes/numbers
-   * + other) is the SECOND of the three panes ProjectConfigPanel composes
-   * under one "Look & style" heading, after the theme grid and before the
-   * stylesheet list (now behind Advanced). No section wrapper or `<h3>` of
-   * its own anymore; the parent owns the outer `.block`/heading. All token
-   * state, the debounced read-modify-write token machinery, and `api.fs.*`
-   * calls live in `DesignSectionController` (passed as the single `controller`
-   * prop — this was the first section to get the controller extraction; see
-   * M14 for the other four). `toHex` is a pure browser-only helper (§8-clean).
-   * The Fonts list is derived locally from the controller's full `tokens`
-   * field rather than a separate `fontTokens` getter — one less thing to keep
-   * wired, and it can never silently go stale.
+   * The guided `:root` custom-property editor (theme-curated groups, then
+   * fonts + colors + sizes/numbers + other) is the SECOND of the three panes
+   * ProjectConfigPanel composes under one "Look & style" heading, after the
+   * theme grid and before the stylesheet list (now behind Advanced). No
+   * section wrapper or `<h3>` of its own anymore; the parent owns the outer
+   * `.block`/heading. All token state, the debounced read-modify-write token
+   * machinery, and `api.fs.*` calls live in `DesignSectionController` (passed
+   * as the single `controller` prop — this was the first section to get the
+   * controller extraction; see M14 for the other four). `toHex` is a pure
+   * browser-only helper (§8-clean).
+   *
+   * Token annotations (issue #244): `controller.customGroups` (theme-author
+   * `@group` headings, rendered first) and the four kind-based getters
+   * (`fontTokens`/`colorTokens`/`sizeTokens`/`otherTokens`, each excluding
+   * anything already claimed by a custom group) are ALL controller getters
+   * now, so this template doesn't need to know the grouping rule — it just
+   * renders whatever lists it's handed, in order. Every list renders through
+   * the one `tokenRow` snippet below, which switches on `t.kind` for the
+   * control — needed once a `@group` can mix kinds (a "Colors" group could
+   * hold a color token next to a plain text one).
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { StyleToken } from "$lib/platform/dtos";
@@ -29,10 +37,6 @@
     PRINT_SAFE_FONT_STACKS.some((f) => f.value === value) ? value : "__custom__";
 
   const colorHex = (v: string) => toHex(v) ?? v;
-
-  /** Derived locally from the controller's full `tokens` field rather than a
-   * separate `fontTokens` getter — see the header note. */
-  const fontTokens = $derived(controller.tokens.filter((t) => t.kind === "font"));
 </script>
 
 <div class="look-subsection design-subsection">
@@ -56,94 +60,82 @@
     <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
   {:else}
     <p class="hint">Editing {controller.cssName} — changes are saved as you go and show in the preview when you close Project settings.</p>
-    {#if fontTokens.length > 0}
+    {#each controller.customGroups as g (g.name)}
+      <h4 class="subhead">{g.name}</h4>
+      {#each g.tokens as t (t.name)}{@render tokenRow(t)}{/each}
+    {/each}
+    {#if controller.fontTokens.length > 0}
       <h4 class="subhead">Fonts</h4>
-      {#each fontTokens as t (t.name)}
-        <div class="row token-row" class:dirty={controller.isDirty(t)}>
-          <label for={`cfg-${t.name}`} class="token-label">{t.label}</label>
-          <div class="control font">
-            <select
-              id={`cfg-${t.name}`}
-              value={fontPreset(t.value)}
-              onchange={(e) => {
-                if (e.currentTarget.value !== "__custom__") controller.setToken(t, e.currentTarget.value);
-              }}
-              aria-label={`${t.label} preset`}
-            >
-              {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
-                <option value={f.value}>{f.label}</option>
-              {/each}
-              <option value="__custom__">Custom…</option>
-            </select>
-            <input class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
-          </div>
-          {#if controller.isDirty(t)}
-            <button class="ghost icononly" onclick={() => controller.resetToken(t)} title="Reset to original" aria-label={`Reset ${t.label}`}>
-              <Icon name="refresh-cw" size={12} />
-            </button>
-          {/if}
-        </div>
-      {/each}
+      {#each controller.fontTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     {#if controller.colorTokens.length > 0}
       <h4 class="subhead">Colors</h4>
-      {#each controller.colorTokens as t (t.name)}
-        <div class="row token-row" class:dirty={controller.isDirty(t)}>
-          <label for={`cfg-${t.name}`} class="token-label">{t.label}</label>
-          <div class="control color">
-            {#if toHex(t.value)}
-              <input id={`cfg-${t.name}`} type="color" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} />
-            {:else}
-              <span class="swatch" style="background: {t.value}" title={t.value}></span>
-            {/if}
-            <input class="input sharp" type="text" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
-          </div>
-          {#if controller.isDirty(t)}
-            <button class="ghost icononly" onclick={() => controller.resetToken(t)} title="Reset to original" aria-label={`Reset ${t.label}`}>
-              <Icon name="refresh-cw" size={12} />
-            </button>
-          {/if}
-        </div>
-      {/each}
+      {#each controller.colorTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     {#if controller.sizeTokens.length > 0}
       <h4 class="subhead">Sizes &amp; numbers</h4>
-      {#each controller.sizeTokens as t (t.name)}
-        <div class="row token-row" class:dirty={controller.isDirty(t)}>
-          <label for={`cfg-${t.name}`} class="token-label">{t.label}</label>
-          <div class="control size">
-            <input id={`cfg-${t.name}`} type="number" value={t.number} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} number`} />
-            <span class="unit">{t.unit}</span>
-          </div>
-          {#if controller.isDirty(t)}
-            <button class="ghost icononly" onclick={() => controller.resetToken(t)} title="Reset" aria-label={`Reset ${t.label}`}>
-              <Icon name="refresh-cw" size={12} />
-            </button>
-          {/if}
-        </div>
-      {/each}
+      {#each controller.sizeTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     {#if controller.otherTokens.length > 0}
       <h4 class="subhead">Other</h4>
-      {#each controller.otherTokens as t (t.name)}
-        <div class="row token-row" class:dirty={controller.isDirty(t)}>
-          <label for={`cfg-${t.name}`} class="token-label">{t.label}</label>
-          <div class="control">
-            <input id={`cfg-${t.name}`} class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} aria-label={`${t.label} value`} />
-          </div>
-          {#if controller.isDirty(t)}
-            <button class="ghost icononly" onclick={() => controller.resetToken(t)} title="Reset" aria-label={`Reset ${t.label}`}>
-              <Icon name="refresh-cw" size={12} />
-            </button>
-          {/if}
-        </div>
-      {/each}
+      {#each controller.otherTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
     <button class="ghost small" onclick={controller.editRawCss} title="Open the active stylesheet in the raw editor">
       <Icon name="file-text" size={13} /> Edit raw CSS
     </button>
   {/if}
 </div>
+
+{#snippet tokenRow(t: StyleToken)}
+  <!-- One editable :root token, control chosen by `t.kind` — shared by the
+       custom-group loop above and every heuristic bucket below it, since a
+       theme-author `@group` can mix kinds (issue #244: e.g. a "Colors" group
+       holding a color token next to a plain text one). -->
+  <div class="row token-row" class:dirty={controller.isDirty(t)}>
+    <label for={`cfg-${t.name}`} class="token-label">{t.label}</label>
+    {#if t.kind === "font"}
+      <div class="control font">
+        <select
+          id={`cfg-${t.name}`}
+          value={fontPreset(t.value)}
+          onchange={(e) => {
+            if (e.currentTarget.value !== "__custom__") controller.setToken(t, e.currentTarget.value);
+          }}
+          aria-label={`${t.label} preset`}
+        >
+          {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
+            <option value={f.value}>{f.label}</option>
+          {/each}
+          <option value="__custom__">Custom…</option>
+        </select>
+        <input class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
+      </div>
+    {:else if t.kind === "color"}
+      <div class="control color">
+        {#if toHex(t.value)}
+          <input id={`cfg-${t.name}`} type="color" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} />
+        {:else}
+          <span class="swatch" style="background: {t.value}" title={t.value}></span>
+        {/if}
+        <input class="input sharp" type="text" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
+      </div>
+    {:else if t.kind === "length" || t.kind === "number"}
+      <div class="control size">
+        <input id={`cfg-${t.name}`} type="number" value={t.number} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} number`} />
+        <span class="unit">{t.unit}</span>
+      </div>
+    {:else}
+      <div class="control">
+        <input id={`cfg-${t.name}`} class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} aria-label={`${t.label} value`} />
+      </div>
+    {/if}
+    {#if controller.isDirty(t)}
+      <button class="ghost icononly" onclick={() => controller.resetToken(t)} title={t.kind === "font" || t.kind === "color" ? "Reset to original" : "Reset"} aria-label={`Reset ${t.label}`}>
+        <Icon name="refresh-cw" size={12} />
+      </button>
+    {/if}
+  </div>
+{/snippet}
 
 <style>
   @import "$lib/styles/config-section-shared.css";

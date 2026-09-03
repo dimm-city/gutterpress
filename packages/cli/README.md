@@ -133,9 +133,10 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
-Gutterpress has 10 subcommands. `new`, `preview`, `build`, and `publish` are the
+Gutterpress has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
 primary author commands; `lint`, `validate`, `audit`, and `preflight` are
-CI / advanced checks; and `doctor` reports system readiness. `plugin` manages project plugins. Every
+CI / advanced checks; and `doctor` reports system readiness. `plugin` manages
+project plugins and `theme` manages project themes. Every
 command also accepts `--help` for the authoritative, always-current flag list
 (`gutterpress <command> --help`) — this section is regenerated from the same
 source.
@@ -349,6 +350,73 @@ gutterpress plugin add markdown-it-highlightjs@4.3.0 ./my-book
 gutterpress plugin add markdown-it-emoji@3.0.0 ./my-book --export full
 ```
 
+### `gutterpress theme`
+
+List, apply, import, revert, or remove project themes — the same
+`applyTheme`/`importThemeFrom*`/`revertTheme`/`removeProjectTheme` functions
+the desktop app's Theme panel calls, so a theme applied from the terminal is
+just as switchable/revertible as one applied from the GUI.
+
+```sh
+gutterpress theme
+
+  --help    Show theme subcommands
+```
+
+#### `gutterpress theme list`
+
+List the built-in themes, the themes already vendored into this project
+(`themes/<id>/`), and which one (if any) is active.
+
+```sh
+gutterpress theme list ./my-book
+```
+
+#### `gutterpress theme apply`
+
+Apply a theme: a built-in id (`clean-book`, `zine`, `technical-doc`) is copied
+into `themes/<id>/` the first time, and the manifest's `styles:` entry is
+wired so its `theme.css` is the active stylesheet, keeping its cascade
+position. Re-running `apply` with an id that is already a project theme makes
+it active again without forking a second copy — the same non-destructive
+re-apply guarantee the desktop's Theme panel relies on.
+
+```sh
+gutterpress theme apply clean-book ./my-book
+gutterpress theme apply zine ./my-book
+```
+
+#### `gutterpress theme import`
+
+Import a theme from a local folder, a `.zip` package, a `.css` file, or an
+`http(s)` URL. Importing vendors the theme under `themes/<id>/` but does not
+apply it — follow up with `gutterpress theme apply <id>`.
+
+```sh
+gutterpress theme import ./my-theme-folder ./my-book
+gutterpress theme import ./my-theme.zip ./my-book
+gutterpress theme import ./my-theme.css ./my-book
+gutterpress theme import https://example.com/themes/cool/ ./my-book
+```
+
+#### `gutterpress theme revert`
+
+Re-apply the theme that was active immediately before the current one.
+Reverting twice toggles back — it is a swap, not a history stack.
+
+```sh
+gutterpress theme revert ./my-book
+```
+
+#### `gutterpress theme remove`
+
+Remove a project theme (never a built-in). If it was the active theme, its
+manifest `styles:` entry is dropped too, leaving no theme active.
+
+```sh
+gutterpress theme remove zine ./my-book
+```
+
 ## Exit codes
 
 Every command follows the same exit-code contract, so CI can branch on the result without parsing output:
@@ -360,7 +428,7 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
 
-This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `plugin`, `new`, and `doctor`.
+This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `plugin`, `theme`, `new`, and `doctor`.
 
 ## Plugins
 

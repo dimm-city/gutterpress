@@ -16,12 +16,24 @@ Gutterpress ships three built-in themes, embedded in the CLI binary and library:
 | `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 
-Applying a theme **copies** its `theme.css` (and any bundled fonts/assets) into your project at `themes/<id>/`, so the project carries its own copy with no external path dependency, and wires the matching `styles:` entry into `manifest.yaml` for you. Today that apply/import flow lives in the desktop app's Theme panel; the resulting manifest entry looks like:
+Applying a theme **copies** its `theme.css` (and any bundled fonts/assets) into your project at `themes/<id>/`, so the project carries its own copy with no external path dependency, and wires the matching `styles:` entry into `manifest.yaml` for you. Apply, import, list, and revert themes from the desktop app's Theme panel, or from the terminal with `gutterpress theme` — both call the same underlying code, so either way produces the same tracked, switchable result:
+
+```sh
+gutterpress theme list ./my-book              # built-in + project themes, and which is active
+gutterpress theme apply clean-book ./my-book  # copy the theme in and make it active
+gutterpress theme import ./my-theme ./my-book # vendor a folder/.zip/.css/URL theme (not yet active)
+gutterpress theme revert ./my-book            # back to whichever theme was active before
+gutterpress theme remove zine ./my-book       # drop a project theme (never a built-in)
+```
+
+`gutterpress new` applies its template's starter theme this same way, so even a
+freshly scaffolded project has a real, switchable theme from the start — not a
+one-off copy of its CSS. The resulting manifest entry looks like:
 
 ```yaml
 styles:
-  - "themes/clean-book/theme.css"   # Applied via the desktop app's Theme panel
-  - "styles/custom.css"             # Your overrides (layered on top)
+  - "themes/clean-book/theme.css"   # The applied theme
+  - "styles/book.css"               # Your own overrides (layered on top, empty until you write in it)
 ```
 
 Bundled themes define the full token set (see below) so you only need to override the tokens you want to change. This guide's own project (the one you're reading) does not use a bundled theme — it declares its own `styles/guide.css` directly in `manifest.yaml`.

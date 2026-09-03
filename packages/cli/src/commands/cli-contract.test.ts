@@ -258,6 +258,12 @@ describe("C7: every command rejects unknown flags", () => {
     ["doctor", ["doctor"]],
     ["plugin parent", ["plugin"]],
     ["plugin add", ["plugin", "add", "markdown-it-footnote"]],
+    ["theme parent", ["theme"]],
+    ["theme list", ["theme", "list"]],
+    ["theme apply", ["theme", "apply", "clean-book"]],
+    ["theme import", ["theme", "import", "some-source"]],
+    ["theme revert", ["theme", "revert"]],
+    ["theme remove", ["theme", "remove", "some-id"]],
   ];
 
   test.each(invocations)("%s rejects an unknown option with exit 2", (_name, args) => {
@@ -288,6 +294,12 @@ describe("C7: every command rejects unknown flags", () => {
     const { exitCode, stdout } = runCli(["--help"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("doctor");
+  });
+
+  test("root help registers the theme command", () => {
+    const { exitCode, stdout } = runCli(["--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("theme");
   });
 });
 
@@ -359,6 +371,73 @@ describe("plugin add usage errors", () => {
   });
 });
 
+// #235 — `gutterpress theme`, mirroring the "plugin add usage errors" block
+// above: bad input from the terminal is a clean usage error (exit 2), never a
+// raw parser dump or a pipeline failure.
+describe("theme usage errors", () => {
+  test("apply with an unknown theme id exits 2 naming the known built-ins", async () => {
+    const dir = await makeTempDir("gutterpress-cli-theme-apply-");
+    try {
+      const { exitCode, stderr } = runCli(["theme", "apply", "no-such-theme", dir]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain('unknown theme "no-such-theme"');
+      expect(stderr).toContain("clean-book");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("remove with an id that is not a project theme exits 2, not a pipeline failure", async () => {
+    const dir = await makeTempDir("gutterpress-cli-theme-remove-");
+    try {
+      const { exitCode, stderr } = runCli(["theme", "remove", "ghost", dir]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain('"ghost" is not a theme in this project');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("revert with no previous theme exits 2 in a brand-new project directory", async () => {
+    const dir = await makeTempDir("gutterpress-cli-theme-revert-");
+    try {
+      const { exitCode, stderr } = runCli(["theme", "revert", dir]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("no previous theme to revert to");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("import from a path that does not exist exits 2 naming the resolved path", async () => {
+    const dir = await makeTempDir("gutterpress-cli-theme-import-");
+    try {
+      const missing = path.join(dir, "does-not-exist");
+      const { exitCode, stderr } = runCli(["theme", "import", missing, dir]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("source not found");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("apply then list shows the applied theme as active, end to end", async () => {
+    const dir = await makeTempDir("gutterpress-cli-theme-e2e-");
+    try {
+      const applied = runCli(["theme", "apply", "zine", dir]);
+      expect(applied.exitCode).toBe(0);
+      expect(applied.stdout).toContain("Applied theme: Zine (zine)");
+      expect(fs.existsSync(path.join(dir, "themes", "zine", "theme.css"))).toBe(true);
+
+      const listed = runCli(["theme", "list", dir]);
+      expect(listed.exitCode).toBe(0);
+      expect(listed.stdout).toContain("Active theme: Zine (zine)");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
 describe("parse-time usage errors keep the documented exit code", () => {
   test("bare plugin shows its subcommand help and exits successfully", () => {
     const { exitCode, stdout, stderr } = runCli(["plugin"]);
@@ -368,10 +447,21 @@ describe("parse-time usage errors keep the documented exit code", () => {
     expect(stderr).toBe("");
   });
 
+  test("bare theme shows its subcommand help and exits successfully", () => {
+    const { exitCode, stdout, stderr } = runCli(["theme"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("List, apply, import, revert, or remove project themes");
+    expect(stdout).toContain("apply");
+    expect(stderr).toBe("");
+  });
+
   test.each([
     ["plugin --", ["plugin", "--"]],
     ["plugin -- add", ["plugin", "--", "add"]],
     ["plugin -", ["plugin", "-"]],
+    ["theme --", ["theme", "--"]],
+    ["theme -- apply", ["theme", "--", "apply"]],
+    ["theme -", ["theme", "-"]],
   ] as Array<[string, string[]]>)(
     "%s exits 2 instead of falling through to Citty exit 1",
     (_label, args) => {
@@ -413,6 +503,10 @@ describe("parse-time usage errors keep the documented exit code", () => {
     ["missing plugin package", ["plugin", "add", "--export", "named"], "PACKAGE"],
     ["missing new project name", ["new", "--no-git"], "NAME"],
     ["missing preflight PDF", ["preflight", "."], "--pdf"],
+    ["unknown theme subcommand", ["theme", "unknown"], "unknown command"],
+    ["missing theme apply id", ["theme", "apply"], "ID"],
+    ["missing theme import source", ["theme", "import"], "SOURCE"],
+    ["missing theme remove id", ["theme", "remove"], "ID"],
   ] as Array<[string, string[], string]>)(
     "%s exits 2 without a raw parser error",
     (_label, args, expected) => {

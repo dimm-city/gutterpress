@@ -23,6 +23,7 @@ const SUBCOMMANDS = {
   preflight: () => import("./commands/preflight").then((m) => m.default),
   doctor: () => import("./commands/doctor").then((m) => m.default),
   plugin: () => import("./commands/plugin").then((m) => m.default),
+  theme: () => import("./commands/theme").then((m) => m.default),
 } as const;
 
 // The package.json version is inlined by the bundler at build time (a JSON
@@ -80,26 +81,68 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
       return;
     }
 
-    if (command !== "plugin") return;
-    const [subcommand, ...subcommandArgs] = commandArgs;
-    if (subcommand === undefined) return;
-    if (subcommand === "--" || subcommand === "-") {
-      throw new UsageError(
-        `gutterpress plugin: expected a subcommand before ${subcommand}`,
-      );
+    if (command === "plugin") {
+      const [subcommand, ...subcommandArgs] = commandArgs;
+      if (subcommand === undefined) return;
+      if (subcommand === "--" || subcommand === "-") {
+        throw new UsageError(
+          `gutterpress plugin: expected a subcommand before ${subcommand}`,
+        );
+      }
+      if (subcommand.startsWith("-")) return;
+      if (subcommand !== "add") {
+        throw new UsageError(`gutterpress plugin: unknown command "${subcommand}"`);
+      }
+      const { pluginAddArgs } = await import("./commands/plugin");
+      rejectUnknownFlags(subcommandArgs, pluginAddArgs, "plugin add");
+      const parsed = parseArgs(subcommandArgs, {
+        ...pluginAddArgs,
+        package: { ...pluginAddArgs.package, required: false },
+      });
+      if (parsed.package === undefined) {
+        throw new UsageError("gutterpress plugin add: missing required positional argument PACKAGE");
+      }
+      return;
     }
-    if (subcommand.startsWith("-")) return;
-    if (subcommand !== "add") {
-      throw new UsageError(`gutterpress plugin: unknown command "${subcommand}"`);
-    }
-    const { pluginAddArgs } = await import("./commands/plugin");
-    rejectUnknownFlags(subcommandArgs, pluginAddArgs, "plugin add");
-    const parsed = parseArgs(subcommandArgs, {
-      ...pluginAddArgs,
-      package: { ...pluginAddArgs.package, required: false },
-    });
-    if (parsed.package === undefined) {
-      throw new UsageError("gutterpress plugin add: missing required positional argument PACKAGE");
+
+    if (command === "theme") {
+      const [subcommand, ...subcommandArgs] = commandArgs;
+      if (subcommand === undefined) return;
+      if (subcommand === "--" || subcommand === "-") {
+        throw new UsageError(
+          `gutterpress theme: expected a subcommand before ${subcommand}`,
+        );
+      }
+      if (subcommand.startsWith("-")) return;
+      const THEME_SUBCOMMANDS = ["list", "apply", "import", "revert", "remove"];
+      if (!THEME_SUBCOMMANDS.includes(subcommand)) {
+        throw new UsageError(`gutterpress theme: unknown command "${subcommand}"`);
+      }
+      // list/revert take no required positional — nothing further to check.
+      if (subcommand === "list" || subcommand === "revert") return;
+
+      const {
+        themeApplyArgs,
+        themeImportArgs,
+        themeRemoveArgs,
+      } = await import("./commands/theme");
+      const [positionalKey, positionalLabel, commandArgsDef] =
+        subcommand === "apply"
+          ? (["id", "ID", themeApplyArgs] as const)
+          : subcommand === "import"
+            ? (["source", "SOURCE", themeImportArgs] as const)
+            : (["id", "ID", themeRemoveArgs] as const);
+
+      rejectUnknownFlags(subcommandArgs, commandArgsDef, `theme ${subcommand}`);
+      const parsed = parseArgs(subcommandArgs, {
+        ...commandArgsDef,
+        [positionalKey]: { ...commandArgsDef[positionalKey as keyof typeof commandArgsDef], required: false },
+      });
+      if (parsed[positionalKey] === undefined) {
+        throw new UsageError(
+          `gutterpress theme ${subcommand}: missing required positional argument ${positionalLabel}`,
+        );
+      }
     }
   } catch (error) {
     exitUsage(error);
@@ -161,7 +204,9 @@ function resolveImplicitPreview(rawArgs: string[]):
 // positional only gets that treatment when it is an existing directory;
 // otherwise it is almost certainly a misspelled command and should say so.
 const rawArgs = process.argv.slice(2);
-if (rawArgs.length === 1 && rawArgs[0] === "plugin") rawArgs.push("--help");
+if (rawArgs.length === 1 && (rawArgs[0] === "plugin" || rawArgs[0] === "theme")) {
+  rawArgs.push("--help");
+}
 const wantsHelp = rawArgs.includes("--help") || rawArgs.includes("-h");
 const wantsVersion =
   rawArgs.length === 1 &&
