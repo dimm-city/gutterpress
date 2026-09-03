@@ -181,6 +181,66 @@ test("filesLinted counts what was actually inspected", async () => {
   }
 });
 
+// #238 — a plugin's file-based `styles` are a real, lintable CSS surface now
+// too, not an opaque string printsafe never saw.
+describe("runLint includes plugin styles (#238)", () => {
+  test("a plugin's declared styles file is linted alongside the project's own", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-plugin-styles-"));
+    try {
+      const { mkdir: mkdirp } = await import("fs/promises");
+      await mkdirp(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await mkdirp(join(dir, "plugin"), { recursive: true });
+      await writeFile(join(dir, "plugin", "plugin.mjs"), "export default function () {};\nexport const styles = ['./plugin.css'];\n", "utf8");
+      await writeFile(
+        join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+
+      // Both the project stylesheet AND the plugin's declared stylesheet were
+      // linted — the plugin's risky `background-blend-mode` finding is the
+      // proof it was actually inspected, not just counted.
+      expect(result.filesLinted).toBe(2);
+      expect(result.riskyCount).toBeGreaterThan(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a plugin that fails to load is a WARNING, not a lint failure (pre-flight check, not build)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-bad-plugin-"));
+    try {
+      const { mkdir: mkdirp } = await import("fs/promises");
+      await mkdirp(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Bad Plugin\nstyles:\n  - styles/book.css\nplugins:\n  - path: ./does-not-exist.mjs\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+
+      // The project's own stylesheet still lints fine — one unresolvable
+      // plugin must not blank the whole lint run.
+      expect(result.ok).toBe(true);
+      expect(result.filesLinted).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("engineStyles.native is linted too — the sheet that ships is the sheet that's checked", async () => {
   // `gutterpress lint` and the desktop Problems panel (validate) must agree
   // about which stylesheets a project uses. They did not: lint discarded

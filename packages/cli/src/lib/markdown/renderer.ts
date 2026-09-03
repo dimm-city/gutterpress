@@ -72,6 +72,7 @@ export interface GutterpressPluginMetadata {
  * export default plugin;
  * export const metadata: GutterpressPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
  * export const css = `.my-class { color: red; }`;
+ * export const styles = ["./styles/components.css", "./styles/callouts.css"];
  * ```
  */
 export interface GutterpressPluginExport {
@@ -79,6 +80,17 @@ export interface GutterpressPluginExport {
   metadata?: GutterpressPluginMetadata;
   /** CSS injected into <head> after user stylesheets. Use sparingly — has equal cascade specificity. */
   css?: string;
+  /**
+   * File-based plugin CSS (#238), as paths RELATIVE TO THIS MODULE — resolved
+   * by the node-coupled loader (`plugins.ts`), never by this pure module. Each
+   * file enters the SAME pipeline a manifest `styles:` entry does: asset-
+   * inlined (fonts/images embedded, local `@import` followed) and print-safety
+   * lintable — unlike `css`, which is an opaque string no other subsystem can
+   * see. Kept alongside `css` (not a replacement) for one-liners that don't
+   * warrant a separate file. Cascade position matches `css`'s: after core,
+   * before the project's own stylesheets.
+   */
+  styles?: string[];
 }
 
 /** Internal representation of a loaded plugin, ready for `md.use()`. */
@@ -87,6 +99,13 @@ export interface LoadedPlugin {
   plugin: GutterpressPlugin;
   metadata?: GutterpressPluginMetadata;
   css?: string;
+  /**
+   * #238 — UNLIKE `GutterpressPluginExport.styles` (author-declared, relative
+   * to the plugin module), this is already resolved to ABSOLUTE filesystem
+   * paths by the loader (`plugins.ts`'s `loadPlugin`), in the plugin's own
+   * declared order. `undefined`/`[]` for a plugin that declares none.
+   */
+  styles?: string[];
   options: Record<string, unknown>;
 }
 
@@ -226,4 +245,18 @@ export function collectPluginCss(plugins: LoadedPlugin[]): string {
     .map((p) => p.css)
     .filter((css): css is string => typeof css === "string" && css.length > 0)
     .join("\n\n");
+}
+
+/**
+ * Collect every plugin-declared stylesheet PATH (#238), flattened in plugin
+ * load order (a plugin's own files keep their declared order). These are
+ * already-resolved ABSOLUTE filesystem paths — `plugins.ts`'s loader resolves
+ * them before a `LoadedPlugin` exists, so this stays a pure list operation
+ * with no `node:*` needed, matching {@link collectPluginCss}. The caller feeds
+ * the result through the SAME asset-inline pipeline a manifest `styles:` list
+ * gets (see `lib/markdown/index.ts`'s `renderChapters`), which is where the
+ * files are actually read.
+ */
+export function collectPluginStylePaths(plugins: LoadedPlugin[]): string[] {
+  return plugins.flatMap((p) => p.styles ?? []);
 }
