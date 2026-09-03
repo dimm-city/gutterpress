@@ -38,8 +38,8 @@ export type {
   GutterpressPluginExport,
   LoadedPlugin,
 } from "./renderer";
-export { applyPlugins, collectPluginCss } from "./renderer";
-import { BUILTIN_OPTIONAL_PLUGINS, collectPluginCss } from "./renderer";
+export { applyPlugins, collectPluginCss, collectPluginStylePaths } from "./renderer";
+import { BUILTIN_OPTIONAL_PLUGINS, collectPluginCss, collectPluginStylePaths } from "./renderer";
 
 interface VendorCjsTree {
   sourceRoot: string;
@@ -680,6 +680,15 @@ export function clearVendoredPluginResolver(
   else latestVendorCjsTree.delete(sourceRoot);
 }
 
+/** An imported npm plugin module, plus the directory `styles` (#238) should
+ * resolve relative to — `null` when no reliable module directory exists (the
+ * bare gutterpress-own-dependency fallback below), in which case a plugin
+ * declaring `styles` fails loudly rather than resolving against a guess. */
+interface LoadedNpmPackage {
+  module: unknown;
+  moduleDir: string | null;
+}
+
 /**
  * Resolve and import an npm plugin package.
  *
@@ -695,7 +704,7 @@ async function loadNpmPackage(
   packageName: string,
   baseDir: string,
   version?: string,
-): Promise<unknown> {
+): Promise<LoadedNpmPackage> {
   // Exact versions predate the vendor installer and used to be informational.
   // Only a valid schema-v2 receipt activates the pinned path. A missing marker
   // falls through to legacy resolution; a present but corrupt marker throws
@@ -709,10 +718,15 @@ async function loadNpmPackage(
     if (verified) {
       const restoreRegistration = registerVendorCjsTree(verified);
       try {
+        // The isolated tree copies each vendored package's FULL contents
+        // (isolatedPackageCopyFilter excludes only nested node_modules), so a
+        // plugin's own `./styles/*.css` sits right beside its entry file here
+        // — moduleDir is real and stable for the isolated copy's lifetime.
+        const moduleDir = dirname(verified.entryPath);
         if (verified.format === "commonjs") {
-          return createRequire(verified.entryPath)(verified.entryPath);
+          return { module: createRequire(verified.entryPath)(verified.entryPath), moduleDir };
         }
-        return await import(pathToFileURL(verified.entryPath).href);
+        return { module: await import(pathToFileURL(verified.entryPath).href), moduleDir };
       } catch (error) {
         restoreRegistration();
         throw error;
@@ -724,14 +738,15 @@ async function loadNpmPackage(
   try {
     const packageDir = join(baseDir, "node_modules", ...packageName.split("/"));
     const packagePath = join(packageDir, ...(await resolvePackageEntry(packageDir)).split("/"));
-    return await import(pathToFileURL(packagePath).href);
+    return { module: await import(pathToFileURL(packagePath).href), moduleDir: dirname(packagePath) };
   } catch {
     // Not in user's project — fall through
   }
 
-  // gutterpress's own dependencies.
+  // gutterpress's own dependencies. No on-disk path is retained here (a bare
+  // specifier import), so `moduleDir: null` — see LoadedNpmPackage's doc.
   try {
-    return await import(packageName);
+    return { module: await import(packageName), moduleDir: null };
   } catch {
     // Not found — fall through to error
   }
@@ -758,6 +773,24 @@ async function loadNpmPackage(
 }
 
 /**
+ * Validate a plugin's raw `styles` export shape (#238). `undefined` (not
+ * declared) and a non-empty string array both pass through unremarkable; a
+ * declared-but-empty array normalizes to `undefined` so downstream code has
+ * one "nothing here" value to check. Anything else is an author mistake
+ * caught at load time — a final artifact must never silently drop a
+ * malformed `styles` export instead of erroring on it.
+ */
+function validateStylesExport(value: unknown, pluginRef: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((s) => typeof s === "string")) {
+    throw new Error(
+      `Plugin "${pluginRef}" exports \`styles\` that is not an array of strings.`,
+    );
+  }
+  return value.length > 0 ? (value as string[]) : undefined;
+}
+
+/**
  * Extract the plugin function from a loaded module, handling the various
  * shapes Node/Bun produce for ESM/CJS interop:
  *
@@ -773,6 +806,9 @@ function extractPluginExports(
   plugin: GutterpressPlugin;
   metadata?: GutterpressPluginMetadata;
   css?: string;
+  /** Author-declared, module-relative paths (#238) — NOT YET resolved to
+   * absolute paths; the caller (`loadPlugin`) does that. */
+  styles?: string[];
 } {
   const mod = pluginModule !== null && (typeof pluginModule === "object" || typeof pluginModule === "function")
     ? pluginModule as Record<string, unknown>
@@ -780,6 +816,7 @@ function extractPluginExports(
   let plugin: GutterpressPlugin | undefined;
   let metadata = mod.metadata as GutterpressPluginMetadata | undefined;
   let css = mod.css as string | undefined;
+  let styles = validateStylesExport(mod.styles, pluginRef);
 
   if (exportName && typeof mod[exportName] === "function") {
     plugin = mod[exportName] as GutterpressPlugin;
@@ -805,6 +842,7 @@ function extractPluginExports(
     plugin = inner.default as GutterpressPlugin;
     metadata = (inner.metadata as GutterpressPluginMetadata | undefined) ?? metadata;
     css = (inner.css as string | undefined) ?? css;
+    styles = validateStylesExport(inner.styles, pluginRef) ?? styles;
   }
 
   if (typeof plugin !== "function") {
@@ -815,7 +853,7 @@ function extractPluginExports(
     );
   }
 
-  return { plugin, metadata, css };
+  return { plugin, metadata, css, styles };
 }
 
 /**
@@ -965,6 +1003,38 @@ async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> 
  * correct in both a one-shot CLI build and the long-lived Electron host that
  * runs `runBuild` in-process, so no caller-selected cache mode is needed.
  */
+/**
+ * Resolve a plugin's declared `styles` (#238) to absolute, existence-checked
+ * paths, relative to `moduleDir` (the plugin's own file/package directory).
+ * `undefined`/`[]` input returns `undefined` — a plugin with no `styles`
+ * export pays zero cost here. A `moduleDir` of `null` (the bare
+ * gutterpress-own-dependency npm fallback — see `LoadedNpmPackage`) or a
+ * declared file that doesn't exist both throw: silently dropping
+ * author-declared CSS would be the exact silent-omission failure mode §5's
+ * fail-fast/degrade-and-report split exists to prevent everywhere else.
+ */
+function resolvePluginStyles(
+  rawStyles: string[] | undefined,
+  moduleDir: string | null,
+  pluginRef: string,
+): string[] | undefined {
+  if (!rawStyles || rawStyles.length === 0) return undefined;
+  if (!moduleDir) {
+    throw new Error(
+      `Plugin "${pluginRef}" exports \`styles\` but its module directory could not be resolved.`,
+    );
+  }
+  return rawStyles.map((rel) => {
+    const abs = resolve(moduleDir, rel);
+    if (!existsSync(abs)) {
+      throw new Error(
+        `Plugin "${pluginRef}" declares stylesheet "${rel}" but no file exists at ${abs}.`,
+      );
+    }
+    return abs;
+  });
+}
+
 export async function loadPlugin(
   config: ResolvedPluginConfig,
   baseDir: string,
@@ -972,6 +1042,8 @@ export async function loadPlugin(
   const pluginRef = config.path ?? config.name ?? "(unspecified)";
   let pluginModule: unknown;
   let pluginName: string;
+  /** Directory `styles` (#238) resolves relative to — see resolvePluginStyles. */
+  let moduleDir: string | null = null;
 
   if (!config.path && !config.name) {
     throw new Error(
@@ -1018,8 +1090,13 @@ export async function loadPlugin(
       // build and the long-lived host.
       pluginModule = await loadCachedPathPluginModule(pluginPath);
       pluginName = config.name ?? config.path;
+      // #238: `styles` resolves relative to the plugin's OWN file, wherever
+      // that lives (in-project, or a multi-book repo's shared `plugins/`).
+      moduleDir = dirname(pluginPath);
     } else {
-      pluginModule = await loadNpmPackage(config.name!, baseDir, config.version);
+      const loaded = await loadNpmPackage(config.name!, baseDir, config.version);
+      pluginModule = loaded.module;
+      moduleDir = loaded.moduleDir;
       pluginName = config.name!;
     }
   } catch (error) {
@@ -1027,17 +1104,19 @@ export async function loadPlugin(
     throw new Error(`Failed to load plugin "${pluginRef}": ${errorMsg}`);
   }
 
-  const { plugin, metadata, css } = extractPluginExports(
+  const { plugin, metadata, css, styles: rawStyles } = extractPluginExports(
     pluginModule,
     pluginRef,
     config.export,
   );
+  const styles = resolvePluginStyles(rawStyles, moduleDir, pluginRef);
 
   return {
     name: pluginName,
     plugin,
     metadata,
     css,
+    styles,
     options: config.options,
   };
 }
@@ -1095,6 +1174,13 @@ export interface LoadedPluginsWithCss {
    * straight through without an `?? []` at every call site. */
   plugins: LoadedPlugin[] | undefined;
   pluginCss: string;
+  /**
+   * #238 — absolute paths of every plugin-declared `styles` file, flattened
+   * in plugin load order. `[]` when no loaded plugin declares any (including
+   * when `configs` was empty), so callers can pass this straight through to
+   * `renderChapters`'s `pluginStylePaths` without an `?? []` guard.
+   */
+  pluginStylePaths: string[];
 }
 
 /**
@@ -1118,8 +1204,12 @@ export async function loadPluginsWithCss(
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPluginsWithCss> {
   if (!configs || configs.length === 0) {
-    return { plugins: undefined, pluginCss: "" };
+    return { plugins: undefined, pluginCss: "", pluginStylePaths: [] };
   }
   const plugins = await loadPlugins(configs, baseDir, onError);
-  return { plugins, pluginCss: collectPluginCss(plugins) };
+  return {
+    plugins,
+    pluginCss: collectPluginCss(plugins),
+    pluginStylePaths: collectPluginStylePaths(plugins),
+  };
 }

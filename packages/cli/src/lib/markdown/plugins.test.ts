@@ -8,6 +8,7 @@ import {
   loadPluginsWithCss,
   applyPlugins,
   collectPluginCss,
+  collectPluginStylePaths,
   __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedPluginConfig } from "../../schema/manifest.types";
@@ -17,6 +18,17 @@ const TMP_ROOT = join(process.cwd(), ".tmp", `plugin-tests-${Date.now()}`);
 
 function fixture(name: string, contents: string): string {
   const path = join(TMP_ROOT, name);
+  writeFileSync(path, contents);
+  return path;
+}
+
+/** Like {@link fixture}, but creates any needed subdirectories first — used
+ * for plugin `styles` (#238) fixtures, which need a REAL subdirectory
+ * structure to prove paths resolve relative to the plugin's own module dir,
+ * not `TMP_ROOT` (the loader's `baseDir`). */
+function nestedFixture(relPath: string, contents: string): string {
+  const path = join(TMP_ROOT, relPath);
+  mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, contents);
   return path;
 }
@@ -146,6 +158,77 @@ describe("plugin loader", () => {
       const md = new MarkdownIt();
       applyPlugins(md, [loaded]);
       expect((md as any).__opts).toEqual({ foo: "bar" });
+    });
+  });
+
+  // #238 — plugin CSS as file paths, resolved relative to the plugin module
+  // (not the loader's baseDir), so a plugin's stylesheet enters the SAME
+  // pipeline a manifest `styles:` entry does (lint, asset-inline, url()
+  // support) instead of being an opaque string.
+  describe("loadPlugin styles export (#238)", () => {
+    test("resolves declared styles to absolute paths relative to the PLUGIN'S OWN directory", async () => {
+      // The plugin lives one level down from TMP_ROOT (the loader's baseDir)
+      // so a correct implementation must resolve against the plugin's own
+      // directory, not baseDir — resolving against baseDir would 404.
+      nestedFixture(
+        "styled-plugin/plugin.mjs",
+        `export default function (md) {};
+         export const styles = ["./styles/a.css", "./styles/b.css"];`,
+      );
+      nestedFixture("styled-plugin/styles/a.css", ".a { color: red; }");
+      nestedFixture("styled-plugin/styles/b.css", ".b { color: blue; }");
+
+      const loaded = await loadPlugin(cfg({ path: "styled-plugin/plugin.mjs" }), TMP_ROOT);
+
+      expect(loaded.styles).toEqual([
+        join(TMP_ROOT, "styled-plugin", "styles", "a.css"),
+        join(TMP_ROOT, "styled-plugin", "styles", "b.css"),
+      ]);
+    });
+
+    test("a plugin declaring no styles gets undefined, not an empty array", async () => {
+      fixture("no-styles.mjs", `export default function (md) {}`);
+      const loaded = await loadPlugin(cfg({ path: "no-styles.mjs" }), TMP_ROOT);
+      expect(loaded.styles).toBeUndefined();
+    });
+
+    test("throws when a declared stylesheet file does not exist", async () => {
+      nestedFixture(
+        "missing-style/plugin.mjs",
+        `export default function (md) {};
+         export const styles = ["./styles/missing.css"];`,
+      );
+
+      await expect(
+        loadPlugin(cfg({ path: "missing-style/plugin.mjs" }), TMP_ROOT),
+      ).rejects.toThrow(/declares stylesheet "\.\/styles\/missing\.css".*no file exists/s);
+    });
+
+    test("throws when `styles` is not an array of strings", async () => {
+      fixture(
+        "bad-styles-shape.mjs",
+        `export default function (md) {};
+         export const styles = "./not-an-array.css";`,
+      );
+
+      await expect(
+        loadPlugin(cfg({ path: "bad-styles-shape.mjs" }), TMP_ROOT),
+      ).rejects.toThrow(/exports `styles` that is not an array of strings/);
+    });
+
+    test("keeps `css` working unchanged alongside a `styles` file export", async () => {
+      nestedFixture(
+        "both-forms/plugin.mjs",
+        `export default function (md) {};
+         export const css = '.inline { color: green; }';
+         export const styles = ["./extra.css"];`,
+      );
+      nestedFixture("both-forms/extra.css", ".file { color: purple; }");
+
+      const loaded = await loadPlugin(cfg({ path: "both-forms/plugin.mjs" }), TMP_ROOT);
+
+      expect(loaded.css).toBe(".inline { color: green; }");
+      expect(loaded.styles).toEqual([join(TMP_ROOT, "both-forms", "extra.css")]);
     });
   });
 
@@ -521,6 +604,39 @@ describe("plugin loader", () => {
     });
   });
 
+  describe("collectPluginStylePaths (#238)", () => {
+    test("flattens every plugin's resolved styles, in plugin load order", async () => {
+      nestedFixture(
+        "collect-a/plugin.mjs",
+        `export default function () {}; export const styles = ["./one.css", "./two.css"];`,
+      );
+      nestedFixture("collect-a/one.css", ".one {}");
+      nestedFixture("collect-a/two.css", ".two {}");
+      nestedFixture(
+        "collect-b/plugin.mjs",
+        `export default function () {}; export const styles = ["./three.css"];`,
+      );
+      nestedFixture("collect-b/three.css", ".three {}");
+
+      const loaded = await loadPlugins(
+        [cfg({ path: "collect-a/plugin.mjs" }), cfg({ path: "collect-b/plugin.mjs" })],
+        TMP_ROOT,
+      );
+
+      expect(collectPluginStylePaths(loaded)).toEqual([
+        join(TMP_ROOT, "collect-a", "one.css"),
+        join(TMP_ROOT, "collect-a", "two.css"),
+        join(TMP_ROOT, "collect-b", "three.css"),
+      ]);
+    });
+
+    test("returns [] when no loaded plugin declares styles", async () => {
+      fixture("no-styles-2.mjs", `export default function () {}`);
+      const loaded = await loadPlugins([cfg({ path: "no-styles-2.mjs" })], TMP_ROOT);
+      expect(collectPluginStylePaths(loaded)).toEqual([]);
+    });
+  });
+
   // ARCH finding #53: the "load plugins -> collectPluginCss" preamble was
   // duplicated between preview/file-watcher.ts's renderBook and
   // build-runner.ts's renderBook, differing ONLY in whether onError was
@@ -531,12 +647,14 @@ describe("plugin loader", () => {
       const result = await loadPluginsWithCss(undefined, TMP_ROOT);
       expect(result.plugins).toBeUndefined();
       expect(result.pluginCss).toBe("");
+      expect(result.pluginStylePaths).toEqual([]);
     });
 
     test("empty configs array short-circuits to no plugins, empty css", async () => {
       const result = await loadPluginsWithCss([], TMP_ROOT);
       expect(result.plugins).toBeUndefined();
       expect(result.pluginCss).toBe("");
+      expect(result.pluginStylePaths).toEqual([]);
     });
 
     test("loads plugins and collects their css in one call", async () => {
@@ -553,6 +671,22 @@ describe("plugin loader", () => {
       expect(result.plugins).toHaveLength(1);
       expect(result.plugins![0]!.name).toBe("css-c.mjs");
       expect(result.pluginCss).toContain(".c {}");
+      expect(result.pluginStylePaths).toEqual([]);
+    });
+
+    test("#238: also collects resolved plugin styles alongside css", async () => {
+      nestedFixture(
+        "wcss-plugin/plugin.mjs",
+        `export default function () {}; export const styles = ["./comp.css"];`,
+      );
+      nestedFixture("wcss-plugin/comp.css", ".comp {}");
+
+      const result = await loadPluginsWithCss(
+        [cfg({ path: "wcss-plugin/plugin.mjs" })],
+        TMP_ROOT,
+      );
+
+      expect(result.pluginStylePaths).toEqual([join(TMP_ROOT, "wcss-plugin", "comp.css")]);
     });
 
     test("fail-fast mode (no onError): a bad plugin aborts the whole load — matches build/export", async () => {
