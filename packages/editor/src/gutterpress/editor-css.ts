@@ -44,10 +44,11 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
-/* The overlay layer and its tags (marker-tags.ts). The layer is a
-   zero-size box at the content container's origin; each tag is placed at
+/* The overlay layer and its icons (marker-tags.ts). The layer is a
+   zero-size box at the content container's origin; each icon is placed at
    the box of the block its marker stands next to and hung to the left of
-   it, in the page margin. Pointer events reach the tags only. */
+   it, in the page margin; icons sharing an anchor step further left. The
+   marker's text is the icon's tooltip. Pointer events reach the icons only. */
 .gp-marker-tags {
   position: absolute;
   top: 0;
@@ -60,38 +61,58 @@ export const GUTTERPRESS_EDITOR_CSS = `
 }
 .gp-marker-tag {
   position: absolute;
-  transform: translateX(calc(-100% - 10px));
+  --gp-tag-slot: 0;
+  transform: translateX(calc(-100% - 8px - var(--gp-tag-slot) * 26px));
   pointer-events: auto;
   cursor: pointer;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.1em 0.5em;
-  width: max-content;
-  max-width: 14em;
-  padding: 0.05em 0.45em;
-  border-left: 3px solid #4c6ef5;
-  border-radius: 0 4px 4px 0;
-  background: rgba(76, 110, 245, 0.1);
-  color: #3b4252;
-  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(76, 110, 245, 0.55);
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #4c6ef5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   user-select: none;
 }
+.gp-marker-tag:hover,
+.gp-marker-tag:focus-visible {
+  background: #4c6ef5;
+  color: #fff;
+  outline: none;
+}
+.gp-marker-tag svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .gp-marker-tag--closing {
-  transform: translate(calc(-100% - 10px), -100%);
+  transform: translate(calc(-100% - 8px - var(--gp-tag-slot) * 26px), -100%);
 }
 .gp-marker-tag--end-section,
 .gp-marker-tag--html-container,
 .gp-marker-tag--page-break,
 .gp-marker-tag--column-break {
-  border-left-color: #94a3b8;
-  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(100, 116, 139, 0.55);
+  background: #f1f5f9;
+  color: #64748b;
 }
-.gp-marker-tag--end-section .gp-block-chip__kind,
-.gp-marker-tag--html-container .gp-block-chip__kind,
-.gp-marker-tag--page-break .gp-block-chip__kind,
-.gp-marker-tag--column-break .gp-block-chip__kind {
+.gp-marker-tag--end-section:hover,
+.gp-marker-tag--html-container:hover,
+.gp-marker-tag--page-break:hover,
+.gp-marker-tag--column-break:hover {
+  background: #64748b;
+  color: #fff;
+}
+.gp-block-chip__kind {
   color: #64748b;
 }
 .gp-block-chip__kind {
@@ -123,13 +144,6 @@ export const GUTTERPRESS_EDITOR_CSS = `
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-/* The generated-view preview (a chapter opener's composite) is not part of
-   the page's flow either; the page renders the opener through the pipeline's
-   own output, which the editor mounts as a wrapper. In the margin tag it
-   would only hide the text beside it. */
-.gp-marker-tag .gp-block-chip__generated {
-  display: none;
 }
 /* A plugin-region / raw-html chip is not a chip at all: what it shows is the
    pipeline's own rendered output, which prints. It must therefore add NOTHING

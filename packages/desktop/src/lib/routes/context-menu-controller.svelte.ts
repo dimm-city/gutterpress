@@ -70,12 +70,27 @@ export interface ContextMenuItem {
   run: () => void | Promise<void>;
 }
 
+/**
+ * What `ContextMenu.svelte` needs from a menu's owner: this controller for
+ * the preview's menu, `PopupMenuController` for the paged editor's.
+ */
+export interface MenuSurface {
+  readonly open: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly items: ContextMenuItem[];
+  close(): void;
+  runItem(item: ContextMenuItem): Promise<void>;
+  wasJustOpened(): boolean;
+  reportMenuSize(width: number, height: number): void;
+}
+
 /** Default size estimate used to clamp the menu on open, BEFORE the component
  *  has mounted and can report its real size via {@link ContextMenuController.reportMenuSize}. */
 const ESTIMATED_WIDTH = 240;
 const ESTIMATED_HEIGHT = 260;
 
-export class ContextMenuController {
+export class ContextMenuController implements MenuSurface {
   private deps: ContextMenuDeps;
 
   // ── Public rune state (read by ContextMenu.svelte) ────────────────────────

@@ -92,6 +92,7 @@ import {
   type GutterpressProjection,
 } from "gutterpress/render";
 import { composeEditorCss, inlineStyles, loadManifestWithPath, resolveConfig } from "gutterpress";
+import { registerEditorAssets, rewriteEditorAssetUrls } from "./editor-assets";
 import { stat } from "node:fs/promises";
 import { loadPluginsWithCss } from "gutterpress/plugins";
 import { RICH_MODE_MAX_CONTENT_BYTES } from "gutterpress/render";
@@ -140,7 +141,14 @@ async function bookCssFor(projectDir: string, styles: readonly string[], pluginC
   const cached = bookCssCache.get(projectDir);
   if (cached && cached.stamp === stamp) return cached.css;
   const inlined = await inlineStyles(projectDir, [...styles]);
-  const css = composeEditorCss({ scopeSelector: EDITOR_BOOK_SCOPE_SELECTOR, pluginCss, projectCss: inlined.css });
+  // The book's art: `inlineStyles` planned copies the build would make; the
+  // editor serves the originals instead (editor-assets.ts).
+  registerEditorAssets(inlined.copies);
+  const css = composeEditorCss({
+    scopeSelector: EDITOR_BOOK_SCOPE_SELECTOR,
+    pluginCss,
+    projectCss: rewriteEditorAssetUrls(inlined.css),
+  });
   bookCssCache.set(projectDir, { stamp, css });
   return css;
 }

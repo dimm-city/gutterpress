@@ -82,7 +82,9 @@
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
-  import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
+  import { ContextMenuController, type ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
+  import { PopupMenuController } from "$lib/routes/popup-menu-controller.svelte";
+  import { findImageTokenAtOffset } from "$lib/editor/context-menu-actions";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
@@ -1041,6 +1043,9 @@
   // (the lock pill in the editor pane), and it does not outlive the mode:
   // coming back to Read is coming back to read.
   let richLocked = $state(true);
+  /** The paged editor's zoom (`"fit-width"` or a scale); Read opens at fit-width. */
+  let richZoom = $state("fit-width");
+  let editorPaneEl = $state<HTMLElement | undefined>(undefined);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -1482,6 +1487,8 @@
     getSelection: () => { readonly from: number; readonly to: number } | undefined;
     setReadonly: (readonly: boolean) => void;
     revealLine: (line: number) => void;
+    setZoom: (zoom: string) => void;
+    setSelection: (from: number, to?: number) => void;
   } | null>(null);
 
   /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
@@ -2917,6 +2924,13 @@
         togglePreview();
         return;
       }
+      // The browser's zoom keys zoom the surface on screen, never the window.
+      if (command === "zoom-in" || command === "zoom-out" || command === "zoom-reset") {
+        e.preventDefault();
+        if (command === "zoom-reset") applyZoomToVisibleSurface("fit-width");
+        else stepVisibleZoom(command === "zoom-in" ? 0.25 : -0.25);
+        return;
+      }
       // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
       // FindBar drives the native window find over the preview. To edit a
       // found word, the writer uses the preview's "Go to source" — the
@@ -3328,6 +3342,199 @@
     richEditorRef?.setReadonly(locked);
   }
 
+  /**
+   * Zoom whichever surface is on screen: the preview beside the source
+   * editor, or the paged editor in Read. The paged editor's zoom is the
+   * workspace's own state; it opens each document at fit-width.
+   */
+  function applyZoomToVisibleSurface(value: string): void {
+    if (previewVisible) {
+      zoomView.applyZoom(value);
+      return;
+    }
+    richZoom = value;
+    richEditorRef?.setZoom(value);
+  }
+
+  function stepVisibleZoom(delta: number): void {
+    if (previewVisible) {
+      zoomView.stepZoom(delta);
+      return;
+    }
+    const current = richZoom === "fit-width" ? 1 : parseFloat(richZoom) || 1;
+    const next = Math.max(0.25, Math.min(4, current + delta));
+    applyZoomToVisibleSurface(String(Math.round(next * 100) / 100));
+  }
+
+  // -- The paged editor's own context menu and image selection ---------------
+  //
+  // The preview's menu is fed by events from the book's iframe; the paged
+  // editor lives in this document, so its menu reads the element under the
+  // pointer directly. Every inactive block carries the source range the mount
+  // stamped on it (data-gp-start / data-gp-length), which is what maps a
+  // click back to the author's text: a right-click offers "Edit in source" at
+  // that line, and an image click (unlocked) puts the caret inside the
+  // image's own token so the toolbar's Image properties, and a double-click,
+  // act on that image.
+  const richContextMenu = new PopupMenuController(() => {
+    const rect = editorPaneEl?.getBoundingClientRect();
+    return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  });
+
+  interface RichBlockHit {
+    readonly el: HTMLElement;
+    readonly start: number;
+    readonly length: number;
+  }
+
+  function richBlockAt(target: EventTarget | null): RichBlockHit | null {
+    const el = target instanceof Element ? target.closest<HTMLElement>(".rich-editor-host .md-block[data-gp-start]") : null;
+    if (!el) return null;
+    const start = Number(el.dataset["gpStart"]);
+    const length = Number(el.dataset["gpLength"]);
+    return Number.isFinite(start) && Number.isFinite(length) ? { el, start, length } : null;
+  }
+
+  /** A caret offset inside the image token `img` was rendered from, or null when the block's source has no such image (a plugin's own art). */
+  function richImageOffset(img: HTMLImageElement, block: RichBlockHit): number | null {
+    const text = richDocHostCtrl.host?.getSnapshot().text;
+    if (!text) return null;
+    const blockText = text.slice(block.start, block.start + block.length);
+    const index = Array.from(block.el.querySelectorAll("img")).indexOf(img);
+    if (index < 0) return null;
+    let pos = 0;
+    let seen = 0;
+    while (pos < blockText.length) {
+      const at = blockText.indexOf("![", pos);
+      if (at < 0) break;
+      const token = findImageTokenAtOffset(blockText, at + 1);
+      if (!token) {
+        pos = at + 2;
+        continue;
+      }
+      if (seen === index) return block.start + token.altStart;
+      seen += 1;
+      pos = token.end;
+    }
+    return null;
+  }
+
+  function lineOfOffset(offset: number): number {
+    const text = richDocHostCtrl.host?.getSnapshot().text ?? "";
+    let line = 1;
+    const end = Math.min(offset, text.length);
+    for (let i = 0; i < end; i++) if (text.charCodeAt(i) === 10) line += 1;
+    return line;
+  }
+
+  /** Open the source editor on the line the block at `offset` starts at. */
+  function editInSourceAt(offset: number): void {
+    const path = editorFilePath;
+    if (!path) return;
+    const line = lineOfOffset(offset);
+    if (isNarrow) setPaneMode("edit");
+    setMode("editor");
+    void selectEditorFile(path).then((selected) => {
+      if (selected) whenEditorReady(() => revealLineInLiveEditor(path, line, true));
+    });
+    focusEditorWhenReady();
+  }
+
+  /** Put the caret in an image's token, unlocking first if needed, and open Image properties. */
+  function openRichImageAt(offset: number): void {
+    if (richLocked) setRichLocked(false);
+    richEditorRef?.setSelection(offset);
+    handleImagePropertiesAtCaret();
+  }
+
+  function onRichContextMenu(e: MouseEvent): void {
+    if (!richSurfaceActive) return;
+    const block = richBlockAt(e.target);
+    const img = e.target instanceof HTMLImageElement ? e.target : null;
+    const imageOffset = img && block ? richImageOffset(img, block) : null;
+    const items: ContextMenuItem[] = [];
+    if (imageOffset !== null) {
+      items.push({
+        id: "image-properties",
+        label: richLocked ? "Unlock and edit image..." : "Image properties...",
+        enabled: true,
+        run: () => {
+          richContextMenu.close();
+          openRichImageAt(imageOffset);
+        },
+      });
+    }
+    if (img) {
+      items.push({
+        id: "image-reveal",
+        label: "Reveal in Media panel",
+        enabled: true,
+        run: () => {
+          richContextMenu.close();
+          openMediaPanel();
+        },
+      });
+    }
+    const selected = window.getSelection()?.toString() ?? "";
+    if (selected) {
+      items.push({
+        id: "copy",
+        label: "Copy",
+        enabled: true,
+        run: async () => {
+          richContextMenu.close();
+          await copyToClipboard(selected);
+        },
+      });
+    }
+    if (block) {
+      items.push({
+        id: "edit-in-source",
+        label: "Edit in source",
+        enabled: true,
+        run: () => {
+          richContextMenu.close();
+          editInSourceAt(block.start);
+        },
+      });
+    }
+    items.push(
+      richLocked
+        ? { id: "unlock", label: "Unlock to edit", enabled: true, run: () => { richContextMenu.close(); setRichLocked(false); } }
+        : { id: "lock", label: "Lock", enabled: true, run: () => { richContextMenu.close(); setRichLocked(true); } },
+    );
+    e.preventDefault();
+    richContextMenu.openAt(e.clientX, e.clientY, items);
+  }
+
+  /**
+   * A press on an image selects that image: the caret goes inside its own
+   * token, so the toolbar's Image properties acts on it. Taken at capture
+   * time and stopped, because the fork places the caret by coordinates and
+   * a pinned image (absolutely positioned art) sits over a different block
+   * than the one it was written in; the fork would activate that one.
+   */
+  function onRichPointerDown(e: PointerEvent): void {
+    if (!richSurfaceActive || richLocked || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
+    const block = richBlockAt(e.target);
+    if (!block) return;
+    const offset = richImageOffset(e.target, block);
+    if (offset === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    richEditorRef?.setSelection(offset);
+  }
+
+  function onRichDoubleClick(e: MouseEvent): void {
+    if (!richSurfaceActive || !(e.target instanceof HTMLImageElement)) return;
+    const block = richBlockAt(e.target);
+    if (!block) return;
+    const offset = richImageOffset(e.target, block);
+    if (offset === null) return;
+    e.preventDefault();
+    openRichImageAt(offset);
+  }
+
   /** Hide/show the viewer - the focus toggle on the source editor's toolbar (and Ctrl+Shift+F). */
   function togglePreview() {
     if (!lifecycle.previewUrl || isNarrow) return;
@@ -3584,7 +3791,7 @@
     onOpenInBrowser={openInBrowser}
     {pageNav}
     rendering={lifecycle.rendering}
-    showPageNav={!!lifecycle.previewUrl && !isNarrow}
+    showPageNav={!!lifecycle.previewUrl && !isNarrow && previewVisible}
     {isNarrow}
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
@@ -3593,9 +3800,9 @@
     hidePreviewControls={isNarrow && editorPaneOpen}
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
-    {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl || !previewVisible}
-    onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
+    zoom={previewVisible ? zoom : richZoom}
+    previewControlsDisabled={!lifecycle.previewUrl}
+    onApplyZoom={(val) => { contextMenu.close(); applyZoomToVisibleSurface(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
     publishVisible={isDesktop()}
     publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
@@ -3698,6 +3905,7 @@
       {#if editorPaneOpen}
         <section
           class="pane editor-pane"
+          bind:this={editorPaneEl}
           id="mobile-panel-editor"
           role={isNarrow ? "tabpanel" : undefined}
           aria-label={openFileIsCss ? "CSS editor" : "Markdown editor"}
@@ -3790,9 +3998,13 @@
                    give D7's "exactly one editing surface mounted" invariant
                    both its structural guarantee (this {#if}/{:else}) and its
                    asserted one (the controller throws on a violation). -->
+              <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
               <div
                 style="display:contents"
                 use:trackSurfaceMount={{ controller: richMode, surface: "rich" }}
+                oncontextmenu={onRichContextMenu}
+                onpointerdowncapture={onRichPointerDown}
+                ondblclick={onRichDoubleClick}
               >
                 {#if !editorFilePath}
                   <div class="editor-loading" role="status" aria-live="polite">
@@ -3811,6 +4023,7 @@
                       onDiagnostic={showRichDiagnostic}
                       paged={true}
                       readonly={richLocked}
+                      zoom={richZoom}
                       projectDir={lifecycle.currentDir}
                       filePath={editorFilePath}
                     />
@@ -3861,6 +4074,9 @@
                 Loading editor…
               </div>
             {/if}
+          {/if}
+          {#if isDesktop()}
+            <ContextMenu controller={richContextMenu} />
           {/if}
         </section>
         {#if !isNarrow && previewVisible}

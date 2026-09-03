@@ -21,7 +21,7 @@ import { promoteTableHeader } from "./table-header.ts";
 import { stripHiddenMarkup } from "./hidden-markup.ts";
 import { applyPipelineAttributes, buildPipelineAttributeIndex } from "./pipeline-attrs.ts";
 import { applyInlineWrappers, buildInlineWrapperIndex } from "./inline-wrappers.ts";
-import { CHIP_START_ATTR, installMarkerTags, type MarkerTagsHandle } from "./marker-tags.ts";
+import { BLOCK_LENGTH_ATTR, BLOCK_START_ATTR, CHIP_CARET_ATTR, installMarkerTags, type MarkerTagsHandle } from "./marker-tags.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -159,8 +159,12 @@ export function mountGutterpressEditor(
         // first character is unambiguously this block's.
         if (element.classList.contains("gp-block-chip")) {
           const lead = sourceText.length - sourceText.trimStart().length;
-          element.setAttribute(CHIP_START_ATTR, String(absoluteStart + lead + 1));
+          element.setAttribute(CHIP_CARET_ATTR, String(absoluteStart + lead + 1));
         }
+        // Every inactive block carries its source range too, so a host can
+        // map a right-click or an image click on any block back to source.
+        element.setAttribute(BLOCK_START_ATTR, String(absoluteStart));
+        element.setAttribute(BLOCK_LENGTH_ATTR, String(sourceText.length));
       },
       afterDocumentMount: (documentElement) => {
         // The host first: its pagination is the layout the tags anchor to.

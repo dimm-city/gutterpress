@@ -245,11 +245,11 @@ window.__gpGutterpress = {
   },
   markerTagPoint(chipIndex: number): { x: number; y: number } {
     const chip = requireChip(chipIndex);
-    const start = chip.getAttribute("data-gp-start");
-    const tag = start === null ? null : document.querySelector<HTMLElement>(`.gp-marker-tag[data-gp-start="${start}"]`);
+    const start = chip.getAttribute("data-gp-caret");
+    const tag = start === null ? null : document.querySelector<HTMLElement>(`.gp-marker-tag[data-gp-caret="${start}"]`);
     if (!tag) {
       const layers = document.querySelectorAll(".gp-marker-tags").length;
-      const tags = [...document.querySelectorAll(".gp-marker-tag")].map((t) => t.getAttribute("data-gp-start"));
+      const tags = [...document.querySelectorAll(".gp-marker-tag")].map((t) => t.getAttribute("data-gp-caret"));
       const docEl = document.querySelector(".md-document");
       throw new Error(
         `gutterpress harness: chip ${chipIndex} has no margin tag (start=${start}, layers=${layers}, tags=${JSON.stringify(tags)}, docConnected=${docEl?.isConnected}, docParent=${docEl?.parentElement?.className}, readonly=${!!document.querySelector(".md-editor.md-readonly")})`,

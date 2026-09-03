@@ -41,6 +41,12 @@ export interface PagedSurface {
   readonly totalPages: () => number;
   /** Fires after every pagination with the current page count. */
   readonly onPaginated: (listener: (totalPages: number) => void) => () => void;
+  /**
+   * The stage's zoom: `"fit-width"` (a page fits the pane, never above 1:1)
+   * or a scale such as `"1.25"`. Re-paginates, because CSS zoom changes
+   * layout (see `fit`).
+   */
+  readonly setZoom: (zoom: string) => void;
   readonly dispose: () => void;
 }
 
@@ -77,6 +83,10 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   let fontsSettled = false;
   let disposed = false;
   let layoutCount = 0;
+  /** A scale the author chose, or null for fit-to-width. */
+  let userZoom: number | null = null;
+  /** The document element of the latest run, for a zoom change to relayout. */
+  let mounted: HTMLElement | undefined;
 
   /**
    * Scale the whole stage down when a page is wider than the pane, exactly
@@ -92,6 +102,13 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
    * what makes the editor's page count match the book's.
    */
   function fit(stage: HTMLElement): void {
+    if (userZoom !== null) {
+      // A chosen scale replaces the fit: the viewer's CSS multiplies the two.
+      stage.style.setProperty("--gutterpress-fit-zoom", "1");
+      stage.style.setProperty("--gutterpress-zoom", String(userZoom));
+      return;
+    }
+    stage.style.removeProperty("--gutterpress-zoom");
     const host = stage.parentElement?.parentElement;
     const available = (host?.clientWidth ?? 0) - STAGE_PADDING * 2;
     if (!Number.isFinite(pageWidthPx) || pageWidthPx <= 0 || available <= 0) return;
@@ -165,6 +182,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   }
 
   function run(documentElement: HTMLElement): void {
+    mounted = documentElement;
     const stage = documentElement.parentElement;
     if (stage) {
       stage.classList.add(STAGE_CLASS);
@@ -218,6 +236,11 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       run(documentElement);
     },
     totalPages: () => pages,
+    setZoom(zoom: string): void {
+      const scale = zoom === "fit-width" ? null : Number(zoom);
+      userZoom = scale !== null && Number.isFinite(scale) && scale > 0 ? scale : null;
+      if (mounted) refresh(mounted);
+    },
     onPaginated(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

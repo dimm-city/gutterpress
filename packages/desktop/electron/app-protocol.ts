@@ -20,6 +20,7 @@
  * `buildDir` — proven by the traversal-refusal tests in
  * tests/platform/app-protocol.test.ts.
  */
+import { EDITOR_ASSET_PREFIX } from "./editor-assets";
 import { protocol } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
@@ -190,7 +191,24 @@ export function mimeTypeFor(filePath: string): string {
 export function registerAppProtocol(
   buildDir: string,
   projectRoots: () => readonly string[] = () => [],
+  editorAsset: (name: string) => string | undefined = () => undefined,
 ): void {
+  /**
+   * Serve one file a book stylesheet references (see editor-assets.ts). The
+   * registry IS the authorization: only a hashed name a listed stylesheet
+   * produced resolves, and it resolves to exactly the file it came from.
+   */
+  async function editorAssetResponse(pathname: string): Promise<Response> {
+    const name = pathname.slice(EDITOR_ASSET_PREFIX.length);
+    const file = name.includes("/") ? undefined : editorAsset(name);
+    if (!file) return new Response("Not Found", { status: 404 });
+    try {
+      const data = await readFile(file);
+      return new Response(data, { headers: { "Content-Type": mimeTypeFor(file) } });
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
+  }
   /**
    * Serve one file from the open project (see {@link PROJECT_ASSET_PREFIX}).
    * Resolved against the active book root, then canonically contained
@@ -225,6 +243,9 @@ export function registerAppProtocol(
     }
     if (url.pathname.startsWith(PROJECT_ASSET_PREFIX)) {
       return projectAsset(decodeURIComponent(url.pathname));
+    }
+    if (url.pathname.startsWith(EDITOR_ASSET_PREFIX)) {
+      return editorAssetResponse(decodeURIComponent(url.pathname));
     }
     const resolved = resolveAssetPath(buildDir, url.pathname);
     if (resolved === null) {

@@ -189,6 +189,7 @@ import {
   type ExportSession,
 } from "./pdf-export";
 import { createElectronEngineBrowser } from "./engine-browser";
+import { editorAssetPath } from "./editor-assets";
 import {
   registerAppProtocol,
   resolveBuildDir,
@@ -662,6 +663,27 @@ function registerUrlPreviewHeaderWatch() {
     }
     callback({ responseHeaders: details.responseHeaders });
   });
+}
+
+/** The default application menu minus its zoom roles (see the call site). */
+function appMenuTemplate(): Electron.MenuItemConstructorOptions[] {
+  const mac = process.platform === "darwin";
+  return [
+    ...(mac ? [{ role: "appMenu" as const }] : []),
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    { role: "windowMenu" },
+  ];
 }
 
 function createWindow() {
@@ -1890,7 +1912,14 @@ app.whenReady().then(async () => {
   // The open project's own files are readable under app://local/__project/
   // so the editor can show a chapter's art. Same roots the fs IPC guard
   // authorizes against — never a second source of truth.
-  registerAppProtocol(buildDir, () => fsGuardImpl.projectRoots());
+  registerAppProtocol(buildDir, () => fsGuardImpl.projectRoots(), editorAssetPath);
+  // The menu bar is hidden, but a menu's accelerators still fire. Electron's
+  // default menu carries Ctrl/Cmd+= / - / 0, which zoom the whole renderer:
+  // the toolbar grew past the window edge and the app looked shifted inside
+  // its frame. The app zooms its own surfaces (the preview, the paged
+  // editor) on those keys instead, so this menu keeps what the default
+  // offered and leaves the zoom roles out.
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate()));
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;

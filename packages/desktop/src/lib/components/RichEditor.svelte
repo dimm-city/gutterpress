@@ -57,6 +57,7 @@
     onPaginated,
     projectDir = null,
     filePath = null,
+    zoom = "fit-width",
   }: {
     /**
      * The document this mount reads/writes through — the D3/D7
@@ -88,6 +89,8 @@
     projectDir?: string | null;
     /** The open document's path, so art relative to a chapter in a subfolder resolves the way the book resolves it. */
     filePath?: string | null;
+    /** The zoom the pages open at: `"fit-width"` or a scale. Later changes go through `setZoom`. */
+    zoom?: string;
   } = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
@@ -108,8 +111,11 @@
         getSelection(): { readonly from: number; readonly to: number } | undefined;
         revealRange(from: number, to?: number): void;
         setReadonly(readonly: boolean): void;
+        setSelection(from: number, to?: number): void;
       }
     | undefined;
+  /** The paged surface of the current mount, for the workspace's zoom control. */
+  let surfaceHandle: ReturnType<typeof createPagedSurface> | undefined;
 
   onMount(() => {
     if (!container) return;
@@ -136,6 +142,8 @@
       }
     }
     if (surface && onPaginated) surface.onPaginated(onPaginated);
+    surfaceHandle = surface;
+    if (surface && zoom) surface.setZoom(zoom);
     const mount = projection
       ? mountGutterpressEditor(container, host, {
           projection,
@@ -159,6 +167,7 @@
     mountHandle = mount;
     return () => {
       mountHandle = undefined;
+      surfaceHandle = undefined;
       mount.dispose();
       surface?.dispose();
     };
@@ -185,6 +194,16 @@
    */
   export function setReadonly(next: boolean): void {
     mountHandle?.setReadonly(next);
+  }
+
+  /** Zoom the pages: `"fit-width"` or a scale such as `"1.25"` (see `PagedSurface.setZoom`). */
+  export function setZoom(next: string): void {
+    surfaceHandle?.setZoom(next);
+  }
+
+  /** Place the caret at a source offset, as a click there would (activates the block). */
+  export function setSelection(from: number, to?: number): void {
+    mountHandle?.setSelection(from, to);
   }
 
   /**

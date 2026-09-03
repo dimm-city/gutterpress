@@ -11,6 +11,9 @@ export type GlobalShortcutCommand =
   | "snippet"
   | "focus-mode"
   | "find"
+  | "zoom-in"
+  | "zoom-out"
+  | "zoom-reset"
   | "none";
 
 export interface ShortcutInput {
@@ -35,6 +38,12 @@ export function resolveGlobalShortcut(i: ShortcutInput): GlobalShortcutCommand {
   // fit-width stays untouched by both).
   if (i.ctrlOrMeta && i.shift && (i.key === "f" || i.key === "F")) return "focus-mode";
   if (i.ctrlOrMeta && (i.key === "f" || i.key === "F")) return "find";
+  // The browser's own zoom keys, taken over: the app zooms the surface on
+  // screen (preview or paged editor), never the whole window. The app menu
+  // no longer carries Electron's zoom roles for the same reason.
+  if (i.ctrlOrMeta && (i.key === "=" || i.key === "+")) return "zoom-in";
+  if (i.ctrlOrMeta && (i.key === "-" || i.key === "_")) return "zoom-out";
+  if (i.ctrlOrMeta && i.key === "0") return "zoom-reset";
   return "none";
 }
 
