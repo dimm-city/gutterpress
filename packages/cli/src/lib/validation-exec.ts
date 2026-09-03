@@ -443,8 +443,8 @@ export async function executeValidation(
     // in plugin-declared `styles` files, so a plugin's CSS is print-safety and
     // ownership checked by `gutterpress lint` but not by `validate`/`preflight`
     // or the desktop Problems panel. Closing that gap means paying a plugin
-    // load here too — see the follow-up issue before doing it, because a build
-    // already loads plugins twice (lint gate, then render).
+    // load here too — see #262 before doing it, because a build already loads
+    // plugins twice (lint gate, then render).
     const relStyles = await resolveActiveStyles(manifestDir, config.styles);
     cssFiles = relStyles
       .map((rel) => resolve(manifestDir, rel))
