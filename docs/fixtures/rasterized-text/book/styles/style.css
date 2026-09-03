@@ -1,0 +1,57 @@
+/* style.css — reproduces the render-parity blind spot from issue #259 on a
+   minimal, public construct, since the classes that surfaced it
+   (`.dc-specialty-intro`, `.section.tabbed`) live in a private book.
+   See docs/render-parity-gate.md's "Known blind spot" section and
+   docs/engine/ENGINE.md #10 for the underlying Chromium behaviour this
+   fixture exercises: `filter` rasterizes its whole subtree to an embedded
+   bitmap, and any text inside goes with it — genuinely absent from
+   page.getTextContent(), not merely filtered out by pdf-inspect.ts. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+}
+
+.section {
+  margin: 0 0 24pt;
+  padding: 14pt 16pt;
+  background: #f2f2f2;
+}
+
+/* Contrast case: an irregular silhouette with NO filter. Confirmed (see the
+   test in this directory's sibling .test.ts) that clip-path alone does not
+   reproduce the blind spot on this Chromium — its text stays real text. This
+   section exists so the pinning test can prove the gap is specific to
+   `filter`, not to "any styled/shaped component". */
+.only-clip-path {
+  clip-path: polygon(4% 0%, 100% 0%, 96% 100%, 0% 100%);
+  background: #e6f2e6;
+}
+
+/* Mirrors `.dc-specialty-intro`: a specialty card with an irregular
+   silhouette whose shadow must follow that silhouette, so `filter:
+   drop-shadow` is used instead of `box-shadow` (ENGINE.md #10's own stated
+   reason `filter` is ever still needed after the section-chrome conversion
+   to vector shadows). */
+.fixture-specialty-intro {
+  clip-path: polygon(4% 0%, 100% 0%, 96% 100%, 0% 100%);
+  filter: drop-shadow(3pt 3pt 4pt rgba(0, 0, 0, 0.45));
+  background: #fdf6e3;
+}
+
+/* Mirrors `.section.tabbed`: a cut-corner "tab" panel shape with its own
+   shape-following shadow (the generic `.section` fake-shadow is suppressed
+   for this variant because a plain rectangle does not fit its shape). */
+.fixture-tabbed {
+  clip-path: polygon(0 12pt, 12pt 0, 100% 0, 100% 100%, 0 100%);
+  filter: drop-shadow(3pt 3pt 4pt rgba(0, 0, 0, 0.45));
+  background: #eef3f7;
+}
