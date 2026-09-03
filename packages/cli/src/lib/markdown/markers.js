@@ -523,7 +523,6 @@ export default function plugin(md, pluginOptions = {}) {
     scanForMistypedMarkers(state);
 
     const out = [];
-    setDepth(state.env, 0);
 
     /**
      * @typedef {'chapter'|'spread'|'page'|'section'} ScopeKind
@@ -741,17 +740,11 @@ export default function plugin(md, pluginOptions = {}) {
       const t = new state.Token('layout_section_open', 'div', 1);
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
-      // Precomputed here (instead of scanned per-render from the renderer
-      // rule) so the col-split renderer branch is O(1): the transform pass
-      // is the single place that walks the marker stream, so it is also the
-      // right place to record whether THIS section's body contains a
-      // @column-break. Stored on the token's own `meta` (not env / not a
-      // rendered attribute) since it's per-token render guidance, not
-      // author-visible output. `line` is the 1-based marker line, threaded
-      // for the source-range annotation rule (source-range.ts). Do NOT set
-      // token.map here — see the do-not-use-token.map comment in
-      // openChapter above (ADR 0009); applies identically here.
-      t.meta = { hasColumnBreak: false, line: meta.__line };
+      // `line` is the 1-based marker line, threaded for the source-range
+      // annotation rule (source-range.ts). Do NOT set token.map here — see
+      // the do-not-use-token.map comment in openChapter above (ADR 0009);
+      // applies identically here.
+      t.meta = { line: meta.__line };
       stack.open(
         {
           kind: 'section',
@@ -963,22 +956,6 @@ export default function plugin(md, pluginOptions = {}) {
 
       if (kind === 'column-break') {
         warnBreakInsideGrid('column-break', line, meta);
-        // Record the column-break onto the currently open section's OPEN
-        // token (see openSection) rather than rescanning the token stream
-        // at render time. At most one section frame is ever open at a time
-        // (every section-affecting marker closes the current section
-        // before opening the next — see stack.close('section') above and
-        // in openPage/openChapter's stack.close calls), so "the currently
-        // open section" is unambiguously the one this column-break belongs
-        // to.
-        const openSectionFrame = stack.get('section');
-        if (openSectionFrame && openSectionFrame.openToken && !openSectionFrame.openToken.meta.hasColumnBreak) {
-          const sectionCls = openSectionFrame.openToken.attrGet('class') || '';
-          if (sectionCls.includes('col-split')) {
-            openSectionFrame.openToken.meta.hasColumnBreak = true;
-          }
-        }
-
         const t = new state.Token('layout_column_break', 'div', 0);
         // Thread the 1-based marker line for source-range.ts. Do NOT set
         // token.map — see the do-not-use-token.map comment in openChapter
@@ -1022,79 +999,13 @@ export default function plugin(md, pluginOptions = {}) {
 
   // Renderer rules for injected tokens.
   //
-  // col-split handling. Authors who want HARD column boundaries opt in by
-  // adding `.col-split` to an @section; the renderer then emits explicit
-  // <div class="col"> sibling wrappers and treats @column-break as the
-  // closing/opening div boundary, so the split is structural rather than a
-  // hint the fragmenter may balance away. A column section WITHOUT
-  // `.col-split` keeps native CSS multi-column balancing behavior.
-  //
-  // Depth state lives on env (per-render) so renders can't leak state into
-  // one another. layout_page_open / layout_chapter_open also reset depth
-  // defensively in case of misnested markers within one render.
-  function getDepth(env) {
-    return (env && env.__colSplitDepth) || 0;
-  }
-  function setDepth(env, n) {
-    if (env) env.__colSplitDepth = n;
-  }
-
-  // layout_chapter_close / layout_spread_open / layout_spread_close /
-  // layout_page_close intentionally have NO renderer rule: markdown-it's own
-  // Renderer.render() already falls back to self.renderToken() for any token
-  // type with no registered rule (see markdown-it/lib/renderer.js), so a rule
-  // here that only forwarded to renderToken was dead weight that implied it
-  // did something. Only layout_chapter_open / layout_page_open need rules,
-  // because they also reset the col-split depth counter (a real side effect).
-  md.renderer.rules.layout_chapter_open = (tokens, idx, opts, env, self) => {
-    setDepth(env, 0);
-    return self.renderToken(tokens, idx, opts);
-  };
-  md.renderer.rules.layout_page_open = (tokens, idx, opts, env, self) => {
-    setDepth(env, 0);
-    return self.renderToken(tokens, idx, opts);
-  };
-
-  md.renderer.rules.layout_section_open = (tokens, idx, opts, env, self) => {
-    const token = tokens[idx];
-    const cls = token.attrGet('class') || '';
-
-    // hasColumnBreak is precomputed once, during the layout_transform core
-    // pass (see openSection / the 'column-break' branch above), instead of
-    // rescanning the token stream here on every render.
-    if (cls.includes('col-split') && token.meta && token.meta.hasColumnBreak) {
-      setDepth(env, getDepth(env) + 1);
-      // cls already contains 'section col-split'; it is author-controlled
-      // (class=... / .class shorthand on the @section marker) and must be
-      // escaped the same as every other attribute value this file emits —
-      // it is not safe to assume the marker tokenizer already stripped
-      // everything attribute-unsafe (e.g. a `'`-quoted class=value can still
-      // carry a literal `"` through, see markers.test.ts).
-      //
-      // data-source-range (set by the source_range core rule, which runs
-      // BEFORE render — see source-range.ts) is threaded through explicitly:
-      // this branch bypasses self.renderToken()/renderAttrs, so any attr not
-      // named here is silently dropped from output. Without this, a
-      // col-split section with a @column-break would be un-targetable by
-      // the context menu's "marker" kind (plan §3.1) even though its
-      // wrapper token IS annotated internally.
-      const rangeAttr = token.attrGet('data-source-range');
-      const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-      const chapterAttr = token.attrGet('data-chapter-src');
-      const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
-      return `<div class="${escapeAttr(cls)}"${rangeHtml}${chapterHtml}><div class="col">\n`;
-    }
-
-    return self.renderToken(tokens, idx, opts);
-  };
-
-  md.renderer.rules.layout_section_close = (tokens, idx, opts, env, self) => {
-    if (getDepth(env) > 0) {
-      setDepth(env, getDepth(env) - 1);
-      return `</div></div>\n`;
-    }
-    return self.renderToken(tokens, idx, opts);
-  };
+  // layout_chapter_open / layout_chapter_close / layout_spread_open /
+  // layout_spread_close / layout_page_open / layout_page_close /
+  // layout_section_open / layout_section_close intentionally have NO
+  // renderer rule: markdown-it's own Renderer.render() already falls back to
+  // self.renderToken() for any token type with no registered rule (see
+  // markdown-it/lib/renderer.js), so a rule here that only forwarded to
+  // renderToken would be dead weight that implied it did something.
 
   // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead.
   // Both tokens' class is always the plugin's own literal ('gp-page-break' /
@@ -1119,10 +1030,7 @@ export default function plugin(md, pluginOptions = {}) {
     return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
   };
 
-  md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
-    if (getDepth(env) > 0) {
-      return `</div><div class="col">\n`;
-    }
+  md.renderer.rules.layout_column_break = (tokens, idx) => {
     const cls = tokens[idx].attrGet('class') || 'gp-column-break';
     const rangeAttr = tokens[idx].attrGet('data-source-range');
     const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';

@@ -252,11 +252,11 @@ describe("source_range: layout markers", () => {
   test("preview chapter identity survives custom layout-marker renderers", () => {
     const md = createMarkdownRenderer();
     const html = md.render(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n@page-break\n",
+      "@section .gp-columns-2\nA\n@column-break\nB\n@end-section\n@page-break\n",
       { sourceChapter: "chapters/a.md" },
     );
 
-    expect(html).toMatch(/class="section col-split"[^>]*data-chapter-src="chapters\/a\.md"/);
+    expect(html).toMatch(/class="section gp-columns-2"[^>]*data-chapter-src="chapters\/a\.md"/);
     expect(html).toMatch(/class="gp-page-break"[^>]*data-chapter-src="chapters\/a\.md"/);
   });
 

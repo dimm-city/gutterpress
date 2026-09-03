@@ -373,8 +373,6 @@ prefixed. The split between the two modules is by ROLE, not owner:
 - `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
   `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
   `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
-  Per-render state lives on `env.__colSplitDepth`, not a module-level
-  closure, so a thrown render can't leak depth state into the next chapter.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
   `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth
