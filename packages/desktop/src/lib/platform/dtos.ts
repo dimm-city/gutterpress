@@ -240,6 +240,17 @@ export interface StyleToken {
   number?: number;
   /** For `length`: the unit (px, rem, em, …). Absent for `number`. */
   unit?: string;
+  /**
+   * Theme-author-curated display group, from an `@group` annotation comment
+   * above the declaration (issue #244) — see `parseStyleTokens` in
+   * `$lib/style-tokens` for the annotation grammar. Absent for every token in
+   * a theme that carries no annotations at all, which is what keeps an
+   * unannotated theme's panel identical to the pre-#244 heuristic grouping. A
+   * token with `group` set is shown under that named heading instead of the
+   * heuristic Fonts/Colors/Sizes/Other bucket its `kind` would otherwise put
+   * it in.
+   */
+  group?: string;
 }
 
 export interface RecentFolderEntry {
