@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Design-tokens sub-section of the merged "Look & style" section (UX review
-   * M35 — see AppearanceSection's header comment for the merge rationale).
+   * M35 — see LookSection's header comment for the merge rationale).
    * The guided `:root` custom-property editor (theme-curated groups, then
    * fonts + colors + sizes/numbers + other) is the SECOND of the three panes
    * ProjectConfigPanel composes under one "Look & style" heading, after the

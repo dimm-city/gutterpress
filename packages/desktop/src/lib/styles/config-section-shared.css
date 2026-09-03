@@ -11,7 +11,7 @@
  * and `.config-panel :global(button)` restyled every button in the whole
  * subtree with no visibility from any one section's own file. Each section
  * now owns its OWN domain-specific CSS in its own `<style>` block (plain
- * Svelte scoping, no `:global` needed — see e.g. `AppearanceSection.svelte`'s
+ * Svelte scoping, no `:global` needed — see e.g. `LookSection.svelte`'s
  * `.theme-grid`/`.theme-card`). Only the primitives multiple sections
  * genuinely share — block/field chrome, buttons, inputs, status pills — live
  * here ONCE, pulled into each section with:

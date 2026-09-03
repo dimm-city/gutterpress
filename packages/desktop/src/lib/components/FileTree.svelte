@@ -37,7 +37,7 @@
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
    * Delete. Delete uses the same two-step inline "armed" confirm as
-   * AppearanceSection's theme Remove (W4/M7). Create/rename use a small
+   * LookSection's theme Remove (W4/M7). Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
@@ -349,7 +349,7 @@
     }
   }
 
-  // ── Delete (two-step inline confirm — same pattern as AppearanceSection's
+  // ── Delete (two-step inline confirm — same pattern as LookSection's
   // theme Remove, W4/M7) ─────────────────────────────────────────────────────
   let deleteArmedPath = $state<string | null>(null);
   let deleteBusy = $state<string | null>(null);
@@ -818,7 +818,7 @@
     outline-offset: 1px;
   }
 
-  /* ── Inline delete confirm (mirrors AppearanceSection's theme Remove) ─── */
+  /* ── Inline delete confirm (mirrors LookSection's theme Remove) ─── */
   .row-confirm-msg {
     flex: 1 1 auto;
     min-width: 0;

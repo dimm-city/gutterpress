@@ -185,6 +185,22 @@ export interface ThemeInfo {
   styles: string[];
   /** The declared sheet whose `:root` is the Design panel's token surface (#239). */
   tokensFile: string;
+  /**
+   * #241/#243 — declared-relative path to a markdown-it entry, when this
+   * theme's `gutterpress.json` names one. INFORMATIONAL ONLY: applying a
+   * theme never loads or wires this (see the lib's `ThemeInfo.markdown` doc
+   * comment) — a full extension's markdown half only activates via the
+   * plugin install flow (`api.plugin.addLocal`). Surfaced so the merged
+   * Extensions surface's Look tab can note "also adds markdown features"
+   * instead of silently hiding that the folder carries more than styles.
+   */
+  markdown?: string;
+  /** #241/#243 — declared-relative path to a component catalog file (#242),
+   *  informational only (same rationale as {@link markdown}). */
+  components?: string;
+  /** #241/#243 — declared-relative path to a snippets folder (#240),
+   *  informational only (same rationale as {@link markdown}). */
+  snippets?: string;
 }
 
 /** Which theme to apply: a built-in id, or a project theme already on disk. */

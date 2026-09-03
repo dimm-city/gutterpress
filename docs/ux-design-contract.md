@@ -39,7 +39,7 @@ contract and those documents conflict, the architecture documents win.**
 |---|---|---|
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
-| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Plugin manager) below. |
+| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Features) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
@@ -115,8 +115,9 @@ gutterpress/
 ├── Problems panel                             SHIPPED  (ProblemsPanel, #28)
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
-├── Plugin manager                             SHIPPED  (Config panel → PluginsSection, #30)
-├── Theme selector / importer                  SHIPPED  (Config panel → "Look & style" theme grid, #32)
+├── Extensions (Look / Features)               SHIPPED  (Project settings tab bar --
+│                                                        LookSection / FeaturesSection, one shared
+│                                                        ExtensionsSectionController, #243)
 ├── Design tokens editor                       SHIPPED  (DesignSection: guided :root custom-property editor)
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
@@ -129,9 +130,10 @@ gutterpress/
 └── AI Assistant                               PROPOSED (#36)
 ```
 
-Document theming ("Look & style", design tokens, stylesheets) lives in the
-**project Config panel**, not Settings — app appearance and print theme are
-deliberately separated concepts; do not merge them back.
+Document theming ("Look & style", design tokens, stylesheets) and features
+(plugins) both live in the **project settings view's Extensions surface**
+(the merged Look / Features tabs, #243), not app Settings — app appearance and
+print theme are deliberately separated concepts; do not merge them back.
 
 ### Navigation model
 
@@ -433,9 +435,9 @@ the plan wins.**
   menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
-- The **Theme selector is core to a good first PDF and is never gated**; only
-  power-user surfaces (theme importer, visual layout editor #37, AI #36) get
-  the Advanced badge.
+- The **Look tab is core to a good first PDF and is never gated**; only
+  power-user surfaces (the Look tab's importer, visual layout editor #37, AI #36)
+  get the Advanced badge.
 - Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
   former "Advanced" ("for developers") tab is a section on Editor, and the
   whole surface lives on the start screen's Settings tab rather than in a
@@ -664,12 +666,14 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Plugin manager
+### 9. Features (the Extensions surface's plugin tab)
 
-**Status: SHIPPED** (Config panel → `PluginsSection`, #30). This section is
-rewritten around the actual plugin model; the original "app store" concept is
-**rejected** as incompatible with CLAUDE.md §5 unless a future ADR changes
-that rule.
+**Status: SHIPPED** (project settings' Extensions surface → `FeaturesSection`,
+#30; merged with the Theme grid into one Extensions surface, #243 — see §11
+for the Look tab this section now shares a controller with). This section
+is rewritten around the actual plugin model; the original "app store"
+concept is **rejected** as incompatible with CLAUDE.md §5 unless a future ADR
+changes that rule.
 
 The model (binding, from CLAUDE.md §5):
 
@@ -731,9 +735,10 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 - Rule explanations open the in-app help drawer, not an external browser.
 - Empty state: "No problems found — document looks great."
 
-### 11. Theme selector / importer
+### 11. Look (the Extensions surface's theme tab)
 
-**Status: SHIPPED baseline** (#32; Config panel → "Look & style") with
+**Status: SHIPPED baseline** (#32; project settings' Extensions surface →
+"Look" tab, merged with Features under one `ExtensionsSectionController`, #243) with
 PROPOSED refinements tracked in **#106**.
 
 Shipped: theme grid of built-in + project themes with per-card **rendered
@@ -750,7 +755,8 @@ Shipped refinements (#106, 0.8.0-beta.1):
   (2 pages) off-screen**; it never re-paginates the user's document (full
   re-pagination cannot meet the ≤500ms gate and would storm on hover).
   Full-document re-pagination happens only on Apply, with a progress state.
-  Shipped: `AppearanceSection` renders the sample into a hover-preview iframe
+  Shipped: `LookSection` (formerly `AppearanceSection`, merged #243) renders
+  the sample into a hover-preview iframe
   via `hoverPreviewSrcdoc`.
 - **Revert instead of timed undo:** applying a theme records the previous
   theme reference; "Revert to previous theme" remains available indefinitely

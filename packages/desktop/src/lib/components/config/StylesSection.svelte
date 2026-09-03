@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Stylesheet-list sub-section of the merged "Look & style" section (UX
-   * review M35 — see AppearanceSection's header comment for the merge
+   * review M35 — see LookSection's header comment for the merge
    * rationale). This is the THIRD pane ProjectConfigPanel composes under one
    * "Look & style" heading — the raw monospace-path checkbox list a writer
    * almost never needs, so the parent now nests it behind an "Advanced"
