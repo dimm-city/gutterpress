@@ -337,55 +337,6 @@ Three more classes name decisions a column run otherwise needs raw CSS for:
 | `.gp-columns-flow` | A run that FRAGMENTS across pages — every page's columns fill (`column-fill: auto`). |
 | `.gp-columns-balanced` | A run that fits on ONE page — its columns end up even (`column-fill: balance`). |
 
-### .col-split — a fixed, hard-authored column split
-
-`.gp-columns-2`/`.gp-columns-3` above let the browser BALANCE content across
-columns automatically — `@column-break` there is a hint the fragmenter is free
-to honor approximately. Add `.col-split` to the `@section` when you want the
-opposite: content YOU assign to column one vs. column two, with
-`@column-break` as a hard boundary between them rather than a balancing hint.
-This is what the desktop app's editor toolbar inserts for its "Two columns"
-button.
-
-```markdown
-@section .col-split
-
-Left column content, exactly as written.
-
-@column-break
-
-Right column content, exactly as written.
-
-@end-section
-```
-
-Renders:
-
-```html
-<div class="section col-split">
-  <div class="col">
-    <p>Left column content, exactly as written.</p>
-  </div>
-  <div class="col">
-    <p>Right column content, exactly as written.</p>
-  </div>
-</div>
-```
-
-Each `@column-break` inside a `.col-split` section closes the current `.col`
-and opens the next one, instead of emitting the plain `.gp-column-break`
-marker shown earlier. `@column-break` outside a `.col-split` section is
-unaffected. A `.col-split` section with no `@column-break` inside it renders
-as an ordinary, unsplit section — the class alone does nothing.
-
-Core emits the `.section.col-split` / `.col` DOM shape but does not lay the
-columns out side by side on its own — pair it with CSS along these lines:
-
-```css
-.section.col-split { display: flex; gap: var(--gp-column-gap, 1.5em); align-items: flex-start; }
-.section.col-split > .col { flex: 1; }
-```
-
 ### Grids: .gp-grid-2 and .gp-grid-3
 
 Columns flow; grids place. A `.gp-columns-2` section pours one run of text

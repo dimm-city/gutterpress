@@ -98,6 +98,30 @@ The fastest approach is a single CSS file with three sections:
 }
 ```
 
+### Themes with more than one stylesheet
+
+A theme folder is not limited to one `theme.css`. Its `theme.json` can declare
+an ordered list of sheets, engine sheets, and which sheet holds the tokens the
+Design panel edits:
+
+```json
+{
+  "name": "Dimm City",
+  "styles": ["css/tokens.css", "css/core.css", "css/components.css"],
+  "engineStyles": { "native": ["css/native.css"] },
+  "tokensFile": "css/tokens.css"
+}
+```
+
+Paths are relative to the theme folder and must stay inside it. Applying the
+theme wires every `styles` entry into your manifest as one block, in that
+order, at the position the previous theme held, and appends the
+`engineStyles.native` entries to the manifest's own `engineStyles.native`
+list. Switching or removing the theme removes the whole block. Import checks
+that every declared sheet exists and passes the print-safety rules. A
+`theme.json` without `styles` means `["theme.css"]`, so existing themes need
+no change, and `tokensFile` defaults to the first entry in `styles`.
+
 ## Font Loading
 
 Download the font into your project and load it with `@font-face` — this is
@@ -270,7 +294,7 @@ Each layout marker emits a predictable CSS class that you can style. This mirror
 | `@page-break` | `<div class="gp-page-break">` (no page wrapper) | `.gp-page-break` |
 | `@section` | `<div class="section">` | `.section` |
 | `@continue` | `<div class="section gp-continued">` | `.section.gp-continued` |
-| `@column-break` | `<div class="gp-column-break">` (or a `.col` boundary — see [`.col-split`](./02-writing-content.md#col-split--a-fixed-hard-authored-column-split)) | `.gp-column-break` |
+| `@column-break` | `<div class="gp-column-break">` (or a `.col` boundary inside `.col-split`) | `.gp-column-break` |
 
 Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.gp-page-break`, never `.md-break`.
 
