@@ -167,6 +167,35 @@ describe("gutterpress theme apply", () => {
     }
   });
 
+  // #239 — a theme is no longer capped at one stylesheet; the CLI's own
+  // display line must list every sheet the theme actually declares instead
+  // of assuming the single theme.css every theme used to be capped at.
+  test("applying a multi-sheet project theme lists every declared stylesheet, in order", async () => {
+    captureOutput();
+    const dir = await tmpProjectDir();
+    try {
+      const themeDir = path.join(dir, "themes", "layered");
+      await mkdir(path.join(themeDir, "css"), { recursive: true });
+      await writeFile(path.join(themeDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
+      await writeFile(path.join(themeDir, "css", "components.css"), ".c { color: blue; }\n", "utf8");
+      await writeFile(
+        path.join(themeDir, "theme.json"),
+        JSON.stringify({ name: "Layered", styles: ["css/tokens.css", "css/components.css"] }),
+        "utf8",
+      );
+
+      await runCommand(themeCommand, { rawArgs: ["apply", "layered", dir] });
+      expect(logged()).toContain("Applied theme: Layered (layered)");
+      expect(logged()).toContain(
+        "stylesheets: themes/layered/css/tokens.css, themes/layered/css/components.css",
+      );
+      const active = await getActiveTheme(dir);
+      expect(active?.styles).toEqual(["css/tokens.css", "css/components.css"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("re-applying an id that is already a CUSTOMIZED project theme reuses it instead of forking a new copy", async () => {
     captureOutput();
     const dir = await tmpProjectDir();
