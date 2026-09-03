@@ -159,6 +159,24 @@ export const css = `
 
 Gutterpress collects all plugin CSS exports and injects them into the single `<style>` block in `book.html`, **before** your own stylesheets — so your project CSS wins at equal specificity and you can always override a plugin's styling. Use CSS custom properties from the theme to stay consistent.
 
+For anything longer than a few rules, ship the CSS as **files** instead of a
+string, by exporting a `styles` list. Paths are relative to the plugin's own
+file:
+
+```js
+export const styles = ["./styles/components.css", "./styles/callouts.css"];
+```
+
+A `styles` file is treated exactly like one of your project's own stylesheets:
+a `url()` to a font or image next to it is embedded in the build, a local
+`@import` is followed, and `gutterpress lint` checks it for print-safety
+problems — none of which a `css` string gets, because a string is opaque to
+every other part of the tool. The files land in the same cascade position as
+`css` (after core, before your stylesheets), in the order you list them. A
+listed file that does not exist stops the build with an error naming the
+plugin and the path, rather than silently rendering without it. `css` and
+`styles` can coexist; the string is placed after the files.
+
 ## Built-in Plugins
 
 These run automatically before any user plugins and do not need to be declared in the manifest:

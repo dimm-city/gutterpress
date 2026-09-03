@@ -263,8 +263,10 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (page/section/spread mechanics). Always present.
 2. **Core utilities** — `GUTTERPRESS_CSS`, exported by
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
-3. **Plugin CSS** - the `css` export of any loaded markdown-it plugin, in
-   plugin order.
+3. **Plugin CSS** - any loaded markdown-it plugin's `styles` files (paths
+   relative to the plugin module, resolved at load time and inlined through
+   the same `lib/asset-inline.ts` pass as project CSS), followed by its
+   `css` string export, in plugin order.
 4. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
    (so project rules win at equal specificity) by `lib/asset-inline.ts`: each
    file is *read*, not linked — local `@import`s are followed and inlined in
@@ -597,6 +599,9 @@ export default function myPlugin(
 // Optional metadata and CSS exports
 export const metadata = { name: 'my-plugin', version: '1.0.0' };
 export const css = '.my-plugin-class { color: red; }';
+// Or, for anything beyond a one-liner, files relative to this module —
+// asset-inlined and lintable like project CSS (a missing file fails the load):
+export const styles = ['./styles/my-plugin.css'];
 ```
 
 ### Plugin Resolution
