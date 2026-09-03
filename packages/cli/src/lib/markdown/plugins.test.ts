@@ -315,6 +315,195 @@ describe("plugin loader", () => {
     });
   });
 
+  // #241 — a `path` entry may name an EXTENSION FOLDER (a gutterpress.json/
+  // theme.json package) instead of a bare JS file. These tests pin the two
+  // non-negotiable backward-compat claims from the OTHER direction (a plugin
+  // is the degenerate "markdown only" extension) plus the new folder-loading
+  // behavior itself; every test above this block is completely unmodified
+  // and still exercises the pre-#241 bare-file/npm paths unchanged.
+  describe("loadPlugin (extension folder, #241)", () => {
+    function writeExtension(
+      relDir: string,
+      meta: Record<string, unknown>,
+      files: Record<string, string> = {},
+    ): string {
+      const dir = join(TMP_ROOT, relDir);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "gutterpress.json"), JSON.stringify(meta), "utf8");
+      for (const [rel, contents] of Object.entries(files)) {
+        const filePath = join(dir, rel);
+        mkdirSync(join(filePath, ".."), { recursive: true });
+        writeFileSync(filePath, contents, "utf8");
+      }
+      return dir;
+    }
+
+    test("a folder with markdown + styles loads the function AND resolves the styles", async () => {
+      const dir = writeExtension(
+        "full-extension",
+        { name: "Full Extension", markdown: "plugin.js", styles: ["css/a.css"] },
+        {
+          "plugin.js": "export default function (md) { md.__fullExtension = true; }",
+          "css/a.css": ".a { color: red; }",
+        },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "full-extension" }), TMP_ROOT);
+      expect(loaded.styles).toEqual([join(dir, "css", "a.css")]);
+
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __fullExtension?: boolean }).__fullExtension).toBe(true);
+    });
+
+    test("extension-declared styles are ordered BEFORE the module's own `styles` export", async () => {
+      writeExtension(
+        "ordered-styles",
+        { markdown: "plugin.js", styles: ["ext.css"] },
+        {
+          "plugin.js": `export default function (md) {};
+             export const styles = ["./own.css"];`,
+          "ext.css": ".ext {}",
+          "own.css": ".own {}",
+        },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "ordered-styles" }), TMP_ROOT);
+      expect(loaded.styles).toEqual([
+        join(TMP_ROOT, "ordered-styles", "ext.css"),
+        join(TMP_ROOT, "ordered-styles", "own.css"),
+      ]);
+    });
+
+    test("engineStyles.native is appended after styles, in the same resolved list", async () => {
+      writeExtension(
+        "engine-styles",
+        { markdown: "plugin.js", styles: ["a.css"], engineStyles: { native: ["native.css"] } },
+        { "plugin.js": "export default function (md) {}", "a.css": ".a {}", "native.css": "@page {}" },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "engine-styles" }), TMP_ROOT);
+      expect(loaded.styles).toEqual([
+        join(TMP_ROOT, "engine-styles", "a.css"),
+        join(TMP_ROOT, "engine-styles", "native.css"),
+      ]);
+    });
+
+    test("a folder with NO markdown field is a styles-only extension: a no-op plugin function, styles still resolved", async () => {
+      const dir = writeExtension(
+        "styles-only",
+        { name: "Styles Only", styles: ["theme.css"] },
+        { "theme.css": ":root { --x: 1; }" },
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "styles-only" }), TMP_ROOT);
+      expect(loaded.styles).toEqual([join(dir, "theme.css")]);
+      expect(loaded.metadata?.name).toBe("Styles Only");
+
+      // The plugin function is a harmless no-op — md.use() must not throw.
+      const md = new MarkdownIt();
+      expect(() => applyPlugins(md, [loaded])).not.toThrow();
+    });
+
+    test("a legacy theme.json (no gutterpress.json) is honored identically as a plugin-folder's metadata", async () => {
+      // Proves the SAME reader (readExtensionMeta) backs both the theme
+      // flow and the plugin-folder flow: a folder using the pre-#241
+      // filename works here too, not just in theme-manager.ts.
+      const dir = join(TMP_ROOT, "legacy-theme-json-plugin");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "theme.json"),
+        JSON.stringify({ name: "Legacy", markdown: "plugin.js" }),
+        "utf8",
+      );
+      writeFileSync(join(dir, "plugin.js"), "export default function (md) { md.__legacy = true; }");
+
+      const loaded = await loadPlugin(cfg({ path: "legacy-theme-json-plugin" }), TMP_ROOT);
+      expect(loaded.metadata?.name).toBe("Legacy");
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __legacy?: boolean }).__legacy).toBe(true);
+    });
+
+    test("a folder declaring neither markdown nor styles fails loudly, not silently", async () => {
+      // Fail-fast doctrine (CLAUDE.md §5): a `path:` pointed at a folder with
+      // no gutterpress.json/theme.json (or one declaring nothing at all) has
+      // no observable effect — that is almost certainly an author mistake,
+      // not a legitimate degenerate extension, so it must error, not no-op.
+      const dir = join(TMP_ROOT, "empty-extension");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "README.txt"), "nothing to see here", "utf8");
+
+      await expect(loadPlugin(cfg({ path: "empty-extension" }), TMP_ROOT)).rejects.toThrow(
+        /declares neither `markdown` nor `styles`/,
+      );
+    });
+
+    test("throws when the declared markdown entry does not exist", async () => {
+      writeExtension("missing-markdown", { markdown: "does-not-exist.js" });
+      await expect(loadPlugin(cfg({ path: "missing-markdown" }), TMP_ROOT)).rejects.toThrow(
+        /does-not-exist\.js.*no file exists/s,
+      );
+    });
+
+    test("throws when a declared style is missing", async () => {
+      writeExtension("missing-style-ext", { styles: ["missing.css"] });
+      await expect(loadPlugin(cfg({ path: "missing-style-ext" }), TMP_ROOT)).rejects.toThrow(
+        /missing\.css.*no file exists/s,
+      );
+    });
+
+    test("throws when a declared path escapes the extension folder (containment)", async () => {
+      writeExtension("escaping-extension", { markdown: "../../../etc/passwd" });
+      await expect(loadPlugin(cfg({ path: "escaping-extension" }), TMP_ROOT)).rejects.toThrow(
+        /outside its own folder/,
+      );
+    });
+
+    test("named export selection (`export:`) works for an extension's markdown module", async () => {
+      writeExtension(
+        "named-export-ext",
+        { markdown: "plugin.js" },
+        {
+          "plugin.js": `export function full(md) { md.__namedExport = 'full'; }
+             export function light(md) { md.__namedExport = 'light'; }`,
+        },
+      );
+
+      const loaded = await loadPlugin(
+        cfg({ path: "named-export-ext", export: "full" }),
+        TMP_ROOT,
+      );
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __namedExport?: string }).__namedExport).toBe("full");
+    });
+
+    test("a bare .js file path is UNCHANGED by this feature — still loads as a plain file, not probed for gutterpress.json", async () => {
+      // Backward-compat guard: a sibling gutterpress.json existing NEXT TO a
+      // bare-file plugin entry (not a folder path) must have zero effect —
+      // the directory-detection branch only triggers when `path` itself
+      // resolves to a directory.
+      const dir = join(TMP_ROOT, "sibling-metadata");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "plugin.js"), "export default function (md) { md.__bare = true; }");
+      writeFileSync(
+        join(dir, "gutterpress.json"),
+        JSON.stringify({ markdown: "some-other-file.js" }),
+        "utf8",
+      );
+
+      const loaded = await loadPlugin(
+        cfg({ path: "sibling-metadata/plugin.js" }),
+        TMP_ROOT,
+      );
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+      expect((md as MarkdownIt & { __bare?: boolean }).__bare).toBe(true);
+      expect(loaded.styles).toBeUndefined();
+    });
+  });
+
   describe("loadPlugins (multi)", () => {
     test("fails fast on the first invalid plugin", async () => {
       fixture("good.mjs", `export default function (md) {}`);

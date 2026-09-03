@@ -88,6 +88,27 @@ describe("theme-import pure helpers", () => {
         "install.sh",
       ]);
     });
+    // #241
+    test("gutterpress.json itself is a recognized file, not an unexpected one", () => {
+      expect(unexpectedThemeFiles(["theme.css", "gutterpress.json"])).toEqual([]);
+    });
+    test("declaredExtras suppresses an exact declared file (markdown/components)", () => {
+      expect(
+        unexpectedThemeFiles(["theme.css", "plugin.js"], ["plugin.js"]),
+      ).toEqual([]);
+      // A file NOT in declaredExtras is still flagged.
+      expect(unexpectedThemeFiles(["theme.css", "other.js"], ["plugin.js"])).toEqual([
+        "other.js",
+      ]);
+    });
+    test("declaredExtras suppresses everything under a declared folder (snippets)", () => {
+      expect(
+        unexpectedThemeFiles(
+          ["theme.css", "snippets/a.md", "snippets/nested/b.md"],
+          ["snippets"],
+        ),
+      ).toEqual([]);
+    });
   });
 });
 
@@ -260,6 +281,68 @@ describe("theme-import host pipeline", () => {
       const { theme, warnings } = await importThemeFromZip(dir, zip);
       expect(theme.name).toBe("Plain");
       expect(warnings).toEqual([]);
+    });
+  });
+
+  // #241 — the metadata file inside a zip package may be gutterpress.json
+  // instead of theme.json. The zip-root anchor stays theme.css (unchanged,
+  // documented as a known pre-existing gap for a theme.css-free package —
+  // see this file's header); only which metadata filename is read once that
+  // root is found generalizes.
+  describe("gutterpress.json metadata inside a zip package (#241)", () => {
+    test("reads name/styles from gutterpress.json instead of theme.json", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "gutterpress.json": strToU8(
+          JSON.stringify({ name: "GP Package", styles: ["theme.css", "extra.css"] }),
+        ),
+        "extra.css": strToU8(".extra {}"),
+      });
+      const { theme, warnings } = await importThemeFromZip(dir, zip);
+      expect(theme.name).toBe("GP Package");
+      expect(theme.styles).toEqual(["theme.css", "extra.css"]);
+      expect(existsSync(join(dir, THEMES_DIR, theme.id, "extra.css"))).toBe(true);
+      // gutterpress.json itself, and the extra sheet it declares, must not
+      // trigger a false "unexpected extra files" warning.
+      expect(warnings).toEqual([]);
+    });
+
+    test("gutterpress.json wins over a sibling theme.json inside the same package", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(JSON.stringify({ name: "Old" })),
+        "gutterpress.json": strToU8(JSON.stringify({ name: "New" })),
+      });
+      const { theme } = await importThemeFromZip(dir, zip);
+      expect(theme.name).toBe("New");
+    });
+
+    test("a declared markdown entry is validated for containment but does not block import, and is not flagged as an unexpected file", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "gutterpress.json": strToU8(
+          JSON.stringify({ name: "Full", markdown: "plugin.js" }),
+        ),
+        "plugin.js": strToU8("export default function (md) {}"),
+      });
+      const { theme, warnings } = await importThemeFromZip(dir, zip);
+      expect(theme.name).toBe("Full");
+      expect(existsSync(join(dir, THEMES_DIR, theme.id, "plugin.js"))).toBe(true);
+      expect(warnings.some((w) => w.code === "extra-files")).toBe(false);
+    });
+
+    test("rejects a gutterpress.json declaring markdown outside the package", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "gutterpress.json": strToU8(
+          JSON.stringify({ name: "Sneaky", markdown: "../../../etc/passwd" }),
+        ),
+      });
+      await expect(importThemeFromZip(dir, zip)).rejects.toThrow(/outside its own folder/);
     });
   });
 });

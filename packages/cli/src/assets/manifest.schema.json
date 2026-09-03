@@ -88,8 +88,8 @@
               "path": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Path to a local plugin module, relative to the manifest directory.",
-                "examples": ["plugins/dimm-city-plugin.js", "../shared/plugins/callouts.js"]
+                "description": "Path to a local plugin module OR an extension folder (a gutterpress.json package, optionally carrying styles/engineStyles alongside its markdown entry), relative to the manifest directory.",
+                "examples": ["plugins/dimm-city-plugin.js", "../shared/plugins/callouts.js", "./extensions/dc-components"]
               },
               "name": {
                 "type": "string",
