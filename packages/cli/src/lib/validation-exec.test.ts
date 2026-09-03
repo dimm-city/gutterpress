@@ -487,6 +487,113 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 });
 
+// #262 — cssFiles now folds in a plugin's declared `styles`, mirroring
+// lint-runner.ts exactly: a plugin's CSS was print-safety/ownership checked
+// by `gutterpress lint` and never by `validate`/`preflight`/the desktop
+// Problems panel. `build-runner.plugin-load-count.test.ts` proves a REAL
+// check (source.stylelint) actually inspects the plugin's file, end to end;
+// these pin just executeValidation's own cssFiles wiring.
+describe("executeValidation folds in plugin styles (#262)", () => {
+  test("a configured plugin's declared styles file reaches cssFiles when no preload is supplied", async () => {
+    const dir = await makeDir("gutterpress-vexec-plugin-styles-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "styles", "book.css"), "body { color: black; }", "utf-8");
+      await mkdir(path.join(dir, "plugin"), { recursive: true });
+      await writeFile(
+        path.join(dir, "plugin", "plugin.mjs"),
+        "export default function () {};\nexport const styles = ['./plugin.css'];\n",
+        "utf-8",
+      );
+      await writeFile(
+        path.join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf-8",
+      );
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "utf-8",
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.cssFiles).toEqual([
+        path.join(dir, "styles", "book.css"),
+        path.join(dir, "plugin", "plugin.css"),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a supplied pluginStylePaths is used verbatim and skips loading the configured plugin entirely", async () => {
+    const dir = await makeDir("gutterpress-vexec-plugin-preloaded-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "styles", "book.css"), "body { color: black; }", "utf-8");
+      // Configured, but deliberately unresolvable — if executeValidation ever
+      // tried to load it despite the preload below, this would either throw
+      // (fail-fast) or warn (degrade-and-report); neither may happen here.
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Preloaded\nstyles:\n  - styles/book.css\nplugins:\n  - path: ./does-not-exist.mjs\n",
+        "utf-8",
+      );
+      const preloaded = path.join(dir, "elsewhere", "plugin.css");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir, pluginStylePaths: [preloaded] });
+
+      expect(execution.context.cssFiles).toEqual([
+        path.join(dir, "styles", "book.css"),
+        preloaded,
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an explicit empty pluginStylePaths is honored as 'nothing to add', not as unset", async () => {
+    const dir = await makeDir("gutterpress-vexec-plugin-preloaded-empty-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "styles", "book.css"), "body { color: black; }", "utf-8");
+      await mkdir(path.join(dir, "plugin"), { recursive: true });
+      await writeFile(
+        path.join(dir, "plugin", "plugin.mjs"),
+        "export default function () {};\nexport const styles = ['./plugin.css'];\n",
+        "utf-8",
+      );
+      await writeFile(
+        path.join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf-8",
+      );
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "utf-8",
+      );
+      stubCheckExecution();
+
+      // A real plugin declaring styles IS configured, but the build's
+      // preValidate gate passes an explicit `[]` (as it would when the
+      // already-loaded plugin genuinely declared none) — this must NOT fall
+      // back to loading the plugin itself.
+      const execution = await executeValidation({ input: dir, pluginStylePaths: [] });
+
+      expect(execution.context.cssFiles).toEqual([path.join(dir, "styles", "book.css")]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── 2026-07-29 audit: shared assets that SHIP must be scanned ────────────────
 //
 // `assetDirs = [inputDir]` scanned only the book folder, but a shared repo-root

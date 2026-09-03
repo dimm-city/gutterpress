@@ -83,7 +83,14 @@ The file listed is the sole permitted declarer of these CSS properties (or,
 for `owns-at-rules`, at-rule names — e.g. `page` for `@page`). Every active
 stylesheet is checked against every ownership claim, not just the files named
 in the contract, so a stray `columns: 2` in some unrelated file is still
-caught. This is the direct fix for the motivating example:
+caught — including a plugin's own declared `styles` file (#238): an installed
+plugin is not exempt from the project's ownership contract just because its
+CSS ships from `node_modules` rather than the theme folder. This coverage is
+uniform across every surface that runs this check — `gutterpress lint`,
+`validate`/`preflight`, and the desktop Problems panel all resolve the exact
+same plugin-inclusive stylesheet set (#262) — so a contract violation cannot
+pass on one surface and fail on another. This is the direct fix for the
+motivating example:
 
 > `page-templates.css`: "COLUMN OWNERSHIP RULE: If a THEME rule sets
 > `columns:N` anywhere in this project, it belongs here and ONLY here. Any

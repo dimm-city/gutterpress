@@ -241,6 +241,75 @@ describe("runLint includes plugin styles (#238)", () => {
   });
 });
 
+// #262 — a caller that already loaded plugins for this same manifest (the
+// build pipeline's quality-gate stage) can hand the resolved style paths in
+// directly, so this function never loads plugins a second time.
+describe("runLint accepts a pre-loaded pluginStylePaths (#262)", () => {
+  test("a supplied pluginStylePaths is linted verbatim, with no plugins: entry and no plugin load at all", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-styles-"));
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      // A plugin CSS file that lives OUTSIDE the project the manifest never
+      // references — the only way it is lintable at all is via the supplied
+      // pluginStylePaths, exactly what a real vendored npm plugin's resolved
+      // style path looks like to this function.
+      const outside = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-plugin-"));
+      const pluginCssPath = join(outside, "plugin.css");
+      await writeFile(pluginCssPath, "@page { background-blend-mode: multiply; }\n", "utf8");
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Preloaded Plugin Styles\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir, pluginStylePaths: [pluginCssPath] });
+
+      expect(result.filesLinted).toBe(2);
+      expect(result.riskyCount).toBeGreaterThan(0);
+      await rm(outside, { recursive: true, force: true });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an explicit empty pluginStylePaths is honored as 'nothing to add', not as unset", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-empty-"));
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await mkdir(join(dir, "plugin"), { recursive: true });
+      await writeFile(
+        join(dir, "plugin", "plugin.mjs"),
+        "export default function () {};\nexport const styles = ['./plugin.css'];\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      // A real plugin declaring styles IS configured, but the caller passes
+      // an explicit `[]` (as the build would when a preloaded plugin genuinely
+      // declared none) — this must NOT fall back to loading the plugin
+      // itself; only the project's own stylesheet is linted.
+      const result = await runLint({ manifest: dir, pluginStylePaths: [] });
+
+      expect(result.filesLinted).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("engineStyles.native is linted too — the sheet that ships is the sheet that's checked", async () => {
   // `gutterpress lint` and the desktop Problems panel (validate) must agree
   // about which stylesheets a project uses. They did not: lint discarded
