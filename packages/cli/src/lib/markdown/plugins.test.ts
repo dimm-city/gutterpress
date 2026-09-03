@@ -232,6 +232,78 @@ describe("plugin loader", () => {
     });
   });
 
+  // #240: the loader's role for `markers` is narrow on purpose — read the raw
+  // export through unresolved and pass it on, exactly like `css`. The DEEP
+  // validation (per-declaration shape, cross-plugin collisions) happens once,
+  // centrally, in `markers.js`'s `buildDeclaredMarkerRegistry` — see that
+  // file's own test coverage for those. This block only proves the loader's
+  // half of the contract: extraction, the top-level shape guard, and that it
+  // never resolves anything (unlike `styles`, `markers` carries no paths).
+  describe("loadPlugin markers export (#240)", () => {
+    test("loads a plugin's declared markers table unresolved", async () => {
+      fixture(
+        "with-markers.mjs",
+        `export default function (md) {};
+         export const markers = {
+           callout: { tag: 'div', class: 'dc-alert' },
+           sidebar: { tag: 'aside', class: 'dc-sidebar' },
+         };`,
+      );
+
+      const loaded = await loadPlugin(cfg({ path: "with-markers.mjs" }), TMP_ROOT);
+
+      expect(loaded.markers).toEqual({
+        callout: { tag: "div", class: "dc-alert" },
+        sidebar: { tag: "aside", class: "dc-sidebar" },
+      });
+    });
+
+    test("a plugin declaring no markers gets undefined, not an empty object", async () => {
+      fixture("no-markers.mjs", `export default function (md) {}`);
+      const loaded = await loadPlugin(cfg({ path: "no-markers.mjs" }), TMP_ROOT);
+      expect(loaded.markers).toBeUndefined();
+    });
+
+    test("an explicitly empty markers table normalizes to undefined", async () => {
+      fixture(
+        "empty-markers.mjs",
+        `export default function (md) {};
+         export const markers = {};`,
+      );
+      const loaded = await loadPlugin(cfg({ path: "empty-markers.mjs" }), TMP_ROOT);
+      expect(loaded.markers).toBeUndefined();
+    });
+
+    test("throws when `markers` is not a plain object", async () => {
+      fixture(
+        "bad-markers-shape.mjs",
+        `export default function (md) {};
+         export const markers = ["callout"];`,
+      );
+
+      await expect(
+        loadPlugin(cfg({ path: "bad-markers-shape.mjs" }), TMP_ROOT),
+      ).rejects.toThrow(/exports `markers` that is not a plain object/);
+    });
+
+    test("keeps `css`/`styles`/`markers` all working together", async () => {
+      nestedFixture(
+        "all-forms/plugin.mjs",
+        `export default function (md) {};
+         export const css = '.inline {}';
+         export const styles = ["./extra.css"];
+         export const markers = { callout: { class: 'dc-alert' } };`,
+      );
+      nestedFixture("all-forms/extra.css", ".file {}");
+
+      const loaded = await loadPlugin(cfg({ path: "all-forms/plugin.mjs" }), TMP_ROOT);
+
+      expect(loaded.css).toBe(".inline {}");
+      expect(loaded.styles).toEqual([join(TMP_ROOT, "all-forms", "extra.css")]);
+      expect(loaded.markers).toEqual({ callout: { class: "dc-alert" } });
+    });
+  });
+
   describe("loadPlugin (npm package)", () => {
     test("loads from gutterpress's own dependencies", async () => {
       const loaded = await loadPlugin(

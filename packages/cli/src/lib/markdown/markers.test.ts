@@ -19,9 +19,9 @@
  */
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
-import markerPlugin, { MARKER_CSS } from "./markers.js";
+import markerPlugin, { MARKER_CSS, buildDeclaredMarkerRegistry } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
-import { createMarkdownRenderer } from "./renderer";
+import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { assembleBookHtml } from "./assemble";
 
 interface LayoutWarning {
@@ -1794,5 +1794,528 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
     test("a document with no core markers at all is never scanned (deliberately conservative)", () => {
       expect(warnings("@secton .two-column\n\ntext\n")).toEqual([]);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #240 — declarative container components in core.
+//
+// Two layers, tested separately:
+//   - `buildDeclaredMarkerRegistry` (pure data validation: collisions,
+//     alias/preset/deprecated resolution) — unit-tested directly below.
+//   - the `layout_transform` dispatch it feeds (`renderPaged`/`parsePaged`
+//     with `{ declaredMarkers }`, exactly like `preferPagesInSpreads` above)
+//     — parsing/rendering behavior, tested in the second describe block.
+//
+// `data-source-range`/`data-chapter-src` threading (the issue's central
+// "hand-built wrappers silently drop them" complaint) is proven separately,
+// against the REAL pipeline, in source-range.test.ts — see the describe
+// block there titled "declared markers (#240)".
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildDeclaredMarkerRegistry (#240)", () => {
+  describe("collisions fail at load time, naming both sides (P2)", () => {
+    test("a declared name shadowing a core reserved name names the plugin and the core name", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([{ pluginName: "dc-plugin", markers: { section: { class: "x" } } }]);
+      expect(build).toThrow(/dc-plugin/);
+      expect(build).toThrow(/@section/);
+      expect(build).toThrow(/core Gutterpress marker name/);
+    });
+
+    test("every one of the eight core reserved names is rejected", () => {
+      // "end-section" hits the earlier, ALSO-correct "end- is reserved for
+      // an auto-derived closer" rejection first (validateDeclaredMarkerName
+      // runs before the KNOWN_KINDS check) — still a rejection, just a
+      // different true reason, so it gets its own assertion below.
+      const coreNames = ["chapter", "spread", "page", "section", "continue", "page-break", "column-break"];
+      for (const name of coreNames) {
+        expect(() =>
+          buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { [name]: {} } }])
+        ).toThrow(/core Gutterpress marker name/);
+      }
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "end-section": {} } }])
+      ).toThrow(/reserved/);
+    });
+
+    test("two different plugins declaring the same name names both plugins", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "plugin-a", markers: { callout: { class: "a-alert" } } },
+          { pluginName: "plugin-b", markers: { callout: { class: "b-alert" } } },
+        ]);
+      expect(build).toThrow(/plugin-a/);
+      expect(build).toThrow(/plugin-b/);
+      expect(build).toThrow(/@callout/);
+    });
+
+    test("a name starting with `end-` is rejected — reserved for another marker's auto-derived closer", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "end-foo": { class: "x" } } }])
+      ).toThrow(/reserved/);
+    });
+
+    test("an invalid marker name (uppercase) is rejected before any collision check runs", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { Callout: { class: "x" } } }])
+      ).toThrow(/invalid name/);
+    });
+  });
+
+  describe("container shape validation", () => {
+    test("rejects a declaration that is not a plain object", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: "oops" } }])
+      ).toThrow(/is not a plain object/);
+    });
+
+    test("rejects an invalid `tag`", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { tag: "DIV" } } }])
+      ).toThrow(/invalid `tag`/);
+    });
+
+    test("rejects a `class` that is not a string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { class: 5 } } }])
+      ).toThrow(/`class`/);
+    });
+
+    test("rejects `variants` that is not a plain object", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { variants: ["x"] } } }])
+      ).toThrow(/`variants`/);
+    });
+
+    test("rejects a variant whose value is not a string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { variants: { note: 5 } } } },
+        ])
+      ).toThrow(/variant "note"/);
+    });
+
+    test("rejects a `label` with no `class`", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { label: { from: "attr:label" } } } },
+        ])
+      ).toThrow(/label\.class/);
+    });
+
+    test('rejects a `label.from` that is not "attr:<name>"', () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { label: { class: "x", from: "name" } } } },
+        ])
+      ).toThrow(/label\.from/);
+    });
+
+    test("rejects an unsupported `autoCloseAt` value", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { autoCloseAt: ["page"] } } },
+        ])
+      ).toThrow(/unsupported `autoCloseAt` value/);
+    });
+
+    test("rejects `autoCloseAt` that is not an array", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { autoCloseAt: "eof" } } },
+        ])
+      ).toThrow(/`autoCloseAt`/);
+    });
+  });
+
+  describe("alias resolution", () => {
+    test("aliasing an unknown marker throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "dm-note": { alias: "collout" } } }])
+      ).toThrow(/unknown marker "@collout"/);
+    });
+
+    test("aliasing an alias (chained) throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          {
+            pluginName: "p",
+            markers: {
+              callout: { class: "dc-alert" },
+              "dm-note": { alias: "callout" },
+              "dm-note-2": { alias: "dm-note" },
+            },
+          },
+        ])
+      ).toThrow(/itself an alias/);
+    });
+
+    test("aliasing a deprecated marker throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          {
+            pluginName: "p",
+            markers: {
+              "roll-table": { deprecated: "gone" },
+              "dice-table": { alias: "roll-table" },
+            },
+          },
+        ])
+      ).toThrow(/deprecated/);
+    });
+
+    test("an alias may target a marker declared by a DIFFERENT plugin, regardless of load order", () => {
+      const registry = buildDeclaredMarkerRegistry([
+        { pluginName: "plugin-alias", markers: { "dm-note": { alias: "callout", preset: { variant: "dm" } } } },
+        { pluginName: "plugin-base", markers: { callout: { class: "dc-alert", variants: { dm: "dc-dm-note" } } } },
+      ]);
+      expect(registry.get("dm-note")).toMatchObject({ baseKind: "callout", presetVariant: "dm" });
+    });
+  });
+
+  describe("resolved shapes — the issue's own example table", () => {
+    const sources = [
+      {
+        pluginName: "dc-components",
+        markers: {
+          callout: {
+            tag: "div",
+            class: "dc-alert",
+            variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+            label: { class: "dc-alert-label", from: "attr:label" },
+            autoCloseAt: ["eof"],
+          },
+          sidebar: { tag: "aside", class: "dc-sidebar" },
+          lede: { class: "dc-intro" },
+          "dm-note": { alias: "callout", preset: { variant: "dm" } },
+          "roll-table": { deprecated: "Removed in 17.3.0 — use @outcome." },
+        },
+      },
+    ];
+
+    test("wrapper: resolves a full container declaration", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("callout")).toEqual({
+        name: "callout",
+        baseKind: "callout",
+        tag: "div",
+        classBase: "dc-alert",
+        variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+        label: { class: "dc-alert-label", attr: "label", tag: "div" },
+        autoCloseAtEof: true,
+      });
+    });
+
+    test("wrapper: resolves a minimal container declaration with tag/class defaults", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("sidebar")).toEqual({
+        name: "sidebar",
+        baseKind: "sidebar",
+        tag: "aside",
+        classBase: "dc-sidebar",
+        variants: undefined,
+        label: undefined,
+        autoCloseAtEof: false,
+      });
+      expect(registry.get("lede")).toEqual({
+        name: "lede",
+        baseKind: "lede",
+        tag: "div",
+        classBase: "dc-intro",
+        variants: undefined,
+        label: undefined,
+        autoCloseAtEof: false,
+      });
+    });
+
+    test("alias+preset: resolves to the target's shape plus baseKind/presetVariant", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("dm-note")).toEqual({
+        name: "dm-note",
+        baseKind: "callout",
+        presetVariant: "dm",
+        tag: "div",
+        classBase: "dc-alert",
+        variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+        label: { class: "dc-alert-label", attr: "label", tag: "div" },
+        autoCloseAtEof: true,
+      });
+    });
+
+    test("deprecated: resolves to just {name, deprecated} — every other field is discarded", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("roll-table")).toEqual({
+        name: "roll-table",
+        deprecated: "Removed in 17.3.0 — use @outcome.",
+      });
+    });
+
+    test("an empty sources list, or a plugin with an empty markers object, resolves to an empty registry", () => {
+      expect(buildDeclaredMarkerRegistry([]).size).toBe(0);
+      expect(buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).size).toBe(0);
+    });
+  });
+});
+
+describe("declared markers — parsing & rendering (#240)", () => {
+  /** The issue's own example table, minus the deprecated/alias entries that
+   * get their own focused tests below. Shared (read-only) across this
+   * describe block, the same way other describes above share one `md`. */
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        callout: {
+          tag: "div",
+          class: "dc-alert",
+          variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+          label: { class: "dc-alert-label", from: "attr:label" },
+          autoCloseAt: ["eof"],
+        },
+        sidebar: { tag: "aside", class: "dc-sidebar" },
+        lede: { class: "dc-intro" },
+        "dm-note": { alias: "callout", preset: { variant: "dm" } },
+        "roll-table": { deprecated: "Removed in 17.3.0 — use @outcome." },
+      },
+    },
+  ]);
+
+  describe("wrapper", () => {
+    test("a bare declared marker renders as its declared tag + class, exactly like @section renders div+class", () => {
+      const { html } = renderPaged("@sidebar\nAside text.\n@end-sidebar\n", { declaredMarkers });
+      expect(html).toBe('<aside class="dc-sidebar"><p>Aside text.</p>\n</aside>');
+    });
+
+    test("both attr spellings — .class and {.class} — are equivalent, exactly like @section", () => {
+      const compact = renderPaged("@sidebar .extra\nText.\n@end-sidebar\n", { declaredMarkers });
+      const braced = renderPaged("@sidebar {.extra}\nText.\n@end-sidebar\n", { declaredMarkers });
+      expect(compact.html).toBe(braced.html);
+      expect(classList(compact.html)).toEqual(["dc-sidebar", "extra"]);
+    });
+
+    test("a marker with no declared `class` still wraps in its declared `tag`", () => {
+      const { html } = renderPaged("@lede\nOpening line.\n@end-lede\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-intro"><p>Opening line.</p>\n</div>');
+    });
+  });
+
+  describe("variants", () => {
+    test("the marker's bare name selects a variant, appended after the base class", () => {
+      const { html } = renderPaged("@callout warning\nWatch out.\n@end-callout\n", { declaredMarkers });
+      expect(html).toBe(
+        '<div class="dc-alert dc-note warning" data-callout="warning"><p>Watch out.</p>\n</div>'
+      );
+    });
+
+    test("a name with no matching variant still opens (base class only, no crash)", () => {
+      const { html } = renderPaged("@callout unknown-variant\nText.\n@end-callout\n", { declaredMarkers });
+      expect(html).toContain('class="dc-alert"');
+      expect(html).toContain('data-callout="unknown-variant"');
+    });
+  });
+
+  describe("label", () => {
+    test('`label.from: "attr:label"` injects a structural label element as the first child, from the marker\'s own attr', () => {
+      const { html } = renderPaged(
+        '@callout note label="Heads up"\nBody text.\n@end-callout\n',
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="dc-alert dc-note" data-callout="note" data-label="Heads up">' +
+          '<div class="dc-alert-label">Heads up</div>\n' +
+          "<p>Body text.</p>\n</div>"
+      );
+    });
+
+    test("with no matching attr on the line, no label element is injected", () => {
+      const { html } = renderPaged("@callout note\nBody text.\n@end-callout\n", { declaredMarkers });
+      expect(html).not.toContain("dc-alert-label");
+      expect(html).toBe('<div class="dc-alert dc-note" data-callout="note"><p>Body text.</p>\n</div>');
+    });
+
+    test("the label text is HTML-escaped", () => {
+      const { html } = renderPaged(
+        '@callout note label="<script>"\nText.\n@end-callout\n',
+        { declaredMarkers }
+      );
+      expect(html).toContain('<div class="dc-alert-label">&lt;script&gt;</div>');
+      expect(html).not.toContain("<script>");
+    });
+  });
+
+  describe("alias + preset", () => {
+    test("an alias with no args uses its preset variant", () => {
+      const { html } = renderPaged("@dm-note\nSomething.\n@end-callout\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-dm-note" data-callout="dm"><p>Something.</p>\n</div>');
+    });
+
+    test("the alias's OWN auto-derived closer (@end-dm-note) closes the same frame as @end-callout", () => {
+      const { html } = renderPaged("@dm-note\nSomething.\n@end-dm-note\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-dm-note" data-callout="dm"><p>Something.</p>\n</div>');
+    });
+
+    test("an explicit name on the alias line overrides the preset", () => {
+      const { html } = renderPaged("@dm-note warning\nText.\n@end-callout\n", { declaredMarkers });
+      expect(html).toContain('class="dc-alert dc-note warning"');
+      expect(html).toContain('data-callout="warning"');
+    });
+  });
+
+  describe("deprecated", () => {
+    test("a deprecated marker warns and strips — no wrapper is emitted at all", () => {
+      const { html, env } = renderPaged("@roll-table\nOld stuff.\n@end-roll-table\n", { declaredMarkers });
+      expect(html).toBe("<p>Old stuff.</p>\n");
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "deprecated_marker");
+      expect(w).toHaveLength(2);
+      expect(w[0]!.message).toContain("@roll-table");
+      expect(w[0]!.message).toContain("Removed in 17.3.0");
+      expect(w[1]!.message).toContain("@end-roll-table");
+    });
+  });
+
+  describe("nesting and auto-close (the same rules @section follows)", () => {
+    test("opening a new @page silently drains a still-open declared container (never straddles a page boundary)", () => {
+      const { html, env } = renderPaged(
+        "@page\n@sidebar\nInside.\n@page\nOutside.\n",
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="page"><aside class="dc-sidebar"><p>Inside.</p>\n</aside></div>' +
+          '<div class="page"><p>Outside.</p>\n</div>'
+      );
+      expect(env.layoutWarnings ?? []).toEqual([]);
+    });
+
+    test("re-entrant: opening a second instance of the SAME declared kind closes the first, exactly like @section", () => {
+      const { html } = renderPaged(
+        "@callout note\nFirst.\n@callout warning\nSecond.\n@end-callout\n",
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="dc-alert dc-note" data-callout="note"><p>First.</p>\n</div>' +
+          '<div class="dc-alert dc-note warning" data-callout="warning"><p>Second.</p>\n</div>'
+      );
+    });
+
+    test("@end-<name> used with nothing open warns and is otherwise a no-op", () => {
+      const { html, env } = renderPaged("@end-sidebar\nText.\n", { declaredMarkers });
+      expect(html).toBe("<p>Text.</p>\n");
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_close_without_open");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain("@end-sidebar");
+      expect(w[0]!.message).toContain("@sidebar");
+    });
+
+    test("EOF: a marker with NO autoCloseAt still closes (valid HTML), but warns", () => {
+      const { html, env } = renderPaged("@sidebar\nUnclosed.\n", { declaredMarkers });
+      expect(html).toBe('<aside class="dc-sidebar"><p>Unclosed.</p>\n</aside>');
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_eof_close");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain("@sidebar");
+    });
+
+    test('EOF: a marker WITH autoCloseAt: ["eof"] closes silently — no warning', () => {
+      const { html, env } = renderPaged("@callout note\nRuns to EOF.\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-note" data-callout="note"><p>Runs to EOF.</p>\n</div>');
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_eof_close")).toEqual([]);
+    });
+  });
+
+  describe("unknown marker (the marker twin of unknown_gp_class)", () => {
+    test("a typo close to a DECLARED name warns with a suggestion, in the concise unknown_gp_class shape", () => {
+      const { env } = renderPaged("@calout\nHi.\n", { declaredMarkers });
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toBe('Unknown marker "@calout". Did you mean "@callout"?');
+    });
+
+    test("fires even in a document with NO OTHER marker at all — unlike the core-only heuristic", () => {
+      // scanForMistypedMarkers (core kinds only) is deliberately conservative
+      // here (see "a document with no core markers at all is never scanned"
+      // above) — the whole point of this diagnostic being modeled on
+      // unknown_gp_class instead is that a plugin's vocabulary does not get
+      // that same pass. This document uses no core marker whatsoever.
+      const { env } = renderPaged("@calout\n\ntext\n", { declaredMarkers });
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toHaveLength(1);
+    });
+
+    test("an exact declared name, or an exact core name, is never flagged", () => {
+      const { env: e1 } = renderPaged("@sidebar\nHi.\n@end-sidebar\n", { declaredMarkers });
+      const { env: e2 } = renderPaged("@page\nHi.\n", { declaredMarkers });
+      expect((e1.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+      expect((e2.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+    });
+
+    test("a word too far from any declared name stays silent", () => {
+      const { env } = renderPaged("@xyz\n\ntext\n", { declaredMarkers });
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+    });
+
+    test("with no declared markers at all (the zero-#240 case), this check is a complete no-op", () => {
+      const { env } = renderPaged("@calout\n\ntext\n");
+      expect(env.layoutWarnings ?? []).toEqual([]);
+    });
+  });
+
+  test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
+    const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
+    const t = findToken(tokens, "layout_component_open")!;
+    expect(t.meta).toEqual({ line: 3 });
+    // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
+    // This is what lets the UNCHANGED, unconditional source_range core rule
+    // (source-range.ts) annotate a declared marker's wrapper with ZERO
+    // extra plumbing: it keys on token.nesting === 1, not on token TYPE. The
+    // full data-source-range/data-chapter-src proof, against the real
+    // pipeline, lives in source-range.test.ts.
+    expect(t.map).toBeNull();
+  });
+});
+
+describe("createMarkdownRenderer wiring (#240)", () => {
+  test("throws at renderer-creation time when two loaded plugins declare colliding marker names, naming both", () => {
+    const pluginA: LoadedPlugin = { name: "plugin-a", plugin: () => {}, options: {}, markers: { callout: { class: "a" } } };
+    const pluginB: LoadedPlugin = { name: "plugin-b", plugin: () => {}, options: {}, markers: { callout: { class: "b" } } };
+    expect(() => createMarkdownRenderer([pluginA, pluginB])).toThrow(/plugin-a/);
+    expect(() => createMarkdownRenderer([pluginA, pluginB])).toThrow(/plugin-b/);
+  });
+
+  test("throws when a loaded plugin's declared marker shadows a core reserved name", () => {
+    const plugin: LoadedPlugin = { name: "plugin-a", plugin: () => {}, options: {}, markers: { section: { class: "x" } } };
+    expect(() => createMarkdownRenderer([plugin])).toThrow(/core Gutterpress marker name/);
+  });
+
+  test("a loaded plugin with no `markers` export renders exactly as before #240 (zero behavior change)", () => {
+    const plugin: LoadedPlugin = { name: "plain-plugin", plugin: () => {}, options: {} };
+    const md = createMarkdownRenderer([plugin]);
+    const html = md.render("@page\nHi\n", {});
+    // createMarkdownRenderer's FULL pipeline also stamps data-source-range/
+    // data-source-line (unrelated to #240, unconditional on every render) —
+    // asserted on structure/content, not full equality, for that reason.
+    expect(html).toContain('<div class="page"');
+    expect(html).toContain(">Hi</p>");
+  });
+
+  test("declaring `markers` and a hand-written block rule on the SAME plugin are not mutually exclusive", () => {
+    // §5 doctrine check: a plugin may declare containers AND still register
+    // its own plain markdown-it rules for bespoke behavior the table can't
+    // express — the declarative path is an alternative, never a replacement.
+    const plugin: LoadedPlugin = {
+      name: "hybrid-plugin",
+      plugin: (md) => {
+        md.core.ruler.after("block", "hybrid_marker", (state) => {
+          for (const tok of state.tokens) {
+            if (tok.type === "inline") tok.content = tok.content.replace("WORLD", "GALAXY");
+          }
+        });
+      },
+      options: {},
+      markers: { sidebar: { tag: "aside", class: "dc-sidebar" } },
+    };
+    const md = createMarkdownRenderer([plugin]);
+    const html = md.render("@sidebar\nHELLO WORLD\n@end-sidebar\n", {});
+    expect(html).toContain('<aside class="dc-sidebar"');
+    expect(html).toContain(">HELLO GALAXY</p>");
+    expect(html).not.toContain("WORLD<");
   });
 });

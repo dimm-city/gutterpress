@@ -13,8 +13,8 @@ import markdownItDeflist from "markdown-it-deflist";
 import markdownItSourceMap from "markdown-it-source-map";
 import markerPlugin from "./markers.js";
 import { registerImageRule } from "./images";
-import { createMarkdownRenderer } from "./renderer";
-import { SOURCE_RANGE_ATTR } from "./source-range";
+import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
+import { SOURCE_RANGE_ATTR, SOURCE_CHAPTER_ATTR } from "./source-range";
 
 // ── corpus builder ───────────────────────────────────────────────────────────
 //
@@ -301,6 +301,73 @@ describe("source_range: layout markers", () => {
     expect(html).toContain(`${SOURCE_RANGE_ATTR}="1:2"`);
     const [mFrom, mTo] = charRange(src, starts, [1, 2]);
     expect(src.slice(mFrom, mTo)).toBe("@page-break\n");
+  });
+});
+
+// ── declared markers (#240) ──────────────────────────────────────────────────
+//
+// The issue's central complaint about hand-built component wrappers is that
+// they silently drop `data-source-range`/`data-chapter-src` — markers.js's
+// own col-split renderer once needed a 15-line comment explaining how to
+// thread them by hand, and plugin authors got no such comment. These tests
+// prove — against the REAL pipeline (`createMarkdownRenderer`, exactly like
+// every other test in this file), not just markers.js in isolation — that a
+// DECLARED marker threads both attributes with ZERO extra plugin code: the
+// mechanism reuses the exact same `layout_*_open`-shaped token (nesting: 1,
+// `token.meta.line` set, `token.map` left null) core's own @section uses, so
+// the unconditional, unchanged `source_range` rule annotates it for free.
+
+describe("source_range: declared markers (#240)", () => {
+  /** A minimal loaded plugin declaring one container — no plugin FUNCTION
+   * code at all (the `markers` table is the entire contribution), which is
+   * itself part of the proof: nothing about attr-threading required the
+   * plugin author to write anything. */
+  function declarativePlugin(): LoadedPlugin {
+    return {
+      name: "test-declarative-plugin",
+      plugin: () => {},
+      options: {},
+      markers: {
+        callout: {
+          tag: "div",
+          class: "dc-alert",
+          variants: { note: "dc-note" },
+        },
+      },
+    };
+  }
+
+  test("a declared marker's wrapper gets data-source-range, exactly like @section", () => {
+    const md = createMarkdownRenderer([declarativePlugin()]);
+    const src = "@callout note\nBody.\n@end-callout\n";
+    const html = md.render(src, {});
+    const starts = buildLineStarts(src);
+
+    expect(html).toContain(`<div class="dc-alert dc-note" data-callout="note" ${SOURCE_RANGE_ATTR}="0:1"`);
+    const [from, to] = charRange(src, starts, [0, 1]);
+    expect(src.slice(from, to)).toBe("@callout note\n");
+  });
+
+  test("a declared marker's wrapper gets data-chapter-src, exactly like @section", () => {
+    const md = createMarkdownRenderer([declarativePlugin()]);
+    const html = md.render(
+      "@callout note\nBody.\n@end-callout\n",
+      { sourceChapter: "chapters/a.md" },
+    );
+    expect(html).toMatch(
+      new RegExp(`class="dc-alert dc-note"[^>]*${SOURCE_CHAPTER_ATTR}="chapters/a\\.md"`)
+    );
+  });
+
+  test("both attributes appear together on the same declared-marker wrapper", () => {
+    const md = createMarkdownRenderer([declarativePlugin()]);
+    const html = md.render(
+      "@callout note\nBody.\n@end-callout\n",
+      { sourceChapter: "chapters/a.md" },
+    );
+    expect(html).toMatch(
+      new RegExp(`${SOURCE_RANGE_ATTR}="0:1" ${SOURCE_CHAPTER_ATTR}="chapters/a\\.md"`)
+    );
   });
 });
 
