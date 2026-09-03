@@ -756,6 +756,49 @@ describe("shape 6 — a structural closer needs no evidence of its own; anything
     if (result.ok) expect(result.range).toEqual([0, 1]);
   });
 
+  test("consuming a pipe table recovers the table's range: markdown-it maps rows, never cells", () => {
+    // markdown-it's table rule gives `table_open`, `thead_open`, `tbody_open`
+    // and every `tr_open` a map, and gives `th_open`/`td_open` and the
+    // `inline` inside them none (verified against rules_block/table.mjs).
+    // A plugin that rewrites a region holding a table used to refuse on
+    // the first header cell as partial evidence.
+    const tablePlugin = (md: MarkdownIt): void => {
+      md.core.ruler.after("layout_transform", "table_rewrite_transform", (state) => {
+        const out: typeof state.tokens = [];
+        for (let i = 0; i < state.tokens.length; i++) {
+          const tok = state.tokens[i]!;
+          if (tok.type !== "table_open") {
+            out.push(tok);
+            continue;
+          }
+          let end = i;
+          while (state.tokens[end]!.type !== "table_close") end++;
+          out.push(new state.Token("plugin_ladder_open", "div", 1));
+          out.push(new state.Token("plugin_ladder_close", "div", -1));
+          i = end;
+        }
+        state.tokens = out;
+      });
+    };
+    const source = "Before.\n\n| Roll | Outcome |\n|---|---|\n| 20 | Crit |\n| 1 | Fail |\n\nAfter.\n";
+    const md = createMarkdownRenderer([{ name: "table-rewrite-plugin", plugin: tablePlugin, options: {} }]);
+    expect(md.parse(source, {}).map((t) => t.type)).toContain("plugin_ladder_open");
+
+    const projection = createEditorProjection(source, { sourceVersion: 1, md, trusted: true });
+    const region = projection.blocks.find((b) => b.kind === "plugin-region");
+    expect(region).toBeDefined();
+    expect(source.slice(region!.from, region!.to).trim()).toBe("| Roll | Outcome |\n|---|---|\n| 20 | Crit |\n| 1 | Fail |");
+    expect(projection.diagnostics.filter((d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION")).toHaveLength(0);
+
+    const env: Record<string, unknown> = {};
+    registerPluginOriginCapture(md);
+    const tokens = md.parse(source, env);
+    const openIdx = tokens.findIndex((t) => t.type === "plugin_ladder_open");
+    const result = resolvePluginTokenOrigin(tokens[openIdx]!, env);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.range).toEqual([2, 6]);
+  });
+
   test("a removed token that is NOT a closer and carries no range still refuses", () => {
     // A plugin whose own earlier output is consumed by a later rule leaves a
     // map-less, nesting-0 token in the removed run — genuinely partial

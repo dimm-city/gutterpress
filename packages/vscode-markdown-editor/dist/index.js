@@ -2093,7 +2093,46 @@ class Pe {
    * uses {@link offsetInLineAtX} directly to preserve desired column.
    */
   offsetAtPoint(e) {
-    return this.offsetInLineAtX(this.lineIndexAtY(e.y), e.x);
+    return this.offsetInLineAtX(this.lineIndexAtPoint(e), e.x);
+  }
+  /* gp-fork: columns - the point resolved inside ONE block's lines. A paged,
+     multi-column document stacks columns side by side, so several lines
+     share one y band and the y-only pick above put every click on the
+     second column into the first column at the same height. The caller
+     names the block under the pointer (its source range); among that
+     block's lines the band that holds y wins, the nearest by x when more
+     than one does (a block split across two columns), else the first line
+     below the point, else the block's last line. No line of the block: the
+     nearest-point pick below. */
+  offsetAtPointInRange(e, t, s) {
+    let i = -1, o = -1, r = 1 / 0;
+    for (let c = 0; c < this.lines.length; c++) {
+      const a = this.lines[c];
+      if (a.virtualCursorLine || !a.runs.some((u) => u.sourceEndExclusive > t && u.sourceStart < s))
+        continue;
+      const l = a.rect;
+      if (e.y >= l.top && e.y < l.bottom) {
+        const u = e.x < l.left ? l.left - e.x : e.x > l.right ? e.x - l.right : 0;
+        u < r && (r = u, i = c);
+      } else if (o < 0 || e.y >= this.lines[o].rect.bottom)
+        o = c;
+    }
+    return this.offsetInLineAtX(i >= 0 ? i : o >= 0 ? o : this.lineIndexAtPoint(e), e.x);
+  }
+  /* gp-fork: columns - the line nearest the POINT on both axes, for a point
+     no block claims (a page margin, a drag past the viewport): a click in a
+     second column's margin snaps to that column's nearest line, because the
+     first column's lines are a gutter away. */
+  lineIndexAtPoint(e) {
+    let t = -1, s = 1 / 0;
+    for (let i = 0; i < this.lines.length; i++) {
+      const o = this.lines[i];
+      if (o.virtualCursorLine)
+        continue;
+      const r = o.rect, c = e.y < r.top ? r.top - e.y : e.y >= r.bottom ? e.y - r.bottom : 0, a = e.x < r.left ? r.left - e.x : e.x > r.right ? e.x - r.right : 0, l = c + a;
+      l < s && (s = l, t = i);
+    }
+    return t < 0 ? this.lineIndexAtY(e.y) : t;
   }
   /** Snap `x` to the nearest offset on a specific line. */
   offsetInLineAtX(e, t) {
@@ -6421,11 +6460,31 @@ class gl extends H {
       return t;
     if (this.geometricHitTest.get()) {
       const i = this.measuredLayout.visualLineMap.get();
-      return i.isEmpty ? void 0 : i.offsetAtPoint(this.coordinateSpace.capture().toLocalPoint(e));
+      if (i.isEmpty)
+        return;
+      const o = this.coordinateSpace.capture().toLocalPoint(e), r = this._gpBlockRangeAtPoint(e);
+      return r ? i.offsetAtPointInRange(o, r.start, r.end) : i.offsetAtPoint(o);
     }
     const s = kr(e);
     if (s)
       return this._document.get()?.resolveSource(s);
+  }
+  /* gp-fork: columns - the source range of the block under the pointer, so
+     a click resolves among THAT block's lines (see
+     VisualLineMap.offsetAtPointInRange). Nothing under the pointer, or
+     nothing of this document's: undefined, and the caller falls back to the
+     whole map. */
+  _gpBlockRangeAtPoint(e) {
+    const t = document.elementFromPoint(e.x, e.y), s = this._document.get();
+    if (!(t instanceof Element) || !s || !this._contentContainer.contains(t))
+      return;
+    for (let i = t.closest(".md-block"); i; i = i.parentElement?.closest(".md-block") ?? null) {
+      const o = oe.forDom(i);
+      if (!o || o.dom !== i)
+        continue;
+      const r = s.resolveSource({ node: i, offset: 0 });
+      return r === void 0 ? void 0 : { start: r, end: r + o.sourceLength };
+    }
   }
   /**
    * Resolve table-cell hits that have no measurable text run. Empty cells map

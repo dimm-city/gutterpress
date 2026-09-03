@@ -31,6 +31,9 @@ points at 0.0.2-0; the pin follows the `next` line:
 7. **`renderEpoch`** (Hunks 22-26, "## Patch 7") - a host-driven rebuild
    of every block view that keeps the model, its selection and its edit
    history. Marked `/* gp-fork: renderEpoch */`.
+8. **`columns`** (Hunks 27-29, "## Patch 8") - a click resolves among the
+   lines of the block under the pointer, so a multi-column page's second
+   column takes its own clicks. Marked `/* gp-fork: columns */`.
 
 Every hunk in every patch is additive (no reformatting, no renaming, no
 unrelated edits). Only two files are touched: `dist/index.js` and
@@ -66,7 +69,7 @@ fork was vendored from the same exact version.
 ## Inventory - every place the vendored files differ from upstream
 
 The whole divergence from the published `@vscode/markdown-editor` artifact
-is the 22 hunks in `dist/index.js` and the 4 hunks in `dist/index.d.ts`
+is the 25 hunks in `dist/index.js` and the 4 hunks in `dist/index.d.ts`
 listed here; every other vendored file is byte-identical to the tarball
 (`scripts/verify-vendored.mjs` proves both halves on every run). Each row
 names the patch, the hunk as numbered in the sections below, the marker
@@ -83,6 +86,9 @@ with:
 
 | Patch | Hunk | Marker | Anchor |
 |---|---|---|---|
+| 8 columns | 27 | `gp-fork: columns` | `offsetAtPointInRange(e, t, s) {` and `lineIndexAtPoint(e) {` |
+| 8 columns | 28 | `gp-fork: columns` | `resolveOffsetFromPoint(e)`, the `this._gpBlockRangeAtPoint(e)` consult |
+| 8 columns | 29 | `gp-fork: columns` | `_gpBlockRangeAtPoint(e) {` |
 | 2 measurement | 8 | `gp-fork: measurement` | `function gpTranslateVisualLineMap(` |
 | 6 renderCustomBlock | 18 | `gp-fork: renderCustomBlock` | `case "heading":` arm, `e?.renderCustomBlock` consult |
 | 1 renderCustomBlock | 3 | `gp-fork: renderCustomBlock` | `case "paragraph":` arm, `n.showMarkup` guard |
@@ -1341,3 +1347,51 @@ never by hosts) and `EditorView.gpRerender(): void`.
 **Removal trigger.** Same as Patch 1's. If upstream ships a way to
 invalidate block views without replacing the model, this patch goes with
 it.
+
+## Patch 8 - `columns`: a click resolves inside the block under the pointer
+
+**Why.** `VisualLineMap.offsetAtPoint` picked a line by `y` alone: the
+first line whose band reaches down to the point. The upstream editor is a
+single column, where that is the line under the pointer. Gutterpress lays
+the same document out in pages, and a page can set its content in two or
+three columns, so several lines share one band; every click on a second
+column landed in the first column's line at the same height, and nothing
+in the second column could be edited.
+
+**What.** The view names the block under the pointer (the innermost
+`.md-block` under `document.elementFromPoint` that a view node owns, and
+that block's source range), and the map resolves the point among THAT
+block's lines: the line whose band holds `y`, the nearest by `x` when more
+than one does (a block split across two columns), else the first line
+below the point, else the block's last line. A point no block claims (a
+page margin, a drag past the viewport) falls back to the line nearest the
+point on both axes, so a click in a second column's margin still snaps to
+that column. `lineIndexAtY` and the rest of the map are untouched.
+
+### Hunk 27 - `VisualLineMap.offsetAtPointInRange` and `lineIndexAtPoint` (`dist/index.js`)
+
+Two methods added after `offsetAtPoint`, which now calls
+`lineIndexAtPoint` instead of `lineIndexAtY`. Marked
+`/* gp-fork: columns */`.
+
+### Hunk 28 - `EditorView.resolveOffsetFromPoint` (`dist/index.js`)
+
+The geometric branch consults `_gpBlockRangeAtPoint(e)` and resolves
+through `offsetAtPointInRange` when a block claims the point, else through
+`offsetAtPoint` as before.
+
+### Hunk 29 - `EditorView._gpBlockRangeAtPoint` (`dist/index.js`)
+
+The helper, placed before `_resolveTableCellOffset`, marked
+`/* gp-fork: columns */`. No `dist/index.d.ts` change: nothing here is
+called from outside the view.
+
+**Proof.** `packages/editor/tests/gutterpress/columns-click.btest.ts` lays
+the fork's own document out in two CSS columns and clicks the second: on
+the unpatched file the keystroke lands in the first column's line.
+`tests/gutterpress/table-click.btest.ts` and the fork's own
+`tests/vscode-adapter/custom-view/probe.btest.ts` hold the single-column
+behaviour (a click right of a short line stays on that line).
+
+**Removal trigger.** Upstream resolving a point against the block under
+it (or shipping multi-column layout of its own).

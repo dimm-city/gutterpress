@@ -845,11 +845,19 @@ export function resolvePluginTokenOriginFromSnapshot(
   // the Dimm City Field Guide 110 of 111 recoveries refused on a
   // `paragraph_close`. A token with NO range that is not a closer is
   // genuinely partial evidence and still refuses.
+  // A table's cells are the other exception: markdown-it maps the table,
+  // its sections and its rows, never a `th_open`/`td_open` or the `inline`
+  // inside one - a cell's extent is its row's, and the row is in the same
+  // removed run. A plugin that rewrites a region holding a pipe table (a
+  // skill card's outcome ladder) was refused on the first header cell.
   const ranges: Array<readonly [number, number]> = [];
+  let inCell = false;
   for (const removed of removedRun) {
+    if (removed.type === "th_open" || removed.type === "td_open") inCell = true;
+    else if (removed.type === "th_close" || removed.type === "td_close") inCell = false;
     const range = resolveTokenRange(removed);
     if (!range) {
-      if (removed.nesting === -1) continue;
+      if (removed.nesting === -1 || inCell) continue;
       return {
         ok: false,
         reason:
