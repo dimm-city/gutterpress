@@ -34,6 +34,7 @@ import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { slugify } from "./slug.ts";
+import { applyTheme, THEMES_DIR } from "./theme-manager.ts";
 
 /**
  * Which embedded starter template to scaffold from. Each id maps to a directory
@@ -44,17 +45,50 @@ import { slugify } from "./slug.ts";
 export type ProjectTemplateId = "book" | "zine" | "technical";
 
 /**
- * The bundled theme each built-in template scaffolds as its starter
- * `styles/book.css`. The theme.css files are complete, token-driven stylesheets
- * (a documented `:root` block + the rules that use it), so a fresh project opens
- * with a real look AND immediately-editable settings in the guided Design panel
- * — never an empty "no stylesheet" dead-end (UX audit P2#7).
+ * The built-in theme each built-in template APPLIES (via {@link applyTheme},
+ * #236) as its starter theme. Each theme.css is a complete, token-driven
+ * stylesheet (a documented `:root` block + the rules that use it), so a fresh
+ * project opens with a real look AND immediately-editable settings in the
+ * guided Design panel — never an empty "no stylesheet" dead-end (UX audit
+ * P2#7) — while staying a real, trackable theme instead of a fork.
  */
 const STARTER_THEME_FOR_TEMPLATE: Record<ProjectTemplateId, string> = {
   book: "clean-book",
   zine: "zine",
   technical: "technical-doc",
 };
+
+/**
+ * Content written into a freshly-scaffolded project's `styles/book.css`
+ * (#236 fix). This is deliberately NOT the theme's CSS: the starter theme is
+ * applied separately via {@link applyTheme} (`theme-manager.ts`), which copies
+ * it into `themes/<id>/theme.css` and wires the manifest — the SAME tracked,
+ * switchable/revertible shape the desktop's Theme panel produces. Forking the
+ * theme's bytes into this file (the pre-#236 behavior) orphaned it from its
+ * theme id: nothing recorded which theme it came from, so it showed as "no
+ * active theme" and silently shadowed the next theme an author applied.
+ *
+ * `styles/book.css` is the project's OWN override layer instead: applyTheme
+ * inserts a first-ever theme at the FRONT of `styles:`, so this file — already
+ * listed in every built-in template's manifest — ends up right after it,
+ * exactly the cascade position a project's own stylesheet is documented to
+ * hold (theme-manager.ts's module doc). A short explanatory comment stands in
+ * for real rules so opening this file never looks like a mistake.
+ */
+function starterOverridesCss(themeId: string): string {
+  return `/**
+ * Your book's own styles.
+ *
+ * The active theme lives in ${THEMES_DIR}/${themeId}/theme.css — switch it
+ * any time with \`gutterpress theme apply <id>\` (or the desktop's Design
+ * panel) without losing anything you write here. This file loads AFTER the
+ * theme, so any rule you add below overrides the theme's defaults.
+ *
+ * Most everyday adjustments (colors, fonts, margins, spacing) are already
+ * exposed as CSS custom properties on the theme's :root — try those first.
+ */
+`;
+}
 
 /**
  * How (or whether) to put the new project under local version history.
@@ -333,6 +367,10 @@ export async function scaffoldProject(
 
   const template = options.template ?? "book";
   const customTemplateDir = options.templateDir;
+  // #236: the theme a BUILT-IN template scaffolds is applied (tracked), not
+  // forked — a saved custom template brings its own manifest/styles and is
+  // never touched here (see the two `!customTemplateDir` guards below).
+  const starterThemeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
 
   // ADR 0008: creating a book from a built-in template REQUIRES choosing a
   // preset (and a trim size when it's `custom`) — validated before anything
@@ -375,13 +413,18 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
-      // Scaffold styles/book.css from the template's starter theme so the
-      // project opens with a real, fully-editable stylesheet (the manifest
-      // references styles/book.css). Never an empty Design panel (audit P2#7).
-      const starterThemeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
-      const starterCss = await getAssetPath(`themes/${starterThemeId}/theme.css`);
+      // #236: styles/book.css is the project's OWN override layer, not a fork
+      // of the theme — the starter theme itself is applied below (step 2) via
+      // applyTheme, which is what makes it a real, trackable/switchable theme
+      // instead of dead CSS `gutterpress theme apply`/the desktop's Theme
+      // panel can never see or replace. Still never an empty Design panel
+      // (audit P2#7): the applied theme is the fully-editable stylesheet now.
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
-      await copyFile(starterCss, path.join(projectDir, "styles", "book.css"));
+      await writeFile(
+        path.join(projectDir, "styles", "book.css"),
+        starterOverridesCss(starterThemeId),
+        "utf8",
+      );
     }
   } catch (e) {
     throw new CreateProjectErrorImpl(
@@ -419,6 +462,17 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
+    if (!customTemplateDir) {
+      // #236: apply the starter theme through the SAME tracked path
+      // (applyTheme) the desktop's Theme panel uses, instead of forking its
+      // CSS into styles/book.css. This copies the theme into
+      // `themes/<id>/theme.css` and wires the manifest `styles:` entry, so a
+      // freshly scaffolded project's theme is switchable/revertible and
+      // visible to `gutterpress theme list`/`apply`/`remove` from the moment
+      // it's created — not orphaned CSS those commands can never see. A saved
+      // custom template brings its own manifest/styles and is left untouched.
+      await applyTheme(projectDir, { kind: "builtin", id: starterThemeId });
+    }
     if (preset) {
       // Overwrite the template's placeholder `preset:` with the author's
       // choice (and their trim, for `custom` or an explicit override) via the
@@ -569,12 +623,17 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
       mdFiles = ["chapter-01.md"];
     }
 
-    // 2. Starter stylesheet (don't clobber an existing styles/book.css).
+    // 2. Starter stylesheet (don't clobber an existing styles/book.css — it
+    // may already hold the author's own hand-written CSS from before
+    // adoption). #236: when there's nothing there yet, this is the project's
+    // OWN (empty) override layer, NOT a fork of the theme — the theme itself
+    // is applied below (step 3b) via applyTheme once the manifest exists.
     const themeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
     await mkdir(path.join(dir, "styles"), { recursive: true });
     const bookCssPath = path.join(dir, "styles", "book.css");
-    if (!existsSync(bookCssPath)) {
-      await copyFile(await getAssetPath(`themes/${themeId}/theme.css`), bookCssPath);
+    const hadOwnStylesheet = existsSync(bookCssPath);
+    if (!hadOwnStylesheet) {
+      await writeFile(bookCssPath, starterOverridesCss(themeId), "utf8");
     }
 
     // 3. Write the manifest referencing the discovered files + book.css. No
@@ -594,6 +653,17 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
       `styles:\n  - styles/book.css\n`;
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
+
+    // 3b. #236: only when step 2 found nothing already there (no existing
+    // design to respect) apply the starter theme through the tracked path
+    // (applyTheme), giving the adopted folder the same real,
+    // switchable/revertible theme a fresh `gutterpress new` project gets. A
+    // folder that already had its own styles/book.css keeps its EXACT prior
+    // behavior — adopting it must never silently layer an unrequested theme
+    // underneath hand-written CSS the author chose to keep.
+    if (!hadOwnStylesheet) {
+      await applyTheme(dir, { kind: "builtin", id: themeId });
+    }
 
     // 4. Ensure `dist/` is gitignored — same reasoning as scaffoldProject's
     // step 1b. An ADOPTED folder is even more likely to already be under
