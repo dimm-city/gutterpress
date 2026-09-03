@@ -33,11 +33,15 @@ import { resolveDeclaredStyles } from "../style-declarations";
 // `node:url`/`node:module`). The types/values are re-exported below so existing
 // callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
 import type {
+  GutterpressMarkerTable,
   GutterpressPlugin,
   GutterpressPluginMetadata,
   LoadedPlugin,
 } from "./renderer";
 export type {
+  GutterpressMarkerDeclaration,
+  GutterpressMarkerLabel,
+  GutterpressMarkerTable,
   GutterpressPlugin,
   GutterpressPluginMetadata,
   GutterpressPluginExport,
@@ -796,6 +800,29 @@ function validateStylesExport(value: unknown, pluginRef: string): string[] | und
 }
 
 /**
+ * Validate a plugin's raw `markers` export shape (#240) — a LIGHT, top-level
+ * check only: "is this a plain object at all?" The per-declaration shape
+ * (tag/class/variants/label/autoCloseAt/alias/preset/deprecated) and every
+ * cross-plugin collision are validated centrally by
+ * `buildDeclaredMarkerRegistry` (markers.js), once every loaded plugin's
+ * table is available — this function only guards against handing that
+ * function something it cannot even iterate (`Object.entries` on a string or
+ * an array would silently produce nonsense keys). Mirrors
+ * {@link validateStylesExport}'s "undefined/empty both pass through as
+ * undefined, anything malformed throws now" shape.
+ */
+function validateMarkersExport(value: unknown, pluginRef: string): GutterpressMarkerTable | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `Plugin "${pluginRef}" exports \`markers\` that is not a plain object.`,
+    );
+  }
+  const table = value as GutterpressMarkerTable;
+  return Object.keys(table).length > 0 ? table : undefined;
+}
+
+/**
  * Extract the plugin function from a loaded module, handling the various
  * shapes Node/Bun produce for ESM/CJS interop:
  *
@@ -814,6 +841,9 @@ function extractPluginExports(
   /** Author-declared, module-relative paths (#238) — NOT YET resolved to
    * absolute paths; the caller (`loadPlugin`) does that. */
   styles?: string[];
+  /** Author-declared marker table (#240), unresolved — `createMarkdownRenderer`
+   * (renderer.ts) merges it with every other loaded plugin's table. */
+  markers?: GutterpressMarkerTable;
 } {
   const mod = pluginModule !== null && (typeof pluginModule === "object" || typeof pluginModule === "function")
     ? pluginModule as Record<string, unknown>
@@ -822,6 +852,7 @@ function extractPluginExports(
   let metadata = mod.metadata as GutterpressPluginMetadata | undefined;
   let css = mod.css as string | undefined;
   let styles = validateStylesExport(mod.styles, pluginRef);
+  let markers = validateMarkersExport(mod.markers, pluginRef);
 
   if (exportName && typeof mod[exportName] === "function") {
     plugin = mod[exportName] as GutterpressPlugin;
@@ -848,6 +879,7 @@ function extractPluginExports(
     metadata = (inner.metadata as GutterpressPluginMetadata | undefined) ?? metadata;
     css = (inner.css as string | undefined) ?? css;
     styles = validateStylesExport(inner.styles, pluginRef) ?? styles;
+    markers = validateMarkersExport(inner.markers, pluginRef) ?? markers;
   }
 
   if (typeof plugin !== "function") {
@@ -858,7 +890,7 @@ function extractPluginExports(
     );
   }
 
-  return { plugin, metadata, css, styles };
+  return { plugin, metadata, css, styles, markers };
 }
 
 /**
@@ -1106,7 +1138,7 @@ export async function loadPlugin(
     throw new Error(`Failed to load plugin "${pluginRef}": ${errorMsg}`);
   }
 
-  const { plugin, metadata, css, styles: rawStyles } = extractPluginExports(
+  const { plugin, metadata, css, styles: rawStyles, markers } = extractPluginExports(
     pluginModule,
     pluginRef,
     config.export,
@@ -1119,6 +1151,7 @@ export async function loadPlugin(
     metadata,
     css,
     styles,
+    markers,
     options: config.options,
   };
 }

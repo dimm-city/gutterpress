@@ -19,7 +19,7 @@ import MarkdownIt from "markdown-it";
 import { debug } from "../../utils/logger";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
-import gutterpressMarkers from "./markers.js";
+import gutterpressMarkers, { buildDeclaredMarkerRegistry } from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
@@ -68,6 +68,77 @@ export interface GutterpressPluginMetadata {
 }
 
 /**
+ * A declared marker's structural-element label (#240) — a real child element
+ * injected as the container's first child, the same "structural element
+ * carrying the data as both text content and an attribute" shape
+ * `markers.js`'s own `.chapter-opener` uses for `@chapter`.
+ */
+export interface GutterpressMarkerLabel {
+  /** Class on the injected label element. */
+  class: string;
+  /**
+   * Where the label text comes from. Only `"attr:<name>"` is supported today
+   * (the marker's own attribute of that name) — see `markers.js`'s
+   * `resolveContainerShape` for why the format leaves room to grow later
+   * instead of silently doing nothing for an unsupported value now.
+   */
+  from: string;
+  /** HTML tag for the injected label element. Defaults to `"div"`. */
+  tag?: string;
+}
+
+/**
+ * One entry in a plugin's declared `markers` table (#240 — "declarative
+ * container components in core"). Exactly one of three shapes:
+ *
+ *   - a CONTAINER: `tag`/`class`/`variants`/`label`/`autoCloseAt`, any/all
+ *     optional (a bare `{}` is a valid, if pointless, `<div>` wrapper);
+ *   - an ALIAS: `alias` (another declared name) + optional `preset`;
+ *   - a DEPRECATION: `deprecated` (a human-readable retirement message) —
+ *     wins over every other field on the same entry, per
+ *     `markers.js`'s `resolveMarkerDeclaration`.
+ *
+ * See `markers.js`'s header comment for a worked example and
+ * `buildDeclaredMarkerRegistry` for the full validation/resolution contract
+ * (collision rules, alias indirection, the auto-derived `@end-<name>`
+ * closer). This type exists so a plugin AUTHOR importing it type-only
+ * (CLAUDE.md §5) has a real shape to write against; core's own consumption
+ * of the data is plain, duck-typed JS, matching every other markdown-it
+ * plugin input.
+ */
+export interface GutterpressMarkerDeclaration {
+  /** Wrapper element tag. Defaults to `"div"`. */
+  tag?: string;
+  /** Base class(es) on the wrapper, e.g. `"dc-alert"`. */
+  class?: string;
+  /**
+   * Extra class(es) keyed by the marker's own bare name/argument (its
+   * "variant" — `@callout warning` selects `variants.warning`), appended
+   * after `class`.
+   */
+  variants?: Record<string, string>;
+  label?: GutterpressMarkerLabel;
+  /**
+   * Boundaries at which an unclosed instance of this marker auto-closes
+   * WITHOUT a warning. `"eof"` is the only value implemented today — an
+   * unclosed container always auto-closes at end-of-document regardless
+   * (required for well-formed HTML across concatenated chapter files); this
+   * only controls whether that forced close is silent (declare it here) or
+   * warns (the default — most likely a forgotten `@end-<name>`).
+   */
+  autoCloseAt?: Array<"eof">;
+  /** This marker is sugar for another declared marker (must name a non-alias, non-deprecated entry). */
+  alias?: string;
+  /** With `alias`: defaults applied when the invocation line supplies none. */
+  preset?: { variant?: string };
+  /** This marker is retired: using it (or its `@end-` form) warns with this message and is otherwise a no-op. */
+  deprecated?: string;
+}
+
+/** A plugin's full declared marker table — see {@link GutterpressMarkerDeclaration}. */
+export type GutterpressMarkerTable = Record<string, GutterpressMarkerDeclaration>;
+
+/**
  * Full shape a plugin module may export. Only `default` is required.
  *
  * ```ts
@@ -76,6 +147,7 @@ export interface GutterpressPluginMetadata {
  * export const metadata: GutterpressPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
  * export const css = `.my-class { color: red; }`;
  * export const styles = ["./styles/components.css", "./styles/callouts.css"];
+ * export const markers: GutterpressMarkerTable = { callout: { tag: 'div', class: 'dc-alert' } };
  * ```
  */
 export interface GutterpressPluginExport {
@@ -94,6 +166,12 @@ export interface GutterpressPluginExport {
    * before the project's own stylesheets.
    */
   styles?: string[];
+  /**
+   * Declarative container components (#240) — data interpreted by CORE's
+   * marker parser (`markers.js`), the same relationship `css`/`styles`
+   * already have to the loader. See {@link GutterpressMarkerDeclaration}.
+   */
+  markers?: GutterpressMarkerTable;
 }
 
 /** Internal representation of a loaded plugin, ready for `md.use()`. */
@@ -109,6 +187,12 @@ export interface LoadedPlugin {
    * declared order. `undefined`/`[]` for a plugin that declares none.
    */
   styles?: string[];
+  /** #240 — the plugin's raw, as-authored `markers` export, unresolved (see
+   * {@link GutterpressPluginExport.markers}). `createMarkdownRenderer` merges
+   * every loaded plugin's table via `buildDeclaredMarkerRegistry` before
+   * `gutterpressMarkers` ever runs — this field is untouched by the loader,
+   * mirroring how `css` is carried through as an opaque string. */
+  markers?: GutterpressMarkerTable;
   options: Record<string, unknown>;
 }
 
@@ -181,6 +265,22 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  * primitive. A project using neither plugin still renders `> [!NOTE]` as a
  * literal blockquote, unchanged — this feature is opt-in, not a default.
  *
+ * #240 — before `gutterpressMarkers` is applied, every loaded plugin's
+ * declared `markers` table (if any) is merged into ONE registry via
+ * `buildDeclaredMarkerRegistry` (markers.js) — validating collisions against
+ * core's own reserved names and against each other, resolving alias/preset
+ * indirection — and handed to the marker plugin as
+ * `{ declaredMarkers }`. This is WHY the merge happens here rather than in
+ * the loader (`plugins.ts`): `createMarkdownRenderer` is the one place that
+ * already sees every loaded plugin together, and merging before
+ * `md.use(gutterpressMarkers, ...)` is what lets `@callout`/`@end-callout`
+ * be recognized by the SAME block-level grammar as `@section` from the very
+ * first parse, rather than needing a second pass. A plugin's own hand-
+ * written block rule (for authors who need more than the declarative table)
+ * is still registered later, in the customPlugins loop below, exactly as
+ * before #240 — declaring `markers` and writing a plain markdown-it plugin
+ * function are not mutually exclusive.
+ *
  * @param customPlugins - Optional array of custom plugins to load
  */
 export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
@@ -201,7 +301,11 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrapPlugin(markdownItFootnote));
   md.use(unwrapPlugin(markdownItDeflist));
   md.use(unwrapPlugin(markdownItSourceMap));
-  md.use(gutterpressMarkers);
+  const declaredMarkerSources = (customPlugins ?? [])
+    .filter((p) => !!p.markers)
+    .map((p) => ({ pluginName: p.name, markers: p.markers! }));
+  const declaredMarkers = buildDeclaredMarkerRegistry(declaredMarkerSources);
+  md.use(gutterpressMarkers, { declaredMarkers });
   // This diagnostic must follow the Gutterpress marker parser (it walks the
   // layout_* tokens that parser emits) and markdown-it-attrs (it reads the
   // {.gp-pin} classes attrs attaches).
