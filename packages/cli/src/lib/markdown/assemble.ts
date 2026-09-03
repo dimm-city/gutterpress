@@ -45,6 +45,17 @@ export interface LayoutWarning {
   marker?: unknown;
 }
 
+/**
+ * The Chromium milestone that paints a `@page { background: url() }` image
+ * with no other reference to it (spec gap #152). Measured 2026-09-03: Chrome
+ * for Testing 152.0.7977.54 and the CI runner's Chrome stable both paint it;
+ * Chrome 151.0.7922.75 dropped it (docs/known-limitations.md §3). The
+ * `preloadImages` shim below expires when the engine's floor
+ * (`REQUIRED_MILESTONE`, engine/shared/cdp.ts) reaches this — the canary in
+ * engine/compiler/page-background-chromium-bug.canary.test.ts enforces that.
+ */
+export const PAGE_BACKGROUND_FIXED_MILESTONE = 152;
+
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
   files: string[];
@@ -64,9 +75,10 @@ export interface AssembleBookHtmlOptions {
    */
   projectCss?: string;
   /**
-   * SHIM — spec gap #152. Output-relative hrefs of the images the project's
-   * stylesheets staged (`inlineStyles`'s copy plan, verbatim), each emitted as
-   * one `<link rel="preload" as="image">`.
+   * SHIM — spec gap #152, fixed upstream in Chromium
+   * {@link PAGE_BACKGROUND_FIXED_MILESTONE}. Output-relative hrefs of the
+   * images the project's stylesheets staged (`inlineStyles`'s copy plan,
+   * verbatim), each emitted as one `<link rel="preload" as="image">`.
    *
    * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
    * print path CDP drives never waits for a pending resource — so the sheet
@@ -86,10 +98,16 @@ export interface AssembleBookHtmlOptions {
    * either document order) — which is why `asset-inline.ts` content-addresses
    * every CSS image so no element can name one.
    *
-   * WHAT PROVES IT IS STILL NEEDED: the expiry canary,
-   * `engine/compiler/page-background-chromium-bug.canary.test.ts`. The day it
-   * goes red, Chromium has fixed the bug — delete this option, the `.map()`
-   * that feeds it in `markdown/index.ts`, and the canary.
+   * WHEN IT GOES: Chromium fixed the bug in milestone
+   * {@link PAGE_BACKGROUND_FIXED_MILESTONE} (measured 2026-09-03: Chrome 152
+   * paints the sole-referenced image, 151 dropped it). The preload changes
+   * nothing on a fixed Chromium, and it still protects every Chromium the
+   * engine accepts below that (`REQUIRED_MILESTONE` in `engine/shared/cdp.ts`,
+   * 148 — what Electron 42 ships), so it stays until the floor reaches the
+   * fix. The expiry canary,
+   * `engine/compiler/page-background-chromium-bug.canary.test.ts`, goes red
+   * the day the floor is raised that far — delete this option, the `.map()`
+   * that feeds it in `markdown/index.ts`, the constant, and the canary.
    *
    * The copy plan is the source, NOT a scan of the assembled CSS: `pluginCss`
    * never passes through `inlineStyles`, so a `url()` inside it is never

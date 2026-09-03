@@ -84,6 +84,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The `@page` background workaround now knows when it expires.** Chrome
+  152 paints an image referenced only from an `@page` rule; 151 and earlier
+  dropped it, which is what the build's `<link rel="preload">` works around.
+  The preload changes nothing on a fixed Chrome and still matters on the
+  versions the engine accepts (148 and up), so it stays; its removal is now
+  pinned to the engine's Chromium floor reaching 152, and the test that
+  enforces that also re-measures the outcome on whichever Chrome runs it.
+
 - **`engineStyles.paged` is gone from the manifest schema and types.** It was
   accepted, warned about, and ignored, and editor autocomplete kept offering
   it. A manifest that still carries it loads with the same one-line warning
@@ -108,6 +116,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   not changed: `gutterpress theme list` tells you it is byte-identical to a
   built-in theme and names the one command that adopts the tracked layout.
   (#236)
+
+### Removed
+
+- **The `.col-split` column machinery.** An `@section .col-split` used to make
+  `@column-break` emit hard `<div class="col">` wrappers, a mechanism no book
+  used, no built-in theme styled, and the desktop's "Two columns" button was
+  the only thing still producing, so that button gave every stock project a
+  section with no layout at all. The button now inserts `@section
+  .gp-columns-2`, which core styles, and the renderer branch, its per-render
+  depth counter and the `.col-split` completion hint are gone. A `.col-split`
+  class in an existing manuscript is now just a class: the section renders as
+  an ordinary section with a `.gp-column-break` marker where the break was.
+  (#234)
 
 ### Fixed
 
