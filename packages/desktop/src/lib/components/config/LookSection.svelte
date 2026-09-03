@@ -1,46 +1,58 @@
 <script lang="ts">
   /**
-   * Theme sub-section of the merged "Look & style" section (UX review M35 —
-   * Appearance/Styles/Design used to be three developer-shaped sections;
-   * this is now the first of three panes ProjectConfigPanel composes under
-   * one "Look & style" heading: theme grid → design tokens → stylesheet list
-   * behind Advanced). Renders the theme grid (apply / remove / import from
-   * folder + URL) and per-card thumbnail preview — no section wrapper or
-   * `<h3>` of its own anymore; the parent owns the outer `.block`/heading.
-   * All state, `api.theme.*` calls, and thumbnail loading live in
-   * `AppearanceSectionController` (passed as the single `controller` prop, per
-   * the design-controller pattern — see M14); this child renders the
-   * controller's rune fields and calls its intent methods. Shared primitives
-   * come from `config-section-shared.css`; the theme-grid/theme-card/
-   * thumbnail layout is scoped here.
+   * Look tab of the merged Extensions surface (#243 - ex-AppearanceSection.svelte,
+   * the theme grid half of "Merge the Theme grid and Plugins panel into one
+   * Extensions surface"). Renders the grid of extensions that carry a look
+   * (apply / remove / import from folder + URL) and per-card thumbnail
+   * preview - no section wrapper or `<h3>` of its own; the parent
+   * (ProjectSettingsView) owns the outer `.block`/heading, exactly as the
+   * retired AppearanceSection did under "Look & style".
+   *
+   * State, `api.theme.*` calls, and thumbnail loading all live in the SHARED
+   * `ExtensionsSectionController` (passed as the single `controller` prop,
+   * per the design-controller pattern - see M14) - the SAME instance
+   * `FeaturesSection` reads for its own (features) half; this component only
+   * ever touches the controller's Look-prefixed fields/methods. Shared
+   * primitives come from `config-section-shared.css`; the
+   * grid/card/thumbnail layout is scoped here, unchanged from
+   * AppearanceSection.
+   *
+   * "One controller, two tabs, no shared verb" (#243): a look is exclusive -
+   * applying one replaces the active look - so this tab keeps Apply/Remove/
+   * Import/Revert exactly as they were; FeaturesSection keeps its own
+   * enable-toggle verbs. See ExtensionsSectionController's header comment for
+   * the full reasoning.
+   *
+   * NOTE ON PUNCTUATION: comments here use plain ASCII (no em dashes) - see
+   * the matching note in extensions-section-controller.svelte.ts.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ThemeInfo } from "$lib/platform/dtos";
-  import { keyOf } from "./config-helpers";
+  import { keyOf, extensionOtherHalfNote } from "./config-helpers";
   import { visibleBuiltInThemes } from "./theme-grid";
-  import type { AppearanceSectionController } from "$lib/routes/appearance-section-controller.svelte";
+  import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
-  let { controller }: { controller: AppearanceSectionController } = $props();
+  let { controller }: { controller: ExtensionsSectionController } = $props();
 
-  /** True when this theme card is the project's active applied theme. */
+  /** True when this card is the project's active applied look. */
   function isActiveTheme(t: ThemeInfo): boolean {
-    // The active theme always lives in the project (apply copies built-ins into
+    // The active look always lives in the project (apply copies built-ins into
     // themes/<id>). Match the project-kind card only, so a built-in card doesn't
-    // also light up when its copy is the active project theme.
+    // also light up when its copy is the active project look.
     return t.kind === "project" && controller.activeThemeId === t.id;
   }
 
   // UX review M6: the grid used to render BOTH a built-in card and the
-  // project's own copy of the same theme, with no dedupe — clicking Apply on
+  // project's own copy of the same look, with no dedupe - clicking Apply on
   // the built-in twin re-ran the destructive copy over the project copy's
-  // (possibly customized) theme.css. Once a project copy of an id exists, hide
+  // (possibly customized) stylesheet. Once a project copy of an id exists, hide
   // the built-in card for that id; see `visibleBuiltInThemes` for the full
   // rationale. Removing the project copy makes the built-in card reappear.
   let visibleBuiltIns = $derived(visibleBuiltInThemes(controller.builtIns, controller.projectThemes));
 </script>
 
 <div class="look-subsection theme-subsection">
-  <h4 class="subhead">Theme</h4>
+  <h4 class="subhead">Look</h4>
   {#if controller.themeError}
     <p class="error" role="alert">{controller.themeError}</p>
   {/if}
@@ -54,11 +66,11 @@
       </ul>
     </div>
   {/if}
-  <p class="hint">Pick a look — applying copies the theme into your project and wires the manifest. Hover a card to preview a two-page spread.</p>
+  <p class="hint">Pick a look - applying copies it into your project and wires the manifest. Hover a card to preview a two-page spread.</p>
   {#if controller.previousTheme}
     <div class="actions row">
       <button class="ghost small" onclick={controller.revertTheme} disabled={controller.themeBusyId !== null} title={`Re-apply "${controller.previousTheme.name}"`}>
-        <Icon name="history" size={13} /> Revert to previous theme ({controller.previousTheme.name})
+        <Icon name="history" size={13} /> Revert to previous look ({controller.previousTheme.name})
       </button>
     </div>
   {/if}
@@ -71,18 +83,18 @@
     {/each}
   </ul>
   <div class="actions row">
-    <button class="ghost small" onclick={controller.importThemeFile} disabled={controller.themeBusyId !== null} title="Import a theme package (.zip) or a stylesheet (.css)">
-      <Icon name="cloud-upload" size={13} /> Import theme (.zip/.css)…
+    <button class="ghost small" onclick={controller.importThemeFile} disabled={controller.themeBusyId !== null} title="Import an extension package (.zip) or a stylesheet (.css)">
+      <Icon name="cloud-upload" size={13} /> Import a look (.zip/.css)...
     </button>
-    <button class="ghost small" onclick={controller.importThemeFolder} disabled={controller.themeBusyId !== null} title="Import a theme from a folder on disk">
-      <Icon name="folder" size={13} /> Import from folder…
+    <button class="ghost small" onclick={controller.importThemeFolder} disabled={controller.themeBusyId !== null} title="Import a look from a folder on disk">
+      <Icon name="folder" size={13} /> Import from folder...
     </button>
   </div>
   <div class="add-row">
     <input
       class="input"
       type="text"
-      placeholder="Theme URL (.css or theme folder)"
+      placeholder="URL (.css or an extension folder)"
       bind:value={controller.themeUrl}
       onkeydown={(e) => { if (e.key === "Enter") controller.importThemeUrl(); }}
     />
@@ -92,13 +104,13 @@
 
 <!--
   #106 hover preview: an enlarged, FIXED two-page sample spread rendered with the
-  hovered theme's CSS (reusing the thumbnail readCss → srcdoc → sandboxed iframe
+  hovered look's CSS (reusing the thumbnail readCss -> srcdoc -> sandboxed iframe
   mechanism). It never renders the author's document. pointer-events:none so it
   can't steal the hover; aria-hidden as it's a decorative enlargement of the card.
 -->
 {#if controller.hoverPreview}
   <div class="hover-preview" aria-hidden="true">
-    <iframe title="Theme sample spread preview" srcdoc={controller.hoverPreview} sandbox="allow-same-origin"></iframe>
+    <iframe title="Look sample spread preview" srcdoc={controller.hoverPreview} sandbox="allow-same-origin"></iframe>
   </div>
 {/if}
 
@@ -126,14 +138,21 @@
       <span class="theme-name">{t.name}</span>
       {#if t.author}<span class="theme-author">{t.author}</span>{/if}
       {#if isActiveTheme(t)}<span class="badge">active</span>{/if}
+      <!-- #243: the one cross-tab signal current data supports - a full
+           extension's markdown half is parsed but never wired by the theme
+           verbs (ThemeInfo.markdown's own doc comment), so this is worded as
+           an inert fact, not an instruction. -->
+      {#if extensionOtherHalfNote(t)}
+        <span class="badge other-half" title={extensionOtherHalfNote(t)}>+ features</span>
+      {/if}
     </div>
     <div class="theme-actions">
       {#if controller.removeArmedKey === keyOf(t)}
         {@render removeConfirm(t)}
       {:else if isActiveTheme(t)}
-        <span class="muted dim">Current theme</span>
+        <span class="muted dim">Current look</span>
         {#if t.kind === "project"}
-          <button class="ghost small" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove this project theme">Remove</button>
+          <button class="ghost small" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove this look">Remove</button>
         {/if}
       {:else}
         <button class="primary small app-btn-primary" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
@@ -149,10 +168,10 @@
 
 <!--
   UX review M7: a one-click "Remove" used to run an immediate recursive delete
-  of the theme folder (and the customizations in its theme.css) with no
+  of the look's folder (and any customizations in its stylesheet) with no
   confirm at any layer. This mirrors the CrashRecoveryDialog two-step inline
   confirm (M12): the FIRST click arms this block in place of the normal
-  actions (naming the theme + warning customizations are gone for good); a
+  actions (naming the look + warning customizations are gone for good); a
   SECOND click on "Delete" confirms. "Cancel" (or arming a different card)
   backs out without deleting anything.
 -->
@@ -201,7 +220,11 @@
   .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .theme-author { font-size: 10px; color: var(--app-text-muted); }
   .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  /* Armed Remove confirm (UX review M7): names the theme + warns customizations
+  /* #243: the "also has markdown features" cross-tab note - a plain badge,
+     not a button (nothing here activates the other half; see the doc comment
+     above the snippet). */
+  .badge.other-half { cursor: help; }
+  /* Armed Remove confirm (UX review M7): names the look + warns customizations
      are gone for good, full-width above the Delete/Cancel pair. */
   .remove-confirm-msg {
     flex: 1 1 100%; margin: 0; font-size: 11px; line-height: 1.4; color: var(--app-error-text);
@@ -233,15 +256,15 @@
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
   /* The viewport-pinned flyout needs true free space RIGHT of the settings
-     view's centered 860px column: its left edge (100vw − 376px) crosses the
+     view's centered 860px column: its left edge (100vw - 376px) crosses the
      column's right edge ((100vw + 860px) / 2) below ~1620px, where it would
-     cover the very theme cards being hovered (calibrated for the old left-
+     cover the very cards being hovered (calibrated for the old left-
      sidebar geometry). Below that, the card's own thumbnail is the preview. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }
 
-  /* 480px: two-column theme grid on very narrow panels — component-local,
+  /* 480px: two-column grid on very narrow panels - component-local,
      unrelated to the 820px app tier. */
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }

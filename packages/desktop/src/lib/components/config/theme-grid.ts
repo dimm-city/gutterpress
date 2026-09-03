@@ -1,5 +1,5 @@
 /**
- * Pure Appearance-grid helpers for AppearanceSection.svelte (UX review M6).
+ * Pure Look-grid helpers for LookSection.svelte (UX review M6).
  *
  * Extracted so the dedupe rule is unit-testable without a Svelte component
  * test harness (none exists in this repo — see CLAUDE.md test conventions).

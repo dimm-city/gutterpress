@@ -18,6 +18,27 @@ import type {
 export const keyOf = (t: ThemeInfo): string => `${t.kind}:${t.id}`;
 
 /**
+ * #243: the one cross-tab signal the merged Extensions surface can honestly
+ * show today - a Look card whose folder's `gutterpress.json` ALSO declares a
+ * `markdown` entry (#241). Returns a tooltip string when true, `null`
+ * otherwise, so a template can gate a badge on it directly
+ * (`{#if extensionOtherHalfNote(t)}`).
+ *
+ * Worded as an inert fact, not an instruction: applying a look never loads or
+ * wires its markdown half (`ThemeInfo.markdown`'s own doc comment - the theme
+ * verbs parse-and-expose it for visibility only), so this must not imply the
+ * feature is already active or tell the author to do something the Look tab
+ * has no button for. See `ExtensionsSectionController`'s header comment for
+ * why there is no equivalent note the other direction (a Features row cannot
+ * currently tell you it also carries a look).
+ */
+export function extensionOtherHalfNote(t: ThemeInfo): string | null {
+  return t.markdown
+    ? "This extension also includes markdown features, not enabled by applying its look."
+    : null;
+}
+
+/**
  * Build the srcdoc for a theme thumbnail iframe (ported verbatim from the
  * retired ThemeManager).
  */
