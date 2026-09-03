@@ -201,6 +201,25 @@
     surfaceHandle?.setZoom(next);
   }
 
+  /** The fork's scrolling content container, which the paged surface makes the stage. */
+  function scroller(): HTMLElement | null {
+    return container?.querySelector<HTMLElement>(".md-editor-content") ?? null;
+  }
+
+  /** How far the pages are scrolled: at the start, at the end, both (nothing to scroll), or in between. */
+  export function scrollEdge(): { atStart: boolean; atEnd: boolean } {
+    const el = scroller();
+    if (!el) return { atStart: true, atEnd: true };
+    return { atStart: el.scrollTop <= 1, atEnd: el.scrollTop + el.clientHeight >= el.scrollHeight - 1 };
+  }
+
+  /** Scroll the pages to their start or end (the next chapter opens at its start, the previous at its end). */
+  export function scrollToEdge(edge: "start" | "end"): void {
+    const el = scroller();
+    if (!el) return;
+    el.scrollTop = edge === "start" ? 0 : el.scrollHeight;
+  }
+
   /** Place the caret at a source offset, as a click there would (activates the block). */
   export function setSelection(from: number, to?: number): void {
     mountHandle?.setSelection(from, to);
@@ -255,6 +274,10 @@
   .rich-editor-host :global(.md-editor) {
     height: 100%;
     min-height: 0;
+    /* The fork caps a document at a reading measure (52rem) and leaves it at
+       the pane's left edge. The pages are their own measure; the stage takes
+       the whole pane and centres the sheets in it, the way the preview does. */
+    max-width: none;
   }
   .rich-editor-host :global(.md-editor-content) {
     max-height: 100%;

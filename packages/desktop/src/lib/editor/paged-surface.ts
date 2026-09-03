@@ -193,7 +193,10 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     // unwrapped strip lays every page out in one long horizontal row. Must
     // run before `decorate`, which positions sheets from the wrap geometry.
     applySpreadMode(layout.strips, false);
-    decoration = decorate(layout, { canvasRoots: [documentElement] });
+    // The stage is the fork's scroll container, never the app's body: the
+    // viewer's default put its 32px padding and scrolling on <body>, which
+    // inset the whole window and gave it a second scrollbar.
+    decoration = decorate(layout, { canvasRoots: [documentElement], ...(stage ? { stage } : {}) });
     // A book's own webfonts load asynchronously, and text measured in a
     // fallback face breaks into different pages than the real one — the
     // editor would sit one page long until the next edit re-rendered it.

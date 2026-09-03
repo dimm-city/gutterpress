@@ -2047,7 +2047,7 @@
       }
     };
     const canvasBg = captureCanvasBackground(opts.canvasRoots);
-    document.body.classList.add("gp-stage");
+    (opts.stage ?? document.body).classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip2, bookIndex) {

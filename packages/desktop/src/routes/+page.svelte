@@ -1489,6 +1489,8 @@
     revealLine: (line: number) => void;
     setZoom: (zoom: string) => void;
     setSelection: (from: number, to?: number) => void;
+    scrollEdge: () => { atStart: boolean; atEnd: boolean };
+    scrollToEdge: (edge: "start" | "end") => void;
   } | null>(null);
 
   /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
@@ -3366,6 +3368,80 @@
     applyZoomToVisibleSurface(String(Math.round(next * 100) / 100));
   }
 
+  // -- Reading past the end of a chapter ---------------------------------------
+  //
+  // The paged editor shows one file, where the preview shows the whole book
+  // in one scroll. Reading on past a chapter's last page opens the next
+  // chapter at its start, and scrolling up past the first page opens the
+  // previous one at its end, so the book still reads as one thing. The
+  // order is the book's own: the outline the preview reported, which lists
+  // chapters in manifest order. A wheel or key that arrives while the pages
+  // are ALREADY at the edge is the signal; the scroll that reached the edge
+  // is not, so a chapter's end is always seen before the next one opens.
+  let richEdgeJumpAt = 0;
+
+  function richChapterOrder(): string[] {
+    const seen = new Set<string>();
+    for (const entry of outline) {
+      if (entry.chapter && isSafeChapterId(entry.chapter)) seen.add(entry.chapter);
+    }
+    return [...seen];
+  }
+
+  /** The chapter file before or after the open one in book order, or null at the book's edge. */
+  function richNeighborChapter(direction: 1 | -1): string | null {
+    const dir = lifecycle.currentDir;
+    const path = editorFilePath;
+    if (!dir || !path) return null;
+    const order = richChapterOrder();
+    const index = order.findIndex((chapter) => chapterPath(dir, chapter) === path);
+    if (index < 0) return null;
+    const next = order[index + direction];
+    return next ? chapterPath(dir, next) : null;
+  }
+
+  function richOpenNeighbor(direction: 1 | -1): void {
+    const now = Date.now();
+    if (now - richEdgeJumpAt < 900) return;
+    const target = richNeighborChapter(direction);
+    if (!target) return;
+    richEdgeJumpAt = now;
+    void selectEditorFile(target).then((selected) => {
+      if (!selected || direction !== -1) return;
+      // The previous chapter opens at its end: wait for its pages, then jump.
+      let tries = 0;
+      const toEnd = (): void => {
+        richEditorRef?.scrollToEdge("end");
+        if (++tries < 6) setTimeout(toEnd, 250);
+      };
+      setTimeout(toEnd, 100);
+    });
+  }
+
+  function onRichWheel(e: WheelEvent): void {
+    if (!richSurfaceActive || !richEditorRef || e.ctrlKey || e.metaKey) return;
+    if (Math.abs(e.deltaY) < 1) return;
+    const edge = richEditorRef.scrollEdge();
+    if (e.deltaY > 0 && edge.atEnd) richOpenNeighbor(1);
+    else if (e.deltaY < 0 && edge.atStart) richOpenNeighbor(-1);
+  }
+
+  function onRichKeydown(e: KeyboardEvent): void {
+    if (!richSurfaceActive || !richEditorRef || e.ctrlKey || e.metaKey || e.altKey) return;
+    // Unlocked, arrow keys move the caret; only paging keys read past the edge.
+    const forward = e.key === "PageDown" || (richLocked && (e.key === "ArrowDown" || e.key === " "));
+    const backward = e.key === "PageUp" || (richLocked && e.key === "ArrowUp");
+    if (!forward && !backward) return;
+    const edge = richEditorRef.scrollEdge();
+    if (forward && edge.atEnd) {
+      e.preventDefault();
+      richOpenNeighbor(1);
+    } else if (backward && edge.atStart) {
+      e.preventDefault();
+      richOpenNeighbor(-1);
+    }
+  }
+
   // -- The paged editor's own context menu and image selection ---------------
   //
   // The preview's menu is fed by events from the book's iframe; the paged
@@ -3417,6 +3493,21 @@
       pos = token.end;
     }
     return null;
+  }
+
+  /** The source start of the last stamped block whose top is above `clientY`, in document order. */
+  function richBlockStartAbove(clientY: number): number | null {
+    let best: number | null = null;
+    let bestTop = Number.NEGATIVE_INFINITY;
+    for (const el of document.querySelectorAll<HTMLElement>(".rich-editor-host .md-block[data-gp-start]")) {
+      const rect = el.getBoundingClientRect();
+      if (rect.height === 0 || rect.top > clientY || rect.top < bestTop) continue;
+      const start = Number(el.dataset["gpStart"]);
+      if (!Number.isFinite(start)) continue;
+      best = start;
+      bestTop = rect.top;
+    }
+    return best;
   }
 
   function lineOfOffset(offset: number): number {
@@ -3487,17 +3578,19 @@
         },
       });
     }
-    if (block) {
-      items.push({
-        id: "edit-in-source",
-        label: "Edit in source",
-        enabled: true,
-        run: () => {
-          richContextMenu.close();
-          editInSourceAt(block.start);
-        },
-      });
-    }
+    // Always: on a block, at its start; elsewhere (the page margin, an
+    // active block) at the caret if there is one, else at the nearest block
+    // above the pointer, else at the top of the chapter.
+    const sourceOffset = block?.start ?? richEditorRef?.getSelection()?.from ?? richBlockStartAbove(e.clientY) ?? 0;
+    items.push({
+      id: "edit-in-source",
+      label: "Edit in source",
+      enabled: true,
+      run: () => {
+        richContextMenu.close();
+        editInSourceAt(sourceOffset);
+      },
+    });
     items.push(
       richLocked
         ? { id: "unlock", label: "Unlock to edit", enabled: true, run: () => { richContextMenu.close(); setRichLocked(false); } }
@@ -3508,21 +3601,22 @@
   }
 
   /**
-   * A press on an image selects that image: the caret goes inside its own
-   * token, so the toolbar's Image properties acts on it. Taken at capture
-   * time and stopped, because the fork places the caret by coordinates and
-   * a pinned image (absolutely positioned art) sits over a different block
+   * A click on an image selects that image and opens its properties, in the
+   * locked view too (unlocking first): an image has no text to place a
+   * caret in, so the dialog IS the way to edit one. Taken at capture time
+   * and stopped, because the fork places the caret by coordinates and a
+   * pinned image (absolutely positioned art) sits over a different block
    * than the one it was written in; the fork would activate that one.
    */
   function onRichPointerDown(e: PointerEvent): void {
-    if (!richSurfaceActive || richLocked || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
+    if (!richSurfaceActive || !(e.target instanceof HTMLImageElement) || e.button !== 0) return;
     const block = richBlockAt(e.target);
     if (!block) return;
     const offset = richImageOffset(e.target, block);
     if (offset === null) return;
     e.preventDefault();
     e.stopPropagation();
-    richEditorRef?.setSelection(offset);
+    openRichImageAt(offset);
   }
 
   function onRichDoubleClick(e: MouseEvent): void {
@@ -4005,6 +4099,8 @@
                 oncontextmenu={onRichContextMenu}
                 onpointerdowncapture={onRichPointerDown}
                 ondblclick={onRichDoubleClick}
+                onwheel={onRichWheel}
+                onkeydown={onRichKeydown}
               >
                 {#if !editorFilePath}
                   <div class="editor-loading" role="status" aria-live="polite">

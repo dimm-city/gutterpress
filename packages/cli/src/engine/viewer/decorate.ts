@@ -130,6 +130,15 @@ export function decorate(
      * is neither read nor cleared.
      */
     canvasRoots?: readonly Element[];
+    /**
+     * The element that plays the stage: the scrolling backdrop the sheets
+     * sit on. Defaults to `<body>`, which is the stage in the preview and
+     * the standalone viewer. A host paginating inside its own app (the
+     * desktop's paged editor) passes its scroll container instead;
+     * otherwise the stage's padding, background and scrolling land on the
+     * app's body and the whole window is inset and scrolls.
+     */
+    stage?: HTMLElement;
   } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
@@ -150,7 +159,7 @@ export function decorate(
   // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
   const canvasBg = captureCanvasBackground(opts.canvasRoots);
-  document.body.classList.add("gp-stage");
+  (opts.stage ?? document.body).classList.add("gp-stage");
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
