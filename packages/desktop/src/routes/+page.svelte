@@ -1026,20 +1026,21 @@
   // deliberately absent from the persisted shape — `setMode` writes the
   // durable half through and `modeSink` below reads it back on load.
   let mode = $state<WorkspaceMode>(settings.current.preview.mode);
-  // The one genuinely ambiguous transition: leaving `focus` could mean either
-  // `editor` or `viewer`. Written ONLY on entering focus.
-  let modeBeforeFocus: "editor" | "viewer" | null = null;
-  /** The viewer is hidden in `focus` and nowhere else. */
-  // The paged editor IS the view (`$lib/editor/paged-surface`): Read is that
-  // same editor, locked. The paginated preview pane stays alongside it in
-  // both Edit and Read — it is the REFERENCE the editor's own pagination is
-  // checked against (`tests/integration/editor-preview-parity.mjs`), and it
-  // stays until that parity is trusted.
-  let previewVisible = $derived(mode !== "focus");
-  /** `focus` is the editor without the viewer, so the editor shows in both. */
-  // The editor pane is mounted in EVERY mode now — it is both the editor and
-  // the reader — so what still varies with mode is whether it is EDITABLE.
+  // The preview pane shows beside the SOURCE editor only. Edit is the source
+  // editor with the paginated preview beside it; `focus` is Edit without the
+  // preview; Read is the paged editor alone (`$lib/editor/paged-surface`),
+  // which renders the book the way the preview does and needs no second copy
+  // of it beside it (`tests/integration/editor-preview-parity.mjs` proves the
+  // two paginate alike, locked and unlocked).
+  let previewVisible = $derived(mode === "editor");
+  // The editor pane is mounted in EVERY mode - it is both the editor and the
+  // reader - so what varies with mode is which surface it holds: the source
+  // editor (Edit, Focus) or the paged one (Read).
   let editorEditable = $derived(mode !== "viewer");
+  // Read opens locked. Unlocking is the reader's own move, made on the page
+  // (the lock pill in the editor pane), and it does not outlive the mode:
+  // coming back to Read is coming back to read.
+  let richLocked = $state(true);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -1600,13 +1601,42 @@
   // reveal": "An explicit 'edit in source' path from rich mode for any
   // unsupported/refused region").
   function showRichDiagnostic(diagnostic: Diagnostic): void {
+    // A projection's own notices arrive together, synchronously, when the
+    // document mounts -  one per region the editor cannot show the way the
+    // page does. Shown one toast each, a chapter with a dozen such regions
+    // opened under a wall of red. They are folded into ONE notice per mount:
+    // the first reason in full, the count of the rest, and the same "edit in
+    // source mode" action. Every reason still reaches the app log.
+    if (diagnostic.category === "EDITOR_UNSUPPORTED_PROJECTION" || diagnostic.category === "EDITOR_PROJECTION_LIMIT") {
+      pendingProjectionDiagnostics.push(diagnostic);
+      if (pendingProjectionDiagnostics.length === 1) queueMicrotask(flushProjectionDiagnostics);
+      return;
+    }
+    showDiagnosticToast(diagnostic.message, diagnostic.safeAction);
+  }
+
+  const pendingProjectionDiagnostics: Diagnostic[] = [];
+
+  function flushProjectionDiagnostics(): void {
+    const batch = pendingProjectionDiagnostics.splice(0);
+    if (batch.length === 0) return;
+    for (const d of batch) reportError(`rich projection: ${d.message}`);
+    const first = batch[0]!;
+    const more = batch.length - 1;
+    const message =
+      more === 0
+        ? first.message
+        : `${batch.length} parts of this document cannot be shown here the way the page shows them; they render as the Markdown they were written from. First: ${first.message}`;
+    showDiagnosticToast(message, first.safeAction);
+  }
+
+  /** The one toast shape every rich-mode diagnostic takes: the message, and its safe action as a button that opens the source editor. */
+  function showDiagnosticToast(message: string, safeAction: string | undefined): void {
     toast?.show(
-      diagnostic.message,
+      message,
       "error",
       undefined,
-      diagnostic.safeAction
-        ? { label: diagnostic.safeAction, onClick: () => setMode("focus") }
-        : undefined,
+      safeAction ? { label: safeAction, onClick: () => setMode("editor") } : undefined,
     );
   }
 
@@ -1974,9 +2004,10 @@
    * keeps showing while the preference is "rich", matching prior behavior.
    */
   // ONE mode control decides the surface, and it is the workspace's own
-  // Edit / Read / Focus. Focus is the raw-Markdown surface (CodeMirror: no
-  // pagination, no chips — the technical view); Edit and Read are both the
-  // paged editor, unlocked and locked. A second "Rich / Source" toggle used
+  // Edit / Read. Edit (and Focus, which is Edit without the preview) is the
+  // raw-Markdown surface: CodeMirror, with the paginated preview beside it.
+  // Read is the paged editor -  the book as it prints, locked until the
+  // reader unlocks it to edit in place. A second "Rich / Source" toggle used
   // to sit in the editor toolbar on top of this, so the same document had
   // two independent mode axes and six reachable combinations to reason
   // about; it is gone, and this derivation is what replaced it.
@@ -1984,7 +2015,7 @@
   // A non-markdown file (CSS, YAML) has no paged surface at all and always
   // opens on CodeMirror, whatever the workspace mode says.
   let richSurfaceActive = $derived(
-    mode !== "focus" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
+    mode === "viewer" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
   );
 
   function showEditorContent(path: string, content: string): void {
@@ -2110,6 +2141,7 @@
   const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
     mode = m;
     if (m !== "viewer") loadEditorModule();
+    else loadRichEditorModule();
   });
   onMount(() =>
     onSettingsChange((s) => {
@@ -2485,19 +2517,20 @@
    * Open the problem's file in the editor at the offending line. Reuses the
    * existing file-selection + reveal path — no new navigation machinery.
    *
-   * It lands in FOCUS mode, the raw-Markdown surface, because that is the
+   * It lands in EDIT mode, the raw-Markdown surface, because that is the
    * only surface a diagnostic's line number addresses: a problem is reported
    * against a source line, and the paged editor shows the book, not the
-   * source. Focus mode is also the surface `revealLine` exists on
+   * source. Edit is also the surface `revealLine` exists on
    * (MarkdownEditor/CodeMirror) — asking for it anywhere else reveals
-   * nothing at all.
+   * nothing at all. A Focus session (Edit without the preview) is left as
+   * it is: the source editor is on screen either way.
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
     // Make sure the editor pane is visible first (narrow = Edit mode pane;
     // wide = the editor split).
     if (isNarrow) setPaneMode("edit");
-    setMode("focus");
+    if (mode === "viewer") setMode("editor");
     void selectEditorFile(p.filePath).then((selected) => {
       if (selected && p.line) {
         const path = p.filePath!;
@@ -3267,24 +3300,39 @@
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
-    if (next === "focus") modeBeforeFocus = mode === "viewer" ? "viewer" : "editor";
     settings.set({ preview: { mode: next === "focus" ? "editor" : next } });
     mode = next;
-    // Read/Edit locks or unlocks the MOUNTED paged editor. The mount reads
-    // `readonly` once, so this has to be told, not derived.
-    richEditorRef?.setReadonly(next === "viewer");
-    // Entering or leaving Focus changes WHICH surface is mounted.
+    // Read opens locked, every time (see `richLocked`). The mount reads
+    // `readonly` once, so a mounted paged editor has to be told, not derived.
+    if (next === "viewer") {
+      richLocked = true;
+      richEditorRef?.setReadonly(true);
+      loadRichEditorModule();
+      // A reader wants a page in front of them, not a "select a file" notice.
+      if (!editorFilePath) void ensureEditorFile();
+    }
+    // Entering or leaving Read changes WHICH surface is mounted.
     syncRichSurface();
     zoomView.applyViewMode(viewMode);
     if (next !== "viewer") loadEditorModule();
   }
 
-  /** Hide/show the viewer — the focus toggle. */
+  /**
+   * Lock or unlock the paged editor in place -  the pill in the editor pane.
+   * The mount rebuilds its surface on the toggle (`setReadonly` in
+   * `mountGutterpressEditor`), and both shapes paginate like the page.
+   */
+  function setRichLocked(locked: boolean): void {
+    if (locked === richLocked) return;
+    richLocked = locked;
+    richEditorRef?.setReadonly(locked);
+  }
+
+  /** Hide/show the viewer - the focus toggle on the source editor's toolbar (and Ctrl+Shift+F). */
   function togglePreview() {
     if (!lifecycle.previewUrl || isNarrow) return;
     if (mode === "focus") {
-      setMode(modeBeforeFocus ?? "editor");
-      modeBeforeFocus = null;
+      setMode("editor");
       return;
     }
     setMode("focus");
@@ -3546,7 +3594,7 @@
     {mode}
     onSetMode={(next) => { contextMenu.close(); setMode(next); }}
     {zoom}
-    previewControlsDisabled={!lifecycle.previewUrl}
+    previewControlsDisabled={!lifecycle.previewUrl || !previewVisible}
     onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     editorToggleDisabled={!toolbarProjectOpen}
     publishVisible={isDesktop()}
@@ -3584,13 +3632,12 @@
       onJumpToOutline={jumpToOutline}
       onSelectEditorFile={(path) => {
         selectEditorFile(path);
-        // Reading stays reading. The locked surface already shows whichever
+        // Reading stays reading. The paged surface already shows whichever
         // Markdown file is selected, so picking the next chapter in the tree
-        // is a reader's move, not an editing one — dropping them back into
-        // Edit for it both fights the choice they made and rebuilds every
-        // block view in the unlocked shape, which is not the one the printed
-        // page has. A non-Markdown file (a stylesheet) has no locked view of
-        // its own, so that still opens the editor.
+        // is a reader's move, not an editing one - dropping them into Edit
+        // for it would fight the choice they made. A non-Markdown file (a
+        // stylesheet) has no paged view of its own, so that still opens the
+        // source editor.
         const staysInReader = mode === "viewer" && isMarkdownPath(path);
         if (!staysInReader && !editorEditable && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
           // A file was just selected in the tree, so no ensureEditorFile needed.
@@ -3677,8 +3724,26 @@
                 onKeepMine={keepMineExternal}
               />
             {/if}
+            <!-- The lock pill: Read's one control. Locked is reading; unlocked
+                 is editing the book in place, on the same pages. -->
+            {#if richSurfaceActive && editorFilePath}
+              <button
+                class="rich-lock"
+                class:unlocked={!richLocked}
+                onclick={() => setRichLocked(!richLocked)}
+                aria-pressed={!richLocked}
+                aria-label={richLocked ? "Unlock" : "Lock"}
+                title={richLocked ? "Unlock to edit the book in place" : "Lock the book for reading"}
+              >
+                <Icon name={richLocked ? "lock" : "unlock"} size={14} />
+                <span>{richLocked ? "Locked" : "Editing"}</span>
+              </button>
+            {/if}
             <!-- Editor toolbar (#31): compact formatting bar, visible only when a
-                 markdown file is open. Placed above the editor, within the pane. -->
+                 markdown file is open. Placed above the editor, within the pane.
+                 A locked book has no formatting to do, so the bar waits for the
+                 unlock. -->
+            {#if !(richSurfaceActive && richLocked)}
             <EditorToolbar
               filePath={editorFilePath}
               projectDir={lifecycle.currentDir}
@@ -3717,6 +3782,7 @@
               }}
               onSave={handleForceSave}
             />
+            {/if}
             {#if richSurfaceActive}
               <!-- SFE-P3ab, Lane A — rich mode's own DOM subtree. The
                    wrapper's `use:trackSurfaceMount` and this branch's
@@ -3730,7 +3796,7 @@
               >
                 {#if !editorFilePath}
                   <div class="editor-loading" role="status" aria-live="polite">
-                    Select a file from the list to start editing.
+                    Select a chapter from the list to read it.
                   </div>
                 {:else if RichEditorComponent && richDocHostCtrl.host}
                   <!-- Keyed on the host itself: a fresh host means a fresh
@@ -3744,7 +3810,7 @@
                       extraCss={richDocHostCtrl.editorCss}
                       onDiagnostic={showRichDiagnostic}
                       paged={true}
-                      readonly={mode === "viewer"}
+                      readonly={richLocked}
                       projectDir={lifecycle.currentDir}
                       filePath={editorFilePath}
                     />
@@ -4180,7 +4246,38 @@
     flex-direction: column;
   }
   .editor-pane {
+    position: relative;
     border-right: 1px solid var(--app-border);
+  }
+  /* Read's lock pill floats over the top-right of the pages. */
+  .rich-lock {
+    position: absolute;
+    top: 12px;
+    right: 18px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--app-control-border);
+    border-radius: 999px;
+    background: var(--app-control-bg);
+    color: var(--app-control-text);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+    box-shadow: var(--app-shadow-md);
+  }
+  .rich-lock.unlocked {
+    border-color: var(--app-accent-border);
+  }
+  .rich-lock:hover {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .rich-lock:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 2px;
   }
   .settings-global-view {
     position: fixed;

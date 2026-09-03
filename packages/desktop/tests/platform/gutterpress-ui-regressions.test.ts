@@ -14,19 +14,24 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");
 });
 
-test("the Focus segment hides the preview so the editor can fill the workspace", () => {
+test("the preview shows beside the source editor only; Focus hides it from the source toolbar", () => {
   const src = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
-  // Hiding the preview IS the `focus` workspace mode — one enum, not a
-  // second boolean beside it.
-  expect(src).toContain("let previewVisible = $derived(mode !== \"focus\")");
+  // Edit is the source editor with the preview beside it; Read is the paged
+  // editor alone, which IS the book as it prints and needs no second copy.
+  expect(src).toContain("let previewVisible = $derived(mode === \"editor\")");
+  expect(src).toContain('mode === "viewer" && (editorFilePath === null || isMarkdownPath(editorFilePath))');
   expect(src).toContain("function togglePreview");
   expect(src).toContain("class:preview-hidden={!previewVisible}");
-  // The control is a segment of the one mode switch, not an eye button beside
-  // it: a three-state model gets a three-segment control.
-  expect(toolbar).toContain('onclick={() => onSetMode("focus")}');
-  expect(toolbar).toContain('aria-label="Focus"');
+  // Focus is a toggle on the source editor's toolbar, not a segment of the
+  // mode switch and not an eye button beside it.
+  expect(toolbar).not.toContain('onSetMode("focus")');
+  expect(toolbar).not.toContain('aria-label="Focus"');
   expect(toolbar).not.toContain("Preview only");
+  expect(src).toMatch(/action === "focus-mode"[\s\S]{0,120}?togglePreview\(\)/);
+  // Read's one control is the lock pill; the formatting bar waits for the unlock.
+  expect(src).toContain('aria-label={richLocked ? "Unlock" : "Lock"}');
+  expect(src).toContain("{#if !(richSurfaceActive && richLocked)}");
 });
 
 test("a preview-generation failure keeps the folder workspace open with repair actions", () => {
@@ -446,10 +451,10 @@ test("the workspace layout derives from one mode enum, in exactly one direction"
   expect(src).toContain('let mode = $state<WorkspaceMode>(settings.current.preview.mode)');
   // The three derivations ARE the rule — read them off the source.
   expect(src).toContain('mode === "viewer" && !isNarrow ? "two-column" : "single"');
-  expect(src).toContain('let previewVisible = $derived(mode !== "focus")');
+  expect(src).toContain('let previewVisible = $derived(mode === "editor")');
   // The editor pane is mounted in every mode (it is the editor AND the
   // reader), so the mode no longer decides whether it is on screen — only
-  // whether it is editable.
+  // which surface it holds: the source editor, or the paged one.
   expect(src).toContain('let editorEditable = $derived(mode !== "viewer")');
   expect(src).not.toContain("editorVisible");
   // `isNarrow` clamps the derived value; it is not a second decider, and the
@@ -489,12 +494,14 @@ test("setMode persists BEFORE it assigns, so its own write-back cannot land on `
   expect(persistIdx).toBeLessThan(assignIdx);
 });
 
-test("only leaving `focus` is ambiguous, so only entering it stores a previous mode", () => {
+test("leaving `focus` is not ambiguous: it is Edit without the preview, so it returns to Edit", () => {
   const src = read("src/routes/+page.svelte");
-  const writes = src.match(/modeBeforeFocus = (?!null)/g) ?? [];
-  expect(writes.length).toBe(1);
-  expect(src).toContain('if (next === "focus") modeBeforeFocus =');
-  // Closing the editor needs no stored state — it always lands on the viewer.
+  // No stored "mode before focus": Focus is entered from the source editor's
+  // toolbar and only ever unfolds back into Edit.
+  expect(src).not.toContain("modeBeforeFocus");
+  const toggle = src.slice(src.indexOf("function togglePreview()"), src.indexOf("function togglePreview()") + 400);
+  expect(toggle).toContain('if (mode === "focus") {\n      setMode("editor");');
+  // Closing the editor needs no stored state either - it always lands on the viewer.
   const toggleIdx = src.indexOf("function toggleEditor()");
   expect(toggleIdx).toBeGreaterThan(-1);
   expect(src.slice(toggleIdx, toggleIdx + 900)).toContain("setMode(\"viewer\")");

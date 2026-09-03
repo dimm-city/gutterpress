@@ -494,6 +494,11 @@ test("visibleToolbarItems: drops desktop-only items (image, snippet) when deskto
   expect(items.some((i) => i.id === "bold")).toBe(true);
 });
 
+test("visibleToolbarItems: drops the focus-mode item for the paged editor, which has no preview beside it to hide", () => {
+  expect(visibleToolbarItems({ hasSave: true, desktop: true }).some((i) => i.id === "focus-mode")).toBe(true);
+  expect(visibleToolbarItems({ hasSave: true, desktop: true, richMode: true }).some((i) => i.id === "focus-mode")).toBe(false);
+});
+
 test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
   const items = visibleToolbarItems({ hasSave: true, desktop: true });
   const groups = ["save", "primary", "block", "insert"];

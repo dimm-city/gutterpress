@@ -71,8 +71,8 @@
  *                                            point; see "PLUGIN-AWARENESS")
  *   untrusted (default) + any of the     -> nothing at all — not walked,
  *     above                                  exactly P2b's behavior
- *   inline HTML (`html_inline` tokens,   -> diagnostics entry ONLY, no
- *     support matrix's source-only row)     block (see "INLINE HTML" below)
+ *   inline HTML (`html_inline` tokens)   -> nothing: no block, no diagnostic
+ *                                           (see "INLINE HTML" below)
  *
  * `layout_marker` (markers.js's own internal bookkeeping token type) is
  * never reached by this walk: `layout_transform` always drains and replaces
@@ -173,15 +173,14 @@
  * `to`" and "the generating `@page` marker's range end" are the same
  * offset.
  *
- * INLINE HTML (support matrix, `docs/plans/source-first-editor/pr158-lessons.md`
- * §10.1 "Raw HTML with exact source" / inline row): `html_inline` tokens
- * (`<b>`/`<span>`/… written inline within a paragraph, heading, etc.) never
- * carry per-token map evidence at all — `source-range.ts`'s own header notes
- * inline-level tokens are deliberately not walked for exactly this reason.
- * This run records ONE diagnostic per `inline` token that contains at least
- * one `html_inline` child (not one per occurrence — a paragraph with two
- * inline tags gets one diagnostic, not two) and projects NO block for it;
- * `packages/cli/src/lib/markdown/inline-source.ts`'s own image/link
+ * INLINE HTML: `html_inline` tokens (`<b>`/`<span>`/... written inline within
+ * a paragraph, heading, etc.) never carry per-token map evidence at all -
+ * `source-range.ts`'s own header notes inline-level tokens are deliberately
+ * not walked for exactly this reason. Nothing is projected for them and
+ * nothing is reported: the editor renders inline content from source and
+ * hides the tags the way the page does (packages/editor's inline-html.ts),
+ * so a paragraph with inline HTML needs no block and is no limitation worth
+ * a notice. `packages/cli/src/lib/markdown/inline-source.ts`'s own image/link
  * provenance is a different, unrelated concern (image `src`/link `href`
  * editing) and is untouched by this module.
  *
@@ -1682,18 +1681,12 @@ export function createEditorProjection(
     }
 
     if (token.type === "inline") {
-      // Inline HTML pairs (support matrix, header "INLINE HTML"): a
-      // diagnostics entry only, no block, this run. `token.children` is the
-      // one level markdown-it ever nests text-level tokens at (see
-      // source-range.ts's header) — no recursion needed.
-      const hasInlineHtml = (token.children ?? []).some((child) => child.type === "html_inline");
-      if (hasInlineHtml) {
-        const where = token.map ? ` (source lines ${token.map[0] + 1}-${token.map[1]})` : "";
-        diagnostics.push({
-          category: "EDITOR_UNSUPPORTED_PROJECTION",
-          reason: `Inline HTML${where} is source-only in this projection — no block is projected for an inline HTML pair. Edit it in source mode.`,
-        });
-      }
+      // Inline HTML (`<b>`, `<span class="...">` inside a paragraph) needs no
+      // block of its own: the editor renders inline content from source and
+      // hides the tags the way the page renders them (packages/editor's
+      // inline-html.ts). This used to record a diagnostic here, one per
+      // paragraph, which turned a document written with inline HTML into a
+      // wall of notices the moment it opened.
       continue;
     }
 

@@ -3,6 +3,7 @@ import {
   EditorModel,
   EditorView,
   OffsetRange,
+  Selection,
   StringValue,
   type EditorViewOptions,
 } from "@dimm-city/vscode-markdown-editor";
@@ -180,6 +181,13 @@ export interface VscodeEditorAdapter {
    * in the preview) calls.
    */
   revealRange(from: number, to?: number): void;
+  /**
+   * Place the caret (or a selection) at source offsets, as a click there
+   * would: the block the offset lies in becomes the active one and the
+   * editor takes focus. A host uses it to open a block it hides from the
+   * page-shaped view (a marker's margin tag, `../gutterpress/marker-tags.ts`).
+   */
+  setSelection(from: number, to?: number): void;
 
   /**
    * Lock or unlock the mounted editor. The host owns this decision (the
@@ -383,6 +391,18 @@ export function createVscodeEditorAdapter(
 
     revealRange(from: number, to: number = from): void {
       view.revealRangeInCenterIfOutsideViewport(OffsetRange.fromTo(from, Math.max(from, to)));
+    },
+
+    setSelection(from: number, to: number = from): void {
+      if (disposed) return;
+      // The model's own selection observable is the one seam the fork's
+      // controller reads the caret from: setting it activates the block the
+      // offset lies in, exactly as a click there would. Focus follows, so the
+      // caret is live for typing; without it the block shows its source but
+      // keystrokes go nowhere.
+      model.selection.set(new Selection(from, to), undefined, undefined);
+      view.focus();
+      view.revealRangeInCenterIfOutsideViewport(OffsetRange.fromTo(Math.min(from, to), Math.max(from, to)));
     },
   };
 }

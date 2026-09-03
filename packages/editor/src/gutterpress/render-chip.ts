@@ -101,7 +101,15 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
 
   const kindLabel = el(doc, "div", `${CHIP_ROOT_CLASS}__kind`);
   kindLabel.textContent = plan.block.kind;
-  dom.appendChild(kindLabel);
+  // A marker chip's parts (kind, source, attrs) live in ONE tag element so
+  // the unlocked view can hang the whole tag in the page margin as a single
+  // box while the chip itself keeps no height in the text flow
+  // (editor-css.ts). A plugin-region / raw-html chip has no tag: what it
+  // shows is the pipeline's own output, which prints.
+  const isRendering = plan.block.kind === "plugin-region" || plan.block.kind === "raw-html";
+  const parts = isRendering ? dom : el(doc, "div", `${CHIP_ROOT_CLASS}__tag`);
+  if (parts !== dom) dom.appendChild(parts);
+  parts.appendChild(kindLabel);
 
   let segments: SourceSegment[] | undefined;
   if (plan.segmented) {
@@ -114,7 +122,7 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
       sourceEl.appendChild(charNode);
       segments.push({ dom: charNode, start: i, length: 1 });
     }
-    dom.appendChild(sourceEl);
+    parts.appendChild(sourceEl);
   } else {
     // raw-html/plugin-region (or any future non-"structured" kind): the
     // P1b2 bare-dom fallback — no segments, caret entry lands at the
@@ -127,7 +135,7 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
     const pre = doc.createElement("pre");
     pre.className = `${CHIP_ROOT_CLASS}__source ${CHIP_ROOT_CLASS}__source--inert`;
     pre.textContent = plan.inactivePreviewText;
-    dom.appendChild(pre);
+    parts.appendChild(pre);
     if (plan.renderedHtml !== undefined) {
       // The book's own output for this block (a project plugin's rendering,
       // or the author's raw HTML) as real DOM, so the editor shows what the
@@ -148,14 +156,14 @@ export function renderChipPlan(plan: ChipPlan, doc: Document): CustomBlockRender
       badge.textContent = `${key}="${value}"`;
       attrsEl.appendChild(badge);
     }
-    dom.appendChild(attrsEl);
+    parts.appendChild(attrsEl);
   }
 
   // Generated-view previews (D6/G-04/AP-13): read-only, inert, and NEVER
   // given segments — there is no writable range to map a caret into
   // (GeneratedView has no from/to at the type level; see plan.ts).
   for (const html of plan.generatedPreviews) {
-    dom.appendChild(
+    parts.appendChild(
       renderInertPreview(doc, "Generated preview (read-only)", html, `${CHIP_ROOT_CLASS}__generated`),
     );
   }

@@ -220,14 +220,12 @@ describe("raw HTML blocks", () => {
     expect(block.editMode).toBe("source");
   });
 
-  test("inline HTML is recorded as a diagnostic only, never a block", () => {
+  test("inline HTML projects no block and raises no diagnostic (the editor renders it from source)", () => {
     const source = "Some <b>bold</b> text.\n";
     const projection = createEditorProjection(source, { sourceVersion: 1 });
     assertProjectionInvariants(projection, source);
     expect(projection.blocks).toHaveLength(0);
-    expect(projection.diagnostics.length).toBeGreaterThan(0);
-    expect(projection.diagnostics[0]!.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
-    expect(projection.diagnostics[0]!.reason).toMatch(/inline html/i);
+    expect(projection.diagnostics).toHaveLength(0);
   });
 });
 

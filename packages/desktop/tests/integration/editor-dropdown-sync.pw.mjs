@@ -151,11 +151,11 @@ try {
   }
 
   // This drive is about the SOURCE editor: one file per document, byte-exact
-  // edits at the first and last line. That surface is Focus mode — Edit mounts
+  // edits at the first and last line. That surface is Edit mode - Read mounts
   // the paged editor, which renders the book rather than the source and has no
   // lines to click. The one-file invariant belongs to the shared buffer, so it
-  // holds for both surfaces; only Focus can be asserted line by line.
-  await setMode("Focus");
+  // holds for both surfaces; only the source editor can be asserted line by line.
+  await setMode("Edit");
   await page.locator(".cm-editor").waitFor({ timeout: 15_000 });
   await page
     .locator(".file-item.active")

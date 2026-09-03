@@ -26,9 +26,10 @@
  * actually makes, and measuring it through each side's own authority is what
  * makes the number trustworthy.
  *
- * It compares the LOCKED editor (Read mode): unlocked, the editor shows
- * marker chips that occupy space the printed page does not, so it
- * legitimately paginates differently there.
+ * It compares BOTH shapes of the paged editor (Read mode): locked, which is
+ * the reader's view, and unlocked, which is the same pages made editable in
+ * place. A marker chip hangs its tag in the page margin and keeps no height
+ * in the text flow, so unlocked has no excuse to paginate differently.
  *
  * Usage:
  *   node tests/integration/editor-preview-parity.mjs [book-dir]
@@ -141,62 +142,6 @@ try {
   await page.waitForSelector(".file-item, .toc-item", { timeout: 120_000 });
   const close = page.locator('button[aria-label="Close this screen"]');
   if (await close.count()) await close.first().click().catch(() => {});
-  // Open a file before waiting for a page: with none open the editor pane
-  // correctly shows "Select a file from the list to start editing", and a
-  // gate that waits for a sheet there waits forever. Whether a project
-  // auto-selects its first chapter is not this gate's subject.
-  // The first `.file-item` may be a FOLDER (the field guide lists
-  // `art-unplaced/` and `images/` before its chapters), and clicking one
-  // opens no document at all — the gate then waits out its whole timeout on
-  // an editor that was never given a file.
-  await page.locator(".file-item").filter({ hasText: /\.md/i }).first().click();
-  try {
-    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
-  } catch (e) {
-    // A gate that only reports "no sheet appeared" sends the next hour to
-    // guessing why. Say what the editor pane actually contains.
-    const state = await page
-      .evaluate(() => {
-        const host = document.querySelector(".rich-editor-host");
-        const loading = [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim());
-        return {
-          host: !!host,
-          document: !!document.querySelector(".rich-editor-host .md-document"),
-          blocks: document.querySelectorAll(".rich-editor-host .md-block").length,
-          layouts: document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? null,
-          loading,
-          // Is the book's own CSS in the document at all? Without it the
-          // editor cannot paginate (there is no @page geometry to read), and
-          // "no page appeared" looks identical to a layout that failed.
-          bookCss: Math.max(0, ...[...document.querySelectorAll("style")].map((el) => el.textContent?.length ?? 0)),
-          docFont: getComputedStyle(document.querySelector(".rich-editor-host .md-document") ?? document.body).fontFamily.slice(0, 40),
-          sheets: document.querySelectorAll(".rich-editor-host .gp-sheet").length,
-          stage: !!document.querySelector(".rich-editor-host .gp-stage"),
-          activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
-          mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
-        };
-      })
-      .catch(() => null);
-    console.error(`[parity] editor never paginated — pane state: ${JSON.stringify(state)}`);
-    // The app's own log, which is where its renderer faults land now.
-    try {
-      const { readdirSync, readFileSync } = await import("node:fs");
-      const logDir = join(userDataDir, "logs");
-      for (const name of readdirSync(logDir)) {
-        if (!name.endsWith(".log")) continue;
-        const body = readFileSync(join(logDir, name), "utf8").trim().split("\n").slice(-12).join("\n");
-        console.error(`[parity] ${name}:\n${body}`);
-      }
-    } catch (logErr) {
-      console.error(`[parity] no app log to read: ${logErr}`);
-    }
-    throw e;
-  }
-
-  // Read mode: the locked editor is the one that must match the page.
-  await page.click('button[aria-label="Read"]');
-  await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
-  await settled();
 
   /**
    * Wait for the editor to STOP re-paginating, rather than sleeping past it.
@@ -387,6 +332,64 @@ try {
     await prepareBook();
   }
 
+  // The book's own page counts were read above, while Edit had the preview
+  // on screen. Read is the paged editor alone (the preview pane collapses),
+  // so it is entered only now, and a file is opened before waiting for a
+  // page: with none open the editor pane correctly shows a "select a
+  // chapter" notice, and a gate that waits for a sheet there waits forever.
+  // The first `.file-item` may be a FOLDER (the field guide lists
+  // `art-unplaced/` and `images/` before its chapters), and clicking one
+  // opens no document at all - the gate then waits out its whole timeout on
+  // an editor that was never given a file.
+  await page.click('button[aria-label="Read"]');
+  await page.locator(".file-item").filter({ hasText: /\.md/i }).first().click();
+  try {
+    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
+  } catch (e) {
+    // A gate that only reports "no sheet appeared" sends the next hour to
+    // guessing why. Say what the editor pane actually contains.
+    const state = await page
+      .evaluate(() => {
+        const host = document.querySelector(".rich-editor-host");
+        const loading = [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim());
+        return {
+          host: !!host,
+          document: !!document.querySelector(".rich-editor-host .md-document"),
+          blocks: document.querySelectorAll(".rich-editor-host .md-block").length,
+          layouts: document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? null,
+          loading,
+          // Is the book's own CSS in the document at all? Without it the
+          // editor cannot paginate (there is no @page geometry to read), and
+          // "no page appeared" looks identical to a layout that failed.
+          bookCss: Math.max(0, ...[...document.querySelectorAll("style")].map((el) => el.textContent?.length ?? 0)),
+          docFont: getComputedStyle(document.querySelector(".rich-editor-host .md-document") ?? document.body).fontFamily.slice(0, 40),
+          sheets: document.querySelectorAll(".rich-editor-host .gp-sheet").length,
+          stage: !!document.querySelector(".rich-editor-host .gp-stage"),
+          activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
+          mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
+        };
+      })
+      .catch(() => null);
+    console.error(`[parity] editor never paginated - pane state: ${JSON.stringify(state)}`);
+    // The app's own log, which is where its renderer faults land now.
+    try {
+      const { readdirSync, readFileSync } = await import("node:fs");
+      const logDir = join(userDataDir, "logs");
+      for (const name of readdirSync(logDir)) {
+        if (!name.endsWith(".log")) continue;
+        const body = readFileSync(join(logDir, name), "utf8").trim().split("\n").slice(-12).join("\n");
+        console.error(`[parity] ${name}:\n${body}`);
+      }
+    } catch (logErr) {
+      console.error(`[parity] no app log to read: ${logErr}`);
+    }
+    throw e;
+  }
+
+  // Read opens locked; the pill is idempotent if it already is.
+  await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
+  await settled();
+
   const chapters = await page
     .locator(".file-item")
     .evaluateAll((els) => els.map((e) => e.textContent.trim()).filter((t) => /\.md$/i.test(t)));
@@ -400,26 +403,34 @@ try {
     const startedAt = Date.now();
     await page.locator(".file-item", { hasText: chapter }).first().click();
     await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 60_000 });
-    // A file switch remounts the editor, so re-assert the lock rather than
-    // assuming it survived; the mode control is idempotent.
+    // A file switch remounts the editor in whichever lock state the pane is
+    // in, so re-assert the lock rather than assuming it survived; the pill is
+    // idempotent.
     const locked = async () => (await page.locator(".rich-editor-host .md-editor.md-readonly").count()) > 0;
     if (!(await locked())) {
-      await page.click('button[aria-label="Read"]').catch(() => {});
+      await page.click('button[aria-label="Lock"]').catch(() => {});
       await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
     }
     await settled(800);
+    const sheets = () => page.evaluate(() => document.querySelectorAll(".rich-editor-host .gp-sheet").length);
+    const editorPages = await sheets();
 
-    const editorPages = await page.evaluate(
-      () => document.querySelectorAll(".rich-editor-host .gp-sheet").length,
-    );
+    // The same chapter unlocked: the pill rebuilds the surface editable, and
+    // the count must not move.
+    await page.click('button[aria-label="Unlock"]');
+    await page.waitForSelector(".rich-editor-host .md-editor:not(.md-readonly)", { timeout: 30_000 });
+    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 60_000 });
+    await settled(800);
+    const unlockedPages = await sheets();
+
     const tookMs = Date.now() - startedAt;
-    const ok = editorPages === book.pages;
-    rows.push({ chapter, editorPages, bookPages: book.pages, ok });
-    if (ok) log(`ok   ${chapter}: ${editorPages} page(s) [${tookMs}ms]`);
+    const ok = editorPages === book.pages && unlockedPages === book.pages;
+    rows.push({ chapter, editorPages, unlockedPages, bookPages: book.pages, ok });
+    if (ok) log(`ok   ${chapter}: ${editorPages} page(s), unlocked ${unlockedPages} [${tookMs}ms]`);
     else {
       failures += 1;
       console.error(
-        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s), the book into ${book.pages} [${tookMs}ms]`,
+        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s) locked and ${unlockedPages} unlocked, the book into ${book.pages} [${tookMs}ms]`,
       );
     }
   }

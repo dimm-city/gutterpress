@@ -75,9 +75,10 @@
      * remaining job is to pick which "Insert image" flow runs (see
      * `onOpenImageProperties` below) — every other toolbar item fires the
      * same `onAction` either way, with `+page.svelte` deciding which surface
-     * actually receives it. It is NOT a control: the workspace's own
-     * Edit/Read/Focus decides the surface, and the toggle that used to sit
-     * beside this toolbar is gone.
+     * actually receives it -  and to drop the Focus item, which hides the
+     * preview beside the SOURCE editor and means nothing beside the paged
+     * one. It is NOT a control: the workspace's own Edit/Read decides the
+     * surface, and the toggle that used to sit beside this toolbar is gone.
      */
     richMode = false,
     /**
@@ -106,7 +107,7 @@
   // ── M23: single declarative item array drives BOTH the grouped toolbar
   // buttons and the flat More menu — see toolbar-actions.ts for rationale. ──
   let visibleItems = $derived(
-    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
+    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop(), richMode }),
   );
   let saveItems = $derived(visibleItems.filter((i) => i.group === "save"));
   let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));

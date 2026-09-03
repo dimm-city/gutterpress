@@ -529,7 +529,7 @@ describe("malformed / ambiguity matrix (formalizes Lane A's 12 ad-hoc fixtures)"
     expect(() => createEditorProjection(source, { sourceVersion: 2, md })).not.toThrow();
   });
 
-  test("(matrix item 12) inline HTML: no throw, zero blocks, exactly one diagnostic, document stays projectable", () => {
+  test("(matrix item 12) inline HTML: no throw, zero blocks, zero diagnostics, document stays projectable", () => {
     const source = "Some <b>bold</b> text.\n";
     let projection: GutterpressProjection | undefined;
     expect(() => {
@@ -537,8 +537,7 @@ describe("malformed / ambiguity matrix (formalizes Lane A's 12 ad-hoc fixtures)"
     }).not.toThrow();
 
     expect(projection!.blocks).toHaveLength(0);
-    expect(projection!.diagnostics).toHaveLength(1);
-    expect(projection!.diagnostics[0]!.category).toBe("EDITOR_UNSUPPORTED_PROJECTION");
+    expect(projection!.diagnostics).toHaveLength(0);
     expect(() => createEditorProjection(source, { sourceVersion: 2 })).not.toThrow();
   });
 

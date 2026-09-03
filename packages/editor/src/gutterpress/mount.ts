@@ -21,6 +21,7 @@ import { promoteTableHeader } from "./table-header.ts";
 import { stripHiddenMarkup } from "./hidden-markup.ts";
 import { applyPipelineAttributes, buildPipelineAttributeIndex } from "./pipeline-attrs.ts";
 import { applyInlineWrappers, buildInlineWrapperIndex } from "./inline-wrappers.ts";
+import { CHIP_START_ATTR, installMarkerTags, type MarkerTagsHandle } from "./marker-tags.ts";
 import type { GutterpressProjection } from "gutterpress/render";
 
 export interface MountGutterpressEditorOptions {
@@ -63,6 +64,8 @@ export interface GutterpressEditorMount {
   revealRange(from: number, to?: number): void;
   /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
   setReadonly(readonly: boolean): void;
+  /** See `EditorMount.setSelection` - places the caret as a click there would. */
+  setSelection(from: number, to?: number): void;
 }
 
 /**
@@ -113,8 +116,15 @@ export function mountGutterpressEditor(
   const pipelineAttributes = buildPipelineAttributeIndex(options.projection, host.getSnapshot().text);
   const inlineWrappers = buildInlineWrapperIndex(options.projection, host.getSnapshot().text);
 
-  const build = (readonly: boolean): EditorMount =>
-    mountEditor(container, host, {
+  // The unlocked view's margin tags (marker-tags.ts): one overlay per mount,
+  // installed the first time the document mounts and re-anchored after every
+  // layout the host reports. The locked view has no tags: it is for reading.
+  let markerTags: MarkerTagsHandle | undefined;
+
+  const build = (readonly: boolean): EditorMount => {
+    markerTags?.dispose();
+    markerTags = undefined;
+    const built: EditorMount = mountEditor(container, host, {
       onDiagnostic: options.onDiagnostic,
       readonly,
       extraCss: `${GUTTERPRESS_EDITOR_CSS}\n${options.extraCss ?? ""}`,
@@ -123,13 +133,17 @@ export function mountGutterpressEditor(
       themeClassName: options.themeClassName,
       showReadonlyToggle: options.showReadonlyToggle,
       decorateInactiveBlock: (element, node, sourceText, absoluteStart) => {
-        // The locked view's DOM is made the page's first -  a table's rows in
-        // their tbody, the fork's hidden syntax gone -  so that the pipeline's
-        // attributes, named by the page's own paths, find their elements.
-        if (readonly) {
-          stripHiddenMarkup(element);
-          promoteTableHeader(element, node);
-        }
+        // An inactive block's DOM is made the page's first -  a table's rows
+        // in their tbody, the fork's hidden syntax gone -  so that the
+        // pipeline's attributes, named by the page's own paths, find their
+        // elements, and so that the block paginates the way the page does.
+        // In every mode, not only locked: the fork builds a block's view
+        // afresh whenever its active flag flips (`canReuse` is view-data
+        // identity, and that flag is part of the data), so an inactive
+        // block's DOM is discarded the moment the author clicks into it and
+        // the caret only ever sees a view built from source.
+        stripHiddenMarkup(element);
+        promoteTableHeader(element, node);
         applyPipelineAttributes(element, sourceText, pipelineAttributes, absoluteStart);
         decorateAttrsTrailer(element, node, sourceText);
         // Both halves of "show what the book shows": the attrs trailer applied
@@ -138,14 +152,34 @@ export function mountGutterpressEditor(
         hideInlineHtmlTags(element);
         markTightList(element, node, sourceText);
         applyInlineWrappers(element, sourceText, inlineWrappers);
+        // A chip is hidden from the flow (editor-css.ts); its margin tag
+        // needs the marker's offset to open it on a click.
+        if (element.classList.contains("gp-block-chip")) element.setAttribute(CHIP_START_ATTR, String(absoluteStart));
       },
-      afterDocumentMount: options.afterDocumentMount,
+      afterDocumentMount: (documentElement) => {
+        // The host first: its pagination is the layout the tags anchor to.
+        options.afterDocumentMount?.(documentElement);
+        if (readonly) return;
+        if (!markerTags) {
+          markerTags = installMarkerTags(documentElement, {
+            onActivate: (start) => built.setSelection(start, start),
+          });
+        } else {
+          markerTags.refresh();
+        }
+      },
     });
+    return built;
+  };
 
   let mount = build(locked);
 
   return {
-    dispose: (): void => mount.dispose(),
+    dispose: (): void => {
+      markerTags?.dispose();
+      markerTags = undefined;
+      mount.dispose();
+    },
     /**
      * Locking REBUILDS the surface rather than only flipping the fork's own
      * readonly flag.
@@ -173,5 +207,6 @@ export function mountGutterpressEditor(
     needsRefresh: isStale,
     getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
     revealRange: (from: number, to?: number): void => mount.revealRange(from, to),
+    setSelection: (from: number, to?: number): void => mount.setSelection(from, to),
   };
 }

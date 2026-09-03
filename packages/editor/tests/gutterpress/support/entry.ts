@@ -103,6 +103,14 @@ export interface GutterpressDriver {
 
   /** Center point of the `charIndex`-th per-character segment `Text` node inside the i-th chip's `.gp-block-chip__source` -- a real client-space point for `page.mouse.click`. Read BEFORE the click: clicking a segment activates its block, which replaces the chip DOM this reads. */
   segmentCharacterCenter(chipIndex: number, charIndex: number): { x: number; y: number };
+  /**
+   * A client-space point on the margin tag drawn for the i-th chip
+   * (`marker-tags.ts`): the chip itself has no box in the flow, so this is
+   * what a click that opens the marker lands on. Near the tag's right edge,
+   * which sits inside the content container's own padding even when the
+   * tag is wider than that padding.
+   */
+  markerTagPoint(chipIndex: number): { x: number; y: number };
 
   /** Whether the i-th chip's own generated-preview element (`.gp-block-chip__generated`), if present, gains focus when `.focus()` is called on it directly. */
   generatedPreviewAcceptsFocus(chipIndex: number): boolean;
@@ -234,6 +242,21 @@ window.__gpGutterpress = {
     range.selectNodeContents(node);
     const rect = range.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  },
+  markerTagPoint(chipIndex: number): { x: number; y: number } {
+    const chip = requireChip(chipIndex);
+    const start = chip.getAttribute("data-gp-start");
+    const tag = start === null ? null : document.querySelector<HTMLElement>(`.gp-marker-tag[data-gp-start="${start}"]`);
+    if (!tag) {
+      const layers = document.querySelectorAll(".gp-marker-tags").length;
+      const tags = [...document.querySelectorAll(".gp-marker-tag")].map((t) => t.getAttribute("data-gp-start"));
+      const docEl = document.querySelector(".md-document");
+      throw new Error(
+        `gutterpress harness: chip ${chipIndex} has no margin tag (start=${start}, layers=${layers}, tags=${JSON.stringify(tags)}, docConnected=${docEl?.isConnected}, docParent=${docEl?.parentElement?.className}, readonly=${!!document.querySelector(".md-editor.md-readonly")})`,
+      );
+    }
+    const rect = tag.getBoundingClientRect();
+    return { x: rect.right - 6, y: rect.top + rect.height / 2 };
   },
   generatedPreviewAcceptsFocus(chipIndex: number): boolean {
     const chip = requireChip(chipIndex);

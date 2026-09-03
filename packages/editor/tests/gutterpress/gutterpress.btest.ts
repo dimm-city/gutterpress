@@ -114,11 +114,24 @@ async function chipInfo(index: number) {
 async function chipOuterHTML(index: number): Promise<string> {
   return harness.page.evaluate((i) => window.__gpGutterpress.chipOuterHTML(i), index);
 }
-async function segmentCharacterCenter(chipIndex: number, charIndex: number) {
-  return harness.page.evaluate(
-    ({ c, ch }) => window.__gpGutterpress.segmentCharacterCenter(c, ch),
-    { c: chipIndex, ch: charIndex },
-  );
+async function markerTagPoint(chipIndex: number) {
+  // The overlay paints on the next animation frame after the document
+  // mounts; wait for a tag to exist rather than racing it.
+  await harness.page.waitForSelector(".gp-marker-tag", { timeout: 2000 });
+  return harness.page.evaluate((c) => window.__gpGutterpress.markerTagPoint(c), chipIndex);
+}
+/**
+ * Open the chip's marker for editing and put the caret after its
+ * `charIndex`-th character. A chip has no box in the flow (editor-css.ts:
+ * the page has no element where a marker line is), so the click lands on
+ * the margin tag drawn for it, which places the caret at the marker's
+ * start; the arrow keys walk it to the character.
+ */
+async function openMarkerAt(chipIndex: number, charIndex: number) {
+  const pt = await markerTagPoint(chipIndex);
+  await harness.page.mouse.click(pt.x, pt.y);
+  await harness.page.waitForTimeout(50);
+  for (let i = 0; i <= charIndex; i++) await harness.page.keyboard.press("ArrowRight");
 }
 async function generatedPreviewAcceptsFocus(chipIndex: number): Promise<boolean> {
   return harness.page.evaluate((c) => window.__gpGutterpress.generatedPreviewAcceptsFocus(c), chipIndex);
@@ -334,14 +347,14 @@ describe("raw-html chip", () => {
 // ---------------------------------------------------------------------------
 
 describe("two-state: activation, deactivation restores the chip with zero drift", () => {
-  test("clicking a segment activates the block (chip replaced by real source); merely clicking does not edit; clicking away restores the exact same chip", async () => {
+  test("clicking the margin tag activates the block (chip replaced by real source); merely clicking does not edit; clicking away restores the exact same chip", async () => {
     await mount(FIXTURE_SOURCE);
     await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
 
     const originalHostText = await hostText();
     const originalVersion = await hostVersion();
 
-    const pt = await segmentCharacterCenter(PAGE_CHIP_INDEX, 6);
+    const pt = await markerTagPoint(PAGE_CHIP_INDEX);
     await harness.page.mouse.click(pt.x, pt.y);
     await harness.page.waitForTimeout(50);
 
@@ -378,15 +391,13 @@ describe("edit locality on the marker line, then G-11 staleness once the host ve
     [1, "@pXage splash"],
     [6, "@page sXplash"],
   ])(
-    "clicking segment index %i then typing lands a byte-exact interior edit producing %s (caret precision: different click targets produce correspondingly different edits)",
+    "opening the marker and walking to character %i then typing lands a byte-exact interior edit producing %s (caret precision: different targets produce correspondingly different edits)",
     async (charIndex, expectedSubstring) => {
       await mount(FIXTURE_SOURCE);
       await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
       const originalHostText = await hostText();
 
-      const pt = await segmentCharacterCenter(PAGE_CHIP_INDEX, charIndex);
-      await harness.page.mouse.click(pt.x, pt.y);
-      await harness.page.waitForTimeout(50);
+      await openMarkerAt(PAGE_CHIP_INDEX, charIndex);
       await harness.page.keyboard.type("X");
       await harness.page.waitForTimeout(50);
 
@@ -406,10 +417,7 @@ describe("edit locality on the marker line, then G-11 staleness once the host ve
     const originalHostText = await hostText();
     expect(await needsRefresh()).toBe(false);
 
-    const pt = await segmentCharacterCenter(PAGE_CHIP_INDEX, 6);
-    await harness.page.mouse.click(pt.x, pt.y);
-    await harness.page.waitForTimeout(50);
-
+    await openMarkerAt(PAGE_CHIP_INDEX, 6);
     await harness.page.keyboard.type("X");
     await harness.page.waitForTimeout(50);
 

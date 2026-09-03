@@ -1216,10 +1216,17 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
 export function visibleToolbarItems(opts: {
   hasSave: boolean;
   desktop: boolean;
+  /**
+   * Whether the PAGED editor is the surface this toolbar drives. Focus mode
+   * hides the preview beside the SOURCE editor; the paged editor has no
+   * preview beside it (Read is that editor alone), so the item is dropped.
+   */
+  richMode?: boolean;
 }): ToolbarItemDef[] {
   return TOOLBAR_ITEMS.filter((item) => {
     if (item.kind === "save" && !opts.hasSave) return false;
     if (item.desktopOnly && !opts.desktop) return false;
+    if (item.id === "focus-mode" && opts.richMode) return false;
     return true;
   });
 }

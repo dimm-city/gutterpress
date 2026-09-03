@@ -5,10 +5,10 @@
  * editor…".
  *
  * The workspace has two editing surfaces, each behind its own lazy import, and
- * this drive exercises both: Edit mounts the paged editor for a markdown file,
- * Focus mounts CodeMirror on the raw source. The original regression was in
- * the lazy-load wiring, not in either surface, so it can recur independently
- * on each one.
+ * this drive exercises both: Edit mounts CodeMirror on the raw source (with
+ * the preview beside it), Read mounts the paged editor for a markdown file.
+ * The original regression was in the lazy-load wiring, not in either surface,
+ * so it can recur independently on each one.
  *
  * The bug (beta.6 regression): `toggleEditor()` set `editorOpen = true` but
  * never called `loadEditorModule()`. The lazy import was only triggered from
@@ -22,9 +22,9 @@
  *      clicked — module not pre-loaded).
  *   2. Waits for the first preview render to complete.
  *   3. Clicks the toolbar's "Edit" mode segment.
- *   4. Opens the first chapter and asserts the paged editor mounts within
- *      10 s — i.e. the rich module loaded.
- *   5. Switches to Focus and asserts `.cm-editor` mounts — the CodeMirror
+ *   4. Opens the first chapter and asserts `.cm-editor` mounts within 10 s -
+ *      i.e. the CodeMirror module loaded.
+ *   5. Switches to Read and asserts the paged editor mounts - the rich
  *      module loaded too.
  *   6. Asserts no "Loading…" placeholder is left on either surface, and runs
  *      the packaged source-save path (type, Ctrl+S, see it in the book) on
@@ -237,27 +237,27 @@ async function waitForMount(selector, seconds = 10) {
   return false;
 }
 
-// ── 7a. the paged editor must mount in Edit mode ─────────────────────────────
-if (!(await waitForMount(".rich-editor-host .md-editor"))) {
-  if (await stuckOn("Loading rich editor")) {
-    fail('Editor pane is stuck on "Loading rich editor…" — the paged editor module never loaded. This is the beta.6 regression on the rich surface: the file-open path must call loadRichEditorModule().');
-  }
-  fail("No paged editor after 10s — the rich module did not load in Edit mode");
-}
-log("paged editor mounted in Edit mode");
-
-// ── 7b. …and CodeMirror must mount in Focus mode ─────────────────────────────
-await evalJs(`document.querySelector('button[aria-label="Focus"]').click(); true`);
+// -- 7a. CodeMirror must mount in Edit mode ------
 if (!(await waitForMount(".cm-editor"))) {
   if (await stuckOn("Loading editor")) {
-    fail('Editor pane is stuck on "Loading editor…" after the Focus click — module never loaded. This is the beta.6 regression: the mode switch must call loadEditorModule().');
+    fail('Editor pane is stuck on "Loading editor..." after the Edit click - module never loaded. This is the beta.6 regression: the mode switch must call loadEditorModule().');
   }
-  fail("No .cm-editor element after 10s — CodeMirror did not load in Focus mode");
+  fail("No .cm-editor element after 10s - CodeMirror did not load in Edit mode");
 }
 if (await stuckOn("Loading editor")) {
   fail('"Loading editor…" still visible alongside .cm-editor — unexpected state');
 }
-log("CodeMirror mounted in Focus mode");
+log("CodeMirror mounted in Edit mode");
+
+// -- 7b. ...and the paged editor must mount in Read mode ------
+await evalJs(`document.querySelector('button[aria-label="Read"]').click(); true`);
+if (!(await waitForMount(".rich-editor-host .md-editor"))) {
+  if (await stuckOn("Loading rich editor")) {
+    fail('Editor pane is stuck on "Loading rich editor..." after the Read click - the paged editor module never loaded. This is the beta.6 regression on the rich surface: the mode switch must call loadRichEditorModule().');
+  }
+  fail("No paged editor after 10s - the rich module did not load in Read mode");
+}
+log("paged editor mounted in Read mode");
 
 // ── 8. packaged source-save path ─────────────────────────────────────────────
 // This test explicitly configures 2.5 s. A regression left EditorBuffer on its 500 ms
@@ -269,16 +269,15 @@ const chapterPath = join(bookDir, chapterName);
 const chapterBefore = readFileSync(chapterPath, "utf8");
 const marker = `packaged-save-${Date.now()}`;
 // Back to Edit for the save path: it measures Ctrl+S -> a visible preview, and
-// Focus mode deliberately has no preview beside the text. This also puts the
-// typing on the PAGED editor, which is the surface an author actually types
-// into now.
+// Read has no preview beside the pages. The typing lands on the SOURCE editor,
+// which is what Edit is.
 await evalJs(`document.querySelector('button[aria-label="Edit"]').click(); true`);
-if (!(await waitForMount(".rich-editor-host .md-editor"))) {
-  fail("the paged editor did not come back after returning to Edit mode");
+if (!(await waitForMount(".cm-editor"))) {
+  fail("the source editor did not come back after returning to Edit mode");
 }
 const editorPoint = await evalJs(`(() => {
-  const block = document.querySelector('.rich-editor-host .md-document .md-block');
-  const rect = block.getBoundingClientRect();
+  const line = document.querySelector('.cm-content .cm-line');
+  const rect = line.getBoundingClientRect();
   return { x: rect.left + Math.min(80, rect.width / 2), y: rect.top + Math.min(10, rect.height / 2) };
 })()`);
 await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...editorPoint });
@@ -292,22 +291,21 @@ await send("Input.insertText", { text: `\n\n${marker}\n` });
 let editorReceivedMarker = false;
 for (let i = 0; i < 20; i++) {
   editorReceivedMarker = await evalJs(
-    `(document.querySelector('.rich-editor-host .md-document')?.textContent ?? '').includes(${JSON.stringify(marker)})`,
+    `(document.querySelector('.cm-content')?.textContent ?? '').includes(${JSON.stringify(marker)})`,
   );
   if (editorReceivedMarker) break;
   await sleep(100);
 }
 if (!editorReceivedMarker) {
   const diagnostics = await evalJs(`(() => {
-    const content = document.querySelector('.rich-editor-host .md-document');
+    const content = document.querySelector('.cm-content');
     return {
       activeClass: document.activeElement?.className ?? null,
-      activeBlocks: document.querySelectorAll('.rich-editor-host .md-block-active').length,
       inertAncestor: !!content?.closest('[inert]'),
       rect: content ? { width: content.getBoundingClientRect().width, height: content.getBoundingClientRect().height } : null,
     };
   })()`);
-  fail(`CDP text insertion did not change the paged editor's document (${JSON.stringify(diagnostics)})`);
+  fail(`CDP text insertion did not change the source editor's document (${JSON.stringify(diagnostics)})`);
 }
 
 // Wait past the old hard-coded 500 ms fallback while remaining well inside the

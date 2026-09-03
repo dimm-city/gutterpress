@@ -40,7 +40,7 @@
  *
  * `app-toolbar.test.ts` already thoroughly covers AppToolbar.svelte's own
  * a11y surface (the WAI-ARIA tabs pattern for the small-screen pane
- * switcher, the `aria-label`s on the Edit/Read/Focus mode segments, the
+ * switcher, the `aria-label`s on the Edit/Read mode segments, the
  * semantic `<header>` root) — cited, not re-tested here. This file covers
  * the surfaces named in this lane's charge that had no prior a11y-focused
  * coverage: the editor's OWN formatting toolbar (`EditorToolbar.svelte`,
@@ -102,7 +102,7 @@ describe("EditorToolbar — the formatting toolbar is a labeled landmark", () =>
     expect(perItemLabels).toBeGreaterThanOrEqual(6);
     // Standalone controls that are not driven by the item list. The
     // rich/source toggle that used to sit here is deliberately absent: the
-    // workspace's own Edit/Read/Focus is the only surface control, and a
+    // workspace's own Edit/Read is the only surface control, and a
     // second axis beside this toolbar meant one document had six reachable
     // mode combinations.
     for (const label of [
