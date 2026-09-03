@@ -74,6 +74,8 @@ export interface GutterpressEditorMount {
    * the fork's own rendering while it was stale come back as chips.
    */
   refreshProjection(projection: GutterpressProjection): void;
+  /** See `EditorMount.rerender` - rebuilds every block view, keeping model, caret and history. */
+  rerender(): void;
 }
 
 /**
@@ -238,5 +240,6 @@ export function mountGutterpressEditor(
       inlineWrappers = buildInlineWrapperIndex(next, text);
       mount.rerender();
     },
+    rerender: (): void => mount.rerender(),
   };
 }
