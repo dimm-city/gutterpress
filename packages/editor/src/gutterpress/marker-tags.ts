@@ -50,6 +50,10 @@ export interface MarkerTagsOptions {
 /** Chips whose whole box is the pipeline's own output, which prints; they have no icon. */
 const RENDERING_KINDS = new Set(["plugin-region", "raw-html"]);
 /** Whether a chip closes what came before it (anchored to the block above rather than below): an `end-*` marker, or a raw closing tag. */
+/** An icon's box and the step between icons sharing a row (editor-css.ts's .gp-marker-tag rules). */
+const TAG_SIZE = 22;
+const TAG_STEP = 26;
+
 function isClosing(kind: string, text: string): boolean {
   return kind.startsWith("end-") || (kind === "html-container" && text.startsWith("</"));
 }
@@ -119,11 +123,13 @@ export function installMarkerTags(documentElement: HTMLElement, options: MarkerT
     // reports zoomed client rects but lays its children out in unzoomed
     // px; the ratio of the two is the zoom to divide by.
     const zoom = container.offsetWidth ? containerRect.width / container.offsetWidth : 1;
-    /** Icons already hung at each position, so the next sits beside them. Keyed
-     *  by the anchor's corner, not the anchor: a chapter's icon anchors to the
-     *  chapter wrapper and the page's to the page wrapper inside it, and both
-     *  corners are the same point on the page. */
-    const slots = new Map<string, number>();
+    /** Where icons have been hung, so the next one steps left of any it would
+     *  cover. Measured on the drawn boxes, not the anchors: a chapter's icon
+     *  anchors to the chapter wrapper and the page's to the page wrapper
+     *  inside it (the same corner), and a section holding one block hangs its
+     *  opener at that block's top and its closer just above the block's
+     *  bottom, which for a one-line block is the same row. */
+    const placed: { x: number; y: number }[] = [];
     for (const chip of Array.from(documentElement.querySelectorAll<HTMLElement>(".gp-block-chip"))) {
       const kind = chip.dataset["gpBlockKind"] ?? "";
       if (RENDERING_KINDS.has(kind)) continue;
@@ -134,9 +140,16 @@ export function installMarkerTags(documentElement: HTMLElement, options: MarkerT
       const anchor = anchorFor(chip, closing);
       if (!anchor) continue;
       const rect = anchor.getBoundingClientRect();
-      const corner = `${Math.round(closing ? rect.bottom : rect.top)}:${Math.round(rect.left)}:${closing ? "c" : "o"}`;
-      const slot = slots.get(corner) ?? 0;
-      slots.set(corner, slot + 1);
+      const left = (rect.left - containerRect.left) / zoom + container.scrollLeft;
+      const top = ((closing ? rect.bottom : rect.top) - containerRect.top) / zoom + container.scrollTop;
+      // The box the icon will occupy (editor-css.ts hangs it left of the
+      // anchor, and a closer above the anchor's bottom edge).
+      const drawnTop = closing ? top - TAG_SIZE : top;
+      const covers = (slotIndex: number): boolean =>
+        placed.some((box) => Math.abs(box.y - drawnTop) < TAG_SIZE && Math.abs(box.x - (left - slotIndex * TAG_STEP)) < TAG_SIZE);
+      let slot = 0;
+      while (covers(slot)) slot += 1;
+      placed.push({ x: left - slot * TAG_STEP, y: drawnTop });
       const attrs = Array.from(chip.querySelectorAll(".gp-block-chip__attr"), (a) => (a.textContent ?? "").trim());
       // A div with the button role rather than a <button>: the fork treats a
       // mousedown on a real button inside its content container as one of
@@ -152,9 +165,8 @@ export function installMarkerTags(documentElement: HTMLElement, options: MarkerT
       if (start !== null) tag.setAttribute(CHIP_CARET_ATTR, start);
       tag.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${glyphFor(kind)}</svg>`;
       tag.style.setProperty("--gp-tag-slot", String(slot));
-      tag.style.left = `${(rect.left - containerRect.left) / zoom + container.scrollLeft}px`;
-      const top = closing ? rect.bottom : rect.top;
-      tag.style.top = `${(top - containerRect.top) / zoom + container.scrollTop}px`;
+      tag.style.left = `${left}px`;
+      tag.style.top = `${top}px`;
       const offset = Number(start);
       if (Number.isFinite(offset) && options.onActivate) {
         // pointerdown, not mousedown: the fork handles pointer events on its

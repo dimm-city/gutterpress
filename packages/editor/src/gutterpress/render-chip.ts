@@ -230,6 +230,21 @@ export function renderContainerTagChip(doc: Document, sourceText: string): Custo
   return renderSourceOnlyChip(doc, sourceText, "html-container", "html");
 }
 
+/**
+ * The paragraph the pipeline renders under a marker written with text on
+ * the line right after it (`@section` then `text`, no blank line between).
+ * The chip gets a box for exactly this paragraph (editor-css.ts's
+ * `--text` rules) so the text is on the page where the book has it; the
+ * marker's own tag stays out of the flow as on every other chip.
+ */
+export function attachTrailingText(rendering: CustomBlockRendering, text: string, doc: Document): void {
+  rendering.dom.classList.add(`${CHIP_ROOT_CLASS}--text`);
+  const paragraph = doc.createElement("p");
+  paragraph.className = `${CHIP_ROOT_CLASS}__text`;
+  paragraph.textContent = text;
+  rendering.dom.appendChild(paragraph);
+}
+
 /** A chip that shows only its own source, character by character so the fork can map a caret into it. */
 function renderSourceOnlyChip(doc: Document, sourceText: string, variant: string, label: string): CustomBlockRendering {
   const dom = el(doc, "div", `md-block ${CHIP_ROOT_CLASS} ${CHIP_ROOT_CLASS}--${variant}`);

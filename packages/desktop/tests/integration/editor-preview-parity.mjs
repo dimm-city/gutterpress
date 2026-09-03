@@ -148,56 +148,6 @@ try {
   const close = page.locator('button[aria-label="Close this screen"]');
   if (await close.count()) await close.first().click().catch(() => {});
 
-  /**
-   * Wait for the editor to STOP re-paginating, rather than sleeping past it.
-   *
-   * The paged surface publishes every layout on the document element
-   * (`data-gp-layout`, `$lib/editor/paged-surface`), and it lays out more
-   * than once per document by design: once on render, again when the fonts
-   * arrive, again when the art loads. This waits for that counter to hold
-   * still, which is both faster than a fixed sleep and actually correct —
-   * the old fixed waits were minutes across a real book and still only a
-   * guess about the slowest of them.
-   */
-  async function settled(quietMs = 400, timeoutMs = 60_000) {
-    // The counter can hold still while a plate is still on its way (the
-    // art's relayout comes when the image loads, which is not on the
-    // layout counter's clock), so the editor's fonts and images are waited
-    // for first -  the same wait the book side gets.
-    await page
-      .evaluate(async () => {
-        await document.fonts?.ready;
-        await Promise.all(
-          [...document.querySelectorAll(".rich-editor-host img")]
-            .filter((img) => !img.complete)
-            .map(
-              (img) =>
-                new Promise((resolve) => {
-                  img.addEventListener("load", resolve, { once: true });
-                  img.addEventListener("error", resolve, { once: true });
-                }),
-            ),
-        );
-      })
-      .catch(() => {});
-    const deadline = Date.now() + timeoutMs;
-    let last = -1;
-    let stableSince = 0;
-    while (Date.now() < deadline) {
-      const now = await page
-        .evaluate(() => Number(document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? -1))
-        .catch(() => -1);
-      if (now !== last) {
-        last = now;
-        stableSince = Date.now();
-      } else if (now >= 0 && Date.now() - stableSince >= quietMs) {
-        return now;
-      }
-      await sleep(100);
-    }
-    return last;
-  }
-
   /** The preview's book frame — re-acquired after a mode switch, which can swap it. */
   async function bookFrame() {
     for (let attempt = 0; attempt < 60; attempt++) {
@@ -338,44 +288,130 @@ try {
   }
 
   // The book's own page counts were read above, while Edit had the preview
-  // on screen. Read is the paged editor alone (the preview pane collapses),
-  // so it is entered only now, and a file is opened before waiting for a
-  // page: with none open the editor pane correctly shows a "select a
-  // chapter" notice, and a gate that waits for a sheet there waits forever.
-  // The first `.file-item` may be a FOLDER (the field guide lists
-  // `art-unplaced/` and `images/` before its chapters), and clicking one
-  // opens no document at all - the gate then waits out its whole timeout on
-  // an editor that was never given a file.
+  // on screen. Read is the whole book in one scroll: every chapter mounts
+  // in book order, each paginated on its own, and the folios run on from
+  // one chapter to the next. The gate waits for all of them, reads each
+  // chapter's sheets inside its own wrapper, then unlocks - which remounts
+  // every chapter editable - and reads them again.
   await page.click('button[aria-label="Read"]');
-  await page.locator(".file-item").filter({ hasText: /\.md/i }).first().click();
   try {
-    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 180_000 });
+    await page.waitForSelector(".book-surface", { timeout: 120_000 });
   } catch (e) {
-    // A gate that only reports "no sheet appeared" sends the next hour to
+    const state = await page
+      .evaluate(() => ({
+        mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
+        loading: [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim()),
+        surface: !!document.querySelector(".book-surface"),
+        chapters: document.querySelectorAll(".book-chapter").length,
+        activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
+      }))
+      .catch(() => null);
+    console.error(`[parity] the book never mounted after the Read click - pane state: ${JSON.stringify(state)}`);
+    throw e;
+  }
+
+  const chapters = await page
+    .locator(".file-item")
+    .evaluateAll((els) => els.map((e) => e.textContent.trim()).filter((t) => /\.md$/i.test(t)));
+  for (const chapter of chapters) if (!bookPages[chapter]) log(`skip ${chapter}: not part of the built book`);
+  const expected = chapters.filter((chapter) => bookPages[chapter]);
+
+  /** Every chapter wrapper in book order: its sheets, its layout counter, its lock state, and its first folio. */
+  const readChapters = () =>
+    page.evaluate(() => {
+      const order = [];
+      const byName = {};
+      for (const el of document.querySelectorAll(".book-chapter[data-chapter-path]")) {
+        const name = el.getAttribute("data-chapter-path").replace(/\\/g, "/").split("/").pop();
+        const doc = el.querySelector(".md-document");
+        order.push(name);
+        byName[name] = {
+          sheets: el.querySelectorAll(".gp-sheet").length,
+          layout: Number(doc?.dataset.gpLayout ?? -1),
+          editor: !!el.querySelector(".md-editor"),
+          readonly: !!el.querySelector(".md-editor.md-readonly"),
+          firstFolio: Number(el.querySelector(".gp-sheet")?.dataset.page ?? -1),
+        };
+      }
+      return { order, byName };
+    });
+
+  /**
+   * Wait until every expected chapter has laid out in the given lock state
+   * and none is still re-paginating: the paged surface publishes a layout
+   * counter per document (`data-gp-layout`), and it lays out more than once
+   * by design (render, fonts, art). This waits for the SUM of the counters
+   * to hold still, with the fonts and images waited for first - the same
+   * wait the book side got - rather than sleeping past the slowest chapter.
+   */
+  async function allSettled(lockState, quietMs = 800, timeoutMs = 300_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = null;
+    let stableSince = 0;
+    while (Date.now() < deadline) {
+      const state = await readChapters().catch(() => ({ order: [], byName: {} }));
+      const ready = expected.every((c) => {
+        const chapter = state.byName[c];
+        return chapter?.editor && chapter.layout >= 0 && chapter.readonly === lockState;
+      });
+      const sum = expected.reduce((n, c) => n + (state.byName[c]?.layout ?? -1), 0);
+      if (!ready) {
+        last = null;
+      } else if (sum !== last) {
+        last = sum;
+        stableSince = Date.now();
+      } else if (Date.now() - stableSince >= quietMs) {
+        await page
+          .evaluate(async () => {
+            await document.fonts?.ready;
+            await Promise.all(
+              [...document.querySelectorAll(".rich-editor-host img")]
+                .filter((img) => !img.complete)
+                .map(
+                  (img) =>
+                    new Promise((resolve) => {
+                      img.addEventListener("load", resolve, { once: true });
+                      img.addEventListener("error", resolve, { once: true });
+                    }),
+                ),
+            );
+          })
+          .catch(() => {});
+        const again = await readChapters();
+        const sumAgain = expected.reduce((n, c) => n + (again.byName[c]?.layout ?? -1), 0);
+        if (sumAgain === sum) return again;
+        last = sumAgain;
+        stableSince = Date.now();
+      }
+      await sleep(250);
+    }
+    throw new Error(`the book did not finish laying out ${lockState ? "locked" : "unlocked"} within ${timeoutMs}ms`);
+  }
+
+  const lockedAt = Date.now();
+  let locked;
+  try {
+    locked = await allSettled(true);
+  } catch (e) {
+    // A gate that only reports "never laid out" sends the next hour to
     // guessing why. Say what the editor pane actually contains.
     const state = await page
-      .evaluate(() => {
-        const host = document.querySelector(".rich-editor-host");
-        const loading = [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim());
-        return {
-          host: !!host,
-          document: !!document.querySelector(".rich-editor-host .md-document"),
-          blocks: document.querySelectorAll(".rich-editor-host .md-block").length,
-          layouts: document.querySelector(".rich-editor-host .md-document")?.dataset.gpLayout ?? null,
-          loading,
-          // Is the book's own CSS in the document at all? Without it the
-          // editor cannot paginate (there is no @page geometry to read), and
-          // "no page appeared" looks identical to a layout that failed.
-          bookCss: Math.max(0, ...[...document.querySelectorAll("style")].map((el) => el.textContent?.length ?? 0)),
-          docFont: getComputedStyle(document.querySelector(".rich-editor-host .md-document") ?? document.body).fontFamily.slice(0, 40),
-          sheets: document.querySelectorAll(".rich-editor-host .gp-sheet").length,
-          stage: !!document.querySelector(".rich-editor-host .gp-stage"),
-          activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
-          mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
-        };
-      })
+      .evaluate(() => ({
+        chapters: [...document.querySelectorAll(".book-chapter[data-chapter-path]")].map((el) => ({
+          name: el.getAttribute("data-chapter-path").split("/").pop(),
+          editor: !!el.querySelector(".md-editor"),
+          blocks: el.querySelectorAll(".md-block").length,
+          sheets: el.querySelectorAll(".gp-sheet").length,
+          layout: el.querySelector(".md-document")?.dataset.gpLayout ?? null,
+          readonly: !!el.querySelector(".md-editor.md-readonly"),
+        })),
+        loading: [...document.querySelectorAll(".editor-loading")].map((el) => el.textContent?.trim()),
+        bookCss: Math.max(0, ...[...document.querySelectorAll("style")].map((el) => el.textContent?.length ?? 0)),
+        activeFile: document.querySelector(".file-item.active")?.textContent?.trim() ?? null,
+        mode: [...document.querySelectorAll("button[aria-pressed='true']")].map((b) => b.getAttribute("aria-label")),
+      }))
       .catch(() => null);
-    console.error(`[parity] editor never paginated - pane state: ${JSON.stringify(state)}`);
+    console.error(`[parity] the book never finished laying out - pane state: ${JSON.stringify(state)}`);
     // The app's own log, which is where its renderer faults land now.
     try {
       const { readdirSync, readFileSync } = await import("node:fs");
@@ -390,55 +426,45 @@ try {
     }
     throw e;
   }
+  log(`locked: ${expected.length} chapter(s) laid out in ${Date.now() - lockedAt}ms`);
 
-  // Read opens locked; the pill is idempotent if it already is.
-  await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
-  await settled();
+  // The whole book unlocked: every chapter remounts editable, and no count
+  // may move.
+  await page.click('button[aria-label="Unlock"]');
+  const unlockedAt = Date.now();
+  const unlocked = await allSettled(false);
+  log(`unlocked: ${expected.length} chapter(s) laid out in ${Date.now() - unlockedAt}ms`);
 
-  const chapters = await page
-    .locator(".file-item")
-    .evaluateAll((els) => els.map((e) => e.textContent.trim()).filter((t) => /\.md$/i.test(t)));
-
-  for (const chapter of chapters) {
+  for (const chapter of expected) {
     const book = bookPages[chapter];
-    if (!book) {
-      log(`skip ${chapter}: not part of the built book`);
-      continue;
-    }
-    const startedAt = Date.now();
-    await page.locator(".file-item", { hasText: chapter }).first().click();
-    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 60_000 });
-    // A file switch remounts the editor in whichever lock state the pane is
-    // in, so re-assert the lock rather than assuming it survived; the pill is
-    // idempotent.
-    const locked = async () => (await page.locator(".rich-editor-host .md-editor.md-readonly").count()) > 0;
-    if (!(await locked())) {
-      await page.click('button[aria-label="Lock"]').catch(() => {});
-      await page.waitForSelector(".rich-editor-host .md-editor.md-readonly", { timeout: 30_000 });
-    }
-    await settled(800);
-    const sheets = () => page.evaluate(() => document.querySelectorAll(".rich-editor-host .gp-sheet").length);
-    const editorPages = await sheets();
-
-    // The same chapter unlocked: the pill rebuilds the surface editable, and
-    // the count must not move.
-    await page.click('button[aria-label="Unlock"]');
-    await page.waitForSelector(".rich-editor-host .md-editor:not(.md-readonly)", { timeout: 30_000 });
-    await page.waitForSelector(".rich-editor-host .gp-sheet", { timeout: 60_000 });
-    await settled(800);
-    const unlockedPages = await sheets();
-
-    const tookMs = Date.now() - startedAt;
+    const editorPages = locked.byName[chapter]?.sheets ?? 0;
+    const unlockedPages = unlocked.byName[chapter]?.sheets ?? 0;
     const ok = editorPages === book.pages && unlockedPages === book.pages;
     rows.push({ chapter, editorPages, unlockedPages, bookPages: book.pages, ok });
-    if (ok) log(`ok   ${chapter}: ${editorPages} page(s), unlocked ${unlockedPages} [${tookMs}ms]`);
+    if (ok) log(`ok   ${chapter}: ${editorPages} page(s), unlocked ${unlockedPages}`);
     else {
       failures += 1;
       console.error(
-        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s) locked and ${unlockedPages} unlocked, the book into ${book.pages} [${tookMs}ms]`,
+        `[parity] FAIL ${chapter}: editor paginates it into ${editorPages} page(s) locked and ${unlockedPages} unlocked, the book into ${book.pages}`,
       );
     }
   }
+
+  // The folios run on through the book: each chapter's first sheet is
+  // numbered one past the last sheet of the chapter before it.
+  for (const state of [locked, unlocked]) {
+    let offset = 0;
+    for (const name of state.order) {
+      const chapter = state.byName[name];
+      if (!chapter || !expected.includes(name)) continue;
+      if (chapter.firstFolio !== offset + 1) {
+        failures += 1;
+        console.error(`[parity] FAIL ${name}: its first page is numbered ${chapter.firstFolio}, the book's count puts it at ${offset + 1}`);
+      }
+      offset += chapter.sheets;
+    }
+  }
+  log(`folios run 1..${Object.values(locked.byName).reduce((n, c) => n + c.sheets, 0)} through the book`);
 } finally {
   await app.close().catch(() => {});
   if (!inPlace) rmSync(bookDir, { recursive: true, force: true });

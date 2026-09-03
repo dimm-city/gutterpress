@@ -279,7 +279,7 @@ describe("RichEditor — the mount container itself carries no role or label of 
   test("RichEditor.svelte's own root <div> has no role/aria-* attributes — its accessible name comes entirely from the ancestor <section> in +page.svelte", () => {
     const src = richEditor();
     const mountLine = src.slice(src.indexOf('<div class="rich-editor-host"'), src.indexOf("</div>", src.indexOf('<div class="rich-editor-host"')) + 6);
-    expect(mountLine).toBe('<div class="rich-editor-host" bind:this={container}></div>');
+    expect(mountLine).toBe('<div class="rich-editor-host" class:rich-editor-host--stacked={stacked} bind:this={container}></div>');
     expect(mountLine).not.toContain("role=");
     expect(mountLine).not.toContain("aria-");
     // Confirms this is a deliberately thin wrapper (D4/component header),

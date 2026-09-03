@@ -157,6 +157,8 @@ export interface EditorMount {
 
   /** Lock or unlock the mounted editor (the host's Read/Edit decision). */
   setReadonly(readonly: boolean): void;
+  /** See `VscodeEditorAdapter.rerender` - rebuilds every block view, keeping model, caret and history. */
+  rerender(): void;
 }
 
 /**
@@ -255,5 +257,6 @@ export function mountEditor(
     revealRange: (from: number, to?: number): void => adapter.revealRange(from, to),
     setSelection: (from: number, to?: number): void => adapter.setSelection(from, to),
     setReadonly: (readonly: boolean): void => adapter.setReadonly(readonly),
+    rerender: (): void => adapter.rerender(),
   };
 }

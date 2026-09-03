@@ -44,6 +44,22 @@ export const GUTTERPRESS_EDITOR_CSS = `
   line-height: 0;
   visibility: hidden;
 }
+/* A marker block that carries the paragraph under its marker (render-chip.ts's
+   attachTrailingText) has a box for that paragraph and nothing else: the
+   page renders the text, so the editor does too, and the marker's tag stays
+   hidden as on every other chip. */
+.md-block.gp-block-chip--text {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.md-block.gp-block-chip--text > .gp-block-chip__tag {
+  display: none;
+}
 /* The overlay layer and its icons (marker-tags.ts). The layer is a
    zero-size box at the content container's origin; each icon is placed at
    the box of the block its marker stands next to and hung to the left of

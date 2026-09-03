@@ -47,6 +47,12 @@ export interface PagedSurface {
    * layout (see `fit`).
    */
   readonly setZoom: (zoom: string) => void;
+  /**
+   * How many book pages come before this document's first page, so its
+   * folios continue from the chapters above it (see `decorate`'s option of
+   * the same name). Redraws the sheets; the pagination itself is unchanged.
+   */
+  readonly setPageOffset: (offset: number) => void;
   readonly dispose: () => void;
 }
 
@@ -87,6 +93,8 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
   let userZoom: number | null = null;
   /** The document element of the latest run, for a zoom change to relayout. */
   let mounted: HTMLElement | undefined;
+  /** Book pages before this document's first page (see `setPageOffset`). */
+  let pageOffset = 0;
 
   /**
    * Scale the whole stage down when a page is wider than the pane, exactly
@@ -196,7 +204,7 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
     // The stage is the fork's scroll container, never the app's body: the
     // viewer's default put its 32px padding and scrolling on <body>, which
     // inset the whole window and gave it a second scrollbar.
-    decoration = decorate(layout, { canvasRoots: [documentElement], ...(stage ? { stage } : {}) });
+    decoration = decorate(layout, { canvasRoots: [documentElement], pageOffset, ...(stage ? { stage } : {}) });
     // A book's own webfonts load asynchronously, and text measured in a
     // fallback face breaks into different pages than the real one — the
     // editor would sit one page long until the next edit re-rendered it.
@@ -243,6 +251,10 @@ export function createPagedSurface(bookCss: string, doc: Document = document): P
       const scale = zoom === "fit-width" ? null : Number(zoom);
       userZoom = scale !== null && Number.isFinite(scale) && scale > 0 ? scale : null;
       if (mounted) refresh(mounted);
+    },
+    setPageOffset(offset: number): void {
+      pageOffset = offset;
+      decoration?.setPageOffset(offset);
     },
     onPaginated(listener) {
       listeners.add(listener);

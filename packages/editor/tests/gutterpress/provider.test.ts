@@ -426,6 +426,19 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     expect(groups[0]).toMatchObject({ start: 1, end: 3, className: "section lede", attributes: { "data-section": "intro" } });
   });
 
+  test("text on the line right after a marker is the paragraph under it: the block opens the wrapper and sits inside it", () => {
+    // The pipeline reads markers line by line, so "@section" then "text" with
+    // no blank line between is a section holding the paragraph "text" - the
+    // shape an author produces by typing past the marker's newline.
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@section intro .lede\ntext under it\n", "Body.\n", "@end-section\n"]))!;
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ start: 0, end: 2, className: "section lede" });
+    // Prose that merely starts with an unknown "@word" is prose on the page,
+    // and stays prose here: no wrapper.
+    expect(provider.groupBlocks(candidates(["@handle is mine\nmore prose\n", "Body.\n"]))).toEqual([]);
+  });
+
   test("a marker with nothing after it opens no wrapper", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     expect(provider.groupBlocks(candidates(["Text.\n", "@section\n"]))).toEqual([]);
@@ -476,7 +489,11 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
     const blocks = [
       { ast: { kind: "codeBlock", id: 1 } as unknown as BlockAstNode, sourceText: "@section in a fence\n", absoluteStart: 0 },
-      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "@section is a word this sentence starts with\nand it wraps\n", absoluteStart: 50 },
+      // A sentence that starts with a core marker word IS a marker on the page
+      // (the pipeline reads it line by line: `@section is a word...` opens a
+      // section and `and it wraps` is the paragraph inside it), so only a
+      // word core does not own keeps a sentence prose.
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "@handle is a word this sentence starts with\nand it wraps\n", absoluteStart: 50 },
       { ast: { kind: "paragraph", id: 3 } as unknown as BlockAstNode, sourceText: "Ordinary paragraph text.\n", absoluteStart: 100 },
     ];
     expect(provider.groupBlocks(blocks)).toEqual([]);

@@ -33,7 +33,6 @@
   // SFE-P6a — the rich-mode document-host + D6 projection lifecycle (owns
   // what used to be this page's own richDocHost/richProjection/richPluginCss
   // state and its rebuild/dispose functions). See that module's own header.
-  import { RichDocHostController } from "$lib/editor/rich-doc-host-controller.svelte";
   // SFE-P3ab, Lane B — the adapter that lets the shared P2a command
   // vocabulary drive the rich surface (rich-commands.ts's own header has
   // the full design, including the confirmed-missing selection accessor).
@@ -1272,7 +1271,7 @@
    * for every document"; the plan's own out-of-scope note keeps CSS/YAML/
    * JS/plugin/manifest editing CodeMirror-only). SFE-P3ab review round 1
    * (CONFIRMED finding): `showEditorContent`/`setRichMode` used to rebuild
-   * `richDocHostCtrl.host` — and the template used to mount the rich surface — for
+   * `richHost()` - and the template used to mount the rich surface - for
    * ANY open file while `richMode.mode === "rich"`, so a CSS file clicked
    * from the tree opened silently inside the Markdown rich surface with no
    * visible way back (the toolbar's mode toggle only renders for markdown
@@ -1283,60 +1282,152 @@
     return !!path && /\.(md|markdown)$/i.test(path);
   }
 
-  // Mirrors the MarkdownEditor lazy-import pattern immediately above: the
-  // rich editor's chunk (the `@vscode/markdown-editor` fork + its adapter)
-  // is real weight, so it is imported dynamically the first time rich mode
-  // is actually entered, never at page load.
-  let RichEditorComponent = $state<
-    typeof import("$lib/components/RichEditor.svelte")["default"] | null
+  // The book (Read) is loaded the way the source editor is: its chunk (the
+  // `@vscode/markdown-editor` fork, its adapter and the paged surface) is
+  // real weight, imported the first time Read is entered, never at page load.
+  let BookSurfaceComponent = $state<
+    typeof import("$lib/components/BookSurface.svelte")["default"] | null
   >(null);
-  let richEditorModuleLoading = $state(false);
-  let richEditorModuleFailed = $state(false);
+  let bookModuleLoading = $state(false);
+  let bookModuleFailed = $state(false);
 
-  function loadRichEditorModule() {
-    if (RichEditorComponent || richEditorModuleLoading || richEditorModuleFailed) return;
-    richEditorModuleLoading = true;
-    import("$lib/components/RichEditor.svelte")
+  function loadBookSurfaceModule() {
+    if (BookSurfaceComponent || bookModuleLoading || bookModuleFailed) return;
+    bookModuleLoading = true;
+    import("$lib/components/BookSurface.svelte")
       .then((m) => {
-        RichEditorComponent = m.default;
+        BookSurfaceComponent = m.default;
       })
       .catch((e) => {
-        richEditorModuleFailed = true;
+        bookModuleFailed = true;
         toast?.error(
-          `Could not open the rich editor: ${e instanceof Error ? e.message : String(e)}`,
+          `Could not open the book: ${e instanceof Error ? e.message : String(e)}`,
         );
       })
       .finally(() => {
-        richEditorModuleLoading = false;
+        bookModuleLoading = false;
       });
   }
 
-  function retryRichEditorLoad() {
-    richEditorModuleFailed = false;
-    loadRichEditorModule();
+  function retryBookSurfaceLoad() {
+    bookModuleFailed = false;
+    loadBookSurfaceModule();
   }
 
-  // `RichDocHostController` (SFE-P6a) owns the `DesktopDocumentHost` + D6
-  // projection lifecycle for rich mode (construction, the epoch-guarded
-  // async publish, and the `whenSettled()` seam `selectEditorFile` below
-  // needs) — extracted from this page's own former rich-mode document-host
-  // state and rebuild/dispose functions (SFE-P3ab Lane A; hardened across
-  // SFE-P3e review rounds 1-2).
-  // See that module's header for the full history this page used to carry
-  // inline — why publication is deferred until the projection resolves, why
-  // every publish is epoch-guarded, and why `whenSettled()` exists.
-  // `buildRichProjection`/`onEditorChange` below are hoisted function
-  // declarations, so referencing them here (before their own textual
-  // definition) is safe — both exist by the time either closure actually
-  // runs. `{#key richDocHostCtrl.host}` in the template turns each rebuild
-  // into a fresh RichEditor mount/dispose cycle — a real new undo epoch, not
-  // a simulated one.
-  const richDocHostCtrl = new RichDocHostController({
-    buildProjection: buildRichProjection,
-    onSnapshotChange: onEditorChange,
-    onDegradedRebuild: (path) =>
-      reportError(`rebuilding ${path}: its first projection had no book CSS`),
+  /**
+   * The mounted book (`BookSurface.svelte`) while Read is up, else null:
+   * Svelte binds it on mount and clears it on unmount. Every chapter of the
+   * book is mounted inside it, each with its own host; the rich commands
+   * below act on the chapter the author is in (`richHost`).
+   */
+  let bookRef = $state<{
+    setReadonly: (locked: boolean) => void;
+    setZoom: (zoom: string) => void;
+    scrollToChapter: (path: string, line?: number) => Promise<void>;
+    revealLine: (path: string, line: number) => void;
+    activePath: () => string | null;
+    hostOf: (path: string) => DesktopDocumentHost | null;
+    activeHost: () => DesktopDocumentHost | null;
+    getSelection: () => { readonly from: number; readonly to: number } | undefined;
+    setSelection: (path: string, from: number, to?: number) => Promise<void>;
+    replaceText: (path: string, text: string) => void;
+    rebuildDegraded: () => void;
+  } | null>(null);
+
+  /** The host of the chapter the author is in, or null while Read is not up. */
+  function richHost(): DesktopDocumentHost | null {
+    return bookRef?.activeHost() ?? null;
+  }
+
+  /**
+   * The book's chapters in book order: as the preview reported them (its
+   * outline names every chapter file, in manifest order), else the
+   * project's markdown files by name until the preview has rendered once.
+   */
+  let bookFiles = $state<string[]>([]);
+  let bookChapters = $derived.by(() => {
+    const dir = lifecycle.currentDir;
+    if (!dir) return [] as string[];
+    const seen = new Set<string>();
+    for (const entry of outline) {
+      if (entry.chapter && isSafeChapterId(entry.chapter)) seen.add(chapterPath(dir, entry.chapter));
+    }
+    return seen.size ? [...seen] : bookFiles;
   });
+  /** Page counts per chapter from the preview's outline, for placeholder heights and folio offsets before a chapter lays out. */
+  let bookPageEstimates = $derived.by(() => {
+    const dir = lifecycle.currentDir;
+    const estimates: Record<string, number> = {};
+    if (!dir) return estimates;
+    const firstPage = new Map<string, number>();
+    for (const entry of outline) {
+      if (!entry.chapter || !isSafeChapterId(entry.chapter)) continue;
+      const path = chapterPath(dir, entry.chapter);
+      if (!firstPage.has(path)) firstPage.set(path, entry.page);
+    }
+    const starts = [...firstPage.entries()];
+    starts.forEach(([path, page], i) => {
+      const next = starts[i + 1]?.[1] ?? pageNav.totalPages + 1;
+      estimates[path] = Math.max(1, next - page);
+    });
+    return estimates;
+  });
+
+  /** The project's markdown files by name: the book's order until the preview has rendered once. */
+  async function loadBookFiles(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir || !isDesktop()) return;
+    try {
+      const files = (await listDirCapability(dir)).filter((entry) => !entry.isDir && /\.(md|markdown)$/i.test(entry.name));
+      if (dir !== lifecycle.currentDir) return;
+      bookFiles = files.map((entry) => entry.path).sort((a, b) => a.localeCompare(b));
+    } catch {
+      /* the outline names the chapters once the preview renders */
+    }
+  }
+
+  /** The chapter the book is making the open file right now, so a press and an edit in it share one switch. */
+  let bookActivation: { readonly path: string; readonly done: Promise<void> } | null = null;
+
+  async function activateBookChapter(path: string): Promise<void> {
+    if (editorFilePath === path || !isDesktop()) return;
+    if (bookActivation?.path === path) return bookActivation.done;
+    const done = editorFiles.select(path).then(
+      () => undefined,
+      () => undefined,
+    );
+    const activation = { path, done };
+    bookActivation = activation;
+    try {
+      await done;
+    } finally {
+      if (bookActivation === activation) bookActivation = null;
+    }
+  }
+
+  /** The author pressed into a chapter: it becomes the open file, so the file list, the toolbar and "Edit in source" follow. */
+  function onBookActivate(path: string): void {
+    void activateBookChapter(path);
+  }
+
+  /**
+   * A chapter's text changed through its editor: route it to that file's
+   * buffer, which is what autosaves, snapshots and reconciles external
+   * changes. A chapter that is not yet the open file becomes it first (the
+   * outgoing buffer is flushed on the way), then takes the host's latest
+   * text - never the copy read from disk during the switch.
+   */
+  function onBookSnapshotChange(path: string, text: string): void {
+    if (!isDesktop()) return;
+    if (editorFilePath === path) {
+      ensureBuffer().edit(text);
+      return;
+    }
+    void activateBookChapter(path).then(() => {
+      const host = bookRef?.hostOf(path);
+      if (host && editorFilePath === path) ensureBuffer().edit(host.getSnapshot().text);
+    });
+  }
 
   /** D14 `EDITOR_FILE_TOO_LARGE` for the HOST projection call specifically —
    *  shown when the resolved `EditorProjectionOutcome` names this code
@@ -1476,22 +1567,6 @@
     return { projection: createEditorProjection(content, { sourceVersion }), editorCss: undefined };
   }
 
-  // SFE-P3ab, Lane A — the mounted RichEditor component instance, bound the
-  // same way `editorRef` binds MarkdownEditor above: `{#key richDocHostCtrl.host}`
-  // means a host rebuild destroys and recreates RichEditorComponent, so
-  // Svelte resets this to `null` on unmount and repopulates it on the next
-  // mount — no manual bookkeeping needed here. Read for its `getSelection()`
-  // export (rich-commands.ts's header has the full design), for the
-  // Read/Edit lock, and for line navigation (`revealLine`).
-  let richEditorRef = $state<{
-    getSelection: () => { readonly from: number; readonly to: number } | undefined;
-    setReadonly: (readonly: boolean) => void;
-    revealLine: (line: number) => void;
-    setZoom: (zoom: string) => void;
-    setSelection: (from: number, to?: number) => void;
-    scrollEdge: () => { atStart: boolean; atEnd: boolean };
-    scrollToEdge: (edge: "start" | "end") => void;
-  } | null>(null);
 
   /** The rich mount's LIVE caret, or `undefined` when there is none. SFE-P3ab
    *  review round 1 (CONFIRMED finding): `undefined` does NOT mean "never
@@ -1502,7 +1577,7 @@
    *  verified reproduction). Every rich-mode command below reads this fresh
    *  at the moment it fires rather than caching it. */
   function richLiveSelection(): { readonly from: number; readonly to: number } | undefined {
-    return richEditorRef?.getSelection();
+    return bookRef?.getSelection();
   }
 
   /** A rich-mode selection paired with the document IDENTITY it was read
@@ -1510,7 +1585,7 @@
    *  captures `richLiveSelection()` and then `await`s something (a dialog)
    *  before applying an edit must be able to tell whether the document
    *  changed underneath it (an external reload landed, rebuilding
-   *  `richDocHostCtrl.host` at a fresh version 0 with different text) — a captured
+   *  `richHost()` at a fresh version 0 with different text) - a captured
    *  offset with no identity attached was silently re-applied to whatever
    *  document happened to be live when the dialog resolved. */
   interface RichSelectionCapture {
@@ -1519,22 +1594,23 @@
     readonly selection: { readonly from: number; readonly to: number } | undefined;
   }
 
-  /** Captures {@link richLiveSelection} together with `richDocHostCtrl.host` and its
+  /** Captures {@link richLiveSelection} together with `richHost()` and its
    *  CURRENT version. `undefined` when there is no rich document open at
    *  all (no host to capture identity from). */
   function captureRichSelection(): RichSelectionCapture | undefined {
-    const host = richDocHostCtrl.host;
+    const host = richHost();
     if (!host) return undefined;
     return { host, version: host.getSnapshot().version, selection: richLiveSelection() };
   }
 
   /** Whether `capture` (from {@link captureRichSelection}) is still valid
-   *  against the CURRENT `richDocHostCtrl.host` — false once the document identity
+   *  against the CURRENT `richHost()` - false once the document identity
    *  was replaced (a rebuild) or any edit landed since capture, either of
    *  which makes the captured offsets meaningless (see that function's own
    *  header). */
   function isRichSelectionCaptureFresh(capture: RichSelectionCapture): boolean {
-    return richDocHostCtrl.host === capture.host && richDocHostCtrl.host.getSnapshot().version === capture.version;
+    const host = richHost();
+    return host === capture.host && host.getSnapshot().version === capture.version;
   }
 
   /** D14 diagnostic for a caret-relative rich command invoked with NO live
@@ -1555,7 +1631,7 @@
 
   /** The one place rich mode is entered/exited (today: the hidden keyboard
    * shortcut below; a visible toggle is chrome for another lane to add).
-   * Keeps `richDocHostCtrl.host` in lockstep with `richMode.mode` so it is never
+   * Keeps `richHost()` in lockstep with `richMode.mode` so it is never
    * stale while `"rich"` is selected, and never lingers once it is not.
    * SFE-P3ab review round 1 (CONFIRMED finding): only builds the host for a
    * MARKDOWN file (`isMarkdownPath`) — rich mode has no surface for
@@ -1565,17 +1641,10 @@
   function setRichMode(next: "source" | "rich"): void {
     if (next === richMode.mode) return;
     if (next === "rich") {
-      loadRichEditorModule();
-      if (isMarkdownPath(editorFilePath)) {
-        richDocHostCtrl.rebuild(editorFilePath, editorContent);
-      } else if (editorFilePath) {
-        showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
-      }
+      loadBookSurfaceModule();
+      void loadBookFiles();
     }
     richMode.switchTo(next);
-    if (next === "source") {
-      richDocHostCtrl.dispose();
-    }
   }
 
   /**
@@ -1594,7 +1663,7 @@
   // ── Rich-mode command wiring (SFE-P3ab, Lane B) ──────────────────────────
   //
   // Diagnostics reaching this app from rich mode come from two places: an
-  // edit THIS page pushes through `richDocHostCtrl.host.applyEdit` directly (a
+  // edit THIS page pushes through `richHost().applyEdit` directly (a
   // rejected/refused `RichCommandOutcome` from `rich-commands.ts`), and one
   // the mounted adapter reports on its own via `RichEditor`'s `onDiagnostic`
   // prop below (a typed rejection from the live view, or a P2c projection
@@ -1677,16 +1746,6 @@
     if (!outcome.ok) showRichDiagnostic(outcome.diagnostic);
   }
 
-  /** SFE-P3ab review round 1 (CONFIRMED finding) — shown whenever rich mode
-   *  is explicitly entered (or a file switch lands) while the open file
-   *  isn't markdown; see `isMarkdownPath`'s header. No `safeAction`: the
-   *  source surface is already what's showing, there is nothing further for
-   *  the author to do. */
-  const RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC: Diagnostic = {
-    category: "EDITOR_UNSUPPORTED_PROJECTION",
-    message: "Rich mode supports Markdown files only. This file opened in the source editor.",
-  };
-
   /**
    * Routes one `EditorToolbar` action through the RICH path — the mirror of
    * `editorRef?.runToolbarAction(action, payload)` for source mode. Called
@@ -1701,7 +1760,7 @@
    * has the full rationale, including why image insertion is exempt).
    */
   function handleRichToolbarAction(action: ToolbarAction, payload?: ToolbarPayload): void {
-    const host = richDocHostCtrl.host;
+    const host = richHost();
     if (!host || action === "image") return;
     const route = routeToolbarAction(action, payload);
     const live = richLiveSelection();
@@ -1728,7 +1787,7 @@
    * SFE-P3ab review round 1 (CONFIRMED finding): the selection is captured
    * TOGETHER with the document identity it was read against
    * (`captureRichSelection`) — the dialog's `await` gives an external
-   * reload (or a file switch) time to rebuild `richDocHostCtrl.host` entirely, and a
+   * reload (or a file switch) time to rebuild `richHost()` entirely, and a
    * captured offset with no identity attached used to be silently applied
    * to whatever document happened to be live once the dialog resolved. A
    * missing LIVE CARET at capture time is left to `applyRichImageInsert`'s
@@ -1779,7 +1838,7 @@
   // reachable from BOTH editing surfaces via the CURRENT CARET, instead of
   // only from the preview context menu SFE-P4 deleted. The actual per-surface
   // commands live in `toolbar-actions.ts` (source — takes the live
-  // `EditorView`) and `rich-commands.ts` (rich — takes `richDocHostCtrl.host` +
+  // `EditorView`) and `rich-commands.ts` (rich - takes `richHost()` +
   // `live: LiveSelection`); this page's only job is routing to whichever
   // surface is active, reading what each command needs from it, and
   // reporting a refusal — the SAME shape `handleRichToolbarAction`/
@@ -1793,7 +1852,7 @@
    * document-identity staleness guard `openRichImageProperties` above
    * already relies on for its own `promptImageProperties` await, not a
    * second mechanism — because `locateRichImagePropertiesAtCaret`'s result
-   * is only safe to apply against the EXACT `richDocHostCtrl.host` it was read from;
+   * is only safe to apply against the EXACT `richHost()` it was read from;
    * source mode's `applyImagePropertiesEdit` re-verifies its own span
    * directly against the live `view` instead (see its own doc comment for
    * why the two surfaces' staleness guards differ).
@@ -1856,7 +1915,7 @@
    *  intervening staleness window on either surface. */
   function handleImageUnwrapAtCaret(): void {
     if (richSurfaceActive) {
-      const host = richDocHostCtrl.host;
+      const host = richHost();
       if (!host) return;
       const live = richLiveSelection();
       if (!live) {
@@ -1949,10 +2008,11 @@
     let tries = 0;
     const tryInsert = () => {
       if (richSurfaceActive) {
-        if (richDocHostCtrl.host) {
+        const host = richHost();
+        if (host) {
           reportRichOutcome(
             applyRichCommand(
-              richDocHostCtrl.host,
+              host,
               { kind: "insert-image", src: payload.src, alt: payload.alt },
               richLiveSelection(),
             ),
@@ -2023,9 +2083,8 @@
   //
   // A non-markdown file (CSS, YAML) has no paged surface at all and always
   // opens on CodeMirror, whatever the workspace mode says.
-  let richSurfaceActive = $derived(
-    mode === "viewer" && (editorFilePath === null || isMarkdownPath(editorFilePath)),
-  );
+  /** Read shows the whole book, whatever file happens to be open. */
+  let richSurfaceActive = $derived(mode === "viewer");
 
   function showEditorContent(path: string, content: string): void {
     if (editorRef?.hasFile(path)) editorRef.updateContent(content);
@@ -2035,21 +2094,12 @@
     // D7 groups both under "not undoable into the prior file", so rich
     // mode responds to either the same way: a fresh epoch, fresh host.
     if (richSurfaceActive || richMode.mode === "rich") {
+      // The book is mounted whole, so a file switch changes nothing in it.
+      // The text just read from disk is never pushed into the chapter's host
+      // from here: the host's own text may be newer (an edit that made this
+      // chapter the open file is what triggered the switch). An external
+      // change reaches the host through `onContentReplaced` instead.
       richMode.onFileSwitch();
-      // SFE-P3ab review round 1 (CONFIRMED finding): rich mode has no
-      // surface for a non-markdown file — see `isMarkdownPath`'s header.
-      // `richMode.mode` stays "rich" (the preference), but this file opens
-      // on the source surface, and any stale host from a PRIOR markdown
-      // file is dropped rather than left mounted over the wrong content.
-      if (isMarkdownPath(path)) {
-        // Rich is the default surface, so a file can open into it before the
-        // toggle path ever ran: load the chunk here too, not only on toggle.
-        loadRichEditorModule();
-        richDocHostCtrl.rebuild(path, content);
-      } else {
-        richDocHostCtrl.dispose();
-        showRichDiagnostic(RICH_MODE_MARKDOWN_ONLY_DIAGNOSTIC);
-      }
     }
   }
 
@@ -2063,7 +2113,12 @@
         if (editorFiles.isActive(instance)) toast?.error(msg);
       },
       onContentReplaced: (path, content) => {
-        if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
+        if (editorFiles.isActive(instance) && instance.filePath === path) {
+          showEditorContent(path, content);
+          // The one path by which text reaches a mounted chapter from outside
+          // its editor: an external change accepted from disk.
+          bookRef?.replaceText(path, content);
+        }
       },
       onAutoReloaded: () => {
         if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
@@ -2150,7 +2205,7 @@
   const modeSink = settingsChangeGuard<Exclude<WorkspaceMode, "focus">>((m) => {
     mode = m;
     if (m !== "viewer") loadEditorModule();
-    else loadRichEditorModule();
+    else loadBookSurfaceModule();
   });
   onMount(() =>
     onSettingsChange((s) => {
@@ -2201,7 +2256,7 @@
   function whenEditorReady(fn: () => void): void {
     let tries = 0;
     const attempt = () => {
-      if (editorRef || richEditorRef) fn();
+      if (editorRef || bookRef) fn();
       else if (tries++ < 120) requestAnimationFrame(attempt);
     };
     requestAnimationFrame(attempt);
@@ -2223,7 +2278,7 @@
       editorRef.revealLine(line, focus);
       return;
     }
-    if (richEditorRef && editorFilePath === path) richEditorRef.revealLine(line);
+    bookRef?.revealLine(path, line);
   }
 
   /**
@@ -2266,28 +2321,16 @@
    * Make `path` the file the author is working in.
    *
    * The session keeps the outgoing file active while the target reads and
-   * performs one atomic handoff after any required flush succeeds.
-   *
-   * SFE-P3e review round 2 (CONFIRMED finding): also awaits
-   * `richDocHostCtrl.whenSettled()` before returning — `editorFiles.select`
-   * invokes `onActivate` -> `showEditorContent` -> `richDocHostCtrl.rebuild`
-   * SYNCHRONOUSLY, but publishing the rebuilt host is itself async (see
-   * `RichDocHostController`'s own header, "Why `whenSettled()` exists"). The
-   * bug this fixed was originally found through the now-deleted preview
-   * commit-write engine's cross-chapter commit path (SFE-P4 removed
-   * preview-originated source mutation entirely — see that doc comment for
-   * the historical detail); the `await` remains because it is a general
-   * guard every caller of `selectEditorFile` needs. Every caller pays
-   * nothing extra: `whenSettled()` resolves immediately whenever rich mode
-   * did not just start a rebuild (source mode active, a non-markdown file,
-   * or nothing changed).
+   * performs one atomic handoff after any required flush succeeds. In Read
+   * the whole book is already on screen, so opening a file is going to its
+   * chapter.
    */
   async function selectEditorFile(
     path: string,
   ): Promise<boolean> {
     if (!isDesktop()) return false;
     const ok = await editorFiles.select(path);
-    await richDocHostCtrl.whenSettled();
+    if (ok && richSurfaceActive) void bookRef?.scrollToChapter(path);
     return ok;
   }
 
@@ -2836,7 +2879,7 @@
       // document was built before that — a chapter chosen while the project
       // was still opening — it is missing its plugins and its book CSS, and
       // nothing else would ever ask for them again.
-      richDocHostCtrl.rebuildIfDegraded();
+      bookRef?.rebuildDegraded();
     },
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
@@ -2968,7 +3011,7 @@
         (e.key === "ArrowUp" || e.key === "ArrowDown")
       ) {
         e.preventDefault();
-        const blockMoveHost = richDocHostCtrl.host;
+        const blockMoveHost = richHost();
         if (blockMoveHost) {
           const live = richLiveSelection();
           const blockIndex = live
@@ -3008,8 +3051,9 @@
     }
 
     function onPreviewNavKey(e: KeyboardEvent) {
-      // Only active when a preview URL is loaded.
-      if (!lifecycle.previewUrl) return;
+      // Only active when a preview URL is loaded, and the preview is what is
+      // on screen: in Read the book's own scroller answers PageDown and End.
+      if (!lifecycle.previewUrl || !previewVisible) return;
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
@@ -3322,8 +3366,9 @@
     // `readonly` once, so a mounted paged editor has to be told, not derived.
     if (next === "viewer") {
       richLocked = true;
-      richEditorRef?.setReadonly(true);
-      loadRichEditorModule();
+      bookRef?.setReadonly(true);
+      loadBookSurfaceModule();
+      void loadBookFiles();
       // A reader wants a page in front of them, not a "select a file" notice.
       if (!editorFilePath) void ensureEditorFile();
     }
@@ -3341,7 +3386,7 @@
   function setRichLocked(locked: boolean): void {
     if (locked === richLocked) return;
     richLocked = locked;
-    richEditorRef?.setReadonly(locked);
+    bookRef?.setReadonly(locked);
   }
 
   /**
@@ -3355,7 +3400,7 @@
       return;
     }
     richZoom = value;
-    richEditorRef?.setZoom(value);
+    bookRef?.setZoom(value);
   }
 
   function stepVisibleZoom(delta: number): void {
@@ -3366,80 +3411,6 @@
     const current = richZoom === "fit-width" ? 1 : parseFloat(richZoom) || 1;
     const next = Math.max(0.25, Math.min(4, current + delta));
     applyZoomToVisibleSurface(String(Math.round(next * 100) / 100));
-  }
-
-  // -- Reading past the end of a chapter ---------------------------------------
-  //
-  // The paged editor shows one file, where the preview shows the whole book
-  // in one scroll. Reading on past a chapter's last page opens the next
-  // chapter at its start, and scrolling up past the first page opens the
-  // previous one at its end, so the book still reads as one thing. The
-  // order is the book's own: the outline the preview reported, which lists
-  // chapters in manifest order. A wheel or key that arrives while the pages
-  // are ALREADY at the edge is the signal; the scroll that reached the edge
-  // is not, so a chapter's end is always seen before the next one opens.
-  let richEdgeJumpAt = 0;
-
-  function richChapterOrder(): string[] {
-    const seen = new Set<string>();
-    for (const entry of outline) {
-      if (entry.chapter && isSafeChapterId(entry.chapter)) seen.add(entry.chapter);
-    }
-    return [...seen];
-  }
-
-  /** The chapter file before or after the open one in book order, or null at the book's edge. */
-  function richNeighborChapter(direction: 1 | -1): string | null {
-    const dir = lifecycle.currentDir;
-    const path = editorFilePath;
-    if (!dir || !path) return null;
-    const order = richChapterOrder();
-    const index = order.findIndex((chapter) => chapterPath(dir, chapter) === path);
-    if (index < 0) return null;
-    const next = order[index + direction];
-    return next ? chapterPath(dir, next) : null;
-  }
-
-  function richOpenNeighbor(direction: 1 | -1): void {
-    const now = Date.now();
-    if (now - richEdgeJumpAt < 900) return;
-    const target = richNeighborChapter(direction);
-    if (!target) return;
-    richEdgeJumpAt = now;
-    void selectEditorFile(target).then((selected) => {
-      if (!selected || direction !== -1) return;
-      // The previous chapter opens at its end: wait for its pages, then jump.
-      let tries = 0;
-      const toEnd = (): void => {
-        richEditorRef?.scrollToEdge("end");
-        if (++tries < 6) setTimeout(toEnd, 250);
-      };
-      setTimeout(toEnd, 100);
-    });
-  }
-
-  function onRichWheel(e: WheelEvent): void {
-    if (!richSurfaceActive || !richEditorRef || e.ctrlKey || e.metaKey) return;
-    if (Math.abs(e.deltaY) < 1) return;
-    const edge = richEditorRef.scrollEdge();
-    if (e.deltaY > 0 && edge.atEnd) richOpenNeighbor(1);
-    else if (e.deltaY < 0 && edge.atStart) richOpenNeighbor(-1);
-  }
-
-  function onRichKeydown(e: KeyboardEvent): void {
-    if (!richSurfaceActive || !richEditorRef || e.ctrlKey || e.metaKey || e.altKey) return;
-    // Unlocked, arrow keys move the caret; only paging keys read past the edge.
-    const forward = e.key === "PageDown" || (richLocked && (e.key === "ArrowDown" || e.key === " "));
-    const backward = e.key === "PageUp" || (richLocked && e.key === "ArrowUp");
-    if (!forward && !backward) return;
-    const edge = richEditorRef.scrollEdge();
-    if (forward && edge.atEnd) {
-      e.preventDefault();
-      richOpenNeighbor(1);
-    } else if (backward && edge.atStart) {
-      e.preventDefault();
-      richOpenNeighbor(-1);
-    }
   }
 
   // -- The paged editor's own context menu and image selection ---------------
@@ -3459,21 +3430,30 @@
 
   interface RichBlockHit {
     readonly el: HTMLElement;
+    /** The chapter file the block belongs to. */
+    readonly chapter: string;
     readonly start: number;
     readonly length: number;
   }
 
+  /** The chapter file an element of the book belongs to (each chapter's wrapper carries its path). */
+  function richChapterOf(target: EventTarget | null): string | null {
+    const el = target instanceof Element ? target.closest<HTMLElement>("[data-chapter-path]") : null;
+    return el?.dataset["chapterPath"] ?? null;
+  }
+
   function richBlockAt(target: EventTarget | null): RichBlockHit | null {
     const el = target instanceof Element ? target.closest<HTMLElement>(".rich-editor-host .md-block[data-gp-start]") : null;
-    if (!el) return null;
+    const chapter = richChapterOf(el);
+    if (!el || !chapter) return null;
     const start = Number(el.dataset["gpStart"]);
     const length = Number(el.dataset["gpLength"]);
-    return Number.isFinite(start) && Number.isFinite(length) ? { el, start, length } : null;
+    return Number.isFinite(start) && Number.isFinite(length) ? { el, chapter, start, length } : null;
   }
 
   /** A caret offset inside the image token `img` was rendered from, or null when the block's source has no such image (a plugin's own art). */
   function richImageOffset(img: HTMLImageElement, block: RichBlockHit): number | null {
-    const text = richDocHostCtrl.host?.getSnapshot().text;
+    const text = bookRef?.hostOf(block.chapter)?.getSnapshot().text;
     if (!text) return null;
     const blockText = text.slice(block.start, block.start + block.length);
     const index = Array.from(block.el.querySelectorAll("img")).indexOf(img);
@@ -3495,11 +3475,12 @@
     return null;
   }
 
-  /** The source start of the last stamped block whose top is above `clientY`, in document order. */
-  function richBlockStartAbove(clientY: number): number | null {
+  /** The source start of the last stamped block of `chapter` whose top is above `clientY`, in document order. */
+  function richBlockStartAbove(chapter: string, clientY: number): number | null {
     let best: number | null = null;
     let bestTop = Number.NEGATIVE_INFINITY;
     for (const el of document.querySelectorAll<HTMLElement>(".rich-editor-host .md-block[data-gp-start]")) {
+      if (richChapterOf(el) !== chapter) continue;
       const rect = el.getBoundingClientRect();
       if (rect.height === 0 || rect.top > clientY || rect.top < bestTop) continue;
       const start = Number(el.dataset["gpStart"]);
@@ -3510,19 +3491,18 @@
     return best;
   }
 
-  function lineOfOffset(offset: number): number {
-    const text = richDocHostCtrl.host?.getSnapshot().text ?? "";
+  function lineOfOffset(chapter: string, offset: number): number {
+    const text = bookRef?.hostOf(chapter)?.getSnapshot().text ?? "";
     let line = 1;
     const end = Math.min(offset, text.length);
     for (let i = 0; i < end; i++) if (text.charCodeAt(i) === 10) line += 1;
     return line;
   }
 
-  /** Open the source editor on the line the block at `offset` starts at. */
-  function editInSourceAt(offset: number): void {
-    const path = editorFilePath;
-    if (!path) return;
-    const line = lineOfOffset(offset);
+  /** Open the source editor on the line the block at `offset` of `chapter` starts at. */
+  function editInSourceAt(chapter: string, offset: number): void {
+    const path = chapter;
+    const line = lineOfOffset(chapter, offset);
     if (isNarrow) setPaneMode("edit");
     setMode("editor");
     void selectEditorFile(path).then((selected) => {
@@ -3532,26 +3512,30 @@
   }
 
   /** Put the caret in an image's token, unlocking first if needed, and open Image properties. */
-  function openRichImageAt(offset: number): void {
-    if (richLocked) setRichLocked(false);
-    richEditorRef?.setSelection(offset);
-    handleImagePropertiesAtCaret();
+  function openRichImageAt(chapter: string, offset: number): void {
+    void (async () => {
+      if (richLocked) setRichLocked(false);
+      // Unlocking remounts the chapters; the caret waits for this one.
+      await bookRef?.setSelection(chapter, offset);
+      handleImagePropertiesAtCaret();
+    })();
   }
 
   function onRichContextMenu(e: MouseEvent): void {
     if (!richSurfaceActive) return;
     const block = richBlockAt(e.target);
+    const chapter = block?.chapter ?? richChapterOf(e.target) ?? bookRef?.activePath() ?? null;
     const img = e.target instanceof HTMLImageElement ? e.target : null;
     const imageOffset = img && block ? richImageOffset(img, block) : null;
     const items: ContextMenuItem[] = [];
-    if (imageOffset !== null) {
+    if (block && imageOffset !== null) {
       items.push({
         id: "image-properties",
         label: richLocked ? "Unlock and edit image..." : "Image properties...",
         enabled: true,
         run: () => {
           richContextMenu.close();
-          openRichImageAt(imageOffset);
+          openRichImageAt(block.chapter, imageOffset);
         },
       });
     }
@@ -3581,16 +3565,19 @@
     // Always: on a block, at its start; elsewhere (the page margin, an
     // active block) at the caret if there is one, else at the nearest block
     // above the pointer, else at the top of the chapter.
-    const sourceOffset = block?.start ?? richEditorRef?.getSelection()?.from ?? richBlockStartAbove(e.clientY) ?? 0;
-    items.push({
-      id: "edit-in-source",
-      label: "Edit in source",
-      enabled: true,
-      run: () => {
-        richContextMenu.close();
-        editInSourceAt(sourceOffset);
-      },
-    });
+    if (chapter) {
+      const caret = chapter === bookRef?.activePath() ? bookRef?.getSelection()?.from : undefined;
+      const sourceOffset = block?.start ?? caret ?? richBlockStartAbove(chapter, e.clientY) ?? 0;
+      items.push({
+        id: "edit-in-source",
+        label: "Edit in source",
+        enabled: true,
+        run: () => {
+          richContextMenu.close();
+          editInSourceAt(chapter, sourceOffset);
+        },
+      });
+    }
     items.push(
       richLocked
         ? { id: "unlock", label: "Unlock to edit", enabled: true, run: () => { richContextMenu.close(); setRichLocked(false); } }
@@ -3616,7 +3603,7 @@
     if (offset === null) return;
     e.preventDefault();
     e.stopPropagation();
-    openRichImageAt(offset);
+    openRichImageAt(block.chapter, offset);
   }
 
   function onRichDoubleClick(e: MouseEvent): void {
@@ -3626,7 +3613,7 @@
     const offset = richImageOffset(e.target, block);
     if (offset === null) return;
     e.preventDefault();
-    openRichImageAt(offset);
+    openRichImageAt(block.chapter, offset);
   }
 
   /** Hide/show the viewer - the focus toggle on the source editor's toolbar (and Ctrl+Shift+F). */
@@ -4099,39 +4086,33 @@
                 oncontextmenu={onRichContextMenu}
                 onpointerdowncapture={onRichPointerDown}
                 ondblclick={onRichDoubleClick}
-                onwheel={onRichWheel}
-                onkeydown={onRichKeydown}
               >
-                {#if !editorFilePath}
-                  <div class="editor-loading" role="status" aria-live="polite">
-                    Select a chapter from the list to read it.
-                  </div>
-                {:else if RichEditorComponent && richDocHostCtrl.host}
-                  <!-- Keyed on the host itself: a fresh host means a fresh
-                       mount/dispose cycle — a real new undo epoch, not a
-                       simulated one (see richDocHostCtrl.host's own comment above). -->
-                  {#key richDocHostCtrl.host}
-                    <RichEditorComponent
-                      bind:this={richEditorRef}
-                      host={richDocHostCtrl.host}
-                      projection={richDocHostCtrl.projection ?? undefined}
-                      extraCss={richDocHostCtrl.editorCss}
-                      onDiagnostic={showRichDiagnostic}
-                      paged={true}
+                {#if BookSurfaceComponent && bookChapters.length}
+                  <!-- Keyed on the chapter list: a chapter added or removed is a new book. -->
+                  {#key bookChapters.join("\n")}
+                    <BookSurfaceComponent
+                      bind:this={bookRef}
+                      chapters={bookChapters}
+                      initialPath={editorFilePath}
                       readonly={richLocked}
                       zoom={richZoom}
                       projectDir={lifecycle.currentDir}
-                      filePath={editorFilePath}
+                      pageEstimates={bookPageEstimates}
+                      readChapter={readFileCapability}
+                      buildProjection={buildRichProjection}
+                      onSnapshotChange={onBookSnapshotChange}
+                      onActivate={onBookActivate}
+                      onDiagnostic={showRichDiagnostic}
                     />
                   {/key}
-                {:else if richEditorModuleFailed}
+                {:else if bookModuleFailed}
                   <div class="editor-loading" role="alert">
-                    <p>The rich editor failed to load.</p>
-                    <button class="primary app-btn-primary" onclick={retryRichEditorLoad}>Retry</button>
+                    <p>The book failed to load.</p>
+                    <button class="primary app-btn-primary" onclick={retryBookSurfaceLoad}>Retry</button>
                   </div>
                 {:else}
                   <div class="editor-loading" role="status" aria-live="polite">
-                    Loading rich editor…
+                    Loading the book...
                   </div>
                 {/if}
               </div>

@@ -252,8 +252,8 @@ log("CodeMirror mounted in Edit mode");
 // -- 7b. ...and the paged editor must mount in Read mode ------
 await evalJs(`document.querySelector('button[aria-label="Read"]').click(); true`);
 if (!(await waitForMount(".rich-editor-host .md-editor"))) {
-  if (await stuckOn("Loading rich editor")) {
-    fail('Editor pane is stuck on "Loading rich editor..." after the Read click - the paged editor module never loaded. This is the beta.6 regression on the rich surface: the mode switch must call loadRichEditorModule().');
+  if (await stuckOn("Loading the book")) {
+    fail('Editor pane is stuck on "Loading the book..." after the Read click - the book module never loaded. This is the beta.6 regression on the rich surface: the mode switch must call loadBookSurfaceModule().');
   }
   fail("No paged editor after 10s - the rich module did not load in Read mode");
 }

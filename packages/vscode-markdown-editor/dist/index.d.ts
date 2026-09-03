@@ -263,6 +263,13 @@ export declare interface BlockViewOptions {
      * measurements that follow see the final geometry.
      */
     readonly afterDocumentMount?: (documentElement: HTMLElement) => void;
+    /**
+     * gp-fork: renderEpoch. The render epoch every block view records when
+     * it is built; a view whose epoch differs from the current one is
+     * rebuilt on the next render even when its data is unchanged. Threaded
+     * by the view itself (see `EditorView.gpRerender`); hosts never set it.
+     */
+    readonly gpRenderEpoch?: number;
     readonly onToggleCheckbox?: (item: ListItemAstNode, newChecked: boolean) => void;
     /**
      * Supplies live, declarative metadata for recognized links. The editor owns
@@ -1372,6 +1379,13 @@ export declare class EditorView extends Disposable {
     get documentViewNode(): IObservable<DocumentViewNode | undefined>;
     /** Re-resolves embedded code editors while preserving the surrounding editor view. */
     refreshEmbeddedCodeEditors(): void;
+    /**
+     * gp-fork: renderEpoch. Rebuild every block view on the next render,
+     * keeping the model, its selection and its edit history: for a host
+     * whose `renderCustomBlock` now answers differently (a refreshed
+     * projection) and needs the blocks built under the old answer retired.
+     */
+    gpRerender(): void;
     /**
      * Last frame's view-data overlay, threaded back into
      * {@link buildDocumentViewData} so any subtree whose ast and selection flags

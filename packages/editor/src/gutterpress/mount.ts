@@ -66,6 +66,14 @@ export interface GutterpressEditorMount {
   setReadonly(readonly: boolean): void;
   /** See `EditorMount.setSelection` - places the caret as a click there would. */
   setSelection(from: number, to?: number): void;
+  /**
+   * Swap in a projection built for the document's CURRENT text and rebuild
+   * every block view against it, keeping the caret, the scroll and the
+   * edit history. This is how an edit stays rich: the host rebuilds the
+   * projection once the author pauses, and the blocks that fell through to
+   * the fork's own rendering while it was stale come back as chips.
+   */
+  refreshProjection(projection: GutterpressProjection): void;
 }
 
 /**
@@ -100,21 +108,22 @@ export function mountGutterpressEditor(
     options.onDiagnostic?.(diagnosticForProjection(diagnostic));
   }
 
-  const isStale = (): boolean => projectionNeedsRefresh(options.projection, host.getSnapshot().version);
+  let projection = options.projection;
+  const isStale = (): boolean => projectionNeedsRefresh(projection, host.getSnapshot().version);
 
   // The lock is a live value, not the one this mount opened with: the host
   // toggles it through `setReadonly` and the provider is consulted on every
   // render after that.
   let locked = options.readonly ?? false;
-  const provider = createGutterpressBlockProvider(options.projection, {
+  const provider = createGutterpressBlockProvider(projection, {
     source: host.getSnapshot().text,
     ownerDocument: doc,
     isStale,
     isLocked: () => locked,
   });
 
-  const pipelineAttributes = buildPipelineAttributeIndex(options.projection, host.getSnapshot().text);
-  const inlineWrappers = buildInlineWrapperIndex(options.projection, host.getSnapshot().text);
+  let pipelineAttributes = buildPipelineAttributeIndex(projection, host.getSnapshot().text);
+  let inlineWrappers = buildInlineWrapperIndex(projection, host.getSnapshot().text);
 
   // The unlocked view's margin tags (marker-tags.ts): one overlay per mount,
   // installed the first time the document mounts and re-anchored after every
@@ -155,11 +164,14 @@ export function mountGutterpressEditor(
         // A chip is hidden from the flow (editor-css.ts); its margin tag
         // needs an offset INSIDE the marker line to open it on a click. The
         // block's own start may be the blank line before the marker, and a
-        // caret there belongs to the block above; one past the marker's
-        // first character is unambiguously this block's.
+        // caret there belongs to the block above. The END of the marker's
+        // first line is where an author adds to a marker, and it keeps the
+        // caret off the newline after it: typing past that newline puts the
+        // text on the next line, under the marker instead of in it.
         if (element.classList.contains("gp-block-chip")) {
           const lead = sourceText.length - sourceText.trimStart().length;
-          element.setAttribute(CHIP_CARET_ATTR, String(absoluteStart + lead + 1));
+          const firstLine = sourceText.trimStart().split("\n")[0] ?? "";
+          element.setAttribute(CHIP_CARET_ATTR, String(absoluteStart + lead + firstLine.length));
         }
         // Every inactive block carries its source range too, so a host can
         // map a right-click or an image click on any block back to source.
@@ -218,5 +230,13 @@ export function mountGutterpressEditor(
     getSelection: (): { readonly from: number; readonly to: number } | undefined => mount.getSelection(),
     revealRange: (from: number, to?: number): void => mount.revealRange(from, to),
     setSelection: (from: number, to?: number): void => mount.setSelection(from, to),
+    refreshProjection: (next: GutterpressProjection): void => {
+      projection = next;
+      const text = host.getSnapshot().text;
+      provider.update(next, text);
+      pipelineAttributes = buildPipelineAttributeIndex(next, text);
+      inlineWrappers = buildInlineWrapperIndex(next, text);
+      mount.rerender();
+    },
   };
 }

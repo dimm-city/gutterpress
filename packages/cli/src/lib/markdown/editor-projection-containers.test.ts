@@ -183,6 +183,48 @@ describe("collectPluginContainers", () => {
     // It keeps its own evidence, so it is an authored block, not a wrapper.
     expect(anchors('<div class="colophon-grid">\n\nBody.\n\n</div>\n')).toEqual([]);
   });
+
+  test("a wrapper a plugin inserts around authored blocks raises no diagnostic", () => {
+    // The card body opens AFTER the heading and consumes nothing, so there is
+    // no run to recover its range from - and it needs none: it shows nothing
+    // of its own, and it is mounted around the blocks it holds. This used to
+    // raise one "cannot be shown here" notice per card, on every open.
+    const projection = project("#### One\n\nA.\n\n#### Two\n\nB.\n");
+    expect(projection.diagnostics).toEqual([]);
+    expect(projection.pluginContainers.map((c) => [c.attributes["class"], c.open.text])).toEqual([
+      ["dc-skill-card", "#### One"],
+      ["dc-card-body", "A."],
+      ["dc-skill-card", "#### Two"],
+      ["dc-card-body", "B."],
+    ]);
+  });
+
+  test("inserted HTML that shows content of its own is still a diagnostic", () => {
+    // Text the page shows and the editor cannot place is the case the notice
+    // exists for; a bare wrapper is not.
+    const insertPlugin: GutterpressPlugin = (md) => {
+      md.core.ruler.after("layout_transform", "insert_note", (state) => {
+        const out: typeof state.tokens = [];
+        for (let i = 0; i < state.tokens.length; i++) {
+          const tok = state.tokens[i]!;
+          out.push(tok);
+          if (tok.type === "heading_close") {
+            const html = new state.Token("html_block", "", 0);
+            html.content = '<p class="note">Inserted by the plugin.</p>\n';
+            out.push(html);
+          }
+        }
+        state.tokens = out;
+      });
+    };
+    const projection = createEditorProjection("## Title\n\nBody.\n", {
+      sourceVersion: 1,
+      md: createMarkdownRenderer([{ name: "insert", plugin: insertPlugin, options: {} }]),
+      trusted: true,
+    });
+    expect(projection.diagnostics).toHaveLength(1);
+    expect(projection.diagnostics[0]!.reason).toContain("none could be recovered");
+  });
 });
 
 describe("collectBlockAttributes", () => {

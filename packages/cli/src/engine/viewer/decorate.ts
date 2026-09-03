@@ -68,6 +68,8 @@ export interface DecorationApi {
   targets: Map<string, number>;
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
+  /** See the `pageOffset` option: change it and redraw, for a host whose earlier chapters just re-paginated. */
+  setPageOffset(offset: number): void;
   warnings: string[];
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
@@ -139,9 +141,20 @@ export function decorate(
      * app's body and the whole window is inset and scrolls.
      */
     stage?: HTMLElement;
+    /**
+     * How many book pages come BEFORE this layout's first page. The preview
+     * paginates the whole book as one flow and needs none; a host that
+     * paginates the book chapter by chapter (the desktop's Read view) passes
+     * the page count of the chapters above, so folios, `data-page` and
+     * cross-reference pages continue through the book instead of restarting
+     * at 1 in every chapter. A `counter-reset: page N` inside this layout
+     * still wins from the page it sits on.
+     */
+    pageOffset?: number;
   } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
+  let pageOffset = opts.pageOffset ?? 0;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
   const warnings: string[] = [];
@@ -152,6 +165,11 @@ export function decorate(
     targets: new Map(),
     pageNumbers: [],
     warnings,
+    setPageOffset(offset) {
+      if (offset === pageOffset) return;
+      pageOffset = offset;
+      draw();
+    },
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
@@ -237,7 +255,12 @@ export function decorate(
         if (page >= 0) resets.push({ page: page + 1, start: r.start });
       }
     }
-    api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+    // Pages before the first restart continue from the chapters above
+    // (`pageOffset`); a restart sets the counter absolutely, as on the page.
+    const firstReset = resets.length ? Math.min(...resets.map((r) => r.page)) : Number.POSITIVE_INFINITY;
+    api.pageNumbers = resets.length
+      ? pageCounterValues(resets, layout.totalPages).map((value, i) => (i + 1 < firstReset ? value + pageOffset : value))
+      : [];
     const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
 
     // cross-reference targets: any id that is linked to
@@ -248,7 +271,7 @@ export function decorate(
       const el = elementForHref(href);
       if (!el) continue;
       const [page] = pageRangeOf(el, layout.strips);
-      if (page >= 0) api.targets.set(href, toFolioPage(page + 1, pageValues));
+      if (page >= 0) api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
     }
   }
 
@@ -406,7 +429,7 @@ export function decorate(
 
         const sheet = document.createElement("div");
         sheet.className = "gp-sheet";
-        sheet.dataset.page = String(bookIndex + 1);
+        sheet.dataset.page = String(bookIndex + 1 + pageOffset);
         // Recto = odd 1-based page (page 1 is a recto).
         sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
         sheet.style.left = `${sheetLeft}px`;
@@ -474,7 +497,7 @@ export function decorate(
       const decls = ctx.marginBoxes[`@${name}`];
       if (!decls?.content) continue;
       const text = evaluate(decls.content, {
-        page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
+        page: api.pageNumbers[ctx.index] ?? ctx.index + 1 + pageOffset,
         pages: totalPages,
         strings: (n, w) => stringAt(n, w, ctx.index),
         targetPage: (url) => api.targets.get(url),

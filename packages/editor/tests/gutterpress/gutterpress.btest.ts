@@ -131,10 +131,11 @@ async function openMarkerAt(chipIndex: number, charIndex: number) {
   const pt = await markerTagPoint(chipIndex);
   await harness.page.mouse.click(pt.x, pt.y);
   await harness.page.waitForTimeout(50);
-  // The tag opens the marker with the caret one past its first character
-  // (mount.ts stamps that offset on the chip), so `charIndex` more steps
-  // land after character `charIndex`.
-  for (let i = 0; i < charIndex; i++) await harness.page.keyboard.press("ArrowRight");
+  // The tag opens the marker with the caret at the END of its first line
+  // (mount.ts stamps that offset on the chip); Home puts it at the line's
+  // start, and `charIndex + 1` steps land after character `charIndex`.
+  await harness.page.keyboard.press("Home");
+  for (let i = 0; i <= charIndex; i++) await harness.page.keyboard.press("ArrowRight");
 }
 async function generatedPreviewAcceptsFocus(chipIndex: number): Promise<boolean> {
   return harness.page.evaluate((c) => window.__gpGutterpress.generatedPreviewAcceptsFocus(c), chipIndex);
@@ -150,6 +151,9 @@ async function hostVersion(): Promise<number> {
 }
 async function needsRefresh(): Promise<boolean> {
   return harness.page.evaluate(() => window.__gpGutterpress.needsRefresh());
+}
+async function refreshFromHost(): Promise<void> {
+  await harness.page.evaluate(() => window.__gpGutterpress.refreshFromHost());
 }
 async function scriptRan(): Promise<boolean> {
   return harness.page.evaluate(() => window.__gpcScriptRan === true);
@@ -448,6 +452,110 @@ describe("edit locality on the marker line, then G-11 staleness once the host ve
     // pins is specifically that the EDITED block never shows a chip again.
     const editedBlockClassName = await blockClassName(PAGE_CHIP_INDEX);
     expect(editedBlockClassName).not.toContain("gp-block-chip");
+  });
+
+  test("refreshProjection with a projection for the edited text brings the chip back, keeping the caret and the focus", async () => {
+    await mount(FIXTURE_SOURCE);
+    await requireCounts(TOTAL_BLOCK_COUNT, TOTAL_CHIP_COUNT);
+
+    await openMarkerAt(PAGE_CHIP_INDEX, 6);
+    await harness.page.keyboard.type("X");
+    await harness.page.waitForTimeout(50);
+    await clickBlock(TRAIL_BLOCK_INDEX);
+    await harness.page.waitForTimeout(50);
+    expect(await needsRefresh()).toBe(true);
+    expect(await blockClassName(PAGE_CHIP_INDEX)).not.toContain("gp-block-chip");
+    const caretBefore = await selectionOffsets();
+    expect(caretBefore).toBeDefined();
+
+    // The host-side refresh an edit triggers: a projection for the CURRENT
+    // text, swapped into the live mount. No remount - the caret the click
+    // placed is still there afterwards, and so is the focus.
+    await refreshFromHost();
+    await harness.page.waitForTimeout(50);
+    expect(await needsRefresh()).toBe(false);
+    expect(await blockClassName(PAGE_CHIP_INDEX)).toContain("gp-block-chip");
+    expect(await chipCount()).toBe(TOTAL_CHIP_COUNT);
+    expect(await selectionOffsets()).toEqual(caretBefore);
+    expect(await hostText()).toContain("@page sXplash");
+
+    // Typing continues where the caret was: the refresh took neither the
+    // caret nor the focus. (Undo is not exercised here: the fork leaves the
+    // undo chord to its host, so a keypress in this harness reaches nothing.)
+    await harness.page.keyboard.type("Y");
+    await harness.page.waitForTimeout(50);
+    const typed = await hostText();
+    expect(typed).toContain("Y");
+    expect(typed.indexOf("Y")).toBe(caretBefore!.from);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A marker with text on the line right under it: marker plus paragraph
+// ---------------------------------------------------------------------------
+
+describe("a marker line followed directly by text", () => {
+  test("typed past the marker's newline in the editor, the text becomes the paragraph under the marker once the projection refreshes", async () => {
+    await mount("@section intro\n\nBody.\n\n@end-section\n\nAfter.\n");
+    await harness.page.waitForSelector(".gp-marker-tag", { timeout: 2000 });
+    // The section's own tag, by its center: with only one block between the
+    // opener and its closer, the two tags hang side by side at the same
+    // height, and a point near one tag's edge can land on the other.
+    const pt = await harness.page.evaluate(() => {
+      const tag = document.querySelector<HTMLElement>('.gp-marker-tag[data-gp-kind="section"]')!;
+      const r = tag.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await harness.page.mouse.click(pt.x, pt.y);
+    await harness.page.waitForTimeout(50);
+    expect(await selectionOffsets()).toEqual({ from: 14, to: 14 });
+    await harness.page.keyboard.press("End");
+    await harness.page.keyboard.type("Under");
+    await harness.page.waitForTimeout(50);
+    expect(await hostText()).toContain("@section intro\nUnder\n");
+    // Deactivate: click the trailing paragraph, found by its text after the
+    // edit (the edit changed which block sits at which index).
+    const after = await harness.page.evaluate(() => {
+      const block = [...document.querySelectorAll<HTMLElement>("#gp-gutterpress-mount .md-block")].find((b) => b.textContent?.includes("After."))!;
+      const r = block.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await harness.page.mouse.click(after.x, after.y);
+    await harness.page.waitForTimeout(50);
+    await refreshFromHost();
+    await harness.page.waitForTimeout(100);
+    const shape = await harness.page.evaluate(() => {
+      const root = document.getElementById("gp-gutterpress-mount")!;
+      const first = root.querySelector(".md-block")!;
+      return { className: first.className, text: first.querySelector(".gp-block-chip__text")?.textContent ?? null, kinds: [...root.querySelectorAll(".md-block")].map((b) => b.className.split(" ").slice(0, 3).join(" ")) };
+    });
+    expect(shape.className).toContain("gp-block-chip--text");
+    // The paragraph under the marker starts with what was typed; whether the
+    // caret's hop also took the blank line under it (and so pulled "Body."
+    // into the same paragraph) is the fork's own End behaviour, and either
+    // way the page renders exactly this paragraph under the marker.
+    expect(shape.text?.startsWith("Under")).toBe(true);
+    expect(await hostText()).toMatch(/@section intro\nUnder/);
+  });
+
+
+  test("renders the text as the paragraph under the marker, inside the marker's own container", async () => {
+    await mount("@section intro\ntext under it\n\nBody.\n\n@end-section\n\nAfter.\n");
+    const shape = await harness.page.evaluate(() => {
+      const root = document.getElementById("gp-gutterpress-mount")!;
+      const first = root.querySelector(".md-block")!;
+      const section = root.querySelector(".section");
+      return {
+        className: first.className,
+        text: first.querySelector(".gp-block-chip__text")?.textContent ?? null,
+        insideSection: !!section && section.contains(first),
+        markerVisible: getComputedStyle(first.querySelector(".gp-block-chip__tag")!).display,
+      };
+    });
+    expect(shape.className).toContain("gp-block-chip--text");
+    expect(shape.text).toBe("text under it");
+    expect(shape.insideSection).toBe(true);
+    expect(shape.markerVisible).toBe("none");
   });
 });
 

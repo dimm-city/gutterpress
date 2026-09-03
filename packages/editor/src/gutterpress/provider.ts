@@ -48,7 +48,7 @@ import { htmlFragmentNesting, markerElementAttributes, parseMarkerLine } from "g
 import type { GutterpressProjection, ProjectedBlock, ProjectedBlockKind } from "gutterpress/render";
 import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh, type BlockIndex } from "./match.ts";
 import { buildChipPlan } from "./plan.ts";
-import { renderChipPlan, renderCloseMarkerChip, renderContainerTagChip } from "./render-chip.ts";
+import { attachTrailingText, renderChipPlan, renderCloseMarkerChip, renderContainerTagChip } from "./render-chip.ts";
 
 export interface CreateGutterpressBlockProviderOptions {
   readonly source: string;
@@ -78,6 +78,13 @@ export interface GutterpressBlockProvider {
   /** Fork Patch 3 hook: the container runs (`@section`…`@end-section`, `@page`, `@spread`, `@chapter` scopes) to mount inside real `div.section`/`div.page`/… wrappers carrying the print pipeline's own classes and attributes. */
   readonly groupBlocks: (blocks: readonly BlockGroupCandidate[]) => readonly BlockGroupSpec[] | undefined;
   readonly needsRefresh: (currentVersion: number) => boolean;
+  /**
+   * Swap in a projection built for the document's CURRENT text. Every
+   * render after this answers from the new projection; the host then asks
+   * the fork to rebuild its block views (`rerender`), so the blocks built
+   * while the old projection was stale are retired.
+   */
+  readonly update: (projection: GutterpressProjection, source: string) => void;
 }
 
 /**
@@ -112,32 +119,53 @@ interface ParsedMarker {
   readonly unknownKind?: boolean;
 }
 
+interface MarkerBlock {
+  readonly markers: ParsedMarker[];
+  /**
+   * Text on the lines right after the markers, with no blank line between:
+   * the pipeline reads markers line by line, so it renders these lines as a
+   * paragraph after the marker (`@section` then `text` is a section holding
+   * the paragraph `text`). Null when the block is markers only.
+   */
+  readonly trailing: string | null;
+}
+
+const NOT_A_MARKER: MarkerBlock = { markers: [], trailing: null };
+
 /**
  * Marker lines are classified from TEXT with the pipeline's own grammar
  * (`parseMarkerLine`, the exact function `layout_transform` runs), never
  * from a projection snapshot: the editor's document changes on every
  * keystroke and a marker must keep rendering as a marker through all of
- * them. A marker is a single-line paragraph whose first character is `@`.
+ * them. A marker block is a paragraph whose first character is `@`: its
+ * leading lines are markers, and any lines after them are the paragraph
+ * the pipeline renders under the marker (see `MarkerBlock.trailing`) - the
+ * shape an author produces by typing on the line right after a marker.
  */
-function markersOf(node: { readonly kind: string } | undefined, sourceText: string): ParsedMarker[] {
-  if (node && node.kind !== "paragraph") return [];
+function markerBlockOf(node: { readonly kind: string } | undefined, sourceText: string): MarkerBlock {
+  if (node && node.kind !== "paragraph") return NOT_A_MARKER;
   const lines = sourceText.trim().split("\n");
-  if (!lines.length || !lines[0]!.startsWith("@")) return [];
+  if (!lines.length || !lines[0]!.startsWith("@")) return NOT_A_MARKER;
   const markers: ParsedMarker[] = [];
-  for (const line of lines) {
+  let i = 0;
+  for (; i < lines.length; i++) {
     // `allowUnknownKinds`: a project plugin's own marker (`@lede`, `@toc`) is
     // layout syntax the book consumes, exactly like a core one. Classifying
-    // it as a marker is what keeps it off the editor's page — as body text
+    // it as a marker is what keeps it off the editor's page - as body text
     // it adds a line the printed page does not have. Only core kinds get
     // structure (containers, breaks) below; an unknown kind gets a chip and
     // nothing else, because core cannot know what the plugin did with it.
-    const parsed = parseMarkerLine(line.trim(), { allowUnknownKinds: true }) as ParsedMarker | null;
-    // EVERY line has to be a marker, or this is prose that merely starts
-    // with one.
-    if (!parsed) return [];
+    const parsed = parseMarkerLine(lines[i]!.trim(), { allowUnknownKinds: true }) as ParsedMarker | null;
+    if (!parsed) break;
     markers.push(parsed);
   }
-  return markers;
+  if (!markers.length) return NOT_A_MARKER;
+  if (i === lines.length) return { markers, trailing: null };
+  // Text under the markers. Only a kind core owns splits this way: the
+  // pipeline leaves prose that merely starts with an unknown `@word` as
+  // prose, and so does the editor.
+  if (markers.some((m) => m.unknownKind)) return NOT_A_MARKER;
+  return { markers, trailing: lines.slice(i).join("\n") };
 }
 
 const scopeKindOf = (marker: ParsedMarker): string => (marker.kind === "continue" ? "section" : marker.kind);
@@ -172,7 +200,8 @@ export function createGutterpressBlockProvider(
   projection: GutterpressProjection,
   opts: CreateGutterpressBlockProviderOptions,
 ): GutterpressBlockProvider {
-  const index: BlockIndex = buildBlockIndex(projection, opts.source);
+  let current = projection;
+  let index: BlockIndex = buildBlockIndex(projection, opts.source);
   /** AST ids of this render's top-level blocks, from `groupBlocks`. */
   let topLevel: ReadonlySet<number> = new Set();
 
@@ -193,12 +222,13 @@ export function createGutterpressBlockProvider(
     // lines are two markers — while this editor's parser sees one paragraph.
     // Rejecting a multi-line block left `@page`/`@section` written without a
     // blank line between them printed as body text on the editor's page.
-    const markers = topLevel.has(node.id) ? markersOf(node, sourceText) : [];
+    const { markers, trailing } = topLevel.has(node.id) ? markerBlockOf(node, sourceText) : NOT_A_MARKER;
     const marker = markers[0];
     if (marker) {
+      let rendering: CustomBlockRendering;
       if (markers.length === 1 && (marker.kind === "end-section" || closedKindOf(marker))) {
-        return renderCloseMarkerChip(opts.ownerDocument, sourceText);
-      }
+        rendering = renderCloseMarkerChip(opts.ownerDocument, sourceText);
+      } else {
       // The projection is still the authority when it recognizes this exact
       // line: it carries the pipeline's own generated views (a `@page`
       // marker's chapter-opener, for instance), which text alone cannot
@@ -215,7 +245,12 @@ export function createGutterpressBlockProvider(
         editMode: "structured",
         viewAttributes: markerElementAttributes(marker),
       };
-      return renderChipPlan(buildChipPlan(block, match?.generatedPreviews ?? [], sourceText), opts.ownerDocument);
+      rendering = renderChipPlan(buildChipPlan(block, match?.generatedPreviews ?? [], sourceText), opts.ownerDocument);
+      }
+      // The paragraph the page renders under the marker stays on the page
+      // here too; the chip itself keeps no box.
+      if (trailing !== null) attachTrailingText(rendering, trailing, opts.ownerDocument);
+      return rendering;
     }
 
     // A raw HTML tag that opens or closes a container is mounted as the
@@ -259,8 +294,9 @@ export function createGutterpressBlockProvider(
    */
   function groupBlocks(blocks: readonly BlockGroupCandidate[]): readonly BlockGroupSpec[] | undefined {
     topLevel = new Set(blocks.map((candidate) => candidate.ast.id));
+    const markerBlocks = blocks.map((candidate) => markerBlockOf(candidate.ast, candidate.sourceText));
     /** Every marker each top-level block carries, in source order. */
-    const markers = blocks.map((candidate) => markersOf(candidate.ast, candidate.sourceText));
+    const markers = markerBlocks.map((block) => block.markers);
     /** Does any marker in block `i` close a scope of `kind`? */
     const closesAt = (i: number, closers: ReadonlySet<string>): boolean =>
       markers[i]!.some((m) => !m.unknownKind && closers.has(scopeKindOf(m)));
@@ -300,11 +336,14 @@ export function createGutterpressBlockProvider(
         end += 1;
       }
       const { class: className, ...attributes } = attrs;
+      // A marker block that carries the paragraph under its marker is the
+      // first block INSIDE the container, as that paragraph is on the page.
+      const start = markerBlocks[i]!.trailing !== null ? i : i + 1;
       // The key carries the KIND as well as the block: one block can open
       // two scopes (`@page` and `@section` on consecutive lines), and two
       // groups sharing a key would be one wrapper reused for both.
-      if (end > i + 1) {
-        groups.push({ start: i + 1, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
+      if (end > start) {
+        groups.push({ start, end, key: `${kind}:${blocks[i]!.ast.id}`, className, attributes });
       }
       }
     });
@@ -336,7 +375,7 @@ export function createGutterpressBlockProvider(
     // nests equal ranges in. A wrapper whose anchor is not in this render
     // (its block was just edited) is left out until the projection catches
     // up, never guessed.
-    (projection.pluginContainers ?? []).forEach((container, i) => {
+    (current.pluginContainers ?? []).forEach((container, i) => {
       const start = locate(container.open);
       if (start < 0) return;
       const end = container.close ? locate(container.close) : blocks.length;
@@ -374,6 +413,10 @@ export function createGutterpressBlockProvider(
   return {
     renderCustomBlock,
     groupBlocks,
-    needsRefresh: (currentVersion: number) => projectionNeedsRefresh(projection, currentVersion),
+    needsRefresh: (currentVersion: number) => projectionNeedsRefresh(current, currentVersion),
+    update: (next: GutterpressProjection, source: string): void => {
+      current = next;
+      index = buildBlockIndex(next, source);
+    },
   };
 }

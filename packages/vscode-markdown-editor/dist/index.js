@@ -3759,7 +3759,10 @@ function Or(n, e) {
 }
 class T extends oe {
   constructor(e, t, s) {
-    super(e.ast, t, s), this.data = e;
+    /* gp-fork: renderEpoch - remember the epoch this view was built under,
+     * so a host that changed what `renderCustomBlock` answers can retire
+     * every view built before the change. See PATCHES.md Patch 7. */
+    super(e.ast, t, s), this.data = e, this._gpRenderEpoch = t?.gpRenderEpoch;
   }
   get block() {
     return this.data.ast;
@@ -3788,7 +3791,9 @@ class T extends oe {
    * whole subtree, and any session it owns, are kept as-is.
    */
   canReuse(e, t) {
-    return this.data === e;
+    /* gp-fork: renderEpoch - a view from an earlier epoch is rebuilt even
+     * when its data is unchanged. See PATCHES.md Patch 7. */
+    return this.data === e && this._gpRenderEpoch === t?.gpRenderEpoch;
   }
   /**
    * Called by the view after this block is mounted and measured, with the
@@ -6104,6 +6109,9 @@ class gl extends H {
    */
   _document = x(this, void 0);
   _embeddedCodeEditorFactoryVersion = x(this, 0);
+  /* gp-fork: renderEpoch - bumped by `gpRerender()`; every block view is
+   * rebuilt on the next render. See PATCHES.md Patch 7. */
+  _gpRenderEpoch = x(this, 0);
   /** The current view-node tree (AST overlaid with rendered DOM), for debugging. */
   get documentViewNode() {
     return this._document;
@@ -6111,6 +6119,12 @@ class gl extends H {
   /** Re-resolves embedded code editors while preserving the surrounding editor view. */
   refreshEmbeddedCodeEditors() {
     this._embeddedCodeEditorFactoryVersion.set(this._embeddedCodeEditorFactoryVersion.get() + 1, void 0);
+  }
+  /* gp-fork: renderEpoch - rebuild every block view on the next render,
+   * keeping the model, its selection and its history. See PATCHES.md
+   * Patch 7. */
+  gpRerender() {
+    this._gpRenderEpoch.set(this._gpRenderEpoch.get() + 1, void 0);
   }
   /**
    * Last frame's view-data overlay, threaded back into
@@ -6476,7 +6490,7 @@ class gl extends H {
   }
   // ----- render autorun ------------------------------------------------
   _renderAutorun = (e) => {
-    const t = e.readObservable(this._model.document), s = e.readObservable(this._model.sourceText).value, i = e.readObservable(this._model.markerVisibleBlocks), o = e.readObservable(this.forcedMarkerVisibleBlocks), r = o.size === 0 ? i : /* @__PURE__ */ new Set([...i, ...o]), c = e.readObservable(this._model.selection), a = e.readObservable(this._model.pendingParagraph), l = e.readObservable(this._model.diff), d = e.readObservable(this._model.readonlyMode), u = e.readObservable(this._embeddedCodeEditorFactoryVersion);
+    const t = e.readObservable(this._model.document), s = e.readObservable(this._model.sourceText).value, i = e.readObservable(this._model.markerVisibleBlocks), o = e.readObservable(this.forcedMarkerVisibleBlocks), r = o.size === 0 ? i : /* @__PURE__ */ new Set([...i, ...o]), c = e.readObservable(this._model.selection), a = e.readObservable(this._model.pendingParagraph), l = e.readObservable(this._model.diff), d = e.readObservable(this._model.readonlyMode), u = e.readObservable(this._embeddedCodeEditorFactoryVersion), gpEpoch = e.readObservable(this._gpRenderEpoch);
     this.editContext.text !== s && this.editContext.updateText(0, this.editContext.text.length, s);
     const h = c?.range;
     this.editContext.updateSelection(h?.start ?? 0, h?.endExclusive ?? 0);
@@ -6496,7 +6510,10 @@ class gl extends H {
     this._previousViewData = m;
     const g = l ? _c(m, l.items, this._options?.diffDecorationsActive) : m;
     this._viewData.set(g, void 0);
-    const _ = this._options?.embeddedCodeEditorFactory ? { ...this._options, embeddedCodeEditorReadOnly: d, embeddedCodeEditorFactoryVersion: u } : this._options, p = sn.create(g, _, f);
+    /* gp-fork: renderEpoch - thread the epoch to every block view through
+     * the options it is built with, untouched while it is still 0. See
+     * PATCHES.md Patch 7. */
+    const gpBase = this._options?.embeddedCodeEditorFactory ? { ...this._options, embeddedCodeEditorReadOnly: d, embeddedCodeEditorFactoryVersion: u } : this._options, _ = gpEpoch === 0 ? gpBase : { ...gpBase, gpRenderEpoch: gpEpoch }, p = sn.create(g, _, f);
     if (f) {
       if (p.contentDomNode !== f.contentDomNode)
         throw new Error("DocumentViewNode.contentDomNode must be stable across rebuilds");

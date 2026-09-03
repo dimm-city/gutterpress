@@ -132,6 +132,14 @@ export interface VscodeEditorAdapter {
   dispose(): void;
 
   /**
+   * Rebuild every block view on the next render, keeping the model, its
+   * selection and its edit history (fork Patch 7). For a host whose
+   * `renderCustomBlock` now answers differently: the blocks built under
+   * the old answer are retired without a remount.
+   */
+  rerender(): void;
+
+  /**
    * SFE-P3ab (Lane C) — the fork's LIVE caret/selection, as UTF-16 source
    * offsets over the same text `host` owns (D3's `SourceEdit`/
    * `DocumentSnapshot` offset convention), or `undefined` when the model has
@@ -391,6 +399,11 @@ export function createVscodeEditorAdapter(
 
     revealRange(from: number, to: number = from): void {
       view.revealRangeInCenterIfOutsideViewport(OffsetRange.fromTo(from, Math.max(from, to)));
+    },
+
+    rerender(): void {
+      if (disposed) return;
+      view.gpRerender();
     },
 
     setSelection(from: number, to: number = from): void {

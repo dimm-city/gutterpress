@@ -562,6 +562,20 @@ function openersWithContent(html: string): boolean[] {
   return open.map((o) => o.content);
 }
 
+/**
+ * HTML that is nothing but container tags: an opener a plugin inserted
+ * around the authored blocks that follow it (a card's `<div class="body">`
+ * after the card's heading), or the closer that ends such a wrapper. It has
+ * no content of its own to place on the page, so it needs no source range:
+ * {@link collectPluginContainers} anchors it to the authored blocks around
+ * it, which is exactly where the page has it.
+ */
+function isBareWrapper(html: string): boolean {
+  const { opened, closed } = htmlFragmentNesting(html);
+  if (!opened.length && !closed) return false;
+  return !html.replace(TAG_RE, "").trim();
+}
+
 /** The 1-based source line a layout token's marker was on (`markers.js` threads it as `meta.line`), if known. */
 function layoutTokenLine(token: Token): number | null {
   const line = (token.meta as { line?: unknown } | null)?.line;
@@ -1662,6 +1676,13 @@ export function createEditorProjection(
           recoveredTokens.set(token, [from, to]);
           continue;
         }
+        // A wrapper the plugin INSERTED rather than built from a consumed
+        // run (a card body opened after the card's heading) has no run to
+        // recover, and needs none: it shows nothing of its own, and
+        // `collectPluginContainers` mounts it around the authored blocks it
+        // holds. Only HTML with content the page shows is a block the editor
+        // cannot place.
+        if (isBareWrapper(token.content)) continue;
         diagnostics.push({
           category: "EDITOR_UNSUPPORTED_PROJECTION",
           reason:

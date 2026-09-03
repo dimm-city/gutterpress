@@ -2032,6 +2032,7 @@
   }
   function decorate(layout, opts = {}) {
     const model = layout.model;
+    let pageOffset = opts.pageOffset ?? 0;
     const sheets = new Map;
     let blankPages = new Set;
     const warnings = [];
@@ -2042,6 +2043,12 @@
       targets: new Map,
       pageNumbers: [],
       warnings,
+      setPageOffset(offset) {
+        if (offset === pageOffset)
+          return;
+        pageOffset = offset;
+        draw();
+      },
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       }
@@ -2108,7 +2115,8 @@
             resets.push({ page: page + 1, start: r.start });
         }
       }
-      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+      const firstReset = resets.length ? Math.min(...resets.map((r) => r.page)) : Number.POSITIVE_INFINITY;
+      api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages).map((value, i) => i + 1 < firstReset ? value + pageOffset : value) : [];
       const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
       const linked = new Set;
       for (const a of Array.from(document.querySelectorAll("a[href^='#']")))
@@ -2119,7 +2127,7 @@
           continue;
         const [page] = pageRangeOf(el, layout.strips);
         if (page >= 0)
-          api.targets.set(href, toFolioPage(page + 1, pageValues));
+          api.targets.set(href, pageValues ? toFolioPage(page + 1, pageValues) : page + 1 + pageOffset);
       }
     }
     function stringAt(name, which, page) {
@@ -2220,7 +2228,7 @@
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "gp-sheet";
-          sheet.dataset.page = String(bookIndex + 1);
+          sheet.dataset.page = String(bookIndex + 1 + pageOffset);
           sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
@@ -2252,7 +2260,7 @@
         if (!decls?.content)
           continue;
         const text = evaluate(decls.content, {
-          page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
+          page: api.pageNumbers[ctx.index] ?? ctx.index + 1 + pageOffset,
           pages: totalPages,
           strings: (n, w) => stringAt(n, w, ctx.index),
           targetPage: (url) => api.targets.get(url)

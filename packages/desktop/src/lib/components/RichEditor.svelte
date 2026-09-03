@@ -58,6 +58,7 @@
     projectDir = null,
     filePath = null,
     zoom = "fit-width",
+    stacked = false,
   }: {
     /**
      * The document this mount reads/writes through — the D3/D7
@@ -91,6 +92,12 @@
     filePath?: string | null;
     /** The zoom the pages open at: `"fit-width"` or a scale. Later changes go through `setZoom`. */
     zoom?: string;
+    /**
+     * One chapter of a book laid out as a stack (`BookSurface.svelte`): this
+     * host sizes to its pages instead of filling the pane, and the fork's
+     * content container stops scrolling so the book's own scroller does.
+     */
+    stacked?: boolean;
   } = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
@@ -112,6 +119,7 @@
         revealRange(from: number, to?: number): void;
         setReadonly(readonly: boolean): void;
         setSelection(from: number, to?: number): void;
+        refreshProjection(projection: GutterpressProjection): void;
       }
     | undefined;
   /** The paged surface of the current mount, for the workspace's zoom control. */
@@ -163,7 +171,7 @@
             surface?.onDocumentMount(documentElement);
           },
         })
-      : mountEditor(container, host, { readonly, extraCss, onDiagnostic, showReadonlyToggle: false });
+      : { ...mountEditor(container, host, { readonly, extraCss, onDiagnostic, showReadonlyToggle: false }), refreshProjection: () => {} };
     mountHandle = mount;
     return () => {
       mountHandle = undefined;
@@ -201,23 +209,18 @@
     surfaceHandle?.setZoom(next);
   }
 
-  /** The fork's scrolling content container, which the paged surface makes the stage. */
-  function scroller(): HTMLElement | null {
-    return container?.querySelector<HTMLElement>(".md-editor-content") ?? null;
+  /** Book pages before this document's first page, so its folios continue from the chapters above (see `PagedSurface.setPageOffset`). */
+  export function setPageOffset(offset: number): void {
+    surfaceHandle?.setPageOffset(offset);
   }
 
-  /** How far the pages are scrolled: at the start, at the end, both (nothing to scroll), or in between. */
-  export function scrollEdge(): { atStart: boolean; atEnd: boolean } {
-    const el = scroller();
-    if (!el) return { atStart: true, atEnd: true };
-    return { atStart: el.scrollTop <= 1, atEnd: el.scrollTop + el.clientHeight >= el.scrollHeight - 1 };
-  }
-
-  /** Scroll the pages to their start or end (the next chapter opens at its start, the previous at its end). */
-  export function scrollToEdge(edge: "start" | "end"): void {
-    const el = scroller();
-    if (!el) return;
-    el.scrollTop = edge === "start" ? 0 : el.scrollHeight;
+  /**
+   * Swap in a projection built for the document's current text and rebuild
+   * the blocks against it, keeping caret, scroll and history (see
+   * `GutterpressEditorMount.refreshProjection`).
+   */
+  export function refreshProjection(next: GutterpressProjection): void {
+    mountHandle?.refreshProjection(next);
   }
 
   /** Place the caret at a source offset, as a click there would (activates the block). */
@@ -247,7 +250,7 @@
   }
 </script>
 
-<div class="rich-editor-host" bind:this={container}></div>
+<div class="rich-editor-host" class:rich-editor-host--stacked={stacked} bind:this={container}></div>
 
 <style>
   .rich-editor-host {
@@ -282,5 +285,26 @@
   .rich-editor-host :global(.md-editor-content) {
     max-height: 100%;
     overflow: auto;
+  }
+
+  /* One chapter in a stack: the host is as tall as its pages, and nothing
+     inside it scrolls -  the book's scroller (BookSurface) does. The stage
+     keeps its horizontal padding, which centres the sheets; the vertical
+     padding is the scroller's, once, not every chapter's. */
+  .rich-editor-host--stacked {
+    height: auto;
+    overflow: visible;
+  }
+  .rich-editor-host--stacked :global(.md-editor) {
+    height: auto;
+  }
+  .rich-editor-host--stacked :global(.md-editor-content) {
+    max-height: none;
+    overflow: visible;
+  }
+  .rich-editor-host--stacked :global(.gp-stage) {
+    overflow: visible;
+    padding-top: 0;
+    padding-bottom: 0;
   }
 </style>

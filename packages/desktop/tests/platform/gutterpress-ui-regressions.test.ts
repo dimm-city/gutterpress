@@ -20,7 +20,8 @@ test("the preview shows beside the source editor only; Focus hides it from the s
   // Edit is the source editor with the preview beside it; Read is the paged
   // editor alone, which IS the book as it prints and needs no second copy.
   expect(src).toContain("let previewVisible = $derived(mode === \"editor\")");
-  expect(src).toContain('mode === "viewer" && (editorFilePath === null || isMarkdownPath(editorFilePath))');
+  // Read shows the whole book, whatever file happens to be open.
+  expect(src).toContain('let richSurfaceActive = $derived(mode === "viewer")');
   expect(src).toContain("function togglePreview");
   expect(src).toContain("class:preview-hidden={!previewVisible}");
   // Focus is a toggle on the source editor's toolbar, not a segment of the
@@ -32,6 +33,13 @@ test("the preview shows beside the source editor only; Focus hides it from the s
   // Read's one control is the lock pill; the formatting bar waits for the unlock.
   expect(src).toContain('aria-label={richLocked ? "Unlock" : "Lock"}');
   expect(src).toContain("{#if !(richSurfaceActive && richLocked)}");
+  // Keys typed into the paged editor are text, never preview navigation:
+  // the editor's root hosts an EditContext, so the shared editable-target
+  // guard must know it, and the preview's bare keys (End, -, f) only act
+  // while the preview is the surface on screen.
+  const a11y = read("src/lib/a11y.ts");
+  expect(a11y).toContain('el?.closest?.(".cm-editor, .md-editor")');
+  expect(src).toContain("if (!lifecycle.previewUrl || !previewVisible) return;");
 });
 
 test("a preview-generation failure keeps the folder workspace open with repair actions", () => {

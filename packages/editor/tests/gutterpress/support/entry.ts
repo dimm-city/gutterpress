@@ -83,6 +83,8 @@ export interface GutterpressDriver {
   getHostVersion(): number;
   /** G-11 -- true once the LIVE host's version has moved past the mounted projection's own `sourceVersion`. */
   needsRefresh(): boolean;
+  /** Builds a projection for the host's CURRENT text and version and hands it to `GutterpressEditorMount.refreshProjection` - the host-side refresh an edit triggers. */
+  refreshFromHost(): void;
 
   /** Every `.md-block` element in the mounted document, in order. */
   blockCount(): number;
@@ -209,6 +211,11 @@ window.__gpGutterpress = {
   needsRefresh: () => {
     if (!mountHandle) throw new Error("gutterpress harness: mount() has not been called yet");
     return mountHandle.needsRefresh();
+  },
+  refreshFromHost: () => {
+    if (!mountHandle) throw new Error("gutterpress harness: mount() has not been called yet");
+    const snapshot = requireHost().getSnapshot();
+    mountHandle.refreshProjection(buildProjection(snapshot.text, snapshot.version));
   },
 
   blockCount: () => blockElements().length,
