@@ -21,6 +21,11 @@ import {
   type VerifiedVendorPackage,
   type VerifiedVendorPlugin,
 } from "../plugin-vendor";
+// #239: the SAME declared-stylesheet resolver a theme's `styles`/
+// `engineStyles.native` resolve through (theme-manager.ts) — see
+// resolvePluginStyles's doc comment below for why this is the literal
+// convergence point, not a parallel re-implementation.
+import { resolveDeclaredStyles } from "../style-declarations";
 
 // The plugin author API + the markdown-it factory now live in the node-free
 // `renderer.ts` so the browser/PWA WebAdapter can import the pure render core
@@ -1008,10 +1013,15 @@ async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> 
  * paths, relative to `moduleDir` (the plugin's own file/package directory).
  * `undefined`/`[]` input returns `undefined` — a plugin with no `styles`
  * export pays zero cost here. A `moduleDir` of `null` (the bare
- * gutterpress-own-dependency npm fallback — see `LoadedNpmPackage`) or a
- * declared file that doesn't exist both throw: silently dropping
- * author-declared CSS would be the exact silent-omission failure mode §5's
- * fail-fast/degrade-and-report split exists to prevent everywhere else.
+ * gutterpress-own-dependency npm fallback — see `LoadedNpmPackage`) is a
+ * plugin-specific failure checked here; the existence check on each declared
+ * file is NOT plugin-specific — that half is
+ * {@link resolveDeclaredStyles} (`style-declarations.ts`), the SAME function
+ * `theme-manager.ts`'s `applyTheme`/`importThemeFromFolder` resolve a
+ * theme's `styles`/`engineStyles.native` through (#239). This is the literal
+ * code-sharing that makes a theme and a styles-carrying plugin resolve their
+ * declared stylesheets identically, not through two parallel
+ * implementations that could drift.
  */
 function resolvePluginStyles(
   rawStyles: string[] | undefined,
@@ -1024,15 +1034,7 @@ function resolvePluginStyles(
       `Plugin "${pluginRef}" exports \`styles\` but its module directory could not be resolved.`,
     );
   }
-  return rawStyles.map((rel) => {
-    const abs = resolve(moduleDir, rel);
-    if (!existsSync(abs)) {
-      throw new Error(
-        `Plugin "${pluginRef}" declares stylesheet "${rel}" but no file exists at ${abs}.`,
-      );
-    }
-    return abs;
-  });
+  return resolveDeclaredStyles(rawStyles, moduleDir, `Plugin "${pluginRef}"`);
 }
 
 export async function loadPlugin(

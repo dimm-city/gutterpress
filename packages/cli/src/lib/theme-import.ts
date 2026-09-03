@@ -8,8 +8,10 @@
  *
  * #239 — `theme.json` may additionally declare layered `styles`/
  * `engineStyles.native` sheets beyond the anchor `theme.css`; every declared
- * sheet is validated here (exists + print-safe) exactly like `theme.css`
- * itself. The zip/css-text surface still needs a `theme.css` to LOCATE the
+ * sheet is validated here (exists — via the same `resolveDeclaredStyles` a
+ * styles-carrying plugin's `styles` export resolves through, see
+ * `style-declarations.ts` — + print-safe) exactly like `theme.css` itself.
+ * The zip/css-text surface still needs a `theme.css` to LOCATE the
  * theme root in the first place — a genuinely `theme.css`-free multi-sheet
  * theme is importable via `importThemeFromFolder` (a folder picker names the
  * theme's directory directly; there is no archive root to disambiguate) but
@@ -41,6 +43,9 @@ import {
   type ThemeMetadata,
 } from "./theme-manager.ts";
 import { prettify } from "./slug.ts";
+// #239: the SAME declared-stylesheet resolver theme-manager.ts's applyTheme/
+// importThemeFromFolder and plugins.ts's resolvePluginStyles use.
+import { resolveDeclaredStyles } from "./style-declarations.ts";
 
 /** Reject a raw archive larger than this before unzipping (zip-bomb surface). */
 export const MAX_THEME_ARCHIVE_BYTES = 25 * 1024 * 1024;
@@ -214,15 +219,20 @@ async function finalizeThemeImport(
 
   // #239: theme.json may declare layered sheets (and engine-conditional ones)
   // beyond the anchor theme.css — validate every one exists and is
-  // print-safe, exactly like theme.css itself.
+  // print-safe, exactly like theme.css itself. Existence resolution goes
+  // through the SAME resolveDeclaredStyles a plugin's `styles` export
+  // resolves through (plugins.ts) and theme-manager.ts's applyTheme/
+  // importThemeFromFolder now also use — one resolver, three call sites, not
+  // a parallel re-implementation here. Print-safety linting stays layered on
+  // top: it is a theme-import-specific richness (WARN, don't just reject)
+  // that plugin loading has no equivalent of.
   const extraSheets = [
     ...new Set([...themeStyleList(meta), ...themeEngineStyleList(meta)]),
   ].filter((rel) => rel !== "theme.css");
-  for (const rel of extraSheets) {
-    const sheetPath = path.join(sourceDir, rel);
-    if (!existsSync(sheetPath)) {
-      throw new Error(`theme.json declares "${rel}" but the package does not contain it.`);
-    }
+  const extraSheetPaths = resolveDeclaredStyles(extraSheets, sourceDir, "theme.json") ?? [];
+  for (let i = 0; i < extraSheets.length; i++) {
+    const rel = extraSheets[i]!;
+    const sheetPath = extraSheetPaths[i]!;
     const sheetCss = await readFile(sheetPath, "utf8");
     const { reject: sheetReject, warnings: sheetFindings } = classifyThemeCssFindings(
       checkCss(sheetCss, rel),

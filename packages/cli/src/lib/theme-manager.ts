@@ -54,6 +54,12 @@ import { getAssetPath } from "./embedded-assets.ts";
 import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
 import { loadManifestDoc, writeManifestDoc, ensureSeq, scalarString } from "./manifest-doc.ts";
 import { slugify, prettify } from "./slug.ts";
+// #239: the SAME declared-stylesheet resolver a plugin's `styles` export
+// resolves through (plugins.ts's resolvePluginStyles) — see applyTheme's and
+// importThemeFromFolder's call sites below for why this is the literal
+// convergence point between a theme and a styles-carrying plugin, not a
+// second parallel implementation.
+import { resolveDeclaredStyles } from "./style-declarations.ts";
 
 /** Folder (relative to the project root) themes are copied into on apply/import. */
 export const THEMES_DIR = "themes";
@@ -95,7 +101,9 @@ export interface ThemeMetadata {
    * `styles` is absent) carries the author-facing `:root` token surface. Lets
    * a rich multi-sheet theme tell the Design panel's guided token editor
    * where to look instead of it guessing at the single active stylesheet.
-   * Purely advisory metadata — nothing in this module enforces it.
+   * Purely advisory metadata — nothing in this module enforces it. Absent
+   * here means "no override"; {@link ThemeInfo.tokensFile} is where the
+   * default (the theme's primary/only sheet) gets filled in.
    */
   tokensFile?: string;
 }
@@ -121,8 +129,16 @@ export interface ThemeInfo {
    * default itself.
    */
   styles: string[];
-  /** #239 — see {@link ThemeMetadata.tokensFile}. `undefined` when not declared. */
-  tokensFile?: string;
+  /**
+   * #239 — which declared sheet (relative to the theme folder) carries the
+   * `:root` token surface — see {@link ThemeMetadata.tokensFile}. ALWAYS
+   * populated: an explicit `theme.json` declaration wins, otherwise this
+   * defaults to the theme's primary sheet (`styles[0]`) — `"theme.css"` for
+   * every legacy single-sheet theme, exactly as `styles` itself defaults.
+   * A caller (the Design panel) never needs its own "guess the token sheet"
+   * fallback.
+   */
+  tokensFile: string;
 }
 
 /** A built-in theme resolved to disk (extracted from the embedded assets). */
@@ -193,12 +209,21 @@ export function themeEngineStyleList(meta: ThemeMetadata): string[] {
     : [];
 }
 
-/** Build a ThemeInfo from a folder's metadata + id, supplying sane fallbacks. */
+/**
+ * Build a ThemeInfo from a folder's metadata + id, supplying sane fallbacks.
+ * #239: `tokensFile` always resolves to a real declared sheet — an explicit
+ * `meta.tokensFile` wins, otherwise it falls back to the theme's PRIMARY sheet
+ * (`styles[0]`, which is `"theme.css"` for a legacy single-sheet theme, per
+ * the issue's stated default). This mirrors {@link themeStyleList}'s own
+ * default-filling shape: the Design panel gets one always-populated field to
+ * read, never an `undefined` it has to special-case.
+ */
 function themeInfo(
   id: string,
   kind: "builtin" | "project",
   meta: ThemeMetadata,
 ): ThemeInfo {
+  const styles = themeStyleList(meta);
   return {
     id,
     name: meta.name?.trim() || prettify(id),
@@ -206,8 +231,8 @@ function themeInfo(
     description: meta.description?.trim() || "",
     kind,
     preview: meta.preview ?? null,
-    styles: themeStyleList(meta),
-    tokensFile: meta.tokensFile?.trim() || undefined,
+    styles,
+    tokensFile: meta.tokensFile?.trim() || styles[0]!,
   };
 }
 
@@ -539,17 +564,32 @@ export async function applyTheme(
     await cp(resolved.dir, destDir, { recursive: true });
     // The copied theme now lives in the project — surface it as a project theme.
     meta = await readThemeMeta(path.join(destDir, "theme.json"));
+    // #239: confirm the copy landed completely — see the project branch's
+    // comment below for why this is the shared resolver, not a re-check.
+    resolveDeclaredStyles(themeStyleList(meta), destDir, `Theme "${destId}"`);
+    resolveDeclaredStyles(themeEngineStyleList(meta), destDir, `Theme "${destId}"`);
     info = themeInfo(destId, "project", meta);
   } else {
     const dir = themeDirFor(projectDir, target.id);
     meta = await readThemeMeta(path.join(dir, "theme.json"));
     // #239: a multi-sheet theme may declare NO theme.css at all — the folder
     // qualifies when its own PRIMARY declared sheet exists, same test
-    // listProjectThemes/getActiveTheme use.
+    // listProjectThemes/getActiveTheme use. Kept as its own check (rather than
+    // folded into the resolveDeclaredStyles call below) for the friendlier,
+    // much more common "this theme was never applied/imported" message.
     const primary = themeStyleList(meta)[0]!;
     if (!existsSync(path.join(dir, primary))) {
       throw new Error(`Theme "${target.id}" is not present in this project.`);
     }
+    // #239: beyond the primary sheet (just confirmed above), every OTHER
+    // declared sheet — the rest of `styles` and all of `engineStyles.native`
+    // — is resolved through the SAME resolveDeclaredStyles a plugin's
+    // `styles` export resolves through (plugins.ts's resolvePluginStyles).
+    // A theme whose secondary sheet was deleted or renamed after being
+    // applied throws HERE, at apply time, instead of failing silently deep
+    // in the render pipeline's own asset-inline pass.
+    resolveDeclaredStyles(themeStyleList(meta), dir, `Theme "${target.id}"`);
+    resolveDeclaredStyles(themeEngineStyleList(meta), dir, `Theme "${target.id}"`);
     info = themeInfo(target.id, "project", meta);
   }
 
@@ -601,6 +641,17 @@ export async function importThemeFromFolder(
         : `A theme folder must contain its declared stylesheet: ${primary}`,
     );
   }
+  // #239: this is the DIRECT desktop folder-picker import path
+  // (api/theme/import-from-folder) — it has no theme-import.ts zip/css-text
+  // validation pass in front of it, so beyond the primary sheet (just
+  // confirmed above, with a friendlier message for the common case), every
+  // OTHER declared sheet is resolved through the SAME shared resolver a
+  // plugin's `styles` export uses, BEFORE anything is copied. A theme whose
+  // theme.json lists a secondary sheet the folder doesn't actually contain
+  // is rejected here instead of importing successfully and failing later,
+  // silently, wherever the render pipeline first tries to read it.
+  resolveDeclaredStyles(themeStyleList(meta), sourceDir, "The theme folder");
+  resolveDeclaredStyles(themeEngineStyleList(meta), sourceDir, "The theme folder");
 
   const base = meta.name || path.basename(sourceDir);
   const id = await uniqueThemeId(projectDir, base);

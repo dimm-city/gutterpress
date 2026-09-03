@@ -333,6 +333,49 @@ describe("theme-manager", () => {
       expect(active?.styles).toEqual(["css/tokens.css", "css/components.css"]);
     });
 
+    describe("tokensFile (#239)", () => {
+      test("defaults to theme.css for a legacy single-sheet theme (built-in) with no tokensFile declared", async () => {
+        const resolved = await resolveBuiltInTheme("clean-book");
+        expect(resolved.info.tokensFile).toBe("theme.css");
+        const listed = await listBuiltInThemes();
+        for (const t of listed) expect(t.tokensFile).toBe("theme.css");
+      });
+
+      test("defaults to the PRIMARY declared sheet for a multi-sheet theme with no tokensFile declared", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+        writeMultiSheetTheme(dir, "multi");
+
+        const listed = await listProjectThemes(dir);
+        expect(listed.find((t) => t.id === "multi")?.tokensFile).toBe("css/tokens.css");
+
+        const applied = await applyTheme(dir, { kind: "project", id: "multi" });
+        expect(applied.tokensFile).toBe("css/tokens.css");
+        const active = await getActiveTheme(dir);
+        expect(active?.tokensFile).toBe("css/tokens.css");
+      });
+
+      test("an explicit tokensFile declaration wins over the primary-sheet default", async () => {
+        const dir = projectDir();
+        const themeDir = join(dir, THEMES_DIR, "annotated");
+        mkdirSync(join(themeDir, "css"), { recursive: true });
+        writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
+        writeFileSync(join(themeDir, "css", "identity.css"), ":root { --brand: blue; }\n", "utf8");
+        writeFileSync(
+          join(themeDir, "theme.json"),
+          JSON.stringify({
+            name: "Annotated",
+            styles: ["css/tokens.css"],
+            tokensFile: "css/identity.css",
+          }),
+          "utf8",
+        );
+
+        const listed = await listProjectThemes(dir);
+        expect(listed.find((t) => t.id === "annotated")?.tokensFile).toBe("css/identity.css");
+      });
+    });
+
     test("both sheets land as a CONTIGUOUS block, in declared order, at the FRONT for a project's first theme", async () => {
       const dir = projectDir();
       writeManifest(
@@ -492,6 +535,68 @@ describe("theme-manager", () => {
       );
 
       await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/css\/missing\.css/);
+    });
+
+    // #239 / shared resolver — importThemeFromFolder is the DIRECT desktop
+    // folder-picker import path (api/theme/import-from-folder): it has no
+    // theme-import.ts zip/css-text validation pass in front of it, so it must
+    // catch a missing SECONDARY or engine sheet itself, not just the primary.
+    test("importThemeFromFolder rejects a folder whose SECONDARY declared sheet is missing, before copying anything", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-secondary-missing");
+      mkdirSync(join(srcDir, "css"), { recursive: true });
+      writeFileSync(join(srcDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({ name: "Broken", styles: ["css/tokens.css", "css/missing.css"] }),
+        "utf8",
+      );
+
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/css\/missing\.css/);
+      // Fail-fast means fail BEFORE any fs mutation — nothing was copied.
+      expect(existsSync(join(dir, THEMES_DIR))).toBe(false);
+    });
+
+    test("importThemeFromFolder rejects a folder whose declared engineStyles.native sheet is missing", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-engine-missing");
+      mkdirSync(join(srcDir, "css"), { recursive: true });
+      writeFileSync(join(srcDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({
+          name: "Broken",
+          styles: ["css/tokens.css"],
+          engineStyles: { native: ["css/native-missing.css"] },
+        }),
+        "utf8",
+      );
+
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/native-missing\.css/);
+    });
+
+    test("applyTheme (project) rejects when a SECONDARY declared sheet has gone missing since import", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "multi"); // declares css/tokens.css + css/components.css
+      // Simulate drift: the secondary sheet vanishes after the folder exists
+      // (hand-edited theme.json, a half-finished manual copy, etc.).
+      rmSync(join(dir, THEMES_DIR, "multi", "css", "components.css"));
+
+      await expect(applyTheme(dir, { kind: "project", id: "multi" })).rejects.toThrow(
+        /components\.css/,
+      );
+    });
+
+    test("applyTheme (project) rejects when a declared engineStyles.native sheet is missing", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
+      rmSync(join(dir, THEMES_DIR, "furniture", "css", "native.css"));
+
+      await expect(applyTheme(dir, { kind: "project", id: "furniture" })).rejects.toThrow(
+        /native\.css/,
+      );
     });
   });
 
