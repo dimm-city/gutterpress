@@ -276,7 +276,9 @@ async function finalizeThemeImport(
   // false positive for its own declared plugin/catalog/snippets. Whichever
   // flow actually consumes a field is what existence-checks it: `markdown`
   // via `gutterpress plugin add`'s loader (plugins.ts's `resolveExtension`
-  // call), `components`/`snippets` by their own future consumers (#240/#242).
+  // call), `snippets` by `snippets.ts`'s `listMergedSnippets` (#242, tolerant
+  // rather than throwing — see that module), `components` by its own future
+  // catalog-reader consumer (not yet built).
   const declaredExtras = [meta.markdown, meta.components, meta.snippets].filter(
     (p): p is string => typeof p === "string" && p.trim().length > 0,
   );

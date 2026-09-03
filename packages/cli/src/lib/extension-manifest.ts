@@ -166,10 +166,22 @@ export function extensionEngineStyleList(meta: ExtensionMetadata): string[] {
   return declaredList(meta.engineStyles?.native);
 }
 
-/** True when a declared relative path escapes its own folder (absolute, or a
- *  `..` segment) — the traversal shape every containment check in this
- *  package rejects. */
-function pathEscapesFolder(rel: string): boolean {
+/**
+ * True when a declared relative path escapes its own folder (absolute, or a
+ * `..` segment) — the traversal shape every containment check in this
+ * package rejects.
+ *
+ * Exported (#242) for `snippets.ts`'s installed-extension snippet merge,
+ * which needs this SAME single-field check but cannot use
+ * {@link assertExtensionContained}: that guard throws on ANY escaping field
+ * (styles/markdown/components/tokensFile too), which is correct for a
+ * write-boundary check at install/apply time but wrong for a tolerant
+ * listing — an extension with a broken, unrelated `styles` entry must not
+ * make its perfectly fine `snippets` folder disappear from the picker (the
+ * same "one hand-edited file must not take down listing everyone else's"
+ * doctrine {@link readExtensionMeta}'s tolerant JSON parse already follows).
+ */
+export function pathEscapesFolder(rel: string): boolean {
   return path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..");
 }
 
