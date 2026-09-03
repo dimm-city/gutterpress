@@ -13,6 +13,7 @@ import {
   readThemeCss,
   getPreviousTheme,
   revertTheme,
+  themeStyleList,
   THEMES_DIR,
 } from "./theme-manager";
 
@@ -280,6 +281,322 @@ describe("theme-manager", () => {
           readFileSync(join(dir, THEMES_DIR, second.id, "theme.css"), "utf8"),
         ).toContain("--v: 2");
       });
+    });
+  });
+
+  // #239 — a theme is no longer capped at exactly one stylesheet.
+  describe("multi-sheet themes (#239)", () => {
+    test("themeStyleList defaults to [\"theme.css\"] when styles is absent or empty", () => {
+      expect(themeStyleList({})).toEqual(["theme.css"]);
+      expect(themeStyleList({ styles: [] })).toEqual(["theme.css"]);
+      expect(themeStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
+    });
+
+    function writeMultiSheetTheme(dir: string, id: string, opts: { engineStyles?: string[] } = {}): void {
+      const themeDir = join(dir, THEMES_DIR, id);
+      mkdirSync(join(themeDir, "css"), { recursive: true });
+      writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
+      writeFileSync(join(themeDir, "css", "components.css"), ".component { color: blue; }\n", "utf8");
+      const meta: Record<string, unknown> = {
+        name: `Multi ${id}`,
+        styles: ["css/tokens.css", "css/components.css"],
+      };
+      if (opts.engineStyles) {
+        writeFileSync(join(themeDir, "css", "native.css"), "@page { color: green; }\n", "utf8");
+        meta.engineStyles = { native: opts.engineStyles };
+      }
+      writeFileSync(join(themeDir, "theme.json"), JSON.stringify(meta), "utf8");
+    }
+
+    test("a theme with NO theme.css at all (only theme.json styles[]) can be listed and applied", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "multi");
+      expect(existsSync(join(dir, THEMES_DIR, "multi", "theme.css"))).toBe(false);
+
+      const listed = await listProjectThemes(dir);
+      expect(listed.map((t) => t.id)).toContain("multi");
+      expect(listed.find((t) => t.id === "multi")?.styles).toEqual([
+        "css/tokens.css",
+        "css/components.css",
+      ]);
+
+      const applied = await applyTheme(dir, { kind: "project", id: "multi" });
+      expect(applied.id).toBe("multi");
+
+      const manifest = readManifest(dir);
+      expect(manifest).toContain(`${THEMES_DIR}/multi/css/tokens.css`);
+      expect(manifest).toContain(`${THEMES_DIR}/multi/css/components.css`);
+
+      const active = await getActiveTheme(dir);
+      expect(active?.id).toBe("multi");
+      expect(active?.styles).toEqual(["css/tokens.css", "css/components.css"]);
+    });
+
+    describe("tokensFile (#239)", () => {
+      test("defaults to theme.css for a legacy single-sheet theme (built-in) with no tokensFile declared", async () => {
+        const resolved = await resolveBuiltInTheme("clean-book");
+        expect(resolved.info.tokensFile).toBe("theme.css");
+        const listed = await listBuiltInThemes();
+        for (const t of listed) expect(t.tokensFile).toBe("theme.css");
+      });
+
+      test("defaults to the PRIMARY declared sheet for a multi-sheet theme with no tokensFile declared", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+        writeMultiSheetTheme(dir, "multi");
+
+        const listed = await listProjectThemes(dir);
+        expect(listed.find((t) => t.id === "multi")?.tokensFile).toBe("css/tokens.css");
+
+        const applied = await applyTheme(dir, { kind: "project", id: "multi" });
+        expect(applied.tokensFile).toBe("css/tokens.css");
+        const active = await getActiveTheme(dir);
+        expect(active?.tokensFile).toBe("css/tokens.css");
+      });
+
+      test("an explicit tokensFile declaration wins over the primary-sheet default", async () => {
+        const dir = projectDir();
+        const themeDir = join(dir, THEMES_DIR, "annotated");
+        mkdirSync(join(themeDir, "css"), { recursive: true });
+        writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
+        writeFileSync(join(themeDir, "css", "identity.css"), ":root { --brand: blue; }\n", "utf8");
+        writeFileSync(
+          join(themeDir, "theme.json"),
+          JSON.stringify({
+            name: "Annotated",
+            styles: ["css/tokens.css"],
+            tokensFile: "css/identity.css",
+          }),
+          "utf8",
+        );
+
+        const listed = await listProjectThemes(dir);
+        expect(listed.find((t) => t.id === "annotated")?.tokensFile).toBe("css/identity.css");
+      });
+    });
+
+    test("both sheets land as a CONTIGUOUS block, in declared order, at the FRONT for a project's first theme", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        ["title: Test", "styles:", "  - styles/reset.css", "  - styles/book.css", ""].join("\n"),
+      );
+      writeMultiSheetTheme(dir, "multi");
+      await applyTheme(dir, { kind: "project", id: "multi" });
+
+      const entries = readManifest(dir)
+        .split("\n")
+        .filter((l) => l.trim().startsWith("- "))
+        .map((l) => l.trim().slice(2));
+      // Mirrors the existing single-sheet "inserts the first theme ahead of
+      // the project's own stylesheets" behavior — a theme is the BASE layer,
+      // so a project's first theme (multi-sheet or not) goes at the front.
+      expect(entries).toEqual([
+        `${THEMES_DIR}/multi/css/tokens.css`,
+        `${THEMES_DIR}/multi/css/components.css`,
+        "styles/reset.css",
+        "styles/book.css",
+      ]);
+    });
+
+    test("both sheets land as a CONTIGUOUS block at the OUTGOING theme's position when replacing one", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        [
+          "title: Test",
+          "styles:",
+          "  - styles/reset.css",
+          `  - ${THEMES_DIR}/clean-book/theme.css`,
+          "  - styles/book.css",
+          "",
+        ].join("\n"),
+      );
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      writeMultiSheetTheme(dir, "multi");
+      await applyTheme(dir, { kind: "project", id: "multi" });
+
+      const entries = readManifest(dir)
+        .split("\n")
+        .filter((l) => l.trim().startsWith("- "))
+        .map((l) => l.trim().slice(2));
+      expect(entries).toEqual([
+        "styles/reset.css",
+        `${THEMES_DIR}/multi/css/tokens.css`,
+        `${THEMES_DIR}/multi/css/components.css`,
+        "styles/book.css",
+      ]);
+    });
+
+    test("switching FROM a multi-sheet theme removes its ENTIRE block, not just one entry", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "multi");
+      await applyTheme(dir, { kind: "project", id: "multi" });
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+      const manifest = readManifest(dir);
+      expect(manifest).not.toContain(`${THEMES_DIR}/multi/`);
+      expect(manifest).toContain(`${THEMES_DIR}/clean-book/theme.css`);
+      const active = await getActiveTheme(dir);
+      expect(active?.id).toBe("clean-book");
+    });
+
+    test("switching TO a multi-sheet theme removes a single-sheet predecessor's one entry", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      writeMultiSheetTheme(dir, "multi");
+      await applyTheme(dir, { kind: "project", id: "multi" });
+
+      const manifest = readManifest(dir);
+      expect(manifest).not.toContain(`${THEMES_DIR}/clean-book/`);
+      expect(manifest).toContain(`${THEMES_DIR}/multi/css/tokens.css`);
+    });
+
+    test("engineStyles.native: applying a theme with engine sheets appends them; single-sheet themes never touch engineStyles at all", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+
+      // A plain single-sheet apply must not create an engineStyles scaffold.
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      expect(readManifest(dir)).not.toContain("engineStyles");
+
+      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
+      await applyTheme(dir, { kind: "project", id: "furniture" });
+
+      const manifest = readManifest(dir);
+      expect(manifest).toContain("engineStyles");
+      expect(manifest).toContain(`${THEMES_DIR}/furniture/css/native.css`);
+    });
+
+    test("engineStyles.native: removing/switching away from a theme with engine sheets cleans them up", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
+      await applyTheme(dir, { kind: "project", id: "furniture" });
+      expect(readManifest(dir)).toContain(`${THEMES_DIR}/furniture/css/native.css`);
+
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      const manifest = readManifest(dir);
+      expect(manifest).not.toContain(`${THEMES_DIR}/furniture/`);
+    });
+
+    test("removeProjectTheme drops the theme's ENTIRE styles + engineStyles block", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
+      await applyTheme(dir, { kind: "project", id: "furniture" });
+
+      await removeProjectTheme(dir, "furniture");
+
+      const manifest = readManifest(dir);
+      expect(manifest).not.toContain(`${THEMES_DIR}/furniture/`);
+      expect(await getActiveTheme(dir)).toBeNull();
+    });
+
+    test("readThemeCss concatenates every declared sheet, in order", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "multi");
+
+      const css = await readThemeCss(dir, { kind: "project", id: "multi" });
+      expect(css.indexOf("--token")).toBeGreaterThan(-1);
+      expect(css.indexOf(".component")).toBeGreaterThan(-1);
+      expect(css.indexOf("--token")).toBeLessThan(css.indexOf(".component"));
+    });
+
+    test("importThemeFromFolder accepts a folder with no theme.css when theme.json declares styles[]", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-src");
+      mkdirSync(join(srcDir, "css"), { recursive: true });
+      writeFileSync(join(srcDir, "css", "base.css"), ":root { --a: 1; }\n", "utf8");
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({ name: "Multi Source", styles: ["css/base.css"] }),
+        "utf8",
+      );
+
+      const info = await importThemeFromFolder(dir, srcDir);
+      expect(info.name).toBe("Multi Source");
+      expect(info.styles).toEqual(["css/base.css"]);
+      expect(existsSync(join(dir, THEMES_DIR, info.id, "css", "base.css"))).toBe(true);
+    });
+
+    test("importThemeFromFolder still rejects a folder missing its declared primary sheet", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-missing");
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({ name: "Broken", styles: ["css/missing.css"] }),
+        "utf8",
+      );
+
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/css\/missing\.css/);
+    });
+
+    // #239 / shared resolver — importThemeFromFolder is the DIRECT desktop
+    // folder-picker import path (api/theme/import-from-folder): it has no
+    // theme-import.ts zip/css-text validation pass in front of it, so it must
+    // catch a missing SECONDARY or engine sheet itself, not just the primary.
+    test("importThemeFromFolder rejects a folder whose SECONDARY declared sheet is missing, before copying anything", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-secondary-missing");
+      mkdirSync(join(srcDir, "css"), { recursive: true });
+      writeFileSync(join(srcDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({ name: "Broken", styles: ["css/tokens.css", "css/missing.css"] }),
+        "utf8",
+      );
+
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/css\/missing\.css/);
+      // Fail-fast means fail BEFORE any fs mutation — nothing was copied.
+      expect(existsSync(join(dir, THEMES_DIR))).toBe(false);
+    });
+
+    test("importThemeFromFolder rejects a folder whose declared engineStyles.native sheet is missing", async () => {
+      const dir = projectDir();
+      const srcDir = join(TMP_ROOT, "multi-engine-missing");
+      mkdirSync(join(srcDir, "css"), { recursive: true });
+      writeFileSync(join(srcDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
+      writeFileSync(
+        join(srcDir, "theme.json"),
+        JSON.stringify({
+          name: "Broken",
+          styles: ["css/tokens.css"],
+          engineStyles: { native: ["css/native-missing.css"] },
+        }),
+        "utf8",
+      );
+
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/native-missing\.css/);
+    });
+
+    test("applyTheme (project) rejects when a SECONDARY declared sheet has gone missing since import", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "multi"); // declares css/tokens.css + css/components.css
+      // Simulate drift: the secondary sheet vanishes after the folder exists
+      // (hand-edited theme.json, a half-finished manual copy, etc.).
+      rmSync(join(dir, THEMES_DIR, "multi", "css", "components.css"));
+
+      await expect(applyTheme(dir, { kind: "project", id: "multi" })).rejects.toThrow(
+        /components\.css/,
+      );
+    });
+
+    test("applyTheme (project) rejects when a declared engineStyles.native sheet is missing", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
+      rmSync(join(dir, THEMES_DIR, "furniture", "css", "native.css"));
+
+      await expect(applyTheme(dir, { kind: "project", id: "furniture" })).rejects.toThrow(
+        /native\.css/,
+      );
     });
   });
 

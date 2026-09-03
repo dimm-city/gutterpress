@@ -191,4 +191,75 @@ describe("theme-import host pipeline", () => {
       /could not be parsed/,
     );
   });
+
+  // #239 — theme.json may declare ADDITIONAL sheets beyond the anchor
+  // theme.css; every one is validated (exists + print-safe) at import time,
+  // exactly like theme.css itself.
+  describe("multi-sheet zip validation (#239)", () => {
+    test("validates an additional declared sheet exists and is print-safe", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(
+          JSON.stringify({ name: "Layered", styles: ["theme.css", "components.css"] }),
+        ),
+        "components.css": strToU8("@page { background-blend-mode: multiply; }"),
+      });
+      const { theme, warnings } = await importThemeFromZip(dir, zip);
+      expect(theme.name).toBe("Layered");
+      expect(existsSync(join(dir, THEMES_DIR, theme.id, "components.css"))).toBe(true);
+      // The additional sheet's risky print property surfaces as a warning,
+      // proving it was actually inspected (not just copied).
+      expect(
+        warnings.some((w) => w.code === "print-safety" && w.message.includes("components.css")),
+      ).toBe(true);
+    });
+
+    test("rejects a zip whose theme.json declares a sheet the package doesn't contain", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(
+          JSON.stringify({ name: "Broken", styles: ["theme.css", "missing.css"] }),
+        ),
+      });
+      await expect(importThemeFromZip(dir, zip)).rejects.toThrow(/missing\.css/);
+    });
+
+    test("rejects a zip whose additional declared sheet fails to parse", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(
+          JSON.stringify({ name: "Broken", styles: ["theme.css", "bad.css"] }),
+        ),
+        "bad.css": strToU8("h1 { color: "),
+      });
+      await expect(importThemeFromZip(dir, zip)).rejects.toThrow(/bad\.css could not be parsed/);
+    });
+
+    test("validates a declared engineStyles.native sheet too", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(
+          JSON.stringify({ name: "Furniture", engineStyles: { native: ["native.css"] } }),
+        ),
+        "native.css": strToU8("@page { color: red; }"),
+      });
+      const { theme } = await importThemeFromZip(dir, zip);
+      expect(existsSync(join(dir, THEMES_DIR, theme.id, "native.css"))).toBe(true);
+    });
+
+    test("a theme.json declaring only theme.css (the default) has no extra validation to fail — unchanged behavior", async () => {
+      const dir = projectDir();
+      const zip = zipSync({
+        "theme.css": strToU8(CLEAN_CSS),
+        "theme.json": strToU8(JSON.stringify({ name: "Plain" })),
+      });
+      const { theme, warnings } = await importThemeFromZip(dir, zip);
+      expect(theme.name).toBe("Plain");
+      expect(warnings).toEqual([]);
+    });
+  });
 });

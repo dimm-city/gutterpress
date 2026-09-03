@@ -273,7 +273,14 @@ const apply = defineCommand({
       const applied = await applyTheme(projectDir, target);
       console.log(`Applied theme: ${applied.name} (${applied.id})`);
       console.log(`  project: ${projectDir}`);
-      console.log(`  stylesheet: themes/${applied.id}/theme.css`);
+      // #239: a theme may declare more than one stylesheet — list every one
+      // that actually landed in the manifest's styles: block, in cascade
+      // order, instead of assuming the single theme.css every theme used to
+      // be capped at.
+      const label = applied.styles.length > 1 ? "stylesheets" : "stylesheet";
+      console.log(
+        `  ${label}: ${applied.styles.map((rel) => `themes/${applied.id}/${rel}`).join(", ")}`,
+      );
       if (applied.id !== id) {
         console.log(
           `  note: an existing "${id}" theme was already customized, so this copy was applied as "${applied.id}" instead of overwriting it.`,
