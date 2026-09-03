@@ -6,6 +6,16 @@
  * theme root and a bare `.css` is wrapped into a one-file theme folder, and
  * both then reuse {@link importThemeFromFolder}.
  *
+ * #239 — `theme.json` may additionally declare layered `styles`/
+ * `engineStyles.native` sheets beyond the anchor `theme.css`; every declared
+ * sheet is validated here (exists + print-safe) exactly like `theme.css`
+ * itself. The zip/css-text surface still needs a `theme.css` to LOCATE the
+ * theme root in the first place — a genuinely `theme.css`-free multi-sheet
+ * theme is importable via `importThemeFromFolder` (a folder picker names the
+ * theme's directory directly; there is no archive root to disambiguate) but
+ * not yet via `.zip`. See that finding recorded in `finalizeThemeImport`'s
+ * doc comment below.
+ *
  * Host-side only (node fs + fflate + postcss via `checkCss`) — reached by the
  * desktop through the `api/theme/import-from-file` server route (CLAUDE.md §8),
  * and shared with the CLI (§7 "shared lib, not duplicated"). The pure decision
@@ -23,7 +33,13 @@ import path from "node:path";
 import { unzipSync } from "fflate";
 
 import { checkCss, ruleSyntax, type PrintSafeWarning } from "./printsafe.ts";
-import { importThemeFromFolder, type ThemeInfo } from "./theme-manager.ts";
+import {
+  importThemeFromFolder,
+  themeStyleList,
+  themeEngineStyleList,
+  type ThemeInfo,
+  type ThemeMetadata,
+} from "./theme-manager.ts";
 import { prettify } from "./slug.ts";
 
 /** Reject a raw archive larger than this before unzipping (zip-bomb surface). */
@@ -128,22 +144,34 @@ function mb(n: number): string {
   return `${Math.round(n / (1024 * 1024))}MB`;
 }
 
-/** Best-effort read of a theme.json; `null` when absent or unparseable. */
-async function readThemeJson(p: string): Promise<{ name?: string } | null> {
+/** Best-effort read of a theme.json; `{}` when absent or unparseable. */
+async function readThemeJson(p: string): Promise<ThemeMetadata> {
   try {
-    const parsed = JSON.parse(await readFile(p, "utf8")) as { name?: string };
+    const parsed = JSON.parse(await readFile(p, "utf8")) as ThemeMetadata;
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
 /**
  * Validate an already-extracted theme folder, then hand it to
  * {@link importThemeFromFolder}. REJECTS (throws) when `theme.css` is missing
- * or fails to parse; otherwise collects WARN findings (print-safety, missing/
- * unnamed theme.json, unexpected extra files) and returns them with the
- * imported theme.
+ * or fails to parse, OR (#239) when `theme.json` declares an ADDITIONAL sheet
+ * (`styles`/`engineStyles.native`) that is missing or fails to parse — a
+ * broken multi-sheet theme is rejected at import time, not at first render.
+ * Otherwise collects WARN findings (print-safety, missing/unnamed theme.json,
+ * unexpected extra files) and returns them with the imported theme.
+ *
+ * The anchor stays `theme.css` specifically (not `theme.json`'s declared
+ * primary sheet, unlike {@link importThemeFromFolder}'s own check): both
+ * callers here guarantee one exists in `sourceDir` before this runs
+ * (`importThemeFromZip`'s `locateThemeRoot` requires it to find the zip's
+ * theme root at all; the bare-`.css` wrapper writes it itself) — so a
+ * theme.css-FREE package is a real, KNOWN gap of the zip/css-text import
+ * surface specifically. `importThemeFromFolder` (a folder picker naming the
+ * theme's directory directly, no archive-root ambiguity to resolve) has no
+ * such gap.
  */
 async function finalizeThemeImport(
   projectDir: string,
@@ -168,20 +196,42 @@ async function finalizeThemeImport(
   }
 
   const jsonPath = path.join(sourceDir, "theme.json");
-  if (!existsSync(jsonPath)) {
+  const jsonExists = existsSync(jsonPath);
+  const meta = jsonExists ? await readThemeJson(jsonPath) : {};
+  if (!jsonExists) {
     warnings.push({
       code: "no-theme-json",
       message:
         "No theme.json found — the theme's name was taken from the file/folder name.",
     });
-  } else {
-    const meta = await readThemeJson(jsonPath);
-    if (!meta || !meta.name || !meta.name.trim()) {
-      warnings.push({
-        code: "unnamed-theme",
-        message:
-          'theme.json has no "name" — the theme\'s name was taken from the file/folder name.',
-      });
+  } else if (!meta.name || !meta.name.trim()) {
+    warnings.push({
+      code: "unnamed-theme",
+      message:
+        'theme.json has no "name" — the theme\'s name was taken from the file/folder name.',
+    });
+  }
+
+  // #239: theme.json may declare layered sheets (and engine-conditional ones)
+  // beyond the anchor theme.css — validate every one exists and is
+  // print-safe, exactly like theme.css itself.
+  const extraSheets = [
+    ...new Set([...themeStyleList(meta), ...themeEngineStyleList(meta)]),
+  ].filter((rel) => rel !== "theme.css");
+  for (const rel of extraSheets) {
+    const sheetPath = path.join(sourceDir, rel);
+    if (!existsSync(sheetPath)) {
+      throw new Error(`theme.json declares "${rel}" but the package does not contain it.`);
+    }
+    const sheetCss = await readFile(sheetPath, "utf8");
+    const { reject: sheetReject, warnings: sheetFindings } = classifyThemeCssFindings(
+      checkCss(sheetCss, rel),
+    );
+    if (sheetReject) {
+      throw new Error(`${rel} could not be parsed — ${sheetReject.message}`);
+    }
+    for (const w of sheetFindings) {
+      warnings.push({ code: "print-safety", message: `${rel}: ${w.message}` });
     }
   }
 

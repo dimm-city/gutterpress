@@ -86,6 +86,44 @@ describe("manifest-doc", () => {
       expect(seq.items).toHaveLength(2);
       expect(doc.get("styles", true)).toBe(seq);
     });
+
+    // #239 — theme-manager.ts needs to ensure/mutate the NESTED
+    // engineStyles.native seq, auto-vivifying the intermediate `engineStyles`
+    // map exactly like a hand-written `engineStyles: { native: [...] }` would.
+    describe("nested path key (#239)", () => {
+      test("creates the intermediate map AND the seq when neither exists", async () => {
+        const dir = projectDir();
+        const { doc } = await loadManifestDoc(dir);
+        const seq = ensureSeq(doc, ["engineStyles", "native"]);
+        expect(isSeq(seq)).toBe(true);
+        expect(seq.items).toHaveLength(0);
+        expect(doc.getIn(["engineStyles", "native"], true)).toBe(seq);
+      });
+
+      test("returns the existing nested seq without disturbing a sibling key", async () => {
+        const dir = projectDir();
+        writeFileSync(
+          join(dir, "manifest.yaml"),
+          "engineStyles:\n  paged:\n    - old.css\n  native:\n    - furniture.css\n",
+          "utf8",
+        );
+        const { doc } = await loadManifestDoc(dir);
+        const seq = ensureSeq(doc, ["engineStyles", "native"]);
+        expect(seq.items).toHaveLength(1);
+        expect(doc.getIn(["engineStyles", "native"], true)).toBe(seq);
+        // The sibling `paged` key survives untouched.
+        const paged = doc.getIn(["engineStyles", "paged"], true);
+        expect(isSeq(paged) && paged.items).toHaveLength(1);
+      });
+
+      test("a single-element path behaves exactly like the flat-string form", async () => {
+        const dir = projectDir();
+        const { doc } = await loadManifestDoc(dir);
+        const seq = ensureSeq(doc, ["plugins"]);
+        expect(isSeq(seq)).toBe(true);
+        expect(doc.get("plugins", true)).toBe(seq);
+      });
+    });
   });
 
   // ARCH finding #25: scalarString is the ONE shared unwrap helper consumed by
