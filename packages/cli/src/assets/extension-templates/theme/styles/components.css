@@ -1,0 +1,94 @@
+/* ===========================================================================
+ * {{NAME}} — 3. COMPONENTS
+ *
+ * OWNS
+ *   Named, reusable components an author opts into from markdown, one block
+ *   per component. A component owns everything about itself: its own public
+ *   tokens, the rules that consume them, its variants, and its break
+ *   behaviour. Read one block and you know the whole component; cut one block
+ *   and you have lifted it into another book.
+ *
+ * MUST NOT CONTAIN
+ *   - Bare element selectors. `p { … }` here would restyle the whole book
+ *     from a file nobody expects to. Scope every rule under a component class
+ *     (`.{{PREFIX}}callout p` is fine — that is the component's own paragraph).
+ *   - Chapter or page scoping. `#ch-two .{{PREFIX}}callout { … }` couples the
+ *     component to one book; it belongs in book.css.
+ *   - Literal values where a token would do. A component that hard-codes a
+ *     colour cannot be retuned, which defeats the whole arrangement.
+ *
+ * THE TOKEN PATTERN, which the callout below demonstrates end to end:
+ *
+ *   1. The component declares its own public tokens at `:root`, defaulting in
+ *      terms of the BRAND tokens from tokens.css.
+ *   2. The component's rules consume them as BARE `var(--x)` — never
+ *      `var(--x, fallback)`. The default lives at `:root` exactly once, so
+ *      there is one place to look and no second copy to drift out of sync.
+ *   3. Any ancestor scope can reset a token to get a variant, without this
+ *      file changing — see book.css for the chapter-scoped override, and the
+ *      `.{{PREFIX}}callout-warning` variant below for the in-package one.
+ *
+ *   That third step is the reason for the whole pattern: a book gets a new
+ *   look by resetting a property, not by restating the component's rules at a
+ *   higher specificity.
+ * ======================================================================== */
+
+@layer components {
+  /* =========================================================================
+   * CALLOUT
+   *
+   * Recipe          @section .{{PREFIX}}callout
+   * Emits           div.section.{{PREFIX}}callout
+   * Variants        .{{PREFIX}}callout-warning
+   * Public tokens   --{{PREFIX}}callout-accent
+   *                 --{{PREFIX}}callout-bg
+   *                 --{{PREFIX}}callout-pad
+   *                 --{{PREFIX}}callout-rule
+   * Breaks          avoids splitting across pages
+   *
+   * Authored as:
+   *
+   *     @section .{{PREFIX}}callout
+   *     ### Before you start
+   *     Everything in here stays together on one page.
+   *     @end-section
+   * ====================================================================== */
+
+  /* 1 — public tokens, defaulting in terms of the brand */
+  :root {
+    --{{PREFIX}}callout-accent: var(--{{PREFIX}}accent);
+    --{{PREFIX}}callout-bg: color-mix(in srgb, var(--{{PREFIX}}accent) 7%, transparent);
+    --{{PREFIX}}callout-pad: var(--{{PREFIX}}space-3);
+    --{{PREFIX}}callout-rule: 3px;
+  }
+
+  /* 2 — the component consumes them bare */
+  .{{PREFIX}}callout {
+    background: var(--{{PREFIX}}callout-bg);
+    border-inline-start: var(--{{PREFIX}}callout-rule) solid var(--{{PREFIX}}callout-accent);
+    padding: var(--{{PREFIX}}callout-pad);
+    margin-block: var(--{{PREFIX}}space-3);
+    break-inside: avoid;
+  }
+
+  /* The component's own paragraph: flush, not indented like body prose. */
+  .{{PREFIX}}callout p { text-indent: 0; }
+  .{{PREFIX}}callout > :first-child { margin-block-start: 0; }
+  .{{PREFIX}}callout > :last-child { margin-block-end: 0; }
+
+  .{{PREFIX}}callout h3 {
+    color: var(--{{PREFIX}}callout-accent);
+    margin-block-start: 0;
+  }
+
+  /* 3 — a variant is a token reset. Three lines, not thirty. */
+  .{{PREFIX}}callout-warning {
+    --{{PREFIX}}callout-accent: var(--{{PREFIX}}accent-warm);
+  }
+
+  /* =========================================================================
+   * Add your next component here, in the same shape: a comment block naming
+   * its recipe, emitted DOM, variants, public tokens and break behaviour;
+   * then tokens, rules, variants. Record it in components.yaml too.
+   * ====================================================================== */
+}

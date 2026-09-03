@@ -143,12 +143,19 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)). Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
+Scaffold a new book, plugin or theme from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
+
+`--kind book` is the default. Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
+
+`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `gutterpress.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
-gutterpress new <name> --preset <id> [options]
+gutterpress new <name> [--kind <id>] [options]
 
-  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required)
+  --kind <id>              What to create: book (default), plugin, theme
+  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|theme only
+  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|theme only
+  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required for a book)
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)

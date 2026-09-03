@@ -5,7 +5,7 @@ import os from "node:os";
 import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
-import { loadPluginsWithCss } from "./markdown/plugins";
+import { loadPluginsWithCss, type LoadedPluginsWithCss } from "./markdown/plugins";
 import { type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import { prewarmBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
@@ -219,6 +219,29 @@ export interface BuildContext {
    * warning from the final render path.
    */
   prevalidatedLayoutWarningKeys: Set<string>;
+  /**
+   * The build's ONE plugin load (#262). `null` until {@link loadBuildPlugins}
+   * runs; every stage that needs plugins (the lint gate and preValidate gate
+   * in {@link runQualityGates}, and {@link renderBook}) calls that function
+   * and gets the SAME resolved `{ plugins, pluginCss, pluginStylePaths }`
+   * back, whichever of them runs first.
+   *
+   * Before this, `runQualityGates`'s lint gate and `renderBook` each called
+   * `loadPluginsWithCss` independently for the identical manifest. For an
+   * npm-vendored plugin, EVERY load re-runs `verifyVendoredPlugin` ->
+   * `computeVendorTreeDigest` (plugin-vendor.ts) — a recursive walk of the
+   * vendored tree plus a full read-and-SHA-256 of every file, with no cache
+   * anywhere in that module BY DESIGN (the digest exists to detect tampering
+   * with the vendored tree; a cache keyed on anything less than the file
+   * contents themselves — e.g. the receipt's mtime — would not notice an
+   * edited vendored file). A `gutterpress build` with the lint gate on
+   * therefore paid that cost twice for no reason: same manifest, same
+   * `renderDir` anchor (see that field's doc comment — the two call sites'
+   * base dirs were the historical risk here, and they are now provably the
+   * same value), same plugin list. Memoizing the ONE load on the context
+   * removes the duplicate work without caching anything security-relevant.
+   */
+  plugins: LoadedPluginsWithCss | null;
 }
 
 function layoutWarningKey(file: string, line: number | undefined, message: string): string {
@@ -312,7 +335,49 @@ export async function resolveBuildContext(
     config,
     gates,
     prevalidatedLayoutWarningKeys: new Set(),
+    plugins: null,
   };
+}
+
+/**
+ * Load every plugin the manifest configures, exactly once for the whole
+ * build (#262). Memoized on `ctx.plugins`: the lint gate, the preValidate
+ * gate (both in {@link runQualityGates}), and {@link renderBook} each call
+ * this instead of `loadPluginsWithCss` directly, and only the first caller
+ * does real work — the rest get the cached result back, however the gates
+ * are configured and whichever stage happens to run first (a test calling
+ * {@link renderBook} directly, without going through `runQualityGates`, gets
+ * a fresh load here exactly as it would have before this existed).
+ *
+ * Fail-fast (no `onError`), matching `renderBook`'s pre-existing behavior:
+ * a build/export must never silently omit author-configured formatting (see
+ * `loadPlugins`'s doc comment in markdown/plugins.ts on the two failure
+ * modes). One consequence: a plugin that fails to load now aborts the build
+ * as soon as quality gates start, instead of (as before) the lint gate's own
+ * degrade-and-report call warning-and-skipping that same plugin only for
+ * `renderBook` to hard-fail on it moments later — the build failed either
+ * way, this just stops wasting the lint pass first.
+ *
+ * Resolves plugin `path:` entries against `ctx.renderDir`, which is by
+ * construction identical to `ctx.manifestDir` for the life of one
+ * `BuildContext` (see {@link BuildContext.renderDir}'s doc comment and
+ * build-runner.output-dir.test.ts's anchor tests) — so hoisting this load
+ * ahead of the gates cannot resolve a plugin against a different root than
+ * `renderBook` used to, including under an explicit `--manifest` outside
+ * `--input`.
+ */
+export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPluginsWithCss> {
+  if (ctx.plugins) return ctx.plugins;
+  const { config, renderDir } = ctx;
+  if (config.plugins.length > 0) {
+    log.info(`Loading ${config.plugins.length} plugin(s)...`);
+  }
+  const loaded = await loadPluginsWithCss(config.plugins, renderDir);
+  if (loaded.plugins && loaded.plugins.length > 0) {
+    log.success(`Loaded ${loaded.plugins.length} plugin(s)`);
+  }
+  ctx.plugins = loaded;
+  return loaded;
 }
 
 /**
@@ -320,14 +385,29 @@ export async function resolveBuildContext(
  * unless its gate is on (see {@link computeGates} in ./build-preflight); a
  * failing gate throws a BuildError with the gate's historic exit code
  * (lint=2, pre-validate=1).
+ *
+ * When either gate is on, plugins are loaded ONCE here via
+ * {@link loadBuildPlugins} and the resulting `pluginStylePaths` are handed to
+ * BOTH the lint gate (`runLint`) and the preValidate gate (`executeAndReport`,
+ * validation-exec.ts) so neither loads plugins itself (#262) — `renderBook`
+ * then reuses the same memoized result for its own render-time needs
+ * (`plugins`/`pluginCss`). Skipped entirely when both gates are off (e.g.
+ * `--format html` or `--skip-lint --skip-pre-validate`): in that case nothing
+ * here needs plugins, and `renderBook` remains the sole, first loader — this
+ * function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
   const { gates, opts, renderDir } = ctx;
+
+  const pluginStylePaths = gates.lint || gates.preValidate
+    ? (await loadBuildPlugins(ctx)).pluginStylePaths
+    : undefined;
 
   if (gates.lint) {
     log.info("Lint: CSS print-safety");
     const lintResult = await runLint({
       manifest: opts.manifestPath ?? renderDir,
+      pluginStylePaths,
     });
     if (!lintResult.ok) {
       throw new BuildError("CSS lint failed", 2);
@@ -341,6 +421,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
         input: renderDir,
         phase: "pre-build",
         manifest: opts.manifestPath,
+        pluginStylePaths,
       },
       "text"
     );
@@ -384,18 +465,13 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     log.info("Using all .md files in alphabetical order");
   }
 
-  // ARCH finding #53: fail-fast (no onError) — a final artifact must never
-  // silently omit author-configured formatting, so a bad plugin here aborts
-  // the whole build/export instead of degrading (see loadPlugins' doc comment
-  // and the LIVE PREVIEW's degrade-and-report counterpart in
-  // preview/file-watcher.ts's renderPreviewBook).
-  if (config.plugins.length > 0) {
-    log.info(`Loading ${config.plugins.length} plugin(s)...`);
-  }
-  const { plugins, pluginCss, pluginStylePaths } = await loadPluginsWithCss(config.plugins, renderDir);
-  if (plugins && plugins.length > 0) {
-    log.success(`Loaded ${plugins.length} plugin(s)`);
-  }
+  // #262: reuses runQualityGates' load when a gate already ran one for this
+  // same ctx (the common case — see loadBuildPlugins' doc comment); loads
+  // fresh, fail-fast, otherwise (both gates off, or a caller that renders
+  // without going through runQualityGates at all, e.g. a unit test). Either
+  // way this is a plain memo read/populate, never a second load of the SAME
+  // plugin set — see loadBuildPlugins for why that duplication mattered.
+  const { plugins, pluginCss, pluginStylePaths } = await loadBuildPlugins(ctx);
 
   // The render reports every asset the book actually references: image `src`
   // values (markdown tokens + raw HTML) and any CSS image too large to inline.

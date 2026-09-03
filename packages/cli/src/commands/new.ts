@@ -2,13 +2,20 @@ import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import {
   scaffoldProject,
+  scaffoldExtension,
   BUILT_IN_TEMPLATE_IDS,
+  EXTENSION_KINDS,
   PRESET_IDS,
   PRESETS,
   TARGETS,
   TARGET_IDS,
 } from "../index.ts";
-import type { CreateProjectError, PresetId, ProjectTemplateId } from "../index.ts";
+import type {
+  CreateProjectError,
+  ExtensionKind,
+  PresetId,
+  ProjectTemplateId,
+} from "../index.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -19,18 +26,50 @@ import { isToolAvailable } from "../lib/tool-probe.ts";
 import { resolveGhostscript } from "../lib/ghostscript.ts";
 
 /**
- * `gutterpress new` — scaffold a new project from an embedded starter template.
+ * `gutterpress new` — scaffold a new book, plugin or theme from an embedded
+ * starter template.
  *
- * A thin front-end over the shared lib's `scaffoldProject` (#25): the same
- * function the desktop wizard calls. Works fully headless — no desktop required.
+ * A thin front-end over the shared lib (CLAUDE.md §7: one implementation, two
+ * front-ends). `--kind` picks WHICH scaffolder runs:
+ *
+ *   book (default) → `scaffoldProject`   (#25, the same call the desktop
+ *                                         wizard makes)
+ *   plugin | theme → `scaffoldExtension` (#245 / #233)
  *
  *   gutterpress new "My First Book" --preset dtrpg --author "Jane" --dir ~/Books [--no-git]
+ *   gutterpress new "Field Notes" --kind plugin --prefix fn-
+ *   gutterpress new "House Style" --kind theme
+ *
+ * WHY ONE COMMAND AND NOT THREE. All three create a new folder from an
+ * embedded template with the same never-overwrite contract, the same error
+ * type and the same `--dir`/`--folder`/`--author` handling; splitting them
+ * would duplicate that surface three ways to avoid one flag.
+ *
+ * WHY THE OTHER FLAGS ARE REJECTED RATHER THAN IGNORED. `--preset` (and the
+ * trim/target/template flags under it) describe a BOOK — a plugin has no trim
+ * size and no publish destination. An extension scaffold silently ignoring
+ * `--preset dtrpg` would leave an author believing they had chosen something.
+ * The check reads raw argv, so a flag's DEFAULT never trips it: only a flag
+ * the author actually typed does.
  */
 export const newArgs = {
   name: {
     type: "positional",
-    description: "Project name (becomes the title and folder name)",
+    description: "Name (becomes the title/package name and the folder name)",
     required: true,
+  },
+  kind: {
+    type: "string",
+    description: `What to create: book (default), ${EXTENSION_KINDS.join(", ")}`,
+  },
+  prefix: {
+    type: "string",
+    description:
+      "Class/custom-property prefix an extension claims (default: its slug, e.g. \"field-notes-\"); --kind plugin|theme only",
+  },
+  description: {
+    type: "string",
+    description: "One-line description recorded in the extension's metadata; --kind plugin|theme only",
   },
   preset: {
     type: "string",
@@ -75,6 +114,64 @@ export const newArgs = {
   },
 } as const;
 
+/**
+ * The long-flag names actually present in argv, kebab-normalized and with a
+ * `--no-` prefix stripped.
+ *
+ * Reads raw argv rather than citty's parsed object because that object cannot
+ * distinguish "the author passed --git" from "--git defaults to true". Run
+ * AFTER {@link rejectUnknownFlags}, which has already rejected an unknown
+ * option and a value-taking option with no value — so a dash-prefixed token
+ * reaching here is a real flag, not somebody's `--author --preset` mistake.
+ */
+function flagsPassed(rawArgs: readonly string[]): Set<string> {
+  const seen = new Set<string>();
+  for (const token of rawArgs) {
+    if (token === "--") break;
+    if (!token.startsWith("--") || token.length <= 2) continue;
+    const equalsAt = token.indexOf("=");
+    let name = equalsAt === -1 ? token.slice(2) : token.slice(2, equalsAt);
+    name = name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+    if (name.startsWith("no-")) name = name.slice(3);
+    seen.add(name);
+  }
+  return seen;
+}
+
+/** Flags that only mean something for a book, and only for an extension. */
+const BOOK_ONLY_FLAGS = [
+  "preset",
+  "targets",
+  "template",
+  "page-width",
+  "page-height",
+  "page-tolerance",
+  "git",
+] as const;
+const EXTENSION_ONLY_FLAGS = ["prefix", "description"] as const;
+
+/** Exit 2 naming every flag that does not apply to the chosen `--kind`. */
+function rejectFlagsForKind(
+  rawArgs: readonly string[],
+  kind: "book" | ExtensionKind,
+): void {
+  const passed = flagsPassed(rawArgs);
+  const inapplicable = (kind === "book" ? EXTENSION_ONLY_FLAGS : BOOK_ONLY_FLAGS).filter((f) =>
+    passed.has(f),
+  );
+  if (inapplicable.length === 0) return;
+
+  const list = inapplicable.map((f) => `--${f}`).join(", ");
+  console.error(
+    kind === "book"
+      ? `${list} ${inapplicable.length > 1 ? "are" : "is"} only meaningful for an extension. ` +
+          `Add --kind ${EXTENSION_KINDS.join(" or --kind ")}, or drop ${inapplicable.length > 1 ? "them" : "it"}.`
+      : `${list} ${inapplicable.length > 1 ? "describe a book, not" : "describes a book, not"} a ${kind}. ` +
+          `A ${kind} has no trim size, publish target or starter template — drop ${inapplicable.length > 1 ? "them" : "it"}.`,
+  );
+  process.exit(EXIT_CODES.USAGE);
+}
+
 /** Parse a points flag ("612", "612.5") or exit 2 with a usable message. */
 function parsePoints(raw: unknown, flag: string): number | undefined {
   if (typeof raw !== "string" || raw === "") return undefined;
@@ -86,10 +183,81 @@ function parsePoints(raw: unknown, flag: string): number | undefined {
   return value;
 }
 
+/** Optional string arg, or undefined when absent/empty. */
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+/**
+ * `--kind plugin|theme`: create an extension starter package and print how to
+ * use it. Split out of `run()` so the book path reads exactly as it did.
+ */
+async function runExtensionScaffold(
+  kind: ExtensionKind,
+  name: string,
+  parentDir: string,
+  args: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await scaffoldExtension({
+      name,
+      kind,
+      parentDir,
+      folderName: optionalString(args.folder),
+      prefix: optionalString(args.prefix),
+      author: optionalString(args.author),
+      description: optionalString(args.description),
+    });
+
+    console.log(`Created ${kind}: ${result.extensionDir}`);
+    console.log(`  metadata: ${result.manifestPath}`);
+    console.log(`  class prefix: ${result.prefix}`);
+    console.log(`  files: ${result.files.length}`);
+    console.log(`  start editing in: ${result.openFile}`);
+    console.log("");
+
+    if (kind === "plugin") {
+      // The one devDependency is markdown-it, so the fixture test renders
+      // through the same parser a real book uses.
+      console.log("Next: check it still works —");
+      console.log(`  cd ${result.slug} && bun install && bun test`);
+      console.log("");
+      console.log("      then load it from a book's manifest.yaml:");
+      console.log("        plugins:");
+      console.log(`          - path: plugins/${result.slug}`);
+      console.log("");
+      console.log(
+        "      (point `path` at the FOLDER, not plugin.js — that is what makes",
+      );
+      console.log(
+        "       Gutterpress read gutterpress.json and pick up the stylesheet too.)",
+      );
+    } else {
+      // `theme import`/`apply` take the project directory as their SECOND
+      // POSITIONAL, not a --dir flag (see commands/theme.ts's `dirArg`).
+      console.log("Next: install it into a book —");
+      console.log(`  gutterpress theme import ${result.extensionDir} <book>`);
+      console.log(`  gutterpress theme apply ${result.slug} <book>`);
+      console.log("");
+      console.log(
+        "      Each stylesheet opens with the OWNS / MUST NOT CONTAIN header that",
+      );
+      console.log("      says which rules belong in it. Start with styles/tokens.css.");
+    }
+  } catch (e) {
+    const err = e as CreateProjectError;
+    const code = err && typeof err.code === "string" ? err.code : "scaffold-io";
+    console.error(`Could not create ${kind}: ${err?.message ?? String(e)}`);
+    // Same mapping the book path uses (M47): `scaffold-io` is an operational
+    // failure (3); every other code is a precondition the author chose (2).
+    process.exit(code === "scaffold-io" ? EXIT_CODES.PIPELINE : EXIT_CODES.USAGE);
+  }
+}
+
 export default defineCommand({
   meta: {
     name: "new",
-    description: "Create a new Gutterpress project from a starter template",
+    description: "Create a new Gutterpress book, plugin or theme from a starter template",
   },
   args: newArgs,
   async run({ args, rawArgs }) {
@@ -108,6 +276,23 @@ export default defineCommand({
     const parentDir = resolve(
       typeof args.dir === "string" && args.dir ? args.dir : process.cwd(),
     );
+
+    // `--kind` chooses the scaffolder. Absent = book, the behavior this
+    // command has always had.
+    const rawKind = typeof args.kind === "string" && args.kind ? args.kind : "book";
+    if (rawKind !== "book" && !(EXTENSION_KINDS as readonly string[]).includes(rawKind)) {
+      console.error(
+        `Unknown kind "${rawKind}". Choose one of: book, ${EXTENSION_KINDS.join(", ")}.`,
+      );
+      process.exit(EXIT_CODES.USAGE);
+    }
+    const kind = rawKind as "book" | ExtensionKind;
+    rejectFlagsForKind(rawArgs, kind);
+
+    if (kind !== "book") {
+      await runExtensionScaffold(kind, name, parentDir, args);
+      return;
+    }
 
     let template: ProjectTemplateId | undefined;
     if (typeof args.template === "string" && args.template) {

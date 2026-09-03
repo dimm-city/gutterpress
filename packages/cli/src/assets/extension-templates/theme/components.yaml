@@ -1,0 +1,51 @@
+# {{NAME}} — component catalog
+#
+# The enumerated list of what an author can opt into, and what each thing
+# emits. It exists so "documented" and "works" cannot drift apart: the catalog
+# is the thing a new author browses, and the thing to check a component
+# against when you change it.
+#
+# Gutterpress reads this file's PRESENCE today (gutterpress.json's
+# `components:` field points here, and a missing file fails at apply time
+# rather than silently at render time). Nothing yet reads the entries — the
+# registry that will is not built. So treat the shape below as this theme's
+# own convention, useful to you now, and expect to adjust it when core grows
+# a reader.
+#
+# One entry per component, in the same order as components.css.
+
+components:
+  - name: callout
+    # How an author reaches it from markdown.
+    recipe: "@section .{{PREFIX}}callout"
+    # What lands in the HTML.
+    emits: "div.section.{{PREFIX}}callout"
+    # Extra classes that change its look.
+    variants:
+      - name: warning
+        recipe: "@section .{{PREFIX}}callout .{{PREFIX}}callout-warning"
+    # The public theming surface. Anything NOT listed here is internal and may
+    # change without warning.
+    tokens:
+      - --{{PREFIX}}callout-accent
+      - --{{PREFIX}}callout-bg
+      - --{{PREFIX}}callout-pad
+      - --{{PREFIX}}callout-rule
+    # What it does at a page boundary. Worth recording: it is the property
+    # most often discovered by accident, three chapters in.
+    breaks: avoid
+    status: stable
+
+# Page templates are catalogued too — an author picks from these by name.
+page_templates:
+  - name: opener
+    recipe: "@page .{{PREFIX}}opener"
+    emits: "div.page.{{PREFIX}}opener"
+    notes: "Centred part/chapter opener. No running head, no folio."
+    status: stable
+
+  - name: reference
+    recipe: "@page .{{PREFIX}}reference"
+    emits: "div.page.{{PREFIX}}reference"
+    notes: "Two columns with a rule. Prefer core's .gp-columns-2 for plain columns."
+    status: stable

@@ -26,6 +26,16 @@ import {
 // resolvePluginStyles's doc comment below for why this is the literal
 // convergence point, not a parallel re-implementation.
 import { resolveDeclaredStyles } from "../style-declarations";
+// #241 — a `plugins:` entry's `path` may now name an EXTENSION FOLDER (a
+// gutterpress.json/theme.json package) instead of a bare JS file. See
+// loadExtensionFromDir below, the ONE new branch this issue adds to the
+// loader; everything else in this file is unchanged.
+import {
+  type ExtensionMetadata,
+  readExtensionMeta,
+  assertExtensionContained,
+  resolveExtension,
+} from "../extension-manifest";
 
 // The plugin author API + the markdown-it factory now live in the node-free
 // `renderer.ts` so the browser/PWA WebAdapter can import the pure render core
@@ -33,11 +43,15 @@ import { resolveDeclaredStyles } from "../style-declarations";
 // `node:url`/`node:module`). The types/values are re-exported below so existing
 // callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
 import type {
+  GutterpressMarkerTable,
   GutterpressPlugin,
   GutterpressPluginMetadata,
   LoadedPlugin,
 } from "./renderer";
 export type {
+  GutterpressMarkerDeclaration,
+  GutterpressMarkerLabel,
+  GutterpressMarkerTable,
   GutterpressPlugin,
   GutterpressPluginMetadata,
   GutterpressPluginExport,
@@ -796,6 +810,29 @@ function validateStylesExport(value: unknown, pluginRef: string): string[] | und
 }
 
 /**
+ * Validate a plugin's raw `markers` export shape (#240) — a LIGHT, top-level
+ * check only: "is this a plain object at all?" The per-declaration shape
+ * (tag/class/variants/label/autoCloseAt/alias/preset/deprecated) and every
+ * cross-plugin collision are validated centrally by
+ * `buildDeclaredMarkerRegistry` (markers.js), once every loaded plugin's
+ * table is available — this function only guards against handing that
+ * function something it cannot even iterate (`Object.entries` on a string or
+ * an array would silently produce nonsense keys). Mirrors
+ * {@link validateStylesExport}'s "undefined/empty both pass through as
+ * undefined, anything malformed throws now" shape.
+ */
+function validateMarkersExport(value: unknown, pluginRef: string): GutterpressMarkerTable | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `Plugin "${pluginRef}" exports \`markers\` that is not a plain object.`,
+    );
+  }
+  const table = value as GutterpressMarkerTable;
+  return Object.keys(table).length > 0 ? table : undefined;
+}
+
+/**
  * Extract the plugin function from a loaded module, handling the various
  * shapes Node/Bun produce for ESM/CJS interop:
  *
@@ -814,6 +851,9 @@ function extractPluginExports(
   /** Author-declared, module-relative paths (#238) — NOT YET resolved to
    * absolute paths; the caller (`loadPlugin`) does that. */
   styles?: string[];
+  /** Author-declared marker table (#240), unresolved — `createMarkdownRenderer`
+   * (renderer.ts) merges it with every other loaded plugin's table. */
+  markers?: GutterpressMarkerTable;
 } {
   const mod = pluginModule !== null && (typeof pluginModule === "object" || typeof pluginModule === "function")
     ? pluginModule as Record<string, unknown>
@@ -822,6 +862,7 @@ function extractPluginExports(
   let metadata = mod.metadata as GutterpressPluginMetadata | undefined;
   let css = mod.css as string | undefined;
   let styles = validateStylesExport(mod.styles, pluginRef);
+  let markers = validateMarkersExport(mod.markers, pluginRef);
 
   if (exportName && typeof mod[exportName] === "function") {
     plugin = mod[exportName] as GutterpressPlugin;
@@ -848,6 +889,7 @@ function extractPluginExports(
     metadata = (inner.metadata as GutterpressPluginMetadata | undefined) ?? metadata;
     css = (inner.css as string | undefined) ?? css;
     styles = validateStylesExport(inner.styles, pluginRef) ?? styles;
+    markers = validateMarkersExport(inner.markers, pluginRef) ?? markers;
   }
 
   if (typeof plugin !== "function") {
@@ -858,7 +900,7 @@ function extractPluginExports(
     );
   }
 
-  return { plugin, metadata, css, styles };
+  return { plugin, metadata, css, styles, markers };
 }
 
 /**
@@ -1037,6 +1079,124 @@ function resolvePluginStyles(
   return resolveDeclaredStyles(rawStyles, moduleDir, `Plugin "${pluginRef}"`);
 }
 
+/** A `plugins:` entry whose `path` names a directory rather than a bare JS
+ *  file loads no markdown-it function of its own — every author-visible
+ *  effect of loading it is its declared styles (#241's "theme ≡ extension
+ *  with only styles" realized through the `plugins:` array: a folder with
+ *  NO `markdown` is functionally indistinguishable from a theme applied
+ *  through `gutterpress theme apply`, right down to reusing the same
+ *  metadata reader). `md.use()` on a no-op is harmless — every consumer of
+ *  `LoadedPlugin` (`applyPlugins`, `collectPluginCss`,
+ *  `collectPluginStylePaths`) keeps working unmodified. */
+function noopPlugin(): void {}
+
+/** Build a `LoadedPlugin.metadata` object from a `gutterpress.json`'s own
+ *  `name`/`description`/`author` — `undefined` when none are set, matching
+ *  every other optional-metadata contract in this file. */
+function extensionMetadata(meta: ExtensionMetadata): GutterpressPluginMetadata | undefined {
+  if (!meta.name && !meta.description && !meta.author) return undefined;
+  return {
+    ...(meta.name ? { name: meta.name } : {}),
+    ...(meta.description ? { description: meta.description } : {}),
+    ...(meta.author ? { author: meta.author } : {}),
+  };
+}
+
+/**
+ * Load a `plugins:` entry whose `path` (#241) names a DIRECTORY instead of a
+ * bare JS file — an extension package: a `gutterpress.json` (or a plain
+ * `theme.json`, read through the exact same {@link readExtensionMeta}
+ * declaring any mix of `markdown` (a markdown-it entry, loaded exactly like a
+ * bare-file plugin — same cache, same export extraction, same `styles`
+ * export handling) and `styles`/`engineStyles.native` (resolved through the
+ * SAME {@link resolveExtension} → `resolveDeclaredStyles` chain a theme's own
+ * declared sheets and a plain plugin's `styles` export already go through).
+ *
+ * `markdown` absent is the "styles only" case — see {@link noopPlugin}.
+ * `markdown` present is "plugin ≡ extension with only markdown" PLUS
+ * whatever styles the SAME `gutterpress.json` also declares: the extension's
+ * own styles are ordered BEFORE the loaded module's own `styles` export (an
+ * author who wants the module's own styles to win at equal specificity
+ * should rely on cascade order within that module's CSS itself, exactly as
+ * they would for two files in one plain `styles` export).
+ *
+ * `tokensFile`/`components`/`snippets` are parsed and validated (existence +
+ * containment, via `resolveExtension`) but not otherwise consumed HERE —
+ * `snippets.ts`'s `listMergedSnippets` (#242) is the actual snippet-picker
+ * consumer, reached through its own `listInstalledExtensions` (which reads
+ * `extension-manifest.ts`'s `readExtensionMeta` directly, tolerantly, rather
+ * than through this throwing `resolveExtension` call); a `components.yaml`
+ * catalog reader is the remaining consumer still to be built.
+ */
+async function loadExtensionFromDir(
+  extensionDir: string,
+  config: ResolvedPluginConfig,
+  pluginRef: string,
+): Promise<LoadedPlugin> {
+  const meta = await readExtensionMeta(extensionDir);
+  assertExtensionContained(meta);
+  const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
+  const extensionStyles = [...(resolved.styles ?? []), ...(resolved.engineStyles ?? [])];
+  const name = config.name ?? meta.name ?? pluginRef;
+
+  // A folder with NEITHER markdown NOR any styles declares nothing at all —
+  // almost certainly a mistake (a `path:` meant for a bare JS file, pointed
+  // at a folder instead; or a package with no gutterpress.json/theme.json
+  // that was never meant to be referenced this way). Fail loudly here rather
+  // than silently succeeding as a no-op with no observable effect, matching
+  // this loader's fail-fast doctrine everywhere else (CLAUDE.md §5).
+  if (!resolved.markdown && extensionStyles.length === 0) {
+    throw new Error(
+      `Extension folder "${pluginRef}" declares neither \`markdown\` nor \`styles\`/` +
+        "`engineStyles` (in its gutterpress.json or theme.json) — there is nothing to " +
+        "load. Point `path` at a JS file directly for a plain plugin, or add a metadata " +
+        "file declaring at least one.",
+    );
+  }
+
+  if (!resolved.markdown) {
+    return {
+      name,
+      plugin: noopPlugin,
+      ...(extensionMetadata(meta) ? { metadata: extensionMetadata(meta) } : {}),
+      ...(extensionStyles.length > 0 ? { styles: extensionStyles } : {}),
+      options: config.options,
+    };
+  }
+
+  const pluginModule = await loadCachedPathPluginModule(resolved.markdown);
+  const { plugin, metadata, css, styles: rawStyles, markers } = extractPluginExports(
+    pluginModule,
+    pluginRef,
+    config.export,
+  );
+  const ownStyles = resolvePluginStyles(rawStyles, dirname(resolved.markdown), pluginRef);
+  const styles = [...extensionStyles, ...(ownStyles ?? [])];
+
+  return {
+    name,
+    plugin,
+    // The plugin module's OWN `metadata` export wins when present (it is
+    // more specific — describing the exact code that loaded); the folder's
+    // gutterpress.json name/description/author is the fallback, not an
+    // override, so a component library's package-level metadata still
+    // surfaces for a `plugin.js` that exports none of its own.
+    metadata: metadata ?? extensionMetadata(meta),
+    css,
+    ...(styles.length > 0 ? { styles } : {}),
+    // #240 × #241: an extension folder's markdown entry declares `markers`
+    // exactly as a bare-file plugin does, and `createMarkdownRenderer` builds
+    // the declared-marker registry from `LoadedPlugin.markers`. Omitting it
+    // here (the shape this function shipped with) silently dropped every
+    // declared marker of any plugin loaded as a FOLDER — `@callout` parsed as
+    // a plain paragraph, with no warning, while the identical module loaded
+    // by a direct `path: …/plugin.js` worked. The two load paths must produce
+    // the same LoadedPlugin.
+    ...(markers ? { markers } : {}),
+    options: config.options,
+  };
+}
+
 export async function loadPlugin(
   config: ResolvedPluginConfig,
   baseDir: string,
@@ -1068,6 +1228,26 @@ export async function loadPlugin(
       plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
       options: config.options,
     };
+  }
+
+  // #241 — a `path` entry may name an EXTENSION FOLDER (a gutterpress.json/
+  // theme.json package) instead of a bare JS file. Dispatched here, before
+  // the generic file-load try/catch below, because a folder produces a
+  // structurally different LoadedPlugin (see loadExtensionFromDir) rather
+  // than participating in the shared pluginModule/moduleDir plumbing that
+  // follows. A path that does not exist at all, or exists as a plain file,
+  // falls through unchanged to that existing code — this branch changes
+  // behavior ONLY for a `path` that resolves to a real directory.
+  if (config.path) {
+    const candidatePath = resolve(baseDir, config.path);
+    if (existsSync(candidatePath) && statSync(candidatePath).isDirectory()) {
+      try {
+        return await loadExtensionFromDir(candidatePath, config, pluginRef);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load plugin "${pluginRef}": ${errorMsg}`);
+      }
+    }
   }
 
   try {
@@ -1106,7 +1286,7 @@ export async function loadPlugin(
     throw new Error(`Failed to load plugin "${pluginRef}": ${errorMsg}`);
   }
 
-  const { plugin, metadata, css, styles: rawStyles } = extractPluginExports(
+  const { plugin, metadata, css, styles: rawStyles, markers } = extractPluginExports(
     pluginModule,
     pluginRef,
     config.export,
@@ -1119,6 +1299,7 @@ export async function loadPlugin(
     metadata,
     css,
     styles,
+    markers,
     options: config.options,
   };
 }

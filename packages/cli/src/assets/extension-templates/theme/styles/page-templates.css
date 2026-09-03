@@ -1,0 +1,60 @@
+/* ===========================================================================
+ * {{NAME}} — 4. PAGE TEMPLATES
+ *
+ * OWNS
+ *   The layout of a `@page .name` wrapper — how content is arranged WITHIN
+ *   one page of the book. Columns, full-bleed art, a centred opener.
+ *
+ *   Authored as:
+ *
+ *       @page .{{PREFIX}}opener
+ *       # Part One
+ *       @end-page
+ *
+ * MUST NOT CONTAIN
+ *   - `@page` at-rules. Confusingly, `@page .name` in MARKDOWN and `@page` in
+ *     CSS are different things: the markdown marker makes a `div.page` you
+ *     style with `.page.name`, while the CSS at-rule sets the sheet's own
+ *     geometry. This file owns the first; page-rules.css owns the second.
+ *   - Component styling. A template says where a component sits, never what
+ *     it looks like.
+ * ======================================================================== */
+
+@layer templates {
+  /* A part/section opener: content parked a third of the way down, centred,
+     with the rest of the sheet left empty on purpose. */
+  .page.{{PREFIX}}opener {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    min-height: 60%;
+  }
+
+  .page.{{PREFIX}}opener h1 {
+    font-size: calc(var(--{{PREFIX}}fs-h1) * 1.35);
+    margin-block-end: var(--{{PREFIX}}space-2);
+  }
+
+  .page.{{PREFIX}}opener p {
+    text-indent: 0;
+    color: var(--{{PREFIX}}ink-soft);
+    max-width: 24em;
+  }
+
+  /* A two-column reference page. Core already ships `.gp-columns-2` as
+     general author vocabulary — reach for that first, and use a named
+     template like this only when the page needs more than the columns. */
+  .page.{{PREFIX}}reference {
+    columns: 2;
+    column-gap: var(--{{PREFIX}}space-4);
+    column-rule: 1px solid var(--{{PREFIX}}rule);
+  }
+
+  .page.{{PREFIX}}reference h2 {
+    column-span: all;
+    border-block-end: 1px solid var(--{{PREFIX}}rule);
+    padding-block-end: var(--{{PREFIX}}space-1);
+  }
+}

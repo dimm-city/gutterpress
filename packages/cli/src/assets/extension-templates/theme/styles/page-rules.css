@@ -1,0 +1,128 @@
+/* ===========================================================================
+ * {{NAME}} — 5. PAGE RULES
+ *
+ * OWNS
+ *   The CSS `@page` at-rules: the sheet's own geometry (margins), the margin
+ *   boxes that carry running heads and folios, and the named-page wiring that
+ *   connects a markdown `@page .name` to a CSS `@page name`.
+ *
+ *   This is standard CSS Paged Media and GCPM. Everything here is what the
+ *   spec says, not something Gutterpress invented — `string-set`,
+ *   `target-counter()` and the margin boxes all work the way they are
+ *   written down.
+ *
+ * MUST NOT CONTAIN
+ *   - Ordinary element or component rules. `@page` is a separate cascade;
+ *     mixing the two here is how a stylesheet becomes impossible to reason
+ *     about. The two element rules that ARE here — `string-set` on `h1` and
+ *     `page:` on the opener template — are the wiring the margin boxes read,
+ *     not styling; they belong with the boxes that consume them.
+ *   - Component or template styling of any kind.
+ *
+ * ONE THING WORTH KNOWING: `@page` at-rules DO work inside a cascade layer —
+ * verified against the engine, not assumed. Keeping them in `pages` means a
+ * book's own `@page` rule in book.css (a later layer) wins over this one
+ * without a specificity fight, which is the whole point of the arrangement.
+ * ======================================================================== */
+
+@layer pages {
+  /* -------------------------------------------------------------------------
+   * TRIM SIZE. This is the physical size of the printed page, and it has to
+   * be declared in CSS: with no `size:` anywhere, Chromium falls back to US
+   * Letter and prints a book at the wrong trim with no error at all. That is
+   * the single most expensive silent failure in this whole stack, which is
+   * why it is the first thing in the file.
+   *
+   * KEEP IT IN STEP WITH THE MANIFEST. The book's `preset:`/`page:` is what
+   * validation, the publish targets and the PDF/X boxes measure against, and
+   * `gutterpress validate` fails the build when the produced PDF does not
+   * match it. So the manifest is the source of truth and this line is the
+   * instruction that satisfies it — change one and change the other.
+   *
+   * 6in × 9in is the neutral trade-book size the `book` preset declares.
+   * Common alternatives: 5.5in 8.5in (digest), 8.5in 11in (US Letter),
+   * 210mm 297mm (A4).
+   *
+   * Deliberately a literal, not `var(--…)`. A custom property does resolve
+   * here, but an indirection whose failure mode is "silently prints Letter"
+   * is not worth the tidiness.
+   * ---------------------------------------------------------------------- */
+  @page {
+    size: 6in 9in;
+  }
+
+  /* Mirrored margins for a bound book: the inner edge needs the extra room,
+     and which edge is "inner" flips every page. */
+  @page :left {
+    margin: var(--{{PREFIX}}page-margin-top)
+            var(--{{PREFIX}}page-margin-inner)
+            var(--{{PREFIX}}page-margin-bottom)
+            var(--{{PREFIX}}page-margin-outer);
+
+    @bottom-left {
+      content: counter(page);
+      font-family: var(--{{PREFIX}}font-body);
+      font-size: var(--{{PREFIX}}fs-small);
+      color: var(--{{PREFIX}}ink-soft);
+    }
+
+    /* The running head. `string(chaptertitle)` is fed by the `string-set`
+       further down — the standard GCPM mechanism.
+
+       For the book-title-on-verso convention instead, add a second named
+       string (`.title-page h1 { string-set: booktitle content(text); }`) and
+       read `string(booktitle)` here. Do not reference a named string nothing
+       sets: it resolves to empty and the head silently disappears. */
+    @top-left {
+      content: string(chaptertitle);
+      font-family: var(--{{PREFIX}}font-display);
+      font-size: var(--{{PREFIX}}fs-small);
+      color: var(--{{PREFIX}}ink-soft);
+    }
+  }
+
+  @page :right {
+    margin: var(--{{PREFIX}}page-margin-top)
+            var(--{{PREFIX}}page-margin-outer)
+            var(--{{PREFIX}}page-margin-bottom)
+            var(--{{PREFIX}}page-margin-inner);
+
+    @bottom-right {
+      content: counter(page);
+      font-family: var(--{{PREFIX}}font-body);
+      font-size: var(--{{PREFIX}}fs-small);
+      color: var(--{{PREFIX}}ink-soft);
+    }
+
+    /* The recto carries the current chapter — `string(chaptertitle)` picks up
+       the most recent `h1` on or before this page. */
+    @top-right {
+      content: string(chaptertitle);
+      font-family: var(--{{PREFIX}}font-display);
+      font-size: var(--{{PREFIX}}fs-small);
+      color: var(--{{PREFIX}}ink-soft);
+    }
+  }
+
+  /* Feed the running heads. `string-set` is the standard GCPM mechanism:
+     the element's text becomes a named string the margin boxes can read. */
+  h1 { string-set: chaptertitle content(text); }
+
+  /* A chapter opener gets no running head and no folio — the convention in
+     nearly every printed book. `@page .{{PREFIX}}opener` in markdown maps to
+     the named page below via `page:`. */
+  .page.{{PREFIX}}opener { page: {{PREFIX}}opener; }
+
+  @page {{PREFIX}}opener {
+    @top-left { content: none; }
+    @top-right { content: none; }
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
+  }
+
+  /* First page of the book: no furniture at all. */
+  @page :first {
+    @top-left { content: none; }
+    @top-right { content: none; }
+  }
+}

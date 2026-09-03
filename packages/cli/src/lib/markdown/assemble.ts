@@ -33,6 +33,18 @@ export type ReadText = (relPath: string) => Promise<string>;
  * emitted by `gp-pin-scope.js`'s `gp_pin_scope_check`, same as
  * `pin_outside_page`, see #226).
  *
+ * #240 (declarative container components) adds three more, all emitted by
+ * `markers.js`'s `layout_transform`/`scanForUnknownDeclaredMarkers` for a
+ * plugin-DECLARED marker: `deprecated_marker` (a `{ deprecated: "…" }`
+ * marker, or its `@end-` form, was used), `declared_marker_close_without_open`
+ * (an `@end-<name>` with nothing of that kind open — the declared-marker
+ * twin of `continue_without_section`), and `declared_marker_eof_close` (an
+ * open declared container reached EOF without `autoCloseAt: ["eof"]` — the
+ * declared-marker twin of `spread_eof_close`). `unknown_marker` above is
+ * reused, not duplicated: a typo close to a DECLARED name warns through the
+ * same type, via a second, unconditional check modeled on `unknown_gp_class`
+ * rather than the core-only `scanForMistypedMarkers`.
+ *
  * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
  * @section with no open @page is valid authoring (audited, 17/17 false
  * positives across two real books), and the `implicitPage` option that

@@ -18,6 +18,22 @@
  * {@link themeStyleList} for the resolution rule and {@link ThemeMetadata}
  * for the full field set.
  *
+ * #241 — a theme is now formally the "styles only" case of the unified
+ * extension package: a folder's metadata file may be named `gutterpress.json`
+ * instead of `theme.json` (superset shape, `extension-manifest.ts`), read by
+ * the SAME `readExtensionMeta` a `theme.json`-only folder always resolved
+ * through — every function in this file that reads a real on-disk theme
+ * folder (list/apply/import/revert/read-css) therefore already understands
+ * the new format, with zero migration required for a folder that only ever
+ * had `theme.json`. What this module does NOT do: wire a `gutterpress.json`
+ * folder's `markdown` field into the manifest's `plugins:` list. An extension
+ * that carries BOTH styles and markdown installs as a plugin instead
+ * (`gutterpress plugin add <folder>`, `markdown/plugins.ts`'s
+ * `loadExtensionFromDir`), which resolves and applies that field — the theme
+ * verbs still just parse-and-expose it (see `ThemeInfo.markdown`) for
+ * visibility, deliberately not acting on it, so the theme grid and the
+ * plugin-driven install path never fight over which one "owns" the folder.
+ *
  * Two sources, one {@link ThemeInfo} shape:
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/themes/<id>/`), baked into
@@ -50,7 +66,7 @@ import path from "node:path";
 import { isSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
 
-import { getAssetPath } from "./embedded-assets.ts";
+import { getAssetPath, getAssetsDir } from "./embedded-assets.ts";
 import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
 import { loadManifestDoc, writeManifestDoc, ensureSeq, scalarString } from "./manifest-doc.ts";
 import { slugify, prettify } from "./slug.ts";
@@ -60,6 +76,23 @@ import { slugify, prettify } from "./slug.ts";
 // convergence point between a theme and a styles-carrying plugin, not a
 // second parallel implementation.
 import { resolveDeclaredStyles } from "./style-declarations.ts";
+// #241 — a theme is now the degenerate "styles only" case of the unified
+// extension package format. `ThemeMetadata` and the theme-only helpers below
+// are thin re-exports/wrappers over the extension-generic implementations
+// this module now builds on, NOT a second implementation: this is the literal
+// mechanism behind "the theme verbs keep working on the extension format"
+// (a `gutterpress.json` folder is read by the exact same `readExtensionMeta`
+// every theme read already calls) and "an existing theme.css + theme.json
+// folder loads completely unchanged" (that folder has no `gutterpress.json`,
+// so `readExtensionMeta` falls back to the same `theme.json` read it always
+// did).
+import {
+  type ExtensionMetadata,
+  assertExtensionContained,
+  extensionStyleList,
+  extensionEngineStyleList,
+  readExtensionMeta,
+} from "./extension-manifest.ts";
 
 /** Folder (relative to the project root) themes are copied into on apply/import. */
 export const THEMES_DIR = "themes";
@@ -73,40 +106,17 @@ export const BUILT_IN_THEME_IDS = [
 
 export type BuiltInThemeId = (typeof BUILT_IN_THEME_IDS)[number];
 
-/** Parsed `theme.json` metadata (every field optional in the file). */
-export interface ThemeMetadata {
-  name?: string;
-  author?: string;
-  description?: string;
-  /** Optional preview image path (relative to the theme folder). */
-  preview?: string | null;
-  /**
-   * #239 — ordered stylesheets, relative to the theme folder. A theme is no
-   * longer capped at one file: this is what lets a real component library
-   * (tokens/base/components/templates/rules as separate layered sheets) be a
-   * theme. Absent/empty defaults to `["theme.css"]` — every theme published
-   * before this field existed keeps working, byte-for-byte, untouched. Globs
-   * are NOT supported, matching the manifest's own `styles:` list (§0 — one
-   * authoring convention, not two).
-   */
-  styles?: string[];
-  /**
-   * #239 — engine-conditional sheets, relative to the theme folder. Applying
-   * the theme appends these to the manifest's `engineStyles.native` list
-   * (loaded last, so furniture wins — see manifest.ts's resolveWithPreset).
-   */
-  engineStyles?: { native?: string[] };
-  /**
-   * #239 — which declared sheet (a path from `styles`, or `theme.css` when
-   * `styles` is absent) carries the author-facing `:root` token surface. Lets
-   * a rich multi-sheet theme tell the Design panel's guided token editor
-   * where to look instead of it guessing at the single active stylesheet.
-   * Purely advisory metadata — nothing in this module enforces it. Absent
-   * here means "no override"; {@link ThemeInfo.tokensFile} is where the
-   * default (the theme's primary/only sheet) gets filled in.
-   */
-  tokensFile?: string;
-}
+/**
+ * Parsed theme metadata (every field optional in the file) — #241: a theme is
+ * the degenerate "styles only" case of {@link ExtensionMetadata}, so this is
+ * now a plain alias rather than a separate type. A `theme.json` file only
+ * ever populates the fields this comment used to document in full
+ * (`name`/`author`/`description`/`preview`/`styles`/`engineStyles`/
+ * `tokensFile`, #239); the three newer fields (`markdown`/`components`/
+ * `snippets`) are only reachable via a `gutterpress.json` — see
+ * `extension-manifest.ts` for the complete, current field-by-field doc.
+ */
+export type ThemeMetadata = ExtensionMetadata;
 
 /** Author-friendly metadata for one theme (built-in or project). */
 export interface ThemeInfo {
@@ -139,6 +149,26 @@ export interface ThemeInfo {
    * fallback.
    */
   tokensFile: string;
+  /**
+   * #241 — declared-relative path to a markdown-it entry, when this theme's
+   * `gutterpress.json` names one (never possible via the legacy `theme.json`
+   * shape). Informational only: the theme verbs (list/apply/import/revert/
+   * remove) do not load or wire it — a full extension carrying both styles
+   * AND markdown installs via `gutterpress plugin add <folder>` instead (see
+   * `plugins.ts`'s `loadExtensionFromDir`), which resolves and applies this
+   * SAME field. Surfaced here so a theme card can at least show "this
+   * extension also has a plugin half" rather than staying silent about it.
+   */
+  markdown?: string;
+  /** #241 — declared-relative path to a component catalog file, informational
+   *  only (same rationale as {@link markdown}); no catalog reader consumes
+   *  this yet. */
+  components?: string;
+  /** #241 — declared-relative path to a snippets folder, informational only
+   *  on THIS type (same rationale as {@link markdown} — the theme verbs
+   *  don't load it). The active theme's copy of this field IS consumed,
+   *  by `snippets.ts`'s `listMergedSnippets` (#242) via `getActiveTheme`. */
+  snippets?: string;
 }
 
 /** A built-in theme resolved to disk (extracted from the embedded assets). */
@@ -170,16 +200,17 @@ const BUILT_IN_FALLBACK_META: Record<BuiltInThemeId, { name: string; description
   },
 };
 
-/** Parse a `theme.json` (best-effort: tolerate missing/invalid JSON). */
-async function readThemeMeta(jsonPath: string): Promise<ThemeMetadata> {
-  try {
-    const text = await readFile(jsonPath, "utf8");
-    const parsed = JSON.parse(text) as ThemeMetadata;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+/**
+ * #241 — read a theme folder's metadata. A thin rename: this now delegates
+ * to {@link readExtensionMeta}, which tries `gutterpress.json` before falling
+ * back to `theme.json`. Every existing call site here passed
+ * `path.join(dir, "theme.json")`; they now pass `dir` directly, since the
+ * shared reader decides the filename itself. For a folder with no
+ * `gutterpress.json` (every theme published before #241) this resolves to
+ * the EXACT SAME `theme.json` read as before — the mechanism behind "an
+ * existing theme.css + theme.json folder loads completely unchanged."
+ */
+const readThemeMeta = readExtensionMeta;
 
 /**
  * A theme's declared stylesheets, relative to its folder, in cascade order
@@ -188,16 +219,21 @@ async function readThemeMeta(jsonPath: string): Promise<ThemeMetadata> {
  * satisfies, so nothing needs migrating. Exported for `theme-import.ts`,
  * which validates every one of these (existence + print-safety) at import
  * time, the same way it always validated the lone `theme.css`.
+ *
+ * #241: layers that theme-only default on top of `extension-manifest.ts`'s
+ * {@link extensionStyleList}, which does NOT apply it (a markdown-only
+ * extension has no reason to require a `theme.css` it never declared) — one
+ * shared "read the declared list" body, two defaulting rules.
  */
 export function themeStyleList(meta: ThemeMetadata): string[] {
-  const declared = Array.isArray(meta.styles)
-    ? meta.styles.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-    : [];
+  const declared = extensionStyleList(meta);
   return declared.length > 0 ? declared : ["theme.css"];
 }
 
 /**
- * Every declared sheet must live INSIDE the theme folder. A theme is
+ * Every declared sheet (styles/engineStyles — #241: now also `markdown`/
+ * `components`/`snippets`/`tokensFile`, since a `gutterpress.json`-formatted
+ * theme can declare them too) must live INSIDE the theme folder. A theme is
  * self-contained by contract (apply copies the whole folder), and an imported
  * package is untrusted input: a `../` or absolute entry would make apply read
  * a file from anywhere on disk into the book.
@@ -209,16 +245,14 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
  * `getPreviousTheme`, `readThemeCss`) also call: one hand-edited theme.json
  * must not take down listing every theme, the same reason `readThemeMeta`
  * returns `{}` for an unparseable file instead of throwing.
+ *
+ * #241 — a straight re-export of the extension-generic
+ * {@link assertExtensionContained}: a theme's containment rule is not a
+ * separate implementation, it IS the extension rule, applied to a metadata
+ * object that (for a `theme.json`-only folder) never has the three newer
+ * fields populated in the first place.
  */
-export function assertThemeSheetsContained(meta: ThemeMetadata): void {
-  for (const rel of [...themeStyleList(meta), ...themeEngineStyleList(meta)]) {
-    if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
-      throw new Error(
-        `theme.json declares stylesheet "${rel}" outside the theme folder; a theme must be self-contained.`,
-      );
-    }
-  }
-}
+export const assertThemeSheetsContained = assertExtensionContained;
 
 /**
  * A theme's declared engine-conditional sheets, relative to its folder
@@ -226,14 +260,12 @@ export function assertThemeSheetsContained(meta: ThemeMetadata): void {
  * as something other than a list) — treated as "none declared" rather than a
  * hard crash on a JSON author's typo. Exported for `theme-import.ts`'s import
  * validation, same reuse rationale as {@link themeStyleList}.
+ *
+ * #241 — a straight alias: `engineStyles.native` never had a theme-specific
+ * default to layer on, so this is byte-identical to
+ * {@link extensionEngineStyleList}.
  */
-export function themeEngineStyleList(meta: ThemeMetadata): string[] {
-  return Array.isArray(meta.engineStyles?.native)
-    ? meta.engineStyles.native.filter(
-        (s): s is string => typeof s === "string" && s.trim().length > 0,
-      )
-    : [];
-}
+export const themeEngineStyleList = extensionEngineStyleList;
 
 /**
  * Build a ThemeInfo from a folder's metadata + id, supplying sane fallbacks.
@@ -259,6 +291,11 @@ function themeInfo(
     preview: meta.preview ?? null,
     styles,
     tokensFile: meta.tokensFile?.trim() || styles[0]!,
+    // #241 — informational only; see ThemeInfo's doc comment for why the
+    // theme verbs parse-and-expose these without wiring them.
+    markdown: meta.markdown?.trim() || undefined,
+    components: meta.components?.trim() || undefined,
+    snippets: meta.snippets?.trim() || undefined,
   };
 }
 
@@ -286,7 +323,12 @@ export async function listBuiltInThemes(): Promise<ThemeInfo[]> {
   for (const id of BUILT_IN_THEME_IDS) {
     let meta: ThemeMetadata = {};
     try {
-      meta = await readThemeMeta(await getAssetPath(`${THEMES_DIR}/${id}/theme.json`));
+      // #241: reads the extracted embedded-assets dir for this built-in, so
+      // the same gutterpress.json-then-theme.json reader every real on-disk
+      // theme folder goes through applies here too — a built-in theme could
+      // adopt the new format with no further plumbing changes, even though
+      // none of the three shipped ones do yet.
+      meta = await readThemeMeta(path.join(await getAssetsDir(), THEMES_DIR, id));
     } catch {
       meta = {};
     }
@@ -306,11 +348,11 @@ export async function resolveBuiltInTheme(id: string): Promise<ResolvedTheme> {
     throw new Error(`Unknown built-in theme: "${id}".`);
   }
   const cssPath = await getAssetPath(`${THEMES_DIR}/${id}/theme.css`);
-  const jsonPath = await getAssetPath(`${THEMES_DIR}/${id}/theme.json`);
   if (!existsSync(cssPath)) {
     throw new Error(`Built-in theme "${id}" is missing its theme.css.`);
   }
-  const meta = await readThemeMeta(jsonPath);
+  // #241: see listBuiltInThemes's matching comment above.
+  const meta = await readThemeMeta(path.join(await getAssetsDir(), THEMES_DIR, id));
   if (!meta.name) meta.name = BUILT_IN_FALLBACK_META[id as BuiltInThemeId]?.name;
   if (!meta.description) {
     meta.description = BUILT_IN_FALLBACK_META[id as BuiltInThemeId]?.description;
@@ -336,7 +378,7 @@ export async function listProjectThemes(projectDir: string): Promise<ThemeInfo[]
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(root, entry.name);
-    const meta = await readThemeMeta(path.join(dir, "theme.json"));
+    const meta = await readThemeMeta(dir);
     const primary = themeStyleList(meta)[0]!;
     if (!existsSync(path.join(dir, primary))) continue;
     out.push(themeInfo(entry.name, "project", meta));
@@ -437,7 +479,7 @@ export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | nu
     if (!m) continue;
     const id = m[1]!;
     const dir = path.join(projectDir, THEMES_DIR, id);
-    const meta = await readThemeMeta(path.join(dir, "theme.json"));
+    const meta = await readThemeMeta(dir);
     const primary = themeStyleList(meta)[0]!;
     if (!existsSync(path.join(dir, primary))) continue;
     return themeInfo(id, "project", meta);
@@ -536,7 +578,7 @@ export async function getPreviousTheme(projectDir: string): Promise<ThemeInfo | 
   const id = typeof raw === "string" && raw.trim() ? raw : null;
   if (!id) return null;
   const dir = themeDirFor(projectDir, id);
-  const meta = await readThemeMeta(path.join(dir, "theme.json"));
+  const meta = await readThemeMeta(dir);
   const primary = themeStyleList(meta)[0]!;
   if (!existsSync(path.join(dir, primary))) return null;
   const active = await getActiveTheme(projectDir);
@@ -596,7 +638,7 @@ export async function applyTheme(
     // Copy the whole theme folder (css + json + any bundled fonts/assets).
     await cp(resolved.dir, destDir, { recursive: true });
     // The copied theme now lives in the project — surface it as a project theme.
-    meta = await readThemeMeta(path.join(destDir, "theme.json"));
+    meta = await readThemeMeta(destDir);
     // #239: confirm the copy landed completely — see the project branch's
     // comment below for why this is the shared resolver, not a re-check.
     assertThemeSheetsContained(meta);
@@ -605,7 +647,7 @@ export async function applyTheme(
     info = themeInfo(destId, "project", meta);
   } else {
     const dir = themeDirFor(projectDir, target.id);
-    meta = await readThemeMeta(path.join(dir, "theme.json"));
+    meta = await readThemeMeta(dir);
     // #239: a multi-sheet theme may declare NO theme.css at all — the folder
     // qualifies when its own PRIMARY declared sheet exists, same test
     // listProjectThemes/getActiveTheme use. Kept as its own check (rather than
@@ -667,7 +709,7 @@ export async function importThemeFromFolder(
     throw new Error("The chosen path is not a folder.");
   }
 
-  const meta = await readThemeMeta(path.join(sourceDir, "theme.json"));
+  const meta = await readThemeMeta(sourceDir);
   assertThemeSheetsContained(meta);
   const primary = themeStyleList(meta)[0]!;
   if (!existsSync(path.join(sourceDir, primary))) {
@@ -694,7 +736,7 @@ export async function importThemeFromFolder(
   const destDir = path.join(projectDir, THEMES_DIR, id);
   await mkdir(path.dirname(destDir), { recursive: true });
   await cp(sourceDir, destDir, { recursive: true });
-  return themeInfo(id, "project", await readThemeMeta(path.join(destDir, "theme.json")));
+  return themeInfo(id, "project", await readThemeMeta(destDir));
 }
 
 /** Treat a URL as raw CSS when it ends in .css; otherwise as a theme folder. */
@@ -834,7 +876,7 @@ export async function readThemeCss(
   if (!projectDir) throw new Error("A project is required to read a project theme.");
   // themeDirFor rejects an invalid id BEFORE any fs access below.
   const dir = themeDirFor(projectDir, source.id);
-  const meta = await readThemeMeta(path.join(dir, "theme.json"));
+  const meta = await readThemeMeta(dir);
   const sheets = themeStyleList(meta);
   const parts: string[] = [];
   for (const rel of sheets) {

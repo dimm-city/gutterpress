@@ -1,0 +1,123 @@
+/* ===========================================================================
+ * {{NAME}} — 2. BASE
+ *
+ * OWNS
+ *   The element baseline: what a `p`, `h2`, `ul`, `table`, `blockquote` or
+ *   `code` looks like when the author wrote plain markdown and opted into
+ *   nothing. Every value comes from a token — this file decides which token
+ *   an element uses, never what the value is.
+ *
+ *   This is also where print hygiene for bare elements lives: widow/orphan
+ *   control, heading break-after, table header repetition.
+ *
+ * MUST NOT CONTAIN
+ *   - Component classes. A `.{{PREFIX}}callout` rule belongs in
+ *     components.css even if it happens to style a paragraph.
+ *   - Literal colours, sizes or families. If you find yourself typing `#333`
+ *     here, the token is missing from tokens.css — add it there.
+ *   - `@page` rules. Those are page-rules.css's.
+ *
+ * WHY BARE ELEMENT SELECTORS ARE FINE HERE — and only here. A theme IS the
+ * book's look, so styling `p` is its job. A PLUGIN styling `p` would leak its
+ * opinions into every book that installed it; that is the difference, and it
+ * is why components.css below is scoped to classes.
+ * ======================================================================== */
+
+@layer base {
+  body {
+    background: var(--{{PREFIX}}paper);
+    color: var(--{{PREFIX}}ink);
+    font-family: var(--{{PREFIX}}font-body);
+    font-size: var(--{{PREFIX}}fs-body);
+    line-height: var(--{{PREFIX}}leading);
+  }
+
+  /* Long-form prose: first paragraph flush, the rest indented, no vertical
+     gaps. The book convention — not the web one. */
+  p {
+    margin: 0;
+    text-indent: 1.2em;
+    orphans: 2;
+    widows: 2;
+  }
+
+  h1 + p,
+  h2 + p,
+  h3 + p,
+  blockquote + p,
+  ul + p,
+  ol + p,
+  table + p,
+  figure + p {
+    text-indent: 0;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--{{PREFIX}}font-display);
+    color: var(--{{PREFIX}}ink);
+    line-height: 1.15;
+    /* A heading at the foot of a page with its text on the next one is the
+       single most common print defect in a markdown book. */
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  h1 { font-size: var(--{{PREFIX}}fs-h1); margin: 0 0 var(--{{PREFIX}}space-4); }
+  h2 { font-size: var(--{{PREFIX}}fs-h2); margin: var(--{{PREFIX}}space-4) 0 var(--{{PREFIX}}space-2); }
+  h3 { font-size: var(--{{PREFIX}}fs-h3); margin: var(--{{PREFIX}}space-3) 0 var(--{{PREFIX}}space-1); }
+
+  ul, ol { margin: var(--{{PREFIX}}space-3) 0; padding-inline-start: 1.4em; }
+  li { margin-block: var(--{{PREFIX}}space-1); }
+
+  blockquote {
+    margin: var(--{{PREFIX}}space-3) 0;
+    padding-inline-start: var(--{{PREFIX}}space-3);
+    border-inline-start: 2px solid var(--{{PREFIX}}rule);
+    color: var(--{{PREFIX}}ink-soft);
+    font-style: italic;
+  }
+
+  code, pre {
+    font-family: var(--{{PREFIX}}font-mono);
+    font-size: var(--{{PREFIX}}fs-small);
+  }
+
+  pre {
+    background: color-mix(in srgb, var(--{{PREFIX}}rule) 30%, transparent);
+    padding: var(--{{PREFIX}}space-2);
+    /* Print has no horizontal scrollbar: a long line that cannot wrap is a
+       line the reader never sees. */
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    break-inside: avoid;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: var(--{{PREFIX}}space-3) 0;
+    font-size: var(--{{PREFIX}}fs-small);
+  }
+
+  th, td {
+    border-bottom: 1px solid var(--{{PREFIX}}rule);
+    padding: var(--{{PREFIX}}space-1) var(--{{PREFIX}}space-2);
+    text-align: start;
+    vertical-align: top;
+  }
+
+  /* Repeat the header on every page a long table spills onto. */
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+
+  img { max-width: 100%; height: auto; }
+
+  figure { margin: var(--{{PREFIX}}space-3) 0; break-inside: avoid; }
+  figcaption {
+    font-size: var(--{{PREFIX}}fs-small);
+    color: var(--{{PREFIX}}ink-soft);
+    margin-block-start: var(--{{PREFIX}}space-1);
+  }
+
+  a { color: inherit; text-decoration: none; }
+}

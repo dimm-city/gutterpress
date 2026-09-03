@@ -18,6 +18,13 @@
  * not yet via `.zip`. See that finding recorded in `finalizeThemeImport`'s
  * doc comment below.
  *
+ * #241 — the metadata file itself may be named `gutterpress.json` (the
+ * unified extension package format's superset of `theme.json`,
+ * `extension-manifest.ts`) instead of `theme.json`; both are read through the
+ * same `readExtensionMeta`. This does NOT change the zip-root anchor above —
+ * `theme.css` is still what locates a package inside a `.zip` — only which
+ * metadata filename is read once the root is found.
+ *
  * Host-side only (node fs + fflate + postcss via `checkCss`) — reached by the
  * desktop through the `api/theme/import-from-file` server route (CLAUDE.md §8),
  * and shared with the CLI (§7 "shared lib, not duplicated"). The pure decision
@@ -41,12 +48,17 @@ import {
   themeStyleList,
   themeEngineStyleList,
   type ThemeInfo,
-  type ThemeMetadata,
 } from "./theme-manager.ts";
 import { prettify } from "./slug.ts";
 // #239: the SAME declared-stylesheet resolver theme-manager.ts's applyTheme/
 // importThemeFromFolder and plugins.ts's resolvePluginStyles use.
 import { resolveDeclaredStyles } from "./style-declarations.ts";
+// #241: metadata may now be named gutterpress.json instead of theme.json —
+// same superset shape, same tolerant-missing/invalid-JSON contract. The
+// anchor a zip/css-text import locates its root BY stays theme.css (see this
+// file's header) — only WHICH metadata file is read once that root is found
+// generalizes here.
+import { readExtensionMeta, EXTENSION_MANIFEST_FILENAME } from "./extension-manifest.ts";
 
 /** Reject a raw archive larger than this before unzipping (zip-bomb surface). */
 export const MAX_THEME_ARCHIVE_BYTES = 25 * 1024 * 1024;
@@ -118,7 +130,10 @@ export function classifyThemeCssFindings(findings: PrintSafeWarning[]): {
   return { reject, warnings };
 }
 
-const KNOWN_THEME_FILES = new Set(["theme.css", "theme.json"]);
+// #241: gutterpress.json joins theme.json as a recognized metadata filename —
+// a package using the new format must not get a false "unexpected file"
+// warning for its own metadata file.
+const KNOWN_THEME_FILES = new Set(["theme.css", "theme.json", EXTENSION_MANIFEST_FILENAME]);
 const ALLOWED_ASSET_EXTS = new Set([
   ".woff", ".woff2", ".ttf", ".otf", ".eot",
   ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif",
@@ -127,15 +142,23 @@ const ALLOWED_ASSET_EXTS = new Set([
 
 /**
  * From a theme folder's relative file paths, return the ones that are neither
- * `theme.css`/`theme.json` nor a recognized bundled asset (font/image/css).
- * These trigger a non-fatal "unexpected extra files" warning — the import
- * still copies the whole folder.
+ * `theme.css`/`theme.json`/`gutterpress.json`, a recognized bundled asset
+ * (font/image/css), nor one the metadata itself declared (#241 —
+ * `declaredExtras`: the extension's `markdown`/`components`/`snippets`
+ * entries, when present, passed as relative paths; a `snippets` folder
+ * suppresses everything under it, not just the exact entry). These trigger a
+ * non-fatal "unexpected extra files" warning — the import still copies the
+ * whole folder.
  */
-export function unexpectedThemeFiles(relPaths: string[]): string[] {
+export function unexpectedThemeFiles(relPaths: string[], declaredExtras: string[] = []): string[] {
+  const extras = declaredExtras.map((p) => p.replace(/\\/g, "/"));
+  const isDeclared = (p: string): boolean =>
+    extras.some((extra) => p === extra || p.startsWith(`${extra}/`));
   return relPaths
     .map((p) => p.replace(/\\/g, "/"))
     .filter((p) => p.length > 0 && !p.endsWith("/"))
     .filter((p) => {
+      if (isDeclared(p)) return false;
       const base = p.split("/").pop()!.toLowerCase();
       if (KNOWN_THEME_FILES.has(base)) return false;
       const dot = base.lastIndexOf(".");
@@ -148,16 +171,6 @@ export function unexpectedThemeFiles(relPaths: string[]): string[] {
 
 function mb(n: number): string {
   return `${Math.round(n / (1024 * 1024))}MB`;
-}
-
-/** Best-effort read of a theme.json; `{}` when absent or unparseable. */
-async function readThemeJson(p: string): Promise<ThemeMetadata> {
-  try {
-    const parsed = JSON.parse(await readFile(p, "utf8")) as ThemeMetadata;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 /**
@@ -201,25 +214,31 @@ async function finalizeThemeImport(
     warnings.push({ code: "print-safety", message: w.message });
   }
 
-  const jsonPath = path.join(sourceDir, "theme.json");
-  const jsonExists = existsSync(jsonPath);
-  const meta = jsonExists ? await readThemeJson(jsonPath) : {};
-  if (!jsonExists) {
+  // #241: gutterpress.json is checked first, theme.json second — same
+  // fallback order every real on-disk theme read uses (readExtensionMeta).
+  // The warning `code` stays "no-theme-json" (the desktop's dtos.ts carries
+  // its own copy of this union, decoupled from the lib per CLAUDE.md §8) even
+  // though the wording now covers either filename.
+  const metaExists =
+    existsSync(path.join(sourceDir, EXTENSION_MANIFEST_FILENAME)) ||
+    existsSync(path.join(sourceDir, "theme.json"));
+  const meta = metaExists ? await readExtensionMeta(sourceDir) : {};
+  if (!metaExists) {
     warnings.push({
       code: "no-theme-json",
       message:
-        "No theme.json found — the theme's name was taken from the file/folder name.",
+        "No gutterpress.json or theme.json found — the theme's name was taken from the file/folder name.",
     });
   } else if (!meta.name || !meta.name.trim()) {
     warnings.push({
       code: "unnamed-theme",
       message:
-        'theme.json has no "name" — the theme\'s name was taken from the file/folder name.',
+        'The metadata file has no "name" — the theme\'s name was taken from the file/folder name.',
     });
   }
 
-  // #239: theme.json may declare layered sheets (and engine-conditional ones)
-  // beyond the anchor theme.css — validate every one exists and is
+  // #239: the metadata file may declare layered sheets (and engine-conditional
+  // ones) beyond the anchor theme.css — validate every one exists and is
   // print-safe, exactly like theme.css itself. Existence resolution goes
   // through the SAME resolveDeclaredStyles a plugin's `styles` export
   // resolves through (plugins.ts) and theme-manager.ts's applyTheme/
@@ -228,10 +247,13 @@ async function finalizeThemeImport(
   // top: it is a theme-import-specific richness (WARN, don't just reject)
   // that plugin loading has no equivalent of.
   assertThemeSheetsContained(meta);
+  const metaFilename = existsSync(path.join(sourceDir, EXTENSION_MANIFEST_FILENAME))
+    ? EXTENSION_MANIFEST_FILENAME
+    : "theme.json";
   const extraSheets = [
     ...new Set([...themeStyleList(meta), ...themeEngineStyleList(meta)]),
   ].filter((rel) => rel !== "theme.css");
-  const extraSheetPaths = resolveDeclaredStyles(extraSheets, sourceDir, "theme.json") ?? [];
+  const extraSheetPaths = resolveDeclaredStyles(extraSheets, sourceDir, metaFilename) ?? [];
   for (let i = 0; i < extraSheets.length; i++) {
     const rel = extraSheets[i]!;
     const sheetPath = extraSheetPaths[i]!;
@@ -247,7 +269,20 @@ async function finalizeThemeImport(
     }
   }
 
-  const extra = unexpectedThemeFiles(relPaths);
+  // #241: markdown/components/snippets are declared-but-unenforced here
+  // (same "advisory, not existence-checked by this flow" treatment
+  // tokensFile already had) — only suppressed from the "unexpected extra
+  // files" warning below so a well-formed extension package doesn't get a
+  // false positive for its own declared plugin/catalog/snippets. Whichever
+  // flow actually consumes a field is what existence-checks it: `markdown`
+  // via `gutterpress plugin add`'s loader (plugins.ts's `resolveExtension`
+  // call), `snippets` by `snippets.ts`'s `listMergedSnippets` (#242, tolerant
+  // rather than throwing — see that module), `components` by its own future
+  // catalog-reader consumer (not yet built).
+  const declaredExtras = [meta.markdown, meta.components, meta.snippets].filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
+  );
+  const extra = unexpectedThemeFiles(relPaths, declaredExtras);
   if (extra.length > 0) {
     const shown = extra.slice(0, 6).join(", ");
     warnings.push({

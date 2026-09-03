@@ -97,6 +97,22 @@ export type {
   CreateProjectError,
 } from "../lib/project-scaffold.ts";
 
+// ── Extension scaffolding (#233 / #245) ──────────────────────────────────────
+// The sibling of `scaffoldProject`: creates a plugin or theme STARTER PACKAGE
+// rather than a book. Shared by `gutterpress new --kind` and any desktop
+// surface that offers the same thing, one implementation per CLAUDE.md §7.
+export {
+  scaffoldExtension,
+  resolveExtensionPrefix,
+  EXTENSION_KINDS,
+  RESERVED_PREFIX,
+} from "../lib/extension-scaffold.ts";
+export type {
+  ExtensionKind,
+  ScaffoldExtensionOptions,
+  ScaffoldExtensionResult,
+} from "../lib/extension-scaffold.ts";
+
 // ── Presets & publish targets (ADR 0008) ─────────────────────────────────────
 // The registries are the single source of truth for pickers (the desktop
 // wizard's preset choice, target selectors) and for CLI flag validation.
@@ -118,7 +134,13 @@ export type {
   SaveProjectAsTemplateOptions,
 } from "../lib/project-templates.ts";
 
-// ── Snippets (#29) ────────────────────────────────────────────────────────────
+// ── Snippets (#29) — extension merge (#242) ──────────────────────────────────
+// `listMergedSnippets`/`readExtensionSnippet` are the #242 additions: the
+// merge of an installed, active extension's declared `snippets` folder
+// (#241's `gutterpress.json`) into the SAME picker `listSnippets`/
+// `readSnippet`/`saveSnippet`/`deleteSnippet` already served — see
+// `snippets.ts`'s header for the full design (precedence, provenance,
+// removal) and why this stays one module, not a second snippet subsystem.
 export {
   extractVariables,
   substituteVariables,
@@ -126,9 +148,11 @@ export {
   readSnippet,
   saveSnippet,
   deleteSnippet,
+  listMergedSnippets,
+  readExtensionSnippet,
   SNIPPETS_DIR,
 } from "../lib/snippets.ts";
-export type { SnippetEntry } from "../lib/snippets.ts";
+export type { SnippetEntry, SnippetSource } from "../lib/snippets.ts";
 
 // ── Plugin manager (#30) ──────────────────────────────────────────────────────
 export {
@@ -178,6 +202,35 @@ export type {
 // stay module-private (theme-import.ts exports them for its own unit tests).
 export { importThemeFromFile } from "../lib/theme-import.ts";
 export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
+
+// ── Unified extension package format (#241) — gutterpress.json ───────────────
+// The metadata reader + resolver `theme-manager.ts` (a theme is "styles
+// only") and `markdown/plugins.ts` (a plugin is "markdown only") both build
+// on. Exported here — not just used internally — because a "list installed
+// extensions" surface resolves a folder's full declared shape through
+// exactly this, not a re-implementation. `snippets.ts`'s `listMergedSnippets`
+// (#242, now implemented — see that module) is the first such surface;
+// `pathEscapesFolder` is exported specifically for its tolerant per-field
+// containment check. A future `components.yaml` catalog reader and #243's
+// merged desktop Extensions panel are the remaining ones still to come.
+//
+// CORRECTION: earlier revisions of this comment attributed the snippet merge
+// to #240 and a "component registry" to #242. That was backwards — #240 is
+// the declarative-marker/container-component REGISTRY (`markers.js`, no
+// picker involved), #242 is this repo's actual snippet-merge issue title
+// ("Extensions cannot ship snippets…"). Corrected here as the #242 work
+// landed, rather than left to keep misleading the next reader.
+export {
+  EXTENSION_MANIFEST_FILENAME,
+  LEGACY_THEME_MANIFEST_FILENAME,
+  readExtensionMeta,
+  extensionStyleList,
+  extensionEngineStyleList,
+  assertExtensionContained,
+  pathEscapesFolder,
+  resolveExtension,
+} from "../lib/extension-manifest.ts";
+export type { ExtensionMetadata, ResolvedExtension } from "../lib/extension-manifest.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";

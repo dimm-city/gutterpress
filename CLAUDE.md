@@ -335,7 +335,7 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     A final artifact must never silently omit author-configured formatting.
   - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
     whose vendored copy is missing or cannot load is skipped, `onError` fires
-    (the preview `warn`s; the desktop Plugins panel shows "Needs install" or the
+    (the preview `warn`s; the desktop Features tab shows "Needs install" or the
     load error with fix instructions), and the rest of the document still
     renders. This is NOT the silent-skip that the loader deliberately removed —
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not

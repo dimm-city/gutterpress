@@ -56,6 +56,39 @@ import tplZineChapter01 from "../assets/templates/zine/chapter-01.md" with { typ
 import tplTechnicalManifest from "../assets/templates/technical/manifest.yaml" with { type: "file" };
 import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" with { type: "file" };
 
+// Extension starter packages (#233 / #245) — `gutterpress new --kind plugin`
+// and `--kind theme`. Baked in the same way the book templates above are, so
+// scaffolding an extension works from the compiled binary and the desktop
+// alike.
+//
+// Two of these carry a `.tpl` suffix in the SOURCE tree (they are written out
+// under their real names by `extension-scaffold.ts`). That is deliberate and
+// load-bearing: both hold `{{PLACEHOLDER}}` tokens, and under their real names
+// `plugin.js` is a syntax error to `tsc --noEmit` (tsconfig.json includes
+// `src` with `allowJs`) while `plugin.test.js` would be COLLECTED AND RUN by
+// this package's own `bun test`. The suffix keeps template text out of reach
+// of both, with no tool config to remember.
+import tplPluginManifest from "../assets/extension-templates/plugin/gutterpress.json" with { type: "file" };
+import tplPluginPackageJson from "../assets/extension-templates/plugin/package.json" with { type: "file" };
+import tplPluginReadme from "../assets/extension-templates/plugin/README.md" with { type: "file" };
+import tplPluginModule from "../assets/extension-templates/plugin/plugin.js.tpl" with { type: "file" };
+import tplPluginCss from "../assets/extension-templates/plugin/styles/plugin.css" with { type: "file" };
+import tplPluginSnippet from "../assets/extension-templates/plugin/snippets/term-box.md" with { type: "file" };
+import tplPluginFixture from "../assets/extension-templates/plugin/test/fixture.md" with { type: "file" };
+import tplPluginExpected from "../assets/extension-templates/plugin/test/expected.html" with { type: "file" };
+import tplPluginTest from "../assets/extension-templates/plugin/test/plugin.test.js.tpl" with { type: "file" };
+
+import tplThemeManifest from "../assets/extension-templates/theme/gutterpress.json" with { type: "file" };
+import tplThemeReadme from "../assets/extension-templates/theme/README.md" with { type: "file" };
+import tplThemeCatalog from "../assets/extension-templates/theme/components.yaml" with { type: "file" };
+import tplThemeSnippet from "../assets/extension-templates/theme/snippets/callout.md" with { type: "file" };
+import tplThemeTokensCss from "../assets/extension-templates/theme/styles/tokens.css" with { type: "file" };
+import tplThemeBaseCss from "../assets/extension-templates/theme/styles/base.css" with { type: "file" };
+import tplThemeComponentsCss from "../assets/extension-templates/theme/styles/components.css" with { type: "file" };
+import tplThemePageTemplatesCss from "../assets/extension-templates/theme/styles/page-templates.css" with { type: "file" };
+import tplThemePageRulesCss from "../assets/extension-templates/theme/styles/page-rules.css" with { type: "file" };
+import tplThemeBookCss from "../assets/extension-templates/theme/styles/book.css" with { type: "file" };
+
 // Built-in themes (#32). Each = theme.css + theme.json, baked in so the Theme
 // Manager (compiled binary + desktop) lists/applies from one embedded source.
 import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
@@ -89,6 +122,25 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "templates/zine/chapter-01.md":           abs(filePath(tplZineChapter01)),
   "templates/technical/manifest.yaml":      abs(filePath(tplTechnicalManifest)),
   "templates/technical/chapter-01.md":      abs(filePath(tplTechnicalChapter01)),
+  "extension-templates/plugin/gutterpress.json":        abs(filePath(tplPluginManifest)),
+  "extension-templates/plugin/package.json":            abs(filePath(tplPluginPackageJson)),
+  "extension-templates/plugin/README.md":               abs(filePath(tplPluginReadme)),
+  "extension-templates/plugin/plugin.js.tpl":           abs(filePath(tplPluginModule)),
+  "extension-templates/plugin/styles/plugin.css":       abs(filePath(tplPluginCss)),
+  "extension-templates/plugin/snippets/term-box.md":    abs(filePath(tplPluginSnippet)),
+  "extension-templates/plugin/test/fixture.md":         abs(filePath(tplPluginFixture)),
+  "extension-templates/plugin/test/expected.html":      abs(filePath(tplPluginExpected)),
+  "extension-templates/plugin/test/plugin.test.js.tpl": abs(filePath(tplPluginTest)),
+  "extension-templates/theme/gutterpress.json":         abs(filePath(tplThemeManifest)),
+  "extension-templates/theme/README.md":                abs(filePath(tplThemeReadme)),
+  "extension-templates/theme/components.yaml":          abs(filePath(tplThemeCatalog)),
+  "extension-templates/theme/snippets/callout.md":      abs(filePath(tplThemeSnippet)),
+  "extension-templates/theme/styles/tokens.css":        abs(filePath(tplThemeTokensCss)),
+  "extension-templates/theme/styles/base.css":          abs(filePath(tplThemeBaseCss)),
+  "extension-templates/theme/styles/components.css":    abs(filePath(tplThemeComponentsCss)),
+  "extension-templates/theme/styles/page-templates.css": abs(filePath(tplThemePageTemplatesCss)),
+  "extension-templates/theme/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
+  "extension-templates/theme/styles/book.css":          abs(filePath(tplThemeBookCss)),
   "themes/clean-book/theme.css":            abs(filePath(themeCleanBookCss)),
   "themes/clean-book/theme.json":           abs(filePath(themeCleanBookJson)),
   "themes/zine/theme.css":                  abs(filePath(themeZineCss)),

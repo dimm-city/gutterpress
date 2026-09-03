@@ -165,10 +165,33 @@ export interface SavedTemplateInfo extends TemplateInfo {
   excludedRefs?: string[];
 }
 
+/**
+ * Provenance of one merged snippet entry (#242 — extensions can now ship a
+ * `snippets` folder in their gutterpress.json, merged into this SAME picker
+ * feed by the lib's `listMergedSnippets`).
+ *
+ * `{ kind: 'project' }` is the author's own snippet — the only kind
+ * `api.snip.save`/`api.snip.delete` ever produce or touch, and therefore the
+ * only kind the picker may show a delete affordance for. `{ kind: 'plugin' |
+ * 'theme', ref, name }` is a READ-ONLY snippet contributed by an installed,
+ * active extension: `name` is its display name (the picker's group label —
+ * see SnippetPicker.svelte), `ref` is an opaque identifier passed straight
+ * back to `api.snip.readExtension` so the host can re-locate the right
+ * extension folder itself — never a filesystem path the client hands the
+ * host directly. Kept as its own type (not inlined) so `SnippetPicker.svelte`
+ * has one name to import for its `source.kind === 'project'` gating.
+ *
+ * Decoupled from the lib's own `SnippetSource` type per CLAUDE.md §8 (the SPA
+ * never value- or type-imports `gutterpress`) — kept in sync by hand; the two
+ * shapes are structurally identical on purpose.
+ */
+export type SnippetSource = { kind: 'project' } | { kind: 'plugin' | 'theme'; ref: string; name: string };
+
 export interface SnippetEntry {
   name: string;
   fileName: string;
   variables: string[];
+  source: SnippetSource;
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
@@ -434,15 +457,41 @@ export const api = {
   },
 
   snip: {
-    /** List the open project's snippets. */
+    /** List the open project's snippets, MERGED with every installed, active
+     *  extension's own `snippets` folder (#242) — each entry's `source`
+     *  says which. This is what the picker actually renders now; project-
+     *  only listing has no separate route (the lib's `listSnippets` is an
+     *  internal building block of `listMergedSnippets`, not exposed here). */
     list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
-    /** Read one snippet's raw body. */
+    /** Read one PROJECT snippet's raw body (`source.kind === 'project'`
+     *  entries only — see {@link readExtension} for the other kind). */
     read: (projectDir: string, fileName: string) =>
       post<string>('/api/snip/read', { projectDir, fileName }),
-    /** Save a snippet body under the project's snippets/ folder. */
+    /** Read one EXTENSION-provided snippet's raw body (#242) —
+     *  `source.kind === 'plugin' | 'theme'` entries. `source` is the exact
+     *  object the list call handed back; the host re-derives the extension's
+     *  folder from `source.kind`/`source.ref` itself rather than trusting a
+     *  path from the client. */
+    readExtension: (
+      projectDir: string,
+      source: { kind: 'plugin' | 'theme'; ref: string },
+      fileName: string,
+    ) =>
+      post<string>('/api/snip/read-extension', {
+        projectDir,
+        kind: source.kind,
+        ref: source.ref,
+        fileName,
+      }),
+    /** Save a snippet body under the project's snippets/ folder. Always
+     *  writes to the PROJECT, even when the list currently shown includes
+     *  extension-provided entries (#242) — there is no way to target an
+     *  extension's folder through this call. */
     save: (projectDir: string, name: string, body: string) =>
       post<SnippetEntry>('/api/snip/save', { projectDir, name, body }),
-    /** Delete a snippet by filename. */
+    /** Delete a PROJECT snippet by filename. Structurally cannot reach an
+     *  extension's folder (#242) — the host's `deleteSnippet` only ever
+     *  resolves paths inside the project's own snippets/ dir. */
     delete: (projectDir: string, fileName: string) =>
       post<{ ok: boolean }>('/api/snip/delete', { projectDir, fileName }),
   },

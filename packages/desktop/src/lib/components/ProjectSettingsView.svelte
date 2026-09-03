@@ -13,25 +13,34 @@
    * value import — all `api.*` calls live in the controllers under
    * `$lib/routes/*-section-controller.svelte.ts`.
    *
-   * Four tabs, backed by FIVE controllers (no `$effect`: data loads on mount +
+   * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
-   *   1. Details       — title, authors, output filename, source files
-   *                      (`api.manifest.{read,setFields}`).
-   *   2. Look & style  — theme grid (`AppearanceSection`) → design tokens
-   *                      (`DesignSection`) → the raw stylesheet list
-   *                      (`StylesSection`) behind an "Advanced" disclosure
-   *                      (UX review M35's writer-shaped merge, unchanged).
-   *   3. Plugins       — configured list + toggle + validate + recommended
-   *                      built-ins (`api.plugin.*`).
-   *   4. Connections   — this project's sync surface (remote diagnosis +
-   *                      Test Remote Access; `ProjectConnectionsSection`,
-   *                      self-loading — no controller).
+   *   1. Details     — title, authors, output filename, source files
+   *                    (`api.manifest.{read,setFields}`).
+   *   2. Look        — extensions with a look (`LookSection`, ex-AppearanceSection)
+   *                    → design tokens (`DesignSection`) → the raw stylesheet
+   *                    list (`StylesSection`) behind an "Advanced" disclosure
+   *                    (UX review M35's writer-shaped merge, unchanged). The
+   *                    heading stays "Look & style" — it still covers all
+   *                    three subsections — while the tab button itself is
+   *                    shortened to "Look" to pair with "Features" (#243).
+   *   3. Features    — configured list + toggle + validate + recommended
+   *                    built-ins (`FeaturesSection`, ex-PluginsSection,
+   *                    `api.plugin.*`).
+   *   4. Connections — this project's sync surface (remote diagnosis +
+   *                    Test Remote Access; `ProjectConnectionsSection`,
+   *                    self-loading — no controller).
    *
-   * Cross-section refresh: applying/removing a theme changes the active
-   * stylesheet, so Appearance's controller reloads Styles + Design
-   * (`afterThemeChange`); toggling a stylesheet reloads Design
-   * (`afterStyleChange`). Every other refresh is a section reloading its own
-   * state after its own mutation.
+   * #243 — "Merge the Theme grid and Plugins panel into one Extensions
+   * surface": Look and Features are now ONE `ExtensionsSectionController`
+   * instance (`extensions` below), not two collaborating controllers — see
+   * that class's header comment for why the two tabs still keep their own
+   * verbs (apply/remove/import/revert vs enable/disable/add) rather than
+   * collapsing into one shared action. `afterThemeChange` (Look changed →
+   * reload Styles + Design) and `afterStyleChange` (a stylesheet was
+   * toggled → reload Design) are unchanged cross-section refresh hooks;
+   * every other refresh is a section reloading its own state after its own
+   * mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`$lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -44,16 +53,15 @@
   import { api } from "$lib/api";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
-  import { AppearanceSectionController } from "$lib/routes/appearance-section-controller.svelte";
+  import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
   import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
-  import { PluginsSectionController } from "$lib/routes/plugins-section-controller.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
-  import AppearanceSection from "$lib/components/config/AppearanceSection.svelte";
+  import LookSection from "$lib/components/config/LookSection.svelte";
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
-  import PluginsSection from "$lib/components/config/PluginsSection.svelte";
+  import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
   import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
@@ -91,7 +99,7 @@
 
   const projectDirAccessor = () => projectDir;
 
-  // ── Design — depended on by Appearance's/Styles' cross-refresh hooks,
+  // ── Design — depended on by Extensions'/Styles' cross-refresh hooks,
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
@@ -138,8 +146,9 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
-  // ── Appearance — refreshes Styles + Design after apply/remove. ─────────
-  const appearance = new AppearanceSectionController({
+  // ── Extensions — Look (refreshes Styles + Design after apply/remove) and
+  //    Features share ONE controller (#243). ─────────────────────────────
+  const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
     listBuiltIn: () => api.theme.listBuiltIn(),
     listProject: (dir) => api.theme.listProject(dir),
@@ -154,17 +163,12 @@
     readCss: (dir, source) => api.theme.readCss(dir, source),
     onApplied: (themeId) => {
       onThemeApplied?.(themeId);
-      toast?.success?.("Theme applied — close Project settings to see it in the preview. Use Design to fine-tune.");
+      toast?.success?.("Look applied — close Project settings to see it in the preview. Use Design to fine-tune.");
     },
     afterThemeChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
     },
-  });
-
-  // ── Plugins ─────────────────────────────────────────────────────────────
-  const plugins = new PluginsSectionController({
-    projectDir: projectDirAccessor,
-    list: (dir) => api.plugin.list(dir),
+    listPlugins: (dir) => api.plugin.list(dir),
     recommended: () => api.plugin.recommended(),
     validate: (dir) => api.plugin.validate(dir),
     setEnabled: (dir, ref, enabled) => api.plugin.setEnabled(dir, ref, enabled),
@@ -190,28 +194,36 @@
     // Sections load in parallel — none depend on another.
     await Promise.allSettled([
       details.loadDetails(),
-      appearance.loadThemes(),
+      extensions.loadExtensions(),
       styles.loadStyles(),
       design.loadDesign(),
-      plugins.loadPlugins(),
     ]);
   }
 
   const hasProject = $derived(!!projectDir);
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
-  type ProjectSettingsTab = "details" | "look" | "plugins" | "connections";
+  //
+  // #243: "Look" and "Features" replace "Look & style"/"Plugins" as the two
+  // author-facing tabs the issue asks for, both now reading the ONE
+  // `extensions` controller above. They stay separate TAB BUTTONS rather
+  // than nesting a second tab bar inside a single "Extensions" entry -
+  // the issue's own suggested shape names them as "two author-facing tabs",
+  // and this tab bar already gives them exactly that with no new navigation
+  // component. See `docs/ux-design-contract.md` sections 9 and 11 for the UX-contract
+  // update this rename carries.
+  type ProjectSettingsTab = "details" | "look" | "features" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },
-    { id: "look", label: "Look & style" },
-    { id: "plugins", label: "Plugins" },
+    { id: "look", label: "Look" },
+    { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
   let activeTab = $state<ProjectSettingsTab>("details");
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
-    plugins: undefined,
+    features: undefined,
     connections: undefined,
   });
 
@@ -274,13 +286,14 @@
       {/if}
 
       {#if activeTab === "look"}
-        <!-- UX review M35: theme grid → design tokens → stylesheet list,
-             merged under one writer-shaped "Look & style" heading. The
-             stylesheet list is a plain always-visible section — project
-             settings has no collapsible sections. -->
+        <!-- UX review M35: the Look grid → design tokens → stylesheet list,
+             merged under one writer-shaped "Look & style" heading (the tab
+             button itself is shortened to "Look", #243 — see the header
+             comment). The stylesheet list is a plain always-visible section
+             - project settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
-          <AppearanceSection controller={appearance} />
+          <LookSection controller={extensions} />
           <DesignSection controller={design} />
           <div class="advanced">
             <h4 class="advanced-heading">Stylesheets</h4>
@@ -291,8 +304,8 @@
         </section>
       {/if}
 
-      {#if activeTab === "plugins"}
-        <PluginsSection controller={plugins} />
+      {#if activeTab === "features"}
+        <FeaturesSection controller={extensions} />
       {/if}
 
       {#if activeTab === "connections"}

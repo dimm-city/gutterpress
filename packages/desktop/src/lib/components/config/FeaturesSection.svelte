@@ -1,18 +1,34 @@
 <script lang="ts">
   /**
-   * Plugins section of ProjectConfigPanel — the configured list + toggle +
-   * validate, the recommended built-in features, and the npm/local install
-   * controls. All state and `api.plugin.*` calls live
-   * in `PluginsSectionController` (passed as the single `controller` prop, per
-   * the design-controller pattern — see M14); this child renders the
-   * controller's rune fields and calls its intent methods. `pluginStatus` is a
-   * pure helper.
+   * Features tab of the merged Extensions surface (#243 - ex-PluginsSection.svelte,
+   * the plugin-list half of "Merge the Theme grid and Plugins panel into one
+   * Extensions surface"). The configured list + toggle + validate, the
+   * recommended built-in features, and the npm/local install controls -
+   * unchanged from PluginsSection except for the renamed heading/copy and the
+   * shared controller type.
+   *
+   * State and `api.plugin.*` calls live in the SHARED `ExtensionsSectionController`
+   * (passed as the single `controller` prop, per the design-controller pattern
+   * - see M14) - the SAME instance `LookSection` reads for its own (look)
+   * half; this component only ever touches the controller's plugin-prefixed
+   * fields/methods. `pluginStatus`/`pluginLabel` are pure helpers.
+   *
+   * "One controller, two tabs, no shared verb" (#243): a feature is additive
+   * - any number can be enabled at once - so this tab keeps its own
+   * enable/disable/add verbs exactly as PluginsSection did; LookSection keeps
+   * apply/remove/import/revert. See ExtensionsSectionController's header
+   * comment for the full reasoning, including why a configured feature here
+   * cannot currently show "also carries a look" the way a Look card can show
+   * "also adds features".
+   *
+   * NOTE ON PUNCTUATION: comments here use plain ASCII (no em dashes) - see
+   * the matching note in extensions-section-controller.svelte.ts.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { pluginStatus, pluginLabel } from "./config-helpers";
-  import type { PluginsSectionController } from "$lib/routes/plugins-section-controller.svelte";
+  import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
-  let { controller }: { controller: PluginsSectionController } = $props();
+  let { controller }: { controller: ExtensionsSectionController } = $props();
 
   function isPluginConfigured(name: string): boolean {
     return controller.plugins.some((p) => p.ref === name);
@@ -21,8 +37,8 @@
 
 <section class="block">
   <div class="block-head">
-    <h3>Plugins</h3>
-    <button class="ghost small" onclick={controller.validatePlugins} disabled={controller.pluginValidating} title="Re-check that each plugin loads">
+    <h3>Features</h3>
+    <button class="ghost small" onclick={controller.validatePlugins} disabled={controller.pluginValidating} title="Re-check that each feature loads">
       <Icon name="refresh-cw" size={13} /> Re-check
     </button>
   </div>
@@ -33,7 +49,7 @@
     <p class="notice" role="status">{controller.pluginNotice}</p>
   {/if}
   {#if controller.plugins.length === 0}
-    <p class="muted">No plugins configured yet. Pick a feature below, or add one via Advanced.</p>
+    <p class="muted">No features added yet. Pick one below, or add one via Advanced.</p>
   {:else}
     <ul class="plugin-list">
       {#each controller.plugins as entry (entry.ref)}
@@ -67,7 +83,7 @@
   {/if}
 
   <h4 class="subhead">Markdown features</h4>
-  <p class="hint">Turn a feature on and it works instantly — these are built in, nothing to install.</p>
+  <p class="hint">Turn a feature on and it works instantly - these are built in, nothing to install.</p>
   <ul class="rec-list">
     {#each controller.recommended as rec (rec.name)}
       <li>
@@ -91,12 +107,12 @@
     <div class="add-row">
       <input class="input" type="text" aria-label="npm package name or exact version" placeholder="markdown-it-highlightjs or markdown-it-highlightjs@4.3.0" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
       <input class="input export-input" type="text" aria-label="named plugin export (optional)" placeholder="export (optional)" bind:value={controller.npmExport} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
-      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>{controller.pluginBusyRef === controller.npmName.trim() ? "Installing…" : "Install"}</button>
+      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>{controller.pluginBusyRef === controller.npmName.trim() ? "Installing..." : "Install"}</button>
     </div>
     <p class="hint">Downloads from npm, verifies the registry hash, stores the package under <code>plugins/npm</code>, and pins the exact version in the manifest. For packages such as <code>markdown-it-emoji</code> that expose named plugin functions, enter the export name (for example <code>full</code>). Package install scripts are never run.</p>
-    <p class="hint">Only install packages you trust. Plugins and their dependencies run with the app's full filesystem and network privileges.</p>
+    <p class="hint">Only install packages you trust. Features and their dependencies run with the app's full filesystem and network privileges.</p>
     <button class="ghost small full" onclick={controller.addLocalPlugin} disabled={controller.pluginBusyRef !== null}>
-      <Icon name="folder" size={14} /> Import from local file or folder…
+      <Icon name="folder" size={14} /> Import from local file or folder...
     </button>
     <p class="hint">Local files and folders are copied into this project's <code>plugins</code> folder.</p>
   </div>
@@ -127,13 +143,13 @@
   .notice { color: var(--app-warning-text); font-size: 12px; margin: 4px 0; }
   button.full { width: 100%; justify-content: center; }
 
-  /* Friendly label (M33) — a new class, own-scoped, so it doesn't have to
+  /* Friendly label (M33) - a new class, own-scoped, so it doesn't have to
      fight the parent's `.plugin-name` monospace rule for specificity/order.
      The raw ref (still `.plugin-name`, still monospace via the shared
      layer) only renders as a secondary line when it differs from the label
-     — i.e. for anything not on the recommended list. */
+     - i.e. for anything not on the recommended list. */
   .plugin-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  /* Distinct from `.status.checking` (M34) — a stalled/failed check, not one
+  /* Distinct from `.status.checking` (M34) - a stalled/failed check, not one
      in flight. A new class (not an override of `.status.error`) so it reads
      as its own state rather than reusing the error color. */
   .stale-status { color: var(--app-warning-text); }
