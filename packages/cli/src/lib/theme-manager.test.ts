@@ -294,16 +294,21 @@ describe("theme-manager", () => {
       expect(themeStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
     });
 
+    // #241: the containment guard is now the extension-generic
+    // assertExtensionContained (re-exported under this theme-only name), so
+    // the message it throws is format-agnostic ("its own folder", not "the
+    // theme folder") — the behavior pinned here (reject traversal/absolute,
+    // allow a contained relative path) is unchanged.
     test("a declared sheet outside the theme folder is rejected at the write boundary", () => {
       expect(() => assertThemeSheetsContained({ styles: ["../outside.css"] })).toThrow(
-        /outside the theme folder/,
+        /outside its own folder/,
       );
       expect(() => assertThemeSheetsContained({ styles: ["/etc/passwd"] })).toThrow(
-        /outside the theme folder/,
+        /outside its own folder/,
       );
       expect(() =>
         assertThemeSheetsContained({ engineStyles: { native: ["css/../../x.css"] } }),
-      ).toThrow(/outside the theme folder/);
+      ).toThrow(/outside its own folder/);
       expect(() => assertThemeSheetsContained({ styles: ["css/tokens.css"] })).not.toThrow();
     });
 
@@ -325,7 +330,7 @@ describe("theme-manager", () => {
       await expect(getActiveTheme(dir)).resolves.toBeDefined();
       await expect(
         applyTheme(dir, { kind: "project", id: "sneaky" }),
-      ).rejects.toThrow(/outside the theme folder/);
+      ).rejects.toThrow(/outside its own folder/);
     });
 
     function writeMultiSheetTheme(dir: string, id: string, opts: { engineStyles?: string[] } = {}): void {
@@ -860,6 +865,150 @@ describe("theme-manager", () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", 'themePrevious: "../../other"', ""].join("\n"));
       await expect(getPreviousTheme(dir)).rejects.toThrow(/invalid theme id/i);
+    });
+  });
+
+  // #241 — a theme is the "styles only" case of the unified extension
+  // package format: its metadata file may now be named `gutterpress.json`
+  // instead of `theme.json`. The two non-negotiable claims:
+  //   1. "an existing theme.css + theme.json folder loads completely
+  //      unchanged" — already pinned by EVERY test above this block (all
+  //      unmodified, all still green): none of them ever gained a
+  //      gutterpress.json, so they exercise exactly the fallback path this
+  //      section's tests exercise directly.
+  //   2. "the theme verbs keep working on the extension format" — the
+  //      NEW capability these tests prove: before #241, `readThemeMeta` only
+  //      ever looked at `theme.json`, so every test below would have failed
+  //      (a gutterpress.json-only folder would have listed/applied with
+  //      completely empty metadata, since the real file was never read).
+  describe("gutterpress.json extension format (#241)", () => {
+    function writeGutterpressJsonTheme(
+      dir: string,
+      id: string,
+      meta: Record<string, unknown>,
+    ): void {
+      const themeDir = join(dir, THEMES_DIR, id);
+      mkdirSync(join(themeDir, "css"), { recursive: true });
+      writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
+      writeFileSync(join(themeDir, "gutterpress.json"), JSON.stringify(meta), "utf8");
+    }
+
+    test("listProjectThemes recognizes a gutterpress.json-only theme folder (no theme.json at all)", async () => {
+      const dir = projectDir();
+      writeGutterpressJsonTheme(dir, "gp-theme", { name: "GP Theme", styles: ["css/tokens.css"] });
+      expect(existsSync(join(dir, THEMES_DIR, "gp-theme", "theme.json"))).toBe(false);
+
+      const listed = await listProjectThemes(dir);
+      const found = listed.find((t) => t.id === "gp-theme");
+      expect(found?.name).toBe("GP Theme");
+      expect(found?.styles).toEqual(["css/tokens.css"]);
+    });
+
+    test("applyTheme wires a gutterpress.json-formatted theme's styles exactly like a theme.json one", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeGutterpressJsonTheme(dir, "gp-theme", { name: "GP Theme", styles: ["css/tokens.css"] });
+
+      const applied = await applyTheme(dir, { kind: "project", id: "gp-theme" });
+      expect(applied.styles).toEqual(["css/tokens.css"]);
+      expect(readManifest(dir)).toContain(`${THEMES_DIR}/gp-theme/css/tokens.css`);
+
+      const active = await getActiveTheme(dir);
+      expect(active?.id).toBe("gp-theme");
+      expect(active?.name).toBe("GP Theme");
+    });
+
+    test("getPreviousTheme / revertTheme / readThemeCss / removeProjectTheme all recognize gutterpress.json", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      writeGutterpressJsonTheme(dir, "gp-theme", { name: "GP Theme", styles: ["css/tokens.css"] });
+      await applyTheme(dir, { kind: "project", id: "gp-theme" });
+
+      const previous = await getPreviousTheme(dir);
+      expect(previous?.id).toBe("clean-book");
+
+      const css = await readThemeCss(dir, { kind: "project", id: "gp-theme" });
+      expect(css).toContain("--token");
+
+      const reverted = await revertTheme(dir);
+      expect(reverted.id).toBe("clean-book");
+
+      await applyTheme(dir, { kind: "project", id: "gp-theme" });
+      await removeProjectTheme(dir, "gp-theme");
+      expect(await getActiveTheme(dir)).toBeNull();
+      expect(existsSync(join(dir, THEMES_DIR, "gp-theme"))).toBe(false);
+    });
+
+    test("gutterpress.json wins over a sibling theme.json in the same folder", async () => {
+      const dir = projectDir();
+      const themeDir = join(dir, THEMES_DIR, "both-files");
+      mkdirSync(themeDir, { recursive: true });
+      writeFileSync(join(themeDir, "theme.css"), ":root { --old: 1; }\n", "utf8");
+      writeFileSync(join(themeDir, "theme.json"), JSON.stringify({ name: "Old Name" }), "utf8");
+      writeFileSync(join(themeDir, "gutterpress.json"), JSON.stringify({ name: "New Name" }), "utf8");
+
+      const listed = await listProjectThemes(dir);
+      expect(listed.find((t) => t.id === "both-files")?.name).toBe("New Name");
+    });
+
+    test("ThemeInfo exposes markdown/components/snippets as informational metadata", async () => {
+      const dir = projectDir();
+      writeGutterpressJsonTheme(dir, "rich-ext", {
+        name: "Rich Extension",
+        styles: ["css/tokens.css"],
+        markdown: "plugin.js",
+        components: "components.yaml",
+        snippets: "snippets",
+      });
+      writeFileSync(
+        join(dir, THEMES_DIR, "rich-ext", "plugin.js"),
+        "export default function (md) {}",
+        "utf8",
+      );
+
+      const listed = await listProjectThemes(dir);
+      const found = listed.find((t) => t.id === "rich-ext");
+      expect(found?.markdown).toBe("plugin.js");
+      expect(found?.components).toBe("components.yaml");
+      expect(found?.snippets).toBe("snippets");
+    });
+
+    // Deliberate scope boundary (see this file's header comment): the theme
+    // verbs parse-and-expose `markdown` (test above) but never wire it into
+    // the manifest's `plugins:` list. An extension with both halves installs
+    // as a plugin instead (`gutterpress plugin add <folder>`,
+    // `markdown/plugins.ts`'s `loadExtensionFromDir`), which DOES resolve and
+    // apply this same field.
+    test("applying a theme whose gutterpress.json declares markdown does NOT wire a plugins: entry", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeGutterpressJsonTheme(dir, "with-markdown", {
+        name: "With Markdown",
+        styles: ["css/tokens.css"],
+        markdown: "plugin.js",
+      });
+      writeFileSync(
+        join(dir, THEMES_DIR, "with-markdown", "plugin.js"),
+        "export default function (md) {}",
+        "utf8",
+      );
+
+      await applyTheme(dir, { kind: "project", id: "with-markdown" });
+      expect(readManifest(dir)).not.toContain("plugins:");
+    });
+
+    test("applyTheme rejects a gutterpress.json declaring markdown outside the theme folder", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      writeGutterpressJsonTheme(dir, "sneaky-markdown", {
+        name: "Sneaky",
+        markdown: "../../../etc/passwd",
+      });
+
+      await expect(
+        applyTheme(dir, { kind: "project", id: "sneaky-markdown" }),
+      ).rejects.toThrow(/outside its own folder/);
     });
   });
 

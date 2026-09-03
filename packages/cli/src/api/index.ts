@@ -179,6 +179,24 @@ export type {
 export { importThemeFromFile } from "../lib/theme-import.ts";
 export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
 
+// ── Unified extension package format (#241) — gutterpress.json ───────────────
+// The metadata reader + resolver `theme-manager.ts` (a theme is "styles
+// only") and `markdown/plugins.ts` (a plugin is "markdown only") both build
+// on. Exported here — not just used internally — because a future "list
+// installed extensions" surface (#240's snippet merge, #242's component
+// registry, #243's merged desktop Extensions panel) resolves a folder's full
+// declared shape through exactly this, not a re-implementation.
+export {
+  EXTENSION_MANIFEST_FILENAME,
+  LEGACY_THEME_MANIFEST_FILENAME,
+  readExtensionMeta,
+  extensionStyleList,
+  extensionEngineStyleList,
+  assertExtensionContained,
+  resolveExtension,
+} from "../lib/extension-manifest.ts";
+export type { ExtensionMetadata, ResolvedExtension } from "../lib/extension-manifest.ts";
+
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
