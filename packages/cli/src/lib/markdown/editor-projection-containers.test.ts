@@ -14,6 +14,7 @@ import { describe, test, expect } from "bun:test";
 import type MarkdownIt from "markdown-it";
 import { createEditorProjection } from "./editor-projection";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
+import type { GutterpressPlugin } from "./plugins";
 
 /** `html_block` the way a real plugin builds one: no map, no meta. */
 function htmlToken(state: { Token: new (t: string, g: string, n: number) => { content: string } }, html: string) {
