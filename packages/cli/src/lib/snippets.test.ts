@@ -532,7 +532,7 @@ test("readExtensionSnippet throws when the extension is no longer installed/acti
 test("readExtensionSnippet refuses path traversal in fileName", async () => {
   const proj = await tmpProject();
   try {
-    await makePluginExtensionFolder(
+    const extDir = await makePluginExtensionFolder(
       proj,
       "dc-components",
       { name: "Dimm City Components" },
@@ -540,11 +540,22 @@ test("readExtensionSnippet refuses path traversal in fileName", async () => {
     );
     await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
 
+    // A REAL file one level above the declared snippets/ folder — inside the
+    // extension's own directory, but outside what it declared as its
+    // snippets root. A weaker traversal probe (e.g. "../../../../etc/passwd")
+    // would "pass" for the wrong reason whenever that path just happens not
+    // to exist (ENOENT looks identical to "blocked"); planting a file the
+    // guard must actually keep unreachable is what makes this a real pin —
+    // confirmed by temporarily disabling resolveSafeChildFile's check while
+    // writing this test and watching this assertion (only) start failing
+    // with the secret's real content instead of a thrown error.
+    await writeFile(path.join(extDir, "secret.txt"), "SECRET EXTENSION-INTERNAL CONTENT", "utf8");
+
     await expect(
       readExtensionSnippet(
         proj,
         { kind: "plugin", ref: "./plugins/dc-components" },
-        "../../../../etc/passwd",
+        "../secret.txt",
       ),
     ).rejects.toThrow();
   } finally {
