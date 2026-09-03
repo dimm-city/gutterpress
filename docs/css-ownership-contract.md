@@ -77,7 +77,7 @@ independent of any ownership claim below. Use this for a narrower, local rule
 ("this override file must never set `z-index` directly, only the
 `--gp-z-*` ladder") that doesn't need a whole ownership map.
 
-### `owns-properties` / `owns-at-rules` — exclusive ownership, checked project-wide
+### `owns-properties` / `owns-at-rules` — exclusive ownership, checked across every linted sheet
 
 The file listed is the sole permitted declarer of these CSS properties (or,
 for `owns-at-rules`, at-rule names — e.g. `page` for `@page`). Every active
@@ -129,7 +129,7 @@ The original proposal for this feature also sketched a project-wide
 `prefixes: { allow, warn-unprefixed }` block — flag every CSS class that
 doesn't start with an approved brand prefix. That is not implemented. Core
 itself emits bare, unprefixed structural classes authors are meant to style
-directly (`.section`, `.page`, `.spread`, `.chapter`, `.col` — see
+directly (`.section`, `.page`, `.spread`, `.chapter` — see
 `CLAUDE.md` §6), and a project's own non-branded utility classes (this user
 guide's own `.lede`, for one) are completely legitimate CSS. A blanket sweep
 would flag both of those on every single run, in every project that turned it

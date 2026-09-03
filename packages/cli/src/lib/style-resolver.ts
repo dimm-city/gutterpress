@@ -49,7 +49,7 @@ const FALLBACK_PRIORITY = [
 ];
 
 /** Project-relative, forward-slash display path for an absolute css path. */
-function relDisplay(projectDir: string, absPath: string): string {
+export function relDisplay(projectDir: string, absPath: string): string {
   return path.relative(projectDir, absPath).split(path.sep).join("/");
 }
 

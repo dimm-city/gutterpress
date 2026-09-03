@@ -10,15 +10,14 @@
  * real behavior rather than a mock that could silently drift from it.
  */
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile, readFile, copyFile } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { runCommand } from "citty";
 
 import themeCommand from "./theme.ts";
 import { EXIT_CODES } from "../lib/cli-args.ts";
-import { stubProcessExit, ProcessExitSignal } from "../test-helpers/testkit.ts";
+import { stubProcessExit, ProcessExitSignal, makeTempDir } from "../test-helpers/testkit.ts";
 import { getActiveTheme, getPreviousTheme } from "../lib/theme-manager.ts";
 
 let exitSpy: ReturnType<typeof stubProcessExit> | undefined;
@@ -60,9 +59,6 @@ afterEach(() => {
   warnSpy = undefined;
 });
 
-async function tmpProjectDir(prefix = "gutterpress-theme-cmd-"): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), prefix));
-}
 
 async function writeManifest(dir: string, body: string): Promise<void> {
   await writeFile(path.join(dir, "manifest.yaml"), body, "utf8");
@@ -73,7 +69,7 @@ const ASSET_THEMES_DIR = path.join(import.meta.dirname, "..", "assets", "themes"
 describe("gutterpress theme list", () => {
   test("shows built-ins, marks the active project theme, and lists no project themes on a bare project", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await writeManifest(dir, "title: Test\n");
       await runCommand(themeCommand, { rawArgs: ["list", dir] });
@@ -91,7 +87,7 @@ describe("gutterpress theme list", () => {
 
   test("marks the active theme with [active] once one is applied", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await writeManifest(dir, "title: Test\n");
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
@@ -108,7 +104,7 @@ describe("gutterpress theme list", () => {
 
   test("flags a pre-#236 project whose styles/book.css is a byte-identical fork of a built-in theme", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await mkdir(path.join(dir, "styles"), { recursive: true });
       await copyFile(
@@ -129,7 +125,7 @@ describe("gutterpress theme list", () => {
 
   test("does not flag a project whose styles/book.css merely happens to be non-empty custom CSS", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await mkdir(path.join(dir, "styles"), { recursive: true });
       await writeFile(path.join(dir, "styles", "book.css"), "body { color: red; }\n", "utf8");
@@ -155,7 +151,7 @@ describe("gutterpress theme list", () => {
 describe("gutterpress theme apply", () => {
   test("applies a built-in theme id, creating the manifest and themes/<id>/theme.css", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "zine", dir] });
       expect(logged()).toContain("Applied theme: Zine (zine)");
@@ -172,7 +168,7 @@ describe("gutterpress theme apply", () => {
   // of assuming the single theme.css every theme used to be capped at.
   test("applying a multi-sheet project theme lists every declared stylesheet, in order", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       const themeDir = path.join(dir, "themes", "layered");
       await mkdir(path.join(themeDir, "css"), { recursive: true });
@@ -198,7 +194,7 @@ describe("gutterpress theme apply", () => {
 
   test("re-applying an id that is already a CUSTOMIZED project theme reuses it instead of forking a new copy", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await writeManifest(dir, "title: Test\n");
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
@@ -224,7 +220,7 @@ describe("gutterpress theme apply", () => {
   test("an unknown theme id is a usage error (exit 2) naming the known themes", async () => {
     stubExit();
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await expect(
         runCommand(themeCommand, { rawArgs: ["apply", "no-such-theme", dir] }),
@@ -247,8 +243,8 @@ describe("gutterpress theme apply", () => {
 describe("gutterpress theme import", () => {
   test("imports a local theme folder and reports it as not yet active", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
-    const srcDir = await tmpProjectDir("gutterpress-theme-src-");
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
+    const srcDir = await makeTempDir("gutterpress-theme-src-");
     try {
       await writeFile(path.join(srcDir, "theme.css"), ":root { --x: 1; }\n", "utf8");
       await writeFile(
@@ -270,7 +266,7 @@ describe("gutterpress theme import", () => {
 
   test("imports raw CSS from an http(s) URL", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     const realFetch = globalThis.fetch;
     try {
       globalThis.fetch = (async () =>
@@ -291,7 +287,7 @@ describe("gutterpress theme import", () => {
 
   test("importing a .css file surfaces theme-import.ts's print-safety warnings", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     const cssPath = path.join(dir, "risky.css");
     try {
       await writeFile(
@@ -310,7 +306,7 @@ describe("gutterpress theme import", () => {
   test("a nonexistent local source is a usage error naming the resolved path", async () => {
     stubExit();
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       const missing = path.join(dir, "does-not-exist");
       await expect(
@@ -326,7 +322,7 @@ describe("gutterpress theme import", () => {
   test("an unsupported file extension is a usage error", async () => {
     stubExit();
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       const txtPath = path.join(dir, "notes.txt");
       await writeFile(txtPath, "hello", "utf8");
@@ -343,7 +339,7 @@ describe("gutterpress theme import", () => {
 describe("gutterpress theme revert", () => {
   test("reverts to the previously active theme", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
       await runCommand(themeCommand, { rawArgs: ["apply", "zine", dir] });
@@ -361,7 +357,7 @@ describe("gutterpress theme revert", () => {
   test("no previous theme is a usage error (exit 2), not a pipeline failure", async () => {
     stubExit();
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
       await expect(
@@ -377,7 +373,7 @@ describe("gutterpress theme revert", () => {
 describe("gutterpress theme remove", () => {
   test("removes a project theme and calls out when it was the active one", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
       logSpy?.mockClear();
@@ -395,7 +391,7 @@ describe("gutterpress theme remove", () => {
 
   test("removing a non-active project theme does not print the active-theme note", async () => {
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
       await runCommand(themeCommand, { rawArgs: ["apply", "zine", dir] });
@@ -414,7 +410,7 @@ describe("gutterpress theme remove", () => {
   test("removing an unknown project theme id is a usage error naming what IS present", async () => {
     stubExit();
     captureOutput();
-    const dir = await tmpProjectDir();
+    const dir = await makeTempDir("gutterpress-theme-cmd-");
     try {
       await runCommand(themeCommand, { rawArgs: ["apply", "clean-book", dir] });
       await expect(

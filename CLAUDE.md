@@ -357,8 +357,9 @@ as an inlined copy of the standalone `markdown-it-paged` package and was
 absorbed at 0.10.0: the copy had grown to 812 lines against upstream's 433,
 was never consumed from npm, and carried four Gutterpress-only feature
 clusters (`data-source-range` editor threading per ADR 0009,
-`data-chapter-label`/`.chapter-opener`, `env.__colSplitDepth`, and the
-emitted-class contract the viewer depends on). The third-party label had
+`data-chapter-label`/`.chapter-opener`, a hard column-split mechanism since
+removed in 0.10.7, and the emitted-class contract the viewer depends on). The
+third-party label had
 stopped describing the file, and it was actively costing us — it argued
 against cleaning comments that describe a removed engine, and it blurred the
 ownership boundary for the `gp-*` vocabulary.

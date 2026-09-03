@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -9,9 +9,9 @@ import {
   importThemeFromFile,
   importThemeFromFolder,
   importThemeFromUrl,
+  detectLegacyForkedTheme,
   listBuiltInThemes,
   listProjectThemes,
-  readThemeCss,
   removeProjectTheme,
   revertTheme,
   BUILT_IN_THEME_IDS,
@@ -22,6 +22,8 @@ import {
   rejectExtraPositionals,
   rejectUnknownFlags,
   UsageError,
+  exitForUsage,
+  resolveProjectDir,
 } from "../lib/cli-args.ts";
 
 /**
@@ -81,14 +83,6 @@ const parentArgs = {} as const;
 
 const THEME_SUBCOMMANDS = ["list", "apply", "import", "revert", "remove"] as const;
 
-function exitForUsage(error: unknown): never {
-  if (error instanceof UsageError) {
-    console.error(error.message);
-    process.exit(error.exitCode);
-  }
-  throw error;
-}
-
 function rejectParentFlags(rawArgs: string[]): void {
   const first = rawArgs[0];
   if (first === undefined || (THEME_SUBCOMMANDS as readonly string[]).includes(first)) return;
@@ -98,10 +92,6 @@ function rejectParentFlags(rawArgs: string[]): void {
   } catch (error) {
     exitForUsage(error);
   }
-}
-
-function resolveProjectDir(dir: unknown): string {
-  return path.resolve(typeof dir === "string" && dir ? dir : process.cwd());
 }
 
 function themeLine(id: string, rest: string): string {
@@ -129,40 +119,6 @@ async function resolveApplyTarget(projectDir: string, id: string): Promise<Apply
   throw new UsageError(
     `gutterpress theme apply: unknown theme "${id}" (${known}). Run "gutterpress theme list" to see them.`,
   );
-}
-
-/**
- * #236 follow-through: detect a project whose `styles/book.css` is
- * byte-identical to a built-in theme's `theme.css` while NO theme is tracked
- * as active. That shape is exactly what a pre-0.10.7 `gutterpress new` (or
- * "set up as a book") produced — a real, working stylesheet that is simply
- * invisible to this command and to the desktop's Theme panel, and which will
- * keep loading AFTER (so silently override) whatever theme is applied next.
- * Read-only: this never modifies the project — it only surfaces a note so the
- * author can decide whether to run `theme apply` themselves.
- */
-async function detectLegacyForkedTheme(
-  projectDir: string,
-  active: ThemeInfo | null,
-): Promise<{ id: string; name: string } | null> {
-  if (active) return null;
-  let bookCss: string;
-  try {
-    bookCss = await readFile(path.join(projectDir, "styles", "book.css"), "utf8");
-  } catch {
-    return null;
-  }
-  if (!bookCss.trim()) return null;
-  for (const candidate of await listBuiltInThemes()) {
-    let builtinCss: string;
-    try {
-      builtinCss = await readThemeCss(null, { kind: "builtin", id: candidate.id });
-    } catch {
-      continue;
-    }
-    if (builtinCss === bookCss) return { id: candidate.id, name: candidate.name };
-  }
-  return null;
 }
 
 async function printThemeList(projectDir: string): Promise<void> {

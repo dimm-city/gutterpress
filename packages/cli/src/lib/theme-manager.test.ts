@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  assertThemeSheetsContained,
   listBuiltInThemes,
   resolveBuiltInTheme,
   applyTheme,
@@ -293,13 +294,38 @@ describe("theme-manager", () => {
       expect(themeStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
     });
 
-    test("a declared sheet outside the theme folder is rejected (a theme is self-contained by contract)", () => {
-      expect(() => themeStyleList({ styles: ["../outside.css"] })).toThrow(/inside the theme folder/);
-      expect(() => themeStyleList({ styles: ["/etc/passwd"] })).toThrow(/inside the theme folder/);
-      expect(() => themeEngineStyleList({ engineStyles: { native: ["css/../../x.css"] } })).toThrow(
-        /inside the theme folder/,
+    test("a declared sheet outside the theme folder is rejected at the write boundary", () => {
+      expect(() => assertThemeSheetsContained({ styles: ["../outside.css"] })).toThrow(
+        /outside the theme folder/,
       );
-      expect(themeStyleList({ styles: ["css/tokens.css"] })).toEqual(["css/tokens.css"]);
+      expect(() => assertThemeSheetsContained({ styles: ["/etc/passwd"] })).toThrow(
+        /outside the theme folder/,
+      );
+      expect(() =>
+        assertThemeSheetsContained({ engineStyles: { native: ["css/../../x.css"] } }),
+      ).toThrow(/outside the theme folder/);
+      expect(() => assertThemeSheetsContained({ styles: ["css/tokens.css"] })).not.toThrow();
+    });
+
+    // The read paths must NOT inherit that throw: one hand-edited theme.json
+    // cannot be allowed to take down listing every theme, or the Design
+    // panel's own getActiveTheme call.
+    test("a theme with an escaping path still lists and reads — only apply/import reject it", async () => {
+      const dir = projectDir();
+      const themeDir = join(dir, THEMES_DIR, "sneaky");
+      mkdirSync(themeDir, { recursive: true });
+      writeFileSync(join(themeDir, "theme.css"), ":root { --x: 1; }\n", "utf8");
+      writeFileSync(
+        join(themeDir, "theme.json"),
+        JSON.stringify({ name: "Sneaky", styles: ["../../../etc/passwd"] }),
+        "utf8",
+      );
+      expect(themeStyleList({ styles: ["../outside.css"] })).toEqual(["../outside.css"]);
+      await expect(listProjectThemes(dir)).resolves.toBeInstanceOf(Array);
+      await expect(getActiveTheme(dir)).resolves.toBeDefined();
+      await expect(
+        applyTheme(dir, { kind: "project", id: "sneaky" }),
+      ).rejects.toThrow(/outside the theme folder/);
     });
 
     function writeMultiSheetTheme(dir: string, id: string, opts: { engineStyles?: string[] } = {}): void {

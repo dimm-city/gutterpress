@@ -66,6 +66,23 @@ export interface DesignSectionDeps {
   clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
 }
 
+/**
+ * #239 — the sheet an active theme declares as its token surface (`theme.json`
+ * `tokensFile`), picked out of the project's editable stylesheets; `null` when
+ * no theme is applied, none is declared, or the named sheet is not in the
+ * list, in which case the caller falls back to the first active sheet.
+ *
+ * Matched on `displayName`, which the host already computed as the
+ * project-relative, forward-slash path (`style-resolver.ts`'s `relDisplay`) —
+ * so this is an exact comparison against one canonical spelling rather than a
+ * second path-normalization living in the renderer.
+ */
+function tokenSheetOf(theme: ThemeInfo | null, list: ProjectStyle[]): ProjectStyle | null {
+  if (!theme?.tokensFile) return null;
+  const want = `themes/${theme.id}/${theme.tokensFile}`;
+  return list.find((x) => x.displayName === want) ?? null;
+}
+
 export class DesignSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   /** Absolute path of the stylesheet whose tokens are being edited. */
@@ -169,9 +186,13 @@ export class DesignSectionController {
     this.designError = null;
     this.tokens = [];
     try {
-      const list = await this.deps.listStyles(projectDir);
-      const active =
-        (await this.tokenSheetOf(projectDir, list)) ?? list.find((x) => x.active) ?? list[0];
+      // Two independent host calls — the theme only needs `projectDir`, so it
+      // is fetched alongside the style list rather than after it.
+      const [list, theme] = await Promise.all([
+        this.deps.listStyles(projectDir),
+        this.deps.activeTheme?.(projectDir).catch(() => null) ?? Promise.resolve(null),
+      ]);
+      const active = tokenSheetOf(theme, list) ?? list.find((x) => x.active) ?? list[0];
       if (!active) {
         this.cssPath = null;
         this.cssName = "";
@@ -189,20 +210,6 @@ export class DesignSectionController {
     } finally {
       this.designLoading = false;
     }
-  }
-
-  /**
-   * #239 — the sheet the active theme declares as its token surface
-   * (`theme.json` `tokensFile`), when it is in the editable list; null
-   * otherwise, and the caller falls back to the first active sheet. A failed
-   * lookup is treated as "no theme" rather than blocking the panel.
-   */
-  private async tokenSheetOf(projectDir: string, list: ProjectStyle[]): Promise<ProjectStyle | null> {
-    if (!this.deps.activeTheme) return null;
-    const theme = await this.deps.activeTheme(projectDir).catch(() => null);
-    if (!theme?.tokensFile) return null;
-    const suffix = `/themes/${theme.id}/${theme.tokensFile}`;
-    return list.find((x) => x.path.replace(/\\/g, "/").endsWith(suffix)) ?? null;
   }
 
   // ── Debounced, serialized token writes ──────────────────────────────────────

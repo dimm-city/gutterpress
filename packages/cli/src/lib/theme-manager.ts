@@ -193,20 +193,31 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
   const declared = Array.isArray(meta.styles)
     ? meta.styles.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
-  return declared.length > 0 ? declared.map((s) => assertInsideThemeFolder(s, "styles")) : ["theme.css"];
+  return declared.length > 0 ? declared : ["theme.css"];
 }
 
 /**
- * A declared sheet must live INSIDE the theme folder. A theme is
+ * Every declared sheet must live INSIDE the theme folder. A theme is
  * self-contained by contract (apply copies the whole folder), and an imported
  * package is untrusted input: a `../` or absolute entry would make apply read
  * a file from anywhere on disk into the book.
+ *
+ * This is a WRITE-BOUNDARY guard — `applyTheme`, `importThemeFromFolder` and
+ * `theme-import.ts`'s package validation call it before copying anything or
+ * wiring a manifest. It deliberately does NOT live in {@link themeStyleList},
+ * which the read paths (`listProjectThemes`, `getActiveTheme`,
+ * `getPreviousTheme`, `readThemeCss`) also call: one hand-edited theme.json
+ * must not take down listing every theme, the same reason `readThemeMeta`
+ * returns `{}` for an unparseable file instead of throwing.
  */
-function assertInsideThemeFolder(rel: string, field: string): string {
-  if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
-    throw new Error(`theme.json ${field} entry "${rel}" must be a path inside the theme folder.`);
+export function assertThemeSheetsContained(meta: ThemeMetadata): void {
+  for (const rel of [...themeStyleList(meta), ...themeEngineStyleList(meta)]) {
+    if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
+      throw new Error(
+        `theme.json declares stylesheet "${rel}" outside the theme folder; a theme must be self-contained.`,
+      );
+    }
   }
-  return rel;
 }
 
 /**
@@ -218,9 +229,9 @@ function assertInsideThemeFolder(rel: string, field: string): string {
  */
 export function themeEngineStyleList(meta: ThemeMetadata): string[] {
   return Array.isArray(meta.engineStyles?.native)
-    ? meta.engineStyles.native
-        .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-        .map((s) => assertInsideThemeFolder(s, "engineStyles.native"))
+    ? meta.engineStyles.native.filter(
+        (s): s is string => typeof s === "string" && s.trim().length > 0,
+      )
     : [];
 }
 
@@ -358,6 +369,32 @@ function themeEngineStyleHrefs(id: string, meta: ThemeMetadata): string[] {
  */
 const THEME_HREF_RE = new RegExp(`^${THEMES_DIR}/([^/]+)/(.+)$`);
 
+/**
+ * Replace the contiguous run of theme-owned entries in a manifest sequence
+ * with `hrefs`, at the position the outgoing theme held. `fallbackIndex`
+ * decides where a FIRST theme's block lands when there is no prior run to
+ * replace — the front for `styles:`, the end for `engineStyles.native` (see
+ * {@link setActiveThemeStyle}'s doc comment for why they differ).
+ */
+function replaceThemeHrefBlock(
+  items: Node[],
+  hrefs: string[],
+  fallbackIndex: (kept: Node[]) => number,
+): Node[] {
+  const isTheme = (item: Node): boolean => {
+    const h = scalarString(item);
+    return !!h && THEME_HREF_RE.test(h);
+  };
+  const firstThemeIndex = items.findIndex(isTheme);
+  const kept = items.filter((item) => !isTheme(item));
+  kept.splice(
+    firstThemeIndex === -1 ? fallbackIndex(kept) : firstThemeIndex,
+    0,
+    ...hrefs.map((h) => new Scalar(h)),
+  );
+  return kept;
+}
+
 /** True when `href` is one of `id`'s own theme entries (any declared sheet). */
 function hrefBelongsToTheme(href: string, id: string): boolean {
   const m = href.match(THEME_HREF_RE);
@@ -444,17 +481,7 @@ async function setActiveThemeStyle(projectDir: string, id: string, meta: ThemeMe
 
   // Keep exactly one active theme's block, at the position the outgoing
   // theme held (or at the front when this is the project's first theme).
-  const items = seq.items as Node[];
-  const firstThemeIndex = items.findIndex((item) => {
-    const h = scalarString(item);
-    return !!h && THEME_HREF_RE.test(h);
-  });
-  const kept = items.filter((item) => {
-    const h = scalarString(item);
-    return !(h && THEME_HREF_RE.test(h));
-  });
-  kept.splice(firstThemeIndex === -1 ? 0 : firstThemeIndex, 0, ...hrefs.map((h) => new Scalar(h)));
-  seq.items = kept;
+  seq.items = replaceThemeHrefBlock(seq.items as Node[], hrefs, () => 0);
 
   // engineStyles.native: same block-replace, only touching the key when
   // needed (see doc comment above).
@@ -467,25 +494,16 @@ async function setActiveThemeStyle(projectDir: string, id: string, meta: ThemeMe
   });
   if (engineHrefs.length > 0 || hasThemeEngineEntries) {
     const engineSeq = ensureSeq(doc, ["engineStyles", "native"]);
-    const engineItems = engineSeq.items as Node[];
-    const firstEngineThemeIndex = engineItems.findIndex((item) => {
-      const h = scalarString(item);
-      return !!h && THEME_HREF_RE.test(h);
-    });
-    const keptEngine = engineItems.filter((item) => {
-      const h = scalarString(item);
-      return !(h && THEME_HREF_RE.test(h));
-    });
     // Unlike `styles:`, a brand-new theme's engine sheets append at the END
     // (not the front) when there's no prior theme entry to replace: manifest.ts
     // already loads `engineStyles.native` LAST so "furniture wins" (it appends
     // after the base `styles:` list at resolve time) — the same reasoning
     // applies one level down, so a theme's own furniture sheet wins over any
     // engine sheet the project added by hand, rather than being shadowed by it.
-    keptEngine.splice(
-      firstEngineThemeIndex === -1 ? keptEngine.length : firstEngineThemeIndex,
-      0,
-      ...engineHrefs.map((h) => new Scalar(h)),
+    const keptEngine = replaceThemeHrefBlock(
+      engineSeq.items as Node[],
+      engineHrefs,
+      (kept) => kept.length,
     );
     engineSeq.items = keptEngine;
   }
@@ -581,6 +599,7 @@ export async function applyTheme(
     meta = await readThemeMeta(path.join(destDir, "theme.json"));
     // #239: confirm the copy landed completely — see the project branch's
     // comment below for why this is the shared resolver, not a re-check.
+    assertThemeSheetsContained(meta);
     resolveDeclaredStyles(themeStyleList(meta), destDir, `Theme "${destId}"`);
     resolveDeclaredStyles(themeEngineStyleList(meta), destDir, `Theme "${destId}"`);
     info = themeInfo(destId, "project", meta);
@@ -592,6 +611,7 @@ export async function applyTheme(
     // listProjectThemes/getActiveTheme use. Kept as its own check (rather than
     // folded into the resolveDeclaredStyles call below) for the friendlier,
     // much more common "this theme was never applied/imported" message.
+    assertThemeSheetsContained(meta);
     const primary = themeStyleList(meta)[0]!;
     if (!existsSync(path.join(dir, primary))) {
       throw new Error(`Theme "${target.id}" is not present in this project.`);
@@ -648,6 +668,7 @@ export async function importThemeFromFolder(
   }
 
   const meta = await readThemeMeta(path.join(sourceDir, "theme.json"));
+  assertThemeSheetsContained(meta);
   const primary = themeStyleList(meta)[0]!;
   if (!existsSync(path.join(sourceDir, primary))) {
     throw new Error(
@@ -870,4 +891,38 @@ export async function removeProjectTheme(projectDir: string, id: string): Promis
     // ARCH finding #25: same shared write path as setActiveThemeStyle.
     await writeManifestDoc(file, doc);
   }
+}
+
+/**
+ * #236 follow-through: detect a project whose `styles/book.css` is
+ * byte-identical to a built-in theme's `theme.css` while NO theme is tracked
+ * as active. That shape is exactly what a pre-0.10.7 `gutterpress new` (or
+ * "set up as a book") produced — a real, working stylesheet that is simply
+ * invisible to this command and to the desktop's Theme panel, and which will
+ * keep loading AFTER (so silently override) whatever theme is applied next.
+ * Read-only: this never modifies the project — it only surfaces a note so the
+ * author can decide whether to run `theme apply` themselves.
+ */
+export async function detectLegacyForkedTheme(
+  projectDir: string,
+  active: ThemeInfo | null,
+): Promise<{ id: string; name: string } | null> {
+  if (active) return null;
+  let bookCss: string;
+  try {
+    bookCss = await readFile(path.join(projectDir, "styles", "book.css"), "utf8");
+  } catch {
+    return null;
+  }
+  if (!bookCss.trim()) return null;
+  for (const candidate of await listBuiltInThemes()) {
+    let builtinCss: string;
+    try {
+      builtinCss = await readThemeCss(null, { kind: "builtin", id: candidate.id });
+    } catch {
+      continue;
+    }
+    if (builtinCss === bookCss) return { id: candidate.id, name: candidate.name };
+  }
+  return null;
 }

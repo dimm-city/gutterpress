@@ -36,6 +36,7 @@ import { unzipSync } from "fflate";
 
 import { checkCss, ruleSyntax, type PrintSafeWarning } from "./printsafe.ts";
 import {
+  assertThemeSheetsContained,
   importThemeFromFolder,
   themeStyleList,
   themeEngineStyleList,
@@ -226,6 +227,7 @@ async function finalizeThemeImport(
   // a parallel re-implementation here. Print-safety linting stays layered on
   // top: it is a theme-import-specific richness (WARN, don't just reject)
   // that plugin loading has no equivalent of.
+  assertThemeSheetsContained(meta);
   const extraSheets = [
     ...new Set([...themeStyleList(meta), ...themeEngineStyleList(meta)]),
   ].filter((rel) => rel !== "theme.css");

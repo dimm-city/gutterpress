@@ -8,6 +8,7 @@ import {
   rejectExtraPositionals,
   rejectUnknownFlags,
   UsageError,
+  exitForUsage,
 } from "../lib/cli-args.ts";
 import { parseNpmPluginSpec } from "../lib/plugin-vendor.ts";
 
@@ -30,14 +31,6 @@ export const pluginAddArgs = {
 } as const;
 
 const parentArgs = {} as const;
-
-function exitForUsage(error: unknown): never {
-  if (error instanceof UsageError) {
-    console.error(error.message);
-    process.exit(error.exitCode);
-  }
-  throw error;
-}
 
 function rejectParentFlags(rawArgs: string[]): void {
   if (rawArgs[0] === "add" || rawArgs[0] === undefined || !rawArgs[0].startsWith("-")) {

@@ -17,7 +17,7 @@
 // `prefixes.allow` / `warn-unprefixed` (a blanket "every class must carry an
 // approved prefix" sweep) is NOT implemented. Core itself emits bare,
 // unprefixed structural classes authors are meant to style directly
-// (`.section`, `.page`, `.spread`, `.chapter`, `.col` — see markers.js /
+// (`.section`, `.page`, `.spread`, `.chapter` — see markers.js /
 // CLAUDE.md §6), and a project's own non-branded utility classes (e.g. the
 // `.lede` class used in this very user guide) are completely legitimate.
 // Sweeping every class in every stylesheet against an allow-list would flag
@@ -27,6 +27,7 @@
 // a project that enables one gets warnings for real, specific ownership
 // violations, not incidental style choices.
 import { readFile } from "node:fs/promises";
+import { relDisplay } from "../../lib/style-resolver.ts";
 import { relative, sep } from "node:path";
 import postcss from "postcss";
 import { parse as parseYaml } from "yaml";
@@ -90,12 +91,6 @@ async function loadContract(configPath: string): Promise<CssContract> {
   return {};
 }
 
-/** Project-relative, forward-slash display path — mirrors
- * style-resolver.ts's own `relDisplay`, so a contract's file keys are written
- * the same way authors already see paths elsewhere in Gutterpress. */
-function relDisplay(inputDir: string, absPath: string): string {
-  return relative(inputDir, absPath).split(sep).join("/");
-}
 
 /** Split a selector list on top-level commas only — a comma inside `:is()`,
  * `:where()`, `:not()`, etc. does not start a new branch. */
@@ -263,7 +258,10 @@ const check: Check = {
     const results: CheckResult[] = [];
 
     for (const absFile of files) {
-      if (absFile.endsWith(".min.css")) continue; // matches source.stylelint's convention
+      // Defense in depth: every production caller already drops minified CSS
+      // when it builds `cssFiles` (lib/validation-exec.ts, lib/lint-runner.ts),
+      // so this only bites a direct caller that passes an unfiltered list.
+      if (absFile.endsWith(".min.css")) continue;
       let css: string;
       try {
         css = await readFile(absFile, "utf8");
