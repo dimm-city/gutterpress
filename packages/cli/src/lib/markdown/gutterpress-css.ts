@@ -347,6 +347,55 @@ img.gp-shape {
 .gp-base   { z-index: var(--gp-z-base); }
 .gp-raised { z-index: var(--gp-z-raised); }
 .gp-front  { z-index: var(--gp-z-front); }
+
+/* GFM-style alert/callout boxes (#237) — the DOM gfm-alerts.ts emits from
+   "> [!TYPE]" blockquote syntax when a project opts into the bundled
+   gutterpress-gfm-alerts feature (BUILTIN_OPTIONAL_PLUGINS, renderer.ts).
+   The plugin is optional and inert by default; these rules are equally
+   inert wherever the classes never appear, exactly like every other
+   utility above, so shipping them costs nothing to a book that has not
+   turned the feature on.
+
+   This is authored-COMPONENT vocabulary, not the @marker structural family
+   (markers.js/MARKER_CSS) — CLAUDE.md §6 splits the two core CSS blocks by
+   ROLE, and an author-facing box an author invokes via inline syntax is the
+   same role as every other gp-* utility here, not page/chapter/section DOM.
+
+   Deliberately minimal (CLAUDE.md "thin over capable" / the issue's own
+   "a rule and a label"): a left border plus a bold label, :where()'d to
+   zero specificity so a theme's own (unlayered) rule for any of these
+   classes wins outright regardless of selector weight — see the
+   cascade-layers note atop this file. Five semantic accent colors (the same
+   NOTE/TIP/IMPORTANT/WARNING/CAUTION hues GitHub's own alerts use — a
+   long-established, non-proprietary convention, not DC branding) are
+   exposed as :root custom properties, the same author-settable-surface
+   pattern as the --gp-z-* ladder above: a book retints every alert of one
+   type by overriding a single property, no specificity fight required.
+   --gp-alert-color cascades from the type modifier down to .gp-alert-title
+   through ordinary CSS inheritance (the title is always a DOM descendant of
+   the box), so it is set in exactly five places, not ten. */
+:root {
+  --gp-alert-note-color: #0969da;
+  --gp-alert-tip-color: #1a7f37;
+  --gp-alert-important-color: #8250df;
+  --gp-alert-warning-color: #9a6700;
+  --gp-alert-caution-color: #cf222e;
+}
+:where(.gp-alert) {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 0.25em solid var(--gp-alert-color, currentColor);
+}
+:where(.gp-alert-title) {
+  margin: 0 0 0.5em;
+  font-weight: bold;
+  color: var(--gp-alert-color, inherit);
+}
+:where(.gp-alert-note)      { --gp-alert-color: var(--gp-alert-note-color); }
+:where(.gp-alert-tip)       { --gp-alert-color: var(--gp-alert-tip-color); }
+:where(.gp-alert-important) { --gp-alert-color: var(--gp-alert-important-color); }
+:where(.gp-alert-warning)   { --gp-alert-color: var(--gp-alert-warning-color); }
+:where(.gp-alert-caution)   { --gp-alert-color: var(--gp-alert-caution-color); }
 `;
 /**
  * GP_CLASSES — every class an author may legitimately write with a `gp-`
@@ -388,6 +437,9 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-pin", "gp-top", "gp-bottom",
   // depth ladder
   "gp-behind", "gp-base", "gp-raised", "gp-front",
+  // GFM alert boxes (#237, gfm-alerts.ts) — base + the five GitHub types + label
+  "gp-alert", "gp-alert-title",
+  "gp-alert-note", "gp-alert-tip", "gp-alert-important", "gp-alert-warning", "gp-alert-caution",
   // MARKER_CSS (markers.js) — structural break classes
   "gp-page-break", "gp-column-break",
   // marker-only, no CSS rule of their own (see the doc comment above)

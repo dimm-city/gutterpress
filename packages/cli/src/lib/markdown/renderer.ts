@@ -32,6 +32,9 @@ import markdownItMark from "markdown-it-mark";
 import markdownItSub from "markdown-it-sub";
 import markdownItSup from "markdown-it-sup";
 import markdownItAbbr from "markdown-it-abbr";
+// Gutterpress's own bundled feature (#237), not a wrapped third-party
+// package — see gfm-alerts.ts's header for the full design rationale.
+import gfmAlerts from "./gfm-alerts";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
 import { registerInlineSourceMetadata } from "./inline-source";
@@ -108,12 +111,21 @@ function unwrapPlugin<T>(plugin: T): T {
  * non-technical author gets the feature instantly instead of a "not installed"
  * error. (attrs/footnote/deflist are NOT here — they are always-on defaults
  * applied unconditionally below.)
+ *
+ * `gutterpress-gfm-alerts` (#237) is keyed differently from its four
+ * siblings: it is not a real npm package, it is Gutterpress's OWN code
+ * (gfm-alerts.ts) registered under a name that reads like one, matching the
+ * shape "keyed by npm name" is written for. There is nothing to install
+ * either way — the lookup below always wins before any npm resolution is
+ * attempted (`plugins.ts`'s `loadPlugin`) — so a real npm package never
+ * existing under this exact name costs nothing.
  */
 export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
   "markdown-it-mark": unwrapPlugin(markdownItMark) as GutterpressPlugin,
   "markdown-it-sub": unwrapPlugin(markdownItSub) as GutterpressPlugin,
   "markdown-it-sup": unwrapPlugin(markdownItSup) as GutterpressPlugin,
   "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as GutterpressPlugin,
+  "gutterpress-gfm-alerts": gfmAlerts,
 };
 
 /**
@@ -139,7 +151,16 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  *
  * GFM-style `> [!NOTE]` alerts were also moved into the DC plugin on the
  * same date because the emitted classes (dc-alert, dc-vibe-callout, etc.)
- * are DC-branded. Core should not leak DC identifiers.
+ * were DC-branded — core should not leak DC identifiers. #237 (0.10.7)
+ * restored a core-owned, unbranded equivalent as an OPT-IN bundled feature —
+ * `gfm-alerts.ts`, registered below as `gutterpress-gfm-alerts` — emitting
+ * only the standard GitHub five (NOTE/TIP/IMPORTANT/WARNING/CAUTION) as
+ * neutral `gp-alert`/`gp-alert-<type>` structure (see that file's header).
+ * This does not re-converge with the DC plugin: DC's branded extra types
+ * (`[!DM]`/`[!VIBE]`/`[!ORIGIN]`, etc.) and its own class names stay exactly
+ * where they were moved to, layered on top of (or independent from) this
+ * primitive. A project using neither plugin still renders `> [!NOTE]` as a
+ * literal blockquote, unchanged — this feature is opt-in, not a default.
  *
  * @param customPlugins - Optional array of custom plugins to load
  */

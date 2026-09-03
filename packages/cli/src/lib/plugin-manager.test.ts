@@ -286,17 +286,25 @@ describe("plugin-manager", () => {
   });
 
   describe("RECOMMENDED_PLUGINS", () => {
-    test("are real markdown-it plugins with name + description, all built-in", () => {
-      expect(RECOMMENDED_PLUGINS.length).toBeGreaterThanOrEqual(4);
+    // Every entry is either a real npm markdown-it plugin (markdown-it-*,
+    // the original four) or Gutterpress's own bundled code named to fit the
+    // same "keyed by npm name" shape (gutterpress-*, #237's gfm-alerts) —
+    // see BUILTIN_OPTIONAL_PLUGINS' doc comment (renderer.ts). Either way
+    // there is no real npm install; only the name's prefix tells them apart.
+    const KNOWN_NAME = /^(markdown-it|gutterpress)-/;
+
+    test("are markdown-it plugins (real npm or Gutterpress's own) with name + description, all built-in", () => {
+      expect(RECOMMENDED_PLUGINS.length).toBeGreaterThanOrEqual(5);
       for (const p of RECOMMENDED_PLUGINS) {
         expect(typeof p.name).toBe("string");
-        expect(p.name).toMatch(/^markdown-it/);
+        expect(p.name).toMatch(KNOWN_NAME);
         expect(typeof p.description).toBe("string");
         expect(p.description.length).toBeGreaterThan(0);
-        // A short, plain-language label (not the markdown-it-* id) for the title.
+        // A short, plain-language label (not the markdown-it-*/gutterpress-*
+        // id) for the title.
         expect(typeof p.label).toBe("string");
         expect(p.label.length).toBeGreaterThan(0);
-        expect(p.label).not.toMatch(/^markdown-it/);
+        expect(p.label).not.toMatch(KNOWN_NAME);
         // Every recommended entry must be bundled so "Turn on" works offline.
         expect(p.builtin).toBe(true);
       }
