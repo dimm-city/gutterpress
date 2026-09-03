@@ -254,12 +254,16 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
     } else if (prop === "filter") {
       // `filter:` gets its own message (not the generic risky-props text
       // below): it's the one property measured to have a specific, severe
-      // cost — see docs/engine/ENGINE.md §10.
+      // cost — see docs/engine/ENGINE.md §10. It is also the confirmed cause
+      // of render-parity's text-extraction blind spot (issue #259): the
+      // rasterized subtree has no PDF text objects left for ANY extractor to
+      // find, so the render-parity gate cannot see a text-only change inside
+      // it either — see docs/render-parity-gate.md's "Known blind spot".
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
         message:
-          "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector.",
+          "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector. It also means the render-parity gate cannot see a text-only change inside it (docs/render-parity-gate.md, \"Known blind spot\").",
         ...nodeLoc(decl),
       });
     } else if (riskyProperties.has(prop)) {

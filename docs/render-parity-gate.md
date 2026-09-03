@@ -88,6 +88,64 @@ report with reflow noise. A page whose diff count exceeds 12 lines is
 truncated in the printed output (`...N more`) — the full set still decides
 the exit code; only the printed report is capped for readability.
 
+## Known blind spot: `filter` rasterizes text out of reach
+
+Investigated in issue #259, filed after `.dc-specialty-intro` body text and
+`.section.tabbed` body text in a private field guide were found invisible to
+this gate — a change confined to that prose compared as identical.
+
+**The mechanism**, confirmed on a public fixture that mirrors the same
+construct (`docs/fixtures/rasterized-text/book`, pinned by
+`render-parity.rasterized-text.test.ts`): an element with a `filter`
+declaration (any value other than `none`) makes Chromium rasterize its
+**entire subtree** into one embedded bitmap image before the PDF's content
+stream is written — see `docs/engine/ENGINE.md` §10 for the underlying
+measurement ("sentinel strings extractable: 2 -> 0", "fonts in the PDF: none
+at all"). The text was never emitted as a PDF text object. This is case 3
+from the issue's own triage, not case 1 or 2:
+
+- It is **not** `getTextPass`'s `it.transform && it.str.trim().length > 0`
+  filter dropping something present — `page.getTextContent()` returns zero
+  items for that region. There is nothing to keep.
+- It is **not** a pdf.js quirk on a marked-content/Type3 sequence that
+  Chromium otherwise still emits as text — the region contains a
+  `paintImageXObject` operator where the text glyphs would have been,
+  confirmed directly against the operator list (`getOpPass`), not merely
+  inferred from the text pass coming back empty.
+- No text extractor — pdf.js-based or otherwise — can recover this content,
+  because it is pixels, not glyphs. **Do not try to extend the extractor for
+  this case**; there is nothing left in the PDF for a bigger extractor to
+  find.
+
+**Why `.dc-specialty-intro` and `.section.tabbed` specifically:** both give a
+non-rectangular (`clip-path`) card a drop shadow that must follow that
+silhouette. A shape-following shadow needs `filter: drop-shadow()` — a plain
+`box-shadow` only follows the border box — which is why these two components
+kept `filter` after the rest of `.section` chrome moved to vector shadows.
+`clip-path` on its own does **not** reproduce this (confirmed on the same
+fixture): only `filter` does. `backdrop-filter` and `mix-blend-mode` alone
+were also tried and did not reproduce it either, on Chromium 152 — treat that
+as today's measured Chromium behavior worth re-checking after a Chromium
+bump, not a permanent guarantee about those two properties.
+
+**How to tell you're inside this blind spot** — a way to detect it, not just
+remember it: `packages/cli/src/lib/printsafe.ts`'s
+`printsafe/no-risky-print-effects` rule already warns on every `filter`
+declaration, and its message names this exact consequence ("text becomes
+unselectable, unsearchable, and inaccessible") and points back here. Run
+it — the CLI's pre-build lint gate and the desktop Problems panel both call
+`checkCss` — over any stylesheet you're about to trust render-parity to
+cover. **If a text-bearing element or one of its ancestors trips that
+`filter` warning, render-parity cannot see a text-only change confined to it
+— verify such a change by other means (a rendered preview, a visual diff, or
+careful review), not by a clean gate run.**
+
+This does not weaken the gate for everything else on the same page: page
+geometry, image placement, and any text **outside** a filtered subtree are
+still compared exactly as before — `render-parity.rasterized-text.test.ts`'s
+"contrast" case pins that an ordinary text edit elsewhere on the same page
+is still caught.
+
 ## Waivers
 
 A waiver excuses one class of diff, with a mandatory one-line reason —

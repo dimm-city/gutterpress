@@ -15,6 +15,17 @@ test("checkCss warns on filter: with the measured rasterization/build-time messa
   expect(filterWarnings[0]!.message).toContain("57.0s -> 6.2s");
 });
 
+// The same rasterization is the confirmed cause of render-parity's
+// text-extraction blind spot (issue #259, docs/render-parity-gate.md's
+// "Known blind spot") — this is the one lint-time signal that tells an
+// author/dev they've left the gate's coverage, so the message must name it.
+test("checkCss's filter: warning also names the render-parity blind spot", () => {
+  const css = `.card { filter: drop-shadow(0 0 4px #000); }`;
+  const warnings = checkCss(css);
+  const filterWarnings = warnings.filter((w) => w.rule === ruleRiskyProps);
+  expect(filterWarnings[0]!.message).toContain("render-parity");
+});
+
 test("checkCss stays silent on filter: when the CSS has no filter declarations", () => {
   const css = `.card { color: red; box-shadow: 0 0 4px #000; }`;
   const warnings = checkCss(css);
