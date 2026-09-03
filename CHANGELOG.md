@@ -5,6 +5,54 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.8] - unreleased
+
+### Added
+
+- **A plugin and a theme are the same thing now: an extension.** Both are a
+  folder with a `gutterpress.json` that says what it carries — `styles` for
+  stylesheets, `markdown` for a markdown-it plugin, `tokensFile`, `snippets`,
+  a `preview` image, a name and description. Nothing about the old shapes
+  stopped working: a theme folder with `theme.json` is read exactly as before,
+  and a `plugins:` entry may now name a folder instead of a `.js` file. What
+  changes is that one package can finally carry both halves, which is what a
+  component library actually is. (#241)
+
+- **Plugins can declare their own markers.** A plugin exports
+  `markers: { sidebar: {...} }` and `@sidebar` becomes an author marker with
+  the same behaviour core's own markers have — attributes, nesting,
+  continuations, editor source mapping. Every component plugin used to
+  reimplement that parsing by hand. A declared marker that collides with a
+  core word fails the plugin load rather than silently shadowing it; an
+  unknown marker warns; one marked deprecated warns and is stripped. (#240)
+
+- **Extensions can ship snippets.** An installed extension's snippets appear
+  in the snippet picker beside your own, grouped under the extension's name
+  and read-only. Uninstall the extension or switch themes and they are gone
+  from the next listing — there is nothing to clean up. A snippet of your own
+  with the same name always wins. (#242)
+
+- **One Extensions surface: Look and Features.** The theme grid and the
+  plugins panel were two panels doing the same job — bring something into this
+  book — with no shared vocabulary. Project settings now has a **Look** tab
+  (cards with previews; applying one replaces the active look) and a
+  **Features** tab (enable toggles, validation, versions), over one controller
+  and one model. A look whose package also carries a markdown plugin shows a
+  "+ features" badge. (#243)
+
+### Fixed
+
+- **`gutterpress validate` now sees plugin CSS.** Since plugin stylesheets
+  became files, validate and the build's preflight gate had no idea they
+  existed — a print-safety problem in a plugin's CSS passed validation and
+  turned up in the PDF. Both now check plugin stylesheets along with your
+  own. (#262)
+
+- **A build loads each plugin once, not twice.** The lint gate and the render
+  each loaded and re-verified every plugin independently, so an npm-installed
+  plugin's whole vendored tree was read and hashed twice per build. (#262)
+
+
 ## [0.10.7] - 2026-09-03
 
 ### Added
