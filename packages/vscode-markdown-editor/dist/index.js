@@ -6463,7 +6463,18 @@ class gl extends H {
       if (i.isEmpty)
         return;
       const o = this.coordinateSpace.capture().toLocalPoint(e), r = this._gpBlockRangeAtPoint(e);
-      return r ? i.offsetAtPointInRange(o, r.start, r.end) : i.offsetAtPoint(o);
+      if (!r)
+        return i.offsetAtPoint(o);
+      /* gp-fork: columns - in a table, a hit on the block's own text takes
+         the platform's answer. The map keeps a table row as one line and a
+         cell's text as one run, so a cell that wraps resolved by x alone
+         and a click on its first line could land a line lower; the
+         platform hit-test knows which wrapped line was hit. Every other
+         block keeps the map, whose per-character segments are exact for a
+         chip; off the text (padding, a gap between rows, a drag) the
+         block's lines decide, as above. */
+      const c = r.table ? kr(e) : void 0, a = c && this._contentContainer.contains(c.node) ? this._document.get()?.resolveSource(c) : void 0;
+      return a !== void 0 && a >= r.start && a <= r.end ? a : i.offsetAtPointInRange(o, r.start, r.end);
     }
     const s = kr(e);
     if (s)
@@ -6483,7 +6494,7 @@ class gl extends H {
       if (!o || o.dom !== i)
         continue;
       const r = s.resolveSource({ node: i, offset: 0 });
-      return r === void 0 ? void 0 : { start: r, end: r + o.sourceLength };
+      return r === void 0 ? void 0 : { start: r, end: r + o.sourceLength, table: o.ast.kind === "table" };
     }
   }
   /**

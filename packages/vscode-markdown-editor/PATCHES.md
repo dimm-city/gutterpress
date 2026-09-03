@@ -1360,11 +1360,12 @@ in the second column could be edited.
 
 **What.** The view names the block under the pointer (the innermost
 `.md-block` under `document.elementFromPoint` that a view node owns, and
-that block's source range), and the map resolves the point among THAT
-block's lines: the line whose band holds `y`, the nearest by `x` when more
-than one does (a block split across two columns), else the first line
-below the point, else the block's last line. A point no block claims (a
-page margin, a drag past the viewport) falls back to the line nearest the
+that block's source range). In a table, a hit on its own text takes the
+platform hit-test's offset, which knows which wrapped line of a cell was
+hit. Otherwise the map resolves the point among THAT block's lines: the line whose band holds `y`, the nearest by `x` when more than
+one does (a block split across two columns), else the first line below
+the point, else the block's last line. A point no block claims (a page
+margin, a drag past the viewport) falls back to the line nearest the
 point on both axes, so a click in a second column's margin still snaps to
 that column. `lineIndexAtY` and the rest of the map are untouched.
 
@@ -1376,9 +1377,17 @@ Two methods added after `offsetAtPoint`, which now calls
 
 ### Hunk 28 - `EditorView.resolveOffsetFromPoint` (`dist/index.js`)
 
-The geometric branch consults `_gpBlockRangeAtPoint(e)` and resolves
-through `offsetAtPointInRange` when a block claims the point, else through
-`offsetAtPoint` as before.
+The geometric branch consults `_gpBlockRangeAtPoint(e)`. When a TABLE
+claims the point and the platform hit-test (`caretPositionFromPoint`,
+the existing `kr`) lands on its own text, the platform's offset is the
+answer: the map keeps a table row as one line and a cell's text as one
+run, so a cell that wraps resolved by `x` alone and a click on its first
+line could land a line lower. Every other block keeps the map, whose
+per-character segments are exact for a chip (the fork's own
+`custom-view/fork-hook.btest.ts` holds that). Off the text (padding, a
+gap between rows, a drag) the block's lines decide through
+`offsetAtPointInRange`; with no block under the point, `offsetAtPoint`
+as before.
 
 ### Hunk 29 - `EditorView._gpBlockRangeAtPoint` (`dist/index.js`)
 
