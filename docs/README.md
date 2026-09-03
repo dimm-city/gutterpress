@@ -111,13 +111,14 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 
 ### Common Callouts
 
-> **Plugin required:** `> [!note]`-style GitHub alert syntax is **not** part
-> of core Gutterpress — it lives in the separate, Dimm City plugin.
-> Without that plugin configured, these print as literal blockquote text
-> (`[!note] ...`). See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md)
-> to add it, or use `@section .callout-tip` … `@end-section` (a plain marker
-> core always renders — see [User Guide: Chapter 8 — Publishing](../examples/gutterpress-user-guide/08-publishing.md))
-> or a plain `>` blockquote for a core-only callout.
+> **Bundled, off by default:** `> [!NOTE]`-style GitHub alert syntax ships
+> with Gutterpress as the **Callouts** feature (`gutterpress-gfm-alerts`).
+> Enable it and the five GitHub types render as unbranded `.gp-alert` boxes
+> that any theme can restyle; leave it off and they print as literal
+> blockquote text, exactly as before. See
+> [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md),
+> or use `@section .callout-tip` … `@end-section` (a plain marker core always
+> renders — see [User Guide: Chapter 8 — Publishing](../examples/gutterpress-user-guide/08-publishing.md)).
 
 ```markdown
 > [!note]      Blue - General information
