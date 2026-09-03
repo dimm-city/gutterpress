@@ -131,7 +131,12 @@ try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(60_000);
   await app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
+    // The app window, not whichever window happens to be first: the app
+    // opens a hidden engine window per render pass (electron/engine-browser.ts).
+    const w =
+      BrowserWindow.getAllWindows().find(
+        (candidate) => !candidate.isDestroyed() && candidate.webContents.getURL().startsWith("app://"),
+      ) ?? BrowserWindow.getAllWindows()[0];
     // Wide enough that BOTH panes hold a Letter page at 1:1. The paged
     // surface fits a page narrower than its pane by zooming the stage down,
     // and CSS zoom changes layout (see prepareBook): at 1800px the editor

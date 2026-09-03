@@ -103,15 +103,39 @@ const electronApp = await electron.launch({
   timeout: 90_000,
 });
 
+/**
+ * Resize the APP window and wait until the SPA has laid out at the new width.
+ *
+ * The app opens a second, hidden BrowserWindow for every engine render pass
+ * (electron/engine-browser.ts), so `getAllWindows()[0]` is a race: with a
+ * preview render in flight it can be that engine window, and the app window
+ * then keeps its old size. That is how this drive failed in CI once: the
+ * window stayed at the narrow startup width, the narrow toolbar keeps the
+ * mode switch hidden, and `setMode` waited on a hidden element forever. The
+ * app window is the one on app://, and the SPA's own innerWidth is the proof
+ * the resize landed (the matchMedia narrow-mode flip follows it synchronously).
+ */
+async function resizeAppWindow(page, width, height) {
+  await electronApp.evaluate(({ BrowserWindow }, size) => {
+    const win = BrowserWindow.getAllWindows().find(
+      (candidate) => !candidate.isDestroyed() && candidate.webContents.getURL().startsWith("app://"),
+    );
+    if (!win) throw new Error("no app:// window to resize");
+    win.setSize(size.width, size.height);
+  }, { width, height });
+  await page.waitForFunction(
+    (target) => window.innerWidth <= target && window.innerWidth >= target - 40,
+    width,
+    { timeout: 15_000 },
+  );
+}
+
 let exitCode = 0;
 try {
   // firstWindow() would return the data:-URL SPLASH screen — wait for the
   // real SPA window on the app:// origin instead.
   const page = await waitForAppWindow(electronApp);
-  await electronApp.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
-    win?.setSize(760, 800);
-  });
+  await resizeAppWindow(page, 760, 800);
   log(`window at ${page.url()}`);
 
   // The fixture auto-opens; wait until the preview has rendered and the
@@ -129,9 +153,7 @@ try {
   // The narrow startup assertion is complete. Widen the real window for the
   // remaining editor/file-isolation interactions so the open Contents panel
   // is a sidebar instead of a modal scrim over the toolbar.
-  await electronApp.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0]?.setSize(1200, 800);
-  });
+  await resizeAppWindow(page, 1200, 800);
 
   /**
    * Choose a workspace mode however the toolbar is currently laid out. Below
