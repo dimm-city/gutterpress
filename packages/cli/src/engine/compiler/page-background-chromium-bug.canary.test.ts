@@ -11,19 +11,30 @@ import {
   rasterizePdfPage,
   resolveRasterizer,
 } from "../../test-helpers/testkit.ts";
-import { launchChromium } from "../shared/cdp.ts";
+import { launchChromium, REQUIRED_MILESTONE } from "../shared/cdp.ts";
+import { PAGE_BACKGROUND_FIXED_MILESTONE } from "../../lib/markdown/assemble.ts";
 import { build } from "./build.ts";
 
 /**
  * EXPIRY CANARY for the `<link rel="preload" as="image">` emitter in
  * `lib/markdown/assemble.ts`.
  *
- * It asserts THE CHROMIUM BUG IS STILL THERE (#152,
- * docs/known-limitations.md §3): an image referenced only from inside an
- * `@page` rule prints as nothing. While it is green the emitter is doing
- * necessary work. **The day this test goes red, Chromium has fixed the bug:
- * delete the preload emitter (`preloadImages` in `assemble.ts` and the one
- * `.map()` that feeds it in `lib/markdown/index.ts`) and delete this file.**
+ * The bug (#152, docs/known-limitations.md §3): an image referenced only from
+ * inside an `@page` rule prints as nothing. Chromium fixed it in milestone
+ * `PAGE_BACKGROUND_FIXED_MILESTONE` (152 — measured 2026-09-03; 151 still
+ * dropped it). The emitter stays while the engine still ACCEPTS a Chromium
+ * below that fix (`REQUIRED_MILESTONE`, 148 — what Electron 42 ships), because
+ * on a fixed Chromium the preload changes nothing and below it the image
+ * would be lost. **The day the floor reaches the fix, the first test below
+ * goes red: delete the preload emitter (`preloadImages` in `assemble.ts`, the
+ * one `.map()` that feeds it in `lib/markdown/index.ts`, the constant) and
+ * delete this file.**
+ *
+ * The behavioural test keeps the evidence honest on whichever Chromium runs
+ * it: below the fix it must still DROP the image (or the fix landed earlier
+ * than recorded — lower the constant); at or above it, it must PAINT (or the
+ * fix regressed, or the constant is wrong). Either way the shim's expiry is
+ * pinned to a measurement, not to a version number someone read somewhere.
  *
  * A shim with no removal trigger is a shim that outlives its gap. This is that
  * trigger, in the repo's own suite, so nobody has to remember to check.
@@ -90,11 +101,20 @@ const elementRef = `<!doctype html><meta charset="utf-8"><style>
 body { font: 14px/1.4 serif; margin: 0 }
 </style><p>Page text.</p><img src="tile.png" style="display:none" alt="">`;
 
+test("EXPIRY: the preload shim goes the day the engine floor reaches the Chromium that fixed #152", () => {
+  expect(
+    REQUIRED_MILESTONE,
+    `REQUIRED_MILESTONE (${REQUIRED_MILESTONE}) has reached PAGE_BACKGROUND_FIXED_MILESTONE (${PAGE_BACKGROUND_FIXED_MILESTONE}): every Chromium the engine accepts now paints a sole-referenced @page background image. Delete the preload emitter — \`preloadImages\` in lib/markdown/assemble.ts, the \`.map()\` that feeds it in lib/markdown/index.ts, PAGE_BACKGROUND_FIXED_MILESTONE — and delete this file.`,
+  ).toBeLessThan(PAGE_BACKGROUND_FIXED_MILESTONE);
+});
+
 testIf(
-  "CANARY: Chromium still drops an @page background image that nothing else references",
+  "CANARY: below the fix Chromium drops an @page background image that nothing else references; from the fix on it paints it",
   async () => {
     const dir = await makeTempDir("gp-page-bg-canary-");
     const browser = await launchChromium();
+    const milestone = Number(/Chrome\/(\d+)/.exec(browser.version)?.[1] ?? 0);
+    const fixed = milestone >= PAGE_BACKGROUND_FIXED_MILESTONE;
     try {
       await fsp.writeFile(path.join(dir, "tile.png"), TILE);
 
@@ -116,11 +136,21 @@ testIf(
       const painted = meanAbsDiff(await print("preloaded", preloaded), base);
       const viaElement = meanAbsDiff(await print("element", elementRef), base);
 
-      // 1. THE TRIGGER. The declaration changes nothing: the bug is still here.
-      expect(
-        dropped,
-        `Chromium PAINTED an @page background image that nothing else references (mean-abs-diff ${dropped.toFixed(4)}, expected 0). The bug this shim exists for is FIXED. Delete the preload emitter — \`preloadImages\` in lib/markdown/assemble.ts and the \`inlined.copies.map\` that feeds it in lib/markdown/index.ts — and delete this file.`,
-      ).toBe(0);
+      // 1. THE MEASUREMENT, on whichever Chromium is running. Below the fix
+      //    the declaration changes nothing (the bug is still here); from the
+      //    fix on it paints. Either failure means the recorded milestone is
+      //    wrong, not that the harness should be adjusted.
+      if (fixed) {
+        expect(
+          dropped,
+          `Chromium ${milestone} DROPPED an @page background image that nothing else references (mean-abs-diff ${dropped.toFixed(4)}, expected > 1), but PAGE_BACKGROUND_FIXED_MILESTONE says ${PAGE_BACKGROUND_FIXED_MILESTONE} paints it. Either the fix regressed upstream or the constant is too low — re-measure before touching either.`,
+        ).toBeGreaterThan(1);
+      } else {
+        expect(
+          dropped,
+          `Chromium ${milestone} PAINTED an @page background image that nothing else references (mean-abs-diff ${dropped.toFixed(4)}, expected 0). The fix landed before PAGE_BACKGROUND_FIXED_MILESTONE (${PAGE_BACKGROUND_FIXED_MILESTONE}) — lower the constant to the milestone that actually paints it.`,
+        ).toBe(0);
+      }
 
       // 2. The control on the control: a preload really does restore it, so a
       //    zero above means "Chromium dropped it", not "this harness prints
@@ -140,10 +170,15 @@ testIf(
       //    browser from the one the product prints with. This is the guard for
       //    the accident named in #187: acquiring a pre-navigation override by
       //    switching to puppeteer, a pooled browser, or a `BrowserWindow`.
-      expect(
-        viaElement,
-        `An <img> reference protected the @page background (mean-abs-diff ${viaElement.toFixed(4)}, expected 0). That only happens when a device-metrics override was established BEFORE navigation, so this canary is no longer running the print path the product uses — check how the browser and page were launched, not this assertion.`,
-      ).toBe(0);
+      //    Only meaningful while the bug exists: on a fixed Chromium the
+      //    image paints with or without the <img>, so there is nothing for
+      //    an <img> to "protect".
+      if (!fixed) {
+        expect(
+          viaElement,
+          `An <img> reference protected the @page background (mean-abs-diff ${viaElement.toFixed(4)}, expected 0). That only happens when a device-metrics override was established BEFORE navigation, so this canary is no longer running the print path the product uses — check how the browser and page were launched, not this assertion.`,
+        ).toBe(0);
+      }
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

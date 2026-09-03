@@ -148,6 +148,15 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description: "Define `*[HTML]: Hyper Text…` and get `<abbr>` tooltips.",
     builtin: true,
   },
+  {
+    // Not a real npm package — Gutterpress's own code (#237), named to fit
+    // this map's "keyed by npm name" shape. See BUILTIN_OPTIONAL_PLUGINS'
+    // doc comment (renderer.ts) for why that costs nothing.
+    name: "gutterpress-gfm-alerts",
+    label: "Callouts",
+    description: "GitHub-style `> [!NOTE]` alert boxes (Note/Tip/Important/Warning/Caution).",
+    builtin: true,
+  },
 ];
 
 /**

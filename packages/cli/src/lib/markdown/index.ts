@@ -61,6 +61,20 @@ export async function renderChapters(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
+    /**
+     * #238 — absolute paths of plugin-declared `styles` files, in plugin load
+     * order (`loadPluginsWithCss`'s `pluginStylePaths`). Inlined through the
+     * SAME pipeline the project's own stylesheets get (`inlineStyles`: fonts/
+     * images embedded, local `@import` followed, print-safety lintable) and
+     * placed in the SAME cascade position the legacy `pluginCss` string
+     * already holds — after core, before the project's own stylesheets.
+     * Absolute paths pass through `inlineStyles` unchanged (`path.resolve` is
+     * a no-op on an already-absolute input), so a plugin's stylesheet
+     * location is independent of `inputDir`. Omitting this (existing
+     * string-only-`css` plugins, or none at all) is a zero-cost, byte-
+     * identical no-op — see the test asserting exactly that.
+     */
+    pluginStylePaths?: string[];
     /** Wrap each source file for incremental preview pagination. */
     wrapChapters?: boolean;
     /** Add source-file ids to source-mapped preview blocks without wrappers. */
@@ -90,8 +104,35 @@ export async function renderChapters(
   // a copy plan). A stylesheet is a file to READ, never a file to ship, so its
   // location — themes/, ../design-guide/, anywhere — has no effect on output.
   const inlined = await inlineStyles(inputDir, styles);
-  if (inlined.warnings.length > 0) opts.onStyleWarnings?.(inlined.warnings);
-  if (inlined.copies.length > 0) opts.onCssAssets?.(inlined.copies);
+
+  // #238: plugin-declared stylesheet FILES get the SAME asset-inline pass as
+  // the project's own — not just concatenated as an opaque string — so a
+  // plugin's CSS is print-safety lintable and can `url()` a font/image.
+  // `inlineStyles` resolves each entry via `path.resolve(inputDir, entry)`,
+  // which is a no-op when `entry` is already absolute (as every entry in
+  // `pluginStylePaths` is — see `loadPlugin`'s resolvePluginStyles), so
+  // `inputDir` here is irrelevant to plugin styles and only threaded through
+  // because this is one shared helper call. An empty/omitted list (every
+  // plugin using only the legacy `css` string, or no plugins at all) makes
+  // this call a zero-I/O no-op — `inlineStyles([])`'s loop never runs — so
+  // existing books render byte-identically (see index.test.ts's plugin-styles
+  // backward-compat case).
+  const pluginInlined = await inlineStyles(inputDir, opts.pluginStylePaths ?? []);
+
+  const styleWarnings = [...pluginInlined.warnings, ...inlined.warnings];
+  if (styleWarnings.length > 0) opts.onStyleWarnings?.(styleWarnings);
+  const cssAssetCopies = [...pluginInlined.copies, ...inlined.copies];
+  if (cssAssetCopies.length > 0) opts.onCssAssets?.(cssAssetCopies);
+
+  // The legacy `export const css` string (kept for simple cases — see
+  // GutterpressPluginExport's docstring) is appended after the file-based
+  // plugin styles, both still ahead of the project's own stylesheets — the
+  // SAME cascade slot `pluginCss` alone used to occupy. When there is no
+  // file-based plugin CSS this is exactly `opts.pluginCss` (or `""`),
+  // unchanged from before.
+  const pluginCss = [pluginInlined.css, opts.pluginCss]
+    .filter((s): s is string => !!s && s.trim().length > 0)
+    .join("\n\n");
 
   // Determine which files to process (manifest `source.files` in order, else
   // every root-level .md file alphabetically) — see resolveActiveMarkdownFiles.
@@ -112,11 +153,13 @@ export async function renderChapters(
     // SHIM — spec gap #152. Every staged CSS image gets a
     // `<link rel="preload" as="image">`, or Chromium prints an `@page`
     // background as blank paper. See `preloadImages` in ./assemble.ts for the
-    // full rationale and the canary that says when to delete this.
-    preloadImages: inlined.copies.map((c) => c.to),
+    // full rationale and the canary that says when to delete this. Plugin CSS
+    // images (#238) need the same treatment, now that plugin `styles` files
+    // go through the same inliner.
+    preloadImages: [...pluginInlined.copies.map((c) => c.to), ...inlined.copies.map((c) => c.to)],
     title: opts.title,
     plugins: opts.plugins,
-    pluginCss: opts.pluginCss,
+    pluginCss,
     wrapChapters: opts.wrapChapters,
     annotateSourceChapters: opts.annotateSourceChapters,
     onChapterWarnings: opts.onChapterWarnings,
@@ -139,6 +182,8 @@ export async function renderChaptersToFile(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
+    /** #238 — see {@link renderChapters}'s option of the same name. */
+    pluginStylePaths?: string[];
     /** ARCH finding #4 — see {@link renderChapters}'s option of the same name. */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
     /** See {@link renderChapters}'s options of the same names. */
@@ -154,6 +199,7 @@ export async function renderChaptersToFile(
     files: opts.files,
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
+    pluginStylePaths: opts.pluginStylePaths,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
     onCssAssets: opts.onCssAssets,

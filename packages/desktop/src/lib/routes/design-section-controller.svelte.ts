@@ -23,9 +23,18 @@
  * hooks, and the debounce timer primitives. Only type-only lib-shaped imports
  * (`ProjectStyle` / `StyleToken` from the local contract) plus the pure
  * `$lib/style-tokens` string helpers — ZERO `node:*` / lib value imports.
+ *
+ * `tokens` (from `parseStyleTokens`) already excludes `@internal`-annotated
+ * declarations and carries each token's optional `@group` annotation (issue
+ * #244) — see that function's doc in `$lib/style-tokens` for the comment
+ * grammar. `customGroups` and the four kind-based getters below are what turn
+ * that flat, annotated list into the sections `DesignSection.svelte` renders;
+ * no host route or platform-adapter capability is needed for any of it since
+ * the annotation comments live in the same CSS text `readFile` already fetches
+ * and `parseStyleTokens` already parses, entirely client-side.
  */
 
-import type { ProjectStyle, StyleToken } from "$lib/platform/dtos";
+import type { ProjectStyle, StyleToken, ThemeInfo } from "$lib/platform/dtos";
 import {
   parseStyleTokens,
   applyTokenUpdates,
@@ -37,6 +46,11 @@ export interface DesignSectionDeps {
   projectDir: () => string | null;
   /** Resolve the project's editable stylesheets (the active set + fallbacks). */
   listStyles: (projectDir: string) => Promise<ProjectStyle[]>;
+  /**
+   * The project's active theme, or null when none is applied (#239). When the
+   * theme names a `tokensFile`, that sheet is the one the panel edits.
+   */
+  activeTheme?: (projectDir: string) => Promise<ThemeInfo | null>;
   /** Read a file as UTF-8 text. Path is absolute. */
   readFile: (path: string) => Promise<string>;
   /** Write UTF-8 content to a file. Path is absolute. */
@@ -50,6 +64,23 @@ export interface DesignSectionDeps {
   /** Injected timer primitives (default real setTimeout/clearTimeout) for tests. */
   setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
+}
+
+/**
+ * #239 — the sheet an active theme declares as its token surface (`theme.json`
+ * `tokensFile`), picked out of the project's editable stylesheets; `null` when
+ * no theme is applied, none is declared, or the named sheet is not in the
+ * list, in which case the caller falls back to the first active sheet.
+ *
+ * Matched on `displayName`, which the host already computed as the
+ * project-relative, forward-slash path (`style-resolver.ts`'s `relDisplay`) —
+ * so this is an exact comparison against one canonical spelling rather than a
+ * second path-normalization living in the renderer.
+ */
+function tokenSheetOf(theme: ThemeInfo | null, list: ProjectStyle[]): ProjectStyle | null {
+  if (!theme?.tokensFile) return null;
+  const want = `themes/${theme.id}/${theme.tokensFile}`;
+  return list.find((x) => x.displayName === want) ?? null;
 }
 
 export class DesignSectionController {
@@ -86,19 +117,58 @@ export class DesignSectionController {
   }
 
   // ── Derivations (getters so bun unit tests need only the $state shim) ───────
-  get colorTokens(): StyleToken[] {
-    return this.tokens.filter((t) => t.kind === "color");
+  //
+  // Grouping (issue #244): a token carrying an `@group` annotation
+  // (`parseStyleTokens` in `$lib/style-tokens`) is claimed by `customGroups`
+  // and excluded from every heuristic kind-based bucket below via `ungrouped`
+  // — each token appears exactly once, either under its author-named heading
+  // or under the Fonts/Colors/Sizes/Other one its `kind` picks. A theme with
+  // no `@group` annotations leaves every token's `group` undefined, so
+  // `ungrouped` is just `tokens` and the heuristic buckets are unchanged.
+
+  /** Tokens not claimed by an explicit `@group` — the pool the heuristic
+   * kind-based getters below draw from. */
+  private get ungrouped(): StyleToken[] {
+    return this.tokens.filter((t) => !t.group);
   }
-  // Font tokens are derived locally by DesignSection.svelte from the full
-  // `tokens` prop (see its header comment) rather than exposed as a separate
-  // controller getter — one less prop to keep wired between here and there.
+
+  /** Explicitly annotated groups, in the order their names first appear in
+   * the stylesheet, each holding its tokens in source order regardless of
+   * `kind` — a "Colors" group can mix a color and a text token if the theme
+   * author puts them there. Rendered before the heuristic buckets (the
+   * DesignSection template renders this list first), which is what "annotated
+   * groups order before heuristic ones" (issue #244) means in practice. Empty
+   * when no token in the file carries a `@group` annotation.
+   */
+  get customGroups(): { name: string; tokens: StyleToken[] }[] {
+    const order: string[] = [];
+    const byName = new Map<string, StyleToken[]>();
+    for (const t of this.tokens) {
+      if (!t.group) continue;
+      let bucket = byName.get(t.group);
+      if (!bucket) {
+        bucket = [];
+        byName.set(t.group, bucket);
+        order.push(t.group);
+      }
+      bucket.push(t);
+    }
+    return order.map((name) => ({ name, tokens: byName.get(name)! }));
+  }
+
+  get fontTokens(): StyleToken[] {
+    return this.ungrouped.filter((t) => t.kind === "font");
+  }
+  get colorTokens(): StyleToken[] {
+    return this.ungrouped.filter((t) => t.kind === "color");
+  }
   // "length" (has a unit) and "number" (unitless, e.g. `--leading: 1.55`)
   // share one numeric-input control in the panel, so one bucket serves both.
   get sizeTokens(): StyleToken[] {
-    return this.tokens.filter((t) => t.kind === "length" || t.kind === "number");
+    return this.ungrouped.filter((t) => t.kind === "length" || t.kind === "number");
   }
   get otherTokens(): StyleToken[] {
-    return this.tokens.filter((t) => t.kind === "text");
+    return this.ungrouped.filter((t) => t.kind === "text");
   }
   get anyDirty(): boolean {
     return this.tokens.some((t) => this.isDirty(t));
@@ -116,8 +186,13 @@ export class DesignSectionController {
     this.designError = null;
     this.tokens = [];
     try {
-      const list = await this.deps.listStyles(projectDir);
-      const active = list.find((x) => x.active) ?? list[0];
+      // Two independent host calls — the theme only needs `projectDir`, so it
+      // is fetched alongside the style list rather than after it.
+      const [list, theme] = await Promise.all([
+        this.deps.listStyles(projectDir),
+        this.deps.activeTheme?.(projectDir).catch(() => null) ?? Promise.resolve(null),
+      ]);
+      const active = tokenSheetOf(theme, list) ?? list.find((x) => x.active) ?? list[0];
       if (!active) {
         this.cssPath = null;
         this.cssName = "";

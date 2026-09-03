@@ -77,7 +77,7 @@ async function renderPreviewBook(
     onCssAssets?: (copies: AssetCopy[]) => void;
   }
 ): Promise<string> {
-  const { plugins, pluginCss } = await loadPluginsWithCss(
+  const { plugins, pluginCss, pluginStylePaths } = await loadPluginsWithCss(
     config.plugins,
     inputPath,
     (ref, err) => warn(`Skipping plugin "${ref}" in preview — ${err.message}`)
@@ -88,6 +88,7 @@ async function renderPreviewBook(
     files: opts.files,
     plugins,
     pluginCss,
+    pluginStylePaths,
     wrapChapters: opts.wrapChapters,
     annotateSourceChapters: true,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),

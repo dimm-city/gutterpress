@@ -33,7 +33,6 @@ interface LayoutWarning {
 
 interface PagedEnv {
   layoutWarnings?: LayoutWarning[];
-  __colSplitDepth?: number;
   __layoutMarkersUsed?: boolean;
   [key: string]: unknown;
 }
@@ -120,10 +119,10 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     expect(t.map).toBeNull();
   });
 
-  test("layout_section_open carries the marker line alongside hasColumnBreak", () => {
+  test("layout_section_open carries the marker line", () => {
     const { tokens } = parsePaged("@page\n@section S\nHi\n");
     const t = findToken(tokens, "layout_section_open")!;
-    expect(t.meta).toEqual({ hasColumnBreak: false, line: 2 });
+    expect(t.meta).toEqual({ line: 2 });
     expect(t.map).toBeNull();
   });
 
@@ -136,7 +135,7 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
 
   test("layout_column_break carries the marker line", () => {
     const { tokens } = parsePaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2\nA\n@column-break\nB\n@end-section\n"
     );
     const t = findToken(tokens, "layout_column_break")!;
     expect(t.meta).toEqual({ line: 3 });
@@ -974,211 +973,20 @@ describe("@page-break / @column-break output", () => {
     );
   });
 
-  test("@column-break outside a .col-split section emits a fixed marker div", () => {
+  test("@column-break emits a fixed marker div", () => {
     const { html } = renderPaged("@section\nA\n@column-break\nB\n@end-section\n");
     expect(html).toContain(
       '<div class="gp-column-break" aria-hidden="true"></div>'
     );
   });
 
-  test("@column-break inside a .col-split section rewrites into sibling .col divs", () => {
+  test("@column-break inside a .gp-columns-2 section is the same marker div, never a wrapper", () => {
     const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2\nA\n@column-break\nB\n@end-section\n"
     );
     expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
-    );
-  });
-
-  test("@column-break with NO col-split class does not open .col wrappers even mid-section", () => {
-    const { html } = renderPaged(
-      "@section .two-column\nA\n@column-break\nB\n@end-section\n"
-    );
-    expect(html).not.toContain('class="col"');
-    expect(html).toContain(
-      '<div class="gp-column-break" aria-hidden="true"></div>'
-    );
-  });
-
-  test("a .col-split section with NO @column-break renders as a single ordinary section", () => {
-    const { html } = renderPaged("@section .col-split\nA\n@end-section\n");
-    expect(html).toBe('<div class="section col-split"><p>A</p>\n</div>');
-  });
-});
-
-describe("column-split depth isolation (env.__colSplitDepth, not module state)", () => {
-  test("depth is reset to 0 at the start of each render, even when no @page/@chapter marker appears", () => {
-    const { env } = renderPaged("@section\nA\n");
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("opening a @page unconditionally resets depth to 0 on env (defensive reset, not just lazy init)", () => {
-    const { env } = renderPaged("@page\nA\n");
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("a balanced .col-split render nets back to its starting depth (0 on a fresh env)", () => {
-    const { env } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("two independent renders on fresh envs (same md instance) never see each other's depth", () => {
-    const md = new MarkdownIt({ html: true });
-    md.use(markerPlugin);
-
-    const env1: PagedEnv = {};
-    const html1 = md.render(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      env1
-    );
-    expect(html1).toContain('<div class="col">');
-    expect(env1.__colSplitDepth).toBe(0);
-
-    const env2: PagedEnv = {};
-    const html2 = md.render("@page\nA\n", env2);
-    expect(html2).toBe('<div class="page"><p>A</p>\n</div>');
-    expect(env2.__colSplitDepth).toBe(0);
-  });
-
-  test("layout_page_open defensively resets a poisoned/leaked depth back to 0", () => {
-    // Simulate a caller reusing one `env` object across sequential render()
-    // calls and something having left a stale, nonzero depth on it. The
-    // layout_page_open renderer rule resets depth to 0 unconditionally, so a
-    // .col-split section starting fresh under a NEW @page renders with
-    // exactly one level of column wrapping, unaffected by the stale value.
-    const env: PagedEnv = { __colSplitDepth: 3 };
-    const { html } = renderPaged(
-      "@page\n@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toBe(
-      '<div class="page"><div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n</div>'
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("layout_chapter_open also defensively resets a poisoned depth back to 0", () => {
-    const env: PagedEnv = { __colSplitDepth: 5 };
-    const { html } = renderPaged(
-      "@chapter\n@page\n@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toContain('<div class="col">');
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("a stale nonzero depth is cleared before a render whose first marker is a .col-split @section", () => {
-    const env: PagedEnv = { __colSplitDepth: 2 };
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-});
-
-describe("col-split has-column-break detection (characterization for the transform-time precompute)", () => {
-  // These pin the exact rendered output of the O(n) forward scan currently
-  // done per-section inside the layout_section_open renderer rule
-  // (:615-622). A refactor that precomputes "does this section contain a
-  // column-break" once, during the layout_transform core pass, must produce
-  // byte-identical output for every case below — in particular the flag
-  // must be scoped to exactly one section's open/close pair and must never
-  // leak onto a sibling, a @continue continuation, or a later section.
-
-  test("a col-split section with TWO column-breaks (three columns) col-wraps every segment", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("two independent col-split sections, both with breaks, back to back: each gets its own column wrapping, depth resets between them", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@column-break\nD\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split"><div class="col">\n<p>C</p>\n</div>' +
-        '<div class="col">\n<p>D</p>\n</div></div>\n'
-    );
-  });
-
-  test("a col-split section WITHOUT a break followed by one WITH a break: the flag must not leak from the second section onto the first (or vice versa)", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@end-section\n" +
-        "@section .col-split\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split"><div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("a col-split section WITH a break followed by one WITHOUT: order reversed, still no leak", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split"><p>C</p>\n</div>'
-    );
-  });
-
-  test("@continue on a col-split section: the continuation section's own has-column-break is evaluated independently of the original section's", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@continue\nC\n@end-section\n"
-    );
-    // First section had a break -> column-wrapped. The continuation section
-    // (no break inside it) does not -> plain renderToken output, even though
-    // it inherits the .col-split class from the section it continues.
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split gp-continued"><p>C</p>\n</div>'
-    );
-  });
-
-  test("@continue on a col-split section where only the CONTINUATION has a break", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@continue\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split gp-continued"><div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("a column-break outside of any col-split section (plain .section) never sets a stray flag that could leak forward", () => {
-    const { html } = renderPaged(
-      "@section\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section"><p>A</p>\n' +
-        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>' +
-        '<div class="section col-split"><p>C</p>\n</div>'
+      '<div class="section gp-columns-2"><p>A</p>\n' +
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
     );
   });
 });
@@ -1234,24 +1042,23 @@ describe("HTML escaping", () => {
     expect(attr(html, "data-note")).toBe("a&lt;b&amp;c");
   });
 
-  test("a quote/angle bracket smuggled into a .col-split section's class via a mismatched-quote class=value must be escaped in the rendered class attribute, not break out of it", () => {
+  test("a quote/angle bracket smuggled into a section's class via a mismatched-quote class=value must be escaped in the rendered class attribute, not break out of it", () => {
     // parseMarkerLine's tokenizer only treats a quote character as a
     // delimiter for ITS OWN quote type: while inside a `'...'` run, a literal
     // `"` character is copied straight into the token body (see the
     // single/double-quoted key=value tests above). That lets an author's
     // (or a template's) class value carry a real `"` plus `<`/`>` into
-    // `token.attrGet('class')`. The col-split renderer branch must escape
-    // that value with the file's own `escapeAttr` before interpolating it,
-    // the same as every other attribute this file emits — it must never
-    // reach the output raw and break out of the `class="..."` attribute.
+    // `token.attrGet('class')`. The section renders through markdown-it's own
+    // renderToken, whose attribute escaping must keep that value from
+    // reaching the output raw and breaking out of the `class="..."` attribute.
     const { html } = renderPaged(
-      "@section .col-split class='x\"><y'\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2 class='x\"><y'\nA\n@column-break\nB\n@end-section\n"
     );
     // The raw, unescaped characters must never appear as literal HTML.
     expect(html).not.toContain('x"><y');
     expect(html).toBe(
-      '<div class="section col-split x&quot;&gt;&lt;y"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
+      '<div class="section gp-columns-2 x&quot;&gt;&lt;y"><p>A</p>\n' +
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
     );
   });
 });

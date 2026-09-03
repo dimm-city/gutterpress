@@ -435,9 +435,16 @@ export async function executeValidation(
     const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.source.files);
     markdownFiles = relMarkdown.map((f) => join(manifestDir, canonicalChapterId(f)));
 
-    // stylelint (source.stylelint) skips minified CSS — same as lint-runner.ts
-    // — since line/column findings on a minified file are meaningless; it
-    // still ships via resolveActiveStyles/inlineStyles regardless.
+    // stylelint (source.stylelint) skips minified CSS, since line/column
+    // findings on a minified file are meaningless; it still ships via
+    // resolveActiveStyles/inlineStyles regardless.
+    //
+    // NOT the same list lint-runner.ts builds: since #238 that one also folds
+    // in plugin-declared `styles` files, so a plugin's CSS is print-safety and
+    // ownership checked by `gutterpress lint` but not by `validate`/`preflight`
+    // or the desktop Problems panel. Closing that gap means paying a plugin
+    // load here too — see #262 before doing it, because a build already loads
+    // plugins twice (lint gate, then render).
     const relStyles = await resolveActiveStyles(manifestDir, config.styles);
     cssFiles = relStyles
       .map((rel) => resolve(manifestDir, rel))

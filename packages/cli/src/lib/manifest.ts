@@ -339,7 +339,14 @@ function resolveWithPreset(
         "\"engine: paged\" is ignored — building natively."
     );
   }
-  if ((m.engineStyles?.paged?.length ?? 0) > 0) {
+  // `engineStyles.paged` was removed from the manifest type and JSON schema
+  // (0.10.7, issue #234 — dual-engine naming for a single-engine product), but
+  // a manifest written during the dual-engine era may still carry it. Read it
+  // through a widened cast (matches the `legacy` pattern above) so the field
+  // keeps parsing and warns once instead of either silently vanishing or
+  // becoming a `GutterpressManifest` type error.
+  const legacyEngineStyles = m.engineStyles as { paged?: unknown[] } | undefined;
+  if ((legacyEngineStyles?.paged?.length ?? 0) > 0) {
     warnOnce(
       "engine-styles-paged-removed",
       "[gutterpress] engineStyles.paged is ignored — the native engine is the only engine."

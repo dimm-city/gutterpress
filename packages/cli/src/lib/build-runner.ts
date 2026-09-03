@@ -392,7 +392,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   if (config.plugins.length > 0) {
     log.info(`Loading ${config.plugins.length} plugin(s)...`);
   }
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, renderDir);
+  const { plugins, pluginCss, pluginStylePaths } = await loadPluginsWithCss(config.plugins, renderDir);
   if (plugins && plugins.length > 0) {
     log.success(`Loaded ${plugins.length} plugin(s)`);
   }
@@ -410,6 +410,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     files: config.source.files,
     plugins,
     pluginCss,
+    pluginStylePaths,
     // Prevalidation may have reported these exact parser findings through
     // source.markdown.layout-markers. Suppress only an exact match: a disabled,
     // failed, or skipped check leaves this set empty and the final render still

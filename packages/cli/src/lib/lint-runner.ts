@@ -4,6 +4,7 @@ import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "../utils/logger";
 import { checkCss, ruleRiskyProps } from "./printsafe";
 import { resolveActiveStyles } from "./style-resolver";
+import { loadPluginsWithCss } from "./markdown/plugins";
 
 export interface LintRunnerOptions {
   files?: string;
@@ -50,9 +51,22 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     // (styles/book.css, else the first discovered project .css, else `[]`)
     // replaces all of that.
     const relStyles = await resolveActiveStyles(manifestDir, resolved.styles);
-    files = relStyles
-      .map((rel) => resolve(manifestDir, rel))
-      .filter((f) => !f.endsWith(".min.css"));
+    const projectFiles = relStyles.map((rel) => resolve(manifestDir, rel));
+
+    // #238: a plugin's file-based `styles` are a real, lintable CSS surface
+    // now too — no longer an opaque string printsafe never saw. Loaded
+    // degrade-and-report: a plugin that can't load is a WARNING here, not a
+    // reason to fail `gutterpress lint` outright (that fail-fast bar belongs
+    // to build/export, not this pre-flight check — see loadPlugins' doc
+    // comment on the two failure modes). Already-absolute paths pass through
+    // untouched below.
+    const { pluginStylePaths } = await loadPluginsWithCss(
+      resolved.plugins,
+      manifestDir,
+      (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
+    );
+
+    files = [...projectFiles, ...pluginStylePaths].filter((f) => !f.endsWith(".min.css"));
   }
 
   if (files.length === 0) {

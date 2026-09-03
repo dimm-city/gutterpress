@@ -357,8 +357,9 @@ as an inlined copy of the standalone `markdown-it-paged` package and was
 absorbed at 0.10.0: the copy had grown to 812 lines against upstream's 433,
 was never consumed from npm, and carried four Gutterpress-only feature
 clusters (`data-source-range` editor threading per ADR 0009,
-`data-chapter-label`/`.chapter-opener`, `env.__colSplitDepth`, and the
-emitted-class contract the viewer depends on). The third-party label had
+`data-chapter-label`/`.chapter-opener`, a hard column-split mechanism since
+removed in 0.10.7, and the emitted-class contract the viewer depends on). The
+third-party label had
 stopped describing the file, and it was actively costing us — it argued
 against cleaning comments that describe a removed engine, and it blurred the
 ownership boundary for the `gp-*` vocabulary.
@@ -373,8 +374,6 @@ prefixed. The split between the two modules is by ROLE, not owner:
 - `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
   `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
   `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
-  Per-render state lives on `env.__colSplitDepth`, not a module-level
-  closure, so a thrown render can't leak depth state into the next chapter.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
   `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth

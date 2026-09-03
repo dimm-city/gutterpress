@@ -5,6 +5,41 @@
  * is unit-testable and the component can commit edits in a single, race-free
  * read-modify-write. Pure strings (plus a browser-only canvas cache for
  * `toHex`) — no node/svelte imports, §8-clean.
+ *
+ * **Token annotations (issue #244).** Theme authors curate what the guided
+ * panel shows with a tiny comment grammar scanned out of the `:root` block
+ * alongside the declarations themselves — no new file format, no schema, and
+ * (since it's ordinary CSS comments) no risk to a plain browser or a build
+ * that never heard of Gutterpress. Three directives, each written inside a
+ * normal CSS block comment placed right before the declaration it describes:
+ *
+ * - `@group <name>` — display this token under a "<name>" heading instead of
+ *   the heuristic Fonts/Colors/Sizes/Other bucket its `kind` would otherwise
+ *   choose. Named groups are listed before the heuristic ones, in the order
+ *   their names first appear in the file (`DesignSectionController.customGroups`).
+ * - `@label <text>` — human label shown instead of the name-derived default
+ *   (`--color-accent` → "Color accent").
+ * - `@internal` — omit this token from the panel entirely. The CSS itself is
+ *   untouched; this only controls what the guided editor surfaces.
+ *
+ * Each directive applies to the NEXT declaration only (one-shot, not a
+ * sticky section header) and is consumed the moment that declaration is
+ * reached — an unannotated declaration a few lines later starts from a clean
+ * slate. Multiple directives can share one comment (`@label X @group Y`) or
+ * be spread across consecutive comments; either way they fold onto the same
+ * next declaration. A comment that isn't one of the three directives is
+ * plain prose and is ignored (it neither contributes nor clears pending
+ * annotations), so an author's ordinary explanatory comments are safe to
+ * interleave. For example (in the CSS file itself, not this comment): a
+ * block comment reading "@group Colors" then one reading "@label Accent
+ * color" immediately above `--color-accent: #2b4c7e;` puts that token in a
+ * "Colors" heading labeled "Accent color"; both directives could equally be
+ * written together in one comment. A block comment reading only "@internal"
+ * above `--dc-skill-tab-shape: ...;` drops that token from the panel.
+ *
+ * A stylesheet with none of these comments parses exactly as it always has —
+ * every token's `group` is `undefined` and nothing is dropped, so an
+ * unannotated theme's panel is unchanged (no regression for existing themes).
  */
 
 import type { StyleToken } from "$lib/platform/dtos";
@@ -119,21 +154,73 @@ export function makeStyleToken(name: string, raw: string): StyleToken {
   return { name, value: raw, kind: "text", label };
 }
 
+/** One `@group`/`@label`/`@internal` annotation, accumulated from the block
+ * comment(s) immediately preceding a `:root` declaration (see the file
+ * header's "Token annotations" section) and consumed by that declaration. */
+interface PendingAnnotation {
+  label?: string;
+  group?: string;
+  internal?: boolean;
+}
+
+/** Directives recognized inside a `:root`-block comment. The value is
+ * everything after the keyword up to end-of-line or the next `@directive` —
+ * excluding `@` from the value is what lets two directives share one comment
+ * (`@label X @group Y`) without one bleeding into the other's value. */
+const ANNOTATION_DIRECTIVE_RE = /@(group|label|internal)\b[ \t]*([^\n\r@]*)/gi;
+
+/** Fold every directive found in one comment's body onto `pending`, so a run
+ * of consecutive annotation comments accumulates before being applied to the
+ * declaration that follows them. A comment with no recognized directive
+ * (ordinary prose) contributes nothing and leaves `pending` untouched. */
+function foldAnnotationComment(pending: PendingAnnotation, commentBody: string): void {
+  for (const d of commentBody.matchAll(ANNOTATION_DIRECTIVE_RE)) {
+    const key = d[1]!.toLowerCase();
+    if (key === "internal") {
+      pending.internal = true;
+      continue;
+    }
+    const value = d[2]!.trim();
+    if (value) pending[key as "group" | "label"] = value;
+  }
+}
+
 /**
  * Parse every `:root` custom property from a stylesheet, in source order.
  * Declaration-based (matches up to the next `;`), not one-line-per-declaration
  * — a value that wraps across multiple physical lines (e.g. a font stack)
  * is still read in full instead of being silently dropped because the line it
- * started on had no terminating `;`.
+ * started on had no terminating `;`. Also scans `@group`/`@label`/`@internal`
+ * annotation comments (file header) and folds them onto the token they
+ * precede; a stylesheet with none of those comments is unaffected.
  */
 export function parseStyleTokens(cssText: string): StyleToken[] {
   const out: StyleToken[] = [];
   const rootRe = /:root\s*\{([^}]*)\}/g;
-  const declRe = /(--[\w-]+)\s*:\s*([^;]+);/g;
+  // Alternates block comments with declarations, in source order, instead of
+  // matching declarations alone — so an annotation comment can be folded onto
+  // the declaration immediately following it. Branch is told apart by the
+  // full match's leading characters (`d[0]`) rather than by checking a
+  // capture group for undefined, which TypeScript's regex typings don't
+  // track per-alternative.
+  const scanRe = /\/\*([\s\S]*?)\*\/|(--[\w-]+)\s*:\s*([^;]+);/g;
   let m: RegExpExecArray | null;
   while ((m = rootRe.exec(cssText)) !== null) {
-    for (const d of m[1].matchAll(declRe)) {
-      out.push(makeStyleToken(d[1]!, d[2]!.trim()));
+    let pending: PendingAnnotation = {};
+    for (const d of m[1].matchAll(scanRe)) {
+      if (d[0].startsWith("/*")) {
+        foldAnnotationComment(pending, d[1] ?? "");
+        continue;
+      }
+      // A declaration: consume (and reset) whatever annotation is pending —
+      // one-shot, so it never carries over to the declaration after this one.
+      const annotation = pending;
+      pending = {};
+      if (annotation.internal) continue;
+      const token = makeStyleToken(d[2]!, d[3]!.trim());
+      if (annotation.label) token.label = annotation.label;
+      if (annotation.group) token.group = annotation.group;
+      out.push(token);
     }
   }
   return out;

@@ -469,15 +469,15 @@ test("applySectionBlock: inserts the @section/@end-section pair with cursor on t
   expect(v.state.doc.lineAt(sel.from).text).toBe("");
 });
 
-test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break creates a fixed authored split", () => {
+test("applyTwoColumnBlock: uses core's .gp-columns-2 so the section lays out in every project", () => {
   const v = makeMockView("before");
   applyTwoColumnBlock(v as unknown as EditorView);
   const doc = getDoc(v);
-  expect(doc).toContain("@section .col-split");
+  expect(doc).toContain("@section .gp-columns-2");
   expect(doc).toContain("@column-break");
   expect(doc).toContain("@end-section");
   // Marker order: section open, column-break, section close.
-  expect(doc.indexOf("@section .col-split")).toBeLessThan(doc.indexOf("@column-break"));
+  expect(doc.indexOf("@section .gp-columns-2")).toBeLessThan(doc.indexOf("@column-break"));
   expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-section"));
 });
 

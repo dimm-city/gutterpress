@@ -160,6 +160,7 @@ export {
   removeProjectTheme,
   getPreviousTheme,
   revertTheme,
+  detectLegacyForkedTheme,
   BUILT_IN_THEME_IDS,
   THEMES_DIR,
 } from "../lib/theme-manager.ts";

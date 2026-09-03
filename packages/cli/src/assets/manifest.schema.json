@@ -38,13 +38,8 @@
     },
     "engineStyles": {
       "type": "object",
-      "description": "Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the only list that still applies; `.paged` is accepted-but-ignored (a warning fires if it has entries).",
+      "description": "Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the only list — the native engine is the only engine, so there is nothing else to condition on. A manifest from the dual-engine era may still carry `.paged`; it keeps loading (with a one-line warning) but is no longer part of this schema.",
       "properties": {
-        "paged": {
-          "type": "array",
-          "description": "Accepted for backward-compatible manifest parsing only; entries here are ignored with a warning.",
-          "items": { "type": "string" }
-        },
         "native": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false,
@@ -58,7 +53,7 @@
     },
     "styles": {
       "type": "array",
-      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css, else css/print.css, css/index.css, css/style.css, css/main.css, else the first discovered .css, else none.",
+      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else four legacy names kept only for pre-existing projects — css/print.css, css/index.css, css/style.css, css/main.css — else the first discovered .css, else none. New projects should set this explicitly or use styles/book.css.",
       "items": {
         "type": "string",
         "minLength": 1,
@@ -115,7 +110,7 @@
               },
               "priority": {
                 "type": "integer",
-                "description": "Load order. Higher priority loads first.",
+                "description": "Advanced, rarely needed. Load order: higher loads first. If one of your plugins needs to see tokens another one of your plugins produces, give it the LOWER number of the two, so it loads (and runs) after.",
                 "default": 100,
                 "examples": [100, 200]
               },
@@ -316,6 +311,14 @@
             },
             "stylelint": {
               "description": "Path to a stylelint config, or false to disable the source.stylelint check.",
+              "default": null,
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "boolean", "const": false }
+              ]
+            },
+            "cssOwnership": {
+              "description": "Path to a CSS ownership contract (default discovery: .gutterpress/css-contract.yaml), or false to disable the source.css-ownership check. Optional — absent means no contract, so the check reports nothing.",
               "default": null,
               "oneOf": [
                 { "type": "string", "minLength": 1 },

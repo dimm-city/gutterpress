@@ -69,12 +69,27 @@ export async function writeManifestDoc(
   }
 }
 
-/** The named sequence node, creating (and attaching) an empty one if missing. */
-export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
-  let seq = doc.get(key, true);
+/**
+ * The named sequence node, creating (and attaching) an empty one if missing.
+ * `key` is a single top-level key (the original, still-exact behavior) OR a
+ * path for a nested key (e.g. `["engineStyles", "native"]`, #239) — the
+ * `getIn`/`setIn` branch auto-vivifies any missing intermediate map, exactly
+ * like a hand-written `engineStyles: { native: [...] }` would parse.
+ */
+export function ensureSeq(doc: Document.Parsed, key: string | readonly string[]): YAMLSeq {
+  if (typeof key === "string") {
+    let seq = doc.get(key, true);
+    if (!isSeq(seq)) {
+      const fresh = new YAMLSeq(doc.schema);
+      doc.set(key, fresh);
+      seq = fresh;
+    }
+    return seq as YAMLSeq;
+  }
+  let seq = doc.getIn(key, true);
   if (!isSeq(seq)) {
     const fresh = new YAMLSeq(doc.schema);
-    doc.set(key, fresh);
+    doc.setIn(key, fresh);
     seq = fresh;
   }
   return seq as YAMLSeq;

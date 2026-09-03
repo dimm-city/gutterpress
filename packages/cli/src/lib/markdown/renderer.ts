@@ -32,6 +32,9 @@ import markdownItMark from "markdown-it-mark";
 import markdownItSub from "markdown-it-sub";
 import markdownItSup from "markdown-it-sup";
 import markdownItAbbr from "markdown-it-abbr";
+// Gutterpress's own bundled feature (#237), not a wrapped third-party
+// package — see gfm-alerts.ts's header for the full design rationale.
+import gfmAlerts from "./gfm-alerts";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
 import { registerInlineSourceMetadata } from "./inline-source";
@@ -72,6 +75,7 @@ export interface GutterpressPluginMetadata {
  * export default plugin;
  * export const metadata: GutterpressPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
  * export const css = `.my-class { color: red; }`;
+ * export const styles = ["./styles/components.css", "./styles/callouts.css"];
  * ```
  */
 export interface GutterpressPluginExport {
@@ -79,6 +83,17 @@ export interface GutterpressPluginExport {
   metadata?: GutterpressPluginMetadata;
   /** CSS injected into <head> after user stylesheets. Use sparingly — has equal cascade specificity. */
   css?: string;
+  /**
+   * File-based plugin CSS (#238), as paths RELATIVE TO THIS MODULE — resolved
+   * by the node-coupled loader (`plugins.ts`), never by this pure module. Each
+   * file enters the SAME pipeline a manifest `styles:` entry does: asset-
+   * inlined (fonts/images embedded, local `@import` followed) and print-safety
+   * lintable — unlike `css`, which is an opaque string no other subsystem can
+   * see. Kept alongside `css` (not a replacement) for one-liners that don't
+   * warrant a separate file. Cascade position matches `css`'s: after core,
+   * before the project's own stylesheets.
+   */
+  styles?: string[];
 }
 
 /** Internal representation of a loaded plugin, ready for `md.use()`. */
@@ -87,6 +102,13 @@ export interface LoadedPlugin {
   plugin: GutterpressPlugin;
   metadata?: GutterpressPluginMetadata;
   css?: string;
+  /**
+   * #238 — UNLIKE `GutterpressPluginExport.styles` (author-declared, relative
+   * to the plugin module), this is already resolved to ABSOLUTE filesystem
+   * paths by the loader (`plugins.ts`'s `loadPlugin`), in the plugin's own
+   * declared order. `undefined`/`[]` for a plugin that declares none.
+   */
+  styles?: string[];
   options: Record<string, unknown>;
 }
 
@@ -108,12 +130,21 @@ function unwrapPlugin<T>(plugin: T): T {
  * non-technical author gets the feature instantly instead of a "not installed"
  * error. (attrs/footnote/deflist are NOT here — they are always-on defaults
  * applied unconditionally below.)
+ *
+ * `gutterpress-gfm-alerts` (#237) is keyed differently from its four
+ * siblings: it is not a real npm package, it is Gutterpress's OWN code
+ * (gfm-alerts.ts) registered under a name that reads like one, matching the
+ * shape "keyed by npm name" is written for. There is nothing to install
+ * either way — the lookup below always wins before any npm resolution is
+ * attempted (`plugins.ts`'s `loadPlugin`) — so a real npm package never
+ * existing under this exact name costs nothing.
  */
 export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
   "markdown-it-mark": unwrapPlugin(markdownItMark) as GutterpressPlugin,
   "markdown-it-sub": unwrapPlugin(markdownItSub) as GutterpressPlugin,
   "markdown-it-sup": unwrapPlugin(markdownItSup) as GutterpressPlugin,
   "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as GutterpressPlugin,
+  "gutterpress-gfm-alerts": gfmAlerts,
 };
 
 /**
@@ -139,7 +170,16 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  *
  * GFM-style `> [!NOTE]` alerts were also moved into the DC plugin on the
  * same date because the emitted classes (dc-alert, dc-vibe-callout, etc.)
- * are DC-branded. Core should not leak DC identifiers.
+ * were DC-branded — core should not leak DC identifiers. #237 (0.10.7)
+ * restored a core-owned, unbranded equivalent as an OPT-IN bundled feature —
+ * `gfm-alerts.ts`, registered below as `gutterpress-gfm-alerts` — emitting
+ * only the standard GitHub five (NOTE/TIP/IMPORTANT/WARNING/CAUTION) as
+ * neutral `gp-alert`/`gp-alert-<type>` structure (see that file's header).
+ * This does not re-converge with the DC plugin: DC's branded extra types
+ * (`[!DM]`/`[!VIBE]`/`[!ORIGIN]`, etc.) and its own class names stay exactly
+ * where they were moved to, layered on top of (or independent from) this
+ * primitive. A project using neither plugin still renders `> [!NOTE]` as a
+ * literal blockquote, unchanged — this feature is opt-in, not a default.
  *
  * @param customPlugins - Optional array of custom plugins to load
  */
@@ -226,4 +266,18 @@ export function collectPluginCss(plugins: LoadedPlugin[]): string {
     .map((p) => p.css)
     .filter((css): css is string => typeof css === "string" && css.length > 0)
     .join("\n\n");
+}
+
+/**
+ * Collect every plugin-declared stylesheet PATH (#238), flattened in plugin
+ * load order (a plugin's own files keep their declared order). These are
+ * already-resolved ABSOLUTE filesystem paths — `plugins.ts`'s loader resolves
+ * them before a `LoadedPlugin` exists, so this stays a pure list operation
+ * with no `node:*` needed, matching {@link collectPluginCss}. The caller feeds
+ * the result through the SAME asset-inline pipeline a manifest `styles:` list
+ * gets (see `lib/markdown/index.ts`'s `renderChapters`), which is where the
+ * files are actually read.
+ */
+export function collectPluginStylePaths(plugins: LoadedPlugin[]): string[] {
+  return plugins.flatMap((p) => p.styles ?? []);
 }
