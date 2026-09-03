@@ -5,6 +5,124 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-09-03
+
+### Added
+
+- **`> [!NOTE]` callouts are built in.** GitHub's alert syntax — `NOTE`, `TIP`,
+  `IMPORTANT`, `WARNING`, `CAUTION`, matched case-insensitively — ships as the
+  bundled **Callouts** feature. Turn it on from the recommended-features list
+  and each renders as an unbranded `.gp-alert` box with a labelled title and a
+  coloured rule, in core's own vocabulary so any theme can restyle it; the
+  colour per type is an author-overridable `--gp-alert-<type>-color`. It is
+  off by default, so a book that never asked for callouts keeps rendering
+  `> [!NOTE]` exactly as it always did. The marker goes alone on its line, as
+  on GitHub; anything that is not one of the five prints as an ordinary
+  blockquote. Previously the user guide had to explain that this syntax "lives
+  in a separate plugin" — it no longer does. (#237)
+
+- **Theme authors can curate the Design panel with three CSS comments.** The
+  desktop app's guided Design panel used to show every `:root` custom property
+  a theme declared, bucketed by a heuristic into Fonts / Colors / Sizes / Other
+  and labelled by de-hyphenating the name — so a theme with forty internal
+  tokens gave a non-technical author forty fields, several of which they
+  should never touch. A theme can now say what it means, in ordinary CSS
+  comments placed right above a declaration: `/* @group Chapter openers */`
+  puts the next token under that heading (named groups come first, in the
+  order they first appear), `/* @label Accent color */` replaces the
+  name-derived label, and `/* @internal */` hides the token from the panel
+  entirely. Each directive applies to the next declaration only; other
+  comments are ignored; the CSS itself is never changed. A theme with no
+  annotations renders in the panel exactly as before. (#244)
+
+- **Plugin CSS can be files, not just a string.** A plugin's `css` export
+  was an opaque string: `gutterpress lint` never saw it, a `url()` to a font
+  or image in it could not be embedded, and it could not `@import`. A plugin
+  can now export `styles: ["./styles/components.css"]` — paths relative to its
+  own file — and each file goes through exactly the pipeline your project's
+  stylesheets do: assets inlined, local imports followed, print-safety
+  checked. Same cascade position as before (after core, before your CSS). A
+  listed file that is missing stops the build with an error naming the plugin,
+  instead of silently rendering without it. `css` still works and now follows
+  the files. (#238)
+
+- **A theme can be more than one stylesheet.** A theme was defined as a
+  single `theme.css`, so a real design system — tokens, base, components,
+  page templates and engine furniture as separate sheets in a load-bearing
+  order — could not be a theme at all. It had to be hand-wired into the
+  manifest, where no theme UI could see, apply, preview, revert or switch it.
+  A `theme.json` may now declare `styles: [...]` (paths relative to the theme
+  folder, in cascade order), `engineStyles: { native: [...] }`, and
+  `tokensFile`, the sheet whose `:root` the desktop Design panel edits.
+  Applying wires the whole list as one block at the position the outgoing
+  theme held, switching or removing a theme removes its whole block, import
+  checks that every declared sheet exists and passes the print-safety rules,
+  and `gutterpress theme apply` lists every sheet it wired. A `theme.json`
+  without `styles` still means `["theme.css"]`, so every existing theme works
+  unchanged. A declared path must stay inside the theme folder. Zip import
+  still needs a `theme.css` to locate the package root; a folder import does
+  not. (#239)
+
+- **`gutterpress theme` — list, apply, import, revert, remove from the
+  terminal.** Themes could only be applied or imported from the desktop app's
+  Theme panel; a CI job, an agent, or anyone in a terminal had to hand-edit the
+  manifest and copy folders, getting the cascade position right by hand. The
+  five subcommands call exactly the code the desktop panel calls, so either
+  route produces the same tracked, switchable result. `import` takes a folder,
+  a `.zip`, a `.css` file, or an `http(s)` URL, and surfaces the same
+  print-safety warnings the desktop shows. (#235)
+- **A CSS ownership contract, checked by lint.** The rules about which
+  stylesheet owns which properties lived in comments and an honour system. A
+  project can now write them down in `.gutterpress/css-contract.yaml` (or
+  point `validate.checks.source.cssOwnership` at a file): which properties
+  and at-rules a sheet owns, which a sheet may not use, and which selectors
+  it may not use unscoped. The new `source.css-ownership` check reports a
+  `columns:` declared outside the sheet that owns it, a forbidden property,
+  or two sheets claiming the same property, as warnings in the build log,
+  `gutterpress lint`, and the editor's Problems panel. With no contract file
+  the check reports nothing. (#232)
+
+### Changed
+
+- **`engineStyles.paged` is gone from the manifest schema and types.** It was
+  accepted, warned about, and ignored, and editor autocomplete kept offering
+  it. A manifest that still carries it loads with the same one-line warning
+  as before. The four legacy `css/*.css` stylesheet fallbacks are now marked
+  as legacy in the source-files guide and the schema reference; their
+  behaviour is unchanged. (#234)
+
+- **Plugin `priority` is explained the way you will actually use it.** The
+  docs led with "higher loads first" and then told you to set a plugin's
+  priority *lower* to see another plugin's tokens, which everyone reads
+  backwards once. The semantics are unchanged; the user guide, the schema
+  reference and the manifest field docs now state the consequence first
+  (lower number = loads later = sees the other plugin's output), and say
+  plainly that most manifests never need to set it. (#247)
+
+- **`gutterpress new` applies your starter theme instead of forking it.** A
+  new project used to receive a *copy* of its template's theme as
+  `styles/book.css` — which then silently shadowed any theme you applied
+  later, because the fork loaded after it. The scaffold now applies the theme
+  the tracked way, and `styles/book.css` is your project's own override layer,
+  empty and yours. An existing project that carries one of those old forks is
+  not changed: `gutterpress theme list` tells you it is byte-identical to a
+  built-in theme and names the one command that adopts the tracked layout.
+  (#236)
+
+### Fixed
+
+- **The render-parity gate now says what it cannot see.** Text inside any
+  element carrying a CSS `filter` (a `drop-shadow()` on a shaped card, for
+  instance) is rasterized by Chromium into a bitmap before the PDF is written
+  — there are no text objects left for any extractor to compare, so a change
+  confined to that prose gates clean. That is a Chromium behaviour, not a bug
+  to fix in the tool, and this release documents it precisely instead of
+  pretending otherwise: `docs/render-parity-gate.md` explains the mechanism
+  and the evidence, and the existing `filter` print-safety warning now names
+  the consequence, so the one lint signal you already see is the detector. A
+  public fixture pins it. Page geometry, image placement, and text outside a
+  filtered subtree are compared exactly as before. (#259)
+
 ## [0.10.6] - 2026-09-02
 
 ### Added
