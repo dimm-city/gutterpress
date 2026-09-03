@@ -27,7 +27,7 @@
 export const MARKER_TAG_LAYER_CLASS = "gp-marker-tags";
 /** Class on each tag in the layer. */
 export const MARKER_TAG_CLASS = "gp-marker-tag";
-/** Data attribute the mount stamps on a chip with its source offset (see `mount.ts`). */
+/** Data attribute the mount stamps on a chip with an offset inside its marker line (see `mount.ts`). */
 export const CHIP_START_ATTR = "data-gp-start";
 
 export interface MarkerTagsHandle {
@@ -101,7 +101,13 @@ export function installMarkerTags(documentElement: HTMLElement, options: MarkerT
       tag.append(...Array.from(source.cloneNode(true).childNodes));
       const startAttr = chip.getAttribute(CHIP_START_ATTR);
       if (startAttr !== null) tag.setAttribute(CHIP_START_ATTR, startAttr);
-      tag.style.left = `${(rect.left - containerRect.left) / zoom + container.scrollLeft}px`;
+      const left = (rect.left - containerRect.left) / zoom + container.scrollLeft;
+      tag.style.left = `${left}px`;
+      // The tag hangs to the left of its block and must stay inside the
+      // scrolling container: what lies left of its edge is unreachable. So
+      // it may take at most the room between the container's edge and the
+      // block, wrapping its text to fit.
+      tag.style.maxWidth = `${Math.max(48, left - container.scrollLeft - 14)}px`;
       const top = CLOSING_KINDS.has(kind) ? rect.bottom : rect.top;
       tag.style.top = `${(top - containerRect.top) / zoom + container.scrollTop}px`;
       if (CLOSING_KINDS.has(kind)) tag.classList.add(`${MARKER_TAG_CLASS}--closing`);

@@ -131,7 +131,10 @@ async function openMarkerAt(chipIndex: number, charIndex: number) {
   const pt = await markerTagPoint(chipIndex);
   await harness.page.mouse.click(pt.x, pt.y);
   await harness.page.waitForTimeout(50);
-  for (let i = 0; i <= charIndex; i++) await harness.page.keyboard.press("ArrowRight");
+  // The tag opens the marker with the caret one past its first character
+  // (mount.ts stamps that offset on the chip), so `charIndex` more steps
+  // land after character `charIndex`.
+  for (let i = 0; i < charIndex; i++) await harness.page.keyboard.press("ArrowRight");
 }
 async function generatedPreviewAcceptsFocus(chipIndex: number): Promise<boolean> {
   return harness.page.evaluate((c) => window.__gpGutterpress.generatedPreviewAcceptsFocus(c), chipIndex);

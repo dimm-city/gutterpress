@@ -153,8 +153,14 @@ export function mountGutterpressEditor(
         markTightList(element, node, sourceText);
         applyInlineWrappers(element, sourceText, inlineWrappers);
         // A chip is hidden from the flow (editor-css.ts); its margin tag
-        // needs the marker's offset to open it on a click.
-        if (element.classList.contains("gp-block-chip")) element.setAttribute(CHIP_START_ATTR, String(absoluteStart));
+        // needs an offset INSIDE the marker line to open it on a click. The
+        // block's own start may be the blank line before the marker, and a
+        // caret there belongs to the block above; one past the marker's
+        // first character is unambiguously this block's.
+        if (element.classList.contains("gp-block-chip")) {
+          const lead = sourceText.length - sourceText.trimStart().length;
+          element.setAttribute(CHIP_START_ATTR, String(absoluteStart + lead + 1));
+        }
       },
       afterDocumentMount: (documentElement) => {
         // The host first: its pagination is the layout the tags anchor to.
