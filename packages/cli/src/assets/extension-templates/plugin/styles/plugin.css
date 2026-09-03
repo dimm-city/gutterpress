@@ -1,0 +1,114 @@
+/* ===========================================================================
+ * {{NAME}} — component stylesheet
+ *
+ * OWNS
+ *   The look of everything `plugin.js` emits: the `@term-box` container, its
+ *   variants and label, and the `[[key term]]` inline span. Every one of
+ *   those looks is driven by a PUBLIC custom property declared at `:root`
+ *   below, so a book can retune this component without touching this file.
+ *
+ * MUST NOT CONTAIN
+ *   - `@page` rules or page geometry. A plugin styles its own components; the
+ *     book's theme owns the page.
+ *   - Bare element selectors (`p`, `table`, `h2`). They would leak this
+ *     plugin's opinions into every book that installs it. Scope every rule
+ *     under a `{{PREFIX}}` class.
+ *   - Any `gp-` class. That prefix is Gutterpress core's.
+ *   - Per-book values. Ship sane defaults; let the book override the tokens.
+ *
+ * WHY THE @layer
+ *   Gutterpress injects plugin CSS before the book's own stylesheets, and in
+ *   CSS an UNLAYERED rule beats a layered one no matter how specific the
+ *   layered one is. So an unlayered plugin sheet would quietly outrank every
+ *   rule in a book that had adopted the recommended
+ *   `@layer tokens, base, components, templates, pages, book;` convention —
+ *   the author would edit their own CSS and nothing would happen.
+ *
+ *   Declaring our own layer fixes that by construction. This sheet loads
+ *   first, so `{{SLUG}}` becomes the FIRST (weakest) layer; every layer the
+ *   book declares afterwards is appended after it and therefore wins, and the
+ *   book's unlayered rules win too. A plugin should always be the easiest
+ *   thing in the book to override.
+ *
+ *   Adopt it for the WHOLE sheet: a rule left outside the layer here is
+ *   unlayered, and would beat every rule inside it — including our own.
+ * ======================================================================== */
+
+@layer {{SLUG}} {
+  /* -----------------------------------------------------------------------
+   * PUBLIC TOKENS — this component's entire theming surface.
+   *
+   * Declared at `:root` with real defaults so the component looks right in
+   * any book with no setup at all. A book retunes it by resetting these in
+   * its own CSS — either globally, or scoped to one chapter/page/section:
+   *
+   *     #ch-appendix { --{{PREFIX}}term-box-accent: #7a1f1f; }
+   *
+   * Rules below consume them as BARE `var(--x)`, never `var(--x, fallback)`:
+   * the default lives at `:root` exactly once, so there is one place to look
+   * and no second copy to drift.
+   * -------------------------------------------------------------------- */
+  :root {
+    --{{PREFIX}}term-box-accent: #2f5d8a;
+    --{{PREFIX}}term-box-bg: #f2f6fa;
+    --{{PREFIX}}term-box-ink: inherit;
+    --{{PREFIX}}term-box-pad: 0.6em 0.9em;
+    --{{PREFIX}}term-box-rule: 3px;
+    --{{PREFIX}}term-box-label-size: 0.78em;
+    --{{PREFIX}}term-box-label-tracking: 0.08em;
+    --{{PREFIX}}term-ink: #2f5d8a;
+    --{{PREFIX}}term-weight: 600;
+  }
+
+  /* -----------------------------------------------------------------------
+   * The container emitted by `@term-box` (plugin.js's `markers` table).
+   * -------------------------------------------------------------------- */
+  .{{PREFIX}}term-box {
+    background: var(--{{PREFIX}}term-box-bg);
+    border-left: var(--{{PREFIX}}term-box-rule) solid var(--{{PREFIX}}term-box-accent);
+    color: var(--{{PREFIX}}term-box-ink);
+    padding: var(--{{PREFIX}}term-box-pad);
+    /* Print hygiene: a callout that splits across a page break reads badly,
+       and a two-line orphan reads worse. Both are the component's business,
+       not the book's. */
+    break-inside: avoid;
+    margin-block: 1em;
+  }
+
+  .{{PREFIX}}term-box > :first-child { margin-block-start: 0; }
+  .{{PREFIX}}term-box > :last-child { margin-block-end: 0; }
+
+  /* The label element, present only when the author wrote `label="…"`. */
+  .{{PREFIX}}term-box-label {
+    color: var(--{{PREFIX}}term-box-accent);
+    font-size: var(--{{PREFIX}}term-box-label-size);
+    letter-spacing: var(--{{PREFIX}}term-box-label-tracking);
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-block: 0 0.35em;
+  }
+
+  /* -----------------------------------------------------------------------
+   * Variants. Each one only ever RESETS a public token — it never writes a
+   * second copy of the component's rules. That is what keeps a variant three
+   * lines long instead of thirty, and what lets a book add its own variant
+   * without this file changing.
+   * -------------------------------------------------------------------- */
+  .{{PREFIX}}term-box-note {
+    --{{PREFIX}}term-box-accent: #2f5d8a;
+    --{{PREFIX}}term-box-bg: #f2f6fa;
+  }
+
+  .{{PREFIX}}term-box-warning {
+    --{{PREFIX}}term-box-accent: #9a5b12;
+    --{{PREFIX}}term-box-bg: #fdf6ec;
+  }
+
+  /* -----------------------------------------------------------------------
+   * The inline span emitted by `[[key term]]` (plugin.js's bespoke rule).
+   * -------------------------------------------------------------------- */
+  .{{PREFIX}}term {
+    color: var(--{{PREFIX}}term-ink);
+    font-weight: var(--{{PREFIX}}term-weight);
+  }
+}

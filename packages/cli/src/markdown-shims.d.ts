@@ -10,6 +10,10 @@ declare module "*.md" {
 declare module "*.ico" { const path: string; export default path; }
 declare module "*.css" { const path: string; export default path; }
 declare module "*.icc" { const path: string; export default path; }
+// `.tpl` is the extension-template suffix (see embedded-assets.ts): source
+// files that hold `{{PLACEHOLDER}}` text and would be a syntax error — or,
+// for `plugin.test.js`, a COLLECTED TEST — under their real names.
+declare module "*.tpl" { const path: string; export default path; }
 
 // These markdown-it plugins ship no type declarations. They follow the
 // standard markdown-it plugin signature, so declare them accordingly.
