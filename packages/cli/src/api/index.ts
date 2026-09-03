@@ -97,6 +97,22 @@ export type {
   CreateProjectError,
 } from "../lib/project-scaffold.ts";
 
+// ── Extension scaffolding (#233 / #245) ──────────────────────────────────────
+// The sibling of `scaffoldProject`: creates a plugin or theme STARTER PACKAGE
+// rather than a book. Shared by `gutterpress new --kind` and any desktop
+// surface that offers the same thing, one implementation per CLAUDE.md §7.
+export {
+  scaffoldExtension,
+  resolveExtensionPrefix,
+  EXTENSION_KINDS,
+  RESERVED_PREFIX,
+} from "../lib/extension-scaffold.ts";
+export type {
+  ExtensionKind,
+  ScaffoldExtensionOptions,
+  ScaffoldExtensionResult,
+} from "../lib/extension-scaffold.ts";
+
 // ── Presets & publish targets (ADR 0008) ─────────────────────────────────────
 // The registries are the single source of truth for pickers (the desktop
 // wizard's preset choice, target selectors) and for CLI flag validation.

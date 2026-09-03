@@ -1165,7 +1165,7 @@ async function loadExtensionFromDir(
   }
 
   const pluginModule = await loadCachedPathPluginModule(resolved.markdown);
-  const { plugin, metadata, css, styles: rawStyles } = extractPluginExports(
+  const { plugin, metadata, css, styles: rawStyles, markers } = extractPluginExports(
     pluginModule,
     pluginRef,
     config.export,
@@ -1184,6 +1184,15 @@ async function loadExtensionFromDir(
     metadata: metadata ?? extensionMetadata(meta),
     css,
     ...(styles.length > 0 ? { styles } : {}),
+    // #240 × #241: an extension folder's markdown entry declares `markers`
+    // exactly as a bare-file plugin does, and `createMarkdownRenderer` builds
+    // the declared-marker registry from `LoadedPlugin.markers`. Omitting it
+    // here (the shape this function shipped with) silently dropped every
+    // declared marker of any plugin loaded as a FOLDER — `@callout` parsed as
+    // a plain paragraph, with no warning, while the identical module loaded
+    // by a direct `path: …/plugin.js` worked. The two load paths must produce
+    // the same LoadedPlugin.
+    ...(markers ? { markers } : {}),
     options: config.options,
   };
 }

@@ -1,0 +1,29 @@
+{
+  "name": "{{SLUG}}",
+  "version": "0.1.0",
+  "description": "{{DESCRIPTION}}",
+  "type": "module",
+  "main": "plugin.js",
+  "files": [
+    "gutterpress.json",
+    "plugin.js",
+    "styles",
+    "snippets",
+    "README.md"
+  ],
+  "keywords": ["gutterpress", "gutterpress-plugin", "markdown-it-plugin"],
+  "author": "{{AUTHOR}}",
+  "license": "MIT",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "peerDependencies": {
+    "markdown-it": ">=14"
+  },
+  "peerDependenciesMeta": {
+    "markdown-it": { "optional": true }
+  }
+}

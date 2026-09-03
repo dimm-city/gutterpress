@@ -40,7 +40,54 @@ This project follows [Semantic Versioning](https://semver.org/).
   and one model. A look whose package also carries a markdown plugin shows a
   "+ features" badge. (#243)
 
+- **`gutterpress new --kind plugin` scaffolds a runnable extension package.**
+  The on-ramp for an extension author used to be a five-line snippet and a
+  pointer to a 1,800-line plugin in another repository, immediately followed by
+  a warning not to copy it. `--kind plugin` now writes a complete package
+  instead: a `gutterpress.json`, a `plugin.js` carrying one DECLARATIVE
+  container (a `markers` table, #240) and one hand-written markdown-it rule so
+  the line between the two is visible, component CSS with its public tokens at
+  `:root`, an insertable snippet, and a `test/` folder whose `fixture.md` →
+  `expected.html` suite runs with `bun test` from the moment it is created.
+  The scaffolded README states which conventions are load-bearing and why —
+  the class prefix (the package claims its own; `gp-` belongs to core), why a
+  plugin may not `import` from `gutterpress` at runtime, and why its CSS
+  declares its own cascade layer. Its test suite enforces the prefix rules,
+  which nothing in Gutterpress checks for you. `--prefix` picks the prefix
+  (default: the package slug). (#245)
+
+- **`gutterpress new --kind theme` scaffolds the layered CSS architecture.**
+  Core's three built-in themes are ~60 lines each and style bare elements;
+  the first book that needs components outgrows one in a week and then
+  re-derives the same six-file arrangement from scratch. `--kind theme` writes
+  it: `tokens.css` / `base.css` / `components.css` / `page-templates.css` /
+  `page-rules.css` / `book.css`, each opening with its own **OWNS / MUST NOT
+  CONTAIN** contract header — the rules from
+  `docs/contextual-cascade-principle.md` moved INTO the files so they travel
+  with the code — plus `components.yaml` as the catalog stub. The
+  `@layer tokens, base, components, templates, pages, book;` order is declared
+  once, in the sheet that loads first, and one worked component (a callout)
+  demonstrates the token pattern end to end: a `:root` default, a component
+  consuming bare `var()`, and a chapter-scoped override that resets it. It is
+  a valid multi-sheet extension, so `gutterpress theme import` + `apply` wire
+  all six sheets in cascade order. (#233)
+
+  Both kinds share `new`'s existing `--dir`/`--folder`/`--author` handling.
+  Flags that describe a BOOK (`--preset`, `--targets`, `--template`, the
+  `--page-*` trim flags, `--git`) are REJECTED for an extension rather than
+  silently ignored, and `--prefix`/`--description` are likewise rejected for a
+  book; the check reads raw argv, so a flag's default never trips it.
+
 ### Fixed
+
+- **A plugin loaded as an extension FOLDER kept its styles but lost its
+  markers.** `plugins: - path: <folder>` (#241) read the folder's
+  `gutterpress.json`, loaded its `markdown:` entry and resolved its
+  stylesheets — but dropped the module's `markers` export (#240) on the floor.
+  Every declared marker of such a plugin silently did nothing: `@callout`
+  parsed as an ordinary paragraph, with no warning, while the identical module
+  referenced as `path: <folder>/plugin.js` worked. The two load paths now
+  produce the same loaded plugin. (#240, #241)
 
 - **`gutterpress validate` now sees plugin CSS.** Since plugin stylesheets
   became files, validate and the build's preflight gate had no idea they
@@ -51,7 +98,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A build loads each plugin once, not twice.** The lint gate and the render
   each loaded and re-verified every plugin independently, so an npm-installed
   plugin's whole vendored tree was read and hashed twice per build. (#262)
-
 
 ## [0.10.7] - 2026-09-03
 
