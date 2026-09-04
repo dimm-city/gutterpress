@@ -1,0 +1,40 @@
+{
+  "$schema": "verify-vendored checksum manifest \u2014 see scripts/verify-vendored.mjs",
+  "algorithm": "sha256",
+  "generatedFrom": "@vscode/markdown-editor@0.0.2-87 (registry tarball, sha512 verified against dist.integrity - see PATCHES.md / gutterpressFork metadata in package.json). First computed from 0.0.2-84; 0.0.2-85 was byte-identical in every vendored file; the 2026-09-03 re-pin to 0.0.2-87 changed only dist/web-editors.js, .d.ts and .js.map (rehashed below), while dist/index.js and dist/index.d.ts stayed byte-identical, so the patched and upstreamBaseline hashes are unchanged.",
+  "note": "unpatched: sha256 of each vendored file AS EXTRACTED FROM THE PUBLISHED TARBALL, computed before any patch was applied (proves ongoing byte-identity to upstream). patched: sha256 of dist/index.js and dist/index.d.ts AFTER the gp-fork patches \u2014 renderCustomBlock (SFE-P1b) and measurement (SFE-P3f) \u2014 currently applied on top of each other (proves no undocumented drift from the reviewed patch state; see PATCHES.md for both). upstreamBaseline: sha256 of dist/index.js and dist/index.d.ts AS EXTRACTED FROM THE PUBLISHED TARBALL, i.e. their value BEFORE any patch \u2014 re-derived by re-fetching and re-verifying the tarball (see 'generatedFrom' above), so the two-file diff between upstreamBaseline and patched can be confirmed by any future reader without refetching it themselves. package.json, NOTICE, PATCHES.md, checksums.json, and scripts/verify-vendored.mjs are gutterpress-authored files, not vendored, and are intentionally NOT in this manifest. scripts/verify-vendored.mjs also runs a completeness pass: every git-tracked file in this package outside that same gutterpress-authored allowlist (plus scripts/ generally) must appear as a key in 'unpatched' or 'patched' \u2014 a file added on disk, or a manifest entry silently removed, fails the check instead of passing vacuously.",
+  "unpatched": {
+    "UPSTREAM-README.md": "6a819718fabb2638c47c69a28e3f6c50145c9699d51cb43ba1e7c82026ee333c",
+    "dist/commands.d.ts": "39a0d3420ff924a19a93e241423232152113929e04de0cf5cafa4dfcca94ad30",
+    "dist/commands.js": "ab4f6983b27df1765b580d8cdcd1ea94e3bfbc6bd411a1ffb38b84a2d0409dcb",
+    "dist/commands.js.map": "e2cc997bbcb5b82873725ae121031a3bfc0cf92d3d28c5b8e19b1f976bdb91f3",
+    "dist/config-BGeaJqWk.js": "32816d92c51f970a7c7a1045ac53fd7a2c0945d28f19f242cb31a292594fc2f6",
+    "dist/config-BGeaJqWk.js.map": "d6c856e8254f2980705168114263c89f4240b5759b4c254249dc7dedf1e6701c",
+    "dist/config.d.ts": "23d04bac4fc450b108ca1948c44018d6b2c942ed8a9f5dc382b976663d9dc13f",
+    "dist/config.js": "d502da021ef973bec32c2630b37d1a8a6dd457f2c2c196a869b0daf4287598b7",
+    "dist/config.js.map": "5e186eb83be35f190e50a5e99c78a3963911dae14cfb4ee37428990a749af597",
+    "dist/index.js.map": "dd9c9006c7a83012f551437b0554cc2a4e09155e4a620c8a12e7e62bf4aaf696",
+    "dist/markdown-editor.css": "28de0f8fca291d5e0e8cc2b597a6daf1ed96ca2c4d55caa345af36f8556491f2",
+    "dist/stringEdit-CVDbCUBY.js": "4aa8444f758988651058df88c024ba65360f6b77338df23b1e172df592d269b0",
+    "dist/stringEdit-CVDbCUBY.js.map": "10923ee2f80bbda5f586c237d08eac54b9598af312451b106ff6e0e6f3ca3325",
+    "dist/web-editors.d.ts": "68b8f6c1df7796ab8c54dd1c141c0147e6f58bab5fa537254b74702e1d2cc6a4",
+    "dist/web-editors.js": "596d2c959feff8d55735d9fa5460ffdadac72d6c7b6bdbc9d3572347e93a1200",
+    "dist/web-editors.js.map": "661a5c26b8f328811a00c306af62b70948ce13b4f8aa6a6e8e078a1d87299add",
+    "src/contrib/comments/commentInput.css": "91f6ef9d84b0d37fc026f451c064772414028b4df186c9ac76a99f026cfb84c5",
+    "src/contrib/comments/commentWidget.css": "9722d7dbf1084a44a0cea554681b15992dba9a42be0285c5188867d0378c6279",
+    "src/contrib/find/find.css": "73de4878bcf8f68cc4737f5be9f39b44070c16cfcdefed103c8a4d1ebf32c3c8",
+    "src/view/editor.css": "46b8aa3806fcdc60cb19c03ab38f7438472e87c9ada055761fa112863f0704a7",
+    "src/view/themes/default.css": "90eae3861ed94041fde64368882de6f2ce4080af7b8a48760d50bb6254b59c86",
+    "src/view/themes/github.css": "5d80b82f87742e6b3dfeadda7a75139d29a59c1b3152ee1035cdfb2a42a8da78",
+    "src/view/themes/vscode-default.css": "9812491bb25b7c2cedfd49db62fe1d93c19b5058f56f3a53e0b02144a56cba82",
+    "src/view/themes/vscode-github.css": "8b857d871cdd157e95fbde4bb3e23717bc638d72666fd6301af2b4dc787b453f"
+  },
+  "patched": {
+    "dist/index.js": "7aca6eaeb1f6939a281dc7e118f525bae5a5a1a7cb432ea691b698601226ba4b",
+    "dist/index.d.ts": "80e759c5f24a4b9e0853d2be75262307a99bc259d2c58dec67dc3c061161403d"
+  },
+  "upstreamBaseline": {
+    "dist/index.js": "857344e092c3f373413e787039e71a91ce2e3afe2b6e9735836cdbaefe6d39f9",
+    "dist/index.d.ts": "45a7d7afd1d17dcc89e89a6f91993f0e8bac25b713f485bae708aaab0938794c"
+  }
+}

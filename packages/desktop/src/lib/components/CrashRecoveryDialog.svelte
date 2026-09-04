@@ -25,7 +25,7 @@
    * swap on the button, matching the "blind destructive action" fix).
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
+  import { readFile } from "$lib/files/files-capability";
   import { dialogBehavior } from "$lib/dialog";
   import type { RecoveryItem } from "$lib/components/crash-recovery-types";
 
@@ -77,10 +77,10 @@
     if (wasExpanded || item.filePath in previewCache) return;
     previewCache = { ...previewCache, [item.filePath]: "loading" };
     try {
-      const recovered = await api.fs.readFile(item.recoveryPath);
+      const recovered = await readFile(item.recoveryPath);
       let onDisk: string | null = null;
       try {
-        onDisk = await api.fs.readFile(item.filePath);
+        onDisk = await readFile(item.filePath);
       } catch {
         // No on-disk copy (new/never-saved file, or it moved) — not a preview
         // failure, just nothing to compare against.

@@ -1,0 +1,347 @@
+.md-editor {
+	--md-find-widget-background: light-dark(#f3f3f3, #252526);
+	--md-find-widget-foreground: light-dark(#616161, #cccccc);
+	--md-find-widget-border: light-dark(#c8c8c8, #454545);
+	--md-find-widget-shadow: rgba(0, 0, 0, 0.24);
+	--md-find-input-background: light-dark(#ffffff, #313131);
+	--md-find-input-foreground: light-dark(#3b3b3b, #cccccc);
+	--md-find-placeholder-foreground: light-dark(#767676, #a6a6a6);
+	--md-find-input-caret: currentColor;
+	--md-find-input-border: light-dark(#cecece, #3c3c3c);
+	--md-find-count-foreground: light-dark(#616161, #cccccc);
+	--md-find-focus-border: light-dark(#0090f1, #007fd4);
+	--md-find-button-hover-background: light-dark(rgba(184, 184, 184, 0.31), rgba(90, 93, 94, 0.5));
+	--md-find-option-background: light-dark(rgba(0, 144, 241, 0.2), rgba(0, 127, 212, 0.4));
+	--md-find-option-border: light-dark(#007acc, #1c9cf0);
+	--md-find-option-foreground: light-dark(#000000, #ffffff);
+	--md-find-disabled-foreground: light-dark(#9d9d9d, rgba(204, 204, 204, 0.5));
+	--md-find-error-border: light-dark(#be1100, #be1100);
+	--md-find-error-foreground: light-dark(#a1260d, #f48771);
+	--md-find-editor-background: light-dark(#ffffff, #1e1e1e);
+	--md-find-match-background: rgba(234, 92, 0, 0.33);
+	--md-find-match-fill: color-mix(
+		in srgb,
+		var(--md-find-editor-background) 85%,
+		var(--md-find-match-background)
+	);
+	--md-find-match-border: color-mix(
+		in srgb,
+		var(--md-find-widget-foreground) 55%,
+		#ea5c00
+	);
+	--md-find-current-background: light-dark(#a8ac94, #515c6a);
+	--md-find-current-fill: color-mix(
+		in srgb,
+		var(--md-find-editor-background) 90%,
+		var(--md-find-current-background)
+	);
+	--md-find-current-border: color-mix(
+		in srgb,
+		var(--md-find-widget-foreground) 55%,
+		var(--md-find-current-background)
+	);
+}
+
+::highlight(md-editor-find-match) {
+	background-color: var(--md-find-match-fill);
+}
+
+::highlight(md-editor-find-current) {
+	background-color: var(--md-find-current-fill);
+}
+
+.md-find-highlight-layer {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.md-find-match-rect,
+.md-find-current-rect {
+	position: absolute;
+	border-radius: 2px;
+}
+
+.md-find-match-rect {
+	background: transparent;
+	outline: 1px solid var(--md-find-match-border);
+	outline-offset: -1px;
+}
+
+.md-find-current-rect {
+	background: transparent;
+	outline: 2px solid var(--md-find-current-border);
+	outline-offset: -1px;
+}
+
+.md-find-zero-width-rect.md-find-match-rect {
+	background: var(--md-find-match-fill);
+}
+
+.md-find-zero-width-rect.md-find-current-rect {
+	background: var(--md-find-current-fill);
+}
+
+.md-find-widget-host {
+	position: sticky;
+	top: 0;
+	z-index: 30;
+	display: flex;
+	height: 0;
+	justify-content: flex-end;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.md-find-widget-host[hidden] {
+	display: none;
+}
+
+.md-editor.md-find-visible .md-find-widget-host {
+	height: auto;
+}
+
+.md-find-widget {
+	display: flex;
+	box-sizing: border-box;
+	width: min(420px, calc(100% - 8px));
+	margin: 4px 4px 0 0;
+	padding: 3px 4px;
+	align-self: flex-start;
+	flex: none;
+	flex-direction: column;
+	gap: 0;
+	color: var(--md-find-widget-foreground);
+	background: var(--md-find-widget-background);
+	border: 1px solid var(--md-find-widget-border);
+	border-radius: var(--vscode-cornerRadius-large, 8px);
+	box-shadow: 0 2px 8px var(--md-find-widget-shadow);
+	font: 13px/1.4 var(--vscode-font-family, system-ui, sans-serif);
+	pointer-events: auto;
+}
+
+.md-find-row {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 2px;
+}
+
+.md-find-input-shell {
+	display: flex;
+	box-sizing: border-box;
+	height: 26px;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	color: var(--md-find-input-foreground);
+	background: var(--md-find-input-background);
+	border: 1px solid var(--md-find-input-border);
+	border-radius: var(--vscode-cornerRadius-small, 2px);
+}
+
+.md-find-input-shell:focus-within {
+	border-color: var(--md-find-focus-border);
+	outline: 1px solid var(--md-find-focus-border);
+	outline-offset: -1px;
+}
+
+.md-find-input-shell.md-find-input-invalid {
+	border-color: var(--md-find-error-border);
+	outline-color: var(--md-find-error-border);
+}
+
+.md-find-input {
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 48px;
+	height: 24px;
+	min-height: 24px;
+	max-height: 80px;
+	margin: 0;
+	padding: 2px 4px;
+	flex: 1 1 auto;
+	resize: none;
+	overflow: auto;
+	color: inherit;
+	caret-color: var(--md-find-input-caret);
+	background: transparent;
+	border: 0;
+	border-radius: inherit;
+	outline: 0;
+	font: inherit;
+	line-height: 20px;
+}
+
+.md-find-input:focus {
+	outline: 0;
+}
+
+.md-find-input::placeholder {
+	color: var(--md-find-placeholder-foreground);
+	opacity: 1;
+}
+
+.md-find-input[aria-invalid='true'] {
+	outline: 0;
+}
+
+.md-find-options {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 0;
+	padding-right: 1px;
+}
+
+.md-find-button {
+	display: inline-flex;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	align-items: center;
+	justify-content: center;
+	color: inherit;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--vscode-cornerRadius-small, 5px);
+	font: inherit;
+	flex: 0 0 24px;
+	cursor: pointer;
+}
+
+.md-find-button:hover:not(:disabled) {
+	background: var(--md-find-button-hover-background);
+}
+
+.md-find-button:focus-visible {
+	border-color: var(--md-find-focus-border);
+	outline: none;
+}
+
+.md-find-button:disabled {
+	color: var(--md-find-disabled-foreground);
+	cursor: default;
+}
+
+.md-find-option {
+	width: 24px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: -0.04em;
+}
+
+.md-find-option-whole-word {
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2px;
+}
+
+.md-find-option-active {
+	color: var(--md-find-option-foreground);
+	background: var(--md-find-option-background);
+	border-color: var(--md-find-option-border);
+}
+
+.md-find-option-active:hover:not(:disabled) {
+	background: var(--md-find-option-background);
+}
+
+.md-find-count {
+	min-width: 54px;
+	padding-inline: 2px;
+	color: var(--md-find-count-foreground, inherit);
+	font-variant-numeric: tabular-nums;
+	line-height: 22px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+.md-find-error {
+	padding: 2px 6px 3px;
+	color: var(--md-find-error-foreground);
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+
+.md-find-no-results .md-find-count {
+	color: var(--md-find-error-foreground);
+}
+
+.md-editor.md-find-widget-focused .md-cursor {
+	visibility: hidden;
+	animation: none;
+}
+
+.md-find-has-current-match .md-selection-path {
+	fill: transparent;
+}
+
+.md-editor.md-find-visible .md-readonly-toggle-host {
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.md-find-compact .md-find-widget {
+	width: calc(100% - 4px);
+	margin-right: 2px;
+}
+
+.md-find-compact .md-find-row {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.md-find-compact .md-find-input {
+	width: 100%;
+	min-width: 0;
+	flex: 1 1 100%;
+}
+
+.md-find-compact .md-find-count {
+	min-width: 40px;
+	margin-right: auto;
+	padding-inline: 0;
+}
+
+.md-find-compact .md-find-options {
+	display: none;
+}
+
+.md-find-compact .md-find-input-shell {
+	flex: 1 1 100%;
+}
+
+@media (forced-colors: active) {
+	::highlight(md-editor-find-match),
+	::highlight(md-editor-find-current) {
+		background-color: transparent;
+	}
+
+	.md-find-match-rect {
+		forced-color-adjust: none;
+		background: transparent;
+		outline: 1px solid Highlight;
+	}
+
+	.md-find-current-rect {
+		forced-color-adjust: none;
+		background: transparent;
+		opacity: 1;
+		outline: 2px solid Highlight;
+	}
+
+	.md-find-widget,
+	.md-find-input,
+	.md-find-button {
+		border-color: ButtonText;
+	}
+
+	.md-find-option-active {
+		color: HighlightText;
+		background: Highlight;
+	}
+}

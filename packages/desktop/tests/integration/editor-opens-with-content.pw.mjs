@@ -6,7 +6,7 @@
  *   1. Opening a book while the workspace is ALREADY in Edit mode left the
  *      editor pane stuck on "Loading editor…" forever. The project-open
  *      pipeline called `ensureEditorFile()` (filling the buffer) but never
- *      `loadEditorModule()`, so the lazy CodeMirror chunk was never imported.
+ *      `loadEditorModule()`, so the lazy editor chunk was never imported.
  *      Only the *toggle* path called it — which is why
  *      editor-toggle-loads-module.pw.mjs stayed green through the bug.
  *
@@ -103,6 +103,16 @@ const require_ = createRequire(join(desktopDir, "package.json"));
 const PORT = 9600 + Math.floor(Math.random() * 250);
 
 const log = (m) => console.log(`[editor-opens] ${m}`);
+
+/**
+ * The workspace has two editing surfaces and either may be the live one: the
+ * paged editor (Edit/Read on a markdown file) or CodeMirror (Focus, and any
+ * non-markdown file). Every check below is about the EDITOR PANE — that it
+ * mounted, and what document it is showing — never about which surface won,
+ * so they address whichever is mounted rather than pinning the drive to one.
+ */
+const EDITOR_MOUNTED = `!!document.querySelector('.cm-editor, .rich-editor-host .md-editor')`;
+const EDITOR_TEXT = `(document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '')`;
 let child = null;
 let fakeHome = null;
 let bookDir = null;
@@ -209,6 +219,22 @@ function send(method, params = {}) {
     ws.send(JSON.stringify({ id, method, params }));
   });
 }
+/**
+ * A deterministic viewport, because CHECK 2 clicks the book at real
+ * coordinates. Without one the drive inherits whatever size the host window
+ * happens to get — and below the 820px narrow breakpoint the workspace shows
+ * ONE pane, so in Edit mode the book is not on screen at all: the in-frame
+ * probe still finds a target (it queries the preview's own DOM) while the
+ * mouse click lands on whatever is actually painted there. That is a check
+ * that fails for a reason having nothing to do with what it tests.
+ */
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 1400,
+  height: 900,
+  deviceScaleFactor: 1,
+  mobile: false,
+});
+
 async function evalJs(expression) {
   const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   if (r.result?.exceptionDetails) {
@@ -304,15 +330,15 @@ await evalJs(`(() => {
 })()`);
 
 // ── CHECK 1 — the editor loads its module AND the first chapter's content ────
-const cmMounted = await poll(`!!document.querySelector('.cm-editor')`, 25000);
+const cmMounted = await poll(EDITOR_MOUNTED, 25000);
 check(cmMounted,
-  'DEFECT 1: opening a book in Edit mode must mount CodeMirror — pane stayed on "Loading editor…"');
+  'DEFECT 1: opening a book in Edit mode must mount an editor — pane stayed on "Loading editor…"');
 const cmHasContent = cmMounted &&
-  await poll(`(document.querySelector('.cm-content')?.textContent ?? '').includes('Alpha')`, 15000);
+  await poll(`${EDITOR_TEXT}.includes('Alpha')`, 15000);
 check(cmHasContent,
   "DEFECT 1: the editor must open showing the book's first chapter");
 if (cmMounted && await evalJs(`[...document.querySelectorAll('.editor-loading')].some(e => e.textContent.includes('Loading editor'))`)) {
-  check(false, '"Loading editor…" still visible alongside .cm-editor');
+  check(false, '"Loading editor…" still visible alongside the mounted editor');
 }
 
 // ── CHECK 2 — a single click on viewer content reveals it in the editor ─────
@@ -444,24 +470,48 @@ if (!cmHasContent) {
     `CONTROL: no source-mapped block from a second chapter was reachable in the viewer — ${JSON.stringify(targetDiag)}`,
   );
 } else {
-  const before = await evalJs(`document.querySelector('.cm-content')?.textContent?.slice(0, 60) ?? ''`);
+  const before = await evalJs(`${EDITOR_TEXT}.slice(0, 60)`);
   const cx = Math.round(clickTarget.frame.left + clickTarget.rect.left + Math.min(40, clickTarget.rect.width / 2));
   const cy = Math.round(clickTarget.frame.top + clickTarget.rect.top + Math.min(10, clickTarget.rect.height / 2));
   await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, x: cx, y: cy });
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, x: cx, y: cy });
   const marker = clickTarget.chapter.replace(/^\d+-|\.md$/g, "");
+  // 25s, not 10s: a file switch on the paged editor rebuilds the document
+  // host, builds a fresh projection and re-paginates the chapter before the
+  // new text is on screen — strictly more work than CodeMirror's swap, which
+  // is what the original 10s budget was written for. The elapsed time is
+  // logged so a run that creeps toward the limit is visible before it fails.
+  const startedAt = Date.now();
   const moved = await poll(
-    `(document.querySelector('.cm-content')?.textContent ?? '').toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
-    10000,
+    `${EDITOR_TEXT}.toLowerCase().includes(${JSON.stringify(marker.toLowerCase())})`,
+    25000,
   );
+  // A coordinate-driven click that misses says nothing about the behaviour
+  // under test, so a failure reports where it actually landed: the point, the
+  // frame it was computed from, the workspace layout, and whether the FILE
+  // followed even though the text did not (which would separate "the click
+  // never arrived" from "the editor did not reload").
+  const landing = moved ? null : await evalJs(`(() => {
+    const f = document.querySelector('iframe');
+    const r = f ? f.getBoundingClientRect() : null;
+    const hit = document.elementFromPoint(${cx}, ${cy});
+    return {
+      win: { w: window.innerWidth, h: window.innerHeight },
+      frame: r ? { l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null,
+      activeFile: document.querySelector('.file-item.active .file-name')?.textContent?.trim() ?? null,
+      hitAtClick: hit ? hit.tagName + '.' + String(hit.className).slice(0, 40) : null,
+    };
+  })()`);
   check(moved,
-    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor (it still showed "${before.slice(0, 34)}…")`);
+    `DEFECT 2: a single click on content from ${clickTarget.chapter} must load that file into the editor ` +
+    `(it still showed "${before.slice(0, 34)}…"; clicked ${cx},${cy} — ${JSON.stringify(landing)})`);
+  if (moved) log(`the click moved the editor to ${clickTarget.chapter} in ${Date.now() - startedAt}ms`);
 }
 // ── CHECK 3 — a TOC click navigates BOTH panes ──────────────────────────────
 await evalJs(`document.querySelector('#panel-tab-toc')?.click(); true`);
 await waitFor(`document.querySelectorAll('.toc-item').length > 0`, 20000, "CONTROL: TOC tab never listed any headings");
 const tocPick = await evalJs(`(() => {
-  const cur = document.querySelector('.cm-content')?.textContent ?? '';
+  const cur = document.querySelector('.cm-content, .rich-editor-host .md-document')?.textContent ?? '';
   const items = [...document.querySelectorAll('.toc-item')];
   const wanted = cur.includes('Gamma') ? 'Beta' : 'Gamma';
   const hit = items.find(b => b.textContent.includes(wanted));
@@ -489,7 +539,7 @@ await evalJs(`(() => {
   return true;
 })()`);
 const tocMovedEditor = await poll(
-  `(document.querySelector('.cm-content')?.textContent ?? '').includes(${JSON.stringify(tocPick.wanted)})`,
+  `${EDITOR_TEXT}.includes(${JSON.stringify(tocPick.wanted)})`,
   10000,
 );
 check(tocMovedEditor,

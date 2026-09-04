@@ -3,7 +3,9 @@
  *
  * Consumed by:
  *   - packages/cli  (commands import from here; bundled into the CLI binary + npm package)
- *   - packages/desktop (SvelteKit API routes import from here at runtime)
+ *   - packages/desktop (Electron main imports this package at runtime via a
+ *     plain dynamic import, behind the typed IPC handlers in
+ *     `electron/api/*.ts`; the SvelteKit-served renderer/SPA never imports it)
  *
  * Plugin authors use the type-only exports below to type their plugins without
  * taking a runtime dependency on this package.
@@ -39,12 +41,13 @@ export { inspectImage } from "./lib/image-inspect.ts";
 export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 
 // ── Print-safety CSS checks (#39) — backs the in-app CSS editor gutter ────────
-// Per CLAUDE.md §8, `checkCss` runs HOST-SIDE ONLY — the `api/lint/check-css`
-// server route imports it (postcss pulls in `node:url` etc., which crashes if
-// bundled into the SPA renderer per the 0.4.0-beta.4 incident); the editor's
-// lint gutter calls `getPlatform().checkCss(...)` over that route, never this
-// export directly. Exported here so the CLI's own validation pipeline and the
-// desktop's host-side route share one implementation.
+// Per CLAUDE.md §8, `checkCss` runs HOST-SIDE ONLY — the desktop's
+// `lint:checkCss` IPC handler (`electron/api/lint.ts`) imports it (postcss
+// pulls in `node:url` etc., which crashes if bundled into the SPA renderer per
+// the 0.4.0-beta.4 incident); the editor's lint gutter calls
+// `$lib/lint/lint-capability.ts`'s `checkCss(...)` over that channel, never
+// this export directly. Exported here so the CLI's own validation pipeline and
+// the desktop's host-side handler share one implementation.
 export { checkCss } from "./lib/printsafe.ts";
 
 // Print-quality findings the render produces (native engine). The codes are
@@ -66,3 +69,9 @@ export type {
   GutterpressPluginExport,
   GutterpressPluginMetadata,
 } from "./lib/markdown/plugins.ts";
+
+// Rich editor (desktop) — the book's CSS layers scoped to the editor document.
+export { composeEditorCss, scopeCssToEditor } from "./lib/editor-css.ts";
+export type { ComposeEditorCssOptions } from "./lib/editor-css.ts";
+export { inlineStyles } from "./lib/asset-inline.ts";
+export type { InlineStylesResult } from "./lib/asset-inline.ts";

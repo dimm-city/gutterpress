@@ -7,8 +7,9 @@
    * under one "Look & style" heading, after the theme grid and before the
    * stylesheet list (now behind Advanced). No section wrapper or `<h3>` of
    * its own anymore; the parent owns the outer `.block`/heading. All token
-   * state, the debounced read-modify-write token machinery, and `api.fs.*`
-   * calls live in `DesignSectionController` (passed as the single `controller`
+   * state, the debounced read-modify-write token machinery, and
+   * `$lib/files/files-capability` calls live in `DesignSectionController`
+   * (passed as the single `controller`
    * prop — this was the first section to get the controller extraction; see
    * M14 for the other four). `toHex` is a pure browser-only helper (§8-clean).
    * The Fonts list is derived locally from the controller's full `tokens`

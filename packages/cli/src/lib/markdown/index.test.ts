@@ -202,7 +202,7 @@ test("renderChapters surfaces marker layout warnings via onChapterWarnings (ARCH
 
 test("renderChaptersToFile forwards onChapterWarnings through to renderChapters (ARCH #4)", async () => {
   const dir = await makeProject();
-  await writeFile(join(dir, "01.md"), "@continue\nHi\n", "utf8");
+  await writeFile(join(dir, "01.md"), "@continue\n\nHi\n", "utf8");
 
   const captured: { file: string; warnings: LayoutWarning[] }[] = [];
   const outDir = join(dir, "dist");

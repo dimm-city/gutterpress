@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Details section of ProjectConfigPanel — title, authors, output filename,
-   * source files. All state + `api.manifest.*` calls live in
+   * source files. All state + `manifest*` capability calls live in
    * `DetailsSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods directly (plain

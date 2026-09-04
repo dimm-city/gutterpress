@@ -13,8 +13,8 @@
  *
  * Manifest editing uses the `yaml` library's Document API so existing comments
  * and formatting round-trip cleanly (the same `yaml` dep `manifest.ts` parses
- * with). This module is host-side (node:fs); the renderer reaches it through a
- * thin SvelteKit server route.
+ * with). This module is host-side (node:fs); the renderer reaches it through
+ * the `plugin:*` typed IPC channels (`packages/desktop/electron/api/plugin.ts`).
  *
  * Bundle-safety (CLAUDE.md §1/§3): no bundlers or computed-path dynamic
  * imports. Validation reuses `loadPlugin` from `markdown/plugins.ts`, which

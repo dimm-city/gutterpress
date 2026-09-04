@@ -1,0 +1,33 @@
+title: "Fixture: Backyard Field Notes"
+authors:
+  - "Gutterpress test fixtures"
+source:
+  files:
+    - 01-introduction.md
+    - 02-field-notes.md
+    - 03-checklist.md
+styles:
+  - styles/book.css
+# SFE-P3e Lane A: a REAL local-file plugin. `./plugins/callout.js` is a
+# standard `(md, options) => void` markdown-it plugin with a default export
+# (see that file's own header) — no receipt, no vendoring, no network to
+# resolve it; it is the SOLE definition of the `@@callout` core rule this
+# fixture's chapters exercise.
+#
+# `packages/desktop/electron/editor-projection.ts`'s `buildHostEditorProjection`
+# (the desktop rich editor's own host-side pipeline) resolves this entry
+# through `gutterpress/plugins`' `loadPluginsWithCss` — the SAME
+# degrade-and-report loader the live preview uses (D11 pre-approved this
+# subpath; `editor-projection.ts` is its first real consumer). There is no
+# second, narrower loader: a real CLI build/preview against this project
+# resolves this exact entry through that identical function.
+#
+# Previously (SFE-P3d-parity) this named an uninstalled npm package
+# (`gutterpress-plugin-callout`) no loader could ever load — SFE-P3e
+# replaced that with a genuinely loadable local file specifically so
+# `editor-projection-host.test.ts` and the three
+# `real-book-plugin-*.test.ts` files could drive the desktop's real plugin-
+# loading pipeline end to end, not a hand-built `md` instance standing in
+# for it.
+plugins:
+  - ./plugins/callout.js

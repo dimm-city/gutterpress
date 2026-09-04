@@ -15,9 +15,10 @@
  * `registerHostServices()` after every dependency any field's closures need
  * has been constructed. Each domain's `server-bridge/*-hooks.ts` module keeps
  * its own typed interface and its own `getXHooks()` accessor — narrow,
- * well-typed accessors are good call-site ergonomics, and ~40 route files
- * already call them by name — but each accessor now reads a field off THIS
- * single object instead of owning an independent globalThis slot.
+ * well-typed accessors are good call-site ergonomics, and ~40 call sites
+ * across the `electron/api/*.ts` IPC registrars already call them by name —
+ * but each accessor now reads a field off THIS single object instead of
+ * owning an independent globalThis slot.
  *
  * `LibModule` below is the REAL `gutterpress` module type (matching
  * main.ts's own `loadLib`). Storing every hook group against this concrete
@@ -53,11 +54,12 @@ import type { RecentFolder } from "../recent-folders";
 export type LibModule = typeof import("gutterpress");
 
 /**
- * The full host surface the SvelteKit handler's server routes can reach into
- * main.ts through. One field per former globalThis key. Registration is
- * atomic (see {@link registerHostServices}), so there is no "half
- * registered" state for a route to reason about — a field is either present
- * with the real object, or the whole thing is `null`.
+ * The full host surface the typed IPC handlers (`electron/api/*.ts`'s
+ * `secureHandle(...)` registrars) can reach into main.ts through. One field
+ * per former globalThis key. Registration is atomic (see
+ * {@link registerHostServices}), so there is no "half registered" state for
+ * a handler to reason about — a field is either present with the real
+ * object, or the whole thing is `null`.
  */
 export interface HostServices {
   app: AppHooks;

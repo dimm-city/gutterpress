@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
 import type { EngineBrowser, TokenStore } from "gutterpress";
+import type { SecureHandle } from "../server-bridge/secure-handle";
 
 type LibModule = typeof import("gutterpress");
 
@@ -362,4 +363,9 @@ export class ExportController {
       await fsp.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
     }
   }
+}
+
+/** Register `api:build` (SFE-P6b, extracted from electron/main.ts). */
+export function registerExportHandlers(secureHandle: SecureHandle, exportController: ExportController): void {
+  secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
 }

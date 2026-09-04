@@ -16,13 +16,14 @@
    * Four tabs, backed by FIVE controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
    *   1. Details       — title, authors, output filename, source files
-   *                      (`api.manifest.{read,setFields}`).
+   *                      (`manifestRead`/`manifestSetFields`).
    *   2. Look & style  — theme grid (`AppearanceSection`) → design tokens
    *                      (`DesignSection`) → the raw stylesheet list
    *                      (`StylesSection`) behind an "Advanced" disclosure
    *                      (UX review M35's writer-shaped merge, unchanged).
    *   3. Plugins       — configured list + toggle + validate + recommended
-   *                      built-ins (`api.plugin.*`).
+   *                      built-ins (`$lib/project-config/
+   *                      project-config-capability`'s `plugin*` functions).
    *   4. Connections   — this project's sync surface (remote diagnosis +
    *                      Test Remote Access; `ProjectConnectionsSection`,
    *                      self-loading — no controller).
@@ -38,10 +39,36 @@
    * every rule under that ancestor class.
    *
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
-   * goes through `api.*` HTTP routes inside the controllers.
+   * goes through `$lib/files/files-capability`'s / `$lib/project-config/
+   * project-config-capability`'s / `$lib/doctor/doctor-capability`'s typed
+   * IPC inside the controllers.
    */
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import { getDoctorDiagnostics } from "$lib/doctor/doctor-capability";
+  import { readFile, writeFile, listDir } from "$lib/files/files-capability";
+  import {
+    projectListStyles,
+    styleSetActive,
+    manifestRead,
+    manifestSetFields,
+    themeListBuiltIn,
+    themeListProject,
+    themeGetActive,
+    themeGetPrevious,
+    themeApply,
+    themeRevert,
+    themeRemove,
+    themeImportFromFolder,
+    themeImportFromFile,
+    themeImportFromUrl,
+    themeReadCss,
+    pluginList,
+    pluginRecommended,
+    pluginValidate,
+    pluginSetEnabled,
+    pluginAddNpm,
+    pluginAddLocal,
+  } from "$lib/project-config/project-config-capability";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
   import { AppearanceSectionController } from "$lib/routes/appearance-section-controller.svelte";
@@ -95,9 +122,9 @@
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    readFile: (path) => api.fs.readFile(path),
-    writeFile: (path, content) => api.fs.writeFile(path, content),
+    listStyles: (dir) => projectListStyles(dir, repoRoot),
+    readFile: (path) => readFile(path),
+    writeFile: (path, content) => writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
     onEditRawCss: (path) => onEditRawCss?.(path),
   });
@@ -105,8 +132,8 @@
   // ── Styles — refreshes Design after a toggle. ──────────────────────────
   const styles = new StylesSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    setActive: (dir, paths) => api.style.setActive(dir, paths),
+    listStyles: (dir) => projectListStyles(dir, repoRoot),
+    setActive: (dir, paths) => styleSetActive(dir, paths),
     onToggled: (on) => toast?.success?.(on ? "Stylesheet enabled." : "Stylesheet disabled."),
     onEditRawCss: (path) => onEditRawCss?.(path),
     afterStyleChange: () => design.loadDesign(),
@@ -115,24 +142,22 @@
   // ── Details ─────────────────────────────────────────────────────────────
   const details = new DetailsSectionController({
     projectDir: projectDirAccessor,
-    readManifest: (dir) => api.manifest.read(dir),
-    writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    readManifest: (dir) => manifestRead(dir),
+    writeManifest: (dir, updates) => manifestSetFields(dir, updates),
     // The source-files list universe: top-level markdown files (the same set
     // the render pipeline includes when the manifest lists none).
     listMarkdownFiles: (dir) =>
-      api.fs
-        .listDir(dir)
-        .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
+      listDir(dir).then((entries) =>
+        entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name),
+      ),
     // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data the Help tab shows.
+    // diagnostics data the Help tab shows.
     listMissingPrintTools: () =>
-      api
-        .doctor()
-        .then((d) =>
-          (d.tools ?? [])
-            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-            .map((t) => t.id),
-        ),
+      getDoctorDiagnostics().then((d) =>
+        (d.tools ?? [])
+          .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+          .map((t) => t.id),
+      ),
     onSaved: () => toast?.success?.("Project details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
@@ -140,17 +165,17 @@
   // ── Appearance — refreshes Styles + Design after apply/remove. ─────────
   const appearance = new AppearanceSectionController({
     projectDir: projectDirAccessor,
-    listBuiltIn: () => api.theme.listBuiltIn(),
-    listProject: (dir) => api.theme.listProject(dir),
-    getActive: (dir) => api.theme.getActive(dir),
-    getPrevious: (dir) => api.theme.getPrevious(dir),
-    apply: (dir, target) => api.theme.apply(dir, target),
-    revert: (dir) => api.theme.revert(dir),
-    remove: (dir, id) => api.theme.remove(dir, id),
-    importFromFolder: (dir) => api.theme.importFromFolder(dir),
-    importFromFile: (dir) => api.theme.importFromFile(dir),
-    importFromUrl: (dir, url) => api.theme.importFromUrl(dir, url),
-    readCss: (dir, source) => api.theme.readCss(dir, source),
+    listBuiltIn: () => themeListBuiltIn(),
+    listProject: (dir) => themeListProject(dir),
+    getActive: (dir) => themeGetActive(dir),
+    getPrevious: (dir) => themeGetPrevious(dir),
+    apply: (dir, target) => themeApply(dir, target),
+    revert: (dir) => themeRevert(dir),
+    remove: (dir, id) => themeRemove(dir, id),
+    importFromFolder: (dir) => themeImportFromFolder(dir),
+    importFromFile: (dir) => themeImportFromFile(dir),
+    importFromUrl: (dir, url) => themeImportFromUrl(dir, url),
+    readCss: (dir, source) => themeReadCss(dir, source),
     onApplied: (themeId) => {
       onThemeApplied?.(themeId);
       toast?.success?.("Theme applied — close Project settings to see it in the preview. Use Design to fine-tune.");
@@ -163,12 +188,12 @@
   // ── Plugins ─────────────────────────────────────────────────────────────
   const plugins = new PluginsSectionController({
     projectDir: projectDirAccessor,
-    list: (dir) => api.plugin.list(dir),
-    recommended: () => api.plugin.recommended(),
-    validate: (dir) => api.plugin.validate(dir),
-    setEnabled: (dir, ref, enabled) => api.plugin.setEnabled(dir, ref, enabled),
-    addNpm: (dir, name, exportName) => api.plugin.addNpm(dir, name, exportName),
-    addLocal: (dir) => api.plugin.addLocal(dir),
+    list: (dir) => pluginList(dir),
+    recommended: () => pluginRecommended(),
+    validate: (dir) => pluginValidate(dir),
+    setEnabled: (dir, ref, enabled) => pluginSetEnabled(dir, ref, enabled),
+    addNpm: (dir, name, exportName) => pluginAddNpm(dir, name, exportName),
+    addLocal: (dir) => pluginAddLocal(dir),
   });
 
   // ── Lifecycle: load every section's data on mount ────────────────────────

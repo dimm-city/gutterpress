@@ -11,7 +11,10 @@
     "test": "bun --filter '*' test",
     "typecheck": "bun --filter '*' typecheck",
     "desktop:dev": "bun --cwd packages/desktop dev",
-    "desktop:electron": "bun --cwd packages/desktop electron:dev"
+    "desktop:electron": "bun --cwd packages/desktop electron:dev",
+    "check:generated-files": "node tools/check-generated-files.mjs",
+    "check:architecture": "node tools/check-architecture.mjs",
+    "check:vendored": "node packages/vscode-markdown-editor/scripts/verify-vendored.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

@@ -1,0 +1,111 @@
+{
+  "compilerOptions": {
+    // ---------------------------------------------------------------------
+    // Module format: WHY this is NOT "commonjs"/"node16", even though the
+    // compiled `main` entry (dist/extension.js, package.json "type":
+    // "commonjs") loads as CommonJS via Node's require() in a real VS Code
+    // extension host.
+    //
+    // SFE-P3c ("the run that adds a real build step") SOLVED the CommonJS-
+    // vs-ESM problem the previous version of this comment deferred — here
+    // is what actually happens, and why this compiler-option pairing is
+    // STILL the correct one now that a real build exists (not merely left
+    // over from before it did):
+    //
+    // This package's one load-bearing production import is
+    // `@dimm-city/gutterpress-editor` (packages/editor), which is ESM-only
+    // by design (package.json "type": "module") and exposes its surface
+    // ONLY via a package.json "exports" map pointing directly at TypeScript
+    // source — no "main", no "types" fallback (see packages/editor's own
+    // src/index.ts header). `scripts/build.mjs` builds dist/extension.js
+    // with `bun build --target=node --format=cjs --external vscode` —
+    // "vscode" is the ONLY external specifier. `@dimm-city/gutterpress-editor`
+    // is NOT external: Bun's bundler resolves its "exports" map, reads the
+    // TypeScript source directly, and BUNDLES/INLINES it into the same
+    // dist/extension.js output, converting its ESM syntax to the file's
+    // CJS format as part of that one bundling pass. The "CommonJS `require()`
+    // of a raw ESM file" problem this comment used to describe only applies
+    // to NODE'S OWN native module loader trying to load a separate ESM
+    // file at RUNTIME — it never arises here, because by the time Node
+    // ever sees dist/extension.js, the dependency's code has already been
+    // rewritten and concatenated into that one CJS file at BUILD time.
+    // "vscode" stays external because it is not an npm-installable module
+    // at all — the real extension host injects it — so there is nothing
+    // for the bundler to inline; Node's own `require("vscode")` resolves it
+    // against the host's own module registry, exactly as every real VS
+    // Code extension expects.
+    //
+    // Given that, this file's job is unchanged from before the build step
+    // existed: TYPECHECK the real dependency edge (`import { EDITOR_PROTOCOL_VERSION }
+    // from "@dimm-city/gutterpress-editor/core"`, now consumed by
+    // src/protocol/**, src/host/**, and src/provider.ts, not just proven as
+    // an unused import). Empirically verified against this repo's exact
+    // pinned `typescript` (5.9.3, see root bun.lock) before choosing this
+    // pairing (verification preserved from the original investigation):
+    //   - "moduleResolution": "node10"/"node" CANNOT see a package's
+    //     "exports" map at all — tsc reports the module's real path but
+    //     refuses it: "this result could not be resolved under your
+    //     current 'moduleResolution' setting. Consider updating to
+    //     'node16', 'nodenext', or 'bundler'" (TS2307).
+    //   - "module": "node16" (the only module setting "moduleResolution":
+    //     "node16" accepts — TS5110 rejects any other pairing) DOES see
+    //     the export, but then correctly refuses it for a different
+    //     reason: a CommonJS-mode file statically importing an ESM-only
+    //     package cannot become a `require()` call (TS1479 — "the
+    //     referenced file is an ECMAScript module and cannot be imported
+    //     with 'require'. Consider writing a dynamic 'import(...)' call
+    //     instead"). This is TypeScript correctly describing what NODE
+    //     ITSELF would refuse at runtime WITHOUT a bundler in the loop —
+    //     exactly the case this package's real build step avoids by
+    //     bundling instead of relying on Node's native loader.
+    //   - "moduleResolution": "bundler" flatly REJECTS "module": "commonjs"
+    //     under this exact TypeScript version (TS5095 — "'bundler' can
+    //     only be used when 'module' is set to 'preserve' or to 'es2015'
+    //     or later").
+    // "module": "preserve" + "moduleResolution": "bundler" remains the only
+    // combination that typechecks this real dependency edge, and it
+    // matches both packages/cli's and packages/editor's own tsconfig
+    // pairing, and — not coincidentally — the actual bundler
+    // (`scripts/build.mjs`'s `bun build`) that resolves it for real at
+    // build time.
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "moduleDetection": "force",
+
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+
+    // The extension host is a Node process (D9: "VS Code host owns...
+    // file and workspace events"), so Node builtins are permitted in this
+    // package — unlike packages/editor (D4: framework-free, browser-safe,
+    // "no ... node:fs ... imports"). src/provider.ts uses "node:crypto"
+    // for its webview CSP nonce.
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  // Mirrors packages/editor/tsconfig.json: tests/ is part of the strict
+  // typecheck program (this is a brand-new package with no other layer
+  // that would otherwise catch a type error in a test file, and the run's
+  // gate gives `typecheck` and `test` separate, equally load-bearing
+  // commands).
+  "include": ["src", "tests"],
+  // src/webview/tsconfig.json's own header names these two edits as the
+  // integrator step its DOM-aware program needs to be reachable at all:
+  // this DOM-free root program must never try to typecheck src/webview/**
+  // or tests/webview/** itself (no "DOM" in its own "lib" above — see that
+  // file's header for the full "DOM-free root, DOM-aware nested program"
+  // rationale). package.json's "typecheck" script is the companion edit —
+  // it chains both programs so `bun run typecheck` covers the whole package.
+  "exclude": ["src/webview", "tests/webview"]
+}

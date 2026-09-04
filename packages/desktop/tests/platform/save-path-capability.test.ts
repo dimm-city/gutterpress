@@ -6,7 +6,11 @@ import {
 } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
-import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+server";
+// dialog/save-pdf's own registration coverage moved to dialog-ipc.test.ts
+// (SFE-P5c1: migrated to typed IPC, `electron/api/dialog.ts`'s
+// `dialogSavePdf`). This file keeps only the ExportController.build half —
+// the actual finding #4 bypass, wired to the REAL savePaths service.
+import { dialogSavePdf } from "../../electron/api/dialog";
 
 // Finding #4 (2026-07-13 maintainer review): "PDF export accepts arbitrary
 // output paths. The save dialog does not issue a capability, while api:build
@@ -19,14 +23,6 @@ import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+serv
 // before doing any work — an `out` the Save dialog never returned (or one
 // already consumed) is rejected with `OUT_NOT_AUTHORIZED`, and never reaches
 // the build/rename pipeline.
-
-function request(body: unknown = {}): Request {
-  return new Request("http://local.test", {
-    method: "POST",
-    body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
-  });
-}
 
 let savedHostServices: HostServices | null;
 let savePaths: ReturnType<typeof createSavePathsService>;
@@ -56,26 +52,6 @@ beforeEach(() => {
 
 afterEach(() => {
   registerHostServices(savedHostServices as HostServices);
-});
-
-// ── dialog/save-pdf registers what the native dialog returned ──────────────
-
-test("dialog/save-pdf registers the path the native Save dialog returned as a one-time capability", async () => {
-  const chosen = "/home/author/book.pdf";
-  nextSaveResult = { canceled: false, filePath: chosen };
-
-  const res = await savePdfRoute({ request: request({}) } as Parameters<typeof savePdfRoute>[0]);
-  expect(await res.json()).toBe(chosen);
-
-  // Registered by the route itself — consumable exactly once.
-  expect(savePaths.consume(chosen)).toBe(true);
-  expect(savePaths.consume(chosen)).toBe(false);
-});
-
-test("a cancelled Save dialog registers nothing", async () => {
-  nextSaveResult = { canceled: true };
-  await savePdfRoute({ request: request({}) } as Parameters<typeof savePdfRoute>[0]);
-  expect(savePaths.consume("/home/author/book.pdf")).toBe(false);
 });
 
 // ── ExportController.build: the actual bypass, wired to the real capability ─
@@ -129,10 +105,10 @@ test("api:build with an arbitrary 'out' never issued by the Save dialog is rejec
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
 });
 
-test("api:build with an 'out' registered by the save-pdf route is accepted, and consumed exactly once", async () => {
+test("api:build with an 'out' registered by dialog:savePdf is accepted, and consumed exactly once", async () => {
   const chosen = "/home/author/book.pdf";
   nextSaveResult = { canceled: false, filePath: chosen };
-  await savePdfRoute({ request: request({}) } as Parameters<typeof savePdfRoute>[0]);
+  await dialogSavePdf();
 
   const controller = makeController();
   const res = await controller.build({ input: "/book", out: chosen });

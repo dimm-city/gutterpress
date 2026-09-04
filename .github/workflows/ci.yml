@@ -74,6 +74,9 @@ jobs:
 
       # The desktop suite imports gutterpress by name (resolves to its built
       # dist/), so build the package first — same prerequisite as release.yml.
+      # The cli suite's own tests/integration/package-exports.test.ts needs the
+      # same build: it resolves gutterpress/* subpaths against a real dist/
+      # and hard-fails (not skips, per AP-21) when dist/ is missing.
       - name: Build package dist
         run: bun run build
         working-directory: packages/cli
@@ -118,6 +121,98 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Self-tests first (a gate must prove it can fail — see
+      # docs/plans/source-first-editor/guardrails.md), then the live checks:
+      # same self-test-then-gate pattern as the renderer-purity pair below.
+      - name: Check generated-file hygiene self-test
+        run: node tools/check-generated-files.test.mjs
+
+      - name: Check generated-file hygiene (no tracked build output)
+        run: bun run check:generated-files
+
+      - name: Check architecture boundaries self-test
+        run: node tools/check-architecture.test.mjs
+
+      - name: Check architecture boundaries (plan D4/D10 + ProseMirror ban)
+        run: bun run check:architecture
+
+      # SFE-P1b2 repair (G-12/AP-20): verify-vendored.mjs (the checksum +
+      # completeness gate proving packages/vscode-markdown-editor/dist/ is
+      # either byte-identical to the published tarball or exactly the
+      # reviewed gp-fork patch state — see that package's PATCHES.md) had no
+      # CI invocation path and no committed self-test, despite PATCHES.md
+      # and SFE-P1b2.md's "Security and trust" section both claiming it ran.
+      # Same self-test-then-gate order as the generated-files pair above.
+      - name: Check vendored fork integrity self-test
+        run: node packages/vscode-markdown-editor/scripts/verify-vendored.test.mjs
+
+      - name: Check vendored fork integrity (renderCustomBlock patch)
+        run: bun run check:vendored
+
+      # packages/editor (@dimm-city/gutterpress-editor, SFE-P1a): self-test
+      # first (a gate must prove it can fail), then the live D4 browser-purity
+      # gate, then the package's own typecheck/test — none of these ran in CI
+      # before this step existed (AP-20: a gate that exists but is never
+      # invoked is the same as no gate at all). NOTE: never `bun --cwd
+      # <pkg> run <script>` — see the NOTE at the type-check job below;
+      # `working-directory` + `bun run <script>` is the only form Bun 1.3.x
+      # actually executes.
+      - name: Check editor browser-purity self-test
+        run: node packages/editor/scripts/check-browser-purity.test.mjs
+
+      - name: Check editor browser-purity (D4)
+        working-directory: packages/editor
+        run: bun run check:browser-purity
+
+      # SFE-P2b repair (G-12/AP-20 shape): packages/editor now depends on
+      # "gutterpress": "workspace:*" and four files resolve `gutterpress/render`
+      # (src/gutterpress/{match,mount,plan,provider}.ts type-only;
+      # tests/gutterpress/provider.test.ts, tests/gutterpress/limits.btest.ts,
+      # and tests/gutterpress/support/entry.ts as value imports). That subpath
+      # maps only to packages/cli's gitignored dist/render.{js,d.ts} — build it
+      # here, same prerequisite and command the desktop-test/type-check jobs
+      # already document for their own gutterpress-by-name consumers, so every
+      # job that resolves gutterpress/render builds it first instead of
+      # depending on a stale dist/ left over from a previous step.
+      - name: Build package dist (packages/editor resolves gutterpress/render)
+        working-directory: packages/cli
+        run: bun run build:library
+
+      - name: Run TypeScript compiler (packages/editor)
+        working-directory: packages/editor
+        run: bun run typecheck
+
+      - name: Run tests (packages/editor)
+        working-directory: packages/editor
+        run: bun run test
+
+      # SFE-P1b repair (G-12/AP-20): test:browser was a required run gate
+      # with no CI invocation path, so the 37 real-Chromium assertions
+      # backing every D5 case's PASS row in SFE-P1b-decision.md ran zero
+      # times in CI. `packages/editor/tests/browser-harness/browser.ts`'s
+      # launch fallback tries PLAYWRIGHT_BROWSERS_PATH, then this env var,
+      # then a fixed system-Chrome path list — never `playwright install` —
+      # so pointing it at the runner image's preinstalled Chrome (the same
+      # binary the `test`/`desktop-test` jobs already use for Puppeteer) is
+      # enough; no browser download step is added.
+      - name: Configure browser harness to use system Chrome
+        run: echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+
+      - name: Run browser tests (packages/editor)
+        working-directory: packages/editor
+        run: bun run test:browser
+
+      # packages/vscode-extension (@dimm-city/gutterpress-vscode, SFE-P1a):
+      # same AP-20 rationale as packages/editor above — a package having
+      # `typecheck`/`test` scripts proves nothing if CI never runs them.
+      - name: Run TypeScript compiler (packages/vscode-extension)
+        working-directory: packages/vscode-extension
+        run: bun run typecheck
+
+      - name: Run tests (packages/vscode-extension)
+        working-directory: packages/vscode-extension
+        run: bun run test
+
       # knip was dropped 2026-08-30 (owner's call). Its lifetime as a gate: 4
       # days; 3 failures, all its own wiring bug (missing svelte-kit sync),
       # which blocked the 0.10.2 release PR; 0 real catches while gating. Its
@@ -146,14 +241,16 @@ jobs:
         run: node tools/check-render-purity.test.mjs
 
       # §8 renderer-purity guardrail: fail if host/node code leaked into the
-      # built desktop CLIENT SPA bundle. Scope is build/client/ ONLY —
-      # adapter-node's build/server/ + build/handler.js are host Node code by
-      # design (§8). --strict: the build step above just ran, so an absent
-      # build/client means the build silently did nothing — that must FAIL,
-      # not skip (review finding: the non-strict form passed vacuously while
-      # the broken `bun --cwd` build step produced no output at all).
+      # built desktop CLIENT SPA bundle. Since SFE-P5d switched the desktop
+      # to @sveltejs/adapter-static, the entire build/ directory IS the
+      # client bundle (no build/server or build/handler.js exists anymore),
+      # so the scan covers build/ — matching the package's own build script.
+      # --strict: the build step above just ran, so an absent build/ means
+      # the build silently did nothing — that must FAIL, not skip (review
+      # finding: the non-strict form passed vacuously while the broken
+      # `bun --cwd` build step produced no output at all).
       - name: Check renderer purity (CLAUDE.md §8)
-        run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
+        run: node tools/check-render-purity.mjs packages/desktop/build --strict
 
 
   type-check:

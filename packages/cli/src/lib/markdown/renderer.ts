@@ -4,8 +4,8 @@
  * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
  * plugins, Gutterpress's inlined marker parser (`markers.js`), and the node-free
  * leveled logger (console-only). It contains NO `node:*`,
- * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the
- * browser renderer (the PWA WebAdapter, #33) AND bundled into the
+ * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported in the
+ * browser (via `gutterpress/render`) AND bundled into the
  * `bun build --compile` CLI binary alike.
  *
  * The plugin *author* types and the markdown-it factory live here (not in

@@ -1,0 +1,69 @@
+{
+  "name": "@dimm-city/gutterpress-vscode",
+  "version": "0.11.0-alpha.0",
+  "description": "Gutterpress rich-editing custom text editor for VS Code (Experimental — SFE-P3c: host<->webview protocol, document gateway, build step). See docs/plans/source-first-editor-enterprise-refactor.md.",
+  "private": true,
+  "type": "commonjs",
+  "publisher": "dimm-city",
+  "displayName": "Gutterpress",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:gutterpress.markdownEditor",
+    "onCommand:gutterpress.build",
+    "onCommand:gutterpress.preview",
+    "onCommand:gutterpress.openSource"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "gutterpress.markdownEditor",
+        "displayName": "Gutterpress Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "gutterpress.build",
+        "title": "Gutterpress: Build",
+        "category": "Gutterpress"
+      },
+      {
+        "command": "gutterpress.preview",
+        "title": "Gutterpress: Preview",
+        "category": "Gutterpress"
+      },
+      {
+        "command": "gutterpress.openSource",
+        "title": "Gutterpress: Open Source",
+        "category": "Gutterpress"
+      }
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/webview/tsconfig.json",
+    "test": "bun test",
+    "test:browser": "bun test ./tests/webview/mount.btest.ts && bun test ./tests/webview/fallback.btest.ts && bun test ./tests/webview/disposal.btest.ts && bun test ./tests/webview/csp-inertness.btest.ts && bun test ./tests/webview/projection-upgrade.btest.ts && bun test ./tests/webview/edit-version-reconciliation.btest.ts && bun test ./tests/webview/production-shell.btest.ts && bun test ./tests/webview/protocol-rejection.btest.ts && bun test ./tests/webview/trust-explanation.btest.ts",
+    "build": "bun scripts/build.mjs"
+  },
+  "dependencies": {
+    "@dimm-city/gutterpress-editor": "workspace:*",
+    "gutterpress": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.134.0",
+    "typescript": "^5"
+  }
+}

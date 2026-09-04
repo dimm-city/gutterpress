@@ -5,9 +5,11 @@
   import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
+  import { setAutoSync } from "$lib/remote/remote-capability";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
-  import { api, type AppImageIntegrationStatus } from "$lib/api";
+  import type { AppImageIntegrationStatus } from "$lib/platform/dtos";
+  import { appImageIntegration } from "$lib/app-lifecycle/app-lifecycle-capability";
 
   let {
     onClose,
@@ -93,7 +95,7 @@
 
   onMount(() => {
     if (!isDesktop()) return;
-    api.app.appImageIntegration
+    appImageIntegration
       .getStatus()
       .then((status) => {
         appImage = status;
@@ -117,8 +119,8 @@
     try {
       const result =
         action === "install"
-          ? await api.app.appImageIntegration.install()
-          : await api.app.appImageIntegration.remove();
+          ? await appImageIntegration.install()
+          : await appImageIntegration.remove();
       appImage = result.status;
       appImageNotice = result.message;
     } catch (e) {
@@ -499,7 +501,7 @@
               settings.set({ versionHistory: { autoSync: enabled } });
               // Notify the host orchestrator immediately so the change takes effect
               // without waiting for a settings reload cycle (§4.3).
-              if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+              if (isDesktop()) setAutoSync(enabled).catch(() => {});
             }}
           />
         </div>

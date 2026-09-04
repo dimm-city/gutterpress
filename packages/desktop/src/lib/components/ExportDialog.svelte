@@ -12,10 +12,10 @@
    *
    * Mounted fresh per open ({#if exportOpen} in +page.svelte) so state resets;
    * dialogBehavior owns ARIA/Escape/focus-trap/restore. PWA-clean (§8):
-   * api.* + platform predicates only.
+   * `project-config-capability`'s typed IPC + platform predicates only.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
+  import { tplSaveAsTemplate } from "$lib/project-config/project-config-capability";
   import { isDesktop } from "$lib/platform";
   import { dialogBehavior } from "$lib/dialog";
   import type { ToastController } from "$lib/components/Toast.svelte";
@@ -88,7 +88,7 @@
     templateBusy = true;
     templateError = null;
     try {
-      const tpl = await api.tpl.saveAsTemplate({
+      const tpl = await tplSaveAsTemplate({
         projectDir,
         name: templateName.trim(),
         sharedRefs: includeShared ? "vendor" : "exclude",

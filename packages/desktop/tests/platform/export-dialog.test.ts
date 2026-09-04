@@ -43,9 +43,9 @@ describe("ExportDialog — formats and settings", () => {
     expect(page()).toMatch(/skipPreValidate: !opts\?\.validate/);
   });
 
-  test("the template format saves via api.tpl.saveAsTemplate with a validated name", () => {
+  test("the template format saves via tplSaveAsTemplate with a validated name", () => {
     const src = dialog();
-    expect(src).toContain("api.tpl.saveAsTemplate");
+    expect(src).toContain("tplSaveAsTemplate");
     expect(src).toContain("Give your template a name.");
   });
 

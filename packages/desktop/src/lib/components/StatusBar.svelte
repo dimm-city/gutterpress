@@ -15,14 +15,14 @@
    * "All changes saved" at rest, never blank), so both pieces of status are
    * readable at a glance — not sporadic or hard to see.
    *
-   * PWA-clean: all host work via api.* routes (CLAUDE.md §8 / ADR 0004).
+   * PWA-clean: all host work via typed IPC capability modules (CLAUDE.md §8 / ADR 0004).
    * No node: builtins or gutterpress value imports.
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { api } from "$lib/api";
+  import { vcsListSnapshotsPage } from "$lib/vcs/vcs-capability";
   import { relativeTime } from "$lib/format";
   import { onMount } from "svelte";
   import type { SyncState } from "$lib/platform/contract";
@@ -147,7 +147,7 @@
   // protections a writer reasons about, each separately: saved on this
   // computer, previous versions, and the online copy. Rows 1 and 3 use data the
   // bar already has; the "previous versions" time is fetched lazily on open via
-  // the PWA-clean api.vcs route (no $effect — event-driven, per CLAUDE.md §8).
+  // the PWA-clean vcs-capability call (no $effect — event-driven, per CLAUDE.md §8).
   let summaryOpen = $state(false);
   let summaryEl = $state<HTMLDivElement | null>(null);
   let latestVersionAt = $state<number | null>(null);
@@ -204,7 +204,7 @@
     if (!projectDir || !canSnapshot) return;
     versionsLoading = true;
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir, { limit: 1 });
+      const page = await vcsListSnapshotsPage(projectDir, { limit: 1 });
       latestVersionAt = page.entries[0]?.timestamp ?? null;
       versionsLoaded = true;
     } catch {

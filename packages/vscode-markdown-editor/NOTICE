@@ -1,0 +1,78 @@
+This package, @dimm-city/vscode-markdown-editor, is an internal Gutterpress
+fork of @vscode/markdown-editor@0.0.2-87, published by Microsoft Corporation
+under the MIT License. The upstream package declares "license": "MIT" in its
+own package.json; the published npm tarball ships no separate LICENSE file,
+so the MIT license text below is reproduced from the standard MIT template
+with Microsoft's copyright notice, as the tarball's own declared license.
+
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) Microsoft Corporation.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+------------------------------------------------------------------------------
+
+Provenance
+----------
+
+Upstream package:    @vscode/markdown-editor
+Upstream version:    0.0.2-87 (re-pinned 2026-09-03 from 0.0.2-85, itself
+                      re-pinned 2026-09-02 from 0.0.2-84; dist/index.js and
+                      dist/index.d.ts are byte-identical across all three,
+                      so every patch carries over; 0.0.2-87 changed only
+                      dist/web-editors.js, .d.ts and .js.map, which this
+                      fork vendors unpatched and Gutterpress does not import)
+Upstream source:     microsoft/vscode-packages, directory
+                      vscode-team-tools/packages/markdown-editor
+Upstream commit:     d9273d06982df9665363145e27b502205abe2ba1 (package.json
+                      "gitHead" field, as published)
+Vendored from:       https://registry.npmjs.org/@vscode/markdown-editor/-/markdown-editor-0.0.2-87.tgz
+Tarball integrity:   sha512-c1T5c2p2btf8NGVARkDN/qGezyZ25xCL/2KXqwsQeh9NmcH4bPZi2CtaeaLmQU2EyHS7WpdYKcIdwGMrJstLEg==
+                      (verified against the registry's recorded
+                      dist.integrity for this exact version at vendor time;
+                      also cross-checked by sha1 against dist.shasum,
+                      dcd62737850c848421dc399d5fba802eef9958c4)
+
+This fork was vendored from the PUBLISHED, BUNDLED NPM ARTIFACT
+(dist/index.js, dist/index.d.ts, and the other dist/ and src/*.css files
+listed in package.json's "files" array), not from the upstream TypeScript
+source tree. The upstream source repository
+(github.com/microsoft/vscode-packages, directory
+vscode-team-tools/packages/markdown-editor) was not reachable from the
+execution environment that produced this fork (cross-owner repository
+attach was unavailable), and the npm tarball itself ships only the built
+dist/ output plus a handful of CSS files under src/ — no TypeScript source.
+
+This is recorded as a deliberate, documented deviation from the ideal of
+forking from source, with an explicit follow-up: regenerate this fork from
+the upstream TypeScript source once the source repository is reachable, or
+upstream the renderCustomBlock seam itself as a pull request against
+microsoft/vscode-packages so this fork becomes unnecessary. See
+docs/plans/source-first-editor/runs/SFE-P1b.md ("Provenance constraint") and
+PATCHES.md ("Upstreaming / removal trigger") for the full record. This fork
+is designed for deletion per CLAUDE.md's design-for-deletion rule: it exists
+only to carry one missing generic extension seam and should be removed the
+moment upstream provides an equivalent, or Chrome/VS Code make it moot.
+
+Everything under dist/ and src/ in this package is Microsoft's published,
+MIT-licensed work, byte-identical to the published tarball except for the
+minimal, clearly marked ("/* gp-fork: renderCustomBlock */") additive patch
+documented in PATCHES.md. No Gutterpress-specific syntax, vocabulary, or
+branding has been introduced into the fork itself.

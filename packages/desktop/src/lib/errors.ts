@@ -16,6 +16,21 @@ export function friendlyHostError(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
 }
 
+/**
+ * Awaits one bridge (IPC) call, re-throwing any rejection with the Electron
+ * transport prefix scrubbed off its message (`friendlyHostError`) — the one
+ * wrapper every `$lib/*\/*-capability.ts` module applies to its calls, so
+ * the author-facing text a host handler threw is what a caller's own
+ * `e.message` handling sees.
+ */
+export async function hostCall<T>(op: Promise<T>): Promise<T> {
+  try {
+    return await op;
+  } catch (e) {
+    throw new Error(friendlyHostError(e instanceof Error ? e.message : String(e)));
+  }
+}
+
 function isMissingManifestError(msg: string): boolean {
   return (
     /\bNo [^\n]*manifest[^\n]* found(?:\s+in\b|[.!]?\s*$)/i.test(msg) ||
@@ -232,30 +247,7 @@ export interface FriendlyPublishError {
 }
 
 /**
- * SvelteKit's `error(status, message)` serializes a thrown route error as
- * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
- * `$lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
- * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
- * it — so every publish `catch (e)` in ProjectConfigPanel sees this raw
- * `{"message": "…"}` envelope as `e.message` instead of the message itself.
- * Peel it back before classifying so neither the summary nor the "Show
- * details" text ever shows an author a bare JSON blob.
- */
-function unwrapPublishErrorEnvelope(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{")) return text;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    const message = (parsed as { message?: unknown } | null)?.message;
-    if (typeof message === "string" && message) return message;
-  } catch {
-    // Not JSON (or not the expected shape) — treat the original text as the message.
-  }
-  return text;
-}
-
-/**
- * Map a raw publish error (from a publish route's thrown/rejected message, or
+ * Map a raw publish error (from a publish IPC handler's rejected message, or
  * a `PublishRunResult.error` string) to plain-language guidance, mirroring
  * `friendlyPdfError`'s approach: recognized technical shapes get a short
  * author-facing summary with the raw text preserved as `details`; messages
@@ -263,10 +255,19 @@ function unwrapPublishErrorEnvelope(text: string): string {
  * in electron/server-bridge/friendly-errors.ts — e.g. "No itch.io API key
  * found…", "Install the Azure SWA CLI first…", manifest-key guidance) pass
  * through unchanged with no details to hide.
+ *
+ * Through SFE-P5c3, this also unwrapped a `{"message": "…"}` JSON envelope
+ * SvelteKit's `error(status, message)` produced (`$lib/api.ts`'s `post`/`get`
+ * threw the raw response body verbatim). SFE-P5c4 deleted the last publish
+ * route, `$lib/api.ts`, and the JSON-serializing route handler together —
+ * `publish-capability.ts`'s `call()` now throws a plain, already-unwrapped
+ * `Error`, so no producer of that envelope remains on any live path. The
+ * unwrap step (`unwrapPublishErrorEnvelope`) was removed in the round-1
+ * repair that caught it surviving past its own deletion phase (AP-32).
  */
 export function friendlyPublishError(e: unknown): FriendlyPublishError {
   const raw = e instanceof Error ? e.message : String(e ?? "");
-  const msg = unwrapPublishErrorEnvelope(raw).trim();
+  const msg = raw.trim();
   if (!msg) {
     return { summary: "Publishing failed for an unknown reason." };
   }

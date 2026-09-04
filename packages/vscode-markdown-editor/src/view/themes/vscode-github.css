@@ -1,0 +1,393 @@
+/*
+ * VS Code markdown theme — GitHub layout variant (`md-theme-vscode-github`).
+ *
+ * One of two `--vscode-*`-variable-driven themes. This variant keeps the
+ * GitHub-style layout/typography (larger 16px base, 1.5 line-height, badge-
+ * style inline code, zebra tables); the sibling `vscode-default.css`
+ * (`md-theme-vscode-default`) mirrors VS Code's own markdown *preview*
+ * (`markdown-language-features/media/markdown.css`: 14px base, code blocks with
+ * a 1px border, 5px blockquote rule). Both consume the same `--vscode-*`
+ * variables and `--md-tok-*` token palette, so only layout/typography differs.
+ *
+ * A *variable-driven* theme: every color is expressed as `var(--vscode-*, …)`
+ * so the editor adopts whatever VS Code color theme is active (dark, light,
+ * high-contrast, or any custom theme) WITHOUT the editor knowing anything
+ * about VS Code. The editor only references variable NAMES — a documented
+ * contract — and bundles no VS Code CSS.
+ *
+ * Apply it via the editor `classNames` option:
+ *
+ *     new EditorView(model, { classNames: ['md-theme-vscode-github'] });
+ *
+ * In a real webview VS Code injects the `--vscode-*` custom properties onto
+ * the document root and sets a body theme class, so this theme just works. In
+ * the Component Explorer the same variables are supplied by a snapshot
+ * stylesheet scoped under a `.vscode-theme.<id>` wrapper (see
+ * `fixture/vscodeThemes`). Either way the cascade reaches this theme's rules.
+ *
+ * Fallbacks: each `var()` carries a light-palette fallback so the theme stays
+ * legible even with no `--vscode-*` variables present at all.
+ *
+ * Layout/typography mirrors the GitHub theme (the basis of the production VS
+ * Code markdown editor); only the colors are swapped for variables. Every
+ * selector is scoped under the theme class, so importing this file never
+ * affects the global page or any editor that did not opt in.
+ *
+ * Syntax-token colors are exposed as `--md-tok-*` custom properties (with
+ * light-palette fallbacks). Real VS Code derives token colors from the live
+ * tokenizer's color map (baked in per token), NOT from `--vscode-*`; the
+ * Component Explorer supplies a matching `--md-tok-*` palette per color theme.
+ */
+
+.md-editor.md-theme-vscode-github {
+    font-family: var(--markdown-font-family, -apple-system, BlinkMacSystemFont,
+            'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif);
+    font-size: var(--markdown-font-size, 16px);
+    line-height: var(--markdown-line-height, 1.5);
+    color: var(--vscode-editor-foreground, #1f2328);
+    word-wrap: break-word;
+    /*
+     * Active-block highlight (defined theme-agnostically in editor.css) follows
+     * the VS Code surface color so it stays a subtle inset on both light and
+     * dark color themes instead of a fixed light-grey box.
+     */
+    --md-block-active-background: var(--vscode-editorWidget-background, #f8f8f8);
+    /*
+     * Cursor color: editor.css paints `.md-cursor` with `--md-cursor-background`
+     * (theme-agnostic, black fallback); map it to the VS Code cursor color so it
+     * stays visible on dark color themes.
+     */
+    --md-cursor-background: var(--vscode-editorCursor-foreground, #000);
+    --md-html-comment-foreground: var(--vscode-descriptionForeground, #59636e);
+    --md-html-comment-hover-foreground: var(--vscode-editor-foreground, #1f2328);
+    --md-html-comment-font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular,
+            'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace);
+    --md-readonly-background: var(--vscode-button-secondaryBackground,
+            var(--vscode-editorWidget-background, #f3f3f3));
+    --md-readonly-background-hover: var(--vscode-button-secondaryHoverBackground,
+            var(--vscode-button-secondaryBackground,
+                var(--vscode-editorWidget-background, #e9e9e9)));
+    --md-readonly-foreground: var(--vscode-button-secondaryForeground,
+            var(--vscode-editorWidget-foreground, #444));
+    --md-readonly-border: var(--vscode-button-secondaryBorder,
+            var(--vscode-button-border,
+                var(--vscode-contrastBorder, var(--vscode-editorWidget-border, #b8b8b8))));
+    --md-readonly-border-hover: var(--vscode-button-secondaryBorder,
+            var(--vscode-button-border,
+                var(--vscode-contrastBorder, var(--vscode-editorWidget-border, #8d8d8d))));
+    --md-readonly-accent: var(--vscode-button-background, rgb(45, 92, 180));
+    --md-readonly-accent-foreground: var(--vscode-button-foreground, #fff);
+    --md-inline-code-background: color-mix(in srgb,
+            var(--vscode-textPreformat-background, #818b981f) 60%, transparent);
+    --md-find-widget-background: var(--vscode-editorWidget-background, #f3f3f3);
+    --md-find-widget-foreground: var(--vscode-editorWidget-foreground, #222);
+    --md-find-widget-border: var(--vscode-editorWidget-border, #c8c8c8);
+    --md-find-widget-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
+    --md-find-input-background: var(--vscode-input-background, #fff);
+    --md-find-input-foreground: var(--vscode-input-foreground, #222);
+    --md-find-placeholder-foreground: var(--vscode-input-placeholderForeground, #767676);
+    --md-find-input-caret: var(--vscode-editorCursor-foreground, currentColor);
+    --md-find-input-border: var(--vscode-input-border, #cecece);
+    --md-find-count-foreground: var(--vscode-editorWidget-foreground, #222);
+    --md-find-focus-border: var(--vscode-focusBorder, #007fd4);
+    --md-find-button-hover-background: var(--vscode-inputOption-hoverBackground, rgba(128, 128, 128, 0.18));
+    --md-find-disabled-foreground: var(--vscode-disabledForeground, rgba(97, 97, 97, 0.5));
+    --md-find-editor-background: var(--vscode-editor-background, #ffffff);
+    --md-find-match-background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+    --md-find-current-background: var(--vscode-editor-findMatchBackground, #a8ac94);
+    --md-find-current-border: var(--vscode-editor-findMatchBorder,
+            color-mix(in srgb, var(--vscode-editorWidget-foreground, #616161) 55%,
+                var(--vscode-editor-findMatchBackground, #a8ac94)));
+    --md-find-option-background: var(--vscode-inputOption-activeBackground, #007acc);
+    --md-find-option-border: color-mix(in srgb,
+            var(--vscode-focusBorder, #007acc) 70%,
+            var(--vscode-inputOption-activeForeground, #000000));
+    --md-find-option-foreground: var(--vscode-inputOption-activeForeground, #fff);
+    --md-find-error-border: var(--vscode-inputValidation-errorBorder, #be1100);
+    --md-find-error-foreground: var(--vscode-errorForeground, #a1260d);
+}
+
+.vscode-high-contrast .md-editor.md-theme-vscode-github,
+.vscode-high-contrast-light .md-editor.md-theme-vscode-github {
+    --md-inline-code-background: var(--vscode-textPreformat-background, #818b981f);
+}
+
+.md-theme-vscode-github .md-heading {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.md-theme-vscode-github h1.md-heading {
+    font-size: 2em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--vscode-textSeparator-foreground, #d1d9e0b3);
+}
+
+.md-theme-vscode-github h2.md-heading {
+    font-size: 1.5em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--vscode-textSeparator-foreground, #d1d9e0b3);
+}
+
+.md-theme-vscode-github h3.md-heading {
+    font-size: 1.25em;
+}
+
+.md-theme-vscode-github h4.md-heading {
+    font-size: 1em;
+}
+
+.md-theme-vscode-github h5.md-heading {
+    font-size: 0.875em;
+}
+
+.md-theme-vscode-github h6.md-heading {
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground, #59636e);
+}
+
+.md-theme-vscode-github .md-paragraph {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.md-theme-vscode-github .md-blockquote {
+    margin: 0 0 16px 0;
+    padding: 0 1em;
+    /* Matches padding-left; `em` is safe because shared marker geometry inherits font size. */
+    --md-blockquote-pad: 1em;
+    color: var(--vscode-descriptionForeground, #59636e);
+    border-left: 0.25em solid var(--vscode-textBlockQuote-border, #d1d9e0);
+}
+
+.md-theme-vscode-github .md-list {
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding-left: 2em;
+    /* The per-level indentation step the list gutter fills (matches padding-left). */
+    --md-list-indent-step: 2em;
+}
+
+.md-theme-vscode-github .md-thematic-break {
+    height: 0.25em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: var(--vscode-textSeparator-foreground, #d1d9e0);
+    border: 0;
+}
+
+.md-theme-vscode-github a {
+    color: var(--vscode-textLink-foreground, #0969da);
+    text-decoration: none;
+}
+
+.md-theme-vscode-github a:hover {
+    text-decoration: underline;
+}
+
+.md-theme-vscode-github strong {
+    font-weight: 600;
+}
+
+/* Inline code. */
+.md-theme-vscode-github :not(pre)>code {
+    font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular,
+            'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace);
+    font-size: 85%;
+    padding: 0.2em 0.4em;
+    margin: 0;
+    color: var(--vscode-textPreformat-foreground, inherit);
+    background-color: var(--md-inline-code-background);
+    border-radius: 6px;
+    white-space: break-spaces;
+}
+
+/* Fenced code block. */
+.md-theme-vscode-github .md-code-block {
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding: 6px 10px;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: var(--vscode-textCodeBlock-background, #f6f8fa);
+    border-radius: 6px;
+}
+
+.md-theme-vscode-github .md-code-block code {
+    font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular,
+            'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace);
+    padding: 0;
+    background-color: transparent;
+    border-radius: 0;
+}
+
+/*
+ * Syntax-highlight token colors. Driven by `--md-tok-*` custom properties so
+ * the explorer (or any embedder) can supply a palette matched to the active
+ * color theme. Fallbacks are the VS Code light theme palette.
+ */
+.md-theme-vscode-github .md-code-block .tok-keyword {
+    color: var(--md-tok-keyword, #0000ff);
+}
+
+.md-theme-vscode-github .md-code-block .tok-string {
+    color: var(--md-tok-string, #a31515);
+}
+
+.md-theme-vscode-github .md-code-block .tok-comment {
+    color: var(--md-tok-comment, #008000);
+}
+
+.md-theme-vscode-github .md-code-block .tok-number {
+    color: var(--md-tok-number, #098658);
+}
+
+.md-theme-vscode-github .md-code-block .tok-regexp {
+    color: var(--md-tok-regexp, #811f3f);
+}
+
+.md-theme-vscode-github .md-code-block .tok-type {
+    color: var(--md-tok-type, #267f99);
+}
+
+.md-theme-vscode-github .md-code-block .tok-annotation {
+    color: var(--md-tok-annotation, #267f99);
+}
+
+.md-theme-vscode-github .md-code-block .tok-tag {
+    color: var(--md-tok-tag, #800000);
+}
+
+.md-theme-vscode-github .md-code-block .tok-attribute {
+    color: var(--md-tok-attribute, #e50000);
+}
+
+.md-theme-vscode-github .md-code-block .tok-delimiter {
+    color: var(--md-tok-delimiter, inherit);
+}
+
+/*
+ * Display math has no container styling (KaTeX renders it inline-centered).
+ * Keep only the block spacing; horizontal scroll comes from the base sheet.
+ */
+.md-theme-vscode-github .md-math-block {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+/*
+ * KaTeX renders inline math at 1.21em with its own (larger) line-height, which
+ * would inflate the surrounding line box. Collapse it so the rendered math fits
+ * the text line and the paragraph height stays identical active vs inactive.
+ */
+.md-theme-vscode-github .md-inline-math .katex {
+    line-height: 1;
+}
+
+.md-theme-vscode-github .md-table-wrapper {
+    /* Block spacing lives on the wrapper (the scroll/BFC box) so it collapses
+       with siblings as before; the inner table has no margin of its own. */
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.md-theme-vscode-github .md-table {
+    border-collapse: collapse;
+    width: auto;
+}
+
+.md-theme-vscode-github .md-table th,
+.md-theme-vscode-github .md-table td {
+    padding: 6px 13px;
+    border: 1px solid var(--vscode-editorWidget-border, #d1d9e0);
+    text-align: left;
+}
+
+/*
+ * The editor renders every cell as <td> in a flat <table> of <tr> (no
+ * <thead>/<tbody>/<th>). Row order is: header, delimiter row, body rows.
+ */
+.md-theme-vscode-github .md-table tr:first-child td {
+    font-weight: 600;
+    padding-top: 11px;
+    padding-bottom: 11px;
+}
+
+/* Active: reclaim the header's extra spacing to host the delimiter row. */
+.md-theme-vscode-github .md-table.md-block-active tr:first-child td {
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.md-theme-vscode-github .md-table tr:nth-child(even):not(.md-table-delimiter-row) {
+    background-color: var(--vscode-textCodeBlock-background, #f6f8fa);
+}
+
+/*
+ * The delimiter row (`| --- | --- |`) is editor source shown only while
+ * editing; render it borderless with no vertical padding so it occupies just
+ * the compact 10px reclaimed from the header.
+ */
+.md-theme-vscode-github .md-table-delimiter-row td {
+    border: 0;
+    padding: 0 13px;
+    background: transparent;
+}
+
+/*
+ * Active table: the source `|` pipes ARE the outline. Drop the HTML cell
+ * borders (kept as transparent so the 1px box geometry — and thus the table's
+ * height and first-text X — is unchanged) and clear the zebra fill so the
+ * table reads as plain source.
+ */
+.md-theme-vscode-github .md-table.md-block-active td {
+    border-color: transparent;
+}
+
+.md-theme-vscode-github .md-table.md-block-active tr:nth-child(even):not(.md-table-delimiter-row) td {
+    background-color: transparent;
+}
+
+/*
+ * Shift each cell's leading pipe onto its left gridline (where the border was)
+ * and the last cell's closing pipe onto the right gridline. `position:
+ * relative` moves only the painted glyph by the cell's horizontal padding;
+ * siblings and the glue's reserved width are untouched, so active/inactive
+ * height and first-text X stay pixel-identical.
+ */
+.md-theme-vscode-github .md-table.md-block-active td>.md-glue-tableCellGlue:first-child,
+.md-theme-vscode-github .md-table.md-block-active .md-table-delimiter-row td>.md-marker-tableDelimiter {
+    position: relative;
+    left: -13px;
+}
+
+/*
+ * The last cell's closing `|` floats right after the (left-aligned) cell text.
+ * Pin it to the column's right gridline (the cell's border edge, 13px past the
+ * content box) so the right outline is a straight line. `top: auto` keeps the
+ * pipe on the content line (the shared editor.css rule takes it out of flow);
+ * the previous `top: 0` floated it to the cell's top edge, so on tall/wrapping
+ * rows it no longer lined up with the in-flow leading pipes.
+ */
+.md-theme-vscode-github .md-table.md-block-active td:last-child {
+    position: relative;
+}
+
+.md-theme-vscode-github .md-table.md-block-active td:last-child>.md-glue-tableCellGlue:last-child {
+    position: absolute;
+    right: 0;
+    top: auto;
+}
+
+/*
+ * The delimiter row's last cell carries its closing `|` as a separate
+ * `tableDelimiterClose` marker; pin it to the same right gridline as the body
+ * rows' closing pipe so the last column's outline stays straight.
+ */
+.md-theme-vscode-github .md-table.md-block-active .md-table-delimiter-row td:last-child>.md-marker-tableDelimiterClose {
+    position: absolute;
+    right: 0;
+    top: auto;
+}

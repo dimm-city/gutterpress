@@ -23,10 +23,33 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 > still what rules out any HTML→markdown serializer. **Superseded:** decision 4
 > and the v5 half of decision 5. The replacement design is in
 > [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
+>
+> **Status note 2026-09-01 (SFE-P4) — the mutation half of this ADR's
+> motivation was removed; this ADR is NOT superseded.** SFE-P4 deleted the
+> preview-mutation machinery decisions 3 and 5 exist to justify:
+> `commitRangePatch`'s clean-buffer/generation gate (decision 3, §3 below) was
+> deleted with `CommitEngine`, and the v8 addition to the bridge protocol
+> (decision 5, §5 below — `beginBlockEdit`/`endBlockEdit` and their three
+> events) was deleted, taking the protocol to v9. **Decisions 1 and 2 are
+> unaffected and remain the current design**: `data-source-range` carrying
+> `token.map` verbatim, and layout markers threading `token.meta.line`, still
+> serve navigation (click-to-source), source reveal, and editor threading —
+> none of that depended on there being a write path.
+> [ADR 0013](0013-preview-read-only.md) is the current decision record for
+> the replacement (the read-only preview and why decisions 3/5's write path
+> is gone); this note and that ADR cite each other rather than either
+> silently assuming the reader has found the other. See
+> [`docs/inline-editing-plan.md`](../inline-editing-plan.md)'s 2026-09-01
+> status note and the deletion ledger's "SFE-P4" entry
+> (`../plans/source-first-editor/deletion-ledger.md`) for the measured
+> deletion proof.
 
 > **Note on predecessors.** `CLAUDE.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
-> repository (`docs/adr/` holds 0008, 0009 and 0010). ADR 0005 in particular is
+> repository (`docs/adr/` holds 0008 through 0017 — 0002/0004/0005/0006/0007
+> remain absent; **updated 2026-09-01, SFE-P6c:** ADR 0015 and ADR 0017 now
+> carry the current record for the platform/host-portability topic ADR 0004
+> used to cover). ADR 0005 in particular is
 > cited as the home of the preview bridge protocol. Rather than amend a missing
 > document, this ADR records the v3 → v5 protocol delta self-containedly.
 

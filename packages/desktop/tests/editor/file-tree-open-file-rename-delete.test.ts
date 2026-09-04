@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { EditorBuffer } from "../../src/lib/editor/buffer-state.svelte";
+import { EditorBuffer, type EditorBufferFs } from "../../src/lib/editor/buffer-state.svelte";
 import { isPathAtOrUnder } from "../../src/lib/platform/paths";
-import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform/contract";
+import type { FileStat, FileWriteResult } from "../../src/lib/platform/contract";
 
 // UX review M9 (WP FT): "renaming/deleting the OPEN file must behave" — the
 // folder watcher can't cover this (it's a single NON-RECURSIVE fs.watch on
@@ -17,8 +17,9 @@ import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
-class MemoryPlatform implements Partial<Platform> {
-  readonly platform = "electron" as const;
+// SFE-P5b: EditorBuffer takes the narrow EditorBufferFs slice, not the whole
+// (now-deleted) Platform locator — same injected-fake pattern, narrower type.
+class MemoryPlatform implements EditorBufferFs {
   private files = new Map<string, { content: string; mtimeMs: number }>();
   private clock = 1000;
 
@@ -74,7 +75,7 @@ class MemoryPlatform implements Partial<Platform> {
 
 function makeBuffer(platform: MemoryPlatform): EditorBuffer {
   return new EditorBuffer({
-    platform: platform as Platform,
+    fs: platform,
     saveDelayMs: 10_000,
     recoveryEnabled: false,
   });
@@ -110,7 +111,7 @@ test("renaming the open file: flush-before-rename, then reload at the new path �
   expect(buffer.phase).toBe("clean");
   expect(platform.getContent("/book/chapter-01.md")).toBe("saved text + unsaved edit");
 
-  // The rename itself (what api.fs.renamePath does on disk).
+  // The rename itself (what files-capability's renamePath does on disk).
   platform.externalRename("/book/chapter-01.md", "/book/intro.md");
 
   // onTreeFileRenamed: reload at the new path.
@@ -293,7 +294,12 @@ test("switching from CSS to Markdown uses the normal flush-before-select path", 
 test("+page delegates file selection and default loading to the behavior-tested session", () => {
   const root = path.resolve(import.meta.dir, "../..");
   const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  expect(page).toContain("return editorFiles.select(path)");
+  // `selectEditorFile` awaits `editorFiles.select(path)` and then, in Read,
+  // scrolls the book to that chapter before returning the same result. It
+  // still delegates the actual selection decision entirely to
+  // `editorFiles.select`, which is what this test's own name asserts, so
+  // the assertion checks for the awaited call rather than a bare `return`.
+  expect(page).toContain("await editorFiles.select(path)");
   expect(page).toContain("await editorFiles.ensureDefault(");
   expect(page).toContain("return editorFiles.restore(filePath, content)");
 });

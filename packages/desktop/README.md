@@ -10,30 +10,36 @@ and export a PDF — no terminal required, no runtime to install.
 
 ```
 Electron main process (out/main/main.js — ESM, built by electron-vite)
-  ├─ startSvelteKitServer()  — imports build/handler.js (adapter-node) and
-  │                            listens on 127.0.0.1:<random> (a local HTTP server)
-  ├─ protocol.handle("app", ...) — proxies every app:// request to that
-  │                            local server via fetch (so +server.ts routes run)
-  ├─ ipcMain.handle("api:preview", ...)   — wraps lib.startPreviewServer
-  ├─ ipcMain.handle("api:build", ...)     — wraps lib.runBuild for Save PDF
+  ├─ registerAppProtocol(buildDir) — protocol.handle("app", ...) reads the
+  │                            adapter-static build (build/) directly from
+  │                            disk (electron/app-protocol.ts); no local
+  │                            server, no proxy, no bearer token
+  ├─ secureHandle(...) × 120  — typed, runtime-validated IPC request/reply
+  │                            channels (fs, dialog, shell, log, app, project,
+  │                            manifest, tpl, snip, media, plugin, theme, vcs,
+  │                            style, remote, publish, updater, recovery,
+  │                            doctor, lint, …) — electron/api/*.ts
   └─ webContents.send(...) push channels  — build progress, folder-changed,
                                             sync status, updater events
 
 BrowserWindow loads app://local/
   ├─ preload.ts installs the narrow window.electron bridge (contextBridge)
-  └─ renderer (Svelte SPA) reaches the host two ways:
-       • fetch("/api/…")   → src/routes/api/**/+server.ts host routes (the bulk)
-       • window.electron.* → only push streams + the preview/build pipeline
-     Components call typed api.* wrappers for routes and getPlatform() for the
-     narrow adapter surface; only electron-adapter.ts touches window.electron.
+  └─ renderer (Svelte SPA) reaches the host entirely through IPC:
+       window.electron.* (preload) → bridge.ts → feature capability module.
+     There is no fetch("/api/…") surface — every request/reply operation
+     that used to be a SvelteKit +server.ts route moved to a validated IPC
+     channel (SFE-P5c); only src/lib/platform/bridge.ts touches
+     window.electron (SFE-P5b deleted electron-adapter.ts and the
+     getPlatform() service locator it backed).
 
-Host capabilities live in ~100 src/routes/api/**/+server.ts routes — status, fs,
-dialog, theme, plugin, remote/sync, vcs, recovery, lint, media, and more. These
-are host Node code (they may import gutterpress and node:*) that happens
-to sit under src/routes/; SvelteKit compiles them into build/server, never into
-the client bundle.
+Host capabilities are the 120 secureHandle(...) IPC channels in
+electron/api/*.ts — status, fs, dialog, theme, plugin, remote/sync, vcs,
+recovery, lint, media, and more. These run in the main process (they may
+import gutterpress and node:*) and are compiled into out/main/main.js, never
+into the client bundle.
 
-lib.startPreviewServer is a SECOND, separate HTTP server: it serves the rendered
+lib.startPreviewServer is a SEPARATE HTTP server — the CLI's own preview
+server, unrelated to the app:// protocol or IPC: it serves the rendered
 book.html + project assets on an ephemeral http://127.0.0.1:N port that the SPA
 loads in an <iframe>, cross-origin from the app:// parent.
 ```
@@ -48,6 +54,20 @@ removed:
 - **No more CJS↔ESM `new Function` interop trick** — the ESM main loads the lib
   with a plain dynamic `import("gutterpress")`.
 - **No more Bun runtime requirement** — the packaged app is self-contained.
+- **No more `@sveltejs/adapter-node`, local HTTP server, or proxy** —
+  `svelte.config.js` uses `@sveltejs/adapter-static`; `electron/main.ts`
+  reads the static build directly from disk under `app://` (SFE-P5d). No
+  `build/handler.js`, no `127.0.0.1` loopback bind, no per-session bearer
+  token, no `fetch`-based proxy request.
+- **No more `src/routes/api/**` SvelteKit routes or `src/lib/api.ts`** —
+  every request/reply operation the renderer needs is a typed, runtime-
+  validated IPC channel (SFE-P5c). Components call the feature-owned
+  capability module for that operation (`$lib/update/updater-capability`,
+  `$lib/remote/remote-capability`, `$lib/export/build-preview-capability`,
+  `$lib/editor-host/editor-projection-capability`,
+  `$lib/app-lifecycle/app-lifecycle-capability`, `$lib/lint/lint-capability`,
+  …); nothing calls `fetch("/api/…")` anymore, and the old `getPlatform()`
+  service locator is gone too (SFE-P5b).
 
 ## Prerequisites
 
@@ -80,15 +100,9 @@ tools each user-visible action requires.
 bun install
 ```
 
-Three dev modes, pick by what you're iterating on:
+Two dev modes, pick by what you're iterating on:
 
 ```bash
-# SvelteKit only (no Electron — runs in a regular browser tab at
-# http://localhost:5173). HMR works, but window.electron is undefined
-# so any IPC-driven feature (Open Folder, Save PDF) will toast
-# "Electron bridge unavailable". Good for pure UI/CSS iteration.
-bun --cwd packages/desktop run dev
-
 # Full Electron with SvelteKit HMR — RECOMMENDED for most desktop dev.
 # Runs vite dev + Electron together; Electron loads the vite dev
 # server (http://localhost:5173) instead of the static build. You
@@ -109,6 +123,14 @@ The `electron:hmr` script wires `VITE_DEV_SERVER_URL=http://localhost:5173`
 into the Electron main process; `electron/main.ts` checks that env var
 and calls `mainWindow.loadURL(devUrl)` when set, otherwise falls back to
 the static `app://local/`. Preload + IPC are identical in both modes.
+
+Plain `bun --cwd packages/desktop run dev` (SvelteKit only, no Electron) is
+**not** a usable UI-iteration mode since SFE-P5a: `bridge()` (`$lib/platform/
+bridge.ts`) has no non-Electron implementation and throws
+`DesktopHostRequiredError` on first call (`initTheme()` in `+layout.svelte`'s
+`onMount`), so the page never paints — not the toast-and-degrade behavior
+older versions of this doc described. Use `electron:hmr` above for all
+UI/CSS iteration.
 
 ## Building for production
 
@@ -180,8 +202,9 @@ The AppImage is a bare portable executable — there is no installer, so nothing
 in the packaging step can add it to the KDE/GNOME application menu. That is a
 runtime, **opt-in** action instead: **Settings → App → Desktop integration →
 Add to application menu**, implemented in `electron/appimage-integration.ts`
-(status/install/remove hooks → `src/routes/api/app/appimage-integration`). It
-installs a managed copy at `~/.local/bin/gutterpress.AppImage`, the icon in
+(status/install/remove hooks → the `app:appImageIntegrationStatus` /
+`app:appImageIntegrationInstall` / `app:appImageIntegrationRemove` IPC
+channels). It installs a managed copy at `~/.local/bin/gutterpress.AppImage`, the icon in
 the user's hicolor theme, and an XDG `.desktop` entry — per-user, no root, no
 `update-desktop-database`/`kbuildsycoca6`/AppImageLauncher required. See
 [docs/desktop-shortcut.md](../../docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app)
@@ -235,11 +258,10 @@ packages/desktop/
 ├── out/                     # electron-vite output (git-ignored)
 │   ├── main/main.js         # ESM
 │   └── preload/preload.cjs  # CJS (sandboxed preload can't load ESM)
-├── src/                     # SvelteKit SPA
+├── src/                     # SvelteKit SPA (adapter-static; no server routes)
 │   ├── routes/
-│   │   ├── +layout.ts       # ssr=false (client-rendered SPA; not prerendered)
-│   │   ├── +page.svelte     # Toolbar + iframe shell
-│   │   └── api/**/+server.ts # ~100 host routes (run in main via adapter-node)
+│   │   ├── +layout.ts       # ssr=false (client-rendered SPA)
+│   │   └── +page.svelte     # Toolbar + iframe shell
 │   ├── lib/
 │   │   ├── preview-client.ts       # postMessage wrappers for the iframe bridge
 │   │   ├── iframe-styles.ts        # Injected iframe CSS
@@ -249,11 +271,12 @@ packages/desktop/
 │   │       └── LoadingOverlay.svelte
 │   └── app.html
 ├── static/                  # Static assets served from app:// root (favicon)
-├── build/                   # SvelteKit adapter-node output (git-ignored):
-│                            #   handler.js + server/ (host) + client/ (SPA)
+├── build/                   # adapter-static output (git-ignored): a plain
+│                            #   static file tree (index.html, _app/**, …) —
+│                            #   no server, no handler.js
 ├── tests/                   # Bun unit/contract tests + Playwright integration tests
 ├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
-├── svelte.config.js         # adapter-node (out: build), paths.relative
+├── svelte.config.js         # adapter-static (pages/assets: build, fallback: index.html), paths.relative
 └── package.json
 ```
 
@@ -291,41 +314,51 @@ Behavior:
   packaged-but-unsupported platforms degrade to no-ops.
 
 The engine lives in `electron/updater.ts`. Status, check, and download are
-ordinary SvelteKit API routes; only Restart & Update and updater push events use
-the preload bridge because applying an update must flush the live BrowserWindow
-before quitting. The renderer reaches both through `getPlatform().updater` and
-never touches electron-updater directly.
+typed IPC (`updater:getStatus`/`updater:check`/`updater:download`); Restart &
+Update (`updater:applyNow`) and updater push events also use the preload
+bridge because applying an update must flush the live BrowserWindow before
+quitting. The renderer reaches all of it through
+`$lib/update/updater-capability.ts` and never touches electron-updater
+directly.
 
 
 ## Architecture notes
 
-- **adapter-node + local HTTP server** — `svelte.config.js` uses
-  `@sveltejs/adapter-node`, which emits a Node HTTP handler to
-  `build/handler.js` plus `build/client/` (browser assets) and `build/server/`
-  (SSR + `+server.ts` routes). In production `electron/main.ts`
-  (`startSvelteKitServer`) imports that handler and `createServer(...).listen(0,
-  "127.0.0.1")`, giving the SPA a real local origin. `+layout.ts` sets
-  `ssr=false`, so pages are client-rendered; the "API" surface is the
-  `+server.ts` routes served by the same handler.
-- **app:// protocol (a proxy)** — `electron/main.ts` calls
+- **adapter-static, no server** — `svelte.config.js` uses
+  `@sveltejs/adapter-static` (`pages`/`assets`: `build`, `fallback:
+  "index.html"`), which emits a plain static file tree to `build/` — no
+  `build/handler.js`, no server bundle. `src/routes/+layout.ts` sets
+  `ssr=false`, so the whole SPA renders client-only; there is no `+server.ts`
+  route surface at all (deleted in SFE-P5c/P5d).
+- **app:// protocol (reads disk directly)** — `electron/main.ts` calls
   `protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard, secure, supportFetchAPI, stream } }])`
-  at module load and `protocol.handle("app", ...)` inside `app.whenReady`. The
-  handler does NOT read files — it **proxies** each `app://local/*` request to
-  `http://127.0.0.1:<skServerPort>` with `fetch`, so both the SPA and every
-  `fetch("/api/…")` from it hit the adapter-node handler. In dev
-  (`VITE_DEV_SERVER_URL` set) the window loads the vite dev server directly and
-  this local server is skipped.
-- **fetch for routes, IPC for the rest** — most host calls are
-  `fetch("/api/…")` to `+server.ts` routes; the `window.electron` bridge
-  (`preload.ts`) is reserved for push-event streams and the preview/build
-  pipeline (e.g. `window.electron.startPreview({input})`). The renderer only
-  ever calls `getPlatform().X(...)`.
+  at module load and `registerAppProtocol(buildDir)`
+  (`electron/app-protocol.ts`) inside `app.whenReady`. The handler reads the
+  requested file straight out of `buildDir` (`fs/promises.readFile`) and
+  returns its bytes with the right `Content-Type`; an extensionless path with
+  no matching file falls back to `build/index.html` so the SvelteKit client
+  router can handle a deep link. No local server, no proxy, no bearer token —
+  see `app-protocol.ts`'s header for the security-equivalence statement and
+  `tests/platform/app-protocol.test.ts` for the traversal-refusal tests. In
+  dev (`VITE_DEV_SERVER_URL` set) the window loads the vite dev server
+  directly instead.
+- **IPC for everything** — every host call is a typed, runtime-validated IPC
+  channel: `secureHandle(...)` in `electron/main.ts` for request/reply
+  (`electron/api/*.ts` holds the actual logic), plain `ipcMain`/
+  `webContents.send` for push streams (build progress, folder-changed, sync
+  status, updater events) and the preview/build pipeline. The `window.electron`
+  bridge (`preload.ts`) is the only way the renderer reaches any of it; app
+  code never touches `window.electron` directly — only
+  `src/lib/platform/bridge.ts` may — and calls the feature-owned capability
+  module for that operation instead (`$lib/update/updater-capability.ts`,
+  `$lib/remote/remote-capability.ts`, and so on — see "What's NOT here
+  anymore" above; SFE-P5b deleted the `getPlatform()` service locator).
 - **Build** — `electron-vite` builds the ESM main + preload into `out/`
-  (externalizing electron + the lib); SvelteKit's adapter-node builds the
-  renderer + host routes into `build/`. No CJS↔ESM interop trick: the ESM main
-  just does `await import("gutterpress")`, cached so subsequent calls
-  reuse the module. Packaged with asar (puppeteer-core unpacked;
-  `build/handler.js` is loaded from inside the asar).
+  (externalizing electron + the lib); `vite build` (adapter-static) builds the
+  renderer into `build/`. No CJS↔ESM interop trick: the ESM main just does
+  `await import("gutterpress")`, cached so subsequent calls reuse the module.
+  Packaged with asar (puppeteer-core unpacked; `build/` is read from inside
+  the asar by `app-protocol.ts`).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge

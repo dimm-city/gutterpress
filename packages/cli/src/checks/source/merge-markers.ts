@@ -11,9 +11,10 @@
  * panel says nothing, and a build/export completes and PRINTS the garbage.
  *
  * Running the detection AS A CHECK is what closes that gap, exactly like
- * layout-markers.ts: no new IPC, no new UI — the desktop's `/api/lint/project`
- * route already maps every `CheckResult` into the Problems panel and the
- * pre-export list, and the finding self-clears when the writer resolves it.
+ * layout-markers.ts: no new IPC, no new UI — the desktop's `lint:project`
+ * typed IPC channel already maps every `CheckResult` into the Problems panel
+ * and the pre-export list, and the finding self-clears when the writer
+ * resolves it.
  *
  * Matching is deliberately EXACT: only the three-line family Gutterpress
  * itself writes (`<<<<<<< your version` / `=======` / `>>>>>>> online

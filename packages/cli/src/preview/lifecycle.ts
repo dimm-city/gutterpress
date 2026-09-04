@@ -231,5 +231,5 @@ export async function shutdownServer(state: ServerState): Promise<void> {
   // are responsible for calling process.exit() themselves. shutdownServer()
   // only cleans up — it does not decide to terminate the process, so that the
   // desktop's PreviewServerHandle.stop() can call this safely without killing
-  // the SvelteKit host process.
+  // the shared Electron main process this preview server runs inside.
 }

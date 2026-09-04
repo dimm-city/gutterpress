@@ -16,7 +16,7 @@
 // `bun test --isolate` invocation serves every other suite's static
 // `from "electron"` imports too. So this mock (like every other
 // electron-mocking suite: tests/platform/pdf-export.test.ts,
-// tests/platform/sveltekit-host.test.ts, tests/platform/credential-store.test.ts)
+// tests/platform/app-protocol.test.ts, tests/platform/credential-store.test.ts)
 // provides the SAME superset of keys every electron/*.ts production module
 // statically imports from "electron" (app.getPath/isPackaged/getVersion/
 // releaseSingleInstanceLock, protocol, BrowserWindow, safeStorage), not just

@@ -1,5 +1,6 @@
 /**
- * Shared prefs/settings hooks for app:* server routes.
+ * Shared prefs/settings hooks for the `app:*` typed IPC channels
+ * (`electron/api/app.ts`, `electron/api/git-identity-args.ts`).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getPrefsHooks()` is a thin derived selector over

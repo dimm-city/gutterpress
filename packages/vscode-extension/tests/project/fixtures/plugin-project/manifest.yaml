@@ -1,0 +1,15 @@
+title: "Gutterpress VS Code extension test fixture"
+preset: book
+# SFE-P3c Lane B — a minimal LOCAL fixture project (deliverable 5's own
+# text: "reuse packages/desktop/tests/fixtures/plugin-book ... or a minimal
+# local fixture — your call"). Kept under tests/project/fixtures/** so it
+# stays inside this lane's write boundary (tests/project/**), rather than a
+# cross-package relative import into packages/desktop's own fixture tree.
+#
+# Read-only from every test that uses it (AP-25) — never mutated in place.
+# A real local-file plugin, resolved the SAME way a real CLI build/preview
+# would (packages/cli/src/lib/manifest.ts's normalizePluginConfig treats a
+# "./"-prefixed string as a file path): no receipt, no vendoring, no
+# network.
+plugins:
+  - ./plugins/highlight.js

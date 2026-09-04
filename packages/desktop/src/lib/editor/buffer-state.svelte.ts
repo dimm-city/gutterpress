@@ -11,13 +11,60 @@
  * (`load`, `edit`, `flush`, `acceptExternal`, `keepMine`, `reset`).
  *
  * Desktop-only: the editor is gated behind `isDesktop()` in `+page.svelte`, so
- * every platform call here runs against the ElectronAdapter. On web the buffer
- * is simply never constructed/used.
+ * every fs call here runs for real. On web the buffer is simply never
+ * constructed/used.
+ *
+ * SFE-P5b: this class used to take the whole `Platform` service-locator
+ * object (`opts.platform`) purely to reach `readFile`/`writeFile`/`statFile`
+ * — three members that, on `ElectronAdapter`, forwarded straight to
+ * `api.fs.*` with zero added logic. That indirection died with the locator:
+ * `EditorBufferFs` below is the narrow, consumer-shaped interface this class
+ * actually needs (D4 — "consumer-shaped interfaces live with the consuming
+ * domain"). SFE-P5c1 migrated `fs.*` from HTTP (`api.fs`) to typed IPC
+ * (`$lib/files/files-capability`); `+page.svelte` now satisfies this
+ * interface by passing that module's `readFile`/`writeFile`/`statFile`
+ * functions directly.
+ *
+ * ## Delegation to `DocumentSession` (SFE-P1c)
+ *
+ * The phase/conflict/baseline DECISION logic moved to the pure,
+ * framework-free {@link DocumentSession} (`../document-session/session.ts`)
+ * — a mechanical extraction of this class's prior transition logic,
+ * unit-tested on its own. Each intent method below now: performs the same
+ * host I/O at the same points relative to `await`s (the timing-sensitive
+ * guards are untouched), feeds the result into the matching
+ * `DocumentSession` method, then copies the session's resulting
+ * snapshot/baseline/phase/external-change into this class's `$state` runes
+ * via {@link syncFromSession} — the one-choke-point-assigns-the-runes
+ * pattern `settings.svelte.ts` uses (CLAUDE.md §8) — and fires the same
+ * `EditorBufferOptions` callbacks as before, driven off the session's
+ * outcome. What stays here, unchanged, because the session is I/O-free,
+ * timer-free, and framework-free by design: the debounce timers, the
+ * `saveInFlight` cache, the `loadGen` generation counter, and the
+ * mtime-echo / `hasPendingSave` self-write-echo guards in
+ * {@link reconcileExternalChange} that run before any I/O or session call.
  */
-import type { Platform } from "$lib/platform/contract";
-import { api } from "$lib/api";
+import type { FileStat, FileWriteResult } from "$lib/platform/contract";
+import { writeRecovery, clearRecovery } from "$lib/recovery/recovery-capability";
+import {
+  DocumentSession,
+  type DocumentSessionPhase,
+  type PendingExternalChange,
+} from "../document-session/session";
 
-export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
+export type EditorBufferPhase = DocumentSessionPhase;
+
+/**
+ * The narrow fs slice {@link EditorBuffer} actually needs (SFE-P5b) —
+ * satisfied in production by `$lib/files/files-capability`'s
+ * `readFile`/`writeFile`/`statFile` (SFE-P5c1: typed IPC, not `api.fs`) and
+ * by a test double (`MemoryPlatform` in `buffer-state.test.ts`) in tests.
+ */
+export interface EditorBufferFs {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<FileWriteResult>;
+  statFile(path: string): Promise<FileStat>;
+}
 
 /** Pending external-edit details awaiting the user's Reload / Keep-mine call. */
 export interface ExternalChange {
@@ -28,8 +75,8 @@ export interface ExternalChange {
 }
 
 export interface EditorBufferOptions {
-  /** The platform adapter (Electron). */
-  platform: Platform;
+  /** The fs primitives this buffer reads/writes through (SFE-P5c1: `$lib/files/files-capability` in production). */
+  fs: EditorBufferFs;
   /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview loop). */
   saveDelayMs?: number;
   /** Crash-recovery snapshot debounce (ms). Defaults to 1000. */
@@ -65,6 +112,24 @@ export interface EditorBufferOptions {
   onDirty?: (pending: boolean) => void;
 }
 
+/** `DocumentSession`'s stamp fields are opaque `unknown`; this class's own
+ *  contract is a concrete `number` (matching `FileStat.mtimeMs`), defaulting
+ *  to `0` wherever the pre-delegation code used a literal `0` — never `undefined`. */
+function asMtime(stamp: unknown): number {
+  return (stamp as number | undefined) ?? 0;
+}
+
+/** Maps `DocumentSession`'s `{ diskText, diskStamp, exists? }` onto this
+ *  class's public `ExternalChange` shape, preserving that `exists` is
+ *  present (and `false`) only for a deletion — never present-and-`undefined`. */
+function toExternalChange(pending: PendingExternalChange | null): ExternalChange | null {
+  if (!pending) return null;
+  const diskMtimeMs = asMtime(pending.diskStamp);
+  return pending.exists === false
+    ? { diskContent: pending.diskText, diskMtimeMs, exists: false }
+    : { diskContent: pending.diskText, diskMtimeMs };
+}
+
 export class EditorBuffer {
   // ── Raw state (private; mutated only through intent methods) ──────────────
   filePath = $state<string | null>(null);
@@ -88,6 +153,8 @@ export class EditorBuffer {
   }
 
   private opts: EditorBufferOptions;
+  /** The pure phase/conflict/baseline state machine this class delegates to. */
+  private session = new DocumentSession();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private saveInFlight: Promise<void> | null = null;
@@ -100,8 +167,8 @@ export class EditorBuffer {
     this.opts = opts;
   }
 
-  private get platform(): Platform {
-    return this.opts.platform;
+  private get fs(): EditorBufferFs {
+    return this.opts.fs;
   }
 
   /** Set phase and notify the onDirty callback when pending-save state changes. */
@@ -112,6 +179,18 @@ export class EditorBuffer {
       this.lastPendingSave = nowPending;
       this.opts.onDirty?.(nowPending);
     }
+  }
+
+  /** The one choke point that copies {@link session}'s current state into
+   *  this class's `$state` runes (CLAUDE.md §8) — called after every
+   *  session-mutating method below. */
+  private syncFromSession(): void {
+    this.filePath = this.session.documentId;
+    this.content = this.session.snapshot.text;
+    this.diskContent = this.session.diskBaseline.text;
+    this.diskMtimeMs = asMtime(this.session.diskBaseline.stamp);
+    this.externalChange = toExternalChange(this.session.externalChange);
+    this.setPhase(this.session.phase);
   }
 
   /** Toggle crash-recovery snapshotting at runtime (#45 setting). */
@@ -149,22 +228,16 @@ export class EditorBuffer {
     const gen = ++this.loadGen;
     this.externalChange = null;
     try {
-      const text = await this.platform.readFile(filePath);
+      const text = await this.fs.readFile(filePath);
       if (gen !== this.loadGen) return; // a newer load superseded this one
-      const st = await this.platform.statFile(filePath).catch(() => null);
+      const st = await this.fs.statFile(filePath).catch(() => null);
       if (gen !== this.loadGen) return;
-      this.filePath = filePath;
-      this.content = text;
-      this.diskContent = text;
-      this.diskMtimeMs = st?.mtimeMs ?? 0;
-      this.setPhase("clean");
+      this.session.open(filePath, text, st?.mtimeMs ?? 0);
+      this.syncFromSession();
     } catch (e) {
       if (gen !== this.loadGen) return;
-      this.filePath = filePath;
-      this.content = "";
-      this.diskContent = "";
-      this.diskMtimeMs = 0;
-      this.setPhase("error");
+      this.session.openFailed(filePath);
+      this.syncFromSession();
       this.opts.onError?.(
         `Could not open file: ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -179,36 +252,47 @@ export class EditorBuffer {
    * `filePath` and `content` are set together (the recovered text is known
    * synchronously) before the async disk-baseline read, so the parent's
    * `{#key filePath}` remount reads the correct content prop — same rationale
-   * as {@link load}.
+   * as {@link load}. Unlike the old implementation, `filePath`/`content`
+   * are never written directly here: {@link DocumentSession.beginRestore}
+   * establishes the new identity+text SYNCHRONOUSLY inside the session
+   * (the single source of truth for "which document is open"), and
+   * {@link syncFromSession} — the one choke point that writes these runes
+   * — mirrors it immediately, before either `await` below runs. A prior
+   * version of this method wrote the runes directly and called into the
+   * session only after both awaits resolved, so a save that ran mid-await
+   * could read this class's `filePath` rune (already the NEW file) paired
+   * with the session's still-OLD text, or vice versa — a CONFIRMED review
+   * defect (SFE-P1c round 1) that let one document's bytes silently
+   * overwrite a different file's bytes on disk.
    */
   async restoreContent(filePath: string, recovered: string): Promise<void> {
     this.cancelTimers();
     const gen = ++this.loadGen;
-    this.externalChange = null;
-    this.filePath = filePath;
-    this.content = recovered;
-    const st = await this.platform.statFile(filePath).catch(() => null);
+    this.session.beginRestore(filePath, recovered);
+    this.syncFromSession();
+    const st = await this.fs.statFile(filePath).catch(() => null);
     if (gen !== this.loadGen) return;
+    let diskText: string;
     try {
-      this.diskContent = await this.platform.readFile(filePath);
+      diskText = await this.fs.readFile(filePath);
     } catch {
-      this.diskContent = "";
+      diskText = "";
     }
     if (gen !== this.loadGen) return;
-    this.diskMtimeMs = st?.mtimeMs ?? 0;
-    this.setPhase(this.isDirty ? "dirty" : "clean");
-    if (this.isDirty) this.scheduleSave();
+    const outcome = this.session.finishRestore({
+      text: diskText,
+      stamp: st?.mtimeMs ?? 0,
+    });
+    this.syncFromSession();
+    if (outcome.scheduleSave) this.scheduleSave();
   }
 
   /** Record a user edit; schedules the debounced disk save + recovery snapshot. */
   edit(text: string): void {
-    this.content = text;
-    if (!this.filePath) return;
-    this.setPhase(this.isDirty ? "dirty" : "clean");
-    if (this.isDirty) {
-      this.scheduleSave();
-      this.scheduleRecovery();
-    }
+    const outcome = this.session.edit(text);
+    this.syncFromSession();
+    if (outcome.scheduleSave) this.scheduleSave();
+    if (outcome.scheduleRecovery) this.scheduleRecovery();
   }
 
   private scheduleSave(): void {
@@ -233,7 +317,7 @@ export class EditorBuffer {
     const filePath = this.filePath;
     if (!filePath || this.opts.recoveryEnabled === false || !this.isDirty) return;
     try {
-      await api.recovery.write(filePath, this.content, this.diskMtimeMs);
+      await writeRecovery(filePath, this.content, this.diskMtimeMs);
     } catch {
       // Recovery is best-effort; never surface as a hard error.
     }
@@ -253,51 +337,56 @@ export class EditorBuffer {
   private async performSave(): Promise<void> {
     const filePath = this.filePath;
     if (!filePath) return;
-    const snapshot = this.content;
-    const baseline = this.diskContent;
+    const begin = this.session.beginSave();
+    if (!begin) return;
     const gen = this.loadGen;
-    this.setPhase("saving");
+    const { text: snapshot, diskBaseline } = begin;
+    this.syncFromSession();
     try {
-      const external = await this.externalChangeBeforeSave(filePath, baseline);
+      const external = await this.externalChangeBeforeSave(filePath, diskBaseline.text);
       if (external) {
         if (external.diskContent === snapshot && external.exists !== false) {
-          this.diskContent = external.diskContent;
-          this.diskMtimeMs = external.diskMtimeMs;
-          this.externalChange = null;
-          this.setPhase(this.content === snapshot ? "clean" : "dirty");
-          if (this.phase === "dirty") this.scheduleSave();
+          const outcome = this.session.completeSave({
+            kind: "external-matches",
+            diskStamp: external.diskMtimeMs,
+          });
+          this.syncFromSession();
+          if (outcome.scheduleSave) this.scheduleSave();
           return;
         }
         // Disk moved since this buffer last adopted a baseline. Do not overwrite
         // teammate/pull/external-editor content until the author explicitly picks
         // Reload or Keep mine in the existing external-change banner.
-        this.externalChange = external;
-        this.setPhase("dirty");
+        this.session.completeSave({
+          kind: "external-conflict",
+          diskText: external.diskContent,
+          diskStamp: external.diskMtimeMs,
+          exists: external.exists,
+        });
+        this.syncFromSession();
         this.opts.onExternalConflict?.();
         return;
       }
 
-      const { mtimeMs } = await this.platform.writeFile(filePath, snapshot);
+      const { mtimeMs } = await this.fs.writeFile(filePath, snapshot);
       this.opts.onSaved?.(filePath);
       if (this.opts.recoveryEnabled !== false) {
-        api.recovery.clear(filePath).catch(() => {});
+        clearRecovery(filePath).catch(() => {});
       }
       // The save may have completed after the author switched files. The old
       // file was written, but this buffer now represents another document, so
       // never stamp the old snapshot over the new file's clean baseline.
       if (this.filePath !== filePath || this.loadGen !== gen) return;
-      // Only adopt the new baseline if the buffer still matches what we wrote;
-      // a keystroke during the await leaves the buffer dirty for the next save.
-      this.diskContent = snapshot;
-      this.diskMtimeMs = mtimeMs;
-      this.setPhase(this.content === snapshot ? "clean" : "dirty");
-      if (this.recoveryTimer) {
+      const outcome = this.session.completeSave({ kind: "written", diskStamp: mtimeMs });
+      this.syncFromSession();
+      if (outcome.cancelRecoveryTimer && this.recoveryTimer) {
         clearTimeout(this.recoveryTimer);
         this.recoveryTimer = null;
       }
-      if (this.phase === "dirty") this.scheduleSave();
+      if (outcome.scheduleSave) this.scheduleSave();
     } catch (e) {
-      this.setPhase("error");
+      this.session.completeSave({ kind: "failed" });
+      this.syncFromSession();
       this.opts.onError?.(
         `Save failed: ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -314,7 +403,16 @@ export class EditorBuffer {
     // A keystroke can land while a write is in flight. Keep flushing snapshots
     // until the live buffer matches disk; the host watchdog remains the final
     // bound during quit.
-    while (this.filePath && this.isDirty) {
+    //
+    // Keyed on `this.session.documentId`, NOT the `filePath` rune: this is
+    // the same "is a document open" fact `performSave`'s own entry guard
+    // (`this.session.beginSave()` returning `null` iff `documentId ===
+    // null`) checks, so this loop and `performSave` can never disagree
+    // about whether there is a document to save — a CONFIRMED review
+    // defect (SFE-P1c round 1) let them read different sources (this rune
+    // vs. the session) during `restoreContent`'s await window, spinning
+    // forever with no progress once `performSave` found nothing to do.
+    while (this.session.documentId && this.isDirty) {
       if (this.saveTimer) {
         clearTimeout(this.saveTimer);
         this.saveTimer = null;
@@ -346,21 +444,18 @@ export class EditorBuffer {
     if (this.hasPendingSave) return;
     let stat: { mtimeMs: number; size: number; exists: boolean };
     try {
-      stat = await this.platform.statFile(filePath);
+      stat = await this.fs.statFile(filePath);
     } catch {
       return;
     }
     if (this.filePath !== filePath || this.loadGen !== gen) return;
     if (!stat.exists) {
-      if (this.isDirty) {
-        this.externalChange = { diskContent: "", diskMtimeMs: 0, exists: false };
+      const outcome = this.session.noteExternalCheck({ kind: "deleted" });
+      this.syncFromSession();
+      if (outcome.conflict) {
         this.opts.onExternalConflict?.();
-      } else {
-        this.content = "";
-        this.diskContent = "";
-        this.diskMtimeMs = 0;
-        this.setPhase("clean");
-        this.opts.onContentReplaced?.(filePath, "");
+      } else if (outcome.replaced) {
+        this.opts.onContentReplaced?.(filePath, this.content);
         this.opts.onAutoReloaded?.(filePath);
       }
       return;
@@ -369,53 +464,37 @@ export class EditorBuffer {
     if (stat.mtimeMs === this.diskMtimeMs) return;
     let diskContent: string;
     try {
-      diskContent = await this.platform.readFile(filePath);
+      diskContent = await this.fs.readFile(filePath);
     } catch {
       return;
     }
     if (this.filePath !== filePath || this.loadGen !== gen) return;
-    if (diskContent === this.content) {
-      // Author's edit already matches disk — just refresh the baseline.
-      this.diskContent = diskContent;
-      this.diskMtimeMs = stat.mtimeMs;
-      this.setPhase("clean");
-      return;
-    }
-    if (diskContent === this.diskContent) {
-      // Only the mtime moved (e.g. a touch) — refresh mtime, stay as-is.
-      this.diskMtimeMs = stat.mtimeMs;
-      return;
-    }
-    if (this.isDirty) {
-      // True conflict — surface the banner.
-      this.externalChange = { diskContent, diskMtimeMs: stat.mtimeMs };
+    const outcome = this.session.noteExternalCheck({
+      kind: "changed",
+      diskText: diskContent,
+      diskStamp: stat.mtimeMs,
+    });
+    this.syncFromSession();
+    if (outcome.conflict) {
       this.opts.onExternalConflict?.();
-    } else {
-      // Safe to adopt — silently reload from disk.
-      this.content = diskContent;
-      this.diskContent = diskContent;
-      this.diskMtimeMs = stat.mtimeMs;
-      this.setPhase("clean");
-      this.opts.onContentReplaced?.(filePath, diskContent);
+    } else if (outcome.replaced) {
+      this.opts.onContentReplaced?.(filePath, this.content);
       this.opts.onAutoReloaded?.(filePath);
     }
   }
 
   /** Reload: replace the buffer with the pending external disk version. */
   acceptExternal(): void {
-    const ext = this.externalChange;
-    if (!ext) return;
-    this.content = ext.diskContent;
-    this.diskContent = ext.diskContent;
-    this.diskMtimeMs = ext.diskMtimeMs;
-    this.setPhase("clean");
-    this.externalChange = null;
-    if (this.filePath) {
+    if (!this.externalChange) return;
+    const filePath = this.filePath;
+    const outcome = this.session.acceptExternal();
+    this.syncFromSession();
+    if (outcome.replaced && filePath) {
       // Same notification the silent auto-reload path uses (#H1) — keeps the
       // conflict-banner "Reload" action from needing its own editor-sync call.
-      this.opts.onContentReplaced?.(this.filePath, ext.diskContent);
+      this.opts.onContentReplaced?.(filePath, this.content);
       if (this.opts.recoveryEnabled !== false) {
-        api.recovery.clear(this.filePath).catch(() => {});
+        clearRecovery(filePath).catch(() => {});
       }
     }
   }
@@ -423,26 +502,18 @@ export class EditorBuffer {
   /** Keep mine: adopt the disk mtime as the new baseline so our save isn't
    * blocked, leave content untouched, and let the debounce overwrite disk. */
   keepMine(): void {
-    const ext = this.externalChange;
-    if (!ext) return;
-    this.diskContent = ext.diskContent;
-    this.diskMtimeMs = ext.diskMtimeMs;
-    this.externalChange = null;
-    // content stays; isDirty is recomputed against the external disk baseline.
-    this.setPhase(this.isDirty ? "dirty" : "clean");
-    if (this.isDirty) this.scheduleSave();
+    if (!this.externalChange) return;
+    const outcome = this.session.keepMine();
+    this.syncFromSession();
+    if (outcome.scheduleSave) this.scheduleSave();
   }
 
   /** Drop the buffer entirely (e.g. closing a folder / switching to URL mode). */
   reset(): void {
     this.loadGen++;
     this.cancelTimers();
-    this.filePath = null;
-    this.content = "";
-    this.diskContent = "";
-    this.diskMtimeMs = 0;
-    this.setPhase("clean");
-    this.externalChange = null;
+    this.session.reset();
+    this.syncFromSession();
   }
 
   private cancelTimers(): void {
@@ -465,7 +536,7 @@ export class EditorBuffer {
     filePath: string,
     baseline: string,
   ): Promise<ExternalChange | null> {
-    const stat = await this.platform.statFile(filePath).catch(() => null);
+    const stat = await this.fs.statFile(filePath).catch(() => null);
     if (!stat?.exists) {
       return baseline === "" && this.diskMtimeMs === 0
         ? null
@@ -474,7 +545,7 @@ export class EditorBuffer {
 
     let diskContent: string;
     try {
-      diskContent = await this.platform.readFile(filePath);
+      diskContent = await this.fs.readFile(filePath);
     } catch {
       return { diskContent: "", diskMtimeMs: 0, exists: false };
     }

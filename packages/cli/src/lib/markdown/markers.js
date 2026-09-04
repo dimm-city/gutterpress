@@ -104,7 +104,7 @@ function isBareToken(token) {
  * rule in CLAUDE.md §5 means by project plugins adding BRANDED component
  * markers.
  */
-const KNOWN_KINDS = [
+export const KNOWN_KINDS = [
   'chapter',
   'spread',
   'page',
@@ -162,7 +162,7 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function parseMarkerLine(line) {
+export function parseMarkerLine(line, options = {}) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
 
@@ -204,11 +204,32 @@ function parseMarkerLine(line) {
   const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@continue" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);
 
-  if (!KNOWN_KINDS.includes(kind)) return null;
+  // `allowUnknownKinds` accepts a marker whose KIND core does not own.
+  //
+  // The marker grammar is the authoring surface project plugins are told to
+  // extend (CLAUDE.md §5), and they do: the Dimm City plugin inlines this
+  // exact grammar and adds `@lede`, `@toc`, `@sidebar`. Core must keep
+  // rejecting those — it cannot transform a marker it knows nothing about,
+  // and a bare `@word` has to stay ordinary text in a plain Markdown
+  // document — but a HOST that only needs to CLASSIFY a line does not have
+  // that constraint. The editor is that host: a plugin's marker line is
+  // layout syntax the book never prints, so showing it as body text puts a
+  // line on the editor's page that the printed page does not have, and the
+  // two paginate differently for every marker in the book.
+  //
+  // Constrained to a marker-SHAPED head (`@lower-case-word`) so an ordinary
+  // paragraph opening with an `@` handle is not swept up by it.
+  const unknownKind = !KNOWN_KINDS.includes(kind);
+  if (unknownKind && (!options.allowUnknownKinds || !/^[a-z][a-z0-9-]*$/.test(kind))) return null;
 
   if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section' || kind === 'continue') {
     return { kind, name: null, attrs: {} };
   }
+  // An unknown kind takes the SAME body grammar as a known one — its name,
+  // `.class`, `#id` and `key=value` arguments all mean what they mean
+  // everywhere else, because that grammar is what plugins are told to
+  // extend. Only the transformation is core's to refuse.
+
 
   const body = tokens.slice(1);
   const hasExplicitAttrsOrShorthand = body.some(
@@ -302,6 +323,7 @@ function parseMarkerLine(line) {
   // this parser is also invoked by markdown-it's silent paragraph-terminator
   // probes, so warning from here would push duplicates onto env.
   const marker = { kind, name, attrs };
+  if (unknownKind) marker.unknownKind = true;
   if (hasAmbiguousBareToken) marker.__ambiguousBareToken = true;
   if (unknownTokens.length) marker.__unknownTokens = unknownTokens;
   // A marker has exactly one name slot. A second plain word is either
@@ -374,6 +396,32 @@ function attachDataAttrs(token, kind, name, attrs) {
   }
 }
 
+/**
+ * The element attributes `layout_transform` puts on a marker's OPEN element
+ * — the context-free part: the kind's base class, the author's classes,
+ * `id`, the optional name (`data-page="cover"`, `data-chapter-label=…`)
+ * and every other `key=value` as `data-key`. `@continue` is a section that
+ * also carries `gp-continued`. Exported for the rich editor
+ * (`packages/editor`), which classifies marker LINES with this same grammar
+ * so the editor's `div.section`/`div.page` wrappers carry exactly what the
+ * print path's do. The two context-dependent extras — a page inheriting
+ * its chapter's `.chapter-N` counter class, and `@continue` inheriting the
+ * previous section's attributes — are the editor's own small pass, since
+ * they need the surrounding markers.
+ */
+export function markerElementAttributes(parsed) {
+  const kind = parsed.kind === 'continue' ? 'section' : parsed.kind;
+  if (kind !== 'chapter' && kind !== 'spread' && kind !== 'page' && kind !== 'section') return {};
+  const attrs = parsed.attrs || {};
+  const authorClasses = (attrs.class || '').split(/\s+/).filter(Boolean);
+  if (parsed.kind === 'continue' && !authorClasses.includes('gp-continued')) authorClasses.push('gp-continued');
+  const out = {};
+  const token = { attrSet(k, v) { out[k] = v; } };
+  addClasses(token, kind, authorClasses.join(' '));
+  attachDataAttrs(token, kind, parsed.name, attrs);
+  return out;
+}
+
 export default function plugin(md, pluginOptions = {}) {
   const options = {
     // `implicitPage` was removed 2026-08-12 — see the @section branch below.
@@ -444,8 +492,60 @@ export default function plugin(md, pluginOptions = {}) {
       );
     }
 
+    // A marker line is a block of its own here, whatever sits on the lines
+    // around it: this rule interrupts a paragraph above and ends before the
+    // line below. Plain markdown has no such rule - a marker with no blank
+    // line between it and a paragraph line is one paragraph with it, which
+    // is what the source-first editor's own parser (and any other markdown
+    // renderer) sees. Say so, so the author adds the blank line.
+    const gluedAbove = startLine > 0 && !state.isEmpty(startLine - 1) && !isBlockBoundaryLine(state, startLine - 1);
+    const gluedBelow = startLine + 1 < endLine && !state.isEmpty(startLine + 1) && !terminatesParagraph(state, startLine + 1, endLine);
+    if (gluedAbove || gluedBelow) {
+      const where = gluedAbove && gluedBelow ? 'the lines above and below it' : gluedAbove ? 'the line above it' : 'the line below it';
+      warn(
+        state.env,
+        startLine + 1,
+        'marker_glued',
+        `@${parsed.kind} has no blank line between it and ${where}. Gutterpress separates them on the page, but plain markdown (and the editor's own parser) reads a marker and the paragraph text next to it as one paragraph. Put a blank line before and after the marker.`,
+        parsed
+      );
+    }
+
     state.line = startLine + 1;
     return true;
+  }
+
+  /**
+   * Would markdown-it end a paragraph before `line`? The paragraph rule's own
+   * test: an indented or dedented line continues the paragraph, and otherwise
+   * every rule that may interrupt a paragraph (this file's marker rule among
+   * them, so a marker under a marker is fine) is asked in silent mode.
+   */
+  function terminatesParagraph(state, line, endLine) {
+    if (state.sCount[line] - state.blkIndent > 3) return false;
+    if (state.sCount[line] < 0) return false;
+    for (const rule of state.md.block.ruler.getRules('paragraph')) {
+      if (rule(state, line, endLine, true)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Is `line` one that closes itself - a marker, a heading, a fence, a
+   * thematic break, a table row, raw HTML - rather than paragraph text a
+   * following marker line would be glued to? Text, a list item's text and a
+   * quoted line are the shapes that fuse.
+   */
+  function isBlockBoundaryLine(state, line) {
+    const text = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]).trim();
+    return (
+      parseMarkerLine(text) !== null ||
+      /^#{1,6}(\s|$)/.test(text) ||
+      /^(`{3,}|~{3,})/.test(text) ||
+      /^([-*_])(\s*\1){2,}$/.test(text) ||
+      /^\|/.test(text) ||
+      /^<\/?[A-Za-z]/.test(text)
+    );
   }
 
   md.block.ruler.before('paragraph', 'layout_marker', markerBlock, {
@@ -603,12 +703,22 @@ export default function plugin(md, pluginOptions = {}) {
         this.frames.push(frame);
       },
 
-      /** Pop the frame of `kind` (wherever it sits) and emit its close token. */
-      _pop(kind) {
+      /**
+       * Pop the frame of `kind` (wherever it sits) and emit its close token,
+       * carrying the 1-based line of the marker that closed it as
+       * `meta.line` (the same threading as the open tokens; the EOF drain
+       * has no line). The editor projection reads it to end a plugin's
+       * wrapper at the scope's closing line rather than past it.
+       * @param {ScopeKind} kind
+       * @param {number} [line]
+       */
+      _pop(kind, line) {
         const at = this.frames.findIndex((f) => f.kind === kind);
         if (at === -1) return;
         this.frames.splice(at, 1);
-        out.push(new state.Token(`layout_${kind}_close`, 'div', -1));
+        const t = new state.Token(`layout_${kind}_close`, 'div', -1);
+        if (line) t.meta = { line };
+        out.push(t);
       },
 
       /**
@@ -617,14 +727,15 @@ export default function plugin(md, pluginOptions = {}) {
        * case (e.g. closing 'page' while only a section is open leaves the
        * section alone), matching the historical close helpers.
        * @param {ScopeKind} kind
+       * @param {number} [line] the 1-based line of the marker doing the closing
        */
-      close(kind) {
+      close(kind, line) {
         if (!this.has(kind)) return;
         for (const inner of SCOPE_CLOSE_ORDER) {
           if (inner === kind) break;
-          this._pop(inner);
+          this._pop(inner, line);
         }
-        this._pop(kind);
+        this._pop(kind, line);
       },
 
       /** The EOF drain: close every open scope, innermost kind first. */
@@ -863,7 +974,7 @@ export default function plugin(md, pluginOptions = {}) {
       const line = meta.__line || 0;
 
       if (kind === 'chapter') {
-        stack.close('chapter');
+        stack.close('chapter', line);
         openChapter(meta);
         continue;
       }
@@ -872,20 +983,20 @@ export default function plugin(md, pluginOptions = {}) {
         if (stack.has('spread')) {
           warn(state.env, line, 'nested_spread', '@spread encountered while another spread is open; closing the previous spread automatically.', meta);
         }
-        stack.close('spread');
+        stack.close('spread', line);
         openSpread(meta);
         continue;
       }
 
       if (kind === 'page') {
-        stack.close('page');
+        stack.close('page', line);
         openPage(meta);
         continue;
       }
 
       if (kind === 'section') {
         warnIfEmptyDecoratedSection('section', line);
-        stack.close('section');
+        stack.close('section', line);
 
         // A @section with no open @page is VALID AUTHORING and warns about
         // nothing. Audited 2026-08-12 across both real books: all 17
@@ -943,7 +1054,7 @@ export default function plugin(md, pluginOptions = {}) {
         if (!cls.includes('gp-continued')) cls.push('gp-continued');
         contMeta.attrs.class = cls.join(' ');
 
-        stack.close('section');
+        stack.close('section', line);
         openSection(contMeta);
         continue;
       }
@@ -992,7 +1103,7 @@ export default function plugin(md, pluginOptions = {}) {
 
       if (kind === 'end-section') {
         warnIfEmptyDecoratedSection('end-section', line);
-        stack.close('section');
+        stack.close('section', line);
         continue;
       }
     }

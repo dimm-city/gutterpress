@@ -1,6 +1,7 @@
 /**
  * Publish preflight helpers (#105). Pure, host-agnostic result-shaping over the
- * raw check results the `/api/publish/preflight` route resolves — so the
+ * raw check results the `publish:preflight` IPC handler
+ * (`electron/api/publish.ts`'s `publishPreflight`) resolves — so the
  * "registry result → author-facing row" mapping (label lookup, code demotion,
  * `fixable` derivation, severity roll-up, grouping) is unit-testable outside
  * both Svelte AND Node.

@@ -1,0 +1,677 @@
+import { describe, expect, test } from "bun:test";
+import { createEditorProjection, createMarkdownRenderer } from "gutterpress/render";
+import type { BlockAstNode } from "@dimm-city/vscode-markdown-editor";
+import type { GutterpressProjection, ProjectedBlock } from "gutterpress/render";
+import { buildBlockIndex, matchProjectedBlock, projectionNeedsRefresh } from "../../src/gutterpress/match.ts";
+import { buildChipPlan } from "../../src/gutterpress/plan.ts";
+import { createGutterpressBlockProvider } from "../../src/gutterpress/provider.ts";
+import { asideMarkerPlugin } from "./support/plugin-fixture.ts";
+
+/**
+ * SFE-P2b Lane B — unit coverage for `src/gutterpress/{match,plan,provider}.ts`.
+ *
+ * Deliberately DOM-free: imports `match.ts`/`plan.ts` (which never touch
+ * DOM at all — see their own headers) plus `provider.ts`'s
+ * `createGutterpressBlockProvider` ONLY for the stale/no-match paths, which
+ * return `undefined` BEFORE ever reaching `render-chip.ts`'s
+ * `document.createElement` calls. This file never calls `renderCustomBlock`
+ * on an input that would actually MATCH while non-stale — that would reach
+ * real DOM construction, which `bun:test` does not provide in this package
+ * (see `tests/web/mount.test.ts`'s header: every DOM-touching P1a case
+ * moved to a `.btest.ts` real-Chromium suite for exactly this reason). The
+ * full mount-through-render path, including every chip's actual DOM shape,
+ * is proven end-to-end by `tests/gutterpress/gutterpress.btest.ts`.
+ *
+ * A fake `BlockAstNode` is passed to `renderCustomBlock` in the tests
+ * below via `FAKE_NODE` — safe because `provider.ts`'s implementation never
+ * reads its `node` argument at all (only `sourceText` drives matching; see
+ * `match.ts`'s header for why no `absoluteStart` is available to use even
+ * if it wanted to).
+ */
+
+const FAKE_NODE = {} as unknown as BlockAstNode;
+const UNUSED_DOCUMENT = {} as unknown as Document;
+
+// A realistic fixture covering every kind this run touches: chapter, page
+// (-> a generated chapter-opener), an ordinary paragraph (outside the
+// projection entirely), and a standalone raw-html block. Blank-line
+// separated around every marker/raw-html line — see match.ts's header for
+// why that shape is what the fork's own parser needs to keep each one its
+// own single node.
+const FIXTURE_SOURCE =
+  [
+    "@chapter C.01",
+    "",
+    "@page splash",
+    "",
+    "Intro paragraph.",
+    "",
+    '<div class="widget">raw</div>',
+    "",
+    "Trail text.",
+  ].join("\n") + "\n";
+
+function buildFixtureProjection(sourceVersion = 1): GutterpressProjection {
+  return createEditorProjection(FIXTURE_SOURCE, { sourceVersion });
+}
+
+function blockOf(projection: GutterpressProjection, kind: ProjectedBlock["kind"]): ProjectedBlock {
+  const block = projection.blocks.find((b) => b.kind === kind);
+  if (!block) throw new Error(`test fixture: no ${kind} block in projection`);
+  return block;
+}
+
+// ── matching (G-05: exact-range match only, no fuzzy matching) ─────────────
+
+describe("matchProjectedBlock — exact-range match, not fuzzy", () => {
+  test("matches a marker block's exact source, plus any amount of the fork's own trailing blank-line glue", () => {
+    const projection = buildFixtureProjection();
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+    const page = blockOf(projection, "page");
+    const exactSlice = FIXTURE_SOURCE.slice(page.from, page.to);
+    expect(exactSlice).toBe("@page splash\n");
+
+    // Zero, one, or two extra trailing newlines all resolve to the SAME
+    // block -- empirically verified against the real fork in
+    // gutterpress.btest.ts (a fork paragraph node absorbs exactly one
+    // trailing blank separator line's terminator into its own span).
+    for (const extra of ["", "\n", "\n\n"]) {
+      const match = matchProjectedBlock(index, exactSlice + extra);
+      expect(match?.block).toBe(page);
+    }
+  });
+
+  test("does NOT match when sourceText merely CONTAINS a marker's text as a substring -- proves this is not the test-only provider's fuzzy .includes() search", () => {
+    const projection = buildFixtureProjection();
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+
+    // A single fused paragraph with "@page splash" embedded mid-sentence --
+    // the exact substring the block's own slice matches (trimmed) is
+    // present, but NOT at the start, and the whole string is not the
+    // block's own exact span.
+    const fusedSourceText = "Some intro @page splash after.\n\n";
+    expect(matchProjectedBlock(index, fusedSourceText)).toBeUndefined();
+  });
+
+  test("does NOT match a lazy-continuation fusion (marker line glued to REAL following content, no blank separator)", () => {
+    const projection = buildFixtureProjection();
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+    const page = blockOf(projection, "page");
+    const exactSlice = FIXTURE_SOURCE.slice(page.from, page.to);
+
+    // The prefix is exactly the known block's own bytes, but the remainder
+    // is REAL authored content, not pure whitespace glue -- must refuse,
+    // not guess.
+    expect(matchProjectedBlock(index, exactSlice + "Some text")).toBeUndefined();
+  });
+
+  test("does NOT match an empty or whitespace-only sourceText", () => {
+    const projection = buildFixtureProjection();
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+    expect(matchProjectedBlock(index, "")).toBeUndefined();
+    expect(matchProjectedBlock(index, "   \n\n")).toBeUndefined();
+  });
+
+  test("matches a raw-html block's exact source too", () => {
+    const projection = buildFixtureProjection();
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+    const rawHtml = blockOf(projection, "raw-html");
+    const exactSlice = FIXTURE_SOURCE.slice(rawHtml.from, rawHtml.to);
+    expect(exactSlice).toBe('<div class="widget">raw</div>\n');
+    expect(matchProjectedBlock(index, exactSlice)?.block).toBe(rawHtml);
+  });
+
+  test("two blocks with byte-identical exact text but DIFFERENT chip content fail closed -- neither block's chip is ever painted on the other's call (SFE-P2b repair round 1: replaces a prior test that hand-built two attribute-less blocks and could not have caught this)", () => {
+    // Two chapters, each opening with an identically-worded "@page splash" --
+    // an entirely ordinary book shape. markers.js derives `class`/
+    // `data-chapter-label` from the ENCLOSING @chapter frame, not from the
+    // @page line's own text, so these two blocks' viewAttributes/generated
+    // previews differ even though their trimmed source is byte-identical.
+    const source =
+      [
+        "@chapter A",
+        "",
+        "@page splash",
+        "",
+        "Body one.",
+        "",
+        "@chapter B",
+        "",
+        "@page splash",
+        "",
+        "Body two.",
+      ].join("\n") + "\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(2);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(source.slice(pages[1]!.from, pages[1]!.to)).toBe("@page splash\n");
+    // The premise this test is guarding against: same trimmed text, but the
+    // real pipeline attaches DIFFERENT chapter labels to each occurrence.
+    expect(pages[0]!.viewAttributes?.["data-chapter-label"]).toBe("A");
+    expect(pages[1]!.viewAttributes?.["data-chapter-label"]).toBe("B");
+
+    const index = buildBlockIndex(projection, source);
+    // Fail closed: an ambiguous key matches NEITHER occurrence -- painting
+    // block A's or block B's chip on the wrong call would be wrong content,
+    // which G-05 treats as worse than no chip at all.
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+    expect(matchProjectedBlock(index, "@page splash\n\n")).toBeUndefined();
+  });
+
+  test("a blockquoted duplicate of a real marker line makes that key unmatchable everywhere -- the refused occurrence never steals the real block's chip", () => {
+    // The real block ("@page splash" at the top level) is legitimately
+    // projected; the blockquoted repeat is refused by editor-projection.ts
+    // (`markerLineLooksAuthored` fails: the line starts with ">", not "@").
+    // The fork still calls renderCustomBlock for the refused occurrence with
+    // a sourceText that trim-equals the real block's own key.
+    const source = "@page splash\n\n> @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    // Fails closed even for a call carrying the REAL block's own exact
+    // range's text -- the key is ambiguous document-wide, not per-call, so
+    // there is no way to tell the two calls apart from text alone.
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 2: a blockquoted duplicate with NO blank line separating it from the real marker also makes the key unmatchable -- round 1's blank-run chunk scan missed this because the real line and the quoted line shared one chunk", () => {
+    // Same shape as the previous test, but with the quoted repeat glued
+    // directly under the real marker line (no blank separator). Round 1's
+    // `scanDequotedChunks` grouped both lines into ONE chunk (blank runs are
+    // the only chunk boundary it recognized), so the chunk's own key became
+    // the two lines joined -- never equal to either line's own key alone --
+    // and the collision went undetected. Verified live against the real
+    // fork (SFE-P2b repair round 2 finding): this shape painted a full
+    // structured chip on the blockquoted occurrence the projection
+    // declined to project.
+    const source = "@page splash\n> @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 2: a duplicate marker line inside a LIST ITEM also makes the key unmatchable -- round 1 only stripped blockquote '>' markers, never list bullets", () => {
+    // The real block ("@page splash" at the top level) is legitimately
+    // projected; the second list item's text reads the same once the "- "
+    // bullet is stripped. Round 1's BLOCKQUOTE_PREFIX_RE never recognized
+    // list markers at all, so this shape sailed straight through undetected
+    // -- verified live (SFE-P2b repair round 2 finding): a full structured
+    // chip painted on the list item.
+    const source = "@page splash\n\n- item\n- @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 2: a CRLF document with a blockquoted duplicate also makes the key unmatchable -- round 1's blank-run regex only matched bare LF, so a CRLF document became one inert chunk", () => {
+    // Same shape as the very first blockquote test in this suite, but every
+    // line terminator is \r\n. Round 1's `BLANK_RUN_RE` required a bare
+    // `\n\n` with nothing but [ \t] in between; `\r\n\r\n` never matched it,
+    // so the whole CRLF source became a single chunk and the second-pass
+    // check never ran at all.
+    const source = "@page splash\r\n\r\n> @page splash\r\n\r\nTail.\r\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\r\n");
+
+    const index = buildBlockIndex(projection, source);
+    // `.trimEnd()` strips \r along with \n, so the fork's own CRLF
+    // sourceText and a plain-LF probe string normalize to the same key.
+    expect(matchProjectedBlock(index, "@page splash\r\n")).toBeUndefined();
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with TRAILING WHITESPACE also makes the key unmatchable -- round 2's SourceLine.text was never trimEnd()'d, so \"@page splash   \" (three trailing spaces) never equaled the owning block's plain \"@page splash\" key", () => {
+    // One character away from round 2's own passing fixture: ONE extra
+    // trailing space on the blockquoted line. Verified live against the real
+    // fork (SFE-P2b repair round 3 finding): this shape painted a full
+    // structured chip on the blockquoted occurrence the projection declined
+    // to project, because match.ts's own line index and matchProjectedBlock's
+    // key normalized trailing whitespace differently.
+    const source = "@page splash\n\n> @page splash   \n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 3: a blockquoted duplicate with RESIDUAL INDENTATION also makes the key unmatchable -- CONTAINER_PREFIX_RE consumed at most one space/tab after '>', so \"  @page splash\" (two spaces left after stripping \"> \") never equaled the owning block's key either", () => {
+    // Two extra spaces between '>' and the marker sigil, past the single
+    // separator CommonMark itself treats as the blockquote marker's own.
+    // Verified live (SFE-P2b repair round 3 finding): same wrong-chip outcome
+    // as the trailing-whitespace case above, from the opposite side of the
+    // asymmetry (leading residual indentation instead of trailing glue).
+    const source = "@page splash\n\n>   @page splash\n\nTail.\n";
+    const projection = createEditorProjection(source, { sourceVersion: 1 });
+    const pages = projection.blocks.filter((b) => b.kind === "page");
+    expect(pages).toHaveLength(1);
+    expect(source.slice(pages[0]!.from, pages[0]!.to)).toBe("@page splash\n");
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("does not reproduce a"),
+      ),
+    ).toBe(true);
+
+    const index = buildBlockIndex(projection, source);
+    expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+  });
+
+  test("SFE-P2b repair round 3: property-style sweep -- every combination of a container prefix and surrounding whitespace around a duplicate marker line makes the key unmatchable, not just the two fixtures reported live", () => {
+    // Rather than enumerating one fixture per reported shape (the pattern
+    // the repair report was flagged for in rounds 1 and 2), this sweeps a
+    // cross product of container prefixes x whitespace variants so the
+    // header's claim of generality is backed by more than the reported
+    // shapes themselves.
+    const containerPrefixes = [">", "> ", ">  ", ">   ", "- ", "-  ", "* ", "1. ", "2) "];
+    const trailingWhitespace = ["", " ", "  ", "   "];
+
+    for (const prefix of containerPrefixes) {
+      for (const trailing of trailingWhitespace) {
+        const source = `@page splash\n\n${prefix}@page splash${trailing}\n\nTail.\n`;
+        const projection = createEditorProjection(source, { sourceVersion: 1 });
+        const pages = projection.blocks.filter((b) => b.kind === "page");
+        // Liveness (AP-21): the real block must still be there, or this case
+        // is testing nothing.
+        expect(pages).toHaveLength(1);
+
+        const index = buildBlockIndex(projection, source);
+        expect(matchProjectedBlock(index, "@page splash\n")).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe("projectionNeedsRefresh (G-11)", () => {
+  test("false when the current version matches the projection's own sourceVersion", () => {
+    const projection = buildFixtureProjection(3);
+    expect(projectionNeedsRefresh(projection, 3)).toBe(false);
+  });
+
+  test("true once the current version has moved on", () => {
+    const projection = buildFixtureProjection(3);
+    expect(projectionNeedsRefresh(projection, 4)).toBe(true);
+    expect(projectionNeedsRefresh(projection, 0)).toBe(true);
+  });
+
+  test("D13: true whenever `limited` is true, even when sourceVersion still matches -- editor-projection.ts's own contract: 'A consumer MUST treat limited: true as stale-equivalent'", () => {
+    // 10,001 markers -- one past MAX_PROJECTED_BLOCKS -- really does set
+    // `limited: true` (not asserted as a given; computed via the real
+    // pipeline, matching limits.btest.ts's own "sanity" case).
+    const bigSource = "@page-break\n".repeat(10_001);
+    const bigProjection = createEditorProjection(bigSource, { sourceVersion: 5 });
+    expect(bigProjection.limited).toBe(true);
+    expect(projectionNeedsRefresh(bigProjection, 5)).toBe(true);
+  });
+
+  test("a NOT-limited projection at the matching version is not stale", () => {
+    const projection = buildFixtureProjection(5);
+    expect(projection.limited).toBeUndefined();
+    expect(projectionNeedsRefresh(projection, 5)).toBe(false);
+  });
+});
+
+// ── plan building (D6/G-04: generated content is never segmented) ──────────
+
+describe("buildChipPlan", () => {
+  test("a marker block (editMode: structured) plans as segmented, with no generated previews when none anchor to it", () => {
+    const projection = buildFixtureProjection();
+    const chapter = blockOf(projection, "chapter");
+    const sourceText = FIXTURE_SOURCE.slice(chapter.from, chapter.to);
+    const plan = buildChipPlan(chapter, [], sourceText);
+    expect(plan.segmented).toBe(true);
+    expect(plan.sourceText).toBe(sourceText);
+    expect(plan.generatedPreviews).toEqual([]);
+  });
+
+  test("a raw-html block (editMode: source) plans as NOT segmented -- inert text preview, matching the run spec's deliberately-safe interim", () => {
+    const projection = buildFixtureProjection();
+    const rawHtml = blockOf(projection, "raw-html");
+    const sourceText = FIXTURE_SOURCE.slice(rawHtml.from, rawHtml.to);
+    const plan = buildChipPlan(rawHtml, [], sourceText);
+    expect(plan.segmented).toBe(false);
+    expect(plan.sourceText).toBe(sourceText);
+    // SFE-P2c repair round 1: inactivePreviewText prefers block.inactiveHtml
+    // -- raw-html already set that to its own raw bytes, so this is a
+    // no-op switch for this kind (unlike plugin-region, see below).
+    expect(rawHtml.inactiveHtml).toBeDefined();
+    expect(plan.inactivePreviewText).toBe(rawHtml.inactiveHtml!);
+    expect(plan.inactivePreviewText).toBe(sourceText);
+  });
+
+  test("generated-view in-chip inclusion: the page marker's plan carries the exact generated chapter-opener HTML text", () => {
+    const projection = buildFixtureProjection();
+    const page = blockOf(projection, "page");
+    expect(projection.generated).toHaveLength(1);
+    const generatedView = projection.generated[0]!;
+    expect(generatedView.anchor).toBe(page.to);
+    expect(generatedView.html).toBe('<div class="chapter-opener" data-chapter-label="C.01">C.01</div>\n');
+
+    const index = buildBlockIndex(projection, FIXTURE_SOURCE);
+    const match = matchProjectedBlock(index, FIXTURE_SOURCE.slice(page.from, page.to));
+    expect(match?.generatedPreviews).toEqual([generatedView]);
+
+    const plan = buildChipPlan(match!.block, match!.generatedPreviews, FIXTURE_SOURCE.slice(page.from, page.to));
+    expect(plan.generatedPreviews).toEqual([generatedView.html]);
+  });
+
+  test("no-segments-for-generated: generatedPreviews is a plain string array -- there is no field a SourceSegment could ever occupy (type-level guarantee, not just a runtime check)", () => {
+    const projection = buildFixtureProjection();
+    const page = blockOf(projection, "page");
+    const view = projection.generated[0]!;
+    const plan = buildChipPlan(page, [view], FIXTURE_SOURCE.slice(page.from, page.to));
+    expect(plan.generatedPreviews).toHaveLength(1);
+    for (const preview of plan.generatedPreviews) {
+      // A string cannot carry a `{ dom, start, length }` SourceSegment --
+      // this loop existing at all, over plain strings, IS the proof.
+      expect(typeof preview).toBe("string");
+    }
+  });
+});
+
+// ── marker scopes from text — the full provider, never reaching DOM ────────
+//
+// Marker lines are classified with the pipeline's own grammar
+// (`parseMarkerLine`), not a projection snapshot, so `groupBlocks` and the
+// marker chips keep working through every keystroke. These tests drive the
+// pure `groupBlocks` half; the chip DOM is covered by the browser suite.
+
+describe("createGutterpressBlockProvider — marker scopes from text", () => {
+  const candidates = (lines: readonly string[]) =>
+    lines.map((sourceText, i) => ({ ast: { kind: "paragraph", id: i } as unknown as BlockAstNode, sourceText, absoluteStart: i * 100 }));
+
+  test("a section holds the blocks between its marker and its @end-section, and carries the pipeline's class/data attributes", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@section intro .lede\n", "Body.\n", "More body.\n", "@end-section\n", "After.\n"]))!;
+    expect(groups).toHaveLength(1);
+    // Neither the opening marker (block 0) nor its closer (block 3) is inside
+    // the wrapper: in the book the marker line PRODUCES the section and leaves
+    // nothing in it, which is what a book's own `.section > h3:first-child`
+    // and `> :last-child` rules are written against.
+    expect(groups[0]).toMatchObject({ start: 1, end: 3, className: "section lede", attributes: { "data-section": "intro" } });
+  });
+
+  test("text on the line right after a marker is the paragraph under it: the block opens the wrapper and sits inside it", () => {
+    // The pipeline reads markers line by line, so "@section" then "text" with
+    // no blank line between is a section holding the paragraph "text" - the
+    // shape an author produces by typing past the marker's newline.
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@section intro .lede\ntext under it\n", "Body.\n", "@end-section\n"]))!;
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ start: 0, end: 2, className: "section lede" });
+    // Prose that merely starts with an unknown "@word" is prose on the page,
+    // and stays prose here: no wrapper.
+    expect(provider.groupBlocks(candidates(["@handle is mine\nmore prose\n", "Body.\n"]))).toEqual([]);
+  });
+
+  test("a marker with nothing after it opens no wrapper", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    expect(provider.groupBlocks(candidates(["Text.\n", "@section\n"]))).toEqual([]);
+    expect(provider.groupBlocks(candidates(["@section\n", "@end-section\n"]))).toEqual([]);
+  });
+
+  test("a page closes at the next page, and the sections inside it nest within it", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@page one\n", "@section a\n", "Text.\n", "@section b\n", "Text.\n", "@page two\n", "Text.\n"]))!;
+    expect(groups.map((g) => [g.className, g.start, g.end])).toEqual([
+      ["page", 1, 5],
+      ["section", 2, 3],
+      ["section", 4, 5],
+      ["page", 6, 7],
+    ]);
+  });
+
+  test("@continue inherits the previous section's attributes plus gp-continued; pages inherit the chapter counter class", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@chapter ch=3\n", "@page\n", "@section .sidebar\n", "Text.\n", "@continue\n", "Text.\n"]))!;
+    expect(groups.find((g) => g.className === "page chapter-3")?.start).toBe(2);
+    expect(groups.find((g) => g.start === 5)?.className).toBe("section sidebar gp-continued");
+  });
+
+  test("an author's own raw HTML container wraps the blocks between its tags", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "unhandledBlock", id: 1 } as unknown as BlockAstNode, sourceText: '<div class="colophon-grid" data-x="1">\n', absoluteStart: 0 },
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "Credits.\n", absoluteStart: 50 },
+      { ast: { kind: "unhandledBlock", id: 3 } as unknown as BlockAstNode, sourceText: "</div>\n", absoluteStart: 100 },
+      { ast: { kind: "paragraph", id: 4 } as unknown as BlockAstNode, sourceText: "After.\n", absoluteStart: 150 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([
+      { start: 1, end: 2, key: "html:0:1", tagName: "div", className: "colophon-grid", attributes: { "data-x": "1" } },
+    ]);
+  });
+
+  test("a raw HTML block that closes what it opens wraps nothing", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "unhandledBlock", id: 1 } as unknown as BlockAstNode, sourceText: '<div class="rule"><hr></div>\n', absoluteStart: 0 },
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "After.\n", absoluteStart: 50 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([]);
+  });
+
+  test("prose and non-paragraph blocks are never markers", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const blocks = [
+      { ast: { kind: "codeBlock", id: 1 } as unknown as BlockAstNode, sourceText: "@section in a fence\n", absoluteStart: 0 },
+      // A sentence that starts with a core marker word IS a marker on the page
+      // (the pipeline reads it line by line: `@section is a word...` opens a
+      // section and `and it wraps` is the paragraph inside it), so only a
+      // word core does not own keeps a sentence prose.
+      { ast: { kind: "paragraph", id: 2 } as unknown as BlockAstNode, sourceText: "@handle is a word this sentence starts with\nand it wraps\n", absoluteStart: 50 },
+      { ast: { kind: "paragraph", id: 3 } as unknown as BlockAstNode, sourceText: "Ordinary paragraph text.\n", absoluteStart: 100 },
+    ];
+    expect(provider.groupBlocks(blocks)).toEqual([]);
+    expect(provider.renderCustomBlock(FAKE_NODE, "Ordinary paragraph text, not projected.\n\n")).toBeUndefined();
+  });
+
+  test("a plugin's wrappers mount where the pipeline put them, anchored to the authored blocks they hold", () => {
+    // A card plugin's shape: at every h4 it opens a card around the heading
+    // and a body after it, closing both at the next h4; the last card runs
+    // to the end of the document. The projection records each wrapper by
+    // the text + offset of the first block inside and the first block after.
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        { tag: "div", attributes: { class: "dc-skill-card", name: "fast-talk" }, open: { text: "#### Fast Talk", offset: 0 }, close: { text: "#### Next", offset: 300 } },
+        { tag: "div", attributes: { class: "dc-card-body" }, open: { text: "Body.", offset: 100 }, close: { text: "#### Next", offset: 300 } },
+        { tag: "div", attributes: { class: "dc-skill-card", name: "next" }, open: { text: "#### Next", offset: 300 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["#### Fast Talk\n", "Body.\n", "> Flavor.\n", "#### Next\n", "Body 2.\n"]))!;
+    expect(groups).toEqual([
+      { start: 0, end: 3, key: "plugin:0", tagName: "div", className: "dc-skill-card", attributes: { name: "fast-talk" } },
+      { start: 1, end: 3, key: "plugin:1", tagName: "div", className: "dc-card-body", attributes: {} },
+      { start: 3, end: 5, key: "plugin:2", tagName: "div", className: "dc-skill-card", attributes: { name: "next" } },
+    ]);
+  });
+
+  test("a plugin wrapper whose anchor block is not in this render is left out, and identical anchor text resolves by nearest offset", () => {
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        // Its opening block was just edited away: nothing to anchor to.
+        { tag: "aside", attributes: { class: "gone" }, open: { text: "#### Edited", offset: 0 }, close: { text: "Tail.", offset: 400 } },
+        // Two blocks read "Body." -- the offset picks the second one.
+        { tag: "div", attributes: { class: "second" }, open: { text: "Body.", offset: 310 }, close: { text: "Tail.", offset: 400 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["#### Kept\n", "Body.\n", "Middle.\n", "Body.\n", "Tail.\n"]))!;
+    expect(groups).toEqual([{ start: 3, end: 4, key: "plugin:1", tagName: "div", className: "second", attributes: {} }]);
+  });
+
+  test("needsRefresh() reflects the projection's own sourceVersion", () => {
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(7), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    expect(provider.needsRefresh(7)).toBe(false);
+    expect(provider.needsRefresh(8)).toBe(true);
+  });
+});
+
+// ── SFE-P2c: plugin-region matching + planning ─────────────────────────────
+//
+// Extends the coverage above for the "plugin-region" kind (P2b reserved it;
+// SFE-P2c's Lane A made it real in editor-projection.ts). The fixture is
+// `./support/plugin-fixture.ts`'s "@@aside" plugin — a realistic
+// registered markdown-it core rule, mirroring
+// `packages/cli/src/lib/markdown/editor-projection-plugins.test.ts`'s own
+// fixture byte-for-byte (see that shared module's header for why it is a
+// deliberate port, not a cross-package import).
+//
+// NO PRODUCTION CODE CHANGE was needed for any of this: `match.ts`,
+// `plan.ts`, `provider.ts`, and `render-chip.ts` are all kind-agnostic —
+// they dispatch on `block.editMode` (`plan.ts`) or plain object identity
+// (`match.ts`), never on `block.kind` itself. The tests below VERIFY that
+// claim against the real, unmodified production modules (the run spec's own
+// instruction: "this comes free from the seam... verify rather than
+// assume") rather than merely asserting it in a comment. See
+// `../src/gutterpress/plan.ts`'s and `../src/gutterpress/match.ts`'s own
+// "PLUGIN-REGION (SFE-P2c)" / "REFUSED PLUGIN REGIONS (SFE-P2c)" header
+// sections for the full decision record; `plugin-region.btest.ts` proves
+// the same claims against the real fork in a real browser.
+
+const ASIDE_SOURCE = "@@aside Pull quote here\n";
+
+function buildAsideProjection(keepEvidence: boolean, sourceVersion = 1): GutterpressProjection {
+  const md = createMarkdownRenderer([asideMarkerPlugin(keepEvidence)]);
+  return createEditorProjection(ASIDE_SOURCE, { sourceVersion, md, trusted: true });
+}
+
+describe("plugin-region: matchProjectedBlock (SFE-P2c)", () => {
+  test("matches an evidence-bearing plugin-region block's exact source, plus the fork's own trailing blank-line glue -- the SAME `.trimEnd()` correlation match.ts already uses for every other kind", () => {
+    const projection = buildAsideProjection(true);
+    // AP-21 liveness: the plugin's transform really ran and really produced
+    // a plugin-region block before anything below is meaningful.
+    const region = blockOf(projection, "plugin-region");
+    const exactSlice = ASIDE_SOURCE.slice(region.from, region.to);
+    expect(exactSlice).toBe("@@aside Pull quote here\n");
+
+    const index = buildBlockIndex(projection, ASIDE_SOURCE);
+    for (const extra of ["", "\n", "\n\n"]) {
+      expect(matchProjectedBlock(index, exactSlice + extra)?.block).toBe(region);
+    }
+  });
+
+  test("a refused (no-evidence) plugin token yields zero blocks -- there is architecturally nothing for match.ts to ever match, not merely an empirical 'no chip' outcome", () => {
+    const projection = buildAsideProjection(false);
+    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
+    expect(
+      projection.diagnostics.some(
+        (d) => d.category === "EDITOR_UNSUPPORTED_PROJECTION" && d.reason.includes("plugin_aside_open"),
+      ),
+    ).toBe(true);
+
+    // buildBlockIndex only ever indexes projection.blocks (see match.ts's
+    // BlockIndex.bySourceText doc comment) -- a refused span was never
+    // given a key to begin with, so even the region's OWN exact text
+    // cannot resolve to a match. This is the architectural proof behind
+    // "no chip renders for a refused region": there is no code path by
+    // which one could.
+    const index = buildBlockIndex(projection, ASIDE_SOURCE);
+    expect(matchProjectedBlock(index, ASIDE_SOURCE)).toBeUndefined();
+    expect(matchProjectedBlock(index, "@@aside Pull quote here\n")).toBeUndefined();
+  });
+});
+
+describe("plugin-region: buildChipPlan (SFE-P2c)", () => {
+  test("editor-projection.ts's committed shape: editMode is 'source' (matching raw-html's own posture), so this plans as NOT segmented -- the same bare inert-text preview path, verified for this kind rather than assumed", () => {
+    const projection = buildAsideProjection(true);
+    const region = blockOf(projection, "plugin-region");
+    expect(region.editMode).toBe("source");
+
+    const sourceText = ASIDE_SOURCE.slice(region.from, region.to);
+    const plan = buildChipPlan(region, [], sourceText);
+    expect(plan.segmented).toBe(false);
+    expect(plan.sourceText).toBe(sourceText);
+  });
+
+  test("SFE-P2c repair round 1: editor-projection.ts now carries a real inactiveHtml for this kind -- the plugin's own rendered HTML, not the raw authored marker text -- and buildChipPlan's inactivePreviewText prefers it over sourceText", () => {
+    const projection = buildAsideProjection(true);
+    const region = blockOf(projection, "plugin-region");
+    // Superseded assertion (was `expect(region.inactiveHtml).toBeUndefined()`
+    // before this repair round -- see this test's own new title): the
+    // projection now supplies a real rendered fragment, distinct from the
+    // raw authored marker line.
+    expect(region.inactiveHtml).toBeDefined();
+    expect(region.inactiveHtml).not.toBe(ASIDE_SOURCE.slice(region.from, region.to));
+    expect(region.inactiveHtml).toContain("aside");
+    expect(region.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
+
+    const sourceText = ASIDE_SOURCE.slice(region.from, region.to);
+    const plan = buildChipPlan(region, [], sourceText);
+    // AP-06: carried through unchanged, ready for render-chip.ts's inert
+    // attribute badge -- never written back to source.
+    expect(plan.block.viewAttributes?.["data-aside-label"]).toBe("Pull quote here");
+    // sourceText itself is UNCHANGED (still the fork's own exact call
+    // text) -- only the NON-SEGMENTED preview text now prefers the
+    // pipeline's rendered fragment.
+    expect(plan.sourceText).toBe(sourceText);
+    expect(plan.inactivePreviewText).toBe(region.inactiveHtml!);
+    expect(plan.inactivePreviewText).not.toBe(sourceText);
+  });
+
+  test("a refused (no-evidence) plugin-region has no projection block at all, so there is no inactiveHtml to prefer -- unaffected by this repair round", () => {
+    const projection = buildAsideProjection(false);
+    expect(projection.blocks.find((b) => b.kind === "plugin-region")).toBeUndefined();
+  });
+});
+
+describe("createGutterpressBlockProvider -- plugin-region, still never reaching DOM (SFE-P2c)", () => {
+  test("returns undefined for a refused plugin token's own would-be sourceText -- no block exists to match, so the provider falls through exactly like an ordinary unmatched call, never a guessed writable range", () => {
+    const projection = buildAsideProjection(false);
+    const provider = createGutterpressBlockProvider(projection, {
+      source: ASIDE_SOURCE,
+      ownerDocument: UNUSED_DOCUMENT,
+    });
+    // Never reaches render-chip.ts's document.createElement -- if it did,
+    // this would throw under bun:test's DOM-less runtime, failing the test
+    // outright rather than merely returning the wrong value.
+    expect(provider.renderCustomBlock(FAKE_NODE, ASIDE_SOURCE)).toBeUndefined();
+  });
+
+  test("returns a real CustomBlockRendering shape is NOT exercised here (that needs real DOM -- see plugin-region.btest.ts); needsRefresh still reflects the projection's own sourceVersion for this kind exactly as for every other", () => {
+    const projection = buildAsideProjection(true, 9);
+    const provider = createGutterpressBlockProvider(projection, {
+      source: ASIDE_SOURCE,
+      ownerDocument: UNUSED_DOCUMENT,
+    });
+    expect(provider.needsRefresh(9)).toBe(false);
+    expect(provider.needsRefresh(10)).toBe(true);
+  });
+});

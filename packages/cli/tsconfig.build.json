@@ -27,6 +27,8 @@
     "src/commands",
     "src/engine/dev-cli.ts",
     "src/engine/viewer",
+    // Typed by src/viewer.tsconfig.json (DOM program) — see that file.
+    "src/viewer.ts",
     "src/engine/compiler/agent.ts"
   ]
 }

@@ -1,12 +1,15 @@
 /**
- * Desktop-facing DTOs (ARCH review #39) — plain data shapes returned by the
- * server routes under `src/routes/api/**`, plus a handful of app-local view
- * types (plugin manager, theme manager, style resolver, media panel, …).
+ * Desktop-facing DTOs (ARCH review #39) — plain data shapes the typed IPC
+ * capability modules (`$lib/*-capability.ts`) return, plus a handful of
+ * app-local view types (plugin manager, theme manager, style resolver,
+ * media panel, …).
  *
  * These are NOT part of the `HostServices`/`ElectronBridge`/`Platform` seam
  * (that lives in `./contract.ts`) — they are the request/response payload
- * shapes `$lib/api.ts` and its consumers use. Most mirror an equivalent type
- * in `gutterpress` (the lib) and are defined locally here so the SPA
+ * shapes the capability modules and their consumers use (through SFE-P5c,
+ * `src/routes/api/**`'s now-deleted `+server.ts` routes and `$lib/api.ts`'s
+ * typed fetch client returned these same shapes). Most mirror an equivalent
+ * type in `gutterpress` (the lib) and are defined locally here so the SPA
  * never value-imports the lib into the renderer bundle (§8 / ADR 0004).
  *
  * Pure type/interface/type-alias declarations ONLY — no runtime values, no
@@ -18,8 +21,9 @@ import type { ProjectSource, ProjectCapabilities } from "gutterpress";
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
 // #44 has since shipped in full (EditorBuffer in editor/buffer-state.svelte.ts,
-// CrashRecoveryController, the /api/recovery/* routes below). `RecoveryEntry`
-// is the live DTO those routes return. `EditorBufferPhase` predates that work
+// CrashRecoveryController, the `recovery:write`/`recovery:clear`/`recovery:list`
+// typed IPC channels below). `RecoveryEntry` is the live DTO those channels
+// return. `EditorBufferPhase` predates that work
 // and has no importers — EditorBuffer declares its own identical copy of the
 // union locally instead of importing this one.
 
@@ -77,7 +81,7 @@ export interface ProjectClassification {
 // shared-types.ts (re-exported by contract.ts). ListSnapshotsOptions is a
 // renderer-only request shape, so it stays here.
 
-/** Paging inputs for {@link HostServices.listSnapshotsPage}. */
+/** Paging inputs for `vcs:listSnapshotsPage` (`ElectronBridge.vcs.listSnapshotsPage` in `contract.ts`, called from `$lib/vcs/vcs-capability.ts`). */
 export interface ListSnapshotsOptions {
   /** Max entries per page (host default: 100). */
   limit?: number;
@@ -220,6 +224,65 @@ export interface ProjectStyle {
   active: boolean;
 }
 
+// ── Templates (#29) — SFE-P5c2 ────────────────────────────────────────────
+//
+// Moved here from `$lib/api.ts` (its "genuinely api-local shapes" section)
+// when `tpl` migrated off HTTP routes to typed IPC — these have no canonical
+// twin in the lib (a starter-template listing is a desktop-only view), so
+// they join the rest of this bounded context's DTOs instead of living only
+// in the now-deleted `api.tpl` namespace.
+
+/** One starter template offered by the New Project wizard. */
+export interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+  /** The `preset:` this template's manifest declares — the starting point
+   *  the new-book wizard seeds its preset choice from (ADR 0008). */
+  preset?: string;
+  /** The `targets:` this template's manifest declares, if any. */
+  targets?: string[];
+}
+
+/** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
+export interface SavedTemplateInfo extends TemplateInfo {
+  /** Book-local paths the `../../shared/...` refs were vendored to (vendor mode). */
+  vendoredRefs?: string[];
+  /** Manifest entries dropped because they pointed outside the book (exclude mode). */
+  excludedRefs?: string[];
+}
+
+// ── Snippets (#29) — SFE-P5c2 ─────────────────────────────────────────────
+//
+// Moved here from `$lib/api.ts` alongside `TemplateInfo` (see that section's
+// note) when `snip` migrated to typed IPC.
+
+/** One reusable markdown snippet in the open project's `snippets/` folder. */
+export interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+
+// ── Project configuration view (#PCV) — SFE-P5c2 ──────────────────────────
+//
+// Moved here from `$lib/api.ts` (mirrors the lib's `ProjectConfigFields`)
+// when `manifest` migrated to typed IPC — declared locally so the SPA bundle
+// stays free of value imports from `gutterpress` (§8 renderer purity).
+
+/** The author-facing manifest subset the Details section reads/writes. */
+export interface ProjectConfigFields {
+  title?: string;
+  authors?: string[];
+  /** `source.files` — null is the deliberate "all chapter files" sentinel. */
+  sourceFiles?: string[] | null;
+  /** `targets:` — the publish destinations this book is validated against
+   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
+  targets?: string[];
+}
+
 // Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
 // defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
 // editable `:root` custom property surfaced to the guided Design panel.
@@ -301,7 +364,7 @@ export type RemoteGuidanceId =
 export interface LogFileEntry {
   /** File name (e.g. "my-book.log"). */
   name: string;
-  /** Absolute path — feed to `api.log.read`. */
+  /** Absolute path — feed to `$lib/app-lifecycle/app-lifecycle-capability`'s `readLog`. */
   path: string;
   /** File size in bytes. */
   sizeBytes: number;
@@ -367,7 +430,7 @@ export interface DoctorToolStatus {
   installHint: string;
 }
 
-/** Full `/api/doctor` response — system + tool diagnostics for the Help dialog. */
+/** Full `doctor:getDiagnostics` IPC response — system + tool diagnostics for the Help dialog. */
 export interface DoctorDiagnostics {
   libVersion: string;
   desktopVersion: string;
@@ -391,7 +454,7 @@ export interface AppImageIntegrationPaths {
   icon: string;
 }
 
-/** `GET /api/app/appimage-integration` — supported/installed/repair state. */
+/** `app:appImageIntegrationStatus` typed IPC channel — supported/installed/repair state. */
 export interface AppImageIntegrationStatus {
   /** Linux + packaged + running from an AppImage. The Settings action renders only when true. */
   supported: boolean;

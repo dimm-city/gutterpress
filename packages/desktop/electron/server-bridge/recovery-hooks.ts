@@ -1,5 +1,7 @@
 /**
- * Shared crash-recovery hooks for recovery:* server routes.
+ * Shared crash-recovery hooks for the recovery:* IPC handlers in
+ * `electron/api/recovery.ts` (SFE-P5c4; the `recovery/*​/+server.ts` routes
+ * they replaced are deleted).
  *
  * Storage lives in the single collapsed host object (ARCH review #31,
  * `./host-services.ts`) — `getRecoveryHooks()` is a thin derived selector

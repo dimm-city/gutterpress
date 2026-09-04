@@ -138,8 +138,8 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
   }
 
   // All mutations are serialized on one chain. Several writers share this
-  // file concurrently (the api:preview open flow in main, and the app/*
-  // server routes the renderer calls — including the start screen's
+  // file concurrently (the api:preview open flow in main, and the `app:*`
+  // typed IPC handlers the renderer calls — including the start screen's
   // "show at startup" toggle firing exactly while the startup open runs),
   // and each does a read-modify-write; without serialization the last
   // writer silently reverts the other's change.

@@ -9,7 +9,7 @@ import type {
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
-} from "../../src/lib/api";
+} from "../../src/lib/platform/dtos";
 
 const recommended: RecommendedPlugin[] = [
   { name: "markdown-it-mark", label: "Highlight", description: "==mark== -> <mark>", builtin: true },

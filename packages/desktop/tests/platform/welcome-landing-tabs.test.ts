@@ -80,12 +80,12 @@ describe("the Logs tab (diagnostic sharing)", () => {
     expect(order).toEqual(["projects", "settings", "help", "logs"]);
   });
 
-  test("the logs panel mounts LogsPanel (list + read via api.log.*)", () => {
+  test("the logs panel mounts LogsPanel (list + read via typed IPC)", () => {
     expect(landing).toContain('activeTab === "logs"');
     expect(landing).toContain("<LogsPanel />");
     const logsPanel = read("src/lib/components/LogsPanel.svelte");
-    expect(logsPanel).toContain("api.log.list()");
-    expect(logsPanel).toContain("api.log.read(");
+    expect(logsPanel).toContain("listLogs()");
+    expect(logsPanel).toContain("readLog(");
     expect(logsPanel).toContain("navigator.clipboard.writeText");
   });
 });

@@ -21,8 +21,13 @@ Every feature area below is tagged with its implementation status:
 
 ## Scope
 
-This contract governs the **desktop application** — the desktop Electron app
-and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
+This contract governs the **desktop application** — the Electron app. There
+is no PWA/browser target inside this package: the browser host (#33/#34,
+`docs/pwa-webadapter-plan.md`) shipped partially, then was deleted rather
+than completed (0.11, SFE-P5a, plan D10; see CLAUDE.md §8 and the deletion
+ledger's SFE-P5a entry). A future web product would be a separate package
+consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`, not a
+mode of this application — this contract does not govern it.
 
 **Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
@@ -37,7 +42,7 @@ contract and those documents conflict, the architecture documents win.**
 
 | Rule | Source | UX consequence |
 |---|---|---|
-| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
+| Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls) | `CLAUDE.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | ADR 0005 (removed in the 2026-07-29 docs cleanup) | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Plugin manager) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | ADR 0002 (removed in the 2026-07-29 docs cleanup) | Preflight/export UX; "export" not "download". |
@@ -50,10 +55,10 @@ contract and those documents conflict, the architecture documents win.**
 ## Vision Statement
 
 Gutterpress transforms markdown into beautifully paginated PDFs with zero layout
-friction. It meets authors where they work — in prose, in code, and (via the
-PWA) on mobile for writing and previewing — and stays invisible until they
-need it. The interface disappears into the writing; the print engine makes the
-result look professional without requiring design expertise.
+friction. It meets authors where they work — in prose and in code — and stays
+invisible until they need it. The interface disappears into the writing; the
+print engine makes the result look professional without requiring design
+expertise.
 
 **Design north star:** a non-technical author can open a folder, write in
 markdown, and export a print-ready PDF with **P50 time-to-first-PDF ≤ 5
@@ -146,11 +151,10 @@ deliberately separated concepts; do not merge them back.
   single column with a **Markdown / CSS / Preview** tab bar, keyboard-aware
   via `visualViewport`. Any multi-tier breakpoint proposal is a PROPOSED
   change to this shipped behavior and needs an issue.
-- **Mobile primary navigation (PWA):** Write, Preview, Files, Settings.
-  **Publish is not a mobile tab** — PDF export/publish is capability-gated
-  off on web/mobile per #33's constraints ("PDF export stays desktop/CLI
-  only") and `docs/pwa-webadapter-plan.md`; where referenced on mobile it
-  shows "requires desktop".
+- **Mobile primary navigation (PWA) — REMOVED (0.11, SFE-P5a, plan D10):**
+  described a Write/Preview/Files/Settings tab set for the now-deleted
+  browser host. No PWA/browser target exists in this package (see Scope
+  above); a future web product would define its own navigation model.
 
 ### Keyboard shortcut map
 
@@ -206,6 +210,11 @@ Shipped baseline:
     headers) falls back to the nearest mapped ancestor.
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
   `webContents.printToPDF`.
+- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
+  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
+  snapshots at 1000ms, a user setting ("Save edits automatically",
+  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
+  indicator is subtle (no modal) — see Anti-Patterns.
 
 Proposed refinements:
 
@@ -225,9 +234,23 @@ Proposed refinements:
 
 ### 1b. Inline editing in the preview
 
-**Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
+**Status: SHIPPED in 0.10.0, then PARTIALLY REMOVED in 0.11 (SFE-P4,
+2026-09-01).** Originally tracked by **#135** Tier 0 and **#136** Tier 1;
 implementation plan `docs/inline-editing-plan.md`, rationale
-`docs/adr/0009-inline-editing-source-ranges.md`).
+`docs/adr/0009-inline-editing-source-ranges.md`.
+**Correction 2026-09-01:** the source-mutating half of this section —
+the context menu's mutation items (image properties/unwrap, link edit,
+marker/page-marker edit, block-break before/after, selection formatting,
+make-link) and the "Block overlay" ("Edit this block", double-click-to-edit)
+described below — was **deleted** in SFE-P4; see the deletion ledger
+(`docs/plans/source-first-editor/deletion-ledger.md`, "SFE-P4" entry) for
+the measured proof. The preview is now **read-only**: navigation
+(click-to-source), selection/copy, open link/image, diagnostics, page
+controls, and source reveal only (plan D8). Those mutation affordances'
+replacements live in the source and shared rich editor commands, not the
+preview. The rest of this section (click-to-source, the read-only context
+menu items) remains current; do not treat the mutation items or the block
+overlay below as live product behavior.
 
 The paginated preview is an editing surface, not only a viewer. This does
 **not** supersede the opt-in WYSIWYG rule above: these are explicit,
@@ -351,37 +374,22 @@ buttons.
 
 ### 3. Mobile / PWA editor UX
 
-**Status: PARTIAL** — tracked in **#33 (closed, PR #63; the Safari/OPFS
-Phase 6 was struck 2026-08-23 — Gutterpress is Chromium-only)** and
-**#34 (closed)**. Normative implementation detail lives in
-`docs/pwa-webadapter-plan.md`; **where this section and that plan disagree,
-the plan wins.**
-
-- Write-first: single column, Markdown / CSS / Preview tabs (shipped 820px
-  behavior), bottom-reachable tab bar.
-- Keyboard toolbar (PROPOSED refinement — spec corrected):
-  - **Chromium (desktop and Android):** opt in with
-    `navigator.virtualKeyboard.overlaysContent = true`, then pin with
-    `position: fixed; bottom: env(keyboard-inset-height, 0px)`. This is the
-    whole spec — the VirtualKeyboard API exists in every supported browser, so
-    there is no engine without it to write a `visualViewport` fallback for
-    (the iOS Safari branch was struck 2026-08-23 with the Chromium-only ruling).
-  - `position: sticky` cannot pin above a keyboard; do not spec it.
-- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
-  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
-  snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
-  indicator is subtle (no modal) — see Anti-Patterns.
-- Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
-  the PWA file-write path).
-- Offline: service worker app-shell precache is SHIPPED
-  (`service-worker.ts`, registered only when `!isDesktop()`). Offline cache
-  scope (one statement, used everywhere): **app shell + the last-opened
-  project (markdown, CSS, and referenced assets)** — "last 5 files" is not
-  enough to preview a project. Offline indicator copy: **"Working offline —
-  your files are saved locally."** There is no cloud sync; if the project
-  has a git remote, a separate conditional indicator reads "remote sync
-  paused — will resume when online."
+**Status: REMOVED (0.11, SFE-P5a, plan D10).** Previously tracked in #33
+(closed, PR #63) and #34 (closed), with normative implementation detail in
+`docs/pwa-webadapter-plan.md`. That implementation — the `WebAdapter` browser
+host this section specified against (write-first tab layout, keyboard
+toolbar, offline app-shell precache via `service-worker.ts`) — shipped
+partially, then was **deleted rather than completed**: `packages/desktop` is
+an Electron-only product now, with no dormant browser host inside it. A
+future web product is not a mode of this package — it is a **separate
+package** consuming `@dimm-city/gutterpress-editor` and `gutterpress/render`,
+built new against those public surfaces rather than by finishing this
+deleted adapter. `docs/pwa-webadapter-plan.md` is closed and kept as
+history, not as a normative spec to reconcile against; the deletion itself
+is recorded in the deletion ledger's SFE-P5a entry
+(`docs/plans/source-first-editor/deletion-ledger.md`). The narrow/mobile
+**desktop** window layout (820px breakpoint, §1 above) is unaffected — it is
+shipped Electron behavior, not PWA-specific.
 
 ### 4. Onboarding — progressive disclosure
 
@@ -803,24 +811,20 @@ drawer.
 
 ### PWA requirements
 
-**Status: SHIPPED (Phases 1–5) via #33/PR #63; the Safari/OPFS Phase 6 was
-struck 2026-08-23 (Chromium-only), so Phase 5 is the end of the plan.
-Normative: `docs/pwa-webadapter-plan.md` — reconcile against it, don't
-respecify.** Existing pieces: `service-worker.ts` (app-shell precache,
-registered only when `!isDesktop()` — the desktop build must never register
-it), manifest, `WebAdapter` (FSA primitives + IndexedDB persistence),
-capability gating via the platform seam.
-
-- Installable per the plan; `display: standalone`; theme-color follows the
-  app theme.
-- Offline cache scope and indicator copy: see §3 (one definition, used
-  everywhere).
-- File access: File System Access API — present in every supported browser,
-  since the PWA targets Chrome/Edge and other Chromium browsers only — with the
-  handles persisted in IndexedDB (both in `WebAdapter`). There is no
-  FSA-absent fallback and none is planned.
-- **PDF export and publishing are desktop/CLI-only** (#33 constraint): the
-  affordances are hidden or show "requires desktop" on web/mobile.
+**Status: REMOVED (0.11, SFE-P5a, plan D10).** Previously shipped (Phases
+1–5) via #33/PR #63, normative in `docs/pwa-webadapter-plan.md`. That
+implementation — `service-worker.ts` (app-shell precache), the web app
+manifest, and `WebAdapter` (FSA primitives + IndexedDB persistence) — was
+**deleted rather than completed**: `packages/desktop` is an Electron-only
+product now, with no dormant browser host inside it. A future web product is
+not a mode of this package — it is a **separate package** consuming
+`@dimm-city/gutterpress-editor` and `gutterpress/render`, built new against
+those public surfaces rather than by finishing this deleted adapter.
+`docs/pwa-webadapter-plan.md` is closed and kept as history; the deletion
+itself is recorded in the deletion ledger's SFE-P5a entry
+(`docs/plans/source-first-editor/deletion-ledger.md`). PDF export and
+publishing remain desktop/CLI-only, unconditionally — there is no web/mobile
+target left to gate them off for.
 
 ---
 
@@ -893,9 +897,11 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | PDF export | ≤8s | `bench/novel-50p`; image-heavy budget (`bench/zine-24p`) not yet created |
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
 
-Mobile/PWA performance targets are set in `docs/pwa-webadapter-plan.md`
-follow-ups with a named reference device — "mid-range Android" is not a
-device class.
+Mobile/PWA performance targets are historical: `docs/pwa-webadapter-plan.md`
+is closed (0.11, SFE-P5a, plan D10) and its follow-ups do not apply — there
+is no PWA/browser target in this package (see "PWA requirements" above). A
+future web product would define its own performance targets against a named
+reference device.
 
 ### Satisfaction
 
@@ -918,13 +924,11 @@ device class.
   sticky/keyboard toolbars must not cover the focused element.
 - Keyboard-only operability for every mouse-accessible feature.
 - Screen reader matrix (matches the real platforms — the app is Chromium on
-  every desktop OS and the PWA is Chromium-only, so no non-Chromium engine is
-  ever a test target):
+  every desktop OS, so no non-Chromium engine is ever a test target):
   - Windows: **NVDA + the app**;
-  - macOS: **VoiceOver + the app**;
-  - PWA: NVDA + Chrome/Edge (Windows), VoiceOver + Chrome (macOS),
-    TalkBack + Chrome (Android). iOS is not a PWA target — its only engine is
-    WebKit.
+  - macOS: **VoiceOver + the app**.
+  - (There is no PWA/browser target in this package — see Scope above — so
+    no browser/mobile screen-reader row applies.)
 - Shipped precedent to match, not reinvent: **#22** (focus trap,
   WCAG SC 2.1.2) and **#21** (export-progress announcements, cancel,
   elapsed time).
@@ -1090,7 +1094,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Anti-pattern | Why | Alternative |
 |---|---|---|
 | Full-screen onboarding carousel | Hides the actual app | Annotated starter template (shipped wizard) |
-| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§3) |
+| Save-confirmation modal/toast ("Saved!") | Interrupts writing | Subtle indicator; auto-save is shipped (§1) |
 | Blocking publish modal with progress | Forces spinner-watching | Side-drawer progress log (§6) |
 | Floating panels that reset position | Lost state | Docked panels, persisted layout |
 | Color-only state indication | WCAG / color-blind users | Icon + color + label |

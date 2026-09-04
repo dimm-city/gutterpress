@@ -5,24 +5,31 @@ This document describes the architecture, design decisions, and implementation d
 ## Table of Contents
 
 - [Overview](#overview)
+- [Monorepo packages](#monorepo-packages)
 - [Design Principles](#design-principles)
 - [Core Architecture](#core-architecture)
 - [Build Pipeline](#build-pipeline)
 - [Preview Server](#preview-server)
+- [Desktop Application Architecture](#desktop-application-architecture)
 - [Configuration System](#configuration-system)
-- [Extension System](#extension-system)
+- [Extension System (markdown-it plugins)](#extension-system-markdown-it-plugins)
+- [Public Package Exports](#public-package-exports)
 - [Key Design Decisions](#key-design-decisions)
 
 ## Overview
 
-**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses its native Chromium print engine for PDF generation and the same engine's viewer for live preview. It is designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
+**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses its native Chromium print engine for PDF generation and the same engine's viewer for live preview. It is designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports. Since the 0.11 source-first editor work, it also ships a shared rich-editing surface reused by the desktop app and an Experimental VS Code extension — see [Monorepo packages](#monorepo-packages) and `docs/adr/0012-source-first-editor-sparse-projection.md` onward.
 
-### Monorepo structure
+### Monorepo packages
 
-The repo is a Bun workspace with two packages:
+The repo is a Bun workspace (`packages/*`) with six packages. `packages/cli` and `packages/desktop` are the original two and remain the primary published/shipped surfaces; the other four exist to support the source-first rich editor (`docs/plans/source-first-editor-enterprise-refactor.md`) and are Experimental for 0.11.0. See `docs/OWNERSHIP.md` for the four architectural review boundaries these packages map onto.
 
-- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). The standard build compiles `src/index.ts` + `src/api/index.ts`, the node-free `src/render.ts` subpath, and `src/cli.ts` in separate invocations; render purity is enforced by `scripts/check-render-pure.mjs`, then `tsc` emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
-- **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
+- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation, project scaffolding, Git/VCS, plugin loading) under `src/`, exposed both as a library and a CLI (`bin` → `dist/cli.js`). Public subpath exports are `.` (the full library), `./api` (manifest/style config mutation), `./render` (the browser-safe, Node-free rendering + projection boundary — ADR 0012), and `./plugins` (the plugin loader — D11's one narrower subpath with a real external consumer today; see [Public Package Exports](#public-package-exports)). The standard build compiles `src/index.ts` + `src/api/index.ts` + `src/plugins.ts` together, the node-free `src/render.ts` subpath as its own non-split graph (render purity enforced by `scripts/check-render-pure.mjs`), and `src/cli.ts` separately; `tsc` then emits declarations. It is also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process via a dynamic `import("gutterpress")`. See [Desktop Application Architecture](#desktop-application-architecture) below.
+- **`packages/editor/`** (`@dimm-city/gutterpress-editor`, Experimental) — the framework-free, browser-safe shared source-first rich editor. Imports `@vscode/markdown-editor` (via the fork below) and `gutterpress/render`; no Svelte, Electron, `vscode`, or `node:*` imports. Mounted by both the desktop app and the VS Code extension so there is one editor implementation, not two. See `docs/adr/0012-source-first-editor-sparse-projection.md` and `docs/adr/0014-shared-editor-package-and-fork.md`.
+- **`packages/vscode-markdown-editor/`** (`@dimm-city/vscode-markdown-editor`, internal only — never a public Gutterpress export) — a minimal, bounded internal fork of `@vscode/markdown-editor@0.0.2-85`, adding exactly one generic custom-block rendering hook the upstream package does not expose. `PATCHES.md` records the complete diff against the pinned upstream version and the removal trigger (an equivalent upstream hook shipping natively). See `docs/adr/0014-shared-editor-package-and-fork.md`.
+- **`packages/vscode-extension/`** (`@dimm-city/gutterpress-vscode`, Experimental) — the VS Code custom text editor extension built on `packages/editor`. See `docs/vscode-extension.md` for what it does, its trust model, and how to build/test it.
+- **`packages/open-design-plugin/`** — an independent markdown-it plugin package, unrelated to the source-first editor work; unchanged by it.
 
 ### Key Features
 
@@ -454,6 +461,94 @@ connection-count timer.
 - Graceful shutdown has its own per-step timeout so a wedged watcher/server
   close can't block process exit indefinitely
 
+## Desktop Application Architecture
+
+**Location**: `packages/desktop/`
+
+The desktop app is an Electron shell hosting a SvelteKit single-page app.
+Full detail lives in `packages/desktop/README.md`, root `CLAUDE.md` §8, and
+ADRs 0015–0017; this section is the short version for readers of this
+document.
+
+### Renderer: a static build, zero host code
+
+`packages/desktop/src/` builds statically via `@sveltejs/adapter-static`
+(`build/index.html`, `build/_app/**`, no server bundle) and contains no
+platform/host code by architectural requirement: no runtime `gutterpress`
+value-import, no `node:*`/`fs`/`path`/`url`/`child_process`/`postcss`
+import. `tools/check-render-purity.mjs` enforces this over the whole
+`build/` tree in CI and in `npm run build --strict`. Every host capability
+the renderer needs is reached through exactly one seam: typed IPC, exposed
+to feature code as plain-function **capability modules**
+(`src/lib/*/*-capability.ts`, e.g. `src/lib/update/updater-capability.ts`,
+`src/lib/remote/remote-capability.ts`,
+`src/lib/export/build-preview-capability.ts`,
+`src/lib/editor-host/editor-projection-capability.ts`,
+`src/lib/app-lifecycle/app-lifecycle-capability.ts`) over the one shared
+accessor `src/lib/platform/bridge.ts`. There is no broad `Platform`/
+`HostServices` locator and no `getPlatform()` — see ADR 0017 for why that
+locator was deleted rather than trimmed.
+
+### Host: Electron main, `app://`, and typed IPC
+
+In production, `electron/app-protocol.ts` registers a custom `app://`
+protocol handler that reads the static build tree straight off disk —
+including out of the packaged asar — and returns file bytes directly: no
+local HTTP server, no proxy, no bearer token (ADR 0016). Every host
+capability is a runtime-validated `secureHandle(...)` IPC channel
+(~120 registrations) built by the one shared wrapper
+`electron/server-bridge/secure-handle.ts`'s `createSecureHandle(...)`
+(constructed once in `main.ts`, then handed identically to every
+registrar), organized by bounded context into `electron/api/*.ts` (fs,
+fs-watch, dialog, shell, log, app, project, manifest, tpl, snip, media,
+plugin, theme, vcs, style, updater, recovery, doctor, lint, remote,
+publish — one registrar function per file) plus a handful of bespoke
+registrars colocated with handler logic that needs a live object
+(`electron/export/controller.ts`, `electron/preview/controller.ts`,
+`electron/editor-projection.ts`, `electron/pdf-export.ts`,
+`electron/github-device-flow-registrar.ts`). A narrow separate set of
+`ipcMain`/preload **push channels** — build progress, folder-changed, sync
+status, updater events — covers what request/reply cannot: streams the
+renderer subscribes to rather than calls.
+
+`electron/main.ts` is a **composition root**: lifecycle (single-instance
+lock, second-instance/open-file handling, close gate), window management
+(`createWindow()`, security policy — CSP, navigation policy, the `app://`
+scheme registration), and OS integration (the folder watcher, prefs/settings
+stores) stay inline; it constructs the live objects each registrar needs
+(hook implementations, controller instances) and calls each
+`register*Handlers(...)` function once, but does not itself own per-context
+request handling logic (plan D10/P6b; ADR 0017's "the parallel split").
+
+### The desktop's Svelte composition root
+
+`src/routes/+page.svelte` is the renderer's own composition root: it
+instantiates the ~16 feature controllers (project/document/preview/build/
+export/media/publishing/remote-sync/settings/diagnostics — one
+`*-controller.svelte.ts` per feature boundary, e.g. `ExportController`,
+`ProjectSessionController`, `EditorFileSession`, `RichModeController`,
+`ContextMenuController`) plus the twelve capability modules above, coordinates
+top-level selection and pane layout, and renders the shell. Cross-feature
+coordination (global keyboard routing, the rich/source command router,
+markdown-file-launch handling) stays explicit in the root by design — the
+plan forbids an event bus — rather than being smuggled into a feature
+controller that would then own logic outside its named responsibility.
+
+### Design Rationale
+
+- One typed-IPC transport (not typed-IPC-plus-HTTP) means one DTO shape and
+  one validation point per capability, and no local network listener in the
+  packaged app at all (ADR 0016).
+- Narrow, feature-owned capability modules over one shared bridge accessor
+  mean a caller's import list states exactly which host capability it
+  depends on, instead of a broad locator granting access to everything
+  through one import (ADR 0017).
+- Both composition roots stay small on purpose: extraction happens only
+  where a responsibility and its owner are clear (an established
+  `*-controller`/`*-capability` pattern), not as a blanket "smaller files"
+  goal — genuinely cross-feature logic is left in the root rather than
+  forced into an artificial owner.
+
 ## Configuration System
 
 ### manifest.yaml Structure
@@ -549,7 +644,12 @@ export function resolveConfig(
   `styles` deliberately remains optional so active-style discovery can choose it
 - Preview static-file serving performs its own path containment check (`resolveStaticPath` in `packages/cli/src/lib/static-serve.ts`, used by `packages/cli/src/preview/http-server.ts`)
 
-## Extension System
+## Extension System (markdown-it plugins)
+
+> Not to be confused with the VS Code extension (`packages/vscode-extension`,
+> `docs/vscode-extension.md`) — this section is about author-configured
+> markdown-it plugins loaded into the render pipeline, a distinct and older
+> concept that shares the word "extension."
 
 ### Plugin Loading
 
@@ -635,6 +735,49 @@ plugin variants instead.
 
 See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md) for the full authoring guide.
 
+## Public Package Exports
+
+**Location**: `packages/cli/package.json`'s `exports` map.
+
+| Subpath | Ships | Real consumer today |
+|---|---|---|
+| `.` | The full library (`dist/index.js`) | The CLI itself; the desktop's every `electron/api/*.ts` registrar via a shared cached `import("gutterpress")` (`electron/api/lib-loader.ts`) — `electron/main.ts` reaches the same package through its own private, identically-shaped `loadLib()`/`libPromise` cache, not through `lib-loader.ts` (each caches its own `import("gutterpress")` once per process); `packages/vscode-extension` |
+| `./api` | Manifest/style config mutation surface (`dist/api/index.js`) | Desktop `electron/api/*.ts` handlers, via the same shared-cache pattern (`loadApiLib()`) |
+| `./render` | The browser-safe, Node-free rendering + Gutterpress projection boundary (`dist/render.js`) — ADR 0012 | `packages/editor` (projection types/consumers), `packages/vscode-extension` (projection types, protocol messages), the desktop's `electron/editor-projection.ts` |
+| `./plugins` | The plugin loader (`loadPlugins`/`loadPluginsWithCss`, `dist/plugins.js`) | The desktop's `electron/editor-projection.ts` (its host-side rich-editor projection builder — this subpath's original motivating consumer, added in SFE-P3e) and `packages/vscode-extension`'s `src/project/projection.ts`, both loading a project's real (receipt-verified, degrade-and-report) plugins outside the CLI's own build/preview path |
+
+`gutterpress`, `gutterpress/api`, and `gutterpress/render` predate the
+source-first editor plan and remain supported through 0.11.0 unchanged
+(plan D11). `gutterpress/plugins` was added specifically to give
+non-CLI hosts the SAME plugin loader the CLI's build/preview path uses,
+rather than each host reimplementing a narrower duplicate — the desktop
+originally carried exactly such a duplicate (a local-file-only loader) and
+was switched to the real export when it was added (deletion ledger,
+"SFE-P3e"/"SFE-P6c" entries).
+
+**Declined**: D11 names five further candidate subpaths —
+`gutterpress/project`, `gutterpress/build`, `gutterpress/preview`,
+`gutterpress/publish`, `gutterpress/vcs`. None has a current consumer: every
+existing host (the desktop's Electron main process, the VS Code extension)
+reaches those areas of the library through the bare `gutterpress` import —
+`electron/api/lib-loader.ts`'s shared `loadLib()` cache for the
+`electron/api/*.ts` registrars, `electron/main.ts`'s own private,
+identically-shaped `loadLib()` for itself — each a deliberate
+one-import-for-the-whole-library design, not an oversight, and a
+repository-wide search finds zero import sites for any of the five narrower
+specifiers. Per D11's own rule ("add narrower subpath exports only where
+current consumers justify them") and the plan's lane discipline against
+speculative additions, none of the five is added. Re-evaluate if and when a
+real external consumer needs one area of the library without the rest.
+
+**Export tests**: `packages/cli/tests/integration/package-exports.test.ts`
+resolves every declared subpath under both Node and Bun (via the package's
+own self-reference resolution — no fixture symlink needed), asserts
+`gutterpress/render` stays node-free by invoking the existing
+`scripts/check-render-pure.mjs` gate directly rather than duplicating its
+logic, and asserts every subpath's declared `types`/`default` file is
+actually shipped by `npm pack --dry-run`.
+
 ## Key Design Decisions
 
 ### 1. Why Bun?
@@ -690,14 +833,18 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit is built with `@sveltejs/adapter-node`, which emits a Node HTTP
-  handler (`build/handler.js`). Electron main starts that handler on a local
-  `127.0.0.1` server and serves the window through a custom `app://` protocol
-  handler that proxies each request to it with `fetch`. Host capabilities are
-  exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
-  `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
-  streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
-  §8).
+- SvelteKit is built with `@sveltejs/adapter-static`, which emits a plain
+  static file tree to `build/` (`index.html`, `_app/**`, …) — no server
+  bundle. Electron main registers a custom `app://` protocol handler
+  (`electron/app-protocol.ts`) that reads that tree straight off disk — out
+  of the asar in a packaged build — and returns file bytes directly: no
+  local HTTP server, no proxy (SFE-P5d). Host capabilities are exposed
+  entirely as typed, runtime-validated IPC channels — `secureHandle(...)`
+  request/reply channels (`electron/api/*.ts`) for everything a `+server.ts`
+  route used to cover, plus a narrow `ipcMain`/preload push-channel set for
+  build progress, folder-changed, sync status, updater events, and calls
+  that must drive a live `BrowserWindow` (see `CLAUDE.md` §8). There is no
+  `src/routes/api/**` route tree.
 - The lib (`gutterpress`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic
@@ -810,5 +957,8 @@ confine author assets and chapter-update requests to the selected project.
 
 ---
 
-**Last Updated**: 2026-08-26
-**Version**: 0.10.2-alpha.3 (packages/cli + packages/desktop)
+**Last Updated**: 2026-09-01 (SFE-P6c — monorepo packages, desktop composition
+roots, and public exports sections rewritten against the post-P6 tree)
+**Version**: packages/cli + packages/desktop 0.10.2 (0.11.0 release pending
+final P7 acceptance); packages/editor 0.11.0-experimental.0 (Experimental,
+D1/D11)

@@ -38,15 +38,29 @@ interface PagedEnv {
   [key: string]: unknown;
 }
 
-/** Render markdown through a bare MarkdownIt + marker plugin instance. */
+/**
+ * Render markdown through a bare MarkdownIt + marker plugin instance.
+ *
+ * The fixtures in this file glue markers to their text ("@page\nHi") for
+ * brevity, which the pipeline flags as `marker_glued` (its own describe
+ * below, which opts back in with `gluedWarnings: true`); every other
+ * assertion is about a different warning, so that one is filtered out here.
+ */
 function renderPaged(
   src: string,
   options: Record<string, unknown> = {},
   env: PagedEnv = {}
 ): { html: string; env: PagedEnv } {
+  const { gluedWarnings, ...pluginOptions } = options;
   const md = new MarkdownIt({ html: true });
-  md.use(markerPlugin, options);
+  md.use(markerPlugin, pluginOptions);
   const html = md.render(src, env);
+  if (!gluedWarnings && env.layoutWarnings) {
+    env.layoutWarnings = env.layoutWarnings.filter((w) => w.type !== "marker_glued");
+    // The pipeline creates the list only to push into it, so a list emptied
+    // here is one that would not have existed: leave `undefined`, as before.
+    if (!env.layoutWarnings.length) delete env.layoutWarnings;
+  }
   return { html, env };
 }
 
@@ -165,6 +179,38 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     );
     const sections = findTokens(tokens, "layout_section_open");
     expect(sections.map((t) => t.meta.line)).toEqual([1, 3, 5]);
+  });
+});
+
+describe("a marker glued to paragraph text warns (marker_glued)", () => {
+  const glued = (src: string) => (renderPaged(src, { gluedWarnings: true }).env.layoutWarnings ?? []).filter((w) => w.type === "marker_glued");
+
+  test("text on the line right after a marker", () => {
+    const warnings = glued("@section\ntext\n");
+    expect(warnings.map((w) => [w.line, w.message.includes("the line below it")])).toEqual([[1, true]]);
+  });
+
+  test("a closing marker on the line right after text", () => {
+    const warnings = glued("@section\n\ntext\n@end-section\n");
+    expect(warnings.map((w) => [w.line, w.message.includes("the line above it")])).toEqual([[4, true]]);
+  });
+
+  test("a list item's or a quote's text fuses with a marker line too", () => {
+    expect(glued("- item\n@section\n\ntext\n").map((w) => w.line)).toEqual([2]);
+    expect(glued("> quote\n@section\n\ntext\n").map((w) => w.line)).toEqual([2]);
+  });
+
+  test("markers on consecutive lines, and a marker before a block that interrupts a paragraph, are not glued", () => {
+    expect(glued("@page\n@section\n\ntext\n")).toEqual([]);
+    expect(glued("@section\n## Heading\n")).toEqual([]);
+    expect(glued("@section\n- item\n")).toEqual([]);
+    expect(glued("@section\n> quote\n")).toEqual([]);
+    expect(glued("## Heading\n@section\n\ntext\n")).toEqual([]);
+    expect(glued("| a | b |\n| - | - |\n| 1 | 2 |\n@section\n\ntext\n")).toEqual([]);
+  });
+
+  test("the page still separates them: the marker is a scope, the text its content", () => {
+    expect(renderPaged("@section\ntext\n").html).toBe('<div class="section"><p>text</p>\n</div>');
   });
 });
 

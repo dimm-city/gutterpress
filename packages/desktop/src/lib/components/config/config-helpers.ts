@@ -2,9 +2,9 @@
  * Pure, presentation-only helpers extracted from ProjectConfigPanel.svelte.
  *
  * These are browser-safe strings/derivations with no host coupling — only
- * `import type` from `$lib/api`, so this module stays PWA-clean (§8). They were
- * lifted verbatim from the panel so the composition root and its section
- * children can share one implementation.
+ * `import type` from `$lib/platform/dtos`, so this module stays PWA-clean
+ * (§8). They were lifted verbatim from the panel so the composition root
+ * and its section children can share one implementation.
  */
 
 import type {
@@ -12,7 +12,7 @@ import type {
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
-} from "$lib/api";
+} from "$lib/platform/dtos";
 
 /** Stable key for a theme card (kind + id), used for `{#each}` keying + thumbs. */
 export const keyOf = (t: ThemeInfo): string => `${t.kind}:${t.id}`;
@@ -117,7 +117,7 @@ export function pluginLabel(
  *
  * Tri-state fix (M34): `pluginValidating` is true only while a validate
  * round-trip is in flight. If it's `false` and there's still no result for
- * this ref, `api.plugin.validate` threw (or never ran) — that must NOT read
+ * this ref, `pluginValidate` threw (or never ran) — that must NOT read
  * the same as "in progress", since it will never resolve on its own. It gets
  * its own "stale" kind with a distinct label pointing at the fix (Re-check).
  */

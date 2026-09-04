@@ -7,8 +7,9 @@
  * both then reuse {@link importThemeFromFolder}.
  *
  * Host-side only (node fs + fflate + postcss via `checkCss`) — reached by the
- * desktop through the `api/theme/import-from-file` server route (CLAUDE.md §8),
- * and shared with the CLI (§7 "shared lib, not duplicated"). The pure decision
+ * desktop through the `theme:importFromFile`/`theme:importFromFolder` typed
+ * IPC channels (`packages/desktop/electron/api/theme.ts`, CLAUDE.md §8), and
+ * shared with the CLI (§7 "shared lib, not duplicated"). The pure decision
  * helpers (zip-root location, path-safety, findings → reject/warn mapping,
  * unexpected-file detection) are exported separately so they unit-test without
  * touching the filesystem.

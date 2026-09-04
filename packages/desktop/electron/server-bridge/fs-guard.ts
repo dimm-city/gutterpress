@@ -1,17 +1,23 @@
 /**
- * Shared fs-route project-scoping guard (ARCH review #37).
+ * Shared fs-authorization guard (ARCH review #37).
  *
- * Before this module, `/api/fs/{read-file,write-file,list-dir,stat-file,
- * copy-file}` accepted any absolute path — the only guard was `isAbsolute`.
- * Any code that can issue a same-origin fetch inside the renderer (a preview
+ * Before this module existed, `/api/fs/{read-file,write-file,list-dir,
+ * stat-file,copy-file}` (SvelteKit `+server.ts` routes, deleted in SFE-P5c/
+ * P5d) accepted any absolute path — the only guard was `isAbsolute`. Any
+ * code that could issue a same-origin fetch inside the renderer (a preview
  * XSS, a malicious plugin-injected script, a compromised dependency) could
  * read or overwrite arbitrary files on disk. `write-file` already computed a
  * `path.resolve(watchedDir)` + `startsWith(root + sep)` containment test, but
  * only to decide whether to schedule an auto-snapshot — never to authorize
  * the write. This module promotes that same containment test to a shared
- * authorization guard consumed by all five routes (see
- * `src/routes/api/_lib/fs-guard.ts`'s `requireWithinProjectRoot`, the one
- * place that actually throws).
+ * authorization guard. `requireWithinProjectRoot` — the one place that
+ * actually throws — now lives in `electron/api/validation.ts`, called from
+ * the typed `fs:*`/`log:*` IPC handlers (SFE-P5c1 moved it off the deleted
+ * `src/routes/api/_lib/fs-guard.ts`; see that module's header for the full
+ * transport-migration history). This module's containment primitives
+ * (`isWithinRoot`/`isWithinAnyRootCanonical`) are unchanged by any of that —
+ * they are consumed by `electron/api/validation.ts` exactly as they were by
+ * the route layer.
  *
  * ## Policy
  *

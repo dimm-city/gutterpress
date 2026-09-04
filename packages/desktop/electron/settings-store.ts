@@ -21,9 +21,9 @@ import { DEFAULT_SETTINGS } from "./bridge-types";
 // reconciled, array-safe `deepMergeSettings` in the pure (PWA-clean) renderer
 // module. This host store used to carry a THIRD, divergent copy that lacked the
 // `!Array.isArray(value)` guard, so an array-shaped section patch spread into
-// `{0:…,1:…}` and corrupted app-settings.json on the LIVE desktop path (the POST
-// /api/app/settings route runs this copy). `mergeSettings` stays as a thin,
-// same-signature delegator so every caller is unchanged.
+// `{0:…,1:…}` and corrupted app-settings.json on the LIVE desktop path (the
+// `app:setSettings` typed IPC handler runs this copy). `mergeSettings` stays
+// as a thin, same-signature delegator so every caller is unchanged.
 import { deepMergeSettings } from "../src/lib/settings-merge";
 
 export type { AppSettings };

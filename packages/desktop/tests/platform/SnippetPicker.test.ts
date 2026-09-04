@@ -38,7 +38,7 @@ describe("SnippetPicker — M25 two-step delete confirm", () => {
     expect(src).toMatch(/import\s*\{[\s\S]*cancelInlineConfirm[\s\S]*\}\s*from\s*["']\$lib\/dialog["']/);
   });
 
-  test("the trash button routes through requestDelete (arm-then-confirm), not a direct api.snip.delete call", () => {
+  test("the trash button routes through requestDelete (arm-then-confirm), not a direct snipDelete call", () => {
     const src = readSource();
     expect(src).toMatch(/onclick=\{\(\)\s*=>\s*requestDelete\(entry\)\}/);
     expect(src).toContain("function requestDelete(entry: SnippetEntry)");
@@ -59,10 +59,10 @@ describe("SnippetPicker — M25 two-step delete confirm", () => {
     expect(src).toMatch(/Really delete \$\{entry\.name\}\? This can't be undone\./);
   });
 
-  test("remove() itself is unchanged — still a direct api.snip.delete call, only reachable via the confirm gate", () => {
+  test("remove() itself is unchanged — still a direct snipDelete call, only reachable via the confirm gate", () => {
     const src = readSource();
     const fn = src.slice(src.indexOf("async function remove("), src.indexOf("// ── Two-step delete confirm"));
-    expect(fn).toContain("api.snip.delete(projectDir, entry.fileName)");
+    expect(fn).toContain("snipDelete(projectDir, entry.fileName)");
   });
 
   // FIX ROUND 1 regression guard: the base `.snippet-del` rule sets its own

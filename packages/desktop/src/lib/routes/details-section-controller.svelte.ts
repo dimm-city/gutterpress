@@ -21,7 +21,7 @@
  * imports.
  */
 
-import type { ProjectConfigFields } from "$lib/api";
+import type { ProjectConfigFields } from "$lib/platform/dtos";
 import {
   buildSourceList,
   moveEntry,

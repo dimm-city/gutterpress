@@ -1,0 +1,63 @@
+{
+  // Isolated DOM-aware typecheck program for src/webview/** + tests/webview/**
+  // (SFE-P3c Lane C — the real webview entry). Mirrors the EXACT precedent
+  // packages/editor/src/web.tsconfig.json and
+  // packages/editor/src/gutterpress/tsconfig.json already set for this
+  // repo's own "DOM-free root program, DOM-aware nested program" pattern —
+  // see either file's own header for the full rationale.
+  //
+  // ../../tsconfig.json (this package's root program, Lane A ownership) is
+  // deliberately DOM-free ("lib": ["ES2022"] only, no "DOM") so a stray
+  // `document`/`window`/`Element` reference from src/protocol/**,
+  // src/host/**, src/webview-host/**, src/provider.ts, or src/extension.ts
+  // is a COMPILE ERROR there, not a convention someone has to remember —
+  // exactly the property packages/editor/tsconfig.json's own header
+  // documents for src/core. src/webview/** (this run's real webview entry:
+  // `document.getElementById`, `Element`, `window.addEventListener("message",
+  // ...)`, `MessageEvent`) and tests/webview/** (the real-Chromium proofs,
+  // which build browser-side driver entries using the same DOM surface, plus
+  // `page.evaluate((sel: string) => document.querySelector(sel), ...)`
+  // callbacks typechecked as ordinary TypeScript source exactly like
+  // packages/editor/tests/web/mount.btest.ts already is) both genuinely need
+  // DOM types, so they get this OWN isolated program instead of widening the
+  // root program's "lib" and leaking DOM globals into every host/protocol
+  // file the way that would.
+  //
+  // WRITE-OWNERSHIP NOTE (this run's lane boundary): src/webview/** is
+  // Lane C's to create, and this tsconfig lives entirely inside that glob —
+  // but the files that WIRE it into the package's normal verification
+  // surface (../../tsconfig.json's own "exclude", and package.json's
+  // "typecheck" script) are Lane A's/the integrator's ("tsconfig*.json" and
+  // "package.json" are outside src/webview/**, exactly as root tsconfig.json/
+  // package.json were outside P1a Lane B's and P2b Lane B's own boundaries
+  // when THEY introduced src/web.tsconfig.json and src/gutterpress/
+  // tsconfig.json respectively — see those files' own headers, and both
+  // were resolved by an integrator step in the SAME run). Two small edits
+  // remain for the integrator, exactly mirroring that precedent:
+  //
+  //   1. Add "src/webview" and "tests/webview" to
+  //      packages/vscode-extension/tsconfig.json's "exclude" array (create
+  //      one if it does not exist yet), so the root DOM-free program never
+  //      tries to typecheck this directory without the DOM lib.
+  //   2. Change packages/vscode-extension/package.json's "typecheck" script
+  //      from "tsc --noEmit -p tsconfig.json" to
+  //      "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/webview/tsconfig.json",
+  //      mirroring packages/editor/package.json's own three-program chain.
+  //
+  // Both integrator edits have landed: ../../tsconfig.json's own "exclude"
+  // covers "src/webview"/"tests/webview", and package.json's "typecheck"
+  // script chains this program after the root one. `cd
+  // packages/vscode-extension && bun run typecheck` covers both.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  // Paths are relative to THIS file's directory (packages/vscode-extension/src/webview/).
+  "include": [".", "../../tests/webview"],
+  // Explicit empty "exclude" mirrors packages/editor/src/web.tsconfig.json's
+  // own override: nothing to cancel out today (../../tsconfig.json declares
+  // no "exclude" yet), but keeps every nested DOM-program config in the repo
+  // identically shaped and protects this program if the root ever gains an
+  // unrelated "exclude" later.
+  "exclude": []
+}

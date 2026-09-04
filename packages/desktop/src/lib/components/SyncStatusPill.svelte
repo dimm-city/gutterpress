@@ -2,22 +2,23 @@
   /**
    * SyncStatusPill — ambient sync status indicator (transparent-sync plan §5.1).
    *
-   * Subscribes to the host auto-sync orchestrator via getPlatform().onSyncStatus()
-   * and renders a small always-visible pill in the toolbar. The normal author
-   * should never need to act on it; it silently says "Everything is in sync"
-   * at rest or "Saving changes…" while a sync runs.
+   * Subscribes to the host auto-sync orchestrator via the remote capability's
+   * onSyncStatus() and renders a small always-visible pill in the toolbar.
+   * The normal author should never need to act on it; it silently says
+   * "Everything is in sync" at rest or "Saving changes…" while a sync runs.
    *
    * The only state that invites interaction is:
    *   auth     → clicking opens the reconnect flow
    *
    * No Git jargon in any string (transparent-sync plan §5.1, copy discipline).
    * No counts (§3.5 — counts require history walks).
-   * PWA-clean: host work via getPlatform().onSyncStatus() (the push-stream
-   * seam) plus an api.sync.getStatus() seed fetch (CLAUDE.md §8 / ADR 0004).
+   * PWA-clean: host work via the remote capability's onSyncStatus() (the
+   * push-stream seam) plus a getSyncStatus() seed fetch (CLAUDE.md §8 / ADR
+   * 0004; SFE-P5c3: sync moved off `api.sync.*` HTTP routes to typed IPC).
    */
   import { onMount } from "svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { isDesktop } from "$lib/platform";
+  import { getSyncStatus, onSyncStatus } from "$lib/remote/remote-capability";
   import type { SyncStatus, SyncState } from "$lib/platform/contract";
 
   let {
@@ -73,8 +74,10 @@
     logFilePath = null;
     liveMessage = null;
     statusMessage = null;
-    // Only subscribe when running in the desktop host (the WebAdapter stub is a
-    // safe no-op but we skip the wiring on the web path for clarity).
+    // Only subscribe when running in the desktop host. SFE-P5a/P5b (D10):
+    // the bridge accessor `onSyncStatus` calls throws off-Electron (the
+    // dormant WebAdapter it used to fall back to was deleted), so this guard
+    // is load-bearing, not just a clarity nicety.
     if (!isDesktop() || !projectDir) {
       syncState = "idle";
       onSyncState?.("idle");
@@ -95,7 +98,7 @@
       if (status.logFile) logFilePath = status.logFile;
     };
     let receivedLive = false;
-    const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
+    const unsubscribe = onSyncStatus((status: SyncStatus) => {
       receivedLive = true;
       applyStatus(status);
     });
@@ -105,8 +108,7 @@
     // otherwise be lost and the pill would sit blank/stale until the next
     // periodic tick. A push that lands first wins — the seed is older by
     // definition, so it never overwrites a live event.
-    void api.sync
-      .getStatus(projectDir)
+    void getSyncStatus(projectDir)
       .then((status) => {
         if (!receivedLive && status) applyStatus(status);
       })

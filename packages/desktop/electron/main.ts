@@ -2,7 +2,6 @@ import {
   app,
   BrowserWindow,
   dialog,
-  ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
@@ -14,7 +13,6 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
@@ -45,9 +43,57 @@ import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
-import { handleRemoteErrors, handlePublishErrors } from "./server-bridge/friendly-errors";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
+import { createSecureHandle } from "./server-bridge/secure-handle";
+import { registerGitHubDeviceFlowHandlers } from "./github-device-flow-registrar";
+import { registerGoogleConnectFlowHandlers } from "./google-connect-flow-registrar";
+// The one process-wide `gutterpress` lib cache — shared with every
+// `electron/api/*.ts` handler (SFE-P5c2/P5c4; this file used to keep a
+// private copy for the deleted SvelteKit routes' sake).
+import { loadLib, type LibModule } from "./api/lib-loader";
+// SFE-P5c1: fs/dialog/shell/log/app moved from SvelteKit HTTP routes to typed
+// IPC. Each module below is the main-process logic the deleted +server.ts
+// handlers used to run — see electron/api/*.ts's own header comments.
+// SFE-P6b: main.ts no longer calls these functions directly — it imports
+// each module's own `register*Handlers(secureHandle)` and calls that once,
+// in the "IPC handler registration" section below, replacing the inline
+// per-channel secureHandle registration blocks this file used to carry for
+// every one of the ~120 channels.
+import { registerFsHandlers } from "./api/fs";
+import { registerFsWatchHandlers } from "./api/fs-watch";
+import { registerDialogHandlers } from "./api/dialog";
+import { registerShellHandlers } from "./api/shell";
+import { registerLogHandlers } from "./api/log";
+import { registerAppHandlers } from "./api/app";
+// SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/vcs/style moved
+// from SvelteKit HTTP routes to typed IPC — same rationale as P5c1 above.
+import { registerProjectHandlers } from "./api/project";
+import { registerManifestHandlers } from "./api/manifest";
+import { registerTplHandlers } from "./api/tpl";
+import { registerSnipHandlers } from "./api/snip";
+import { registerMediaHandlers } from "./api/media";
+import { registerPluginHandlers } from "./api/plugin";
+import { registerThemeHandlers } from "./api/theme";
+import { registerVcsHandlers } from "./api/vcs";
+import { registerStyleHandlers } from "./api/style";
+// SFE-P5c3: remote/sync/publish moved from SvelteKit HTTP routes back to
+// typed IPC (the credentials-sensitive group) — same rationale as P5c1/P5c2
+// above. GitHub device-flow + clone-progress push stay exactly as they were
+// (registered via ./github-device-flow-registrar — see that module's header).
+import { registerRemoteHandlers } from "./api/remote";
+import { registerPublishHandlers } from "./api/publish";
+// SFE-P5c4: updater/recovery/doctor/lint — the LAST four route groups —
+// moved from SvelteKit HTTP routes to typed IPC, taking the desktop HTTP
+// route count to zero. Same rationale as P5c1/P5c2/P5c3 above. The hooks
+// bags these four handler modules read from (`getUpdaterHooks`/
+// `getRecoveryHooks`/`getDoctorHooks`) are unchanged — the underlying
+// implementation functions still populate them exactly as they did for the
+// deleted routes.
+import { registerUpdaterHandlers } from "./api/updater";
+import { registerRecoveryHandlers } from "./api/recovery";
+import { registerDoctorHandlers } from "./api/doctor";
+import { registerLintHandlers } from "./api/lint";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -58,9 +104,9 @@ import {
   updaterSupported,
   checkForUpdates,
   download as downloadUpdate,
-  installNow,
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
+  installNow,
 } from "./updater";
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
 import {
@@ -84,11 +130,9 @@ import {
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
 import { unsyncedStateFor } from "./auto-sync/unsynced-status";
-import {
-  ExportController,
-  type ExportBuildArgs,
-} from "./export/controller";
-import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
+import { ExportController, registerExportHandlers } from "./export/controller";
+import { PreviewOpenController, registerPreviewHandlers, type PreviewHandle } from "./preview/controller";
+import { registerEditorProjectionHandlers } from "./editor-projection";
 import { GitHubDeviceFlow } from "./github-device-flow";
 import { GoogleConnectFlow } from "./google-connect-flow";
 import {
@@ -138,22 +182,24 @@ import {
   ExportCanceledError,
   getActiveExportSession,
   initPdfExport,
+  registerPdfExportHandlers,
   sendExportProgress,
   setActiveExportSession,
   throwIfExportCanceled,
   type ExportSession,
 } from "./pdf-export";
 import { createElectronEngineBrowser } from "./engine-browser";
+import { editorAssetPath } from "./editor-assets";
 import {
   registerAppProtocol,
-  startSvelteKitServer,
-} from "./sveltekit-host";
+  resolveBuildDir,
+  staticBuildLooksValid,
+} from "./app-protocol";
 import {
   APP_ORIGIN,
   decideNavigation,
   decideWindowOpen,
   isHttpUrl,
-  isTrustedIpcSender,
   resolveDevServerUrl,
   type OriginPolicyConfig,
 } from "./navigation-policy";
@@ -217,17 +263,6 @@ interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
   diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
-}
-
-type LibModule = typeof import("gutterpress");
-
-let libPromise: Promise<LibModule> | null = null;
-
-function loadLib(): Promise<LibModule> {
-  if (!libPromise) {
-    libPromise = import("gutterpress");
-  }
-  return libPromise;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -630,6 +665,27 @@ function registerUrlPreviewHeaderWatch() {
   });
 }
 
+/** The default application menu minus its zoom roles (see the call site). */
+function appMenuTemplate(): Electron.MenuItemConstructorOptions[] {
+  const mac = process.platform === "darwin";
+  return [
+    ...(mac ? [{ role: "appMenu" as const }] : []),
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    { role: "windowMenu" },
+  ];
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -783,13 +839,14 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
-  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
-  // registerAppProtocol() proxies app:// requests to it via fetch, so the
-  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
-  // so SvelteKit's client router sees the root route. (Loading /index.html
-  // makes the router try to resolve a page named "index.html" and throw
-  // "Not found: /index.html".)
+  // Prod mode: adapter-static emits a plain static file tree to build/ (no
+  // server, no build/handler.js). registerAppProtocol() (electron/
+  // app-protocol.ts) reads that tree directly from disk under the app://
+  // scheme, so the page has a stable app:// origin with no local server or
+  // proxy involved. Load the root "/" — NOT "/index.html" — so SvelteKit's
+  // client router sees the root route. (Loading /index.html makes the
+  // router try to resolve a page named "index.html" and throw "Not found:
+  // /index.html".)
   //
   // ARCH #1 (CRITICAL): gated by resolveDevServerUrl() — null when packaged.
   const devUrl = resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL);
@@ -864,23 +921,25 @@ function createWindow() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// app:// protocol — serves the static SvelteKit SPA from build/
+// app:// protocol — serves the static SvelteKit SPA directly from build/
 //
-// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
-// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
-// scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
-// registerAppProtocol(skAuthToken) from whenReady below.
+// SFE-P5d: the protocol handler (electron/app-protocol.ts) reads the
+// adapter-static build output straight from disk — no local HTTP server, no
+// bearer token, no proxy request. The privileged-scheme registration stays
+// here so it runs at its original point (before app.whenReady). main.ts
+// calls registerAppProtocol(buildDir) from whenReady below, after a startup
+// sanity check (staticBuildLooksValid) that surfaces a friendly dialog for a
+// corrupt install or an unbuilt dev tree — the same UX ARCH review #28 asked
+// for, now triggered by a missing build directory instead of a failed async
+// server start (there is no longer a server-start step to fail).
+//
+// Security equivalence (Checkpoint C): the deleted bearer token protected
+// the loopback HTTP server from other local processes discovering its
+// OS-assigned port. With no server, there is nothing left to authenticate a
+// caller to — the surviving boundary is path-scoping (app-protocol.ts's
+// resolveAssetPath refuses to resolve outside buildDir), proven by the
+// traversal-refusal tests in tests/platform/app-protocol.test.ts.
 // ──────────────────────────────────────────────────────────────────────────
-
-// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
-// authentication — any other local process that discovers the OS-assigned
-// port could otherwise call the privileged adapter-node API routes directly.
-// Mint a per-session random bearer token once at process start (never
-// persisted, never leaves this process except as the header
-// registerAppProtocol injects into its own proxied requests below); the
-// loopback server rejects any request that doesn't carry it.
-const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -903,12 +962,18 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
-// Host-service hook groups for server routes (Phase 2A) (ARCH review #31).
-// The SvelteKit handler runs in this same process but in a separate Vite
-// bundle scope. Each group below is a plain object built where its
-// dependencies live; none of them writes to globalThis on its own — they are
-// all handed to ONE `registerHostServices()` call once every group exists
-// (see the end of this section, next to the former conflict-preview site).
+// Host-service hook groups (Phase 2A) (ARCH review #31). Through SFE-P5c3,
+// these were consumed by both the IPC handlers registered in this file and
+// the SvelteKit `+server.ts` routes running in a separate Vite bundle scope
+// (hence the shared `registerHostServices()` seam rather than plain module
+// state). SFE-P5c4 deleted the last `+server.ts` route, so every group below
+// is now consumed only by `electron/api/*.ts`, in this same process and
+// bundle — the seam stays because `electron/api/*.ts` still can't reach
+// main.ts's module-private state any other way. Each group below is a plain
+// object built where its dependencies live; none of them writes to
+// globalThis on its own — they are all handed to ONE `registerHostServices()`
+// call once every group exists (see the end of this section, next to the
+// former conflict-preview site).
 // ──────────────────────────────────────────────────────────────────────────
 const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
@@ -975,70 +1040,36 @@ function originPolicyConfig(): OriginPolicyConfig {
 }
 
 /**
- * Drop-in replacement for `ipcMain.handle` that rejects any invocation whose
+ * The shared, sender-validating replacement for `ipcMain.handle` (SFE-P6b:
+ * the machinery itself now lives in server-bridge/secure-handle.ts, shared
+ * by every registrar below) — rejects any invocation whose
  * `event.senderFrame.url` isn't the trusted app origin (or the dev server
  * origin, in dev) before calling `listener`. One mechanism applied to every
- * channel, instead of a sender check duplicated into 18 handlers.
+ * channel, instead of a sender check duplicated into each handler.
  */
-function secureHandle<Args extends unknown[], R>(
-  channel: string,
-  listener: (event: Electron.IpcMainInvokeEvent, ...args: Args) => R,
-): void {
-  ipcMain.handle(channel, (event, ...args: Args) => {
-    if (!isTrustedIpcSender(event.senderFrame?.url, originPolicyConfig())) {
-      console.warn(
-        `[ipc] blocked "${channel}" from untrusted sender: ${event.senderFrame?.url ?? "unknown"}`,
-      );
-      throw new Error(`Blocked: untrusted sender for "${channel}"`);
-    }
-    return listener(event, ...args);
-  });
-}
+const secureHandle = createSecureHandle(originPolicyConfig);
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
 // Backs external-edit detection: a shallow fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
-// project is open at a time, so subscribing replaces any prior watch.
-secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
-  if (!path.isAbsolute(dirPath)) {
-    throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
-  }
-  // P1 review (PR #98): this call used to accept ANY absolute path from the
-  // renderer, and fsGuardImpl.projectRoots() (below) trusted whatever
-  // directory ended up watched — so a same-origin script could call
-  // fs:watchFolder("/home/user/.ssh") and turn an arbitrary directory into an
-  // authorized fs-route root (direct reads, copy-file's "inside project"
-  // shortcut, …). The watcher exists ONLY to watch the already-open project,
-  // so it is now gated on the host-set `activeWorkspaceRoot`, never on
-  // renderer-supplied input — matching projectRoots()'s sole authorization
-  // source.
-  if (!activeWorkspaceRoot || path.resolve(dirPath) !== activeWorkspaceRoot) {
-    throw new Error(
-      `fs:watchFolder: dirPath must be the active workspace directory (got: ${dirPath})`,
-    );
-  }
-  startFolderWatch(dirPath);
-  // Arm the periodic safety-sync interval NOW — the watcher is live, so
-  // armInterval's watched-dir guard finally holds. The open-time arm
-  // (PreviewOpenController.runOpen → armSyncInterval) fires BEFORE the
-  // renderer calls fs:watchFolder, so its guard saw the previous project (or
-  // null) and silently no-opped; and even a lucky arm was wiped by
-  // FolderWatcher.start()'s stop() → onStop → autoSync.cancelAll() just now.
-  // Net effect pre-fix: a view-only session NEVER pulled teammate changes —
-  // the interval only ever started after the first local edit. (Reopening the
-  // SAME dir skipped the wipe, which is why sync seemed intermittent.)
-  void autoSync.armInterval(folderWatch.getWatchedDir() ?? path.resolve(dirPath));
-});
-
-secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
-  const normalized = path.resolve(dirPath);
-  if (folderWatch.getWatchedDir() === normalized) stopFolderWatch();
+// project is open at a time, so subscribing replaces any prior watch. The
+// handlers (SFE-P6b: registered in electron/api/fs-watch.ts — see that
+// module's header, which carries the P1 review / PR #98 fix this comment
+// used to document inline) need the live workspace/watcher state below, so
+// main.ts passes it in explicitly rather than the registrar reaching back
+// into main.ts's private scope.
+registerFsWatchHandlers(secureHandle, {
+  getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+  startFolderWatch,
+  stopFolderWatch,
+  getWatchedDir: () => folderWatch.getWatchedDir(),
+  armSyncInterval: (dir) => autoSync.armInterval(dir),
 });
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
-// Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
-// globalThis hooks — no IPC needed.
+// Exposed to `electron/api/recovery.ts`'s IPC handlers (SFE-P5c4) through
+// the collapsed host object below.
 const recoveryHooksImpl: RecoveryHooks = {
   write: (filePath: string, content: string, baseMtimeMs: number) =>
     writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
@@ -1054,6 +1085,52 @@ secureHandle("app:flushDone", async (event, flushed: boolean): Promise<void> => 
   if (!active || active.window.webContents !== event.sender) return;
   active.session.resolve(flushed === true);
 });
+
+// ── fs / dialog / shell / log / app — typed IPC (SFE-P5c1) ──────────────────
+// Replaces src/routes/api/{fs,dialog,shell,log,app}/**/+server.ts. Each
+// registrar below (SFE-P6b: electron/api/*.ts's own `register*Handlers`,
+// joining the handler logic those modules already held) runs a plain
+// function from electron/api/*.ts — the same validation and hook calls the
+// deleted routes used, ported verbatim (see each module's own header). A
+// thrown Error's message is exactly the message the HTTP route used to send
+// as its response body; ipcMain.handle surfaces it to ipcRenderer.invoke's
+// rejection the same way for every channel here, so callers keep reading
+// `e.message` (via `friendlyHostError`) as before.
+registerFsHandlers(secureHandle);
+registerDialogHandlers(secureHandle);
+registerShellHandlers(secureHandle);
+registerLogHandlers(secureHandle);
+registerAppHandlers(secureHandle);
+
+// ── project / manifest / tpl / snip / media / plugin / theme / vcs / style —
+// typed IPC (SFE-P5c2) ───────────────────────────────────────────────────
+// Replaces src/routes/api/{project,manifest,tpl,snip,media,plugin,theme,
+// vcs,style}/**/+server.ts. Same porting discipline as the P5c1 block above.
+registerProjectHandlers(secureHandle);
+registerManifestHandlers(secureHandle);
+registerTplHandlers(secureHandle);
+registerSnipHandlers(secureHandle);
+registerMediaHandlers(secureHandle);
+registerPluginHandlers(secureHandle);
+registerThemeHandlers(secureHandle);
+registerVcsHandlers(secureHandle);
+registerStyleHandlers(secureHandle);
+
+// ── updater / recovery / doctor / lint — typed IPC (SFE-P5c4, the LAST
+// route group) ─────────────────────────────────────────────────────────────
+// Replaces src/routes/api/{updater,recovery,doctor,lint}/**/+server.ts —
+// the desktop HTTP route count reaches zero after this block. applyNow
+// (electron/updater.ts's `installNow`) is registered alongside getStatus/
+// check/download by the SAME `registerUpdaterHandlers` call — collapsing
+// updater-capability.ts's HTTP+IPC fan-out to a single transport, and (SFE-
+// P6b) the four separately-timed `secureHandle` calls this file used to
+// carry for the group into one registrar call, called here rather than
+// later next to `initUpdater()` (registration order across independent
+// channels does not affect behavior — see this run's ledger note).
+registerUpdaterHandlers(secureHandle);
+registerRecoveryHandlers(secureHandle);
+registerDoctorHandlers(secureHandle);
+registerLintHandlers(secureHandle);
 
 const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {
@@ -1103,9 +1180,10 @@ const desktopHooksImpl: DesktopHooks = {
   getUserDataPath: () => app.getPath('userData'),
 };
 
-// Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
-// in a different ESM context, and importing Electron there can fail.
+// Media thumbnail generation is exposed through a hook rather than having
+// electron/api/media.ts import `electron` directly, keeping raw Electron API
+// access concentrated in main.ts (and testable via a plain injected object —
+// see server-bridge/media-hooks.ts).
 const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
@@ -1165,7 +1243,8 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-// Prefs/settings hooks for server routes (Phase 2B). Built here because
+// Prefs/settings hooks for the `app:*` typed IPC channels (originally built
+// for server routes in Phase 2B, restored to IPC by SFE-P5c1). Built here because
 // scanForProjects's closure needs discoverScanDeps, which is only assembled
 // right above — a real dependency, not the ordering LANDMINE it used to be:
 // this object is no longer registered on its own the moment it's built, so
@@ -1192,8 +1271,8 @@ const prefsHooksImpl: PrefsHooks<LibModule, DesktopPrefs, AppSettings, ProjectSt
   loadLib,
 };
 
-// Doctor-route hooks, exposed through the collapsed host object so the
-// SvelteKit handler never imports `electron` directly in the packaged app.
+// Doctor hooks, exposed through the collapsed host object to
+// `electron/api/doctor.ts`'s IPC handler (SFE-P5c4).
 const doctorHooksImpl: DoctorHooks = {
   getDesktopVersion: () => app.getVersion(),
 };
@@ -1226,7 +1305,9 @@ const appImageHooksImpl: AppImageHooks = {
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// loadLib + operationLogPath for VCS SvelteKit server routes.
+// loadLib + operationLogPath for the vcs:* typed IPC handlers in
+// electron/api/vcs.ts (see the comment a few lines below for the SvelteKit
+// server-route history this hooks object predates).
 const vcsHooksImpl: VcsHooks<LibModule> = { loadLib, operationLogPath };
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
@@ -1236,8 +1317,10 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   return projectDir;
 }
 
-// Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
-// module (friendlyVcsError), consumed by the SvelteKit routes.
+// Error sanitization for vcs:* lives in the shared server-bridge/friendly-errors
+// module (friendlyVcsError), consumed by the vcs:* IPC handlers in
+// electron/api/vcs.ts (SFE-P5c2 — the last SvelteKit vcs/*​/+server.ts route
+// that used to call it directly is gone).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
@@ -1247,16 +1330,22 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
 
 const GITHUB_HOST = "github.com";
 
-// lib + tokenStore + GITHUB_HOST for remote SvelteKit server routes (Phase 2F).
-// The routes live in a separate Vite bundle and cannot directly import from
-// main.ts; they access these through the collapsed host object instead.
+// lib + tokenStore + GITHUB_HOST for the remote:* IPC handlers
+// (electron/api/remote.ts, SFE-P5c3). Through SFE-P5c3, these fed the
+// SvelteKit remote/*​/+server.ts routes too, running in a separate Vite
+// bundle that could not import from main.ts directly — hence the collapsed
+// host object rather than a plain import. SFE-P5c4 deleted the last
+// +server.ts route; the object stays because electron/api/remote.ts still
+// can't reach main.ts's module-private state (mainWindow, safeSend) any
+// other way.
 //
-// cloneRepository (ARCH review #8) is a bound closure — not a raw piece —
-// for the same reason: the route that calls it cannot see `mainWindow`
+// cloneRepository is a bound closure — not a raw piece — for the same
+// reason: electron/api/remote.ts's IPC handler cannot see `mainWindow`
 // directly, so the closure below does the FULL operation (validation, lib
-// call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
-// ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
-// these hooks are the raw operation.
+// call, clone-progress push) the handler used to do inline. Friendly-error
+// sanitization (handleRemoteErrors) stays at the IPC HANDLER, matching every
+// other remote:* handler (e.g. remoteSync in electron/api/remote.ts) — these
+// hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks<LibModule> = {
   loadLib,
   tokenStore: electronTokenStore,
@@ -1349,42 +1438,31 @@ async function showLinuxCredentialStorageNoticeOnce(): Promise<void> {
   }
 }
 
-secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", async () => {
-    const info = await githubDeviceFlow.start();
-    await showLinuxCredentialStorageNoticeOnce();
-    return info;
-  }),
-);
-
-secureHandle("remote:connectGitHubWait", () =>
-  handleRemoteErrors("remote:connectGitHubWait", () => githubDeviceFlow.wait()),
-);
-
-secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel());
+// remote:connectGitHubStart/Wait/Cancel — the one part of the GitHub/remote
+// surface that isn't a plain `getRemoteHooks()` delegate (it closes over the
+// live `githubDeviceFlow` instance and the Linux-keyring notice above, both
+// main.ts-composed) — registered by its own thin registrar (SFE-P6b:
+// electron/github-device-flow-registrar.ts).
+registerGitHubDeviceFlowHandlers(secureHandle, {
+  githubDeviceFlow,
+  showLinuxCredentialStorageNoticeOnce,
+});
 
 // The Google Drive OAuth "one connect at a time" state trio (#221,
 // docs/gdrive-publish-plan.md D10) — same shape as githubDeviceFlow above,
 // electron/google-connect-flow.ts. Opens the auth URL via the app's single
 // http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
-// defined above — the same one `api/shell/open-external` calls); the
-// credential is stored under the "gdrive" host in the same electronTokenStore
-// every publish credential uses.
+// defined above — the same one `shell:openExternal` calls); the credential
+// is stored under the "gdrive" host in the same electronTokenStore every
+// publish credential uses. Registered by its own thin registrar, like the
+// GitHub trio above (electron/google-connect-flow-registrar.ts).
 const googleConnectFlow = new GoogleConnectFlow({
   loadLib,
   tokenStore: electronTokenStore,
   openExternal: desktopHooksImpl.openExternal,
 });
 
-secureHandle("publish:connectGoogleStart", (_e, account?: string) =>
-  handlePublishErrors("publish:connectGoogleStart", () => googleConnectFlow.start(account)),
-);
-
-secureHandle("publish:connectGoogleWait", () =>
-  handlePublishErrors("publish:connectGoogleWait", () => googleConnectFlow.wait()),
-);
-
-secureHandle("publish:connectGoogleCancel", async () => googleConnectFlow.cancel());
+registerGoogleConnectFlowHandlers(secureHandle, googleConnectFlow);
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
@@ -1401,12 +1479,27 @@ function sanitizeBookSubPath(subPath: unknown): string {
   return segments.join("/");
 }
 
-// remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
-// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository — migrated to SvelteKit server routes
-// (Phase 2F / ARCH review #8: src/routes/api/remote/*). cloneRepository is a
-// bound closure on remoteHooksImpl above (it needs mainWindow, which the
-// route's separate Vite bundle can't reach directly).
+// remote:disconnectGitHub, remote:getConnection, remote:listRepositories,
+// remote:listBranches, remote:listRepoBooks, remote:diagnoseProject,
+// remote:testRemoteAccess, remote:connectGenericHost, remote:disconnectHost,
+// remote:listConnections, remote:forgeTokenUrl, remote:sync,
+// remote:cloneRepository, sync:setAutoSync, sync:getStatus — SFE-P5c3,
+// restored from SvelteKit server routes to typed IPC (the
+// credentials-sensitive group). Every handler lives in electron/api/remote.ts
+// and reuses remoteHooksImpl (below `registerHostServices` call further down
+// still supplies it) through getRemoteHooks() — cloneRepository stays the
+// bound closure on remoteHooksImpl it always was (it needs mainWindow for
+// the clone-progress push, which a plain function module cannot reach).
+// SFE-P6b moved the `secureHandle` registrations themselves into that same
+// module's `registerRemoteHandlers` — see its header for what stays out
+// (connectGitHubStart/Wait/Cancel, just above).
+registerRemoteHandlers(secureHandle);
+
+// publish:list, publish:providers, publish:connect, publish:disconnect,
+// publish:setConfig, publish:preflight, publish:run — SFE-P5c3, restored to
+// typed IPC. Publishing shares the remote hooks bag (electron/api/publish.ts's
+// own header explains why) rather than a parallel registration.
+registerPublishHandlers(secureHandle);
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
@@ -1465,9 +1558,10 @@ const savePathsImpl = createSavePathsService();
 
 // ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
 // The renderer calls setAutoSync(true|false) from the Settings panel via the
-// SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
-// write, no push stream or live-BrowserWindow need, so it doesn't belong on
-// IPC). We persist the flag into settings.versionHistory.autoSync and, if
+// `sync:setAutoSync` typed IPC channel (SFE-P5c3 restored this pure settings
+// write to IPC after ARCH review #8 had briefly moved it off IPC onto the
+// now-deleted `sync/set-auto-sync/+server.ts` route). We persist the flag
+// into settings.versionHistory.autoSync and, if
 // re-enabled, re-arm the periodic safety timer for the currently open project
 // (unlatch conflict if any, since the user explicitly requested to resume).
 const syncSettingsHooksImpl: SyncSettingsHooks = {
@@ -1499,20 +1593,26 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
 };
 
-// ── Updater status/check/download hooks (ARCH review #8) ────────────────────
-// getStatus/checkForUpdates/download (electron/updater.ts) are plain
-// functions with no main.ts-only state of their OWN — but electron/updater.ts
-// itself has main-bundle-only mutable state (phase/lastError/…) populated by
-// the one initUpdater() call below, so it can't be imported fresh from a
-// route's separate bundle (see updater-hooks.ts's doc comment). Bound here so
-// the routes reach THIS process's initialized instance through the same
-// collapsed host object as everything else. `check()` is always the
-// user-initiated (non-silent) form — the silent background recheck stays a
-// direct call inside main.ts, sharing the same underlying module state.
+// ── Updater status/check/download/applyNow hooks (ARCH review #8, SFE-P5c4,
+// SFE-P6b) ───────────────────────────────────────────────────────────────
+// getStatus/checkForUpdates/download/installNow (electron/updater.ts) are
+// plain functions with no main.ts-only state of their OWN — but
+// electron/updater.ts itself has main-bundle-only mutable state
+// (phase/lastError/…) populated by the one initUpdater() call below.
+// `electron/api/updater.ts`'s IPC handlers reach THIS process's initialized
+// instance through the same collapsed host object as everything else —
+// `applyNow` included, so that api/updater.ts (like every other
+// electron/api/*.ts module) never needs a top-level `import "../updater"`,
+// which would drag electron/updater.ts's own top-level `import "electron"`
+// into a module that must stay loadable under plain `bun test`. `check()`
+// is always the user-initiated (non-silent) form — the silent background
+// recheck stays a direct call inside main.ts, sharing the same underlying
+// module state.
 const updaterHooksImpl: UpdaterHooks = {
   getStatus: () => getUpdaterStatus(),
   check: () => checkForUpdates(),
   download: () => downloadUpdate(),
+  applyNow: () => installNow(),
 };
 
 // ── ONE registration for the entire host/route seam (ARCH review #31) ───────
@@ -1540,8 +1640,6 @@ registerHostServices({
   watch: watchHooksImpl,
   write: writeHooksImpl,
 });
-
-// (api:doctor handler removed — migrated to server route)
 
 // The preview-open pipeline (start server, detect source, recents upsert,
 // auto-sync arm/preflight, local-status emit) lives in
@@ -1574,26 +1672,20 @@ const previewOpen = new PreviewOpenController({
   setTimeout: (cb, ms) => setTimeout(cb, ms),
 });
 
-secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
+// api:preview / api:stopPreview registered by PreviewOpenController's own
+// registrar (SFE-P6b: electron/preview/controller.ts's registerPreviewHandlers).
+registerPreviewHandlers(secureHandle, previewOpen);
 
-secureHandle("api:stopPreview", () => previewOpen.stop());
-
-secureHandle("api:cancelExport", async (_e, exportId: string) => {
-  const session = getActiveExportSession();
-  if (!session || session.id !== exportId) {
-    return { canceled: false };
-  }
-  session.canceled = true;
-  const exportWin = session.win;
-  if (exportWin && !exportWin.isDestroyed()) {
-    exportWin.destroy();
-  }
-  return { canceled: true };
-});
+// api:cancelExport registered by pdf-export.ts's own registrar (SFE-P6b) —
+// it only touches that module's active-export-session state, no
+// main.ts-composed dependency.
+registerPdfExportHandlers(secureHandle);
 
 // The api:build export pipeline lives in electron/export/controller.ts as an
 // injected-deps class (unit-tested in tests/platform/export-controller.test.ts).
-// main.ts wires the live host touch-points and keeps a thin delegating handler.
+// main.ts wires the live host touch-points; the `api:build` `secureHandle`
+// registration itself is that same module's own `registerExportHandlers`
+// (SFE-P6b).
 const exportController = new ExportController({
   loadLib,
   tokenStore: electronTokenStore,
@@ -1612,7 +1704,18 @@ const exportController = new ExportController({
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
-secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+registerExportHandlers(secureHandle, exportController);
+
+// ── Rich-editor plugin-aware projection (SFE-P3e) ───────────────────────────
+//
+// The host-built half of the desktop rich editor's projection: given the
+// OPEN project's manifest + real loaded plugins, build a plugin-aware,
+// trusted `GutterpressProjection` for whatever source the renderer is
+// currently editing. See electron/editor-projection.ts for the pure,
+// unit-tested implementation, its own `registerEditorProjectionHandlers`
+// (SFE-P6b), and the argument validation/D14 classification
+// (`resolveEditorProjection`) that handler calls.
+registerEditorProjectionHandlers(secureHandle, () => activeWorkspaceRoot);
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)
@@ -1624,11 +1727,12 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 // "restart to update" banner after staging.
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
-// no push stream, no live-BrowserWindow need — so they're SvelteKit server
-// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
-// download from ./updater.ts directly (no hooks bag needed: they're already
-// plain exported functions with no main.ts-only state). applyNow stays on
-// IPC: it flushes the live renderer's unsaved buffer via
+// no push stream, no live-BrowserWindow need — but as of SFE-P5c4 they are
+// typed IPC (`updater:getStatus`/`updater:check`/`updater:download`,
+// registered by `registerUpdaterHandlers` above) like everything else,
+// collapsing the HTTP+IPC fan-out this comment used to document. applyNow
+// (registered by that same call) was always IPC: `prepareToInstall` below
+// flushes the live renderer's unsaved buffer via
 // `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
 // §8 sanctions.
 // ──────────────────────────────────────────────────────────────────────────
@@ -1653,8 +1757,6 @@ initUpdater(sendUpdaterEvent, {
     return true;
   },
 });
-
-secureHandle("updater:applyNow", () => installNow());
 
 // ──────────────────────────────────────────────────────────────────────────
 // App lifecycle
@@ -1781,34 +1883,43 @@ app.whenReady().then(async () => {
   slog("app whenReady");
   void logAppEvent(`[app] started ${app.getVersion()}`);
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
-  // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
-  // server is already running externally — skip the local handler.js launch.
-  // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
-  // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
-  // ignores it), start the adapter-node HTTP server and wire it to the
-  // app:// protocol so the window only ever loads local content.
+  // Resolve the static SvelteKit build directory (packaged app.asar/build vs
+  // dev's build/). In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged)
+  // the window loads straight from the Vite dev server (below) and never
+  // depends on buildDir existing — a fresh checkout that hasn't run
+  // `npm run build` yet must still be able to `electron:hmr` without a false
+  // "couldn't start" dialog. In prod (or a packaged build where
+  // VITE_DEV_SERVER_URL is set by an attacker — ARCH review finding #1,
+  // CRITICAL — resolveDevServerUrl() ignores it), buildDir is what the
+  // window actually loads, so sanity-check it first: ARCH review #28, a
+  // corrupt install or an unbuilt dev tree must show a plain-language native
+  // dialog, not strand the author on a blank/erroring window.
+  const buildDir = resolveBuildDir(app.isPackaged, HERE);
   if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
-    try {
-      await startSvelteKitServer(slog, skAuthToken);
-    } catch (err) {
-      console.error("[sk-server] failed to start SvelteKit server:", err);
-      // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
-      // serves a styled retry page for every app:// request until
-      // skServerPort is set (corrupt install / port exhaustion / missing
-      // handler.js can all still resolve without a restart — e.g. a later
-      // manual retry). But a console.error alone stranded the author on a
-      // raw "SvelteKit server not started" page with zero explanation, so
-      // also surface it as a plain-language native dialog right away.
+    if (!staticBuildLooksValid(buildDir)) {
+      console.error(`[app-protocol] static build directory looks invalid: ${buildDir}`);
       dialog.showErrorBox(
         "Gutterpress couldn't start",
-        "Gutterpress's internal server didn't start, so the app can't load its interface.\n\n" +
+        "Gutterpress's interface files are missing, so the app can't load its interface.\n\n" +
         "Try quitting and reopening Gutterpress. If this keeps happening, reinstalling " +
         "Gutterpress usually fixes it.\n\n" +
-        `Details: ${err instanceof Error ? err.message : String(err)}`
+        `Details: expected build output at ${buildDir}`
       );
     }
   }
-  registerAppProtocol(skAuthToken);
+  // Registered unconditionally (harmless in dev mode, where the window never
+  // navigates to app://) — matches the pre-P5d registerAppProtocol call site.
+  // The open project's own files are readable under app://local/__project/
+  // so the editor can show a chapter's art. Same roots the fs IPC guard
+  // authorizes against — never a second source of truth.
+  registerAppProtocol(buildDir, () => fsGuardImpl.projectRoots(), editorAssetPath);
+  // The menu bar is hidden, but a menu's accelerators still fire. Electron's
+  // default menu carries Ctrl/Cmd+= / - / 0, which zoom the whole renderer:
+  // the toolbar grew past the window edge and the app looked shifted inside
+  // its frame. The app zooms its own surfaces (the preview, the paged
+  // editor) on those keys instead, so this menu keeps what the default
+  // offered and leaves the zoom roles out.
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate()));
   registerUrlPreviewHeaderWatch();
   createWindow();
   appShellReady = true;
