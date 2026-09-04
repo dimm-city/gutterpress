@@ -50,6 +50,33 @@ const HOISTED_AT_RULES = new Set([
 ]);
 const DOCUMENT_ROOT_SELECTOR = /^(?::root|html|body)(?:\s+(?:html|body))*(?![-\w])/;
 
+/**
+ * The page's own colour context, first in the composed sheet so any author
+ * rule beats it.
+ *
+ * A printed page starts from the initial `color` on paper: black ink, whatever
+ * the reader's OS or application theme happens to be. In the editor the book's
+ * document is an element inside the app, so a book that never sets `color` on
+ * `body` -  most books, which colour their headings and components and leave
+ * body text to the default -  INHERITED the app chrome's text colour instead.
+ * Under the light app theme that colour is near-black and the difference is
+ * invisible; under the dark theme it is near-white, and every uncoloured run
+ * of book text (table cells, list items, plain paragraphs) came out pale on
+ * the page's own light paper, where the printed page and the preview both
+ * show black.
+ *
+ * `color-scheme: light` makes system colours inside the document resolve as
+ * they do on paper, so `canvastext` is the same ink the print path starts
+ * from. Specificity here is `:scope` (0,1,0), the same as an author's own
+ * rewritten `body` rule, and this comes first, so a book that DOES set a
+ * document colour still wins.
+ */
+const PAGE_COLOR_CONTEXT = `/* the page's own colour context (see editor-css.ts) */
+:scope {
+  color-scheme: light;
+  color: canvastext;
+}`;
+
 function rewriteSelector(selector: string): string {
   const trimmed = selector.trim();
   return DOCUMENT_ROOT_SELECTOR.test(trimmed) ? trimmed.replace(DOCUMENT_ROOT_SELECTOR, ":scope") : trimmed;
@@ -90,6 +117,7 @@ export function scopeCssToEditor(css: string, scopeSelector: string): string {
 /** The full editor stylesheet: markers + utilities + plugin CSS + the author's CSS, scoped. */
 export function composeEditorCss(opts: ComposeEditorCssOptions): string {
   const layers = [
+    PAGE_COLOR_CONTEXT,
     `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
     `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
     opts.pluginCss?.trim() ? `/* user plugin css */\n${opts.pluginCss.trim()}` : null,
