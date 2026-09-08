@@ -225,7 +225,6 @@ export {
   LEGACY_THEME_MANIFEST_FILENAME,
   readExtensionMeta,
   extensionStyleList,
-  extensionEngineStyleList,
   assertExtensionContained,
   pathEscapesFolder,
   resolveExtension,

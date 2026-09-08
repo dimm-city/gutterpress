@@ -16,7 +16,6 @@ import {
   revertTheme,
   themeStyleList,
   THEMES_DIR,
-  themeEngineStyleList,
 } from "./theme-manager";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `theme-manager-tests-${Date.now()}`);
@@ -306,9 +305,6 @@ describe("theme-manager", () => {
       expect(() => assertThemeSheetsContained({ styles: ["/etc/passwd"] })).toThrow(
         /outside its own folder/,
       );
-      expect(() =>
-        assertThemeSheetsContained({ engineStyles: { native: ["css/../../x.css"] } }),
-      ).toThrow(/outside its own folder/);
       expect(() => assertThemeSheetsContained({ styles: ["css/tokens.css"] })).not.toThrow();
     });
 
@@ -333,19 +329,12 @@ describe("theme-manager", () => {
       ).rejects.toThrow(/outside its own folder/);
     });
 
-    function writeMultiSheetTheme(dir: string, id: string, opts: { engineStyles?: string[] } = {}): void {
+    function writeMultiSheetTheme(dir: string, id: string): void {
       const themeDir = join(dir, THEMES_DIR, id);
       mkdirSync(join(themeDir, "css"), { recursive: true });
       writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
       writeFileSync(join(themeDir, "css", "components.css"), ".component { color: blue; }\n", "utf8");
-      const meta: Record<string, unknown> = {
-        name: `Multi ${id}`,
-        styles: ["css/tokens.css", "css/components.css"],
-      };
-      if (opts.engineStyles) {
-        writeFileSync(join(themeDir, "css", "native.css"), "@page { color: green; }\n", "utf8");
-        meta.engineStyles = { native: opts.engineStyles };
-      }
+      const meta = { name: `Multi ${id}`, styles: ["css/tokens.css", "css/components.css"] };
       writeFileSync(join(themeDir, "theme.json"), JSON.stringify(meta), "utf8");
     }
 
@@ -496,44 +485,39 @@ describe("theme-manager", () => {
       expect(manifest).toContain(`${THEMES_DIR}/multi/css/tokens.css`);
     });
 
-    test("engineStyles.native: applying a theme with engine sheets appends them; single-sheet themes never touch engineStyles at all", async () => {
+    test("a theme declaring the removed `engineStyles` field is rejected at apply, naming the replacement (#266)", async () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", ""].join("\n"));
+      const themeDir = join(dir, THEMES_DIR, "furniture");
+      mkdirSync(join(themeDir, "css"), { recursive: true });
+      writeFileSync(join(themeDir, "css", "tokens.css"), ":root { --token: 1; }\n", "utf8");
+      writeFileSync(join(themeDir, "css", "native.css"), "@page { color: green; }\n", "utf8");
+      writeFileSync(
+        join(themeDir, "theme.json"),
+        JSON.stringify({
+          name: "Furniture",
+          styles: ["css/tokens.css"],
+          engineStyles: { native: ["css/native.css"] },
+        }),
+        "utf8",
+      );
 
-      // A plain single-sheet apply must not create an engineStyles scaffold.
-      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
-      expect(readManifest(dir)).not.toContain("engineStyles");
-
-      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
-      await applyTheme(dir, { kind: "project", id: "furniture" });
-
-      const manifest = readManifest(dir);
-      expect(manifest).toContain("engineStyles");
-      expect(manifest).toContain(`${THEMES_DIR}/furniture/css/native.css`);
+      await expect(applyTheme(dir, { kind: "project", id: "furniture" })).rejects.toThrow(
+        /`engineStyles`, which was removed — move its entries to the end of `styles`/,
+      );
+      expect(readManifest(dir)).not.toContain(`${THEMES_DIR}/furniture/`);
     });
 
-    test("engineStyles.native: removing/switching away from a theme with engine sheets cleans them up", async () => {
+    test("removeProjectTheme drops the theme's ENTIRE styles block", async () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", ""].join("\n"));
-      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
-      await applyTheme(dir, { kind: "project", id: "furniture" });
-      expect(readManifest(dir)).toContain(`${THEMES_DIR}/furniture/css/native.css`);
+      writeMultiSheetTheme(dir, "multi");
+      await applyTheme(dir, { kind: "project", id: "multi" });
 
-      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
-      const manifest = readManifest(dir);
-      expect(manifest).not.toContain(`${THEMES_DIR}/furniture/`);
-    });
-
-    test("removeProjectTheme drops the theme's ENTIRE styles + engineStyles block", async () => {
-      const dir = projectDir();
-      writeManifest(dir, ["title: Test", ""].join("\n"));
-      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
-      await applyTheme(dir, { kind: "project", id: "furniture" });
-
-      await removeProjectTheme(dir, "furniture");
+      await removeProjectTheme(dir, "multi");
 
       const manifest = readManifest(dir);
-      expect(manifest).not.toContain(`${THEMES_DIR}/furniture/`);
+      expect(manifest).not.toContain(`${THEMES_DIR}/multi/`);
       expect(await getActiveTheme(dir)).toBeNull();
     });
 
@@ -598,22 +582,25 @@ describe("theme-manager", () => {
       expect(existsSync(join(dir, THEMES_DIR))).toBe(false);
     });
 
-    test("importThemeFromFolder rejects a folder whose declared engineStyles.native sheet is missing", async () => {
+    test("importThemeFromFolder rejects a folder declaring the removed `engineStyles` field, before copying anything (#266)", async () => {
       const dir = projectDir();
-      const srcDir = join(TMP_ROOT, "multi-engine-missing");
+      const srcDir = join(TMP_ROOT, "multi-engine-removed");
       mkdirSync(join(srcDir, "css"), { recursive: true });
       writeFileSync(join(srcDir, "css", "tokens.css"), ":root { --a: 1; }\n", "utf8");
       writeFileSync(
         join(srcDir, "theme.json"),
         JSON.stringify({
-          name: "Broken",
+          name: "Stale",
           styles: ["css/tokens.css"],
-          engineStyles: { native: ["css/native-missing.css"] },
+          engineStyles: { native: ["css/tokens.css"] },
         }),
         "utf8",
       );
 
-      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(/native-missing\.css/);
+      await expect(importThemeFromFolder(dir, srcDir)).rejects.toThrow(
+        /`engineStyles`, which was removed/,
+      );
+      expect(existsSync(join(dir, THEMES_DIR))).toBe(false);
     });
 
     test("applyTheme (project) rejects when a SECONDARY declared sheet has gone missing since import", async () => {
@@ -626,17 +613,6 @@ describe("theme-manager", () => {
 
       await expect(applyTheme(dir, { kind: "project", id: "multi" })).rejects.toThrow(
         /components\.css/,
-      );
-    });
-
-    test("applyTheme (project) rejects when a declared engineStyles.native sheet is missing", async () => {
-      const dir = projectDir();
-      writeManifest(dir, ["title: Test", ""].join("\n"));
-      writeMultiSheetTheme(dir, "furniture", { engineStyles: ["css/native.css"] });
-      rmSync(join(dir, THEMES_DIR, "furniture", "css", "native.css"));
-
-      await expect(applyTheme(dir, { kind: "project", id: "furniture" })).rejects.toThrow(
-        /native\.css/,
       );
     });
   });

@@ -232,22 +232,6 @@ Vendor preset supplying the defaults for every other section — page geometry, 
 preset: book
 ```
 
-#### `engine` (string)
-Accepted-but-ignored. The Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading.
-
-```yaml
-engine: paged
-```
-
-#### `engineStyles` (object)
-Engine-conditional stylesheets, appended after `styles`. `.native` is the only list this field has — the native engine is the only engine, so there is nothing left to condition on. This was the per-book migration mechanism while both engines existed — a book whose chrome was coupled to one engine's DOM declared the other engine's replacement furniture here. Loaded last, so the furniture wins the cascade. A manifest that still carries `.paged` from that era keeps loading (one warning, ignored), but the key is gone from the schema and the resolved type.
-
-```yaml
-engineStyles:
-  native:
-    - css/native-furniture.css
-```
-
 #### `styles` (array of strings)
 CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 

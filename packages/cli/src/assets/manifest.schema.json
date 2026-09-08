@@ -29,22 +29,6 @@
       "enum": ["dtrpg", "book", "custom"],
       "examples": ["dtrpg", "book", "custom"]
     },
-    "engine": {
-      "type": "string",
-      "description": "Pagination engine. The Gutterpress engine (native Chromium pagination) is the only engine, and \"native\" is the only meaningful value. \"paged\" is accepted for backward-compatible manifest parsing only: it produces a one-line warning and the build proceeds natively regardless. `--engine` on the CLI is likewise an accepted-but-ignored no-op.",
-      "enum": ["paged", "native"],
-      "default": "native",
-      "examples": ["native"]
-    },
-    "engineStyles": {
-      "type": "object",
-      "description": "Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the only list — the native engine is the only engine, so there is nothing else to condition on. A manifest from the dual-engine era may still carry `.paged`; it keeps loading (with a one-line warning) but is no longer part of this schema.",
-      "properties": {
-        "native": { "type": "array", "items": { "type": "string" } }
-      },
-      "additionalProperties": false,
-      "examples": [{ "native": ["css/native-furniture.css"] }]
-    },
     "targets": {
       "type": "array",
       "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",
@@ -88,7 +72,7 @@
               "path": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Path to a local plugin module OR an extension folder (a gutterpress.json package, optionally carrying styles/engineStyles alongside its markdown entry), relative to the manifest directory.",
+                "description": "Path to a local plugin module OR an extension folder (a gutterpress.json package, optionally carrying styles alongside its markdown entry), relative to the manifest directory.",
                 "examples": ["plugins/dimm-city-plugin.js", "../shared/plugins/callouts.js", "./extensions/dc-components"]
               },
               "name": {

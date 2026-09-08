@@ -97,24 +97,6 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
-   * Pagination engine. The Gutterpress engine (`src/engine/`, native Chromium
-   * pagination) is the only engine. This field and `--engine` on the CLI are
-   * accepted-but-ignored for backward compatibility: an explicit "paged"
-   * produces a one-line warning and the build proceeds natively regardless.
-   */
-  engine?: "paged" | "native";
-  /**
-   * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
-   * only list this type declares; a manifest that still carries `.paged`
-   * (dual-engine era, pre-0.10.7) keeps parsing — `resolveConfig` reads it
-   * through a widened cast and warns once — but it is no longer part of the
-   * authored/autocompleted shape (see `manifest.schema.json`, which drops it
-   * too), since the native engine is the only engine.
-   */
-  engineStyles?: {
-    native?: string[];
-  };
-  /**
    * Where the book is published (ADR 0008): publish-target ids whose
    * validation policies this book is checked against. Absent = the preset's
    * defaults (`dtrpg` -> ["dtrpg"]; `book`/`custom` -> []). The registry in
@@ -226,14 +208,6 @@ export interface ResolvedPluginConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
-  /**
-   * Resolved pagination engine. Always `"native"` — `manifest.ts` assigns the
-   * literal, warning and ignoring an author's `engine: paged`. Typed as the
-   * single value it can hold so no consumer can branch on an engine that
-   * cannot run. The INPUT union ({@link GutterpressManifest.engine}) keeps
-   * both spellings, because old manifests must go on parsing.
-   */
-  engine: "native";
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];

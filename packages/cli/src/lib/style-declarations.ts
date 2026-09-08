@@ -1,7 +1,7 @@
 /**
  * Shared "declared stylesheet list" resolution (#239) — the ONE function a
- * plugin's `styles` export (#238) and a theme's `theme.json` `styles`/
- * `engineStyles.native` both resolve through. This is the concrete code-level
+ * plugin's `styles` export (#238) and a theme's `theme.json` `styles` both
+ * resolve through. This is the concrete code-level
  * answer to the 0.10.7 milestone's acceptance criterion for this pair — "a
  * theme and a styles-carrying plugin are the same object": both declare an
  * ORDERED LIST of stylesheet paths relative to their OWN folder/module, and
@@ -13,7 +13,7 @@
  *   - `lib/markdown/plugins.ts`'s `loadPlugin` — a plugin's `styles` export,
  *     relative to the plugin's own module/package directory.
  *   - `lib/theme-manager.ts`'s `applyTheme` and `importThemeFromFolder` — a
- *     theme's `styles`/`engineStyles.native`, relative to the theme folder.
+ *     theme's `styles`, relative to the theme folder.
  *   - `lib/theme-import.ts`'s zip/css-text import — the same declared-sheet
  *     list, ahead of its own additional print-safety pass (a theme-import-
  *     specific richness plugin loading doesn't need, so it stays layered on

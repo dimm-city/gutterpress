@@ -512,11 +512,10 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
   }
 });
 
-test("WebAdapter.startPreview renders natively regardless of the manifest's (ignored) engine field", async () => {
-  // The viewer bundle renders every project on the browser/PWA target,
-  // whatever the manifest's (ignored) `engine:` field says.
+test("WebAdapter.startPreview links the native viewer bundle", async () => {
+  // The viewer bundle renders every project on the browser/PWA target.
   const root = makeFsaTree();
-  root.addFile("manifest.yaml", "title: Legacy Book\nengine: paged\n");
+  root.addFile("manifest.yaml", "title: Legacy Book\n");
   // @ts-expect-error test global
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   const urls = stubObjectUrls();

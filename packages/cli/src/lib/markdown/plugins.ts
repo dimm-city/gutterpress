@@ -21,8 +21,8 @@ import {
   type VerifiedVendorPackage,
   type VerifiedVendorPlugin,
 } from "../plugin-vendor";
-// #239: the SAME declared-stylesheet resolver a theme's `styles`/
-// `engineStyles.native` resolve through (theme-manager.ts) — see
+// #239: the SAME declared-stylesheet resolver a theme's `styles` resolve
+// through (theme-manager.ts) — see
 // resolvePluginStyles's doc comment below for why this is the literal
 // convergence point, not a parallel re-implementation.
 import { resolveDeclaredStyles } from "../style-declarations";
@@ -1060,7 +1060,7 @@ async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> 
  * file is NOT plugin-specific — that half is
  * {@link resolveDeclaredStyles} (`style-declarations.ts`), the SAME function
  * `theme-manager.ts`'s `applyTheme`/`importThemeFromFolder` resolve a
- * theme's `styles`/`engineStyles.native` through (#239). This is the literal
+ * theme's `styles` through (#239). This is the literal
  * code-sharing that makes a theme and a styles-carrying plugin resolve their
  * declared stylesheets identically, not through two parallel
  * implementations that could drift.
@@ -1108,7 +1108,7 @@ function extensionMetadata(meta: ExtensionMetadata): GutterpressPluginMetadata |
  * `theme.json`, read through the exact same {@link readExtensionMeta}
  * declaring any mix of `markdown` (a markdown-it entry, loaded exactly like a
  * bare-file plugin — same cache, same export extraction, same `styles`
- * export handling) and `styles`/`engineStyles.native` (resolved through the
+ * export handling) and `styles` (resolved through the
  * SAME {@link resolveExtension} → `resolveDeclaredStyles` chain a theme's own
  * declared sheets and a plain plugin's `styles` export already go through).
  *
@@ -1136,7 +1136,7 @@ async function loadExtensionFromDir(
   const meta = await readExtensionMeta(extensionDir);
   assertExtensionContained(meta);
   const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
-  const extensionStyles = [...(resolved.styles ?? []), ...(resolved.engineStyles ?? [])];
+  const extensionStyles = resolved.styles ?? [];
   const name = config.name ?? meta.name ?? pluginRef;
 
   // A folder with NEITHER markdown NOR any styles declares nothing at all —
@@ -1147,10 +1147,10 @@ async function loadExtensionFromDir(
   // this loader's fail-fast doctrine everywhere else (CLAUDE.md §5).
   if (!resolved.markdown && extensionStyles.length === 0) {
     throw new Error(
-      `Extension folder "${pluginRef}" declares neither \`markdown\` nor \`styles\`/` +
-        "`engineStyles` (in its gutterpress.json or theme.json) — there is nothing to " +
-        "load. Point `path` at a JS file directly for a plain plugin, or add a metadata " +
-        "file declaring at least one.",
+      `Extension folder "${pluginRef}" declares neither \`markdown\` nor \`styles\` ` +
+        "(in its gutterpress.json or theme.json) — there is nothing to load. Point " +
+        "`path` at a JS file directly for a plain plugin, or add a metadata file " +
+        "declaring at least one.",
     );
   }
 

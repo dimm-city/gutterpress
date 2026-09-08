@@ -1,6 +1,6 @@
 /**
  * #239 — `resolveDeclaredStyles` is the ONE resolver a plugin's `styles`
- * export (#238, `plugins.ts`) and a theme's `styles`/`engineStyles.native`
+ * export (#238, `plugins.ts`) and a theme's `styles`
  * (`theme-manager.ts`, `theme-import.ts`) both call. These tests pin down the
  * shared contract directly, independent of either caller.
  */

@@ -259,7 +259,7 @@ describe("theme-import host pipeline", () => {
       await expect(importThemeFromZip(dir, zip)).rejects.toThrow(/bad\.css could not be parsed/);
     });
 
-    test("validates a declared engineStyles.native sheet too", async () => {
+    test("a theme.json declaring the removed `engineStyles` field is rejected at import, naming the replacement (#266)", async () => {
       const dir = projectDir();
       const zip = zipSync({
         "theme.css": strToU8(CLEAN_CSS),
@@ -268,8 +268,9 @@ describe("theme-import host pipeline", () => {
         ),
         "native.css": strToU8("@page { color: red; }"),
       });
-      const { theme } = await importThemeFromZip(dir, zip);
-      expect(existsSync(join(dir, THEMES_DIR, theme.id, "native.css"))).toBe(true);
+      await expect(importThemeFromZip(dir, zip)).rejects.toThrow(
+        /`engineStyles`, which was removed — move its entries to the end of `styles`/,
+      );
     });
 
     test("a theme.json declaring only theme.css (the default) has no extra validation to fail — unchanged behavior", async () => {

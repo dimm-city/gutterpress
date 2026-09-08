@@ -198,7 +198,6 @@ gutterpress preview [input-dir] [options]
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
   --allow-shrink          Build anyway when content is wider than the page content box (pdf|pdfx only)
-  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; applies to the live preview AND --format pdf|pdfx]
 ```
 
 ### `gutterpress build`
@@ -219,7 +218,6 @@ gutterpress build [input-dir] [options]
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
   --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
-  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
 ```
 
 ### `gutterpress publish`

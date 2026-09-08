@@ -229,18 +229,6 @@ export function parsePdfxFlavor(
   );
 }
 
-/**
- * Parse `--engine`, shared by `build` and `preview`. The native engine is the
- * only engine, so this flag is an accepted-but-ignored no-op: `--engine paged`
- * produces a one-line warning (`manifest.ts`'s resolution) and the build
- * proceeds natively regardless. `undefined` means "not passed".
- */
-export function parseEngine(raw: unknown): "paged" | "native" | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === "paged" || raw === "native") return raw;
-  throw new UsageError(`Unknown --engine "${String(raw)}". Expected: paged | native`);
-}
-
 /** Parse `--port`, defaulting to {@link NETWORK.DEFAULT_PORT} (0 = OS-assigned). */
 export function resolvePort(raw: unknown): number {
   if (raw === undefined) return NETWORK.DEFAULT_PORT;

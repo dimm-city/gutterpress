@@ -768,8 +768,8 @@ Shipped refinements (#106, 0.8.0-beta.1):
   `api/theme/revert` and `api/theme/previous`.
 - **ZIP drag-and-drop import**, validated against a defined **theme package
   format**: `theme.css` at root + optional `assets/` + optional `theme.json`
-  (name/version; since 0.10.7 also `styles`, `engineStyles.native` and
-  `tokensFile`, #239 — every declared sheet is validated like `theme.css`);
+  (name/version; since 0.10.7 also `styles` and `tokensFile`, #239 — every
+  declared sheet is validated like `theme.css`);
   validation order = structure → CSS parses → print-safety
   check passes (note `printsafe/no-remote-urls` fails CDN-referencing themes
   — surface that clearly) → declares at least one `--print-*` token.

@@ -15,8 +15,7 @@
  * specifically for this gate, and asserts on it.
  *
  * For each fixture book (built once, ordinary `build()` call, no extra
- * prints beyond what a real `gutterpress build --engine native` already
- * pays for):
+ * prints beyond what a real `gutterpress build` already pays for):
  *
  *   (a) total page count — viewer vs print.
  *   (b) page-of-element mapping for every instrumented id — the viewer's
@@ -227,7 +226,6 @@ async function stage(
     files: config.source.files,
     plugins,
     pluginCss,
-    engine: "native",
     onImageRefs: (refs) => imageRefs.push(...refs),
     onCssAssets: (copies) => cssAssets.push(...copies),
   });

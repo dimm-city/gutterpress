@@ -34,12 +34,9 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest, {
     explicit: opts.manifest !== undefined,
   });
-  // Use the RESOLVED config, not the raw manifest: resolveWithPreset
-  // (manifest.ts) is the only place `engineStyles.native` is appended to the
-  // style list, and that sheet loads LAST at render time, so its rules win the
-  // cascade in the shipped PDF. Discarding this return linted 7 of the field
-  // guide's 8 sheets and hid its most severe finding — see the
-  // engineStyles.native test in lint-runner.test.ts.
+  // Use the RESOLVED config, not the raw manifest, so lint and the desktop
+  // Problems panel (validate) agree about which stylesheets a project uses —
+  // both read the list resolveConfig produces.
   const resolved = resolveConfig({}, manifest);
 
   let files: string[];

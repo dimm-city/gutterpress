@@ -475,18 +475,16 @@ describe("plugin loader", () => {
       ]);
     });
 
-    test("engineStyles.native is appended after styles, in the same resolved list", async () => {
+    test("an extension declaring the removed `engineStyles` field is rejected, naming the replacement (#266)", async () => {
       writeExtension(
         "engine-styles",
         { markdown: "plugin.js", styles: ["a.css"], engineStyles: { native: ["native.css"] } },
         { "plugin.js": "export default function (md) {}", "a.css": ".a {}", "native.css": "@page {}" },
       );
 
-      const loaded = await loadPlugin(cfg({ path: "engine-styles" }), TMP_ROOT);
-      expect(loaded.styles).toEqual([
-        join(TMP_ROOT, "engine-styles", "a.css"),
-        join(TMP_ROOT, "engine-styles", "native.css"),
-      ]);
+      await expect(loadPlugin(cfg({ path: "engine-styles" }), TMP_ROOT)).rejects.toThrow(
+        /`engineStyles`, which was removed — move its entries to the end of `styles`/,
+      );
     });
 
     test("a folder with NO markdown field is a styles-only extension: a no-op plugin function, styles still resolved", async () => {

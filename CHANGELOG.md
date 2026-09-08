@@ -5,7 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.10.8] - unreleased
+### Removed
+
+- **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one
+  pagination engine, so the switch selected nothing, and `engineStyles.native`
+  only ever appended to the end of `styles:` — list position says the same
+  thing. A `manifest.yaml`, `gutterpress.json` or `theme.json` that still
+  carries either field fails with a message naming the replacement: delete
+  `engine`; move the `engineStyles` entries to the end of `styles`. Nothing
+  about the built book changes for a manifest that makes that move — the
+  resolved stylesheet list is identical. (#266)
+
+## [0.10.8] - 2026-09-03
 
 ### Added
 

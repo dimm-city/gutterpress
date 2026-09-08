@@ -178,15 +178,15 @@ describe("plugin-manager", () => {
     });
 
     // #241 — end-to-end proof of "one install flow" + "one manifest entry
-    // replaces N styles: lines + a plugin line + an engineStyles block": NO
-    // changes were needed to addLocalPlugin/copy-into-project itself — a
-    // FULL extension folder (markdown + styles + engineStyles, all declared
-    // in ONE gutterpress.json) installs through the EXACT SAME folder-copy
+    // replaces N styles: lines + a plugin line": NO changes were needed to
+    // addLocalPlugin/copy-into-project itself — a FULL extension folder
+    // (markdown + styles, all declared in ONE gutterpress.json) installs
+    // through the EXACT SAME folder-copy
     // path the pre-#241 "copies a plugin folder" test above already
     // exercised, and the ONE resulting `plugins:` entry is enough for
     // validateProjectPlugins (i.e. the real build/preview loader) to pick up
-    // everything: the markdown-it function AND both style sheets.
-    test("a full extension folder (markdown + styles + engineStyles in one gutterpress.json) installs and validates through the existing local-plugin flow", async () => {
+    // everything: the markdown-it function AND its style sheet.
+    test("a full extension folder (markdown + styles in one gutterpress.json) installs and validates through the existing local-plugin flow", async () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", ""].join("\n"));
 
@@ -198,7 +198,6 @@ describe("plugin-manager", () => {
           name: "DC Components",
           markdown: "plugin.js",
           styles: ["css/base.css"],
-          engineStyles: { native: ["css/native.css"] },
         }),
         "utf8",
       );
@@ -208,13 +207,12 @@ describe("plugin-manager", () => {
         "utf8",
       );
       writeFileSync(join(srcDir, "css", "base.css"), ".dc-alert {}", "utf8");
-      writeFileSync(join(srcDir, "css", "native.css"), "@page {}", "utf8");
 
       const result = await addLocalPlugin(dir, srcDir);
       expect(result.path).toBe("./plugins/dc-components");
 
       // addLocalPlugin wrote exactly the ONE `plugins:` entry it always has
-      // — no separate styles:/engineStyles: block was written or needed.
+      // — no separate styles: block was written or needed.
       const list = await listProjectPlugins(dir);
       expect(list).toHaveLength(1);
       expect(list[0]!.ref).toBe("./plugins/dc-components");

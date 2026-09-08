@@ -83,47 +83,28 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 // (`styles`'s preset default, `allowedCallouts`) are characterized
 // separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
 // here.
-describe("resolveConfig engineStyles — only .native applies", () => {
-  test("native extras append after base styles regardless of the (ignored) engine field", () => {
-    const m = {
-      styles: ["css/index.css"],
-      engineStyles: { native: ["css/native-furniture.css"] },
-    };
-    expect(resolveConfig({}, { ...m, engine: "native" as const }).styles).toEqual([
-      "css/index.css",
-      "css/native-furniture.css",
-    ]);
-    expect(resolveConfig({}, m).styles).toEqual([
-      "css/index.css",
-      "css/native-furniture.css",
-    ]); // native default (no engine: key)
-    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
-      "css/index.css",
-      "css/native-furniture.css",
-    ]); // engine: "paged" is ignored — still native extras
-    expect(resolveConfig({ engine: "native" }, m).styles).toEqual([
-      "css/index.css",
-      "css/native-furniture.css",
-    ]); // CLI override is likewise a no-op
+describe("resolveConfig — the removed `engine` and `engineStyles` fields fail, naming the replacement (#266)", () => {
+  // Stale manifests are the input here, so the fixtures deliberately carry
+  // fields the type no longer declares.
+  const stale = (fields: Record<string, unknown>) =>
+    fields as Parameters<typeof resolveConfig>[1];
+
+  test("`engine:` is rejected whatever its value — there is nothing to select", () => {
+    for (const engine of ["native", "paged"]) {
+      expect(() => resolveConfig({}, stale({ engine }))).toThrow(
+        /`engine` was removed — delete it/,
+      );
+    }
   });
 
-  test("engineStyles.paged is ignored — only engineStyles.native applies", () => {
-    const m = { styles: ["a.css"], engineStyles: { paged: ["b.css"], native: ["c.css"] } };
-    expect(resolveConfig({}, m).styles).toEqual(["a.css", "c.css"]);
-    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
-      "a.css",
-      "c.css",
-    ]);
-    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["a.css", "c.css"]);
+  test("`engineStyles:` is rejected and told where its entries go", () => {
+    expect(() =>
+      resolveConfig({}, stale({ styles: ["a.css"], engineStyles: { native: ["c.css"] } })),
+    ).toThrow(/`engineStyles` was removed — move its entries to the END of `styles:`/);
   });
 
-  test("engineStyles.native alone (no base styles) still loads, regardless of the engine field", () => {
-    const m = { engineStyles: { native: ["only.css"] } };
-    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["only.css"]);
-    expect(resolveConfig({}, m).styles).toEqual(["only.css"]);
-    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
-      "only.css",
-    ]); // engine: "paged" is ignored — native extras still apply
+  test("the same sheets at the end of `styles:` resolve in that order — all the field ever expressed", () => {
+    expect(resolveConfig({}, { styles: ["a.css", "c.css"] }).styles).toEqual(["a.css", "c.css"]);
   });
 });
 

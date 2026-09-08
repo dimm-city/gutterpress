@@ -82,13 +82,6 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * CLI `--engine` override. The native engine is the only engine, so this is
-   * a deprecated no-op accepted for backward compatibility only: `"paged"`
-   * triggers a one-line warning (`manifest.ts`'s resolution) and the build
-   * proceeds natively regardless.
-   */
-  engine?: "paged" | "native";
-  /**
    * Optional injected engine-Chromium factory for native builds
    * (`engine.ts`'s `buildNativePdf`). When omitted (the CLI's default), the
    * native engine attaches to `browser-pool.ts`'s pooled external Chromium,
@@ -288,7 +281,6 @@ export async function resolveBuildContext(
     {
       title: opts.title,
       pdfx: pdfxConfigOverride,
-      engine: opts.engine,
     },
     manifest
   );

@@ -9,9 +9,8 @@
  * #239 — a theme is no longer capped at exactly one stylesheet. `theme.json`
  * may declare `styles: [...]` (an ordered list, relative to the theme folder;
  * absent/empty defaults to `["theme.css"]` — every theme published before
- * this existed keeps working untouched), `engineStyles: { native: [...] }`,
- * and `tokensFile` (which sheet's `:root` is the Design panel's token
- * surface). This is what lets a real component library — tokens / base /
+ * this existed keeps working untouched) and `tokensFile` (which sheet's
+ * `:root` is the Design panel's token surface). This is what lets a real component library — tokens / base /
  * components / templates / rules as separate layered sheets, the shape the
  * CSS architecture review's §6 target file cut produces — BE a theme, not
  * hand-wired manifest `styles:` entries no theme UI can see. See
@@ -90,7 +89,6 @@ import {
   type ExtensionMetadata,
   assertExtensionContained,
   extensionStyleList,
-  extensionEngineStyleList,
   readExtensionMeta,
 } from "./extension-manifest.ts";
 
@@ -111,8 +109,8 @@ export type BuiltInThemeId = (typeof BUILT_IN_THEME_IDS)[number];
  * the degenerate "styles only" case of {@link ExtensionMetadata}, so this is
  * now a plain alias rather than a separate type. A `theme.json` file only
  * ever populates the fields this comment used to document in full
- * (`name`/`author`/`description`/`preview`/`styles`/`engineStyles`/
- * `tokensFile`, #239); the three newer fields (`markdown`/`components`/
+ * (`name`/`author`/`description`/`preview`/`styles`/`tokensFile`, #239);
+ * the three newer fields (`markdown`/`components`/
  * `snippets`) are only reachable via a `gutterpress.json` — see
  * `extension-manifest.ts` for the complete, current field-by-field doc.
  */
@@ -231,7 +229,7 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
 }
 
 /**
- * Every declared sheet (styles/engineStyles — #241: now also `markdown`/
+ * Every declared sheet (styles — #241: now also `markdown`/
  * `components`/`snippets`/`tokensFile`, since a `gutterpress.json`-formatted
  * theme can declare them too) must live INSIDE the theme folder. A theme is
  * self-contained by contract (apply copies the whole folder), and an imported
@@ -253,19 +251,6 @@ export function themeStyleList(meta: ThemeMetadata): string[] {
  * fields populated in the first place.
  */
 export const assertThemeSheetsContained = assertExtensionContained;
-
-/**
- * A theme's declared engine-conditional sheets, relative to its folder
- * (#239). `Array.isArray` guards a malformed `engineStyles.native` (authored
- * as something other than a list) — treated as "none declared" rather than a
- * hard crash on a JSON author's typo. Exported for `theme-import.ts`'s import
- * validation, same reuse rationale as {@link themeStyleList}.
- *
- * #241 — a straight alias: `engineStyles.native` never had a theme-specific
- * default to layer on, so this is byte-identical to
- * {@link extensionEngineStyleList}.
- */
-export const themeEngineStyleList = extensionEngineStyleList;
 
 /**
  * Build a ThemeInfo from a folder's metadata + id, supplying sane fallbacks.
@@ -398,11 +383,6 @@ function themeStyleHrefs(id: string, meta: ThemeMetadata): string[] {
   return themeStyleList(meta).map((rel) => `${THEMES_DIR}/${id}/${rel}`);
 }
 
-/** The `engineStyles.native` hrefs for a project theme's declared engine sheets. */
-function themeEngineStyleHrefs(id: string, meta: ThemeMetadata): string[] {
-  return themeEngineStyleList(meta).map((rel) => `${THEMES_DIR}/${id}/${rel}`);
-}
-
 /**
  * Match any `themes/<id>/…` style entry (#239 — was `themes/<id>/theme.css`
  * exactly; a multi-sheet theme's OTHER declared sheets — `themes/dc/css/
@@ -412,17 +392,12 @@ function themeEngineStyleHrefs(id: string, meta: ThemeMetadata): string[] {
 const THEME_HREF_RE = new RegExp(`^${THEMES_DIR}/([^/]+)/(.+)$`);
 
 /**
- * Replace the contiguous run of theme-owned entries in a manifest sequence
- * with `hrefs`, at the position the outgoing theme held. `fallbackIndex`
- * decides where a FIRST theme's block lands when there is no prior run to
- * replace — the front for `styles:`, the end for `engineStyles.native` (see
- * {@link setActiveThemeStyle}'s doc comment for why they differ).
+ * Replace the contiguous run of theme-owned entries in a `styles:` sequence
+ * with `hrefs`, at the position the outgoing theme held — or at the FRONT
+ * when there is no prior run to replace (see {@link setActiveThemeStyle}'s
+ * doc comment for why).
  */
-function replaceThemeHrefBlock(
-  items: Node[],
-  hrefs: string[],
-  fallbackIndex: (kept: Node[]) => number,
-): Node[] {
+function replaceThemeHrefBlock(items: Node[], hrefs: string[]): Node[] {
   const isTheme = (item: Node): boolean => {
     const h = scalarString(item);
     return !!h && THEME_HREF_RE.test(h);
@@ -430,7 +405,7 @@ function replaceThemeHrefBlock(
   const firstThemeIndex = items.findIndex(isTheme);
   const kept = items.filter((item) => !isTheme(item));
   kept.splice(
-    firstThemeIndex === -1 ? fallbackIndex(kept) : firstThemeIndex,
+    firstThemeIndex === -1 ? 0 : firstThemeIndex,
     0,
     ...hrefs.map((h) => new Scalar(h)),
   );
@@ -504,13 +479,6 @@ export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | nu
  *     override the author wrote; and
  *   - the first theme is inserted at the FRONT, ahead of the ordinary project
  *     styles that will now extend it.
- *
- * `engineStyles.native` gets the same block-replace treatment, but the key is
- * only touched (creating the scaffold `engineStyles: { native: [...] }` when
- * absent) if there is actually something to write or remove — a theme with no
- * engine sheets, replacing one with no engine sheets, leaves `engineStyles`
- * untouched, so the overwhelming majority of (single-sheet, no-engine-styles)
- * theme applies produce EXACTLY the manifest diff they always did.
  */
 async function setActiveThemeStyle(projectDir: string, id: string, meta: ThemeMetadata): Promise<void> {
   const { doc, file } = await loadManifestDoc(projectDir);
@@ -523,32 +491,7 @@ async function setActiveThemeStyle(projectDir: string, id: string, meta: ThemeMe
 
   // Keep exactly one active theme's block, at the position the outgoing
   // theme held (or at the front when this is the project's first theme).
-  seq.items = replaceThemeHrefBlock(seq.items as Node[], hrefs, () => 0);
-
-  // engineStyles.native: same block-replace, only touching the key when
-  // needed (see doc comment above).
-  const engineHrefs = themeEngineStyleHrefs(id, meta);
-  const existingEngineSeq = doc.getIn(["engineStyles", "native"], true);
-  const existingEngineItems = isSeq(existingEngineSeq) ? (existingEngineSeq.items as Node[]) : [];
-  const hasThemeEngineEntries = existingEngineItems.some((item) => {
-    const h = scalarString(item);
-    return !!h && THEME_HREF_RE.test(h);
-  });
-  if (engineHrefs.length > 0 || hasThemeEngineEntries) {
-    const engineSeq = ensureSeq(doc, ["engineStyles", "native"]);
-    // Unlike `styles:`, a brand-new theme's engine sheets append at the END
-    // (not the front) when there's no prior theme entry to replace: manifest.ts
-    // already loads `engineStyles.native` LAST so "furniture wins" (it appends
-    // after the base `styles:` list at resolve time) — the same reasoning
-    // applies one level down, so a theme's own furniture sheet wins over any
-    // engine sheet the project added by hand, rather than being shadowed by it.
-    const keptEngine = replaceThemeHrefBlock(
-      engineSeq.items as Node[],
-      engineHrefs,
-      (kept) => kept.length,
-    );
-    engineSeq.items = keptEngine;
-  }
+  seq.items = replaceThemeHrefBlock(seq.items as Node[], hrefs);
 
   // Record / clear the previous-theme reference:
   //  - a genuinely different theme was active  → remember it (revert target),
@@ -643,7 +586,6 @@ export async function applyTheme(
     // comment below for why this is the shared resolver, not a re-check.
     assertThemeSheetsContained(meta);
     resolveDeclaredStyles(themeStyleList(meta), destDir, `Theme "${destId}"`);
-    resolveDeclaredStyles(themeEngineStyleList(meta), destDir, `Theme "${destId}"`);
     info = themeInfo(destId, "project", meta);
   } else {
     const dir = themeDirFor(projectDir, target.id);
@@ -659,14 +601,13 @@ export async function applyTheme(
       throw new Error(`Theme "${target.id}" is not present in this project.`);
     }
     // #239: beyond the primary sheet (just confirmed above), every OTHER
-    // declared sheet — the rest of `styles` and all of `engineStyles.native`
-    // — is resolved through the SAME resolveDeclaredStyles a plugin's
+    // declared sheet — the rest of `styles` — is resolved through the SAME
+    // resolveDeclaredStyles a plugin's
     // `styles` export resolves through (plugins.ts's resolvePluginStyles).
     // A theme whose secondary sheet was deleted or renamed after being
     // applied throws HERE, at apply time, instead of failing silently deep
     // in the render pipeline's own asset-inline pass.
     resolveDeclaredStyles(themeStyleList(meta), dir, `Theme "${target.id}"`);
-    resolveDeclaredStyles(themeEngineStyleList(meta), dir, `Theme "${target.id}"`);
     info = themeInfo(target.id, "project", meta);
   }
 
@@ -729,7 +670,6 @@ export async function importThemeFromFolder(
   // is rejected here instead of importing successfully and failing later,
   // silently, wherever the render pipeline first tries to read it.
   resolveDeclaredStyles(themeStyleList(meta), sourceDir, "The theme folder");
-  resolveDeclaredStyles(themeEngineStyleList(meta), sourceDir, "The theme folder");
 
   const base = meta.name || path.basename(sourceDir);
   const id = await uniqueThemeId(projectDir, base);
@@ -892,9 +832,9 @@ export async function readThemeCss(
 
 /**
  * Remove an imported/applied project theme folder. If it was the active theme,
- * its ENTIRE block is dropped too — every `styles:` entry AND every
- * `engineStyles.native` entry under `themes/<id>/…` (#239), not just a single
- * `theme.css` href. Never touches built-in (embedded) themes.
+ * its ENTIRE block is dropped too — every `styles:` entry under
+ * `themes/<id>/…` (#239), not just a single `theme.css` href. Never touches
+ * built-in (embedded) themes.
  */
 export async function removeProjectTheme(projectDir: string, id: string): Promise<void> {
   // themeDirFor rejects any non-slug id BEFORE the rm -rf — a traversal here
@@ -913,15 +853,6 @@ export async function removeProjectTheme(projectDir: string, id: string): Promis
       return !(h && hrefBelongsToTheme(h, id));
     });
     if (seq.items.length !== before) changed = true;
-  }
-  const engineSeq = doc.getIn(["engineStyles", "native"], true);
-  if (isSeq(engineSeq)) {
-    const before = engineSeq.items.length;
-    engineSeq.items = (engineSeq.items as Node[]).filter((item) => {
-      const h = scalarString(item);
-      return !(h && hrefBelongsToTheme(h, id));
-    });
-    if (engineSeq.items.length !== before) changed = true;
   }
   // #106: never leave a "Revert to previous theme" target pointing at a theme
   // we just deleted.

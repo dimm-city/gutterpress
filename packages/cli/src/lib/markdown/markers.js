@@ -1692,8 +1692,8 @@ export default function plugin(md, pluginOptions = {}) {
  * opposite and was stale — 2026-09-01 CSS architecture review, C4):
  * consumers inject this FIRST, wrapped in `@layer gp.marker` (assemble.ts
  * declares `@layer gp.marker, gp.vocab;` before both core blocks). Author
- * CSS — plugin CSS, every project stylesheet, anything loaded via
- * `engineStyles.native` — stays UNLAYERED, and per the CSS Cascade Layers
+ * CSS — plugin CSS, every project stylesheet — stays UNLAYERED, and per
+ * the CSS Cascade Layers
  * spec unlayered CSS always wins over layered CSS regardless of selector
  * specificity. That is what makes "author wins" true now, not injection
  * order. The `:where()` wrapping on the break/orphan/sizing rules below is

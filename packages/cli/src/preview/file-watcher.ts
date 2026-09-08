@@ -725,7 +725,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // styles until some later markdown edit happened to force one.
         const manifest = await loadManifest(inputResolved);
         if (closed) return;
-        const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
+        const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         // Subscribe from the new manifest BEFORE rendering it. A newly declared
         // shared file may not exist yet, which correctly makes this render fail;

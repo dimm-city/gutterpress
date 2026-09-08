@@ -6,8 +6,8 @@
  * theme root and a bare `.css` is wrapped into a one-file theme folder, and
  * both then reuse {@link importThemeFromFolder}.
  *
- * #239 — `theme.json` may additionally declare layered `styles`/
- * `engineStyles.native` sheets beyond the anchor `theme.css`; every declared
+ * #239 — `theme.json` may additionally declare layered `styles` sheets
+ * beyond the anchor `theme.css`; every declared
  * sheet is validated here (exists — via the same `resolveDeclaredStyles` a
  * styles-carrying plugin's `styles` export resolves through, see
  * `style-declarations.ts` — + print-safe) exactly like `theme.css` itself.
@@ -46,7 +46,6 @@ import {
   assertThemeSheetsContained,
   importThemeFromFolder,
   themeStyleList,
-  themeEngineStyleList,
   type ThemeInfo,
 } from "./theme-manager.ts";
 import { prettify } from "./slug.ts";
@@ -177,7 +176,7 @@ function mb(n: number): string {
  * Validate an already-extracted theme folder, then hand it to
  * {@link importThemeFromFolder}. REJECTS (throws) when `theme.css` is missing
  * or fails to parse, OR (#239) when `theme.json` declares an ADDITIONAL sheet
- * (`styles`/`engineStyles.native`) that is missing or fails to parse — a
+ * (`styles`) that is missing or fails to parse — a
  * broken multi-sheet theme is rejected at import time, not at first render.
  * Otherwise collects WARN findings (print-safety, missing/unnamed theme.json,
  * unexpected extra files) and returns them with the imported theme.
@@ -251,7 +250,7 @@ async function finalizeThemeImport(
     ? EXTENSION_MANIFEST_FILENAME
     : "theme.json";
   const extraSheets = [
-    ...new Set([...themeStyleList(meta), ...themeEngineStyleList(meta)]),
+    ...new Set(themeStyleList(meta)),
   ].filter((rel) => rel !== "theme.css");
   const extraSheetPaths = resolveDeclaredStyles(extraSheets, sourceDir, metaFilename) ?? [];
   for (let i = 0; i < extraSheets.length; i++) {

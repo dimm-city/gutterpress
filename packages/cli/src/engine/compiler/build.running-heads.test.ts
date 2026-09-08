@@ -56,7 +56,7 @@ testIf(
     const browser = await launchChromium();
     try {
       const { manifest, manifestPath } = await loadManifestWithPath(FIXTURE_DIR);
-      const config = resolveConfig({ engine: "native" }, manifest);
+      const config = resolveConfig({}, manifest);
       const renderDir = manifestPath ? path.dirname(manifestPath) : FIXTURE_DIR;
       const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, renderDir);
 

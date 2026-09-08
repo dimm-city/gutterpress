@@ -39,7 +39,7 @@ import previewBridgeJs from "../assets/preview/scripts/preview-bridge.js" with {
 import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
 
-// Gutterpress engine bundles (native pagination — `--engine native`).
+// Gutterpress engine bundles (native pagination).
 // Prebuilt by `scripts/build-engine-bundles.mjs` (part of `npm run build`)
 // from `src/engine/{viewer,compiler}` — CLAUDE.md §1 bans a live bundler
 // inside packages/cli/src at runtime, so these are ordinary generated/

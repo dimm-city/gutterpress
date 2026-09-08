@@ -101,23 +101,22 @@ The fastest approach is a single CSS file with three sections:
 ### Themes with more than one stylesheet
 
 A theme folder is not limited to one `theme.css`. Its `theme.json` can declare
-an ordered list of sheets, engine sheets, and which sheet holds the tokens the
-Design panel edits:
+an ordered list of sheets and which sheet holds the tokens the Design panel
+edits:
 
 ```json
 {
   "name": "Dimm City",
-  "styles": ["css/tokens.css", "css/core.css", "css/components.css"],
-  "engineStyles": { "native": ["css/native.css"] },
+  "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/native.css"],
   "tokensFile": "css/tokens.css"
 }
 ```
 
 Paths are relative to the theme folder and must stay inside it. Applying the
 theme wires every `styles` entry into your manifest as one block, in that
-order, at the position the previous theme held, and appends the
-`engineStyles.native` entries to the manifest's own `engineStyles.native`
-list. Switching or removing the theme removes the whole block. Import checks
+order, at the position the previous theme held. A sheet that must win over
+the others simply goes last in the list. Switching or removing the theme
+removes the whole block. Import checks
 that every declared sheet exists and passes the print-safety rules. A
 `theme.json` without `styles` means `["theme.css"]`, so existing themes need
 no change, and `tokensFile` defaults to the first entry in `styles`. A folder import
@@ -265,8 +264,8 @@ Gutterpress's own CSS sits underneath all of this in two cascade layers —
 the marker structural CSS in `@layer gp.marker`, the `gp-*` utility
 vocabulary in `@layer gp.vocab` — both declared before anything above. A
 cascade layer always loses to unlayered CSS, so every stylesheet in
-`styles:` (and anything loaded via `engineStyles.native`) beats core's
-defaults automatically, at any specificity — even a bare element selector.
+`styles:` beats core's defaults automatically, at any specificity — even a
+bare element selector.
 You never need `!important`, or an extra selector to inflate specificity,
 just to beat a `gp-*` rule.
 

@@ -243,9 +243,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // its own named layer. Per the CSS Cascade Layers spec, unlayered CSS
   // ALWAYS wins over layered CSS regardless of selector specificity, so
   // user plugin CSS and the author's own project stylesheets — both left
-  // UNLAYERED below, along with any `engineStyles.native` sheet (already
-  // folded into `projectCss` by `resolveActiveStyles`/manifest.ts before it
-  // reaches here) — win over core's two layers "by construction" rather
+  // UNLAYERED below — win over core's two layers "by construction" rather
   // than by outrunning them on specificity or injection order. This
   // replaces source-order + `:where()` as the mechanism that makes "author
   // wins" true; `:where()` stays inside MARKER_CSS's own break/orphan rules
