@@ -1,41 +1,38 @@
 import { expect, test } from "bun:test";
-import { visibleBuiltInThemes } from "../../src/lib/components/config/theme-grid";
-import type { ThemeInfo } from "../../src/lib/api";
+import { addedBuiltInIds } from "../../src/lib/components/config/theme-grid";
+import type { ProjectExtensionEntry } from "../../src/lib/api";
 
-function theme(kind: ThemeInfo["kind"], id: string, name = id): ThemeInfo {
-  return { id, name, description: "", kind };
+const CARRIES_STYLES = { markdown: false, styles: true, snippets: false, components: false };
+
+function entry(use: string, kind: ProjectExtensionEntry["kind"] = "path"): ProjectExtensionEntry {
+  return { use, kind, name: use, enabled: true, label: use, carries: CARRIES_STYLES };
 }
 
-test("visibleBuiltInThemes returns all built-ins when no project copy exists", () => {
-  const builtIns = [theme("builtin", "clean-book"), theme("builtin", "zine")];
-  expect(visibleBuiltInThemes(builtIns, [])).toEqual(builtIns);
+test("addedBuiltInIds is empty when nothing is configured", () => {
+  expect(addedBuiltInIds([])).toEqual(new Set());
 });
 
-test("visibleBuiltInThemes hides a built-in once a same-id project copy exists (M6 dedupe)", () => {
-  const builtIns = [theme("builtin", "clean-book"), theme("builtin", "zine")];
-  const projectThemes = [theme("project", "clean-book")];
-  const visible = visibleBuiltInThemes(builtIns, projectThemes);
-  expect(visible.map((t) => t.id)).toEqual(["zine"]);
+test("addedBuiltInIds recognizes a built-in copied to ./extensions/<id> (#265)", () => {
+  const ids = addedBuiltInIds([entry("./extensions/clean-book"), entry("markdown-it-mark", "bundled")]);
+  expect(ids).toEqual(new Set(["clean-book"]));
 });
 
-test("visibleBuiltInThemes hides the built-in twin even when the project copy is not the active theme", () => {
-  // Dedupe is unconditional on "active" — an inactive project copy still
-  // means the built-in twin's Apply button would re-run the destructive
-  // copy, so it must stay hidden regardless of which theme is applied.
-  const builtIns = [theme("builtin", "clean-book")];
-  const projectThemes = [theme("project", "clean-book"), theme("project", "zine")];
-  expect(visibleBuiltInThemes(builtIns, projectThemes)).toEqual([]);
+test("addedBuiltInIds tolerates a trailing slash and backslashes as written by hand", () => {
+  expect(addedBuiltInIds([entry("./extensions/zine/")])).toEqual(new Set(["zine"]));
+  expect(addedBuiltInIds([entry(".\\extensions\\zine")])).toEqual(new Set(["zine"]));
 });
 
-test("visibleBuiltInThemes is unaffected by unrelated project themes (different ids)", () => {
-  const builtIns = [theme("builtin", "clean-book")];
-  const projectThemes = [theme("project", "my-imported-theme")];
-  expect(visibleBuiltInThemes(builtIns, projectThemes)).toEqual(builtIns);
+test("addedBuiltInIds ignores looks that live anywhere else, nested folders, and npm entries", () => {
+  const ids = addedBuiltInIds([
+    entry("./themes/clean-book"),
+    entry("./extensions/vendor/clean-book"),
+    entry("../shared/extensions/zine"),
+    entry("clean-book@1.0.0", "npm"),
+  ]);
+  expect(ids).toEqual(new Set());
 });
 
-test("visibleBuiltInThemes reappears the built-in card after the project copy is removed", () => {
-  const builtIns = [theme("builtin", "clean-book")];
-  // Simulates the grid state right after AppearanceSection's `removeTheme`
-  // callback resolves and `projectThemes` no longer contains the id.
-  expect(visibleBuiltInThemes(builtIns, [])).toEqual(builtIns);
+test("addedBuiltInIds reports a disabled copy too — the folder exists, so Use would only re-reference it", () => {
+  const off = { ...entry("./extensions/technical-doc"), enabled: false };
+  expect(addedBuiltInIds([off])).toEqual(new Set(["technical-doc"]));
 });

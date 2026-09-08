@@ -199,15 +199,15 @@ describe("applyDefaultPdfStrictChecks", () => {
     expect(base.validate.checks["pdf.structure.qpdf"]).not.toBe(false);
   });
 
-  test("a config with a plugin entry survives structuredClone (options object deep-cloned too)", () => {
+  test("a config with an extension entry survives structuredClone (options object deep-cloned too)", () => {
     const base = resolveConfig(
       {},
-      { plugins: [{ name: "markdown-it-footnote", options: { includeSubsections: false } }] }
+      { extensions: [{ use: "markdown-it-footnote", options: { includeSubsections: false } }] }
     );
     const next = applyDefaultPdfStrictChecks(base);
 
-    expect(next.plugins[0]).not.toBe(base.plugins[0]);
-    expect(next.plugins[0]!.options).not.toBe(base.plugins[0]!.options);
-    expect(next.plugins[0]!.options).toEqual(base.plugins[0]!.options);
+    expect(next.extensions[0]).not.toBe(base.extensions[0]);
+    expect(next.extensions[0]!.options).not.toBe(base.extensions[0]!.options);
+    expect(next.extensions[0]!.options).toEqual(base.extensions[0]!.options);
   });
 });

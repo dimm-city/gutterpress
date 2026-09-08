@@ -25,14 +25,17 @@ bun test
 Then wire it into a book. In the book's `manifest.yaml`:
 
 ```yaml
-plugins:
-  - path: plugins/{{SLUG}}
+extensions:
+  - ./plugins/{{SLUG}}
 ```
 
-`path:` names the FOLDER, not `plugin.js`. That is what makes Gutterpress read
+`gutterpress ext add ./plugins/{{SLUG}} <book>` writes that line for you (the
+book directory is the second positional argument). Either way the entry names
+the FOLDER, not `plugin.js`. That is what makes Gutterpress read
 `gutterpress.json` and pick up the stylesheet and snippets alongside the
 markdown behaviour — point it at the `.js` file and you get the markdown and
-nothing else.
+nothing else. The folder is referenced in place, never copied: keep editing it
+and the book follows.
 
 Now `gutterpress preview` the book and write:
 
@@ -111,14 +114,20 @@ outcome, and another reason to prefix.
 
 `styles/plugin.css` wraps everything in `@layer {{SLUG}}`.
 
-Plugin CSS is injected before the book's own stylesheets, and in CSS an
-unlayered rule beats a layered one at any specificity. So an unlayered plugin
-sheet outranks every rule in a book that uses the recommended
+Extension CSS lands in the book in `extensions:` list order, and always before
+the book's own `styles:`. In CSS an unlayered rule beats a layered one at any
+specificity. So an unlayered plugin sheet outranks every rule in a book whose
+look uses the recommended
 `@layer tokens, base, components, templates, pages, book;` convention — the
 author edits their CSS and nothing happens.
 
-Because this sheet loads first, its layer sorts first, which makes it the
-weakest thing in the book. That is the right place for a plugin to sit.
+Inside a layer, the book's own unlayered `styles:` always beat you, which is
+right. Against the LOOK's layers, position decides: a layer sorts by where it
+is first declared, so with this plugin listed above the look in `extensions:`
+its layer sorts first and is the weakest thing in the book — the right place
+for a plugin to sit. Listed below the look, its component rules win ties over
+the look's layered rules instead. Either way the author moves one line to
+change it; that is the whole point of the list.
 
 Adopt it for the whole file: a rule left outside the layer is unlayered and
 beats everything inside it, including your own.
@@ -152,4 +161,4 @@ Anything a book can reach works. Committing the folder into the book's
 `plugins/` directory is the simplest and needs no registry at all.
 
 To publish to npm, `npm publish` this folder and have readers install it with
-`gutterpress plugin add {{SLUG}}`.
+`gutterpress ext add {{SLUG}}`.

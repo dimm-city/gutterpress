@@ -45,7 +45,7 @@ const check: Check = {
     // (see loadPlugins' doc comment). A project whose plugin isn't installed
     // must still get marker diagnostics for the rest of its document — but the
     // missing plugin is itself reported, never swallowed.
-    const plugins = await loadPlugins(ctx.config.plugins, ctx.inputDir, (ref, error) => {
+    const plugins = await loadPlugins(ctx.config.extensions, ctx.inputDir, (ref, error) => {
       results.push(
         inspectionFailed(
           check.id,

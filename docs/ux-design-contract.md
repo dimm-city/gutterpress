@@ -666,33 +666,46 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Features (the Extensions surface's plugin tab)
+### 9. Features (the Extensions surface's plugin view)
 
 **Status: SHIPPED** (project settings' Extensions surface → `FeaturesSection`,
-#30; merged with the Theme grid into one Extensions surface, #243 — see §11
-for the Look tab this section now shares a controller with). This section
-is rewritten around the actual plugin model; the original "app store"
-concept is **rejected** as incompatible with CLAUDE.md §5 unless a future ADR
-changes that rule.
+#30; merged with the Look grid into one Extensions surface, #243; since #265
+both views are filters over ONE manifest list, `extensions:` — see §11 for
+the Look view this section shares a controller with). This section is
+rewritten around the actual plugin model; the original "app store" concept is
+**rejected** as incompatible with CLAUDE.md §5 unless a future ADR changes
+that rule.
 
-The model (binding, from CLAUDE.md §5):
+The model (binding, from CLAUDE.md §5 and #265):
 
-- Plugins are **plain markdown-it npm packages** declared in the project
-  manifest. There is no custom plugin API, hosted Gutterpress registry, or sandbox.
-  Explicit install resolves the public npm registry and vendors an exact
-  version plus its runtime dependency tree; the build/preview loader itself
-  never installs or accesses the network. The desktop host confines the target
-  to the open project and requires a native confirmation that says third-party
-  code receives full filesystem and network privileges.
+- Plugins are **plain markdown-it packages**, each one entry in the project
+  manifest's `extensions:` list — the same list that holds looks and component
+  libraries. An entry is a bare specifier whose form says what it is: a
+  bundled feature name (nothing to install, works offline), a `./` path
+  referenced in place, or an npm package pinned as `name@version`. There is
+  no custom plugin API, hosted Gutterpress registry, or sandbox. Explicit
+  install (`addExtension` — the same shared-lib function `gutterpress ext add`
+  calls) resolves the public npm registry and vendors an exact version plus
+  its runtime dependency tree; the build/preview loader itself never installs
+  or accesses the network. The desktop host confines the target to the open
+  project and requires a native confirmation that says third-party code
+  receives full filesystem and network privileges.
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
   ("Not installed" badge + fix instructions); every skip is surfaced.
+- **List order is load order and cascade order.** A later entry runs after
+  earlier ones and sees their output, and its CSS wins ties; the project's
+  own `styles:` always load after every extension. Reordering the list is the
+  only ordering control — there is no `priority`, and the UI must not invent
+  one.
 
-Shipped UI (the baseline to refine, not replace): configured-plugin list with
-enable/disable toggle, "Re-check" validation, curated bundled markdown-it
-recommendations, verified/pinned npm install, local import, and an actionable
-missing-vendor state.
+Shipped UI (the baseline to refine, not replace): the markdown-carrying
+entries of the one list, with enable/disable toggle, reorder, remove,
+"Re-check" validation, the curated bundled features, verified/pinned npm
+install, local folder/file add, and an actionable missing-vendor state. An
+extension that carries both markdown and styles appears in the view its
+metadata says it belongs to, with the other half visible in its detail view.
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -706,7 +719,8 @@ ADR-level proposal and a CLAUDE.md §5 amendment):
   the UI states plainly: *plugins are ordinary npm packages that run with
   full application access* and links to the package source);
 - the category filter "themes / publish providers / lint rules / AI providers
-  / snippets" — none of those are plugin types (themes = CSS #32, publish
+  / snippets" — none of those are plugin types (looks = styles-carrying
+  extensions in the same list #32/#265, publish
   providers = built-in lib modules #35, lint = built-in printsafe, AI =
   settings-configured #36, snippets = project folder #29);
 
@@ -735,47 +749,55 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 - Rule explanations open the in-app help drawer, not an external browser.
 - Empty state: "No problems found — document looks great."
 
-### 11. Look (the Extensions surface's theme tab)
+### 11. Look (the Extensions surface's styles view)
 
 **Status: SHIPPED baseline** (#32; project settings' Extensions surface →
-"Look" tab, merged with Features under one `ExtensionsSectionController`, #243) with
+"Look" tab, merged with Features under one `ExtensionsSectionController`,
+#243; reshaped by #265 into a view over the one `extensions:` list) with
 PROPOSED refinements tracked in **#106**.
 
-Shipped: theme grid of built-in + project themes with per-card **rendered
-thumbnail previews**, Apply / Remove, and import **from folder or URL**
-(`api/theme/import-from-folder`, `import-from-url`). **Apply copies a
-built-in theme into the project (`themes/<id>`) as a user-owned, editable
-copy**, and the grid dedupes the built-in card once a project copy exists —
-this *is* the "duplicate & edit" model; do not add a second one. Theme tokens
-are surfaced through the DesignSection editor.
+Shipped: a grid of the built-in looks plus the styles-carrying entries of the
+project's `extensions:` list, with per-card **rendered thumbnail previews**,
+Add / Remove / enable-disable / reorder, and add **from folder, ZIP, CSS file
+or URL** (`extension-import.ts`, reached through server routes). **Adding a
+built-in look copies it into the project (`extensions/<id>/`) as a
+user-owned, editable folder** listed as `./extensions/<id>`, and the grid
+dedupes the built-in card once a project copy exists — this *is* the
+"duplicate & edit" model; do not add a second one. A folder the author
+already has is referenced in place, never copied. Look tokens are surfaced
+through the DesignSection editor.
 
-Shipped refinements (#106, 0.8.0-beta.1):
+There is **no apply and no revert**: a look is an ordinary list entry, and
+Look and Features are two views over the same list (enable/disable, reorder,
+remove — the same verbs `gutterpress ext` exposes). "Switching" looks is
+adding the new one and disabling or removing the old; the manifest edit is
+versioned by the same snapshot commits as every other project file, so the
+previous state is always recoverable without a look-specific undo. The
+`themePrevious` manifest key and the `revertTheme` / `getPreviousTheme`
+routes of the earlier theme rail are gone; do not reintroduce a
+theme-specific history.
 
-- **Hover live preview** — renders the theme onto a **canned sample spread
+Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
+
+- **Hover live preview** — renders the look onto a **canned sample spread
   (2 pages) off-screen**; it never re-paginates the user's document (full
   re-pagination cannot meet the ≤500ms gate and would storm on hover).
-  Full-document re-pagination happens only on Apply, with a progress state.
-  Shipped: `LookSection` (formerly `AppearanceSection`, merged #243) renders
-  the sample into a hover-preview iframe
-  via `hoverPreviewSrcdoc`.
-- **Revert instead of timed undo:** applying a theme records the previous
-  theme reference; "Revert to previous theme" remains available indefinitely
-  (theme application is a config/CSS-reference change, and snapshot commits
-  already version project files — a volatile 30-second window is strictly
-  weaker). A toast with an inline Undo button may sugar this, but the
-  persistent revert is the mechanism. Shipped: `revertTheme` /
-  `getPreviousTheme` backed by the `themePrevious` manifest key, exposed as
-  `api/theme/revert` and `api/theme/previous`.
-- **ZIP drag-and-drop import**, validated against a defined **theme package
-  format**: `theme.css` at root + optional `assets/` + optional `theme.json`
-  (name/version; since 0.10.7 also `styles` and `tokensFile`, #239 — every
-  declared sheet is validated like `theme.css`);
+  Full-document re-pagination happens only when the list actually changes
+  (add, enable/disable, reorder), with a progress state. Shipped:
+  `LookSection` (formerly `AppearanceSection`, merged #243) renders the
+  sample into a hover-preview iframe via `hoverPreviewSrcdoc`.
+- **ZIP drag-and-drop import**, validated against the extension package
+  format: `theme.css` at root + optional `assets/` + optional
+  `gutterpress.json` (or theme-era `theme.json`) declaring `name`,
+  `styles` and `tokensFile` (#239/#241 — every declared sheet is validated
+  like `theme.css`; a theme-era folder is a valid extension unchanged);
   validation order = structure → CSS parses → print-safety
-  check passes (note `printsafe/no-remote-urls` fails CDN-referencing themes
+  check passes (note `printsafe/no-remote-urls` fails CDN-referencing looks
   — surface that clearly) → declares at least one `--print-*` token.
   Failures are errors; extra files are warnings. Shipped:
-  `importThemeFromFile` / `importThemeFromZip`, exposed as
-  `api/theme/import-from-file`.
+  `importExtensionFromFile` / `importExtensionFromZip`
+  (`extension-import.ts`); the import lands in `extensions/<id>/` and adds
+  the entry through the one rail (`addExtension`).
 
 ---
 
@@ -865,7 +887,7 @@ instrument to evaluate them.
 | Task | Target | Method |
 |---|---|---|
 | First PDF exported | per canonical metric above | usability test |
-| Apply a theme | 5/5 test participants complete unassisted (n=5 formative; see below) | usability test |
+| Switch the book's look (add one, disable the old) | 5/5 test participants complete unassisted (n=5 formative; see below) | usability test |
 | First publish (itch.io) | ≥80% unassisted | usability test + GitHub-issue rate |
 | Enable a plugin from "Not installed" using the in-app instructions | ≤2 min | usability test |
 | Resolve a Problems-panel finding | ≥90% navigate-and-resolve | usability test (a "click-to-fix" rate requires the §10 Fix affordance first) |
@@ -1172,7 +1194,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 ### Print / publish
 - ✅ Publish wizard + 5 providers + Connections (#35) · ✅ readiness check (#24) · ✅ page navigation (#20) · ✅ export progress a11y (#21)
 - ✅ Preflight panel (PublishWizard step; block-with-override; fixable none/navigate, no auto-fix) — **#105** (0.8.0-beta.1)
-- ✅ Theme package format + ZIP/CSS import + hover sample preview + revert — **#106** (0.8.0-beta.1)
+- ✅ Theme package format + ZIP/CSS import + hover sample preview + revert — **#106** (0.8.0-beta.1); revert retired when looks became ordinary `extensions:` entries (#265, §11)
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
 - ⏳ Visual layout editor — **#37**; interaction model resolved (property inspector, §5); blocked on #37 sub-issue scoping (do not schedule as near-term)

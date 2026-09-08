@@ -221,7 +221,7 @@ See the [design-guide example](../examples/with-design-guide/design-guide/) for 
 gutterpress new "House Style" --kind theme
 ```
 
-It writes the six-file layered stack — `tokens.css` / `base.css` / `components.css` / `page-templates.css` / `page-rules.css` / `book.css` — with each file's **OWNS / MUST NOT CONTAIN** contract written into its header, the `@layer tokens, base, components, templates, pages, book;` order declared once, and one worked component (a callout) demonstrating the token pattern end to end: a `:root` default, a component consuming bare `var()`, and a chapter-scoped override that resets it. Install it into a book with `gutterpress theme import ./house-style <book>` then `gutterpress theme apply house-style <book>`.
+It writes the six-file layered stack — `tokens.css` / `base.css` / `components.css` / `page-templates.css` / `page-rules.css` / `book.css` — with each file's **OWNS / MUST NOT CONTAIN** contract written into its header, the `@layer tokens, base, components, templates, pages, book;` order declared once, and one worked component (a callout) demonstrating the token pattern end to end: a `:root` default, a component consuming bare `var()`, and a chapter-scoped override that resets it. Add it to a book with `gutterpress ext add ./house-style <book>` — the folder is listed under the book's `extensions:` and referenced in place, so keep editing it and the book follows.
 
 The steps below are the same rules, for adopting the pattern in a project that already exists.
 

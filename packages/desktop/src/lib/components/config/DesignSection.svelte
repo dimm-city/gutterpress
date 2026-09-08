@@ -55,7 +55,7 @@
   {:else if controller.designError}
     <p class="error" role="alert">{controller.designError}</p>
   {:else if !controller.cssPath}
-    <p class="muted">No active stylesheet. Apply a theme first, then fine-tune its colors and sizes here.</p>
+    <p class="muted">No stylesheet yet. Use a look above, then fine-tune its colors and sizes here.</p>
   {:else if controller.tokens.length === 0}
     <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
   {:else}

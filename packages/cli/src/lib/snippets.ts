@@ -42,8 +42,7 @@ import path from "node:path";
 
 import { slugify, prettify } from "./slug.ts";
 import { pathEscapesFolder, readExtensionMeta } from "./extension-manifest.ts";
-import { listProjectPlugins } from "./plugin-manager.ts";
-import { getActiveTheme, THEMES_DIR } from "./theme-manager.ts";
+import { listProjectExtensions } from "./extension-manager.ts";
 
 /** Folder (relative to the project root) snippets live in. */
 export const SNIPPETS_DIR = "snippets";
@@ -58,21 +57,18 @@ export const SNIPPETS_DIR = "snippets";
  * gate those actions, so "can this be deleted" never drifts out of sync with
  * "where did this come from" (one field, not two that could disagree).
  *
- * `{ kind: "plugin" | "theme", ref, name }` — a READ-ONLY snippet merged in
- * from an installed, currently-ACTIVE extension (see
- * {@link listInstalledExtensions} for exactly which extensions qualify).
- * `name` is the extension's display name — the picker's group label, so an
- * author always sees WHICH extension a snippet came from, never just "not
- * mine". `ref` is the same stable identifier {@link listProjectPlugins} (a
- * plugin's manifest `path`) or {@link getActiveTheme} (a theme's project id)
- * already hand out; it is round-tripped back into {@link readExtensionSnippet}
- * so that function can re-derive the extension's folder itself from a small,
- * validated identifier instead of trusting a filesystem path a caller could
- * construct.
+ * `{ kind: "extension", ref, name }` — a READ-ONLY snippet merged in from an
+ * installed, ENABLED extension (see {@link listInstalledExtensions}). `name`
+ * is the extension's display name — the picker's group label, so an author
+ * always sees WHICH extension a snippet came from, never just "not mine".
+ * `ref` is the extension's manifest specifier (`ProjectExtensionEntry.use`);
+ * it is round-tripped back into {@link readExtensionSnippet} so that function
+ * can re-derive the extension's folder itself from a small, validated
+ * identifier instead of trusting a filesystem path a caller could construct.
  */
 export type SnippetSource =
   | { kind: "project" }
-  | { kind: "plugin" | "theme"; ref: string; name: string };
+  | { kind: "extension"; ref: string; name: string };
 
 /** One snippet's metadata for the picker (no body — read lazily). */
 export interface SnippetEntry {
@@ -253,12 +249,11 @@ export async function deleteSnippet(
  *  private: callers only ever see the merged {@link SnippetEntry} list, never
  *  this intermediate shape. */
 interface InstalledExtension {
-  /** Stable identifier round-tripped through {@link SnippetSource.ref}: a
-   *  plugin's manifest `path`, or the active theme's project id. Used ONLY
-   *  to re-find this same extension later — never written to disk, never
-   *  itself a filesystem path. */
+  /** Stable identifier round-tripped through {@link SnippetSource.ref}: the
+   *  extension's manifest specifier. Used ONLY to re-find this same
+   *  extension later — never written to disk, never itself a filesystem
+   *  path. */
   ref: string;
-  kind: "plugin" | "theme";
   /** Absolute path to the extension's OWN folder (where its gutterpress.json
    *  or theme.json lives) — may lie outside `projectDir` for a plugin `path:`
    *  entry shared across a multi-book repo, exactly as `loadPlugin` already
@@ -273,97 +268,31 @@ interface InstalledExtension {
 }
 
 /**
- * Discover which installed extensions are currently ACTIVE for this project
- * — i.e. actually contributing to the book being built right now, not merely
- * present on disk — and declare a `snippets` folder. Two families, matching
- * the only two places #241 metadata is read from a real on-disk folder that
- * THIS project actually loads:
+ * The extensions whose snippets THIS project actually loads (#242, #265):
+ * every ENABLED `extensions:` entry whose folder — a path folder, or a
+ * vendored npm package — declares `snippets`. A disabled entry is skipped
+ * because `loadPlugins` never loads it, so nothing it declares is live; a
+ * bundled name or a bare `.js` plugin has no folder to read.
  *
- *   - The project's ACTIVE theme ({@link getActiveTheme}) — deliberately NOT
- *     every folder `listProjectThemes` would return. Applying a theme keeps
- *     the OUTGOING theme's folder on disk (so "Revert to previous theme" has
- *     something to revert to); that dormant folder's CSS is no longer in the
- *     manifest's `styles:` list, so markup for its classes would render
- *     unstyled with no indication why. Only the theme actually wired into
- *     `styles:` qualifies.
- *   - Every ENABLED `plugins:` entry whose `path` names a DIRECTORY
- *     ({@link listProjectPlugins}, `kind === "local"`) — the ONLY plugin
- *     shape `markdown/plugins.ts`'s `loadExtensionFromDir` ever reads a
- *     gutterpress.json/theme.json out of. A `disabled` entry is skipped for
- *     the same reason a dormant theme is: `loadPlugins` never loads it, so
- *     nothing it declares (styles, markdown, OR snippets) is live. An
- *     npm-installed plugin (`kind === "npm"`) is skipped too, but for a
- *     different reason — `loadPlugin` resolves a `name:`-only entry through
- *     `loadNpmPackage`, which never reaches `loadExtensionFromDir` at all
- *     today, so even a vendored package that happens to bundle a
- *     `gutterpress.json` has no metadata this build actually consults. This
- *     is not a permanent restriction, just an accurate reflection of what
- *     the loader currently wires up: the day an npm-installed extension's
- *     `gutterpress.json` becomes load-bearing, this function gains it for
- *     free (same `readExtensionMeta` call, different `dir`).
+ * REMOVAL needs no dedicated cleanup here: the list is re-derived from the
+ * manifest on every call, so an entry removed from `extensions:` simply
+ * stops being returned, taking its snippets with it.
  *
- * REMOVAL (#242, point 3): uninstalling/removing an extension needs no
- * dedicated cleanup code here. This function re-derives the list from
- * scratch on every call by re-reading the manifest and the theme's own
- * metadata — a plugin entry removed from `plugins:` (or a theme no longer
- * active) simply stops being returned on the very next call, taking its
- * snippets out of {@link listMergedSnippets}'s result with it. The author's
- * OWN snippets, read by the entirely separate {@link listSnippets} call this
- * function's caller also makes, are untouched either way.
- *
- * Tolerant throughout, matching every other "list installed X" surface in
- * this codebase (`listProjectThemes`, `listProjectPlugins`): a missing
- * folder, an unparseable metadata file, or a declared `snippets` path that
- * escapes its own folder is silently skipped rather than thrown — one
- * misconfigured or malicious extension must not blank the picker for every
- * OTHER extension, or for the author's own snippets.
+ * Tolerant throughout, like every other "list installed X" surface: a
+ * missing folder, an unparseable metadata file, or a `snippets` path that
+ * escapes its own folder is skipped rather than thrown — one misconfigured
+ * extension must not blank the picker for the others, or for the author's
+ * own snippets.
  */
 async function listInstalledExtensions(projectDir: string): Promise<InstalledExtension[]> {
   const out: InstalledExtension[] = [];
-
-  // ThemeInfo.snippets (#241) is already the parsed, trimmed-if-present
-  // field getActiveTheme's own themeInfo() builder produces — no second
-  // metadata read needed here.
-  const activeTheme = await getActiveTheme(projectDir);
-  const themeSnippets = activeTheme?.snippets?.trim();
-  if (activeTheme && themeSnippets) {
-    out.push({
-      ref: activeTheme.id,
-      kind: "theme",
-      dir: path.join(projectDir, THEMES_DIR, activeTheme.id),
-      name: activeTheme.name,
-      snippetsRel: themeSnippets,
-    });
-  }
-
-  for (const entry of await listProjectPlugins(projectDir)) {
-    if (entry.kind !== "local" || !entry.enabled) continue;
-    const dir = path.resolve(projectDir, entry.ref);
-    let isExtensionDir = false;
-    try {
-      isExtensionDir = (await stat(dir)).isDirectory();
-    } catch {
-      continue; // ref no longer resolves to anything — stale/uninstalled.
-    }
-    if (!isExtensionDir) continue; // a bare .js file plugin has no metadata to read.
-
-    const meta = await readExtensionMeta(dir);
+  for (const entry of await listProjectExtensions(projectDir)) {
+    if (!entry.enabled || !entry.dir || !entry.carries.snippets) continue;
+    const meta = await readExtensionMeta(entry.dir);
     const snippetsRel = meta.snippets?.trim();
     if (!snippetsRel) continue;
-    out.push({
-      ref: entry.ref,
-      kind: "plugin",
-      dir,
-      // Falls back to a prettified folder name for an extension whose
-      // gutterpress.json/theme.json declares `snippets` but no `name` —
-      // mirrors themeInfo()'s own `prettify(id)` fallback so an unnamed
-      // extension still gets a readable group label instead of the raw
-      // manifest ref (e.g. "./plugins/dc-components").
-      name: meta.name?.trim() || prettify(path.basename(dir)),
-      snippetsRel,
-    });
+    out.push({ ref: entry.use, dir: entry.dir, name: entry.label, snippetsRel });
   }
-
   return out;
 }
 
@@ -428,7 +357,7 @@ export async function listMergedSnippets(projectDir: string): Promise<SnippetEnt
     if (!dir) continue;
     for (const file of await scanSnippetFiles(dir)) {
       if (projectFileNames.has(file.fileName.toLowerCase())) continue; // project wins
-      merged.push({ ...file, source: { kind: ext.kind, ref: ext.ref, name: ext.name } });
+      merged.push({ ...file, source: { kind: "extension", ref: ext.ref, name: ext.name } });
     }
   }
   return merged;
@@ -449,18 +378,17 @@ export async function listMergedSnippets(projectDir: string): Promise<SnippetEnt
  * extended to a second, per-extension root instead of a single project one.
  *
  * Throws when `source` no longer resolves to an installed, active extension
- * (it was disabled, uninstalled, or the theme was switched since the list
- * was fetched — the picker's existing `error` display already handles a
+ * (it was disabled or removed since the list was fetched — the picker's existing `error` display already handles a
  * thrown read the same way a vanished project snippet would) or when
  * `fileName` escapes that extension's snippets folder.
  */
 export async function readExtensionSnippet(
   projectDir: string,
-  source: { kind: "plugin" | "theme"; ref: string },
+  source: { kind: "extension"; ref: string },
   fileName: string,
 ): Promise<string> {
   const ext = (await listInstalledExtensions(projectDir)).find(
-    (candidate) => candidate.kind === source.kind && candidate.ref === source.ref,
+    (candidate) => candidate.ref === source.ref,
   );
   if (!ext) {
     throw new Error(`Extension "${source.ref}" is not installed or is no longer active.`);

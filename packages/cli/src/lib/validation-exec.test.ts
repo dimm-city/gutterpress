@@ -513,7 +513,7 @@ describe("executeValidation folds in plugin styles (#262)", () => {
       );
       await writeFile(
         path.join(dir, "manifest.yaml"),
-        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
         "utf-8",
       );
       stubCheckExecution();
@@ -540,7 +540,7 @@ describe("executeValidation folds in plugin styles (#262)", () => {
       // (fail-fast) or warn (degrade-and-report); neither may happen here.
       await writeFile(
         path.join(dir, "manifest.yaml"),
-        "title: Preloaded\nstyles:\n  - styles/book.css\nplugins:\n  - path: ./does-not-exist.mjs\n",
+        "title: Preloaded\nstyles:\n  - styles/book.css\nextensions:\n  - ./does-not-exist.mjs\n",
         "utf-8",
       );
       const preloaded = path.join(dir, "elsewhere", "plugin.css");
@@ -576,7 +576,7 @@ describe("executeValidation folds in plugin styles (#262)", () => {
       );
       await writeFile(
         path.join(dir, "manifest.yaml"),
-        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
         "utf-8",
       );
       stubCheckExecution();

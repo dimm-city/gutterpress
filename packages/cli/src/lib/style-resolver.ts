@@ -25,7 +25,7 @@ import { loadManifestWithPath } from "./manifest.ts";
 export interface ProjectStyle {
   /** Absolute path to the `.css` file. */
   path: string;
-  /** Project-relative, "/"-separated display name (e.g. `themes/dark/theme.css`). */
+  /** Project-relative, "/"-separated display name (e.g. `styles/print.css`). */
   displayName: string;
   /** True when this stylesheet is in the manifest `styles:` list (the active set). */
   active: boolean;
@@ -33,7 +33,6 @@ export interface ProjectStyle {
 
 /** Subdirectories we scan (one level) for additional stylesheets. */
 const STYLES_SUBDIR = "styles";
-const THEMES_SUBDIR = "themes";
 
 /**
  * Conventional single-stylesheet locations, in priority order, used when a
@@ -70,19 +69,20 @@ function cssFilesFrom(dir: string, entries: import("node:fs").Dirent[]): string[
 }
 
 /**
- * Discover candidate stylesheets under a project: root `.css`, `styles/*.css`,
- * and `themes/<id>/theme.css`. Returns absolute paths (deduped). The three
- * top-level directory reads are independent, so they run in parallel.
+ * Discover candidate stylesheets under a project: root `.css`, `styles/*.css`
+ * and `css/*.css` — the sheets an author may list under `styles:`. An
+ * extension's sheets (`extensions/<id>/…`) are deliberately NOT candidates:
+ * they load through the `extensions:` list, so offering them here would only
+ * invite a second, duplicate `styles:` entry (#265). Returns absolute paths
+ * (deduped). The directory reads are independent, so they run in parallel.
  */
 async function discoverCssFiles(projectDir: string): Promise<string[]> {
   const stylesDir = path.join(projectDir, STYLES_SUBDIR);
   const cssDir = path.join(projectDir, "css");
-  const themesRoot = path.join(projectDir, THEMES_SUBDIR);
-  const [rootEntries, stylesEntries, cssEntries, themeEntries] = await Promise.all([
+  const [rootEntries, stylesEntries, cssEntries] = await Promise.all([
     dirEntries(projectDir),
     dirEntries(stylesDir),
     dirEntries(cssDir),
-    dirEntries(themesRoot),
   ]);
 
   const found = new Set<string>([
@@ -90,14 +90,6 @@ async function discoverCssFiles(projectDir: string): Promise<string[]> {
     ...cssFilesFrom(stylesDir, stylesEntries),
     ...cssFilesFrom(cssDir, cssEntries),
   ]);
-
-  // themes/<id>/theme.css — one level of theme folders.
-  for (const entry of themeEntries) {
-    if (!entry.isDirectory()) continue;
-    const themeCss = path.join(themesRoot, entry.name, "theme.css");
-    if (existsSync(themeCss)) found.add(themeCss);
-  }
-
   return [...found];
 }
 
@@ -142,9 +134,8 @@ export async function resolveActiveStyles(
 
 /**
  * Conventional locations for a multi-book repo's SHARED stylesheets, relative to
- * the repository root. Mirrors the layout the docs prescribe (`shared/styles/`,
- * `shared/themes/<id>/theme.css`) plus the repo-root equivalents of the
- * single-project convention.
+ * the repository root. Mirrors the layout the docs prescribe (`shared/styles/`)
+ * plus the repo-root equivalents of the single-project convention.
  */
 const SHARED_STYLE_ROOTS = ["shared", "."];
 

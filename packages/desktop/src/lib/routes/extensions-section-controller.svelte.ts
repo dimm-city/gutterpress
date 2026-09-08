@@ -1,198 +1,136 @@
 /**
- * ExtensionsSectionController (#243) - the single owner of the merged
- * Extensions surface's state + logic: the theme grid ("Look" tab, ex-
- * `AppearanceSectionController`) and the plugin list ("Features" tab, ex-
- * `PluginsSectionController`) are now ONE controller over ONE project's worth
- * of extension data, per the issue's "one controller and one model" shape.
+ * ExtensionsSectionController (#243, #265) — the single owner of the
+ * Extensions surface's state: ONE list (`entries` — the manifest's
+ * `extensions:` in cascade order) that the Look tab and the Features tab are
+ * two VIEWS over (`looks` / `features`), and ONE verb set (add, remove,
+ * toggle, move) both views call.
  *
- * NOTE ON PUNCTUATION: this file intentionally avoids em dashes, curly
- * quotes, section-sign shorthand, and box-drawing divider characters (all
- * used elsewhere in this codebase's comments) in favor of plain ASCII, to
- * sidestep a Unicode-generation reliability issue hit while authoring this
- * file. Prefer the surrounding codebase's normal typographic conventions in
- * any future edits to this file once that is no longer a concern.
+ * #265 collapsed the two rails. A look is an extension that carries styles; a
+ * feature is one that carries markdown; a component library carries both and
+ * appears in BOTH views — the same row, the same toggle, the same remove.
+ * There is no apply/revert and no "active look": any number of looks can be
+ * on at once, the list order is the CSS cascade (later wins ties) and the
+ * markdown registration order, and the project's own stylesheets always load
+ * last. Reordering therefore rewrites the whole list: a move inside one view
+ * is a move past that entry's neighbour IN THAT VIEW, expressed as the full
+ * `use` order the lib insists on (`config-helpers.ts`'s `orderAfterMove`).
  *
- * ## Why one class instead of two collaborating ones
+ * Adding is one verb with four ways to NAME the extension, which differ only
+ * in what the host does with the name:
+ *   - `addNpm` / `addRecommended` — a bundled feature name (written as-is)
+ *     or an npm specifier (downloaded, verified, vendored, pinned — behind
+ *     the native trust gate, so a null result means "the author cancelled");
+ *   - `addLocal` — a folder or plugin file from the native picker,
+ *     referenced in place, never copied;
+ *   - `useBuiltIn` — a built-in look, the one thing that IS copied (into
+ *     `extensions/<id>/`, so the look becomes the author's own editable
+ *     files), then referenced as `./extensions/<id>`;
+ *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
+ *     validates and lands in `extensions/<id>/` (#106).
  *
- * The two halves keep their OWN state/methods below (grouped in two clearly
- * marked sections) rather than being rewritten into a single generic list,
- * because the two things they model are genuinely different mechanisms, not
- * just different presentations of the same one:
+ * Removal never touches the author's files (a path entry's folder stays; an
+ * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
+ * single click, not the two-step confirm the old rm -rf'ing theme removal
+ * needed (UX review M7).
  *
- *   - A LOOK (`api.theme.*`) is exclusive: applying one REPLACES the active
- *     look, copies the whole folder into the project, and is reversible via
- *     "Revert to previous". This is `styles:` block replacement
- *     (`theme-manager.ts`'s `setActiveThemeStyle`).
- *   - A FEATURE (`api.plugin.*`) is additive: any number can be enabled at
- *     once, each is a `plugins:` manifest entry with its own `enabled` flag,
- *     and it is validated by load-testing, not by "is this the active one".
- *
- * Both halves are extensions in the #241 package-format sense, but the ACTUAL
- * verbs (apply/import/revert/remove vs enable/disable/add) do not collapse
- * into one shared verb without misrepresenting one side or the other - see
- * the issue's own tab descriptions ("Applying one replaces the active look"
- * vs "enable toggle"). This controller keeps them as two named groups of
- * methods for exactly that reason: an honest UI needs the code backing it to
- * stay honest about which mechanism it is invoking.
- *
- * ## Classification: which tab does an extension appear in
- *
- * Per the issue: "An extension that carries both appears where its primary
- * intent says it belongs - a `kind` hint in `gutterpress.json`, defaulting to
- * 'look' when it has styles - with the other half visible in its detail
- * view." This controller implements the DEFAULT half of that rule and
- * explicitly does NOT implement the explicit-override half:
- *
- *   - Every `ThemeInfo` (from `api.theme.*`) always has at least one declared
- *     style (`themeStyleList` defaults to `["theme.css"]` - see
- *     `theme-manager.ts`), so every Look-tab entry is "look" by construction.
- *     No heuristic is needed here; the API it came from IS the classification.
- *   - Every `ProjectPluginEntry`/`RecommendedPlugin` (from `api.plugin.*`) is
- *     "features" by construction, for a DIFFERENT reason: per #241's landed
- *     lib behavior, a full extension (styles + markdown) is only installable
- *     through the PLUGIN flow (`addLocalPlugin` - a `plugins:` entry whose
- *     `path` names a folder; `loadExtensionFromDir` resolves both halves).
- *     Its styles activate ADDITIVELY, alongside the plugin's markdown, via
- *     the plugin loader - never through the exclusive `styles:`-block
- *     mechanism a Look card's "Apply" performs. So even though such an
- *     extension "has styles", showing it as a Look card would misrepresent
- *     its actual activation mechanism (toggle, not apply/replace) - the
- *     precise mismatch #243's own issue text does not anticipate, because it
- *     assumes a single unified install path that the landed #241 lib work
- *     does not (yet) provide. Reclassifying it would need either a lib
- *     change (teaching `listProjectPlugins` to read a local entry's declared
- *     styles) or new Look-card semantics for a toggle-based "look" - both
- *     out of scope for a UI/route-layer issue. Flagged in the PR description
- *     as a follow-up rather than guessed at here.
- *
- * An explicit `kind:` override field in `gutterpress.json` is NOT read here
- * (or anywhere - the lib's `ExtensionMetadata` does not declare one): adding
- * it would be a lib change, and #241 did not add one. Until then, "which API
- * returned it" is the only classification signal, and it happens to already
- * match the issue's stated default for every extension actually reachable
- * today.
- *
- * The one cross-tab signal this controller DOES surface: a Look card whose
- * `ThemeInfo.markdown` is set (the folder's `gutterpress.json` also declares
- * a markdown entry) shows an inert "also includes markdown features" note
- * (`config-helpers.ts`'s `extensionOtherHalfNote`) - real data #241 already
- * threads through, informational only, matching that field's own "parsed,
- * never wired by the theme verbs" contract. There is no equivalent note the
- * other direction (a Features row cannot currently tell you it also carries
- * styles): `listProjectPlugins` never reads a local entry's metadata file,
- * and teaching it to would be the same lib change named above.
- *
- * ## Everything else
- *
- * Same single-owner discipline as every other `*SectionController`
- * (`DesignSectionController`, etc.): the component reads the public rune
- * fields and calls the intent methods; host coupling is injected so this
- * stays testable with fakes and PWA-clean (section 8 / ADR 0004) -
- * `ThemeInfo` / `ApplyThemeTarget` / `ThemeImportResult` / `ProjectPluginEntry`
- * / `PluginValidationResult` / `RecommendedPlugin` are type-only imports plus
- * the pure helpers from `config-helpers` - ZERO `node:*` / lib value imports.
+ * Same single-owner discipline as every other `*SectionController`: the two
+ * components read the public rune fields and call the intent methods; host
+ * coupling is injected so this stays testable with fakes and PWA-clean (§8 /
+ * ADR 0004) — type-only DTO imports plus the pure helpers from
+ * `config-helpers` / `theme-grid`, ZERO `node:*` / lib value imports.
  * Computed values are plain getters, not `$derived` (mirrors
  * `design-section-controller.svelte.ts`), so bun's unit tests need only the
- * `$state` shim, not the full Svelte compiler.
+ * `$state` shim.
  */
 
 import type {
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
 } from "$lib/platform/dtos";
 import {
-  keyOf,
+  orderAfterMove,
   sampleSrcdoc,
   hoverPreviewSrcdoc,
 } from "$lib/components/config/config-helpers";
+import { addedBuiltInIds } from "$lib/components/config/theme-grid";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
-
-  // -- Look (ex-AppearanceSectionDeps) ----------------------------------
-  listBuiltIn: () => Promise<ThemeInfo[]>;
-  listProject: (projectDir: string) => Promise<ThemeInfo[]>;
-  getActive: (projectDir: string) => Promise<ThemeInfo | null>;
-  /** The "Revert to previous look" target, or null when there is none (#106). */
-  getPrevious: (projectDir: string) => Promise<ThemeInfo | null>;
-  apply: (projectDir: string, target: ApplyThemeTarget) => Promise<ThemeInfo>;
-  /** Re-apply the previously active look (#106). */
-  revert: (projectDir: string) => Promise<ThemeInfo>;
-  remove: (projectDir: string, id: string) => Promise<{ ok: true }>;
-  importFromFolder: (projectDir: string) => Promise<ThemeInfo | null>;
-  /** Import a `.zip` package or bare `.css` via the native file picker (#106). Null when cancelled. */
-  importFromFile: (projectDir: string) => Promise<ThemeImportResult | null>;
-  importFromUrl: (projectDir: string, url: string) => Promise<ThemeInfo>;
-  readCss: (
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ) => Promise<string>;
-  /** Fired after a successful apply (the panel forwards to its `onThemeApplied` prop). */
-  onApplied?: (themeId: string) => void;
-  /**
-   * Fired after apply/remove succeeds: the Styles + Design sections both
-   * depend on the (possibly now different) active stylesheet, so the panel
-   * wires this to reload them.
-   */
-  afterThemeChange?: () => Promise<void>;
-
-  // -- Features (ex-PluginsSectionDeps) ---------------------------------
-  listPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
-  recommended: () => Promise<RecommendedPlugin[]>;
-  validate: (projectDir: string) => Promise<PluginValidationResult[]>;
-  setEnabled: (projectDir: string, ref: string, enabled: boolean) => Promise<unknown>;
-  addNpm: (
+  /** Every configured extension, in manifest (= cascade) order. */
+  list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
+  recommended: () => Promise<RecommendedExtension[]>;
+  listBuiltIn: () => Promise<BuiltInStyleSet[]>;
+  validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
+  /** Add by specifier. Null when the author cancelled the native npm trust gate. */
+  add: (
     projectDir: string,
-    packageName: string,
+    specifier: string,
     exportName?: string,
-  ) => Promise<ProjectPluginEntry | null>;
-  addLocal: (projectDir: string) => Promise<ProjectPluginEntry | null>;
+  ) => Promise<ProjectExtensionEntry | null>;
+  /** Native folder/file picker; referenced in place. Null when cancelled. */
+  addLocal: (projectDir: string) => Promise<ProjectExtensionEntry | null>;
+  /** Copy a built-in look into `extensions/<id>/` and add it. */
+  addBuiltIn: (projectDir: string, id: string) => Promise<ProjectExtensionEntry>;
+  remove: (projectDir: string, use: string) => Promise<unknown>;
+  setEnabled: (projectDir: string, use: string, enabled: boolean) => Promise<unknown>;
+  /** Rewrite the whole list order; must name every `use` exactly once. */
+  reorder: (projectDir: string, order: string[]) => Promise<unknown>;
+  /** An entry's stylesheets, concatenated, for the sample thumbnail (entries with a folder only). */
+  readCss: (projectDir: string, use: string) => Promise<string>;
+  /** `.zip`/`.css` via the native file picker (#106). Null when cancelled. */
+  importFromFile: (projectDir: string) => Promise<ExtensionImportResult | null>;
+  importFromUrl: (projectDir: string, url: string) => Promise<ExtensionImportResult>;
+  /** Fired after a styles-carrying extension was added by any route (the panel toasts). */
+  onLookAdded?: (label: string) => void;
+  /**
+   * Fired after any successful change to a styles-carrying entry (added,
+   * removed, toggled, moved): the Styles + Design sections both depend on
+   * the cascade, so the panel wires this to reload them.
+   */
+  afterLookChange?: () => Promise<void>;
 }
 
+/** Does this add/import result carry a look? (`null` = cancelled, nothing changed.) */
+const carriesStyles = (entry: ProjectExtensionEntry | null): boolean => !!entry?.carries.styles;
+
 export class ExtensionsSectionController {
-  // -- Look public rune state (read by LookSection; mutated only via methods) --
-  builtIns = $state<ThemeInfo[]>([]);
-  projectThemes = $state<ThemeInfo[]>([]);
-  activeThemeId = $state<string | null>(null);
-  themeError = $state<string | null>(null);
-  themeBusyId = $state<string | null>(null);
-  themeUrl = $state("");
+  // ── Public rune state (read by both views; mutated only via methods) ────────
+  /** The manifest's `extensions:` list in cascade order — the ONE model. */
+  entries = $state<ProjectExtensionEntry[]>([]);
+  recommended = $state<RecommendedExtension[]>([]);
+  builtIns = $state<BuiltInStyleSet[]>([]);
+  /** Last load-test result per `use`. */
+  validation = $state<Record<string, ExtensionValidationResult>>({});
+  validating = $state(false);
+  error = $state<string | null>(null);
+  /** A non-fatal notice from the last add (installer warnings). */
+  notice = $state<string | null>(null);
+  /** What an action is in flight for — an entry's `use`, a built-in id, the
+   *  npm draft, or `__local__`/`__file__`/`__url__` — else null. */
+  busy = $state<string | null>(null);
+  /** Non-fatal warnings from the last `.zip`/`.css`/URL import (#106). */
+  importWarnings = $state<string[]>([]);
+  /** Drafts bound directly from the templates. */
+  url = $state("");
+  npmName = $state("");
+  /** Optional named module export for packages without a default plugin export. */
+  npmExport = $state("");
+  /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable). */
   thumbs = $state<Record<string, string>>({});
-  /** `keyOf` of the look card whose Remove is armed for a two-step confirm, or null (M7). */
-  removeArmedKey = $state<string | null>(null);
-  /** The revert target: the look active before the current one, or null (#106). */
-  previousTheme = $state<ThemeInfo | null>(null);
-  /** Non-fatal warnings from the last `.zip`/`.css` import (surfaced, not fatal) (#106). */
-  themeWarnings = $state<string[]>([]);
-  /** `keyOf` of the card being hovered for the enlarged preview, or null (#106). */
-  hoverThemeKey = $state<string | null>(null);
-  /** The enlarged 2-page-spread srcdoc for the hovered look, or null (#106). */
+  /** `use` of the look hovered for the enlarged preview, and its srcdoc (#106). */
+  hoverUse = $state<string | null>(null);
   hoverPreview = $state<string | null>(null);
 
   /**
-   * Raw CSS cached per card (populated by `loadThumb`) so the hover preview
+   * Raw CSS cached per `use` (populated by `loadThumb`) so the hover preview
    * can build its enlarged 2-page spread without a second host round trip.
    * Non-reactive: only read imperatively by `showHoverPreview`.
    */
   private rawCssCache: Record<string, string> = {};
-
-  // -- Features public rune state (read by FeaturesSection; mutated only via methods) --
-  plugins = $state<ProjectPluginEntry[]>([]);
-  validation = $state<Record<string, PluginValidationResult>>({});
-  recommended = $state<RecommendedPlugin[]>([]);
-  pluginValidating = $state(false);
-  pluginError = $state<string | null>(null);
-  pluginNotice = $state<string | null>(null);
-  pluginBusyRef = $state<string | null>(null);
-  /** "Install npm plugin" package spec draft: bound directly from the template. */
-  npmName = $state("");
-  /** Optional named module export for packages without a default plugin export. */
-  npmExport = $state("");
 
   private readonly deps: ExtensionsSectionDeps;
 
@@ -200,337 +138,238 @@ export class ExtensionsSectionController {
     this.deps = deps;
   }
 
-  // -- Load (both tabs at once: the initial mount reload) -----------------
+  // ── Views (getters so bun unit tests need only the $state shim) ─────────────
+  /** The Look view: every entry that carries styles, in cascade order. */
+  get looks(): ProjectExtensionEntry[] {
+    return this.entries.filter((e) => e.carries.styles);
+  }
+  /**
+   * The Features view: every entry that carries markdown — plus any entry that
+   * carries nothing at all (a missing folder, an unparseable specifier), so no
+   * configured entry is ever invisible and un-removable.
+   */
+  get features(): ProjectExtensionEntry[] {
+    return this.entries.filter((e) => e.carries.markdown || !e.carries.styles);
+  }
+  /** Bundled features not yet in the list — the "Turn on" rows. */
+  get availableRecommended(): RecommendedExtension[] {
+    return this.recommended.filter((r) => !this.entries.some((e) => e.use === r.use));
+  }
+  /** True when the built-in look `id` is already in the list as `./extensions/<id>`. */
+  isBuiltInAdded = (id: string): boolean => addedBuiltInIds(this.entries).has(id);
+
+  // ── Load ────────────────────────────────────────────────────────────────────
   loadExtensions = async (): Promise<void> => {
-    await Promise.all([this.loadThemes(), this.loadPlugins()]);
+    const projectDir = this.deps.projectDir();
+    if (!projectDir) return;
+    this.error = null;
+    try {
+      const [entries, recs, builtIns] = await Promise.all([
+        this.deps.list(projectDir),
+        this.deps.recommended(),
+        this.deps.listBuiltIn(),
+      ]);
+      this.entries = entries;
+      this.recommended = recs;
+      this.builtIns = builtIns;
+      // Thumbnails lazy-load in the background (non-fatal if they fail).
+      void Promise.all(
+        entries.filter((e) => e.carries.styles && e.dir).map((e) => this.loadThumb(e)),
+      );
+      await this.validateExtensions();
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+    }
   };
 
-  // === Look (ex-AppearanceSectionController) ==============================
-
-  private async loadThumb(t: ThemeInfo): Promise<void> {
-    const key = keyOf(t);
-    if (this.thumbs[key]) return;
+  validateExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
+    if (!projectDir) return;
+    this.validating = true;
     try {
-      const css = await this.deps.readCss(t.kind === "builtin" ? null : projectDir, {
-        kind: t.kind,
-        id: t.id,
-      });
-      this.rawCssCache[key] = css;
-      this.thumbs = { ...this.thumbs, [key]: sampleSrcdoc(css) };
+      const results = await this.deps.validate(projectDir);
+      this.validation = Object.fromEntries(results.map((r) => [r.use, r]));
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.validating = false;
+    }
+  };
+
+  private async loadThumb(entry: ProjectExtensionEntry): Promise<void> {
+    if (this.thumbs[entry.use]) return;
+    const projectDir = this.deps.projectDir();
+    if (!projectDir) return;
+    try {
+      const css = await this.deps.readCss(projectDir, entry.use);
+      this.rawCssCache[entry.use] = css;
+      this.thumbs = { ...this.thumbs, [entry.use]: sampleSrcdoc(css) };
     } catch {
-      this.thumbs = { ...this.thumbs, [key]: "__fallback__" };
+      this.thumbs = { ...this.thumbs, [entry.use]: "__fallback__" };
     }
   }
 
-  loadThemes = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir) return;
-    this.themeError = null;
-    // A refresh can change which cards exist (apply/remove/import all call
-    // this): never leave a stale "Delete "X"?" confirm armed on a card that
-    // may no longer represent the same look.
-    this.removeArmedKey = null;
-    try {
-      const [bi, pt, active, previous] = await Promise.all([
-        this.deps.listBuiltIn(),
-        this.deps.listProject(projectDir),
-        this.deps.getActive(projectDir),
-        this.deps.getPrevious(projectDir),
-      ]);
-      this.builtIns = bi;
-      this.projectThemes = pt;
-      this.activeThemeId = active?.id ?? null;
-      this.previousTheme = previous;
-      // Thumbnails lazy-load (non-fatal if they fail).
-      void Promise.all([...bi, ...pt].map((t) => this.loadThumb(t)));
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    }
-  };
-
-  applyTheme = async (t: ThemeInfo): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.themeBusyId) return;
-    this.themeBusyId = t.id;
-    this.themeError = null;
-    this.themeWarnings = [];
-    this.removeArmedKey = null;
-    try {
-      const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
-      const applied = await this.deps.apply(projectDir, target);
-      this.activeThemeId = applied.id;
-      this.previousTheme = await this.deps.getPrevious(projectDir);
-      this.deps.onApplied?.(applied.id);
-      // The styles list + design tokens both depend on the now-active
-      // stylesheet: refresh them so the Config view agrees with the
-      // rendered preview.
-      await this.deps.afterThemeChange?.();
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.themeBusyId = null;
-    }
-  };
-
-  private removeTheme = async (t: ThemeInfo): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || t.kind !== "project" || this.themeBusyId) return;
-    this.themeBusyId = t.id;
-    this.themeError = null;
-    try {
-      await this.deps.remove(projectDir, t.id);
-      if (this.activeThemeId === t.id) this.activeThemeId = null;
-      await this.loadThemes();
-      await this.deps.afterThemeChange?.();
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.themeBusyId = null;
-    }
-  };
-
+  // ── The one mutation shape ──────────────────────────────────────────────────
   /**
-   * UX review M7: Remove used to run an immediate recursive delete with no
-   * confirmation at any layer. This is a two-step inline confirm: the first
-   * click arms the card (LookSection swaps its actions for a "Delete \"X\"?"
-   * warning naming the look); a second click while armed performs the actual
-   * removal.
+   * Every verb below: refuse while busy, clear the messages, mark busy, run,
+   * reload the list on success (and the Styles + Design sections when the
+   * change touched a look), surface a failure, clear busy. A `null` result is
+   * the "cancelled, nothing changed" convention of the add/import verbs — no
+   * reload. Returns the action's result, or undefined when refused or failed.
    */
-  requestRemoveTheme = (t: ThemeInfo): void => {
-    const key = keyOf(t);
-    if (this.removeArmedKey === key) {
-      this.removeArmedKey = null;
-      void this.removeTheme(t);
-    } else {
-      this.removeArmedKey = key;
-    }
-  };
-
-  /** Cancel an armed Remove confirm without deleting anything. */
-  cancelRemoveTheme = (): void => {
-    this.removeArmedKey = null;
-  };
-
-  importThemeFolder = async (): Promise<void> => {
+  private async mutate<T>(
+    busyKey: string,
+    action: (projectDir: string) => Promise<T>,
+    touchesLook: (result: T) => boolean,
+  ): Promise<T | undefined> {
     const projectDir = this.deps.projectDir();
-    if (!projectDir || this.themeBusyId) return;
-    this.themeError = null;
-    this.themeBusyId = "__import__";
+    if (!projectDir || this.busy) return undefined;
+    this.busy = busyKey;
+    this.error = null;
+    this.notice = null;
     try {
-      const added = await this.deps.importFromFolder(projectDir);
-      if (added) await this.loadThemes();
+      const result = await action(projectDir);
+      if (result === null) return result;
+      await this.loadExtensions();
+      if (touchesLook(result)) await this.deps.afterLookChange?.();
+      return result;
     } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
+      this.error = e instanceof Error ? e.message : String(e);
+      return undefined;
     } finally {
-      this.themeBusyId = null;
+      this.busy = null;
     }
+  }
+
+  /** After a successful add: surface the host's non-fatal warnings, and announce a new look. */
+  private announceAdded(entry: ProjectExtensionEntry): void {
+    if (entry.warnings?.length) this.notice = entry.warnings.join(" ");
+    if (entry.carries.styles) this.deps.onLookAdded?.(entry.label);
+  }
+
+  // ── Verbs (arrow fields: passed as callbacks from the templates) ────────────
+  toggle = async (entry: ProjectExtensionEntry): Promise<void> => {
+    await this.mutate(
+      entry.use,
+      (dir) => this.deps.setEnabled(dir, entry.use, !entry.enabled),
+      () => entry.carries.styles,
+    );
   };
 
-  importThemeUrl = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.themeBusyId) return;
-    const u = this.themeUrl.trim();
-    if (!u) {
-      this.themeError = "Enter a URL (a .css file or an extension folder).";
+  remove = async (entry: ProjectExtensionEntry): Promise<void> => {
+    await this.mutate(entry.use, (dir) => this.deps.remove(dir, entry.use), () => entry.carries.styles);
+  };
+
+  /** Move `entry` one slot up (-1) or down (+1) within the Look or Features view. */
+  move = async (
+    entry: ProjectExtensionEntry,
+    delta: -1 | 1,
+    view: "looks" | "features",
+  ): Promise<void> => {
+    const order = orderAfterMove(
+      this.entries,
+      view === "looks" ? this.looks : this.features,
+      entry,
+      delta,
+    );
+    if (!order) return;
+    await this.mutate(entry.use, (dir) => this.deps.reorder(dir, order), () => entry.carries.styles);
+  };
+
+  /** "Install from npm": the drafts → `add`. A cancelled trust gate keeps the draft. */
+  addNpm = async (): Promise<void> => {
+    const name = this.npmName.trim();
+    const exportName = this.npmExport.trim() || undefined;
+    if (!name) {
+      this.error = "Enter an npm package name (e.g. markdown-it-highlightjs).";
       return;
     }
-    this.themeError = null;
-    this.themeBusyId = "__url__";
-    try {
-      await this.deps.importFromUrl(projectDir, u);
-      this.themeUrl = "";
-      await this.loadThemes();
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.themeBusyId = null;
-    }
+    const added = await this.mutate(name, (dir) => this.deps.add(dir, name, exportName), carriesStyles);
+    if (!added) return;
+    this.npmName = "";
+    this.npmExport = "";
+    this.announceAdded(added);
+  };
+
+  /** Turn on a bundled feature — writes its name, nothing to install. */
+  addRecommended = async (rec: RecommendedExtension): Promise<void> => {
+    const added = await this.mutate(rec.use, (dir) => this.deps.add(dir, rec.use), carriesStyles);
+    if (added) this.announceAdded(added);
+  };
+
+  /** A folder or plugin file from the native picker, referenced in place. */
+  addLocal = async (): Promise<void> => {
+    const added = await this.mutate("__local__", (dir) => this.deps.addLocal(dir), carriesStyles);
+    if (added) this.announceAdded(added);
+  };
+
+  /** Copy a built-in look into the project and add it. */
+  useBuiltIn = async (id: string): Promise<void> => {
+    const added = await this.mutate(id, (dir) => this.deps.addBuiltIn(dir, id), () => true);
+    if (added) this.announceAdded(added);
   };
 
   /**
    * #106: import a look from a `.zip` package or a bare `.css` file via the
-   * native file picker. The host validates (rejects on a parse failure,
-   * unsafe paths, or over-cap) and returns non-fatal warnings, which are
-   * surfaced without blocking the import.
+   * native file picker. The host validates (rejects on a parse failure, unsafe
+   * paths, or over-cap) and returns non-fatal warnings, which are surfaced
+   * without blocking the import.
    */
-  importThemeFile = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.themeBusyId) return;
-    this.themeError = null;
-    this.themeWarnings = [];
-    this.themeBusyId = "__file__";
-    try {
-      const result = await this.deps.importFromFile(projectDir);
-      if (result) {
-        this.themeWarnings = result.warnings.map((w) => w.message);
-        await this.loadThemes();
-      }
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.themeBusyId = null;
-    }
+  importFile = async (): Promise<void> => {
+    this.importWarnings = [];
+    const result = await this.mutate("__file__", (dir) => this.deps.importFromFile(dir), () => true);
+    if (result) this.announceImported(result);
   };
 
-  /** #106: re-apply the previously active look (available indefinitely). */
-  revertTheme = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.themeBusyId || !this.previousTheme) return;
-    this.themeError = null;
-    this.themeWarnings = [];
-    this.themeBusyId = "__revert__";
-    try {
-      const applied = await this.deps.revert(projectDir);
-      this.activeThemeId = applied.id;
-      this.deps.onApplied?.(applied.id);
-      await this.loadThemes();
-      await this.deps.afterThemeChange?.();
-    } catch (e) {
-      this.themeError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.themeBusyId = null;
+  importUrl = async (): Promise<void> => {
+    const url = this.url.trim();
+    if (!url) {
+      this.error = "Enter a URL (a .css file or an extension folder).";
+      return;
     }
+    this.importWarnings = [];
+    const result = await this.mutate("__url__", (dir) => this.deps.importFromUrl(dir, url), () => true);
+    if (!result) return;
+    this.url = "";
+    this.announceImported(result);
   };
 
-  // -- Hover preview (#106) -------------------------------------------------
+  private announceImported(result: ExtensionImportResult): void {
+    this.importWarnings = result.warnings.map((w) => w.message);
+    this.announceAdded(result.entry);
+  }
+
+  // ── Hover preview (#106) ────────────────────────────────────────────────────
   //
-  // Reuses the per-card thumbnail mechanism (readCss -> inline <style> ->
+  // Reuses the per-row thumbnail mechanism (readCss → inline <style> →
   // sandboxed <iframe srcdoc>), swapping the sample for a FIXED built-in
   // 2-page spread. It renders a constant sample, never the author's document,
   // so it structurally cannot re-paginate the manuscript. The raw CSS is
-  // already cached by `loadThumb`; on a cache miss we fetch it once.
-  showHoverPreview = async (t: ThemeInfo): Promise<void> => {
-    const key = keyOf(t);
-    this.hoverThemeKey = key;
-    const cached = this.rawCssCache[key];
+  // already cached by `loadThumb`; on a cache miss we fetch it once. An entry
+  // with no folder (bundled, uninstalled, missing) has no CSS to show.
+  showHoverPreview = async (entry: ProjectExtensionEntry): Promise<void> => {
+    if (!entry.dir) return;
+    this.hoverUse = entry.use;
+    const cached = this.rawCssCache[entry.use];
     if (cached !== undefined) {
       this.hoverPreview = hoverPreviewSrcdoc(cached);
       return;
     }
     const projectDir = this.deps.projectDir();
+    if (!projectDir) return;
     try {
-      const css = await this.deps.readCss(t.kind === "builtin" ? null : projectDir, {
-        kind: t.kind,
-        id: t.id,
-      });
-      this.rawCssCache[key] = css;
+      const css = await this.deps.readCss(projectDir, entry.use);
+      this.rawCssCache[entry.use] = css;
       // The pointer may have moved on while we were fetching: only paint if
-      // this card is still the hovered one.
-      if (this.hoverThemeKey === key) this.hoverPreview = hoverPreviewSrcdoc(css);
+      // this row is still the hovered one.
+      if (this.hoverUse === entry.use) this.hoverPreview = hoverPreviewSrcdoc(css);
     } catch {
-      if (this.hoverThemeKey === key) this.hoverPreview = null;
+      if (this.hoverUse === entry.use) this.hoverPreview = null;
     }
   };
 
   hideHoverPreview = (): void => {
-    this.hoverThemeKey = null;
+    this.hoverUse = null;
     this.hoverPreview = null;
-  };
-
-  // === Features (ex-PluginsSectionController) ==============================
-
-  loadPlugins = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir) return;
-    this.pluginError = null;
-    try {
-      const [list, recs] = await Promise.all([
-        this.deps.listPlugins(projectDir),
-        this.deps.recommended(),
-      ]);
-      this.plugins = list;
-      this.recommended = recs;
-      await this.validatePlugins();
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    }
-  };
-
-  validatePlugins = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir) return;
-    this.pluginValidating = true;
-    try {
-      const results = await this.deps.validate(projectDir);
-      this.validation = Object.fromEntries(results.map((r) => [r.ref, r]));
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.pluginValidating = false;
-    }
-  };
-
-  togglePlugin = async (entry: ProjectPluginEntry): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.pluginBusyRef) return;
-    this.pluginBusyRef = entry.ref;
-    this.pluginError = null;
-    try {
-      await this.deps.setEnabled(projectDir, entry.ref, !entry.enabled);
-      await this.loadPlugins();
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.pluginBusyRef = null;
-    }
-  };
-
-  addNpmPlugin = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.pluginBusyRef) return;
-    const name = this.npmName.trim();
-    const exportName = this.npmExport.trim() || undefined;
-    if (!name) {
-      this.pluginError = "Enter an npm package name (e.g. markdown-it-highlightjs).";
-      return;
-    }
-    this.pluginError = null;
-    this.pluginNotice = null;
-    this.pluginBusyRef = name;
-    try {
-      const added = await this.deps.addNpm(projectDir, name, exportName);
-      if (!added) return;
-      this.npmName = "";
-      this.npmExport = "";
-      await this.loadPlugins();
-      if (added.warnings?.length) this.pluginNotice = added.warnings.join(" ");
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.pluginBusyRef = null;
-    }
-  };
-
-  addLocalPlugin = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.pluginBusyRef) return;
-    this.pluginError = null;
-    this.pluginNotice = null;
-    this.pluginBusyRef = "__local__";
-    try {
-      const added = await this.deps.addLocal(projectDir);
-      if (added) await this.loadPlugins();
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.pluginBusyRef = null;
-    }
-  };
-
-  addRecommended = async (rec: RecommendedPlugin): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.pluginBusyRef) return;
-    this.pluginError = null;
-    this.pluginNotice = null;
-    this.pluginBusyRef = rec.name;
-    try {
-      const added = await this.deps.addNpm(projectDir, rec.name);
-      if (added) await this.loadPlugins();
-    } catch (e) {
-      this.pluginError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.pluginBusyRef = null;
-    }
   };
 }

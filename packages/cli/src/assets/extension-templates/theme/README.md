@@ -28,13 +28,15 @@ about to add a rule to the wrong sheet.
 ## Try it
 
 ```sh
-gutterpress theme import ./{{SLUG}} ../my-book
-gutterpress theme apply {{SLUG}} ../my-book
+gutterpress ext add ./{{SLUG}} ../my-book
 gutterpress preview ../my-book
 ```
 
-Both theme commands take the book directory as their second POSITIONAL
-argument, not a `--dir` flag.
+`ext add` takes the book directory as its second POSITIONAL argument, not a
+`--dir` flag. It lists the folder under the book's `extensions:` and references
+it in place — nothing is copied, so keep editing here and the book follows.
+The book's own `styles:` always load after every extension, so an author can
+override any rule in this package from their `styles/book.css`.
 
 Then in a chapter:
 
@@ -127,9 +129,9 @@ That asymmetry is the whole difference between the two kinds of package.
 ```
 
 Each sheet then puts everything it owns inside its layer. The cascade is
-settled by that one line rather than by which file `styles:` lists last, so
-splitting a sheet or reordering the manifest can no longer silently flip who
-wins.
+settled by that one line rather than by which sheet `gutterpress.json`'s
+`styles` lists last, so splitting a sheet or reordering that list can no
+longer silently flip who wins.
 
 The trap, and it catches everyone once: a rule left OUTSIDE all the layers is
 fully unlayered, and unlayered CSS beats layered CSS at any specificity. So

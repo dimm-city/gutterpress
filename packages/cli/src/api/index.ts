@@ -154,57 +154,49 @@ export {
 } from "../lib/snippets.ts";
 export type { SnippetEntry, SnippetSource } from "../lib/snippets.ts";
 
-// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+// ── Extension manager (#265) — the one rail ──────────────────────────────────
 export {
-  listProjectPlugins,
-  setPluginEnabled,
-  addLocalPlugin,
-  addNpmPlugin,
-  validateProjectPlugins,
-  RECOMMENDED_PLUGINS,
+  listProjectExtensions,
+  describeExtension,
+  addExtension,
+  removeExtension,
+  setExtensionEnabled,
+  reorderExtensions,
+  validateProjectExtensions,
+  readExtensionCss,
+  listBuiltInStyleSets,
+  addBuiltInStyleSet,
+  sameExtension,
+  RECOMMENDED_EXTENSIONS,
+  BUILT_IN_STYLE_SET_IDS,
+  EXTENSIONS_DIR,
   PLUGINS_DIR,
-} from "../lib/plugin-manager.ts";
+} from "../lib/extension-manager.ts";
 export type {
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  PluginKind,
-} from "../lib/plugin-manager.ts";
-
-// ── Theme manager (#32) ───────────────────────────────────────────────────────
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  ExtensionSourceKind,
+  BuiltInStyleSet,
+  BuiltInStyleSetId,
+  AddExtensionOptions,
+} from "../lib/extension-manager.ts";
 export {
-  listBuiltInThemes,
-  resolveBuiltInTheme,
-  listProjectThemes,
-  getActiveTheme,
-  applyTheme,
-  importThemeFromFolder,
-  importThemeFromUrl,
-  readThemeCss,
-  removeProjectTheme,
-  getPreviousTheme,
-  revertTheme,
-  detectLegacyForkedTheme,
-  BUILT_IN_THEME_IDS,
-  THEMES_DIR,
-} from "../lib/theme-manager.ts";
-export type {
-  ThemeInfo,
-  ThemeMetadata,
-  ResolvedTheme,
-  ApplyThemeTarget,
-  BuiltInThemeId,
-} from "../lib/theme-manager.ts";
+  BUNDLED_EXTENSIONS,
+  isBundledExtension,
+  isPathSpecifier,
+  parseExtensionSpecifier,
+} from "../lib/extension-specifier.ts";
+export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 
-// ── Theme package import (#106) — .zip / .css importer ──
-// Only importThemeFromFile is part of the public surface (the desktop's
-// import-from-file route). The zip/css sub-importers and pure decision helpers
-// stay module-private (theme-import.ts exports them for its own unit tests).
-export { importThemeFromFile } from "../lib/theme-import.ts";
-export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
+// ── Extension package import — .zip / .css / URL ─────────────────────────────
+// The zip/css sub-importers and pure decision helpers stay module-private
+// (extension-import.ts exports them for its own unit tests).
+export { importExtensionFromFile, importExtensionFromUrl } from "../lib/extension-import.ts";
+export type { ExtensionImportResult, ExtensionImportWarning } from "../lib/extension-import.ts";
 
 // ── Unified extension package format (#241) — gutterpress.json ───────────────
-// The metadata reader + resolver `theme-manager.ts` (a theme is "styles
+// The metadata reader + resolver `extension-manager.ts` (a look is "styles
 // only") and `markdown/plugins.ts` (a plugin is "markdown only") both build
 // on. Exported here — not just used internally — because a "list installed
 // extensions" surface resolves a folder's full declared shape through
@@ -225,11 +217,17 @@ export {
   LEGACY_THEME_MANIFEST_FILENAME,
   readExtensionMeta,
   extensionStyleList,
+  extensionStyleListWithDefault,
+  extensionCarries,
   assertExtensionContained,
   pathEscapesFolder,
   resolveExtension,
 } from "../lib/extension-manifest.ts";
-export type { ExtensionMetadata, ResolvedExtension } from "../lib/extension-manifest.ts";
+export type {
+  ExtensionMetadata,
+  ResolvedExtension,
+  ExtensionCarries,
+} from "../lib/extension-manifest.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";

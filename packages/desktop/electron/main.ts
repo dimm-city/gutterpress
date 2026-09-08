@@ -104,18 +104,14 @@ import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
-  ApplyThemeTarget,
   CheckResult,
   CloneProgressEvent,
   CreateProjectOptions,
   CreateProjectResult,
-  PluginValidationResult,
   PrintSafeWarning,
   ProjectCapabilities,
-  ProjectPluginEntry,
   ProjectRemoteDiagnosis,
   ProjectStyle,
-  RecommendedPlugin,
   RemoteAccessResult,
   RemoteBranch,
   RemoteRepository,
@@ -123,7 +119,6 @@ import type {
   RestoreVersionResult,
   SourceProvider,
   SystemDiagnostics,
-  ThemeInfo,
   TokenStore as RecoveryTokenStore,
 } from "gutterpress";
 import {

@@ -7,7 +7,7 @@ import type StateCore from "markdown-it/lib/rules_core/state_core.mjs";
  * GFM-style `> [!NOTE]` alert blockquotes (#237).
  *
  * Bundled, OPT-IN markdown feature (`BUILTIN_OPTIONAL_PLUGINS` in
- * `renderer.ts`, `RECOMMENDED_PLUGINS` in `plugin-manager.ts` under the
+ * `renderer.ts`, `RECOMMENDED_EXTENSIONS` in `extension-manager.ts` under the
  * "Callouts" label) — NOT applied unconditionally. A project that never lists
  * `gutterpress-gfm-alerts` in its manifest renders `> [!NOTE]` exactly as it
  * always has: a literal blockquote whose first line of text is `[!NOTE]`.

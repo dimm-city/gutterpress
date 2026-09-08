@@ -314,13 +314,14 @@ Reasons:
 
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
-(`addNpmPlugin`, used by the desktop route and `gutterpress plugin add`) that resolves
+(`addExtension` in `extension-manager.ts`, used by the desktop routes and
+`gutterpress ext add`) that resolves
 the public npm registry to an exact version graph, verifies every tarball,
 safely vendors a complete nested dependency tree under the project, writes a
 whole-tree schema-v2 receipt, load-tests it, and only then atomically records
-`{ name, version, export? }` in the manifest (`export` explicitly selects a
-named plugin function for packages without a default export). Reinstall always
-fetches fresh bytes.
+the pinned specifier `name@<exact version>` in the manifest's `extensions:`
+list (the object form's `export:` explicitly selects a named plugin function
+for packages without a default export). Reinstall always fetches fresh bytes.
 Package scripts, bundled `node_modules`, native build steps, and non-registry
 dependency selectors are intentionally unsupported. Receipt-backed loads verify
 the full tree from a private snapshot, then rewrite reachable literal ESM and

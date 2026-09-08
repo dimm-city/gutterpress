@@ -349,8 +349,9 @@ the assembled `<style>` block:
 @layer gp.vocab  { /* GUTTERPRESS_CSS — the gp-* utility vocabulary */ }
 ```
 
-Everything else — user plugin CSS, every stylesheet the manifest's `styles:`
-list names, and anything those sheets `@import` — stays UNLAYERED. Per the
+Everything else — extension CSS (looks and plugins, in `extensions:` list
+order), every stylesheet the manifest's `styles:` list names, and anything
+those sheets `@import` — stays UNLAYERED. Per the
 CSS Cascading and Layers spec, unlayered CSS always wins over layered CSS,
 regardless of selector specificity: a book rule as unspecific as a bare
 element selector (`section { columns: unset }`) now overrides a core

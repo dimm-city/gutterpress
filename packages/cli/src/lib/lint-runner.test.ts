@@ -199,7 +199,7 @@ describe("runLint includes plugin styles (#238)", () => {
       );
       await writeFile(
         join(dir, "manifest.yaml"),
-        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
         "utf8",
       );
 
@@ -224,7 +224,7 @@ describe("runLint includes plugin styles (#238)", () => {
       await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
       await writeFile(
         join(dir, "manifest.yaml"),
-        "title: Bad Plugin\nstyles:\n  - styles/book.css\nplugins:\n  - path: ./does-not-exist.mjs\n",
+        "title: Bad Plugin\nstyles:\n  - styles/book.css\nextensions:\n  - ./does-not-exist.mjs\n",
         "utf8",
       );
 
@@ -245,7 +245,7 @@ describe("runLint includes plugin styles (#238)", () => {
 // build pipeline's quality-gate stage) can hand the resolved style paths in
 // directly, so this function never loads plugins a second time.
 describe("runLint accepts a pre-loaded pluginStylePaths (#262)", () => {
-  test("a supplied pluginStylePaths is linted verbatim, with no plugins: entry and no plugin load at all", async () => {
+  test("a supplied pluginStylePaths is linted verbatim, with no extensions: entry and no plugin load at all", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-styles-"));
     try {
       await mkdir(join(dir, "styles"), { recursive: true });
@@ -292,7 +292,7 @@ describe("runLint accepts a pre-loaded pluginStylePaths (#262)", () => {
       );
       await writeFile(
         join(dir, "manifest.yaml"),
-        "title: Plugin Styles\nstyles:\n  - styles/book.css\nplugins:\n  - path: plugin/plugin.mjs\n",
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
         "utf8",
       );
 

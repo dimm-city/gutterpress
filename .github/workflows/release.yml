@@ -326,14 +326,14 @@ jobs:
           test -n "$(find /tmp/gutterpress-smoke -name 'manifest.yaml' -print -quit)"
           # Exercise the compiled binary's registry installer and direct-entry
           # loader with a real plugin that imports a runtime dependency.
-          "./${{ matrix.artifact }}" plugin add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
+          "./${{ matrix.artifact }}" ext add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
           test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.gutterpress-install.json
           test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
           # Cover the two npm archive/module shapes that have broken the
           # compiled installer in practice: @types' legacy tar root and a
           # package whose markdown-it plugin is a named export.
-          "./${{ matrix.artifact }}" plugin add markdown-it-anchor@9.2.1 /tmp/gutterpress-smoke/smoke-test-book
-          "./${{ matrix.artifact }}" plugin add markdown-it-emoji@3.0.0 /tmp/gutterpress-smoke/smoke-test-book --export full
+          "./${{ matrix.artifact }}" ext add markdown-it-anchor@9.2.1 /tmp/gutterpress-smoke/smoke-test-book
+          "./${{ matrix.artifact }}" ext add markdown-it-emoji@3.0.0 /tmp/gutterpress-smoke/smoke-test-book --export full
           "./${{ matrix.artifact }}" build /tmp/gutterpress-smoke/smoke-test-book --format html
 
       - name: Upload binary
@@ -519,7 +519,7 @@ jobs:
   # — the incident was caught upstream, not by them. All they ever proved is
   # that a cross-compiled Bun binary prints --version, which cross-compilation
   # essentially never fails at; build-cli's linux-x64 leg already runs the
-  # substantive smoke (new/plugin add/build). Do not re-add per-OS verify
+  # substantive smoke (new/ext add/build). Do not re-add per-OS verify
   # runners without a recorded failure class they would have caught.
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────

@@ -17,8 +17,8 @@
  * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
  * `FolderChangedEvent`, and the sync status vocabulary —
  * `SyncStatus`/`SyncState`). Plain request/response DTOs that the seam does NOT
- * reference — the ~30 shapes server routes return (plugin manager, theme
- * manager, style resolver, media panel, problems panel, project
+ * reference — the ~30 shapes server routes return (extension manager,
+ * style resolver, media panel, problems panel, project
  * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
  * Electron host process (and mirrored into `electron/bridge-types.ts`) live in
  * `./shared-types.ts`. This file re-exports both so existing `$lib/platform/

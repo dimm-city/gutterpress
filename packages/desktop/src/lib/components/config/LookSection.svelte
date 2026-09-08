@@ -1,104 +1,156 @@
 <script lang="ts">
   /**
-   * Look tab of the merged Extensions surface (#243 - ex-AppearanceSection.svelte,
-   * the theme grid half of "Merge the Theme grid and Plugins panel into one
-   * Extensions surface"). Renders the grid of extensions that carry a look
-   * (apply / remove / import from folder + URL) and per-card thumbnail
-   * preview - no section wrapper or `<h3>` of its own; the parent
-   * (ProjectSettingsView) owns the outer `.block`/heading, exactly as the
-   * retired AppearanceSection did under "Look & style".
+   * Look view of the Extensions surface (#243, #265): the extensions that
+   * carry STYLES, as one view over the ONE `extensions:` list the shared
+   * `ExtensionsSectionController` owns — `FeaturesSection` is the other view,
+   * over the same list and the same verbs (an extension that carries both
+   * styles and markdown is the same row in both). No section wrapper or
+   * `<h3>` of its own: the parent (ProjectSettingsView) owns the outer
+   * "Look & style" block, exactly as before.
    *
-   * State, `api.theme.*` calls, and thumbnail loading all live in the SHARED
-   * `ExtensionsSectionController` (passed as the single `controller` prop,
-   * per the design-controller pattern - see M14) - the SAME instance
-   * `FeaturesSection` reads for its own (features) half; this component only
-   * ever touches the controller's Look-prefixed fields/methods. Shared
-   * primitives come from `config-section-shared.css`; the
-   * grid/card/thumbnail layout is scoped here, unchanged from
-   * AppearanceSection.
+   * There is no active look and no Apply/Revert (#265). Several looks can be
+   * on at once; they stack in list order (a later one wins ties) and the
+   * project's own stylesheets always come last. So a configured look is a ROW
+   * in that stack — toggle, move up/down, remove — and the built-in looks are
+   * a grid of things to ADD: "Use" copies one into `extensions/<id>/` as the
+   * author's own editable files, after which the card reads "Added". A folder
+   * the author already has is referenced in place (never copied); a `.zip`,
+   * a `.css`, or a URL is unpacked into `extensions/<id>/` by the host (#106).
    *
-   * "One controller, two tabs, no shared verb" (#243): a look is exclusive -
-   * applying one replaces the active look - so this tab keeps Apply/Remove/
-   * Import/Revert exactly as they were; FeaturesSection keeps its own
-   * enable-toggle verbs. See ExtensionsSectionController's header comment for
-   * the full reasoning.
-   *
-   * NOTE ON PUNCTUATION: comments here use plain ASCII (no em dashes) - see
-   * the matching note in extensions-section-controller.svelte.ts.
+   * Thumbnails render an entry's stylesheets (`readCss` — entries with a
+   * folder only) into a fixed sample through the same sandboxed-iframe
+   * mechanism as before; hovering a row enlarges it to a two-page spread.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import type { ThemeInfo } from "$lib/platform/dtos";
-  import { keyOf, extensionOtherHalfNote } from "./config-helpers";
-  import { visibleBuiltInThemes } from "./theme-grid";
+  import type { ProjectExtensionEntry } from "$lib/platform/dtos";
+  import { extensionSourceLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
-  /** True when this card is the project's active applied look. */
-  function isActiveTheme(t: ThemeInfo): boolean {
-    // The active look always lives in the project (apply copies built-ins into
-    // themes/<id>). Match the project-kind card only, so a built-in card doesn't
-    // also light up when its copy is the active project look.
-    return t.kind === "project" && controller.activeThemeId === t.id;
+  /** The row's sample srcdoc, or null while loading / when there is no CSS to render. */
+  function thumbOf(e: ProjectExtensionEntry): string | null {
+    const t = controller.thumbs[e.use];
+    return t && t !== "__fallback__" ? t : null;
   }
 
-  // UX review M6: the grid used to render BOTH a built-in card and the
-  // project's own copy of the same look, with no dedupe - clicking Apply on
-  // the built-in twin re-ran the destructive copy over the project copy's
-  // (possibly customized) stylesheet. Once a project copy of an id exists, hide
-  // the built-in card for that id; see `visibleBuiltInThemes` for the full
-  // rationale. Removing the project copy makes the built-in card reappear.
-  let visibleBuiltIns = $derived(visibleBuiltInThemes(controller.builtIns, controller.projectThemes));
+  function removeTitle(e: ProjectExtensionEntry): string {
+    return e.kind === "npm"
+      ? "Remove from this project (deletes its downloaded copy)"
+      : "Remove from this project (the folder stays on disk)";
+  }
 </script>
 
 <div class="look-subsection theme-subsection">
   <h4 class="subhead">Look</h4>
-  {#if controller.themeError}
-    <p class="error" role="alert">{controller.themeError}</p>
+  {#if controller.error}
+    <p class="error" role="alert">{controller.error}</p>
   {/if}
-  {#if controller.themeWarnings.length > 0}
+  {#if controller.notice}
+    <p class="notice" role="status">{controller.notice}</p>
+  {/if}
+  {#if controller.importWarnings.length > 0}
     <div class="theme-warnings" role="status">
       <p class="warn-title">Imported with warnings:</p>
       <ul>
-        {#each controller.themeWarnings as w (w)}
+        {#each controller.importWarnings as w (w)}
           <li>{w}</li>
         {/each}
       </ul>
     </div>
   {/if}
-  <p class="hint">Pick a look - applying copies it into your project and wires the manifest. Hover a card to preview a two-page spread.</p>
-  {#if controller.previousTheme}
-    <div class="actions row">
-      <button class="ghost small" onclick={controller.revertTheme} disabled={controller.themeBusyId !== null} title={`Re-apply "${controller.previousTheme.name}"`}>
-        <Icon name="history" size={13} /> Revert to previous look ({controller.previousTheme.name})
-      </button>
-    </div>
+  <p class="hint">Looks stack from top to bottom — a lower one wins where they disagree, and your own stylesheets always come last. Hover a look to preview a two-page spread.</p>
+
+  {#if controller.looks.length === 0}
+    <p class="muted">No look added yet. Use a built-in look below, or bring in your own.</p>
+  {:else}
+    <ul class="look-list">
+      {#each controller.looks as e, i (e.use)}
+        <li
+          class="look-row"
+          class:disabled={!e.enabled}
+          onmouseenter={() => controller.showHoverPreview(e)}
+          onmouseleave={controller.hideHoverPreview}
+          onfocusin={() => controller.showHoverPreview(e)}
+          onfocusout={controller.hideHoverPreview}
+        >
+          <div class="thumb">
+            {#if thumbOf(e)}
+              <iframe title={`Preview of ${e.label}`} srcdoc={thumbOf(e)} sandbox="allow-same-origin" loading="lazy"></iframe>
+            {:else}
+              {@render placeholder(e.label)}
+            {/if}
+          </div>
+          <div class="look-info">
+            <span class="look-name">{e.label}</span>
+            {#if e.author}<span class="look-author">{e.author}</span>{/if}
+            <span class="look-meta">
+              <span class="kind">{extensionSourceLabel(e)}</span>
+              {#if e.carries.markdown}
+                <span class="badge" title="This extension also adds markdown features — see the Features tab.">+ features</span>
+              {/if}
+              {#if !e.enabled}<span class="badge">off</span>{/if}
+            </span>
+            {#if e.warnings?.length}<p class="status-detail">{e.warnings.join(" ")}</p>{/if}
+          </div>
+          <div class="look-actions">
+            <button class="ghost icononly" onclick={() => controller.move(e, -1, "looks")} disabled={i === 0 || controller.busy !== null} title="Move up" aria-label={`Move ${e.label} up`}>
+              <Icon name="chevron-up" size={13} />
+            </button>
+            <button class="ghost icononly" onclick={() => controller.move(e, 1, "looks")} disabled={i === controller.looks.length - 1 || controller.busy !== null} title="Move down (wins over the looks above it)" aria-label={`Move ${e.label} down`}>
+              <Icon name="chevron-down" size={13} />
+            </button>
+            <button class="toggle" class:on={e.enabled} role="switch" aria-checked={e.enabled} aria-label={`${e.enabled ? "Turn off" : "Turn on"} ${e.label}`} disabled={controller.busy !== null} onclick={() => controller.toggle(e)}>
+              <span class="knob"></span>
+            </button>
+            <button class="ghost icononly" onclick={() => controller.remove(e)} disabled={controller.busy !== null} title={removeTitle(e)} aria-label={`Remove ${e.label}`}>
+              <Icon name="trash" size={13} />
+            </button>
+          </div>
+        </li>
+      {/each}
+    </ul>
   {/if}
+
+  <h4 class="subhead">Built-in looks</h4>
+  <p class="hint">Use one and it's copied into your project's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
   <ul class="theme-grid">
-    {#each visibleBuiltIns as t (keyOf(t))}
-      {@render themeCard(t)}
-    {/each}
-    {#each controller.projectThemes as t (keyOf(t))}
-      {@render themeCard(t)}
+    {#each controller.builtIns as b (b.id)}
+      <li class="theme-card">
+        <div class="thumb">{@render placeholder(b.name)}</div>
+        <div class="theme-info">
+          <span class="theme-name">{b.name}</span>
+          {#if b.description}<span class="theme-desc">{b.description}</span>{/if}
+        </div>
+        <div class="theme-actions">
+          {#if controller.isBuiltInAdded(b.id)}
+            <span class="muted dim added"><Icon name="circle-check" size={12} /> Added</span>
+          {:else}
+            <button class="primary small app-btn-primary" onclick={() => controller.useBuiltIn(b.id)} disabled={controller.busy !== null}>{controller.busy === b.id ? "Adding..." : "Use"}</button>
+          {/if}
+        </div>
+      </li>
     {/each}
   </ul>
+
   <div class="actions row">
-    <button class="ghost small" onclick={controller.importThemeFile} disabled={controller.themeBusyId !== null} title="Import an extension package (.zip) or a stylesheet (.css)">
+    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this project">
       <Icon name="cloud-upload" size={13} /> Import a look (.zip/.css)...
     </button>
-    <button class="ghost small" onclick={controller.importThemeFolder} disabled={controller.themeBusyId !== null} title="Import a look from a folder on disk">
-      <Icon name="folder" size={13} /> Import from folder...
+    <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="Add a folder on disk — it is used where it is, not copied">
+      <Icon name="folder" size={13} /> Add from folder...
     </button>
   </div>
   <div class="add-row">
     <input
       class="input"
       type="text"
+      aria-label="Look URL"
       placeholder="URL (.css or an extension folder)"
-      bind:value={controller.themeUrl}
-      onkeydown={(e) => { if (e.key === "Enter") controller.importThemeUrl(); }}
+      bind:value={controller.url}
+      onkeydown={(e) => { if (e.key === "Enter") controller.importUrl(); }}
     />
-    <button class="ghost small" onclick={controller.importThemeUrl} disabled={controller.themeBusyId !== null}>Import</button>
+    <button class="ghost small" onclick={controller.importUrl} disabled={controller.busy !== null}>Import</button>
   </div>
 </div>
 
@@ -106,7 +158,7 @@
   #106 hover preview: an enlarged, FIXED two-page sample spread rendered with the
   hovered look's CSS (reusing the thumbnail readCss -> srcdoc -> sandboxed iframe
   mechanism). It never renders the author's document. pointer-events:none so it
-  can't steal the hover; aria-hidden as it's a decorative enlargement of the card.
+  can't steal the hover; aria-hidden as it's a decorative enlargement of the row.
 -->
 {#if controller.hoverPreview}
   <div class="hover-preview" aria-hidden="true">
@@ -114,100 +166,49 @@
   </div>
 {/if}
 
-{#snippet themeCard(t: ThemeInfo)}
-  <li
-    class="theme-card"
-    class:active={isActiveTheme(t)}
-    onmouseenter={() => controller.showHoverPreview(t)}
-    onmouseleave={controller.hideHoverPreview}
-    onfocusin={() => controller.showHoverPreview(t)}
-    onfocusout={controller.hideHoverPreview}
-  >
-    <div class="thumb">
-      {#if controller.thumbs[keyOf(t)] && controller.thumbs[keyOf(t)] !== "__fallback__"}
-        <iframe title={`Preview of ${t.name}`} srcdoc={controller.thumbs[keyOf(t)]} sandbox="allow-same-origin" loading="lazy"></iframe>
-      {:else}
-        <div class="thumb-placeholder" role="img" aria-label={`Theme preview loading for ${t.name}`}>
-          <span class="theme-fallback-title">Aa</span>
-          <span class="theme-fallback-line"></span>
-          <span class="theme-fallback-line short"></span>
-        </div>
-      {/if}
-    </div>
-    <div class="theme-info">
-      <span class="theme-name">{t.name}</span>
-      {#if t.author}<span class="theme-author">{t.author}</span>{/if}
-      {#if isActiveTheme(t)}<span class="badge">active</span>{/if}
-      <!-- #243: the one cross-tab signal current data supports - a full
-           extension's markdown half is parsed but never wired by the theme
-           verbs (ThemeInfo.markdown's own doc comment), so this is worded as
-           an inert fact, not an instruction. -->
-      {#if extensionOtherHalfNote(t)}
-        <span class="badge other-half" title={extensionOtherHalfNote(t)}>+ features</span>
-      {/if}
-    </div>
-    <div class="theme-actions">
-      {#if controller.removeArmedKey === keyOf(t)}
-        {@render removeConfirm(t)}
-      {:else if isActiveTheme(t)}
-        <span class="muted dim">Current look</span>
-        {#if t.kind === "project"}
-          <button class="ghost small" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove this look">Remove</button>
-        {/if}
-      {:else}
-        <button class="primary small app-btn-primary" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
-        {#if t.kind === "project"}
-          <button class="ghost icononly" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove" aria-label={`Remove ${t.name}`}>
-            <Icon name="trash" size={13} />
-          </button>
-        {/if}
-      {/if}
-    </div>
-  </li>
-{/snippet}
-
-<!--
-  UX review M7: a one-click "Remove" used to run an immediate recursive delete
-  of the look's folder (and any customizations in its stylesheet) with no
-  confirm at any layer. This mirrors the CrashRecoveryDialog two-step inline
-  confirm (M12): the FIRST click arms this block in place of the normal
-  actions (naming the look + warning customizations are gone for good); a
-  SECOND click on "Delete" confirms. "Cancel" (or arming a different card)
-  backs out without deleting anything.
--->
-{#snippet removeConfirm(t: ThemeInfo)}
-  <p class="remove-confirm-msg" role="alert">
-    Delete "{t.name}"? Its customizations can't be recovered.
-  </p>
-  <button
-    class="danger small"
-    onclick={() => controller.requestRemoveTheme(t)}
-    disabled={controller.themeBusyId !== null}
-    aria-label={`Confirm delete ${t.name}`}
-  >
-    Delete
-  </button>
-  <button
-    class="ghost small"
-    onclick={controller.cancelRemoveTheme}
-    disabled={controller.themeBusyId !== null}
-    aria-label={`Cancel deleting ${t.name}`}
-  >
-    Cancel
-  </button>
+<!-- The non-blank fallback every thumbnail slot renders until (or instead of)
+     a sample: a built-in look has no folder to read until it is used, and a
+     configured look's CSS may still be loading. -->
+{#snippet placeholder(label: string)}
+  <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
+    <span class="theme-fallback-title">Aa</span>
+    <span class="theme-fallback-line"></span>
+    <span class="theme-fallback-line short"></span>
+  </div>
 {/snippet}
 
 <style>
   @import "$lib/styles/config-section-shared.css";
 
+  /* Configured looks: one row per entry, top-to-bottom = cascade order. */
+  .look-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .look-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+    border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-surface-sunken);
+  }
+  .look-row.disabled { opacity: 0.6; }
+  .look-row .thumb { flex: 0 0 96px; width: 96px; }
+  .look-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .look-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
+  .look-author { font-size: 10px; color: var(--app-text-muted); }
+  .look-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; flex-wrap: wrap; }
+  .look-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+  /* Built-in looks: a grid of cards to add from. */
   .theme-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
   .theme-card {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
     border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-surface-sunken);
   }
-  .theme-card.active { border-color: var(--app-focus-ring); }
+  .theme-info { display: flex; flex-direction: column; gap: 1px; }
+  .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
+  .theme-desc { font-size: 10.5px; color: var(--app-text-muted); line-height: 1.35; }
+  .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .added { display: inline-flex; align-items: center; gap: 4px; }
+
+  /* Sample thumbnails (shared by rows and cards). */
   .thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: 4px; overflow: hidden; background: var(--app-control-bg); border: 1px solid var(--app-border-subtle); }
-  .thumb iframe { width: 100%; height: 100%; border: 0; transform: scale(0.6); transform-origin: top left; width: 167%; height: 167%; }
+  .thumb iframe { border: 0; transform: scale(0.6); transform-origin: top left; width: 167%; height: 167%; }
   .thumb-placeholder {
     width: 100%; height: 100%; display: grid; place-content: center;
     gap: 5px; padding: 12px; background:
@@ -216,21 +217,6 @@
   .theme-fallback-title { font-size: 22px; font-weight: 700; color: var(--app-text); line-height: 1; }
   .theme-fallback-line { display: block; width: 68px; height: 4px; border-radius: 999px; background: var(--app-border-strong); }
   .theme-fallback-line.short { width: 46px; }
-  .theme-info { display: flex; flex-direction: column; gap: 1px; }
-  .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .theme-author { font-size: 10px; color: var(--app-text-muted); }
-  .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  /* #243: the "also has markdown features" cross-tab note - a plain badge,
-     not a button (nothing here activates the other half; see the doc comment
-     above the snippet). */
-  .badge.other-half { cursor: help; }
-  /* Armed Remove confirm (UX review M7): names the look + warns customizations
-     are gone for good, full-width above the Delete/Cancel pair. */
-  .remove-confirm-msg {
-    flex: 1 1 100%; margin: 0; font-size: 11px; line-height: 1.4; color: var(--app-error-text);
-  }
-  .danger { background: var(--app-error-bg); border-color: var(--app-error-border); color: var(--app-error-text); }
-  .danger:hover:not(:disabled) { background: var(--app-error-border); }
 
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
   .theme-warnings {
@@ -243,7 +229,7 @@
   .theme-warnings ul { margin: 0; padding-left: 16px; }
   .theme-warnings li { font-size: 11px; line-height: 1.4; }
 
-  /* #106: enlarged fixed 2-page sample spread shown while hovering a card. It is
+  /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
      a decorative overlay (pointer-events:none) pinned to the desktop's right edge. */
   .hover-preview {
     position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
@@ -258,13 +244,13 @@
   /* The viewport-pinned flyout needs true free space RIGHT of the settings
      view's centered 860px column: its left edge (100vw - 376px) crosses the
      column's right edge ((100vw + 860px) / 2) below ~1620px, where it would
-     cover the very cards being hovered (calibrated for the old left-
-     sidebar geometry). Below that, the card's own thumbnail is the preview. */
+     cover the very rows being hovered. Below that, the row's own thumbnail is
+     the preview. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }
 
-  /* 480px: two-column grid on very narrow panels - component-local,
+  /* 480px: two-column grid on very narrow panels — component-local,
      unrelated to the 820px app tier. */
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }

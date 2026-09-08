@@ -79,7 +79,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     let pluginStylePaths = opts.pluginStylePaths;
     if (pluginStylePaths === undefined) {
       ({ pluginStylePaths } = await loadPluginsWithCss(
-        resolved.plugins,
+        resolved.extensions,
         manifestDir,
         (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
       ));

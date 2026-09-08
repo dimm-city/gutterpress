@@ -15,7 +15,7 @@
  * `styles` export (#238) and a theme's `styles` (#239) already both go
  * through. No parallel resolver is introduced here.
  *
- * `theme-manager.ts` re-exports the theme-specific names this module
+ * `extension-manager.ts` builds on the names this module
  * generalizes (`ThemeMetadata` = {@link ExtensionMetadata},
  * `themeStyleList`/`assertThemeSheetsContained` are thin
  * wrappers or straight aliases) — see that file's imports for the rename this
@@ -70,7 +70,7 @@ export interface ExtensionMetadata {
   /**
    * Ordered stylesheets, relative to the extension folder. Absent/empty means
    * "no styles declared" here — {@link extensionStyleList} does NOT default
-   * to `["theme.css"]`; that default is theme-manager.ts's OWN, layered on
+   * to `["theme.css"]`; that default is {@link extensionStyleListWithDefault}'s, layered on
    * top for its theme-shaped callers (a plain markdown-only extension folder
    * has no reason to require a `theme.css` it never declared).
    */
@@ -148,13 +148,41 @@ function declaredList(value: unknown): string[] {
 
 /**
  * An extension's declared stylesheets, relative to its folder, in cascade
- * order. UNLIKE `theme-manager.ts`'s `themeStyleList` (which layers a
+ * order. UNLIKE {@link extensionStyleListWithDefault} (which layers a
  * `["theme.css"]` default on top of this for its theme-shaped callers), an
  * absent/empty `styles` here means exactly "none declared" — a markdown-only
  * extension folder must not be forced to carry a `theme.css` it never wanted.
  */
 export function extensionStyleList(meta: ExtensionMetadata): string[] {
   return declaredList(meta.styles);
+}
+
+/**
+ * `styles`, with the theme-era default (#265): a folder that declares none
+ * but holds a `theme.css` IS a one-sheet look — every theme published before
+ * `styles` existed. A folder with neither still declares nothing.
+ */
+export function extensionStyleListWithDefault(meta: ExtensionMetadata, dir: string): string[] {
+  const declared = extensionStyleList(meta);
+  if (declared.length > 0) return declared;
+  return existsSync(path.join(dir, "theme.css")) ? ["theme.css"] : [];
+}
+
+/** What an extension declares, by field — the desktop's one-list filter. */
+export interface ExtensionCarries {
+  markdown: boolean;
+  styles: boolean;
+  snippets: boolean;
+  components: boolean;
+}
+
+export function extensionCarries(meta: ExtensionMetadata, dir: string): ExtensionCarries {
+  return {
+    markdown: !!meta.markdown?.trim(),
+    styles: extensionStyleListWithDefault(meta, dir).length > 0,
+    snippets: !!meta.snippets?.trim(),
+    components: !!meta.components?.trim(),
+  };
 }
 
 /**
@@ -183,7 +211,7 @@ export function pathEscapesFolder(rel: string): boolean {
  * absolute entry would make apply/load read a file from anywhere on disk.
  *
  * Generalizes the pre-#241 theme-only `assertThemeSheetsContained` (still
- * exported under that name from `theme-manager.ts`, now a re-export of this
+ * once exported under that name from the theme manager, now this
  * function) to the three new fields: a `gutterpress.json`-formatted theme
  * folder can declare `markdown`/`components`/`snippets` too, so the SAME
  * write-boundary guard must cover them, not just `styles`.
@@ -262,7 +290,7 @@ export function resolveExtension(
   meta: ExtensionMetadata,
   subject: string,
 ): ResolvedExtension {
-  const styles = resolveDeclaredStyles(extensionStyleList(meta), dir, subject);
+  const styles = resolveDeclaredStyles(extensionStyleListWithDefault(meta, dir), dir, subject);
   const [markdown] =
     resolveDeclaredStyles(meta.markdown ? [meta.markdown] : undefined, dir, subject) ?? [];
   const [components] =

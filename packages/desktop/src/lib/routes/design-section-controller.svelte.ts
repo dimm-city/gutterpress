@@ -34,7 +34,7 @@
  * and `parseStyleTokens` already parses, entirely client-side.
  */
 
-import type { ProjectStyle, StyleToken, ThemeInfo } from "$lib/platform/dtos";
+import type { ProjectExtensionEntry, ProjectStyle, StyleToken } from "$lib/platform/dtos";
 import {
   parseStyleTokens,
   applyTokenUpdates,
@@ -47,10 +47,11 @@ export interface DesignSectionDeps {
   /** Resolve the project's editable stylesheets (the active set + fallbacks). */
   listStyles: (projectDir: string) => Promise<ProjectStyle[]>;
   /**
-   * The project's active theme, or null when none is applied (#239). When the
-   * theme names a `tokensFile`, that sheet is the one the panel edits.
+   * The project's configured extensions in cascade order (#265). The first
+   * enabled look the author owns (a `kind: "path"` entry carrying styles)
+   * names the sheet the panel edits — see {@link tokenSheetOf}.
    */
-  activeTheme?: (projectDir: string) => Promise<ThemeInfo | null>;
+  listExtensions?: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
   /** Read a file as UTF-8 text. Path is absolute. */
   readFile: (path: string) => Promise<string>;
   /** Write UTF-8 content to a file. Path is absolute. */
@@ -67,20 +68,28 @@ export interface DesignSectionDeps {
 }
 
 /**
- * #239 — the sheet an active theme declares as its token surface (`theme.json`
- * `tokensFile`), picked out of the project's editable stylesheets; `null` when
- * no theme is applied, none is declared, or the named sheet is not in the
- * list, in which case the caller falls back to the first active sheet.
+ * #239/#265 — the sheet the author's primary look declares as its token
+ * surface. The primary look is the first ENABLED `kind: "path"` extension
+ * that carries styles (a look the author owns on disk — a built-in copied
+ * into `extensions/<id>/`, an import, or a folder referenced in place; a
+ * bundled or npm entry is never the author's to edit). Its token sheet is the
+ * declared `tokensFile`, else its first declared stylesheet, relative to its
+ * folder; the display name is that folder as written in the manifest minus
+ * the leading `./` (`./extensions/clean-book` → `extensions/clean-book/theme.css`).
  *
- * Matched on `displayName`, which the host already computed as the
- * project-relative, forward-slash path (`style-resolver.ts`'s `relDisplay`) —
- * so this is an exact comparison against one canonical spelling rather than a
- * second path-normalization living in the renderer.
+ * The sheet is NOT looked up in the editable style list: an extension's
+ * sheets load through the `extensions:` rail, so the host deliberately keeps
+ * them out of `listStyles` (they are not `styles:` candidates). The path is
+ * the host-resolved absolute folder (`dir`) plus the declared relative sheet.
+ * `null` when there is no such look, its folder is missing, or it declares no
+ * sheet, in which case the caller falls back to the first active sheet.
  */
-function tokenSheetOf(theme: ThemeInfo | null, list: ProjectStyle[]): ProjectStyle | null {
-  if (!theme?.tokensFile) return null;
-  const want = `themes/${theme.id}/${theme.tokensFile}`;
-  return list.find((x) => x.displayName === want) ?? null;
+function tokenSheetOf(extensions: ProjectExtensionEntry[]): ProjectStyle | null {
+  const look = extensions.find((e) => e.enabled && e.kind === "path" && e.carries.styles);
+  const sheet = look?.tokensFile ?? look?.styles?.[0];
+  if (!look?.dir || !sheet) return null;
+  const folder = look.use.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  return { path: `${look.dir}/${sheet}`, displayName: `${folder}/${sheet}`, active: true };
 }
 
 export class DesignSectionController {
@@ -186,13 +195,13 @@ export class DesignSectionController {
     this.designError = null;
     this.tokens = [];
     try {
-      // Two independent host calls — the theme only needs `projectDir`, so it
-      // is fetched alongside the style list rather than after it.
-      const [list, theme] = await Promise.all([
+      // Two independent host calls — the extension list only needs
+      // `projectDir`, so it is fetched alongside the style list, not after it.
+      const [list, extensions] = await Promise.all([
         this.deps.listStyles(projectDir),
-        this.deps.activeTheme?.(projectDir).catch(() => null) ?? Promise.resolve(null),
+        this.deps.listExtensions?.(projectDir).catch(() => []) ?? Promise.resolve([]),
       ]);
-      const active = tokenSheetOf(theme, list) ?? list.find((x) => x.active) ?? list[0];
+      const active = tokenSheetOf(extensions) ?? list.find((x) => x.active) ?? list[0];
       if (!active) {
         this.cssPath = null;
         this.cssName = "";

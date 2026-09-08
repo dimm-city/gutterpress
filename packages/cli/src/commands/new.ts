@@ -222,22 +222,17 @@ async function runExtensionScaffold(
       console.log("Next: check it still works —");
       console.log(`  cd ${result.slug} && bun install && bun test`);
       console.log("");
-      console.log("      then load it from a book's manifest.yaml:");
-      console.log("        plugins:");
-      console.log(`          - path: plugins/${result.slug}`);
+      console.log("      then add it to a book:");
+      console.log(`        gutterpress ext add ./${result.slug} <book>`);
       console.log("");
-      console.log(
-        "      (point `path` at the FOLDER, not plugin.js — that is what makes",
-      );
-      console.log(
-        "       Gutterpress read gutterpress.json and pick up the stylesheet too.)",
-      );
+      console.log("      (that lists the FOLDER under `extensions:` in the book's manifest —");
+      console.log("       not plugin.js — which is what makes Gutterpress read gutterpress.json");
+      console.log("       and pick up the stylesheet too.)");
     } else {
-      // `theme import`/`apply` take the project directory as their SECOND
-      // POSITIONAL, not a --dir flag (see commands/theme.ts's `dirArg`).
-      console.log("Next: install it into a book —");
-      console.log(`  gutterpress theme import ${result.extensionDir} <book>`);
-      console.log(`  gutterpress theme apply ${result.slug} <book>`);
+      // `ext add` takes the project directory as its SECOND POSITIONAL, not
+      // a --dir flag (see commands/ext.ts's `dirArg`).
+      console.log("Next: add it to a book —");
+      console.log(`  gutterpress ext add ${result.extensionDir} <book>`);
       console.log("");
       console.log(
         "      Each stylesheet opens with the OWNS / MUST NOT CONTAIN header that",

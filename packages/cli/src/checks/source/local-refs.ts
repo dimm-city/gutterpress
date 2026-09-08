@@ -27,7 +27,7 @@ const check: Check = {
     // repeating module-level plugin side effects when another source check or
     // the build already loaded the same unchanged plugin; application happens
     // once to this check's parser and that parser is reused for every chapter.
-    const plugins = await loadPlugins(ctx.config.plugins, ctx.inputDir, (ref, error) => {
+    const plugins = await loadPlugins(ctx.config.extensions, ctx.inputDir, (ref, error) => {
       results.push(
         inspectionFailed(
           check.id,

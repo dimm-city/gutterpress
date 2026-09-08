@@ -89,12 +89,12 @@ test("manifest/set-fields route writes details and returns the updated fields", 
 
 test("style/set-active route rewrites manifest styles", async () => {
   const res = await setActiveStyles({
-    request: request({ projectDir, paths: ["styles/book.css", "themes/zine/theme.css"] }),
+    request: request({ projectDir, paths: ["styles/book.css", "extensions/zine/theme.css"] }),
   } as Parameters<typeof setActiveStyles>[0]);
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual(["styles/book.css", "themes/zine/theme.css"]);
+  expect(await res.json()).toEqual(["styles/book.css", "extensions/zine/theme.css"]);
   const yaml = await readFile(path.join(projectDir, "manifest.yaml"), "utf8");
   expect(yaml).toContain("styles:");
   expect(yaml).toContain("styles/book.css");
-  expect(yaml).toContain("themes/zine/theme.css");
+  expect(yaml).toContain("extensions/zine/theme.css");
 });

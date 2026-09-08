@@ -10,67 +10,115 @@ import {
 import { UsageError } from "./cli-args";
 import { DTRPG_PRESET, BOOK_PRESET, resetWarnOnce } from "./presets";
 
-// ARCH finding #57: isFilePath's own doc comment promises "File paths start
-// with ./, ../, /, or contain path separators with extensions" but the
-// implementation only checked the prefixes — so a bare relative path like
-// `plugins/my-plugin.js` (a very natural thing for a non-technical author to
-// write, omitting the `./`) was silently treated as an npm package name,
-// producing an npm-package install dead-end that can never
-// resolve. These tests pin isFilePath's behavior (exercised indirectly via
-// resolveConfig's plugin-string normalization, since isFilePath itself is
-// private) against its own documented contract.
+// #265 — `extensions:` takes bare specifiers whose FORM says what they are
+// (extension-specifier.ts): `./`, `../`, `/` and a drive letter are paths;
+// the five bundled names are bundled; anything else is npm, `name@version`
+// pinned. There is no `path:`/`name:` wrapper and no `priority` — list order
+// is load order. These tests pin that contract through resolveConfig.
 
-function pluginsOf(strings: string[]) {
-  return resolveConfig({}, { plugins: strings }).plugins;
+function extensionsOf(entries: (string | { use: string })[]) {
+  return resolveConfig({}, { extensions: entries }).extensions;
 }
 
-test("explicit ./ and ../ prefixes are file paths", () => {
-  const [a, b] = pluginsOf(["./plugins/my-plugin.js", "../shared/plugin.mjs"]);
-  expect(a!.path).toBe("./plugins/my-plugin.js");
+test("./ and ../ prefixes are paths; a bare name is npm; a bundled name is bundled", () => {
+  const [a, b, c, d] = extensionsOf([
+    "./plugins/my-plugin.js",
+    "../shared/plugin.mjs",
+    "markdown-it-emoji",
+    "markdown-it-mark",
+  ]);
+  expect(a).toMatchObject({ use: "./plugins/my-plugin.js", path: "./plugins/my-plugin.js" });
   expect(a!.name).toBeUndefined();
   expect(b!.path).toBe("../shared/plugin.mjs");
+  expect(c).toMatchObject({ use: "markdown-it-emoji", name: "markdown-it-emoji" });
+  expect(c!.path).toBeUndefined();
+  expect(d).toMatchObject({ name: "markdown-it-mark" });
+  expect(d!.version).toBeUndefined();
 });
 
-test("absolute POSIX and Windows paths are file paths", () => {
-  const [posix, win] = pluginsOf([
-    "/abs/plugins/my-plugin.js",
-    "C:\\plugins\\my-plugin.js",
-  ]);
+test("absolute POSIX and Windows paths are paths", () => {
+  const [posix, win] = extensionsOf(["/abs/plugins/my-plugin.js", "C:\\plugins\\my-plugin.js"]);
   expect(posix!.path).toBe("/abs/plugins/my-plugin.js");
   expect(win!.path).toBe("C:\\plugins\\my-plugin.js");
 });
 
-test("a bare relative path with a separator and a JS extension is a file path, even without ./ (finding #57)", () => {
-  const [a, b] = pluginsOf(["plugins/my-plugin.js", "sub/dir/plugin.mjs"]);
-  expect(a!.path).toBe("plugins/my-plugin.js");
-  expect(a!.name).toBeUndefined();
-  expect(b!.path).toBe("sub/dir/plugin.mjs");
+test("a bare relative path without ./ is refused, with the spelling to use", () => {
+  expect(() => extensionsOf(["plugins/my-plugin.js"])).toThrow(
+    /write it as "\.\/plugins\/my-plugin\.js"/,
+  );
 });
 
-test("a bare npm package name (no separator) is still treated as a package name", () => {
-  const [a] = pluginsOf(["markdown-it-emoji"]);
-  expect(a!.name).toBe("markdown-it-emoji");
-  expect(a!.path).toBeUndefined();
-});
-
-test("a scoped npm package name (has a separator but no JS-extension suffix) is still a package name", () => {
-  const [a] = pluginsOf(["@my-org/gutterpress-plugin"]);
+test("a scoped npm name (has a separator, no ./) is still a package name", () => {
+  const [a] = extensionsOf(["@my-org/gutterpress-plugin"]);
   expect(a!.name).toBe("@my-org/gutterpress-plugin");
   expect(a!.path).toBeUndefined();
 });
 
-test("an exact npm plugin version and named export survive manifest normalization", () => {
-  const [plugin] = resolveConfig({}, {
-    plugins: [{ name: "markdown-it-emoji", version: "3.0.0", export: "full" }],
-  }).plugins;
-  expect(plugin!.name).toBe("markdown-it-emoji");
-  expect(plugin!.version).toBe("3.0.0");
-  expect(plugin!.export).toBe("full");
+test("name@version pins an npm extension; export and options ride on the object form", () => {
+  const [pinned, obj] = resolveConfig({}, {
+    extensions: [
+      "markdown-it-emoji@3.0.0",
+      { use: "markdown-it-attrs", export: "full", options: { leftDelimiter: "[" } },
+    ],
+  }).extensions;
+  expect(pinned).toMatchObject({ use: "markdown-it-emoji@3.0.0", name: "markdown-it-emoji", version: "3.0.0" });
+  expect(obj).toMatchObject({
+    use: "markdown-it-attrs",
+    name: "markdown-it-attrs",
+    export: "full",
+    options: { leftDelimiter: "[" },
+  });
 });
 
-test(".cjs extension with a separator is also recognized as a file path", () => {
-  const [a] = pluginsOf(["plugins/legacy-plugin.cjs"]);
-  expect(a!.path).toBe("plugins/legacy-plugin.cjs");
+test("a bundled name cannot be pinned — it always resolves to the bundled copy", () => {
+  expect(() => extensionsOf(["markdown-it-mark@1.0.0"])).toThrow(/bundled with Gutterpress/);
+});
+
+test("list order is kept — nothing re-sorts extensions", () => {
+  expect(extensionsOf(["b-ext", "a-ext", "./c.js"]).map((e) => e.use)).toEqual([
+    "b-ext",
+    "a-ext",
+    "./c.js",
+  ]);
+});
+
+test("enabled: false skips an entry without disturbing the others' order", () => {
+  const entries = ["a-ext", { use: "b-ext", enabled: false } as { use: string }, "c-ext"];
+  expect(extensionsOf(entries).map((e) => e.use)).toEqual(["a-ext", "c-ext"]);
+});
+
+describe("removed manifest shapes fail with the rewrite spelled out (#265)", () => {
+  test("`plugins:` is rejected with the author's own entries rewritten, in their old load order", () => {
+    const stale = {
+      plugins: [
+        "markdown-it-footnote",
+        { path: "plugins/dc.js", priority: 100 },
+        { name: "markdown-it-attrs", options: { x: 1 }, priority: 200 },
+      ],
+    } as unknown as Parameters<typeof resolveConfig>[1];
+    let message = "";
+    try {
+      resolveConfig({}, stale);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("`plugins` was replaced by `extensions`");
+    expect(message).toContain(
+      "extensions:\n  - use: markdown-it-attrs\n    options: {\"x\":1}\n  - markdown-it-footnote\n  - ./plugins/dc.js",
+    );
+  });
+
+  test("`priority` on an entry is rejected, naming list order", () => {
+    const entry = { use: "some-ext", priority: 1 } as unknown as { use: string };
+    expect(() => resolveConfig({}, { extensions: [entry] })).toThrow(
+      /`priority` was removed — the `extensions:` list order is the load order/,
+    );
+  });
+
+  test("`path:`/`name:` inside an entry is rejected, naming `use:`", () => {
+    const entry = { path: "./x.js" } as unknown as { use: string };
+    expect(() => resolveConfig({}, { extensions: [entry] })).toThrow(/write `use: \.\/x\.js`/);
+  });
 });
 
 // ── ARCH finding #24 — characterization tests for resolveConfig's three-way
@@ -125,7 +173,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.validate.source.stylelint).toBe(DTRPG_PRESET.validate.source.stylelint);
     expect(config.title).toBe("Document");
     expect(config.authors).toEqual([]);
-    expect(config.plugins).toEqual([]);
+    expect(config.extensions).toEqual([]);
   });
 
   test("preset: book selects BOOK_PRESET's geometry/ink/validate wholesale", () => {

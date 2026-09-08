@@ -361,10 +361,10 @@ export async function resolveBuildContext(
 export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPluginsWithCss> {
   if (ctx.plugins) return ctx.plugins;
   const { config, renderDir } = ctx;
-  if (config.plugins.length > 0) {
-    log.info(`Loading ${config.plugins.length} plugin(s)...`);
+  if (config.extensions.length > 0) {
+    log.info(`Loading ${config.extensions.length} plugin(s)...`);
   }
-  const loaded = await loadPluginsWithCss(config.plugins, renderDir);
+  const loaded = await loadPluginsWithCss(config.extensions, renderDir);
   if (loaded.plugins && loaded.plugins.length > 0) {
     log.success(`Loaded ${loaded.plugins.length} plugin(s)`);
   }

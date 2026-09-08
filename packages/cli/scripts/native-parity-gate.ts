@@ -193,11 +193,10 @@ function instrumentHeadingIds(html: string): { html: string; ids: string[] } {
 // ---------------------------------------------------------------------------
 // stage a project dir into a self-contained book.html — the exact call
 // build-runner.ts's renderBook() makes (resolveConfig -> loadPluginsWithCss
-// -> renderChaptersToFile -> stageBookAssets), forced to
-// `engine: "native"` regardless of the project's own manifest so every
-// fixture is staged as a real native-engine book would be. Also instruments
-// every heading (`instrumentHeadingIds`) so check (d) has stable ids to
-// compare, in every fixture regardless of tier.
+// -> renderChaptersToFile -> stageBookAssets), so every fixture is staged as
+// a real book would be. Also instruments every heading
+// (`instrumentHeadingIds`) so check (d) has stable ids to compare, in every
+// fixture regardless of tier.
 //
 // The asset step is the SHARED `stageBookAssets`, not a private copy: a
 // hand-rolled `copyFile` loop here died with a raw ENOENT on the first stale
@@ -213,9 +212,9 @@ async function stage(
   outDir: string,
 ): Promise<{ htmlPath: string; headingIds: string[] }> {
   const { manifest, manifestPath } = await loadManifestWithPath(projectDir);
-  const config = resolveConfig({ engine: "native" }, manifest);
+  const config = resolveConfig({}, manifest);
   const renderDir = manifestPath ? dirname(manifestPath) : projectDir;
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, renderDir);
+  const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, renderDir);
   mkdirSync(outDir, { recursive: true });
 
   const imageRefs: string[] = [];

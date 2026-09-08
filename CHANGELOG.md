@@ -5,6 +5,40 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.9] - unreleased
+
+### Changed
+
+- **One extension rail: `extensions:` replaces `plugins:` and the theme
+  commands.** A markdown-it plugin, a look (stylesheets), and a component
+  library carrying both plus snippets and a catalog are all one thing — an
+  extension — listed as bare specifiers under the manifest's `extensions:`
+  key and added one way, `gutterpress ext add`. The form of a specifier says
+  what it is: the five bundled features (`markdown-it-mark`, `markdown-it-sub`,
+  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) resolve to
+  the copies compiled into Gutterpress; `./x` and `../x` are folders or plugin
+  files referenced in place, never copied; anything else is an npm package,
+  and `name@version` pins it — one that ships a `gutterpress.json` is read
+  exactly like a folder, stylesheets and snippets included. The list order
+  is the load order: a later
+  entry's markdown runs after earlier ones and its CSS wins ties, and the
+  project's own `styles:` always load last — reordering the list is how you
+  adjust the cascade, so `priority` is gone. The object form (`use:` with
+  `options`, `export`, `enabled`) exists only for an entry that needs more
+  than its specifier. A manifest still carrying `plugins:` or `priority`
+  fails with its own entries rewritten the new way. (#265)
+- **Looks are extensions, not a separate rail.** `gutterpress theme apply`,
+  `import`, `revert`, `remove` and `gutterpress plugin add` are gone;
+  `gutterpress ext list`, `add`, `remove`, `enable`, `disable` is the one verb
+  set, and the desktop's Look and Features views are two views over that one
+  list. There is no "active theme": any number of looks can be on at once, in
+  list order. The three built-in looks are copied into `extensions/<id>/` on
+  use (`gutterpress ext add clean-book --look`, or the Look view) so a book's
+  look is its own editable files, never a hidden dependency on the installed
+  Gutterpress version; `gutterpress new` does the same for its starter look.
+  A `.zip`, `.css` or URL import lands in `extensions/<id>/` too. The
+  `themes/` folder convention retires with the rail. (#265)
+
 ### Removed
 
 - **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one

@@ -274,7 +274,7 @@ testIf(
           const raw = await fsp.readFile(fixture, "utf8");
           await printPage.setContent(
             raw.replace('<script src="gutterpress-viewer.js"></script>', ""),
-            { waitUntil: "networkidle0" },
+            { waitUntil: "load" },
           );
           const pdf = await printPage.pdf({ preferCSSPageSize: true });
           // Page count is enough to catch the shim: it removes exactly the

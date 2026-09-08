@@ -29,12 +29,12 @@
 </script>
 
 <div class="look-subsection styles-subsection">
-  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a theme manages its own stylesheets automatically.</p>
+  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a look manages its own stylesheets automatically.</p>
   {#if controller.stylesError}
     <p class="error" role="alert">{controller.stylesError}</p>
   {/if}
   {#if controller.styles.length === 0}
-    <p class="muted">No stylesheets found. Apply a theme to create one.</p>
+    <p class="muted">No stylesheets found. Use a look above to add one.</p>
   {:else}
     <ul class="style-list">
       {#each controller.styles as s (s.path)}

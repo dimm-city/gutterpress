@@ -1,45 +1,20 @@
 /**
- * Pure, presentation-only helpers extracted from ProjectConfigPanel.svelte.
+ * Pure, presentation-only helpers for the Extensions surface (the Look and
+ * Features views) and its controller.
  *
- * These are browser-safe strings/derivations with no host coupling — only
- * `import type` from `$lib/api`, so this module stays PWA-clean (§8). They were
- * lifted verbatim from the panel so the composition root and its section
- * children can share one implementation.
+ * Browser-safe strings/derivations with no host coupling — only `import type`
+ * from `$lib/platform/dtos`, so this module stays PWA-clean (§8). Kept out of
+ * the controller so bun can unit-test them without the `$state` shim, and out
+ * of the components so both views share one implementation.
  */
 
 import type {
-  ThemeInfo,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-} from "$lib/api";
-
-/** Stable key for a theme card (kind + id), used for `{#each}` keying + thumbs. */
-export const keyOf = (t: ThemeInfo): string => `${t.kind}:${t.id}`;
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+} from "$lib/platform/dtos";
 
 /**
- * #243: the one cross-tab signal the merged Extensions surface can honestly
- * show today - a Look card whose folder's `gutterpress.json` ALSO declares a
- * `markdown` entry (#241). Returns a tooltip string when true, `null`
- * otherwise, so a template can gate a badge on it directly
- * (`{#if extensionOtherHalfNote(t)}`).
- *
- * Worded as an inert fact, not an instruction: applying a look never loads or
- * wires its markdown half (`ThemeInfo.markdown`'s own doc comment - the theme
- * verbs parse-and-expose it for visibility only), so this must not imply the
- * feature is already active or tell the author to do something the Look tab
- * has no button for. See `ExtensionsSectionController`'s header comment for
- * why there is no equivalent note the other direction (a Features row cannot
- * currently tell you it also carries a look).
- */
-export function extensionOtherHalfNote(t: ThemeInfo): string | null {
-  return t.markdown
-    ? "This extension also includes markdown features, not enabled by applying its look."
-    : null;
-}
-
-/**
- * Build the srcdoc for a theme thumbnail iframe (ported verbatim from the
+ * Build the srcdoc for a look thumbnail iframe (ported verbatim from the
  * retired ThemeManager).
  */
 export function sampleSrcdoc(css: string): string {
@@ -63,11 +38,11 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
  * #106 hover preview: a FIXED, built-in two-page sample spread. This is NEVER
  * the author's document — it's a constant sample so the hover preview
  * structurally cannot re-paginate or leak the real manuscript. Full-document
- * re-pagination only happens on Apply (the existing preview pipeline).
+ * re-pagination only happens through the preview pipeline.
  *
- * Rendered exactly like the per-card thumbnail (`readCss` → inline `<style>` →
+ * Rendered exactly like the per-row thumbnail (`readCss` → inline `<style>` →
  * sandboxed `<iframe srcdoc>`), just larger and with two facing "pages" of
- * representative content so the author can judge the theme before applying.
+ * representative content so the author can judge a look at a glance.
  */
 const SAMPLE_SPREAD_BODY = `
 <article class="pm-sample-page">
@@ -107,70 +82,103 @@ ${SAMPLE_SPREAD_BODY}
 </body></html>`;
 }
 
-export interface PluginStatus {
+/**
+ * Where an entry comes from, as a short row caption: "built in" for a bundled
+ * feature, "npm 1.2.3" (or "npm" while unpinned) for a package, and the path
+ * as written — minus a leading `./` — for a folder or file the author owns
+ * (`extensions/clean-book`, `../shared/house-style`).
+ */
+export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
+  if (entry.kind === "bundled") return "built in";
+  if (entry.kind === "npm") return entry.version ? `npm ${entry.version}` : "npm";
+  return entry.name.replace(/^\.\//, "");
+}
+
+/**
+ * The full `use` order after moving `entry` one slot up (`delta` -1) or down
+ * (+1) WITHIN `view` — a filtered projection of `entries`, such as the looks.
+ * The Look and Features views each show a subset of the one list, so "move
+ * up" means "past my neighbour in this view", expressed as the complete
+ * order (every entry of `entries` exactly once) the lib's `reorderExtensions`
+ * insists on. Entries outside the view keep their relative places. Returns
+ * null when the move is impossible: `entry` is not in the view, or is already
+ * at the edge it would move past.
+ */
+export function orderAfterMove(
+  entries: ProjectExtensionEntry[],
+  view: ProjectExtensionEntry[],
+  entry: ProjectExtensionEntry,
+  delta: -1 | 1,
+): string[] | null {
+  const at = view.findIndex((e) => e.use === entry.use);
+  const neighbour = at < 0 ? undefined : view[at + delta];
+  if (!neighbour) return null;
+  const order = entries.map((e) => e.use).filter((u) => u !== entry.use);
+  const slot = order.indexOf(neighbour.use);
+  if (slot < 0) return null;
+  order.splice(delta < 0 ? slot : slot + 1, 0, entry.use);
+  return order;
+}
+
+export interface ExtensionStatus {
   label: string;
   kind: "ok" | "error" | "disabled" | "checking" | "stale";
   detail?: string;
   raw?: string;
 }
 
-/**
- * Friendly display name for a configured plugin entry (M33): the recommended
- * list already carries a plain-language label ("Highlight") for every
- * built-in feature, fetched in the same `loadPlugins()` round-trip that
- * populates the configured list — but the configured-list row previously
- * rendered `entry.ref` (the raw npm id, e.g. "markdown-it-mark") verbatim,
- * losing that label the moment "Turn on" adds the entry. Look the ref up in
- * `recommended` and fall back to the raw ref for anything not on that curated
- * list (manually added npm packages, local files).
- */
-export function pluginLabel(
-  entry: ProjectPluginEntry,
-  recommended: RecommendedPlugin[],
-): string {
-  const rec = recommended.find((r) => r.name === entry.ref);
-  return rec?.label ?? entry.ref;
-}
+/** The lib's "Not installed — …" / "Not pinned — …" notices on an npm entry
+ *  whose vendored copy is absent: the one warning class with an in-app fix. */
+const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
 
 /**
- * Status text/icon for one plugin (ported from the retired PluginManager).
- * Pure over its inputs — reads the current validation map + in-flight flag.
+ * Status text/icon for one configured feature row. Pure over its inputs —
+ * the entry's own warnings, the current validation map (keyed by `use`), and
+ * the in-flight flag.
  *
- * Tri-state fix (M34): `pluginValidating` is true only while a validate
- * round-trip is in flight. If it's `false` and there's still no result for
- * this ref, `api.plugin.validate` threw (or never ran) — that must NOT read
- * the same as "in progress", since it will never resolve on its own. It gets
- * its own "stale" kind with a distinct label pointing at the fix (Re-check).
+ * Precedence: a disabled entry reads Disabled whatever else is true; an npm
+ * entry the lib reported as not installed / not pinned reads "Needs install"
+ * with the in-app fix (ahead of any load-test result, which for such an entry
+ * is only ever a less specific failure); then the load-test result.
+ *
+ * Tri-state (M34): `validating` is true only while a validate round-trip is
+ * in flight. If it is `false` and there is still no result for this `use`,
+ * the validate call threw (or never ran) — that must NOT read the same as "in
+ * progress", since it will never resolve on its own. It gets its own "stale"
+ * kind with a distinct label pointing at the fix (Re-check).
  */
-export function pluginStatus(
-  entry: ProjectPluginEntry,
-  validation: Record<string, PluginValidationResult>,
-  pluginValidating: boolean,
-): PluginStatus {
+export function extensionStatus(
+  entry: ProjectExtensionEntry,
+  validation: Record<string, ExtensionValidationResult>,
+  validating: boolean,
+): ExtensionStatus {
   if (!entry.enabled) return { label: "Disabled", kind: "disabled" };
-  const v = validation[entry.ref];
+  const needsInstall = entry.warnings?.find((w) => NEEDS_INSTALL_RE.test(w));
+  if (needsInstall) {
+    return {
+      label: "Needs install",
+      kind: "error",
+      detail: `This project's downloaded copy is missing. Enter ${entry.use} under Install from npm below, then click Re-check.`,
+      raw: needsInstall,
+    };
+  }
+  const v = validation[entry.use];
   if (!v) {
-    if (pluginValidating) return { label: "Checking…", kind: "checking" };
+    if (validating) return { label: "Checking…", kind: "checking" };
     return {
       label: "Check failed — click Re-check",
       kind: "stale",
-      detail: "The last plugin check didn't finish, so this plugin's status is unknown. Click Re-check to try again.",
+      detail: "The last check didn't finish, so this extension's status is unknown. Click Re-check to try again.",
     };
   }
   if (v.ok) return { label: "Loads OK", kind: "ok" };
-  const raw = v.error ?? "Unknown plugin load error";
-  const needsInstall =
-    entry.kind === "npm" &&
-    (/\bnot found\b/i.test(raw) || /vendored plugin .*\bis missing\b/i.test(raw));
-  const installSpec = `${entry.ref}${entry.version ? `@${entry.version}` : ""}`;
   return {
-    label: needsInstall ? "Needs install" : "Error",
+    label: "Error",
     kind: "error",
-    detail: needsInstall
-      ? `This project's vendored copy is missing. Enter ${installSpec} under Install npm plugin below, then click Re-check.`
-      : entry.kind === "npm"
-        ? "This installed npm plugin couldn't load. See details below, then reinstall it or click Re-check."
-        : "This plugin couldn't load. See details below, then click Re-check.",
-    raw,
+    detail:
+      entry.kind === "npm"
+        ? "This installed npm package couldn't load. See details below, then reinstall it or click Re-check."
+        : "This extension couldn't load. See details below, then click Re-check.",
+    raw: v.error ?? "Unknown load error",
   };
 }

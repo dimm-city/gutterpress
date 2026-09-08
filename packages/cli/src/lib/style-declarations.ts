@@ -12,10 +12,10 @@
  * Consumers:
  *   - `lib/markdown/plugins.ts`'s `loadPlugin` — a plugin's `styles` export,
  *     relative to the plugin's own module/package directory.
- *   - `lib/theme-manager.ts`'s `applyTheme` and `importThemeFromFolder` — a
- *     theme's `styles`, relative to the theme folder.
- *   - `lib/theme-import.ts`'s zip/css-text import — the same declared-sheet
- *     list, ahead of its own additional print-safety pass (a theme-import-
+ *   - `lib/extension-manager.ts`'s `addExtension` and `readExtensionCss` — an
+ *     extension's `styles`, relative to the extension folder.
+ *   - `lib/extension-import.ts`'s zip/css/URL import — the same declared-sheet
+ *     list, ahead of its own additional print-safety pass (an import-
  *     specific richness plugin loading doesn't need, so it stays layered on
  *     top of this rather than folded into it).
  *

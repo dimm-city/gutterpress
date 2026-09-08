@@ -4,7 +4,7 @@
    *
    * Browsable project tree: lists folders AND editable files, and lets the
    * author expand any subfolder to reach files nested anywhere in the project
-   * (e.g. `themes/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
+   * (e.g. `extensions/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
    * children are loaded via `api.fs.listDir` (server route in Electron main).
    * There is no `isDesktop()` gate on the root load; the parent only mounts
    * this when a folder project is open (`sourceMode === "folder"`).
@@ -47,7 +47,7 @@
    * authored inside a subfolder would silently never render. Offering "New
    * chapter" inside a folder would set non-technical authors up to write a
    * chapter that never appears in their book. "New folder" has no such trap
-   * (folders are purely organizational — themes/styles/assets already live
+   * (folders are purely organizational — extensions/styles/assets already live
    * in subfolders), so it's offered at both levels.
    *
    * Reorder: chapters are ordered by filename (see the readdir+sort fallback

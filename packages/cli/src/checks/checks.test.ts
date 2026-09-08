@@ -813,7 +813,7 @@ describe("Local markdown refs check", () => {
       await writeFile(mainFile, "[not rendered](missing.pdf) ![also not rendered](missing.png)\n");
       const config = resolveConfig({}, {
         preset: "book",
-        plugins: [{ path: "./disable-refs.mjs" }],
+        extensions: ["./disable-refs.mjs"],
       });
 
       const check = getCheckById("source.links.local-refs")!;
@@ -851,7 +851,7 @@ describe("Local markdown refs check", () => {
       await writeFile(mainFile, "Plugin-authored block.\n");
       const config = resolveConfig({}, {
         preset: "book",
-        plugins: [{ path: "./add-refs.mjs" }],
+        extensions: ["./add-refs.mjs"],
       });
 
       const check = getCheckById("source.links.local-refs")!;

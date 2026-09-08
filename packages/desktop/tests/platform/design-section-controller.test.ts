@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { DesignSectionController } from "../../src/lib/routes/design-section-controller.svelte";
 import type { ProjectStyle } from "../../src/lib/platform/contract";
+import type { ProjectExtensionEntry } from "../../src/lib/platform/dtos";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -393,53 +394,103 @@ test("a stylesheet that is entirely @internal tokens loads as empty (the panel's
   expect(h.ctrl.designError).toBeNull();
 });
 
-// ── #239: the active theme's tokensFile picks the sheet the panel edits ──────
+// ── #239/#265: the author's primary look picks the sheet the panel edits ─────
+//
+// The first ENABLED `kind: "path"` extension that carries styles (a look the
+// author owns on disk) names its `tokensFile` — else its first declared sheet
+// — as the Design panel's target, resolved against the look's own folder (the
+// editable style list never offers an extension's sheets: they load through
+// the rail). Everything else falls back to the first active sheet.
 
-function themeGlueController(opts: { theme: { id: string; tokensFile: string } | null }) {
+const STYLES_ONLY = { markdown: false, styles: true, snippets: false, components: false };
+
+function look(over: Partial<ProjectExtensionEntry> = {}): ProjectExtensionEntry {
+  return {
+    use: "./extensions/dc",
+    kind: "path",
+    name: "./extensions/dc",
+    enabled: true,
+    label: "DC",
+    styles: ["css/tokens.css", "css/identity.css"],
+    carries: STYLES_ONLY,
+    dir: "/proj/extensions/dc",
+    ...over,
+  };
+}
+
+function lookGlueController(extensions: ProjectExtensionEntry[]) {
   const styles: ProjectStyle[] = [
-    { path: "/proj/themes/dc/css/tokens.css", displayName: "themes/dc/css/tokens.css", active: true },
-    { path: "/proj/themes/dc/css/identity.css", displayName: "themes/dc/css/identity.css", active: true },
+    { path: "/proj/styles/book.css", displayName: "styles/book.css", active: true },
   ];
   const css = new Map<string, string>([
-    ["/proj/themes/dc/css/tokens.css", ":root { --a: 1; }\n"],
-    ["/proj/themes/dc/css/identity.css", ":root { --b: 2; }\n"],
+    ["/proj/styles/book.css", ":root { --c: 3; }\n"],
+    ["/proj/extensions/dc/css/tokens.css", ":root { --a: 1; }\n"],
+    ["/proj/extensions/dc/css/identity.css", ":root { --b: 2; }\n"],
   ]);
   return new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () => Promise.resolve(styles),
-    activeTheme: () =>
-      Promise.resolve(
-        opts.theme
-          ? {
-              id: opts.theme.id,
-              name: "DC",
-              description: "",
-              kind: "project" as const,
-              styles: ["css/tokens.css", "css/identity.css"],
-              tokensFile: opts.theme.tokensFile,
-            }
-          : null,
-      ),
+    listExtensions: () => Promise.resolve(extensions),
     readFile: (p) => Promise.resolve(css.get(p) ?? ""),
     writeFile: () => Promise.resolve(undefined),
   });
 }
 
-test("loadDesign edits the sheet the active theme names as tokensFile (#239)", async () => {
-  const ctrl = themeGlueController({ theme: { id: "dc", tokensFile: "css/identity.css" } });
+test("loadDesign edits the sheet the primary look names as tokensFile (#239)", async () => {
+  const ctrl = lookGlueController([look({ tokensFile: "css/identity.css" })]);
   await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/identity.css");
+  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
+  expect(ctrl.cssName).toBe("extensions/dc/css/identity.css");
   expect(ctrl.tokens.map((t) => t.name)).toEqual(["--b"]);
 });
 
-test("loadDesign falls back to the first active sheet when no theme is applied (#239)", async () => {
-  const ctrl = themeGlueController({ theme: null });
+test("loadDesign uses the look's first declared sheet when it names no tokensFile", async () => {
+  const ctrl = lookGlueController([look({ styles: ["css/identity.css", "css/tokens.css"] })]);
   await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/tokens.css");
+  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
 });
 
-test("loadDesign falls back when the theme's tokensFile is not in the editable list (#239)", async () => {
-  const ctrl = themeGlueController({ theme: { id: "other", tokensFile: "theme.css" } });
+test("loadDesign falls back to the first active sheet when no extension is configured (#239)", async () => {
+  const ctrl = lookGlueController([]);
   await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/themes/dc/css/tokens.css");
+  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
+  expect(ctrl.tokens.map((t) => t.name)).toEqual(["--c"]);
+});
+
+test("loadDesign falls back when the look's folder is missing on disk (#239)", async () => {
+  const ctrl = lookGlueController([look({ tokensFile: "css/identity.css", dir: undefined })]);
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
+});
+
+test("loadDesign skips a disabled look, a markdown-only extension, and an npm look — none is the author's to edit (#265)", async () => {
+  const ctrl = lookGlueController([
+    look({ tokensFile: "css/identity.css", enabled: false }),
+    look({ use: "markdown-it-mark", kind: "bundled", name: "markdown-it-mark", carries: { ...STYLES_ONLY, styles: false, markdown: true }, dir: undefined, styles: undefined }),
+    look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0", tokensFile: "css/identity.css", dir: "/proj/plugins/npm/@acme/look/1.0.0/node_modules/@acme/look" }),
+  ]);
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
+});
+
+test("loadDesign takes the FIRST enabled path look in cascade order (#265)", async () => {
+  const ctrl = lookGlueController([
+    look({ tokensFile: "css/identity.css" }),
+    look({ use: "./extensions/second", name: "./extensions/second", tokensFile: "css/tokens.css" }),
+  ]);
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
+});
+
+test("loadDesign tolerates a failing extension list — the fallback sheet still loads", async () => {
+  const ctrl = new DesignSectionController({
+    projectDir: () => "/proj",
+    listStyles: () => Promise.resolve([{ path: "/proj/styles/book.css", displayName: "styles/book.css", active: true }]),
+    listExtensions: () => Promise.reject(new Error("no manifest")),
+    readFile: () => Promise.resolve(":root { --c: 3; }\n"),
+    writeFile: () => Promise.resolve(undefined),
+  });
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
+  expect(ctrl.designError).toBeNull();
 });

@@ -2,49 +2,95 @@
 
 @section .lede
 
-Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. Add your own stylesheets on top of any built-in theme.
+Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. A book's **look** is an extension — a folder of stylesheets listed in the manifest — and your own stylesheets always load on top of it.
 
 @end-section
 
-## Built-in Themes
+## Built-in Looks
 
-Gutterpress ships three built-in themes, embedded in the CLI binary and library:
+Gutterpress ships three built-in looks, embedded in the CLI binary and library:
 
-| Theme id | Description |
+| Look id | Description |
 |----------|-------------|
 | `clean-book` | A calm, classic book look: serif body, generous margins, restrained accents. |
 | `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 
-Applying a theme **copies** its `theme.css` (and any bundled fonts/assets) into your project at `themes/<id>/`, so the project carries its own copy with no external path dependency, and wires the matching `styles:` entry into `manifest.yaml` for you. Apply, import, list, and revert themes from the desktop app's Theme panel, or from the terminal with `gutterpress theme` — both call the same underlying code, so either way produces the same tracked, switchable result:
+A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
+**extension**: a folder holding a stylesheet — `theme.css` — plus a small
+metadata file, listed in the manifest's `extensions:` list alongside any
+plugins ([Chapter 5](./05-plugins.md) covers that list in full).
+
+Adding a built-in look **copies** it into your project at `extensions/<id>/`,
+so the book owns editable files rather than a hidden dependency on whichever
+Gutterpress version happens to be installed, and adds `./extensions/<id>` to
+the list:
 
 ```sh
-gutterpress theme list ./my-book              # built-in + project themes, and which is active
-gutterpress theme apply clean-book ./my-book  # copy the theme in and make it active
-gutterpress theme import ./my-theme ./my-book # vendor a folder/.zip/.css/URL theme (not yet active)
-gutterpress theme revert ./my-book            # back to whichever theme was active before
-gutterpress theme remove zine ./my-book       # drop a project theme (never a built-in)
+gutterpress ext add clean-book ./my-book --look   # copy the built-in look in and list it
+gutterpress ext list ./my-book                    # every extension, in load (= cascade) order
 ```
 
-`gutterpress new` applies its template's starter theme this same way, so even a
-freshly scaffolded project has a real, switchable theme from the start — not a
-one-off copy of its CSS. The resulting manifest entry looks like:
+`gutterpress new` does exactly this with its template's starter look, so even
+a freshly scaffolded project has a real, editable look from the start. The
+resulting manifest reads:
 
 ```yaml
+extensions:
+  - ./extensions/clean-book   # The look: extensions/clean-book/theme.css
 styles:
-  - "themes/clean-book/theme.css"   # The applied theme
-  - "styles/book.css"               # Your own overrides (layered on top, empty until you write in it)
+  - styles/book.css           # Your own overrides, loaded after every extension
 ```
 
-Bundled themes define the full token set (see below) so you only need to override the tokens you want to change. This guide's own project (the one you're reading) does not use a bundled theme — it declares its own `styles/guide.css` directly in `manifest.yaml`.
+`styles/book.css` starts as a comment block explaining this split. It is the
+project's own layer: everything under `styles:` loads after every extension,
+so a rule you write there overrides the look at equal specificity. Edit
+`extensions/clean-book/theme.css` directly when you want to change the look
+itself — it is your copy.
+
+### Adding and switching looks
+
+Any of these adds a look to the list:
+
+```sh
+gutterpress ext add zine ./my-book --look                     # another built-in (copied to extensions/zine/)
+gutterpress ext add ./house-style ./my-book                   # a folder you already have — referenced in place, never copied
+gutterpress ext add ./parchment.zip ./my-book                 # a packaged look → extensions/parchment/
+gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet → extensions/parchment/
+gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional theme.json) fetched → extensions/cool/
+```
+
+Zip, CSS and URL imports are checked before they land: every declared sheet
+must exist and parse, and print-safety findings (a remote `url()`, say) are
+reported as warnings. A look with fonts or images of its own travels as a
+folder or a `.zip`; a URL import fetches only the stylesheet and metadata.
+
+Two looks listed at once both load, and the later one wins ties — so
+switching is adding the new look, then disabling or removing the old one:
+
+```sh
+gutterpress ext add zine ./my-book --look
+gutterpress ext disable ./extensions/clean-book ./my-book   # keep it around, stop loading it
+gutterpress ext remove ./extensions/clean-book ./my-book    # or drop the entry (the folder stays yours)
+```
+
+The desktop app's **Project settings → Look** view is the same list: add a
+look, drag entries into a new order, switch one off, or remove it. There is no
+separate apply or revert step — a look is just an entry, and the snapshot
+history versions the manifest change like any other edit.
+
+Bundled looks define the full token set (see below) so you only need to
+override the tokens you want to change. This guide's own project (the one
+you're reading) does not use a bundled look — it declares its own
+`styles/guide.css` directly under `styles:` in `manifest.yaml`.
 
 ## CSS Custom Properties
 
-Every built-in theme is driven by CSS custom properties. Override any of them
-in your own stylesheet and the theme follows — no need to restyle elements.
+Every built-in look is driven by CSS custom properties. Override any of them
+in your own stylesheet and the look follows — no need to restyle elements.
 
-These are the tokens **every** built-in theme defines, so overriding them works
-whichever theme you started from:
+These are the tokens **every** built-in look defines, so overriding them works
+whichever look you started from:
 
 ```css
 :root {
@@ -69,15 +115,15 @@ whichever theme you started from:
 }
 ```
 
-The values above are `clean-book`'s; each theme ships its own. A theme may add
+The values above are `clean-book`'s; each look ships its own. A look may add
 tokens of its own beyond this set — `technical-doc`, for example, adds
-`--color-tint` for its code and note fills. Open the `theme.css` that was
-copied into your project to see everything a given theme exposes; the `:root`
-block at the top is the whole vocabulary.
+`--color-tint` for its code and note fills. Open `extensions/<id>/theme.css`
+in your project to see everything a given look exposes; the `:root` block at
+the top is the whole vocabulary.
 
-### Creating a custom theme
+### Creating a custom look
 
-The fastest approach is a single CSS file with three sections:
+For one book, the fastest approach is three sections in `styles/book.css`:
 
 ```css
 /* 1. Override brand tokens */
@@ -98,30 +144,38 @@ The fastest approach is a single CSS file with three sections:
 }
 ```
 
-### Themes with more than one stylesheet
+To reuse a look across books, make it a folder. Any folder with a `theme.css`
+is already a valid one-sheet look, and `gutterpress new "House Style" --kind
+theme` scaffolds a layered six-sheet one with a `gutterpress.json`; either
+way `gutterpress ext add ./house-style <book>` lists it, referenced in place.
 
-A theme folder is not limited to one `theme.css`. Its `theme.json` can declare
-an ordered list of sheets and which sheet holds the tokens the Design panel
-edits:
+### Looks with more than one stylesheet
+
+A look folder is not limited to one `theme.css`. Its `gutterpress.json` (the
+older `theme.json` name is still read) can declare an ordered list of sheets
+and which sheet holds the tokens the Design panel edits:
 
 ```json
 {
   "name": "Dimm City",
-  "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/native.css"],
+  "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
   "tokensFile": "css/tokens.css"
 }
 ```
 
-Paths are relative to the theme folder and must stay inside it. Applying the
-theme wires every `styles` entry into your manifest as one block, in that
-order, at the position the previous theme held. A sheet that must win over
-the others simply goes last in the list. Switching or removing the theme
-removes the whole block. Import checks
-that every declared sheet exists and passes the print-safety rules. A
-`theme.json` without `styles` means `["theme.css"]`, so existing themes need
-no change, and `tokensFile` defaults to the first entry in `styles`. A folder import
-accepts a theme with no `theme.css` at all; a zip import still needs one to
-find the package root.
+Paths are relative to the look's folder and must stay inside it. The sheets
+load in that order at the look's position in `extensions:` — one entry,
+however many files — and a sheet that must win over the others simply goes
+last in the list. Disabling or removing the entry removes them all. A
+metadata file without `styles` means `["theme.css"]`, so existing looks need
+no change, and `tokensFile` defaults to the first entry in `styles`. A folder
+that declares `styles` needs no `theme.css` at all; a `.zip` or URL import
+still needs one to find the package root.
+
+The other metadata fields are `author`, `description`, `preview` (an image,
+relative to the folder), and — for a look that is also a plugin or a component
+library — `markdown`, `snippets` and `components`. [Chapter 5](./05-plugins.md)
+covers those.
 
 ## Font Loading
 
@@ -250,26 +304,28 @@ body {
 
 ## CSS Cascade Order
 
-Stylesheets are applied in the order listed in `manifest.yaml`. Later files override earlier ones:
+Extensions load first, in `extensions:` order, then your own `styles:` in their order. Later files override earlier ones:
 
 ```yaml
+extensions:
+  - "./extensions/clean-book"     # 1. The look (loaded first)
+  - "./plugins/callouts"          # 2. A plugin's component CSS (wins ties over the look)
 styles:
-  - "themes/clean-book/theme.css" # 1. Base theme (loaded first)
-  - "styles/variables.css"        # 2. Token overrides
-  - "styles/custom.css"           # 3. Component customizations
-  - "styles/chapter-art.css"      # 4. Chapter-specific rules (last wins)
+  - "styles/variables.css"        # 3. Token overrides
+  - "styles/custom.css"           # 4. Component customizations
+  - "styles/chapter-art.css"      # 5. Chapter-specific rules (last wins)
 ```
 
 Gutterpress's own CSS sits underneath all of this in two cascade layers —
 the marker structural CSS in `@layer gp.marker`, the `gp-*` utility
 vocabulary in `@layer gp.vocab` — both declared before anything above. A
-cascade layer always loses to unlayered CSS, so every stylesheet in
-`styles:` beats core's defaults automatically, at any specificity — even a
-bare element selector.
+cascade layer always loses to unlayered CSS, so every extension stylesheet
+and every stylesheet in `styles:` beats core's defaults automatically, at any
+specificity — even a bare element selector.
 You never need `!important`, or an extra selector to inflate specificity,
 just to beat a `gp-*` rule.
 
-If your own theme is more than a couple of files, declare your own layer
+If your own look is more than a couple of files, declare your own layer
 order at the top of your first stylesheet instead of relying on the list
 above:
 
@@ -355,6 +411,6 @@ gutterpress preview ./my-book
 Common issues:
 
 - **Token not applying** — check spelling; `--color-accnt` vs `--color-accent`
-- **Override not winning** — check cascade order in `manifest.yaml`; later files win
+- **Override not winning** — check cascade order in `manifest.yaml`: extensions in list order, then `styles:`; later files win
 - **Font not loading** — check file path is relative to the CSS file, not the manifest
 - **Page break in wrong place** — inspect the generated `book.html` to see which `@page` wrapper the content is inside
