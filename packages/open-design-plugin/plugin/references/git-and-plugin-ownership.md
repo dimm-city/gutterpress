@@ -27,7 +27,7 @@ shared/fonts/  shared/images/            reached through shared CSS url()
 shared/plugins/publisher-components.js   product-line rendering behavior
 shared/profiles/                         product-line print configuration
 
-books/core-book/themes/                  this book owns and may diverge
+books/core-book/extensions/              this book's looks; it owns them and may diverge
 books/core-book/styles/book.css          this book, final say in the cascade
 books/core-book/images/                  this book's prose art
 books/core-book/plugins/                 this book's rendering behavior
@@ -70,9 +70,10 @@ on another machine needs that vendored tree committed, receipts and all.
 
 ## Two unrelated plugin systems
 
-- **Gutterpress plugins** are markdown-it modules a *book manifest* names, either
-  by `path` (authored, Git-tracked source) or as a managed npm package vendored
-  under that book's `plugins/npm/` by `gutterpress plugin add`.
+- **Gutterpress extensions** are markdown-it modules, looks, or both, that a
+  *book manifest* lists under `extensions:` — by path (`./x`, `../x`: authored,
+  Git-tracked source) or as a managed npm package vendored under that book's
+  `plugins/npm/` by `gutterpress ext add`.
 - **Open Design plugins** are workflow packages a *contributor* installs into
   their own Open Design registry.
 

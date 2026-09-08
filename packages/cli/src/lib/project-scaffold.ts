@@ -415,11 +415,12 @@ export async function scaffoldProject(
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
       // #236: styles/book.css is the project's OWN override layer, not a fork
-      // of the theme — the starter theme itself is applied below (step 2) via
-      // addBuiltInStyleSet, which is what makes it a real, trackable/switchable theme
-      // instead of dead CSS `gutterpress theme apply`/the desktop's Theme
-      // panel can never see or replace. Still never an empty Design panel
-      // (audit P2#7): the applied theme is the fully-editable stylesheet now.
+      // of the look — the starter look itself is added below (step 2) via
+      // addBuiltInStyleSet, which is what makes it a real extension on the
+      // `extensions:` list (`gutterpress ext list`/the desktop's Look view can
+      // see, disable, reorder or remove it) instead of dead CSS. Still never an
+      // empty Design panel (audit P2#7): the look is the fully-editable
+      // stylesheet now.
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
       await writeFile(
         path.join(projectDir, "styles", "book.css"),

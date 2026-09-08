@@ -76,10 +76,10 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
 - Do not edit Gutterpress-managed files beneath `plugins/npm/`.
 - Preserve semantic Markdown and existing Gutterpress layout markers.
 - Prefer the smallest stable change in an existing theme, stylesheet, component, manifest, or authored local plugin.
-- Keep one active local `themes/<id>/theme.css`. A first application defaults to
-  the front of `styles`; replacing a theme preserves its established cascade
-  position. Do not reorder a valid stylesheet list merely to force the theme
-  first.
+- A book's look is an extension listed under `extensions:` (a built-in look is
+  copied into `extensions/<id>/` when it is added). Extensions load in list
+  order and the book's own `styles` always load after every extension. Do not
+  reorder a valid list merely to force one entry first.
 - Keep any image used in Markdown prose inside the book folder — a `../` or absolute reference is a build error.
 - Change page geometry through the owning CSS `@page` rule. The manifest `page:`
   block records expected trim dimensions for validation; it does not resize the
@@ -106,8 +106,8 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
 Read and summarize:
 
 - explicit or implicit manuscript files;
-- the ordered `styles` list and the active local `themes/<id>/theme.css` entry,
-  noting its established cascade position and which entries escape the book
+- the ordered `extensions` list (which entries carry styles, which carry
+  markdown) and the ordered `styles` list, noting which entries escape the book
   root (shared foundation) or remain book-local;
 - page, preset, PDF/X, and validation constraints relevant to the request;
 - authored local plugins and Gutterpress-managed npm plugins;
