@@ -282,9 +282,11 @@ test("a book that suppresses a filter with filter: none reaches zero findings fo
   expect(w[0]!.message).toContain("300 DPI bitmap");
 });
 
-// A no-op value cannot be "dropped": nothing was going to paint anyway.
+// A no-op value cannot be "dropped": nothing was going to paint anyway. Every
+// keyword reset of a MARGIN_BOX_IGNORED_PROPERTIES entry is covered, not only
+// the rasterizing ones.
 test("an inert value inside an @page margin box is not reported as a dropped declaration", () => {
-  const inert = `@page { @top-left { content: "x"; filter: none; opacity: 1; transform: none; } }`;
+  const inert = `@page { @top-left { content: "x"; filter: none; opacity: 1; transform: none; box-shadow: none; outline: none; outline-style: none; rotate: none; translate: none; scale: none; perspective: none; } }`;
   expect(checkCss(inert).filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
   const live = `@page { @top-left { content: "x"; filter: blur(2px); } }`;
   const w = checkCss(live).filter((x) => x.rule === ruleRiskyProps);
@@ -299,8 +301,22 @@ test("will-change: auto on a page wrapper is not a stacking context; will-change
   const inert = checkCss(`.page { will-change: auto; }`);
   expect(inert.filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
   expect(inert.filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
+  // `none` is invalid for will-change, so Chromium drops it: no stacking
+  // context and nothing rasterized. It must not be reported by either rule.
+  expect(checkCss(`.page { will-change: none; }`)).toHaveLength(0);
   const live = checkCss(`.page { will-change: transform; }`);
   const containment = live.filter((x) => x.rule === rulePageContainment);
   expect(containment).toHaveLength(1);
   expect(containment[0]!.message).toContain("stacking context");
+});
+
+// `overflow` consults the same inert-value table as everything else, so the
+// CSS-wide reset keywords (including `revert-layer`) are inert here too.
+test("overflow at visible or a CSS-wide reset keyword does not clip; any other value does", () => {
+  for (const v of ["visible", "initial", "unset", "revert", "revert-layer"]) {
+    expect(checkCss(`.page { overflow: ${v}; }`).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+  }
+  const clipped = checkCss(`.page { overflow: hidden; }`).filter((x) => x.rule === rulePageContainment);
+  expect(clipped).toHaveLength(1);
+  expect(clipped[0]!.message).toContain("overflow");
 });

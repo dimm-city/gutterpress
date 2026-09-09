@@ -156,31 +156,40 @@ function targetsPageWrapper(selector: string): boolean {
 }
 
 // A property at its initial value — or at a CSS-wide reset keyword — does
-// nothing, so neither the rasterization warning nor the stacking-context
-// check may fire on it. `filter: none` is exactly how a book suppresses an
-// earlier `filter`, and such a book must be able to reach zero findings
-// (#259). ONE table, consumed by createsStackingContext() and by checkCss()'s
-// risky-property branches. The match is textual: `filter: var(--x)` is still
-// reported even when `--x` resolves to `none`, because this is a source-only
-// check with no cascade to consult.
+// nothing, so neither the rasterization warning, the margin-box "silently
+// ignored" warning nor the stacking-context check may fire on it. `filter:
+// none` is exactly how a book suppresses an earlier `filter`, and such a book
+// must be able to reach zero findings. ONE table for every value-aware check
+// in this file. The match is textual: `filter: var(--x)` is still reported
+// even when `--x` resolves to `none`, because this is a source-only check
+// with no cascade to consult.
 const cssWideResetKeywords = new Set(["initial", "unset", "revert", "revert-layer"]);
 
 const inertValues: Record<string, ReadonlySet<string>> = {
   "z-index": new Set(["auto"]),
-  isolation: new Set(["auto"]),
   opacity: new Set(["1", "100%"]),
   "mix-blend-mode": new Set(["normal"]),
   "background-blend-mode": new Set(["normal"]),
   filter: new Set(["none"]),
   "backdrop-filter": new Set(["none"]),
   transform: new Set(["none"]),
+  rotate: new Set(["none"]),
+  translate: new Set(["none"]),
+  scale: new Set(["none"]),
   perspective: new Set(["none"]),
-  "will-change": new Set(["auto"]),
+  "box-shadow": new Set(["none"]),
+  outline: new Set(["none"]),
+  "outline-style": new Set(["none"]),
+  // `none` is not a valid will-change value, so Chromium drops the
+  // declaration: nothing happens either way.
+  "will-change": new Set(["auto", "none"]),
   "clip-path": new Set(["none"]),
   transition: new Set(["none"]),
   animation: new Set(["none"]),
   "animation-name": new Set(["none"]),
-  contain: new Set(["none"]),
+  overflow: new Set(["visible"]),
+  "overflow-x": new Set(["visible"]),
+  "overflow-y": new Set(["visible"]),
 };
 
 function isInertValue(prop: string, value: string): boolean {
@@ -222,7 +231,7 @@ function clipsDescendants(decl: postcss.Declaration): boolean {
   const p = decl.prop.toLowerCase();
   if (p !== "overflow" && p !== "overflow-x" && p !== "overflow-y") return false;
   const v = decl.value.trim().toLowerCase();
-  return v !== "" && !/^(visible|initial|unset|revert)$/.test(v);
+  return v !== "" && !isInertValue(p, v);
 }
 
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
@@ -272,11 +281,7 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
 
   root.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
-    // An inert value (`filter: none`, `clip-path: none`, `will-change: auto`,
-    // `mix-blend-mode: normal`, …) rasterizes nothing and drops nothing, so no
-    // branch below may report it — the filter and generic risky branches used
-    // to fire on the property name alone (#259).
-    if (isInertValue(prop, decl.value)) return;
+    if (isInertValue(prop, decl.value)) return; // see inertValues
     // The margin-box drop comes first: `filter`, `mix-blend-mode`,
     // `clip-path` and `backdrop-filter` are all in `riskyProperties` too, and
     // there the generic "can force rasterization" text would be wrong —

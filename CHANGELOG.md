@@ -54,8 +54,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   `background-blend-mode: normal` are no longer reported — a property at its
   initial value does nothing, and `filter: none` is exactly how a book
   suppresses an earlier filter, so such a book can now reach zero findings.
-  The same table stops `will-change: auto` on a page wrapper being reported
-  as a stacking context. (#259)
+  The same table covers the `@page` margin-box check (`box-shadow: none`,
+  `outline: none`, `rotate: none` and the other keyword resets are no longer
+  reported as dropped declarations) and the page-containment check
+  (`will-change: auto` is no longer a stacking context; `overflow:
+  revert-layer` no longer clips). (#259)
 
 ### Removed
 

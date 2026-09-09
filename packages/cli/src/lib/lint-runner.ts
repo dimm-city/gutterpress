@@ -134,10 +134,6 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
       }
       errorCount += errors.length;
     }
-    // #259: each finding, not a count, so the author can read WHICH selectors
-    // rasterize — and so sit outside the render-parity gate's coverage. The
-    // printsafe message already names the rasterization, the build-time cost
-    // and the blind spot; nothing new is written here.
     if (risky.length > 0) {
       log.warn(`  ${file}`);
       for (const w of risky) {
