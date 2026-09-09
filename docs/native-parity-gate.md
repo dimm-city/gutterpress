@@ -30,10 +30,12 @@ bun scripts/native-parity-gate.ts <dir>…   # explicit project dirs
 ```
 
 Staged books land under `/tmp/gutterpress-parity/<fixture>/` (override with
-`GUTTERPRESS_PARITY_DIR`). The registered fixtures are the two example books,
-the three `with-design-guide` manifests, and the minimal repro books under
-`docs/fixtures/`, each of which pins a divergence the gate once caught. CI
-runs the whole list (`.github/workflows/ci.yml`).
+`GUTTERPRESS_PARITY_DIR`; a `docs/fixtures/<name>/book` fixture is named
+`<name>`). The registered fixtures are the two example books, the three
+`with-design-guide` manifests, and the minimal repro books under
+`docs/fixtures/`, each of which pins a divergence the gate once caught — or,
+for `exact-fit-boundary`, the outcome below. CI runs the whole list
+(`.github/workflows/ci.yml`).
 
 ## The three outcomes
 
@@ -42,7 +44,7 @@ Every fixture ends in exactly one of these, and the summary counts them:
 | Outcome | Meaning | Exit |
 |---|---|---|
 | **CLEAN** | No check disagreed. | passes |
-| **EXACT-FIT BOUNDARY** | Check (d) disagreed, and check (e) measured the first disputed boundary as a sub-pixel exact fit (rule below). The measurements are printed; the downstream divergences are listed for information but not counted. | passes |
+| **EXACT-FIT BOUNDARY** | Check (d) disagreed, and check (e) measured the first disputed boundary as a sub-pixel exact fit (rule below). The measurements are printed; the downstream divergences — two-sided ones both fragmenters place on the boundary page or later — are listed for information but not counted. A one-sided miss or a divergence upstream of the boundary still counts, and fails the run as a divergence. | passes |
 | **DIVERGENCE** | Anything else. Every divergence must be an explicit `KNOWN_DIVERGENCES` entry with a reason; an unlisted one fails the run. The allowlist is empty and CLAUDE.md requires it to stay that way. | fails (1) |
 
 ### The exact-fit rule

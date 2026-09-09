@@ -85,13 +85,16 @@
  *     `EXACT_FIT_TOLERANCE_PX` of it, allowing for rounding — the pushing
  *     side's projected box ends below it) and differ by at most
  *     `EXACT_FIT_TOLERANCE_PX` (1px). The measurements are printed (page,
- *     line text, print slack, viewer slack, delta), the downstream
- *     divergences are listed for information but not counted, and the
- *     fixture PASSES with this distinct outcome. This is a measured
- *     classification of one boundary, never an excuse list: the run still
- *     fails if the boundary cannot be measured, if the pushing side fits
- *     the line once its break rules are neutralised (a break-rule
- *     disagreement), or if the slacks differ by more than the tolerance.
+ *     line text, print slack, viewer slack, delta), the DOWNSTREAM
+ *     divergences — two-sided ones both fragmenters place on the boundary
+ *     page or later (`isDownstream`) — are listed for information but not
+ *     counted, and the fixture PASSES with this distinct outcome. This is a
+ *     measured classification of one boundary, never an excuse list: a
+ *     one-sided MISSING or a divergence upstream of the boundary still
+ *     counts, and the run still fails if the boundary cannot be measured,
+ *     if the pushing side fits the line once its break rules are
+ *     neutralised (a break-rule disagreement), or if the slacks differ by
+ *     more than the tolerance.
  *   DIVERGENCE — anything else. Any divergence must be an explicit entry in
  *     KNOWN_DIVERGENCES with a reason — never a silent tolerance. An
  *     unlisted divergence fails the run (exit 1).
@@ -105,6 +108,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getDocumentProxy } from "unpdf";
+import type { PDFDocumentProxy } from "unpdf/pdfjs";
 import { launchChromium, type Browser, type Session } from "../src/engine/shared/cdp.ts";
 import { build, type BuildResult } from "../src/engine/compiler/build.ts";
 import { restartedPageValues, toFolioPage } from "../src/engine/shared/synthesis.ts";
@@ -181,25 +185,24 @@ const DEFAULT_FIXTURES = [
   // the user guide. Registered so an everyday book cannot drift again.
   join(REPO, "examples", "with-validation"),
   join(REPO, "examples", "gutterpress-user-guide"),
-  // The exact-fit boundary fixture (committed): the #268 boundary, a verbatim
-  // slice of the user guide's styling chapter (with the paragraph that commit
-  // e0928d8a split joined back) on its stylesheet, US Letter. Print keeps the
-  // third line of the "Adding and switching looks" `pre`, whose box ends at
-  // 876.0px of an 876px column; the viewer lays the same line ~0.4px lower
-  // and pushes it, and `orphans: 3` + `p + pre` / `h3 + p { break-before:
-  // avoid }` then walk the heading to the next page in preview only. Keeps
-  // check (e)'s EXACT-FIT outcome exercised; on another font stack or
-  // Chromium the same book may read CLEAN instead — also a pass, never a
+  // The exact-fit boundary fixture (committed): the #268 boundary as a slice
+  // of the user guide's styling chapter on the rules of its stylesheet that
+  // bear on it, so check (e)'s EXACT-FIT outcome stays exercised — see
+  // docs/native-parity-gate.md for the numbers. On another font stack or
+  // Chromium the same book may read CLEAN instead: also a pass, never a
   // failure.
   join(REPO, "docs", "fixtures", "exact-fit-boundary", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
 
-interface Divergence {
+export interface Divergence {
   fixture: string;
   kind: DivergenceKind;
   detail: string;
+  /** where each side put the element, when both sides measured it */
+  printPage?: number;
+  viewerPage?: number;
 }
 
 type FixtureOutcome = "clean" | "exact-fit" | "divergence";
@@ -409,6 +412,13 @@ async function viewerPageMap(
 // (e) exact-fit boundary measurement
 // ---------------------------------------------------------------------------
 
+export interface DisagreeingHeading {
+  id: string;
+  print: number;
+  viewer: number;
+  agreeingPage: number;
+}
+
 /**
  * The first heading, in document order, whose page the two fragmenters
  * disagree on (both sides measured — a one-sided MISSING stays a plain
@@ -421,7 +431,7 @@ export function firstDisagreeingHeading(
   headingIds: string[],
   printMap: Record<string, number>,
   viewerMap: Record<string, number>,
-): { id: string; print: number; viewer: number; agreeingPage: number } | undefined {
+): DisagreeingHeading | undefined {
   let agreeingPage = 1;
   for (const id of headingIds) {
     const print = printMap[id];
@@ -431,15 +441,6 @@ export function firstDisagreeingHeading(
     agreeingPage = print;
   }
   return undefined;
-}
-
-/**
- * Line text as compared across the two sides: no whitespace (the PDF's runs
- * and the DOM's characters space differently), and no trailing hyphen —
- * `hyphens: auto` puts a hyphen glyph in the PDF that the DOM text lacks.
- */
-export function normalizeLineText(text: string): string {
-  return text.replace(/\s+/g, "").replace(/[-‐­]+$/, "");
 }
 
 export interface PrintLine {
@@ -499,6 +500,23 @@ function isExactFit(b: ExactFitBoundary): boolean {
   return b.keptBy === "print"
     ? classifyBoundary(b.printSlackPx, b.viewerSlackPx)
     : classifyBoundary(b.viewerSlackPx, b.printSlackPx);
+}
+
+/**
+ * Whether a divergence can be a consequence of the boundary at the end of
+ * `boundaryPage`: both sides measured the element and both put it on that
+ * page or later. Everything before the disputed line is laid out the same
+ * way in both fragmenters, so a divergence upstream of it — or a one-sided
+ * miss, which is not a placement at all — is its own finding and still
+ * counts even when the fixture's outcome is EXACT-FIT.
+ */
+export function isDownstream(d: Divergence, boundaryPage: number): boolean {
+  return (
+    d.printPage !== undefined &&
+    d.viewerPage !== undefined &&
+    d.printPage >= boundaryPage &&
+    d.viewerPage >= boundaryPage
+  );
 }
 
 /**
@@ -746,7 +764,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     return { ...common, printBaselinePx: found.printLine.baselinePx, printBottomPx: found.printLine.baselinePx + tail,
              viewerBaselinePx: viewerBottomPx - tail, viewerBottomPx };
   }
-  return { linesOf, edgeLineOnPage, locateLine, neutraliseChain, measure };
+  return { linesOf, measure };
 };`;
 
 interface StripGeometry {
@@ -767,25 +785,27 @@ type ViewerMeasurement =
  * with its break rules neutralised, so it never shares (d)'s mount). Returns
  * the boundary's numbers, or the reason it could not be measured — which
  * leaves the fixture a divergence, exactly as before this check existed.
+ * Never throws: a failure inside the measurement (the PDF not parsing, the
+ * browser-side script raising) is a reason too, and the fixture's own
+ * divergence list must still be reported.
  */
-async function measureExactFitBoundary(
+export async function measureExactFitBoundary(
   browser: Browser,
   url: string,
   agentScript: string,
   viewerScript: string,
   viewport: { width: number; height: number },
   headingIds: string[],
-  printMap: Record<string, number>,
-  viewerMap: Record<string, number>,
+  first: DisagreeingHeading,
   pdfBytes: Uint8Array,
 ): Promise<ExactFitBoundary | { error: string }> {
-  const first = firstDisagreeingHeading(headingIds, printMap, viewerMap);
-  if (!first) return { error: "no heading is on different pages in both fragmenters" };
   const lo = Math.min(first.print, first.viewer);
-  const page = await mountViewer(browser, url, agentScript, viewerScript, viewport);
-  // A copy: pdf.js may take the buffer over, and `result.bytes` is the build's.
-  const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  let doc: PDFDocumentProxy | undefined;
+  let page: Session | undefined;
   try {
+    // A copy: pdf.js may take the buffer over, and `result.bytes` is the build's.
+    doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+    page = await mountViewer(browser, url, agentScript, viewerScript, viewport);
     await page.evaluate(EXACT_FIT_BROWSER_JS);
     const strips = await page.evaluate<StripGeometry[]>(
       `window.__gpParity.strips.map((s) => {
@@ -829,9 +849,11 @@ async function measureExactFitBoundary(
       deltaPx:
         measured.keptBy === "print" ? printSlackPx - viewerSlackPx : viewerSlackPx - printSlackPx,
     };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   } finally {
-    await page.close();
-    await doc.destroy();
+    await page?.close();
+    await doc?.destroy();
   }
 }
 
@@ -856,9 +878,17 @@ function printExactFit(report: FixtureReport) {
   console.log(
     `     delta  ${b.deltaPx.toFixed(2)}px (tolerance ${EXACT_FIT_TOLERANCE_PX}px) — ` +
       (report.outcome === "exact-fit"
-        ? `${report.divergences.length} downstream divergence(s) listed for information, not counted:`
+        ? `${downstreamCount(report)} downstream divergence(s) listed for information, not counted` +
+          (downstreamCount(report) < report.divergences.length
+            ? `; the ${report.divergences.length - downstreamCount(report)} not downstream of p${b.page} still count:`
+            : ":")
         : `not an exact-fit boundary; the divergences below stand`),
   );
+}
+
+function downstreamCount(report: FixtureReport): number {
+  const b = report.exactFit as ExactFitBoundary;
+  return report.divergences.filter((d) => isDownstream(d, b.page)).length;
 }
 
 interface FixtureReport {
@@ -940,6 +970,8 @@ async function runFixture(
         fixture: name,
         kind: "headingPageMap",
         detail: `id=${id} print=p${printed} viewer=p${viewed}`,
+        printPage: printed,
+        viewerPage: viewed,
       });
     }
   }
@@ -951,6 +983,8 @@ async function runFixture(
       fixture: name,
       kind: "pageCount",
       detail: `viewer=${viewerPages}pp print=${result.pageCount}pp`,
+      printPage: result.pageCount,
+      viewerPage: viewerPages,
     });
   }
 
@@ -981,6 +1015,8 @@ async function runFixture(
           fixture: name,
           kind: "pageMap",
           detail: `id=${id} print=p${printed} viewer=p${viewed}`,
+          printPage: printed,
+          viewerPage: viewed,
         });
       }
       const printedFolio = toFolioPage(printed, printedValues);
@@ -990,6 +1026,8 @@ async function runFixture(
           fixture: name,
           kind: "targetCounter",
           detail: `id=${id} target-counter() print=${printedFolio} viewer=${viewedFolio}`,
+          printPage: printed,
+          viewerPage: viewed,
         });
       }
     }
@@ -998,7 +1036,8 @@ async function runFixture(
   // ---- (e) exact-fit boundary, only when (d) disagreed ------------------
   let outcome: FixtureOutcome = divergences.length ? "divergence" : "clean";
   let exactFit: FixtureReport["exactFit"];
-  if (divergences.some((d) => d.kind === "headingPageMap" && /print=p\d+ viewer=p\d+/.test(d.detail))) {
+  const first = firstDisagreeingHeading(headingIds, printHeadingMap, headingMeasurement.pageMap);
+  if (first) {
     exactFit = await measureExactFitBoundary(
       browser,
       url,
@@ -1006,8 +1045,7 @@ async function runFixture(
       viewerScript,
       result.viewport,
       headingIds,
-      printHeadingMap,
-      headingMeasurement.pageMap,
+      first,
       result.bytes,
     );
     if (!("error" in exactFit) && isExactFit(exactFit)) outcome = "exact-fit";
@@ -1056,7 +1094,10 @@ async function main() {
   const reports: FixtureReport[] = [];
   try {
     for (const dir of fixtures) {
-      const name = dir.replace(/\/+$/, "").split("/").pop()!;
+      // A docs/fixtures/<name>/book fixture is named <name>, not `book`.
+      const parts = dir.replace(/\/+$/, "").split("/");
+      const leaf = parts.pop()!;
+      const name = leaf === "book" ? parts.pop()! : leaf;
       console.log(`\n== ${name} (${dir})`);
       try {
         const report = await runFixture(browser, name, dir, AGENT, VIEWER);
@@ -1090,15 +1131,15 @@ async function main() {
   console.log("\n== summary");
   let unexpected = 0;
   for (const report of reports) {
-    if (report.outcome === "exact-fit") {
-      const b = report.exactFit as ExactFitBoundary;
+    const boundary = report.outcome === "exact-fit" ? (report.exactFit as ExactFitBoundary) : undefined;
+    if (boundary) {
       console.log(
-        `   EXACT-FIT   [${report.fixture}] p${b.page} print ${px(b.printSlackPx)} / viewer ${px(b.viewerSlackPx)} ` +
-          `(delta ${b.deltaPx.toFixed(2)}px) — ${report.divergences.length} downstream divergence(s) not counted`,
+        `   EXACT-FIT   [${report.fixture}] p${boundary.page} print ${px(boundary.printSlackPx)} / viewer ${px(boundary.viewerSlackPx)} ` +
+          `(delta ${boundary.deltaPx.toFixed(2)}px) — ${downstreamCount(report)} downstream divergence(s) not counted`,
       );
-      continue;
     }
     for (const d of report.divergences) {
+      if (boundary && isDownstream(d, boundary.page)) continue;
       const known = isKnown(d);
       if (known) {
         console.log(`   ALLOWLISTED [${report.fixture}/${d.kind}] ${d.detail} — ${known.reason}`);

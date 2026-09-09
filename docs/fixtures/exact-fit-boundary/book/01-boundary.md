@@ -19,7 +19,7 @@ Gutterpress ships three built-in looks, embedded in the CLI binary and library:
 A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
 **extension**: a folder holding a stylesheet — `theme.css` — plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
-plugins ([Chapter 5](./05-plugins.md) covers that list in full). Adding a
+plugins (Chapter 5 covers that list in full). Adding a
 built-in look **copies** it into your project at `extensions/<id>/`, so the
 book owns editable files rather than a hidden dependency on whichever
 Gutterpress version happens to be installed, and adds `./extensions/<id>` to

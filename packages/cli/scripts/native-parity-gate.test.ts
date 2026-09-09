@@ -13,8 +13,10 @@ import {
   classifyBoundary,
   firstDisagreeingHeading,
   groupTextRuns,
+  isDownstream,
+  measureExactFitBoundary,
   mountViewer,
-  normalizeLineText,
+  type Divergence,
 } from "./native-parity-gate.ts";
 
 describe("classifyBoundary — the exact-fit rule", () => {
@@ -71,11 +73,26 @@ describe("firstDisagreeingHeading", () => {
   });
 });
 
-describe("normalizeLineText", () => {
-  test("drops whitespace and a trailing hyphen of any of the three kinds, keeps internal hyphens", () => {
-    expect(normalizeLineText("  well-known  words -")).toBe("well-knownwords");
-    expect(normalizeLineText("soft­")).toBe("soft");
-    expect(normalizeLineText("hy‐")).toBe("hy");
+describe("isDownstream — which divergences an exact-fit boundary absorbs", () => {
+  const d = (printPage?: number, viewerPage?: number): Divergence => ({
+    fixture: "f",
+    kind: "headingPageMap",
+    detail: "",
+    printPage,
+    viewerPage,
+  });
+  test("both sides on the boundary page or later", () => {
+    expect(isDownstream(d(33, 34), 33)).toBe(true);
+    expect(isDownstream(d(40, 41), 33)).toBe(true);
+    expect(isDownstream(d(34, 33), 33)).toBe(true);
+  });
+  test("upstream of the boundary, or straddling it, still counts", () => {
+    expect(isDownstream(d(10, 11), 33)).toBe(false);
+    expect(isDownstream(d(32, 33), 33)).toBe(false);
+  });
+  test("a one-sided miss is not a placement at all", () => {
+    expect(isDownstream(d(undefined, 40), 33)).toBe(false);
+    expect(isDownstream(d(40, undefined), 33)).toBe(false);
   });
 });
 
@@ -305,6 +322,18 @@ testIf(
     } finally {
       await page.close();
     }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "a measurement that fails returns the reason instead of throwing, so the fixture's divergences still report",
+  async () => {
+    const first = { id: "after", print: 1, viewer: 2, agreeingPage: 1 };
+    const notAPdf = new TextEncoder().encode("not a pdf");
+    const m = await measureExactFitBoundary(browser!, url, agent, viewer, VIEWPORT, ["after"], first, notAPdf);
+    expect("error" in m).toBe(true);
+    expect((m as { error: string }).error).toMatch(/PDF/i);
   },
   TIMEOUT,
 );
