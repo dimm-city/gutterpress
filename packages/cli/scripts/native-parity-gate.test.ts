@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -158,8 +158,11 @@ let url = "";
 let agent = "";
 let viewer = "";
 
-beforeAll(async () => {
-  if (!chromium) return;
+// Launched from the first test that needs it, under that test's own TIMEOUT —
+// the same shape the compiler's Chromium tests use. A beforeAll runs under
+// bun's 5 s hook limit, which a Chromium launch on a loaded CI runner overran.
+async function fixture(): Promise<Browser> {
+  if (browser) return browser;
   dir = await mkdtemp(join(tmpdir(), "gp-exact-fit-"));
   const file = join(dir, "book.html");
   await writeFile(file, PAGE);
@@ -167,7 +170,8 @@ beforeAll(async () => {
   agent = await Bun.file(await getAssetPath("engine/gutterpress-agent.js")).text();
   viewer = await Bun.file(await getAssetPath("engine/gutterpress-viewer.js")).text();
   browser = await launchChromium();
-});
+  return browser;
+}
 
 afterAll(async () => {
   await browser?.close();
@@ -177,7 +181,7 @@ afterAll(async () => {
 const VIEWPORT = { width: 384, height: 288 };
 
 async function mount(bodyClass = "") {
-  const page = await mountViewer(browser!, url, agent, viewer, VIEWPORT);
+  const page = await mountViewer(await fixture(), url, agent, viewer, VIEWPORT);
   await page.evaluate(EXACT_FIT_BROWSER_JS);
   if (bodyClass) {
     await page.evaluate(`document.body.className = ${JSON.stringify(bodyClass)}; window.__gpParity.relayout();`);
@@ -331,7 +335,7 @@ testIf(
   async () => {
     const first = { id: "after", print: 1, viewer: 2, agreeingPage: 1 };
     const notAPdf = new TextEncoder().encode("not a pdf");
-    const m = await measureExactFitBoundary(browser!, url, agent, viewer, VIEWPORT, ["after"], first, notAPdf);
+    const m = await measureExactFitBoundary(await fixture(), url, agent, viewer, VIEWPORT, ["after"], first, notAPdf);
     expect("error" in m).toBe(true);
     expect((m as { error: string }).error).toMatch(/PDF/i);
   },
