@@ -124,7 +124,8 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     linted++;
     const warnings = checkCss(css, file);
     const errors = warnings.filter((w) => w.severity === "error");
-    riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
+    const risky = warnings.filter((w) => w.rule === ruleRiskyProps);
+    riskyCount += risky.length;
 
     if (errors.length > 0) {
       log.error(`  ${file}`);
@@ -132,6 +133,12 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
         log.error(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
       }
       errorCount += errors.length;
+    }
+    if (risky.length > 0) {
+      log.warn(`  ${file}`);
+      for (const w of risky) {
+        log.warn(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
+      }
     }
   }
 
@@ -143,9 +150,6 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   if (riskyCount > 0) {
     log.warn(
       `${riskyCount} risky print properties found (may cause rasterization)`
-    );
-    log.warn(
-      "The validator will check for actual rasterized pages after PDF generation."
     );
   } else {
     log.success("CSS lint passed");

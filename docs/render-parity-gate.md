@@ -135,10 +135,12 @@ declaration, and its message names this exact consequence ("text becomes
 unselectable, unsearchable, and inaccessible") and points back here. Run
 it — the CLI's pre-build lint gate and the desktop Problems panel both call
 `checkCss` — over any stylesheet you're about to trust render-parity to
-cover. **If a text-bearing element or one of its ancestors trips that
-`filter` warning, render-parity cannot see a text-only change confined to it
-— verify such a change by other means (a rendered preview, a visual diff, or
-careful review), not by a clean gate run.**
+cover; `gutterpress lint` lists each finding with its file and `line:col`,
+and `filter: none` (a suppressed filter) is not one. **If a text-bearing
+element or one of its ancestors trips that `filter` warning, render-parity
+cannot see a text-only change confined to it — verify such a change by other
+means (a rendered preview, a visual diff, or careful review), not by a clean
+gate run.**
 
 This does not weaken the gate for everything else on the same page: page
 geometry, image placement, and any text **outside** a filtered subtree are

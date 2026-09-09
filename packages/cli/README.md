@@ -269,9 +269,11 @@ gutterpress lint [files] [options]
 
 Common findings include remote `url(...)` references, effects that rasterize
 print text, and declarations on core page wrappers that could clip or trap
-out-of-flow art. The source-level containment check is an early signal; the
-build-time `engine.layer.trapped` diagnostic inspects the authoritative live
-ancestor chain.
+out-of-flow art. Each finding is listed with its file and `line:col`, so you
+can see exactly which selectors rasterize text; a property at its initial value
+(`filter: none`, `will-change: auto`) is not a finding. The source-level
+containment check is an early signal; the build-time `engine.layer.trapped`
+diagnostic inspects the authoritative live ancestor chain.
 
 ### `gutterpress validate`
 
