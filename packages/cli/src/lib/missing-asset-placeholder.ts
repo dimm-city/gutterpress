@@ -178,32 +178,43 @@ export function rewriteMissingImageReferences(
     return out;
   };
 
-  const rewriteActiveHtml = (active: string): string =>
-    active.replace(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g, (tag) => rewriteTag(tag));
+  // Style bodies get their one intentional CSS-url pass, while remaining
+  // opaque to markup rewriting: CSS strings/comments can contain tag-looking
+  // examples that are not real HTML.
+  return rewriteActiveHtml(html, rewriteTag, (region, element) => {
+    if (element !== "style") return region;
+    const style = /^(<style\b[^>]*>)([\s\S]*)(<\/style\s*>)$/i.exec(region);
+    return style
+      ? `${rewriteTag(style[1]!)}${rewriteCssUrls(style[2]!)}${style[3]!}`
+      : region;
+  });
+}
 
-  // HTML raw-text / literal-content elements and comments are opaque to the
-  // tag pass. Style bodies get their one intentional CSS-url pass here, while
-  // remaining opaque to markup rewriting: CSS strings/comments can contain
-  // tag-looking examples that are not real HTML. Other protected regions stay
-  // byte-for-byte authored.
+/**
+ * Apply `rewriteTag` to every tag in the ACTIVE parts of rendered HTML.
+ * Comments and raw-text / literal-content elements (`<script>`, `<style>`,
+ * `<pre>`, `<code>`, `<textarea>`) are opaque to the tag pass — a prose
+ * example showing HTML must stay byte-for-byte authored. Each such region is
+ * handed whole to `rewriteProtected` with its element name (undefined for a
+ * comment), which keeps it unchanged unless the caller says otherwise.
+ */
+export function rewriteActiveHtml(
+  html: string,
+  rewriteTag: (tag: string) => string,
+  rewriteProtected: (region: string, element: string | undefined) => string = (region) => region,
+): string {
+  const rewriteTags = (active: string): string =>
+    active.replace(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g, rewriteTag);
   const protectedRegion =
     /<!--[\s\S]*?-->|<(script|style|pre|code|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
   let out = "";
   let last = 0;
   for (const match of html.matchAll(protectedRegion)) {
-    out += rewriteActiveHtml(html.slice(last, match.index));
-    if (match[1]?.toLowerCase() === "style") {
-      const style = /^(<style\b[^>]*>)([\s\S]*)(<\/style\s*>)$/i.exec(match[0]);
-      out += style
-        ? `${rewriteTag(style[1]!)}${rewriteCssUrls(style[2]!)}${style[3]!}`
-        : match[0];
-    } else {
-      out += match[0];
-    }
+    out += rewriteTags(html.slice(last, match.index));
+    out += rewriteProtected(match[0], match[1]?.toLowerCase());
     last = (match.index ?? 0) + match[0].length;
   }
-  out += rewriteActiveHtml(html.slice(last));
-  return out;
+  return out + rewriteTags(html.slice(last));
 }
 
 function crc32(buf: Uint8Array): number {

@@ -15,8 +15,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   — dead for every reader, and different bytes on every build. A PDF has no
   files beside it, so no relative target can be opened from one: `pdf` and
   `pdfx` builds now drop the `href` of every relative link before print (the
-  link text stays; `#anchor`, `http(s)`, `mailto:` links are untouched;
-  `--format html` output is unchanged). Two builds of the same sources now
+  link text stays; `#anchor`, `http(s)`, `mailto:` links are untouched; an
+  empty, `?query` or `//host` href resolves against the same temp path and is
+  dropped too; `--format html` output is unchanged). Two builds of the same sources now
   differ only in their dates and trailer `/ID`. A link whose href is dropped
   no longer matches `a[href]` / `:any-link` styling in the PDF. The new
   pre-build check `source.links.dangling` warns, with file and line, about

@@ -43,7 +43,8 @@ const CHAPTER = [
   "A [constitution](docs/constitution.md), the [next chapter](chapters/02-next.md),",
   "the [cover](images/cover.png), a [spec](files/spec.pdf), the [intro](#intro),",
   "a [site](https://example.com/page), an [address](mailto:reader@example.com),",
-  "[this file](./01-intro.md#intro) and <a href=\"docs/constitution.md\">raw HTML</a>.",
+  "[this file](./01-intro.md#intro) and <a href=\"docs/constitution.md\">raw HTML</a>,",
+  "an [empty](), a [query](?print=1) and a [protocol-relative](//cdn.example.com/x) link.",
   "",
 ].join("\n");
 
@@ -108,8 +109,8 @@ testIf(
     const [a, b] = await Promise.all([build(book, "pdf", "a"), build(book, "pdf", "b")]);
 
     const links = await linkTargets(a);
-    // Same-book chapter, copied image, sibling PDF, raw <a>: all relative,
-    // none openable from a PDF, all gone. Baseline had eight file:// URIs.
+    // Same-book chapter, copied image, sibling PDF, raw <a>, empty, query-only
+    // and protocol-relative: none openable from a PDF, all gone.
     expect(links.urls).toEqual(["https://example.com/page", "mailto:reader@example.com"]);
     expect(links.dests).toEqual(["intro"]);
     expect(await linkTargets(b)).toEqual(links);

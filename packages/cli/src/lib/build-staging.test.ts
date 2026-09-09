@@ -115,15 +115,20 @@ test("onPlan sees unresolved refs and can abort before anything is copied", asyn
 // and Chromium bakes the ABSOLUTE resolved URL of every relative href into the
 // PDF's link annotation. A PDF has no files beside it, so no relative target
 // is openable: the href goes, the link text stays.
-test("dropRelativeLinkHrefs strips only relative and file: hrefs, keeping the element", () => {
+test("dropRelativeLinkHrefs keeps only #fragment and non-file scheme hrefs, and the element", () => {
   const keep = [
     `<a href="#intro" data-gp-source-token="[t](#intro)">t</a>`,
     `<a href="https://example.com/page">t</a>`,
     `<a href="mailto:reader@example.com">t</a>`,
-    `<a href="//cdn.example.com/x">t</a>`,
-    `<a href="?print=1">t</a>`,
+    `<a-badge href="x/y.md">not an anchor</a-badge>`,
   ].join("\n");
+  // Empty, query-only and protocol-relative hrefs name no asset to copy, but
+  // Chromium still resolves them against the file:// base: the first two bake
+  // the random work dir, the third becomes file://cdn.example.com/x.
   const drop = [
+    [`<a href="">t</a>`, `<a>t</a>`],
+    [`<a href="?print=1">t</a>`, `<a>t</a>`],
+    [`<a href="//cdn.example.com/x">t</a>`, `<a>t</a>`],
     [`<a href="docs/constitution.md" data-gp-source-token="[t](docs/constitution.md)">t</a>`,
      `<a data-gp-source-token="[t](docs/constitution.md)">t</a>`],
     [`<a class="x" href='chapters/02-next.md'>t</a>`, `<a class="x">t</a>`],

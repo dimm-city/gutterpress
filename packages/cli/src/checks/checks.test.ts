@@ -1422,11 +1422,12 @@ describe("Dangling links check", () => {
         "[up](../NOTES.md)",
         "[pdf](files/spec.pdf)",
         "[abs](/tmp/x.md)",
+        "[p](//cdn/x)",
+        "[q](?print=1)",
+        "[e]()",
         "[a](#intro)",
         "[h](https://example.com)",
         "[m](mailto:x@y)",
-        "[p](//cdn/x)",
-        "[q](?print=1)",
         "![img](images/a.png)",
         "https://example.com/bare",
       ];
@@ -1436,8 +1437,19 @@ describe("Dangling links check", () => {
       const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
 
       // Existing on disk (docs/c.md, ./ok.md) or not: neither opens from a PDF.
+      // Protocol-relative, query-only and empty hrefs resolve against the
+      // staged file:// document too, so print drops them and they are named.
       // (markdown-it refuses a `file:` link outright, so none can reach here.)
-      const expected = ["docs/c.md", "./ok.md", "../NOTES.md", "files/spec.pdf", "/tmp/x.md"];
+      const expected = [
+        "docs/c.md",
+        "./ok.md",
+        "../NOTES.md",
+        "files/spec.pdf",
+        "/tmp/x.md",
+        "//cdn/x",
+        "?print=1",
+        "",
+      ];
       expect(results.map((r) => r.data?.ref)).toEqual(expected);
       for (const [i, r] of results.entries()) {
         expect(r.severity).toBe("warning");
