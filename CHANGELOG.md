@@ -7,23 +7,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.10.9] - unreleased
 
-### Fixed
-
-- **A relative link no longer bakes the build machine's temp path into the
-  PDF.** `[constitution](docs/constitution.md)` used to become a link
-  annotation to `file:///tmp/gutterpress-build-<random>/docs/constitution.md`
-  — dead for every reader, and different bytes on every build. A PDF has no
-  files beside it, so no relative target can be opened from one: `pdf` and
-  `pdfx` builds now drop the `href` of every relative link before print (the
-  link text stays; `#anchor`, `http(s)`, `mailto:` links are untouched; an
-  empty, `?query` or `//host` href resolves against the same temp path and is
-  dropped too; `--format html` output is unchanged). Two builds of the same sources now
-  differ only in their dates and trailer `/ID`. A link whose href is dropped
-  no longer matches `a[href]` / `:any-link` styling in the PDF. The new
-  pre-build check `source.links.dangling` warns, with file and line, about
-  each affected link — a link to another chapter file of the same book
-  included, since the renderer maps none to an in-document anchor. (#263)
-
 ### Changed
 
 - **One extension rail: `extensions:` replaces `plugins:` and the theme
@@ -37,10 +20,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   files referenced in place, never copied; anything else is an npm package,
   and `name@version` pins it — one that ships a `gutterpress.json` is read
   exactly like a folder, stylesheets and snippets included. The list order
-  is the load order: a later
-  entry's markdown runs after earlier ones and its CSS wins ties, and the
-  project's own `styles:` always load last — reordering the list is how you
-  adjust the cascade, so `priority` is gone. The object form (`use:` with
+  is the load order: a later entry's markdown runs after earlier ones and
+  its CSS wins ties, and the project's own `styles:` always load last —
+  reordering the list is how you adjust the cascade, so `priority` is gone. The object form (`use:` with
   `options`, `export`, `enabled`) exists only for an entry that needs more
   than its specifier. A manifest still carrying `plugins:` or `priority`
   fails with its own entries rewritten the new way. (#265)
@@ -69,8 +51,33 @@ This project follows [Semantic Versioning](https://semver.org/).
   #268 boundary; `docs/native-parity-gate.md` describes the three outcomes.
   (#261, #268)
 
+### Removed
+
+- **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one
+  pagination engine, so the switch selected nothing, and `engineStyles.native`
+  only ever appended to the end of `styles:` — list position says the same
+  thing. A `manifest.yaml`, `gutterpress.json` or `theme.json` that still
+  carries either field fails with a message naming the replacement: delete
+  `engine`; move the `engineStyles` entries to the end of `styles`. Nothing
+  about the built book changes for a manifest that makes that move — the
+  resolved stylesheet list is identical. (#266)
+
 ### Fixed
 
+- **A relative link no longer bakes the build machine's temp path into the
+  PDF.** `[constitution](docs/constitution.md)` used to become a link
+  annotation to `file:///tmp/gutterpress-build-<random>/docs/constitution.md`
+  — dead for every reader, and different bytes on every build. A PDF has no
+  files beside it, so no relative target can be opened from one: `pdf` and
+  `pdfx` builds now drop the `href` of every relative link before print (the
+  link text stays; `#anchor`, `http(s)`, `mailto:` links are untouched; an
+  empty, `?query` or `//host` href resolves against the same temp path and is
+  dropped too; `--format html` output is unchanged). Two builds of the same sources now
+  differ only in their dates and trailer `/ID`. A link whose href is dropped
+  no longer matches `a[href]` / `:any-link` styling in the PDF. The new
+  pre-build check `source.links.dangling` warns, with file and line, about
+  each affected link — a link to another chapter file of the same book
+  included, since the renderer maps none to an in-document anchor. (#263)
 - **`gutterpress lint` names every risky print effect.** It printed only a
   count ("35 risky print properties found"); now each finding is listed with
   its file and `line:col`, the same way errors are, so an author can read
@@ -89,17 +96,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   reported as dropped declarations) and the page-containment check
   (`will-change: auto` is no longer a stacking context; `overflow:
   revert-layer` no longer clips). (#259)
-
-### Removed
-
-- **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one
-  pagination engine, so the switch selected nothing, and `engineStyles.native`
-  only ever appended to the end of `styles:` — list position says the same
-  thing. A `manifest.yaml`, `gutterpress.json` or `theme.json` that still
-  carries either field fails with a message naming the replacement: delete
-  `engine`; move the `engineStyles` entries to the end of `styles`. Nothing
-  about the built book changes for a manifest that makes that move — the
-  resolved stylesheet list is identical. (#266)
 
 ## [0.10.8] - 2026-09-03
 
