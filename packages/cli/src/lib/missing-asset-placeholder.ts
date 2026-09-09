@@ -42,7 +42,7 @@ export function placeholderOutputPath(missingOutputPath: string): string {
 }
 
 /** Decode the small entity set that can occur inside an HTML URL attribute. */
-function decodeHtmlAttribute(value: string): string {
+export function decodeHtmlAttribute(value: string): string {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")

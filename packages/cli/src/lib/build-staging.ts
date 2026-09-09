@@ -2,8 +2,14 @@ import path from "node:path";
 import os from "node:os";
 import fsp from "node:fs/promises";
 import { getAssetPath } from "./embedded-assets";
-import { inlineShapeUrls, planImageCopies, type AssetCopy } from "./asset-inline";
 import {
+  inlineShapeUrls,
+  isNonFilesystemRef,
+  planImageCopies,
+  type AssetCopy,
+} from "./asset-inline";
+import {
+  decodeHtmlAttribute,
   placeholderOutputPath,
   placeholderPng,
   rewriteMissingImageReferences,
@@ -88,8 +94,16 @@ export async function stageBookAssets(options: {
   cssAssets: AssetCopy[];
   /** Called once with the copy plan; throw here to abort before copying. */
   onPlan?: (plan: StagingPlan) => void;
+  /**
+   * Strip every relative `<a href>` from the staged book — for print
+   * artifacts only, where no relative target can be opened (see
+   * {@link dropRelativeLinkHrefs}). Off by default: `--format html` ships its
+   * images beside `book.html` and keeps every href.
+   */
+  dropRelativeLinks?: boolean;
 }): Promise<StagedAssets> {
-  const { renderDir, outDir, htmlFile, imageRefs, cssAssets, onPlan } = options;
+  const { renderDir, outDir, htmlFile, imageRefs, cssAssets, onPlan, dropRelativeLinks } =
+    options;
   const { copies: imageCopies, errors, destinations } = await planImageCopies(
     renderDir,
     imageRefs,
@@ -118,6 +132,10 @@ export async function stageBookAssets(options: {
       if (placeholder) rewrites.set(ref, placeholder);
     }
     staged = rewriteMissingImageReferences(staged, rewrites);
+    await fsp.writeFile(htmlFile, staged, "utf8");
+  }
+  if (dropRelativeLinks) {
+    staged = dropRelativeLinkHrefs(staged);
     await fsp.writeFile(htmlFile, staged, "utf8");
   }
   if (staged.includes("--gp-shape:")) {
@@ -172,6 +190,55 @@ async function copyReferencedAssets(
   );
 
   return missing;
+}
+
+/**
+ * Remove the `href` of every relative `<a>` in rendered HTML, keeping the
+ * element and its text. Print-production tooling (permanent, not a shim).
+ *
+ * The staged `book.html` is printed from a `file://` URL in a per-build temp
+ * dir (engine/compiler/build.ts navigates `pathToFileURL(input)`), and
+ * Chromium writes the ABSOLUTE resolved URL of every relative `href` into
+ * the PDF's link annotation: `file:///tmp/gutterpress-build-<random>/docs/
+ * constitution.md`. That leaks the build machine's layout, is dead for every
+ * reader, and makes two builds of the same sources differ in bytes (#263).
+ * A PDF has no files beside it, so NO relative target is openable from one —
+ * not a same-book chapter file, not even an image the build copied into the
+ * work dir. The href is therefore dropped rather than rewritten. Kept, byte
+ * for byte: `#fragment` (an in-document GoTo destination), any scheme other
+ * than `file:` (`https:`, `mailto:`, …), protocol-relative and query-only
+ * URLs — exactly the split `isNonFilesystemRef` already encodes.
+ *
+ * Measured on Chromium 152: before, every relative link carried the random
+ * work dir; after, the PDF's URIs are only the absolute ones the author
+ * wrote and `#anchors` remain GoTo destinations. `source.links.dangling`
+ * tells the author which links this affects before the build.
+ *
+ * Comments and raw-text / literal-content elements (a `<pre>` showing HTML)
+ * stay untouched — the same protected regions the missing-image rewrite
+ * respects, for the same reason.
+ */
+export function dropRelativeLinkHrefs(html: string): string {
+  const hrefAttr = /\s+href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+  const rewriteTag = (tag: string): string => {
+    if (!/^<a\b/i.test(tag)) return tag;
+    const m = hrefAttr.exec(tag);
+    if (!m) return tag;
+    const href = decodeHtmlAttribute(m[1] ?? m[2] ?? m[3] ?? "");
+    return isNonFilesystemRef(href) ? tag : tag.replace(hrefAttr, "");
+  };
+  const rewriteActiveHtml = (active: string): string =>
+    active.replace(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g, rewriteTag);
+
+  const protectedRegion =
+    /<!--[\s\S]*?-->|<(script|style|pre|code|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+  let out = "";
+  let last = 0;
+  for (const match of html.matchAll(protectedRegion)) {
+    out += rewriteActiveHtml(html.slice(last, match.index)) + match[0];
+    last = (match.index ?? 0) + match[0].length;
+  }
+  return out + rewriteActiveHtml(html.slice(last));
 }
 
 /**

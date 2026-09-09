@@ -235,6 +235,9 @@ async function stage(
     htmlFile: htmlPath,
     imageRefs,
     cssAssets,
+    // The gate measures the document the PDF build prints: hrefs dropped,
+    // exactly as renderBook stages a pdf/pdfx build (#263).
+    dropRelativeLinks: true,
     onPlan: ({ unresolved }) => {
       // A build REFUSES to ship these; the gate measures the book anyway —
       // where an image points is not a fragmentation question. Reported, not

@@ -100,9 +100,11 @@ const check: Check = {
  *   - `image`  — an inline `![alt](dest)` — the renderer records it verbatim
  *     and `planImageCopies` (lib/asset-inline.ts) resolves it against the
  *     PROJECT ROOT.
- *   - `link`   — an inline `[text](dest)` with no `!` — never touched by the
- *     renderer; it ships as a plain relative href a reader resolves relative
- *     to the LINKING file (e.g. a chapter linking to another chapter file).
+ *   - `link`   — an inline `[text](dest)` with no `!` — probed relative to the
+ *     LINKING file, the frame the author wrote it in. This only asks whether
+ *     the author's target exists on disk; whether the built book can open it
+ *     is `source.links.dangling`'s question (a PDF can open no relative
+ *     target, so print drops the href — see lib/build-staging.ts).
  * Reference definitions need no ambiguous third frame: the parser-aligned
  * collector sees their actual consumers as either rendered links or images.
  */
@@ -138,9 +140,11 @@ function filesystemRef(ref: string): string {
  *        `<chapterDir>/art/cover.png` instead, and a correct reference was
  *        reported as a build-failing error.
  *      - A non-image LINK (e.g. one chapter linking to another markdown file)
- *        is never touched by the renderer — it ships as an ordinary relative
- *        href that a reader's browser/PDF desktop resolves relative to the
- *        LINKING file, so that stays the frame this check uses too.
+ *        is probed relative to the LINKING file — an "author's intent exists
+ *        on disk" check. The build concatenates every chapter into one
+ *        book.html at the staging root and, for print, drops relative hrefs
+ *        outright (#263), so this frame says nothing about what the artifact
+ *        resolves; `source.links.dangling` covers that.
  *      - A reference-style consumer already has a concrete rendered kind, so
  *        it follows the same link/image frame without guessing from the
  *        definition in isolation.
