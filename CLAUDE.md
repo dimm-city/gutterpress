@@ -127,7 +127,10 @@ Two constraints survive the relaxation, and they are what keep it honest:
    author's pages; it may not re-decide them. Where the viewer derives
    pagination by any means other than the print fragmenter, the preview↔print
    parity gate (`scripts/native-parity-gate.ts`) is what proves it still
-   agrees with the PDF — and it must stay green with an empty allowlist.
+   agrees with the PDF — and it must stay green with an empty allowlist. A
+   sub-pixel exact-fit boundary the gate has measured in both fragmenters
+   (see `docs/native-parity-gate.md`) is a distinct passing outcome, not an
+   allowlist entry.
 
 **Boundary rulings** (ratified by the product owner, 2026-08-08 — these
 resolve the categorization questions future work will hit):
