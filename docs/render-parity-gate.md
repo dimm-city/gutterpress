@@ -12,8 +12,9 @@ primitives. No new dependency, no rasterization (CLAUDE.md §1/§3).
 - Pure logic: `packages/cli/src/lib/render-parity.ts` (`extractReport`,
   `compareReports`, `formatDiffs`, `serializeReport`).
 - CLI: `packages/cli/scripts/render-parity.ts`, a bun script beside
-  `scripts/native-parity-gate.ts` — **not** a published `gutterpress`
-  subcommand.
+  `scripts/native-parity-gate.ts` (the preview↔print gate, documented in
+  [native-parity-gate.md](./native-parity-gate.md)) — **not** a published
+  `gutterpress` subcommand.
 - CI wiring: the `render-parity` job in `.github/workflows/ci.yml`.
 
 ## Usage

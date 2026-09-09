@@ -76,6 +76,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **Check whether a core change moved any rendered page**
 → [Render-parity gate](./render-parity-gate.md) — usage, report/waiver format, CI wiring
 
+**Check that the preview paginates like the PDF**
+→ [Preview/print parity gate](./native-parity-gate.md) — outcomes: clean, exact-fit boundary, divergence
+
 ## Quick Reference
 
 ### Common Commands
@@ -143,6 +146,7 @@ docs/
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
 ├── render-parity-gate.md                  # Render-parity CI gate: usage, report/waiver format
+├── native-parity-gate.md                  # Preview↔print parity gate: outcomes, exact-fit rule
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides

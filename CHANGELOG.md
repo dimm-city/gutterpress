@@ -38,6 +38,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   Gutterpress version; `gutterpress new` does the same for its starter look.
   A `.zip`, `.css` or URL import lands in `extensions/<id>/` too. The
   `themes/` folder convention retires with the rail. (#265)
+- **The preview/print parity gate measures an exact-fit boundary instead of
+  failing on its consequences.** When the viewer and the PDF disagree on a
+  heading's page, `scripts/native-parity-gate.ts` now finds the first page
+  whose last line they disagree on and measures that line's slack in both
+  fragmenters. Opposite fit outcomes within 1px of each other — print keeps
+  a line whose box ends at the column bottom, the preview lays it 0.4px lower
+  and pushes it, and `orphans`/`break-before: avoid` then walk the heading
+  onto the next page — are reported as an EXACT-FIT BOUNDARY with the
+  numbers, and the fixture passes with that outcome; the downstream
+  divergences are listed, not counted. Anything else fails as before, and
+  the allowlist stays empty. `docs/fixtures/exact-fit-boundary` pins the
+  #268 boundary; `docs/native-parity-gate.md` describes the three outcomes.
+  (#261, #268)
 
 ### Removed
 
