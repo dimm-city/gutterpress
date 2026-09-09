@@ -39,6 +39,24 @@ This project follows [Semantic Versioning](https://semver.org/).
   A `.zip`, `.css` or URL import lands in `extensions/<id>/` too. The
   `themes/` folder convention retires with the rail. (#265)
 
+### Fixed
+
+- **`gutterpress lint` names every risky print effect.** It printed only a
+  count ("35 risky print properties found"); now each finding is listed with
+  its file and `line:col`, the same way errors are, so an author can read
+  WHICH selectors rasterize text — and so sit outside the render-parity
+  gate's coverage. The line promising that "the validator will check for
+  actual rasterized pages after PDF generation" is gone: post-build
+  validation runs only for `--format pdfx`, and its rasterized-pages check
+  only catches fully flattened pages, never a filtered card on a normal
+  page. `filter: none`, `clip-path: none`, `transition: none`,
+  `animation: none`, `will-change: auto`, `mix-blend-mode: normal` and
+  `background-blend-mode: normal` are no longer reported — a property at its
+  initial value does nothing, and `filter: none` is exactly how a book
+  suppresses an earlier filter, so such a book can now reach zero findings.
+  The same table stops `will-change: auto` on a page wrapper being reported
+  as a stacking context. (#259)
+
 ### Removed
 
 - **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one

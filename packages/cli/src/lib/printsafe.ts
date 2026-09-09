@@ -155,30 +155,62 @@ function targetsPageWrapper(selector: string): boolean {
   return !/\bgp-(bleed|pin)\b/.test(selector);
 }
 
+// A property at its initial value — or at a CSS-wide reset keyword — does
+// nothing, so neither the rasterization warning nor the stacking-context
+// check may fire on it. `filter: none` is exactly how a book suppresses an
+// earlier `filter`, and such a book must be able to reach zero findings
+// (#259). ONE table, consumed by createsStackingContext() and by checkCss()'s
+// risky-property branches. The match is textual: `filter: var(--x)` is still
+// reported even when `--x` resolves to `none`, because this is a source-only
+// check with no cascade to consult.
+const cssWideResetKeywords = new Set(["initial", "unset", "revert", "revert-layer"]);
+
+const inertValues: Record<string, ReadonlySet<string>> = {
+  "z-index": new Set(["auto"]),
+  isolation: new Set(["auto"]),
+  opacity: new Set(["1", "100%"]),
+  "mix-blend-mode": new Set(["normal"]),
+  "background-blend-mode": new Set(["normal"]),
+  filter: new Set(["none"]),
+  "backdrop-filter": new Set(["none"]),
+  transform: new Set(["none"]),
+  perspective: new Set(["none"]),
+  "will-change": new Set(["auto"]),
+  "clip-path": new Set(["none"]),
+  transition: new Set(["none"]),
+  animation: new Set(["none"]),
+  "animation-name": new Set(["none"]),
+  contain: new Set(["none"]),
+};
+
+function isInertValue(prop: string, value: string): boolean {
+  const v = value.trim().toLowerCase();
+  return cssWideResetKeywords.has(v) || (inertValues[prop]?.has(v) ?? false);
+}
+
 /** Properties that make an element a stacking context, trapping a
  * `.gp-behind` descendant inside it instead of letting it paint under the
- * page's text. `z-index` only counts when it is not `auto`; `opacity`/
- * `filter`/`transform`/`mix-blend-mode` count at any non-initial value. */
+ * page's text. Any value in `inertValues` is the property doing nothing;
+ * everything else counts, except `isolation` (only `isolate`) and `contain`
+ * (only the paint/layout-containing values). */
 function createsStackingContext(decl: postcss.Declaration): boolean {
   const p = decl.prop.toLowerCase();
   const v = decl.value.trim().toLowerCase();
+  if (isInertValue(p, v)) return false;
   switch (p) {
-    case "z-index":
-      return v !== "auto" && v !== "initial" && v !== "unset";
     case "isolation":
       return v === "isolate";
+    case "contain":
+      return /\b(paint|layout|strict|content)\b/.test(v);
+    case "z-index":
     case "opacity":
-      return v !== "1" && v !== "100%" && v !== "initial" && v !== "unset";
     case "mix-blend-mode":
-      return v !== "normal" && v !== "initial" && v !== "unset";
     case "filter":
     case "backdrop-filter":
     case "transform":
     case "perspective":
     case "will-change":
-      return v !== "none" && v !== "initial" && v !== "unset";
-    case "contain":
-      return /\b(paint|layout|strict|content)\b/.test(v);
+      return true;
     default:
       return false;
   }
@@ -240,6 +272,11 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
 
   root.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
+    // An inert value (`filter: none`, `clip-path: none`, `will-change: auto`,
+    // `mix-blend-mode: normal`, …) rasterizes nothing and drops nothing, so no
+    // branch below may report it — the filter and generic risky branches used
+    // to fire on the property name alone (#259).
+    if (isInertValue(prop, decl.value)) return;
     // The margin-box drop comes first: `filter`, `mix-blend-mode`,
     // `clip-path` and `backdrop-filter` are all in `riskyProperties` too, and
     // there the generic "can force rasterization" text would be wrong —

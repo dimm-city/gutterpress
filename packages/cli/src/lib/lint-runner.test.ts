@@ -11,7 +11,7 @@
  * glob is resolved at call-time.
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, spyOn } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -305,6 +305,84 @@ describe("runLint accepts a pre-loaded pluginStylePaths (#262)", () => {
 
       expect(result.filesLinted).toBe(1);
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// #259 — the lint phase printed risky-property warnings only as a count, so
+// an author could not tell WHICH selectors rasterize (and so sit outside the
+// render-parity gate's coverage). Each finding is now printed the same way
+// the errors are: a file header, then `line:col  message  (rule)`.
+describe("gutterpress lint prints each risky finding (#259)", () => {
+  test("lists each risky property with file, line:col, message and rule", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-per-finding-"));
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      const cssPath = join(dir, "styles", "book.css");
+      await writeFile(
+        cssPath,
+        ".card {\n  filter: drop-shadow(0 0 4px #000);\n}\n.plain {\n  filter: none;\n}\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Per Finding\npreset: book\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+      const lines = (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
+
+      expect(result.ok).toBe(true);
+      expect(result.riskyCount).toBe(1);
+      expect(lines.some((l) => l.includes(cssPath))).toBe(true);
+      expect(
+        lines.some((l) =>
+          /2:3\s+Property is high-risk for print\/PDF: 'filter' rasterizes.*\(printsafe\/no-risky-print-effects\)/.test(l),
+        ),
+      ).toBe(true);
+      // `filter: none` at 5:3 is inert and must not be listed.
+      expect(lines.some((l) => l.includes("5:3"))).toBe(false);
+      // Post-build validation runs only for pdfx and only catches fully
+      // flattened pages, so this promise was false and is gone.
+      expect(lines.some((l) => l.includes("validator will check"))).toBe(false);
+      expect(lines.some((l) => l.includes("1 risky print properties found"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a stylesheet whose only risky-looking declarations are inert lints clean", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-inert-only-"));
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      const cssPath = join(dir, "styles", "book.css");
+      await writeFile(
+        cssPath,
+        ".plain { filter: none; clip-path: none; transition: none; will-change: auto; mix-blend-mode: normal; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Inert Only\npreset: book\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+      const lines = (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
+
+      expect(result.ok).toBe(true);
+      expect(result.riskyCount).toBe(0);
+      expect(lines.some((l) => l.includes("risky print properties"))).toBe(false);
+      expect(lines.some((l) => l.includes(cssPath))).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
       await rm(dir, { recursive: true, force: true });
     }
   });
