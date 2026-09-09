@@ -19,7 +19,7 @@ Gutterpress ships three built-in looks, embedded in the CLI binary and library:
 A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
 **extension**: a folder holding a stylesheet — `theme.css` — plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
-plugins ([Chapter 5](./05-plugins.md) covers that list in full).
+plugins ([Chapter 5](#ch-plugins) covers that list in full).
 
 Adding a built-in look **copies** it into your project at `extensions/<id>/`,
 so the book owns editable files rather than a hidden dependency on whichever
@@ -174,10 +174,10 @@ still needs one to find the package root.
 
 The other metadata fields are `author`, `description`, `preview` (an image,
 relative to the folder), and — for a look that is also a plugin or a component
-library — `markdown`, `snippets` and `components`. [Chapter 5](./05-plugins.md)
+library — `markdown`, `snippets` and `components`. [Chapter 5](#ch-plugins)
 covers those.
 
-## Font Loading
+## Font Loading {#font-loading}
 
 Download the font into your project and load it with `@font-face` — this is
 the only supported path. A remote `@import url("https://fonts.googleapis...")`
@@ -221,7 +221,7 @@ Named pages let you apply different margins, backgrounds, or decorations to spec
 }
 ```
 
-Writing `@page gallery` in *markdown* only sets `data-page="gallery"` on the page wrapper (see [Chapter 2, @page — start a new page](./02-writing-content.md)) — by itself it does **not** bind that wrapper to the `@page gallery` CSS rule above. You still need a CSS declaration that assigns the `page` property to something in your markup — the simplest option is to target the `data-page` attribute the marker already gives you:
+Writing `@page gallery` in *markdown* only sets `data-page="gallery"` on the page wrapper (see [Chapter 2, @page — start a new page](#ch-writing)) — by itself it does **not** bind that wrapper to the `@page gallery` CSS rule above. You still need a CSS declaration that assigns the `page` property to something in your markup — the simplest option is to target the `data-page` attribute the marker already gives you:
 
 ```css
 [data-page="gallery"] { page: gallery; }
@@ -339,7 +339,7 @@ file in two, or reordering `styles:`, can no longer silently flip who wins.
 
 ## Layout Marker CSS Classes
 
-Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](./02-writing-content.md#layout-directives) — repeated here as a CSS-focused cheat sheet:
+Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](#layout-directives) — repeated here as a CSS-focused cheat sheet:
 
 @section
 

@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress uses standard markdown-it plugins. Pure-JavaScript plugins published to npm with the signature `(md, options) => void` work without a Gutterpress-specific plugin API. A plugin is one kind of **extension** — this chapter also covers the manifest's `extensions:` list, which holds looks ([Chapter 4](./04-styling-theming.md)) and component libraries alongside plugins.
+Gutterpress uses standard markdown-it plugins. Pure-JavaScript plugins published to npm with the signature `(md, options) => void` work without a Gutterpress-specific plugin API. A plugin is one kind of **extension** — this chapter also covers the manifest's `extensions:` list, which holds looks ([Chapter 4](#ch-styling)) and component libraries alongside plugins.
 
 @end-section
 
@@ -89,7 +89,7 @@ gutterpress ext enable markdown-it-mark ./my-book
 gutterpress ext remove markdown-it-highlightjs ./my-book
 ```
 
-`add` also takes a `.zip` or `.css` file, an `http(s)` URL, or — with `--look` — a built-in look id; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](./04-styling-theming.md)). `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
+`add` also takes a `.zip` or `.css` file, an `http(s)` URL, or — with `--look` — a built-in look id; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](#ch-styling)). `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
 
 The desktop app shows the same list under **Project settings → Features** (the entries that carry markdown) and **Project settings → Look** (the entries that carry styles) — two views over one list, with the same add, enable/disable, reorder and remove actions.
 
@@ -264,7 +264,7 @@ with a `gutterpress.json` — the same package format a look uses:
 `markdown` names the plugin module (loaded through exactly the plain
 markdown-it contract above), `styles` lists sheets in cascade order,
 `snippets` names a folder of insertable recipes, and `components` a catalog
-file; `preview` and `tokensFile` are the look-side fields ([Chapter 4](./04-styling-theming.md)).
+file; `preview` and `tokensFile` are the look-side fields ([Chapter 4](#ch-styling)).
 Every path is relative to the folder and must stay inside it. List the
 folder, not the `.js` file — `./plugins/field-notes` — and Gutterpress reads
 the metadata and picks up everything it declares. A folder that declares only
@@ -335,7 +335,7 @@ The desktop lists the same five as recommended features under **Project settings
 > `.callout-tip` is **this guide's own** project-layer class (defined in
 > `styles/guide.css`), not something core renders — use
 > `@section .callout-tip` … `@end-section` (see
-> [Chapter 8 — Publishing](./08-publishing.md)) if you want that look.
+> [Chapter 8 — Publishing](#ch-publishing)) if you want that look.
 
 ## Error Handling
 
