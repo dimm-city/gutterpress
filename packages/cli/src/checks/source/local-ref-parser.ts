@@ -1,8 +1,12 @@
+import { readFile } from "node:fs/promises";
 import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
 import type Token from "markdown-it/lib/token.mjs";
 
 import { createMarkdownRenderer } from "../../lib/markdown/renderer";
 import type { LoadedPlugin } from "../../lib/markdown/renderer";
+import { loadPlugins } from "../../lib/markdown/plugins";
+import { inspectionFailed } from "../policy";
+import type { CheckContext, CheckResult } from "../types";
 
 export type RenderedRefKind = "image" | "link";
 
@@ -91,8 +95,10 @@ export function createRenderedLocalRefCollector(
           child.type === "image" ? "image" : child.type === "link_open" ? "link" : undefined;
         if (!kind) continue;
 
+        // An empty `[text]()` still renders `<a href="">`, which print must
+        // see; only a token with no such attribute at all is skipped.
         const ref = child.attrGet(kind === "image" ? "src" : "href");
-        if (!ref) continue;
+        if (ref === null) continue;
         const offset = tokenOffsets.get(child);
         refs.push({
           ref,
@@ -111,4 +117,43 @@ export function createRenderedLocalRefCollector(
 
     return refs;
   };
+}
+
+/**
+ * Every rendered link/image of every source file, with the scaffolding the
+ * link checks share: the book's plugins loaded degrade-and-report (a plugin
+ * that will not load is pushed to `results` as an inspection failure and the
+ * rest is still checked — the loader's path-module cache avoids repeating
+ * module-level plugin side effects when another check or the build already
+ * loaded the same unchanged plugin), one parser reused for every chapter, and
+ * a file that cannot be read or parsed reported rather than thrown.
+ */
+export async function* renderedLocalRefs(
+  ctx: CheckContext,
+  checkId: string,
+  results: CheckResult[],
+): AsyncGenerator<RenderedLocalRef & { file: string }> {
+  const files = (ctx.markdownFiles ?? []).slice().sort();
+  if (files.length === 0) return;
+
+  const plugins = await loadPlugins(ctx.config.extensions, ctx.inputDir, (ref, error) => {
+    results.push(
+      inspectionFailed(
+        checkId,
+        `Plugin "${ref}" could not be loaded, so local references it defines were not checked: ${error.message}`,
+      ),
+    );
+  });
+  const collectRenderedLocalRefs = createRenderedLocalRefCollector(plugins);
+
+  for (const file of files) {
+    let refs: RenderedLocalRef[];
+    try {
+      refs = collectRenderedLocalRefs(await readFile(file, "utf8"));
+    } catch {
+      results.push(inspectionFailed(checkId, `Could not read source file: ${file}`, { file }));
+      continue;
+    }
+    for (const ref of refs) yield { ...ref, file };
+  }
 }

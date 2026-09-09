@@ -71,8 +71,8 @@ gutterpress build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/C
 
 > Plain `--format pdf` needs only a Chromium-based browser. **PDF/X (CMYK)
 > additionally requires Ghostscript + qpdf** on the host — install them (see
-> [System Setup](../../gutterpress-user-guide/07-system-setup.md)) or run the build
-> via the [Gutterpress Docker image](../../../docs/docker.md), which bundles all
+> [System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md)) or run the build
+> via the [Gutterpress Docker image](https://github.com/dimm-city/gutterpress/blob/main/docs/docker.md), which bundles all
 > three tools.
 
 There is no separate "full pipeline" command — `gutterpress build` already runs
@@ -80,7 +80,7 @@ the validated pipeline on its own:
 `lint → validate:pre-build → convert → assets → build → validate:post-build`.
 Note that the final `validate:post-build` phase runs for `--format pdfx` ONLY;
 a plain `--format pdf` build stops after the build step
-(see [User Guide, Chapter 6 — Validation](../../gutterpress-user-guide/06-validation.md)).
+(see [User Guide, Chapter 6 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-validation.md)).
 Skip individual phases with flags on `build` itself:
 
 | Flag | Description |

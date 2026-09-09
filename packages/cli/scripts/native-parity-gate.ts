@@ -235,6 +235,14 @@ async function stage(
     htmlFile: htmlPath,
     imageRefs,
     cssAssets,
+    // Print is the ground truth, so the gate stages what a pdf/pdfx build
+    // prints: relative hrefs dropped (#263). The viewer half is measured on
+    // this SAME document, though the live preview keeps every href — so a
+    // book whose CSS prints `attr(href)` diverges between preview and PDF by
+    // construction, and no setting of this one-document gate can observe it.
+    // `source.links.dangling` names each such link instead; seeing it here
+    // would take a two-document stage (viewer undropped, print dropped).
+    dropRelativeLinks: true,
     onPlan: ({ unresolved }) => {
       // A build REFUSES to ship these; the gate measures the book anyway —
       // where an image points is not a fragmentation question. Reported, not

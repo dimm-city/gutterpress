@@ -449,7 +449,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
-  const { config, gates, renderDir, workDir, opts } = ctx;
+  const { config, gates, renderDir, workDir, opts, format } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
@@ -505,6 +505,11 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     htmlFile,
     imageRefs,
     cssAssets,
+    // HTML output keeps every href: its images ship beside book.html and the
+    // documented publishing pattern links a sibling file the build never
+    // copies (`[Download PDF](x.pdf){.download}`). A PDF can open no relative
+    // target at all, so print drops them — see dropRelativeLinkHrefs (#263).
+    dropRelativeLinks: format !== "html",
     onPlan: ({ unresolved, copyCount }) => {
       if (unresolved.length > 0) {
         throw new BuildError(

@@ -8,7 +8,7 @@ Gutterpress converts markdown files into professional print PDFs. It is designed
 
 ## Installation
 
-Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](../../docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
+Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
 
 ```bash
 # Verify the install
@@ -219,7 +219,7 @@ wherever makes sense for your project. An image referenced from markdown or
 HTML just needs to live somewhere inside the project folder; a font (or
 image) referenced from CSS resolves relative to that CSS file, wherever it
 lives, and Gutterpress embeds it into the book automatically. See
-[Chapter 4 — Font Loading](./04-styling-theming.md#font-loading).
+[Chapter 4 — Font Loading](#font-loading).
 
 ### Naming Conventions
 

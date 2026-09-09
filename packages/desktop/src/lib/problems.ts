@@ -25,6 +25,7 @@ export interface ProblemGroup {
  */
 const SOURCE_LABELS: Record<string, string> = {
   "source.links.local-refs": "Broken link",
+  "source.links.dangling": "Unopenable link",
   "source.stylelint": "Print-safety (CSS)",
   "source.css-ownership": "CSS ownership",
   "source.markdownlint": "Markdown style",
