@@ -97,14 +97,14 @@ export type {
   AppImageIntegrationRemoveResult,
   AppImageIntegrationPaths,
   DiscoveredProject,
-  PluginKind,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
-  ThemeImportWarning,
+  ExtensionSourceKind,
+  ExtensionCarries,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
+  ExtensionImportWarning,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -121,12 +121,11 @@ import type {
   AppImageIntegrationInstallResult,
   AppImageIntegrationRemoveResult,
   DiscoveredProject,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -172,20 +171,22 @@ export interface SavedTemplateInfo extends TemplateInfo {
  *
  * `{ kind: 'project' }` is the author's own snippet — the only kind
  * `api.snip.save`/`api.snip.delete` ever produce or touch, and therefore the
- * only kind the picker may show a delete affordance for. `{ kind: 'plugin' |
- * 'theme', ref, name }` is a READ-ONLY snippet contributed by an installed,
- * active extension: `name` is its display name (the picker's group label —
- * see SnippetPicker.svelte), `ref` is an opaque identifier passed straight
- * back to `api.snip.readExtension` so the host can re-locate the right
- * extension folder itself — never a filesystem path the client hands the
- * host directly. Kept as its own type (not inlined) so `SnippetPicker.svelte`
- * has one name to import for its `source.kind === 'project'` gating.
+ * only kind the picker may show a delete affordance for. `{ kind:
+ * 'extension', ref, name }` is a READ-ONLY snippet contributed by an
+ * installed, enabled extension (#265 — one rail, so one extension kind):
+ * `name` is its display name (the picker's group label — see
+ * SnippetPicker.svelte), `ref` is the extension's manifest specifier
+ * (`ProjectExtensionEntry.use`) passed straight back to
+ * `api.snip.readExtension` so the host can re-locate the right extension
+ * folder itself — never a filesystem path the client hands the host
+ * directly. Kept as its own type (not inlined) so `SnippetPicker.svelte` has
+ * one name to import for its `source.kind === 'project'` gating.
  *
  * Decoupled from the lib's own `SnippetSource` type per CLAUDE.md §8 (the SPA
  * never value- or type-imports `gutterpress`) — kept in sync by hand; the two
  * shapes are structurally identical on purpose.
  */
-export type SnippetSource = { kind: 'project' } | { kind: 'plugin' | 'theme'; ref: string; name: string };
+export type SnippetSource = { kind: 'project' } | { kind: 'extension'; ref: string; name: string };
 
 export interface SnippetEntry {
   name: string;
@@ -468,13 +469,13 @@ export const api = {
     read: (projectDir: string, fileName: string) =>
       post<string>('/api/snip/read', { projectDir, fileName }),
     /** Read one EXTENSION-provided snippet's raw body (#242) —
-     *  `source.kind === 'plugin' | 'theme'` entries. `source` is the exact
-     *  object the list call handed back; the host re-derives the extension's
-     *  folder from `source.kind`/`source.ref` itself rather than trusting a
-     *  path from the client. */
+     *  `source.kind === 'extension'` entries. `source` is the exact object
+     *  the list call handed back; the host re-derives the extension's folder
+     *  from `source.ref` (its manifest specifier) itself rather than trusting
+     *  a path from the client. */
     readExtension: (
       projectDir: string,
-      source: { kind: 'plugin' | 'theme'; ref: string },
+      source: { kind: 'extension'; ref: string },
       fileName: string,
     ) =>
       post<string>('/api/snip/read-extension', {
@@ -496,63 +497,62 @@ export const api = {
       post<{ ok: boolean }>('/api/snip/delete', { projectDir, fileName }),
   },
 
-  plugin: {
-    /** List the open project's configured plugins. */
+  /**
+   * The ONE extension rail (#265). A look is an extension that carries
+   * styles, a feature is one that carries markdown, a component library
+   * carries both — every one is a `use` specifier in the manifest's
+   * `extensions:` list, and `list` returns them all in cascade order. The
+   * desktop's Look and Features views are two projections of that list over
+   * this one verb set; `use` is the stable ref every mutating call takes.
+   */
+  extension: {
+    /** Every configured extension, in manifest (= cascade) order. */
     list: (projectDir: string) =>
-      post<ProjectPluginEntry[]>('/api/plugin/list', { projectDir }),
-    /** Enable or disable a configured plugin by ref. */
-    setEnabled: (projectDir: string, ref: string, enabled: boolean) =>
-      post<{ ok: boolean }>('/api/plugin/set-enabled', { projectDir, ref, enabled }),
-    /** Download, verify, vendor, and pin an npm plugin (built-ins only need configuring). */
-    addNpm: (projectDir: string, packageName: string, exportName?: string) =>
-      post<ProjectPluginEntry | null>('/api/plugin/add-npm', {
+      post<ProjectExtensionEntry[]>('/api/extension/list', { projectDir }),
+    /**
+     * Add by specifier: a bundled feature name (written as-is), an npm
+     * package `name`/`name@version` (downloaded, verified, vendored, pinned
+     * — behind the native trust gate; null when the author cancels it), or a
+     * project-relative `./path` (referenced in place). `exportName` selects a
+     * named plugin function for packages without a default export.
+     */
+    add: (projectDir: string, specifier: string, exportName?: string) =>
+      post<ProjectExtensionEntry | null>('/api/extension/add', {
         projectDir,
-        packageName,
+        specifier,
         ...(exportName ? { exportName } : {}),
       }),
-    /** Open a native file picker and import the chosen file/folder as a local plugin. Resolves null when cancelled. */
+    /** Native picker for a folder or plugin file on disk, referenced in place (never copied). Null when cancelled. */
     addLocal: (projectDir: string) =>
-      post<ProjectPluginEntry | null>('/api/plugin/add-local', { projectDir }),
-    /** Load-test every configured plugin; reports ok/error per entry. */
+      post<ProjectExtensionEntry | null>('/api/extension/add-local', { projectDir }),
+    /** Drop one entry. A path entry's folder is never touched; an npm entry's vendored copy is deleted. */
+    remove: (projectDir: string, use: string) =>
+      post<{ ok: true }>('/api/extension/remove', { projectDir, use }),
+    /** Flip one entry's per-project `enabled` flag. */
+    setEnabled: (projectDir: string, use: string, enabled: boolean) =>
+      post<{ ok: true }>('/api/extension/set-enabled', { projectDir, use, enabled }),
+    /** Rewrite the list order — the CSS cascade and markdown registration order. Must name every `use` exactly once. */
+    reorder: (projectDir: string, order: string[]) =>
+      post<{ ok: true }>('/api/extension/reorder', { projectDir, order }),
+    /** Load-test every configured extension; reports ok/error per entry. */
     validate: (projectDir: string) =>
-      post<PluginValidationResult[]>('/api/plugin/validate', { projectDir }),
-    /** Get the curated list of recommended plugins (static, no projectDir needed). */
-    recommended: () => get<RecommendedPlugin[]>('/api/plugin/recommended'),
-  },
-
-  theme: {
-    /** List all built-in themes (static metadata). */
-    listBuiltIn: () => get<ThemeInfo[]>('/api/theme/built-in'),
-    /** List themes already imported into the project. */
-    listProject: (projectDir: string) =>
-      post<ThemeInfo[]>('/api/theme/project', { projectDir }),
-    /** Get the currently active theme for the project. Returns null when none applied. */
-    getActive: (projectDir: string) =>
-      post<ThemeInfo | null>('/api/theme/active', { projectDir }),
-    /** Apply a built-in or project theme. Copies files and wires the manifest. */
-    apply: (projectDir: string, target: ApplyThemeTarget) =>
-      post<ThemeInfo>('/api/theme/apply', { projectDir, target }),
-    /** Open a native folder picker and import the selected folder as a theme. Resolves null when cancelled. */
-    importFromFolder: (projectDir: string) =>
-      post<ThemeInfo | null>('/api/theme/import-from-folder', { projectDir }),
-    /** Open a native file picker and import a `.zip` package or bare `.css` as a theme. Resolves null when cancelled (#106). */
+      post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
+    /** The bundled markdown features an author can turn on with no install (static). */
+    recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
+    /** The built-in looks (static metadata). */
+    listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
+    /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
+    addBuiltIn: (projectDir: string, id: string) =>
+      post<ProjectExtensionEntry>('/api/extension/add-built-in', { projectDir, id }),
+    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (entries with a folder only). */
+    readCss: (projectDir: string, use: string) =>
+      post<string>('/api/extension/read-css', { projectDir, use }),
+    /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */
     importFromFile: (projectDir: string) =>
-      post<ThemeImportResult | null>('/api/theme/import-from-file', { projectDir }),
-    /** Import a theme from a remote URL (raw CSS or theme folder). */
+      post<ExtensionImportResult | null>('/api/extension/import-from-file', { projectDir }),
+    /** Import a look from an http(s) URL (raw CSS or a folder URL) into `extensions/<id>/`. */
     importFromUrl: (projectDir: string, url: string) =>
-      post<ThemeInfo>('/api/theme/import-from-url', { projectDir, url }),
-    /** Read the raw CSS of a theme (built-in or project) for preview rendering. */
-    readCss: (projectDir: string | null, source: { kind: 'builtin' | 'project'; id: string }) =>
-      post<string>('/api/theme/read-css', { projectDir, source }),
-    /** Remove a project-local theme by id. */
-    remove: (projectDir: string, id: string) =>
-      post<{ ok: true }>('/api/theme/remove', { projectDir, id }),
-    /** The theme active before the current one — the "Revert" target — or null (#106). */
-    getPrevious: (projectDir: string) =>
-      post<ThemeInfo | null>('/api/theme/previous', { projectDir }),
-    /** Re-apply the previously active theme (#106). */
-    revert: (projectDir: string) =>
-      post<ThemeInfo>('/api/theme/revert', { projectDir }),
+      post<ExtensionImportResult>('/api/extension/import-from-url', { projectDir, url }),
   },
 
   project: {

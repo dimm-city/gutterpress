@@ -66,7 +66,7 @@ async function makeActiveThemeFixture(
   meta: { name?: string; snippets?: string },
   snippetFiles: Record<string, string>,
 ): Promise<void> {
-  const dir = path.join(projectDir, "themes", id);
+  const dir = path.join(projectDir, "extensions", id);
   const snippetsRel = meta.snippets ?? "snippets";
   await mkdir(path.join(dir, snippetsRel), { recursive: true });
   await writeFile(
@@ -78,7 +78,7 @@ async function makeActiveThemeFixture(
   for (const [fileName, body] of Object.entries(snippetFiles)) {
     await writeFile(path.join(dir, snippetsRel, fileName), body, "utf8");
   }
-  await writeManifest(projectDir, ["styles:", `  - themes/${id}/theme.css`, ""].join("\n"));
+  await writeManifest(projectDir, ["extensions:", `  - ./extensions/${id}`, ""].join("\n"));
 }
 
 test("extractVariables finds unique placeholder names in order", () => {
@@ -239,7 +239,7 @@ test("listMergedSnippets merges an enabled local-plugin extension's declared sni
       { name: "Dimm City Components", snippets: "snippets" },
       { "skill-card.md": "**{{name}}**\n" },
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
 
     const merged = await listMergedSnippets(proj);
     expect(merged).toHaveLength(1);
@@ -247,7 +247,7 @@ test("listMergedSnippets merges an enabled local-plugin extension's declared sni
       name: "Skill card",
       fileName: "skill-card.md",
       variables: ["name"],
-      source: { kind: "plugin", ref: "./plugins/dc-components", name: "Dimm City Components" },
+      source: { kind: "extension", ref: "./plugins/dc-components", name: "Dimm City Components" },
     });
   } finally {
     await rm(proj, { recursive: true, force: true });
@@ -260,12 +260,12 @@ test("listMergedSnippets falls back to a prettified folder name when the extensi
     await makePluginExtensionFolder(proj, "dc-components", { snippets: "snippets" }, {
       "x.md": "x",
     });
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
 
     const merged = await listMergedSnippets(proj);
     expect(merged).toHaveLength(1);
     expect(merged[0]!.source).toEqual({
-      kind: "plugin",
+      kind: "extension",
       ref: "./plugins/dc-components",
       name: "Dc components",
     });
@@ -285,7 +285,7 @@ test("listMergedSnippets excludes a DISABLED plugin's snippets (matches: never l
     );
     await writeManifest(
       proj,
-      ["plugins:", "  - path: ./plugins/dc-components", "    enabled: false", ""].join("\n"),
+      ["extensions:", "  - use: ./plugins/dc-components", "    enabled: false", ""].join("\n"),
     );
 
     expect(await listMergedSnippets(proj)).toEqual([]);
@@ -298,7 +298,7 @@ test("listMergedSnippets ignores an npm-kind plugin entry (no gutterpress.json i
   const proj = await tmpProject();
   try {
     // A folder that HAPPENS to sit at the npm package's own name — proves
-    // the skip is driven by `kind !== "local"`, not merely "no folder found".
+    // the skip is driven by the npm entry being uninstalled, not merely "no folder found".
     await mkdir(path.join(proj, "some-npm-pkg", "snippets"), { recursive: true });
     await writeFile(
       path.join(proj, "some-npm-pkg", "gutterpress.json"),
@@ -306,7 +306,7 @@ test("listMergedSnippets ignores an npm-kind plugin entry (no gutterpress.json i
       "utf8",
     );
     await writeFile(path.join(proj, "some-npm-pkg", "snippets", "x.md"), "x", "utf8");
-    await writeManifest(proj, ["plugins:", "  - name: some-npm-pkg", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - some-npm-pkg", ""].join("\n"));
 
     expect(await listMergedSnippets(proj)).toEqual([]);
   } finally {
@@ -324,7 +324,7 @@ test("listMergedSnippets ignores a plugin folder that declares no snippets field
       JSON.stringify({ name: "Styles Only" }),
       "utf8",
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/styles-only", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/styles-only", ""].join("\n"));
 
     expect(await listMergedSnippets(proj)).toEqual([]);
   } finally {
@@ -348,20 +348,19 @@ test("listMergedSnippets includes the ACTIVE theme's snippets", async () => {
       name: "Chapter opener",
       fileName: "chapter-opener.md",
       variables: ["title"],
-      source: { kind: "theme", ref: "dc-theme", name: "Dimm City" },
+      source: { kind: "extension", ref: "./extensions/dc-theme", name: "Dimm City" },
     });
   } finally {
     await rm(proj, { recursive: true, force: true });
   }
 });
 
-test("listMergedSnippets excludes an INACTIVE theme's snippets (present on disk, not in styles:)", async () => {
+test("listMergedSnippets excludes a look that is on disk but not in extensions:", async () => {
   const proj = await tmpProject();
   try {
-    // "dormant" is on disk (e.g. kept around for Revert to previous theme)
-    // but never referenced from manifest `styles:` — its CSS isn't loaded,
-    // so its snippets must not appear either.
-    const dormantDir = path.join(proj, "themes", "dormant");
+    // "dormant" is on disk but never listed under `extensions:` — its CSS
+    // isn't loaded, so its snippets must not appear either.
+    const dormantDir = path.join(proj, "extensions", "dormant");
     await mkdir(path.join(dormantDir, "snippets"), { recursive: true });
     await writeFile(
       path.join(dormantDir, "theme.json"),
@@ -371,7 +370,7 @@ test("listMergedSnippets excludes an INACTIVE theme's snippets (present on disk,
     await writeFile(path.join(dormantDir, "theme.css"), "/* dormant */\n", "utf8");
     await writeFile(path.join(dormantDir, "snippets", "x.md"), "x", "utf8");
 
-    // Only the active theme is wired into styles: — dormant is never mentioned.
+    // Only "active" is listed under extensions: — dormant is never mentioned.
     await makeActiveThemeFixture(proj, "active", { name: "Active", snippets: "snippets" }, {
       "y.md": "y",
     });
@@ -395,7 +394,7 @@ test("listMergedSnippets: project-local wins on a filename collision, case-insen
       { name: "Dimm City Components" },
       { "Callout.md": "EXTENSION VERSION" },
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
 
     const merged = await listMergedSnippets(proj);
     const calloutEntries = merged.filter((e) => e.fileName.toLowerCase() === "callout.md");
@@ -422,15 +421,15 @@ test("listMergedSnippets groups project-first, then extensions alphabetical by d
     await writeManifest(
       proj,
       [
-        "plugins:",
-        "  - path: ./plugins/b-ext",
-        "  - path: ./plugins/a-ext",
+        "extensions:",
+        "  - ./plugins/b-ext",
+        "  - ./plugins/a-ext",
         "",
       ].join("\n"),
     );
 
     const merged = await listMergedSnippets(proj);
-    expect(merged.map((e) => e.source.kind)).toEqual(["project", "plugin", "plugin"]);
+    expect(merged.map((e) => e.source.kind)).toEqual(["project", "extension", "extension"]);
     // Alpha sorts before Bravo regardless of manifest declaration order.
     expect(merged[1]!.source).toMatchObject({ name: "Alpha Extension" });
     expect(merged[2]!.source).toMatchObject({ name: "Bravo Extension" });
@@ -449,7 +448,7 @@ test("listMergedSnippets tolerates (skips) an extension whose declared snippets 
       JSON.stringify({ name: "Sneaky", snippets: "../../../etc" }),
       "utf8",
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/sneaky", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/sneaky", ""].join("\n"));
 
     // Must not throw, and must not surface anything from outside the folder.
     await expect(listMergedSnippets(proj)).resolves.toEqual([]);
@@ -467,7 +466,7 @@ test("listMergedSnippets stops surfacing an extension's snippets once it is remo
       { name: "Dimm City Components" },
       { "x.md": "x" },
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
     expect(await listMergedSnippets(proj)).toHaveLength(1);
 
     // "Uninstalling" is just removing the manifest entry (and/or the folder);
@@ -488,7 +487,7 @@ test("readExtensionSnippet reads a plugin-sourced entry's body", async () => {
       { name: "Dimm City Components" },
       { "skill-card.md": "**{{name}}**\n" },
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
 
     const [entry] = await listMergedSnippets(proj);
     if (entry!.source.kind === "project") throw new Error("expected a plugin-sourced entry");
@@ -519,10 +518,10 @@ test("readExtensionSnippet throws when the extension is no longer installed/acti
   const proj = await tmpProject();
   try {
     await expect(
-      readExtensionSnippet(proj, { kind: "plugin", ref: "./plugins/gone" }, "x.md"),
+      readExtensionSnippet(proj, { kind: "extension", ref: "./plugins/gone" }, "x.md"),
     ).rejects.toThrow();
     await expect(
-      readExtensionSnippet(proj, { kind: "theme", ref: "no-such-theme" }, "x.md"),
+      readExtensionSnippet(proj, { kind: "extension", ref: "./extensions/no-such-look" }, "x.md"),
     ).rejects.toThrow();
   } finally {
     await rm(proj, { recursive: true, force: true });
@@ -538,12 +537,12 @@ test("readExtensionSnippet refuses path traversal in fileName", async () => {
       { name: "Dimm City Components" },
       { "x.md": "x" },
     );
-    await writeManifest(proj, ["plugins:", "  - path: ./plugins/dc-components", ""].join("\n"));
+    await writeManifest(proj, ["extensions:", "  - ./plugins/dc-components", ""].join("\n"));
 
     await expect(
       readExtensionSnippet(
         proj,
-        { kind: "plugin", ref: "./plugins/dc-components" },
+        { kind: "extension", ref: "./plugins/dc-components" },
         "../../../../etc/passwd",
       ),
     ).rejects.toThrow();

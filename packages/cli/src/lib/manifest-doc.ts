@@ -4,7 +4,7 @@
  * named sequence node exists.
  *
  * One implementation, three historical call sites (DRY): the manifest-config,
- * plugin-manager, and theme-manager modules each carried a byte-identical
+ * and extension-manager modules each carried a byte-identical
  * `manifestPathFor` + `loadDoc`, and plugin/theme carried a copy of the
  * "ensure this seq exists" helper differing only by key.
  *
@@ -69,27 +69,12 @@ export async function writeManifestDoc(
   }
 }
 
-/**
- * The named sequence node, creating (and attaching) an empty one if missing.
- * `key` is a single top-level key (the original, still-exact behavior) OR a
- * path for a nested key (e.g. `["engineStyles", "native"]`, #239) — the
- * `getIn`/`setIn` branch auto-vivifies any missing intermediate map, exactly
- * like a hand-written `engineStyles: { native: [...] }` would parse.
- */
-export function ensureSeq(doc: Document.Parsed, key: string | readonly string[]): YAMLSeq {
-  if (typeof key === "string") {
-    let seq = doc.get(key, true);
-    if (!isSeq(seq)) {
-      const fresh = new YAMLSeq(doc.schema);
-      doc.set(key, fresh);
-      seq = fresh;
-    }
-    return seq as YAMLSeq;
-  }
-  let seq = doc.getIn(key, true);
+/** The named top-level sequence node, creating (and attaching) an empty one if missing. */
+export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
+  let seq = doc.get(key, true);
   if (!isSeq(seq)) {
     const fresh = new YAMLSeq(doc.schema);
-    doc.setIn(key, fresh);
+    doc.set(key, fresh);
     seq = fresh;
   }
   return seq as YAMLSeq;
@@ -103,7 +88,7 @@ export function ensureSeq(doc: Document.Parsed, key: string | readonly string[])
  * array entry would be).
  *
  * ARCH finding #25: this was two near-duplicate helpers — `unwrapScalar`
- * (manifest-config.ts) and `styleHrefOf` (theme-manager.ts) — with the same
+ * (manifest-config.ts) and `styleHrefOf` (the theme manager, since retired) — with the same
  * shape-sniffing logic. One implementation here, consumed by both.
  */
 export function scalarString(item: unknown): string | null {

@@ -27,7 +27,7 @@ publication-project/
 │       └── plugins/
 │           └── gutterpress-publishing/
 ├── shared/
-│   ├── themes/
+│   ├── extensions/                   # shared looks, referenced by path
 │   ├── styles/
 │   ├── fonts/                        # reached through shared CSS url()
 │   ├── images/                       # reached through shared CSS url()
@@ -39,7 +39,7 @@ publication-project/
 │   │   ├── chapters/
 │   │   ├── design/
 │   │   │   └── DESIGN.md
-│   │   ├── themes/
+│   │   ├── extensions/
 │   │   ├── styles/
 │   │   ├── fonts/
 │   │   ├── images/
@@ -87,7 +87,7 @@ The repository can contain two unrelated plugin types.
 
 - `shared/plugins/` and `books/<book>/plugins/` contain Markdown renderer plugins.
 - Authored plugins are referenced directly from a book manifest.
-- npm packages installed with `gutterpress plugin add` are managed beneath that book's `plugins/npm/` tree.
+- npm packages installed with `gutterpress ext add` are managed beneath that book's `plugins/npm/` tree.
 
 ### Open Design plugins
 
@@ -101,27 +101,29 @@ package a contributor installs into their own Open Design registry.
 
 ## Compose shared and book-local design
 
-Gutterpress copies no stylesheets. A `styles:` entry is a path it **reads**, and
-its contents are inlined into `book.html` in listed order, so a book points
-straight at the shared foundation:
+Gutterpress copies no stylesheets. An `extensions:` path entry and a `styles:`
+entry are both paths it **reads** — a look folder's sheets first, in extension
+order, then `styles:` in listed order — inlined into `book.html`, so a book
+points straight at the shared foundation:
 
 ```yaml
 source:
   files:
     - chapters/01-introduction.md
     - chapters/02-rules.md
+extensions:
+  - ../../shared/extensions/publisher
 styles:
-  - ../../shared/themes/publisher/theme.css
   - ../../shared/styles/components.css
   - styles/book.css
 ```
 
 Each stylesheet's `url()` references resolve relative to **that stylesheet**, so
-a shared theme's fonts and images travel with it automatically:
+a shared look's fonts and images travel with it automatically:
 
 ```text
-shared/themes/publisher/theme.css → url("../../fonts/Publisher.woff2")
-                                  → embedded as a data URI in the book
+shared/extensions/publisher/theme.css → url("../../fonts/Publisher.woff2")
+                                      → embedded as a data URI in the book
 ```
 
 Fonts always embed. Images are copied beside `book.html` under a
@@ -129,10 +131,10 @@ content-addressed name. There is no asset list, no basename flattening, and no
 collision rule to remember — to shadow a shared decision, list the book's own
 stylesheet later and let the cascade settle it.
 
-Use one active local theme. Its first application defaults to the front, while
-replacement preserves the established cascade position. Keep intentional
-extension styles later in the list, or copy a shared theme into the book
-(`themes/<id>/`) when that book should own and diverge from it.
+The `extensions:` list order is the cascade: list the shared look first and any
+book-local extension after it, and let `styles:` (always last) carry the book's
+own overrides. Copy a shared look into the book (`extensions/<id>/`, listed as
+`./extensions/<id>`) only when that book should own and diverge from it.
 
 **One standing rule:** an image used in **Markdown prose** must live inside the
 book folder — a `../` or absolute reference is a build error. Shared art
@@ -148,30 +150,30 @@ field; delete them.
 ### Shared authored plugins
 
 ```yaml
-plugins:
-  - path: ../../shared/plugins/publisher-components.js
-  - path: ./plugins/book-components.js
+extensions:
+  - ../../shared/plugins/publisher-components.js
+  - ./plugins/book-components.js
 ```
 
-These are ordinary Git-tracked source files and can be shared across books.
+These are ordinary Git-tracked source files, referenced in place, and can be shared across books.
 
 ### Registry-installed npm plugins
 
 Install each package into the target book:
 
 ```bash
-gutterpress plugin add markdown-it-highlightjs@4.3.0 ./books/core-book
+gutterpress ext add markdown-it-highlightjs@4.3.0 ./books/core-book
 ```
 
 For a named export:
 
 ```bash
-gutterpress plugin add markdown-it-emoji@3.0.0 ./books/core-book --export full
+gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Gutterpress verifies the package graph and vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`. Commit the manifest change and the managed tree. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
+Gutterpress verifies the package graph, vendors exact runtime dependencies beneath `books/core-book/plugins/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change and the managed tree. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
 
-The public CLI currently exposes `plugin add`. Use the desktop plugin manager for broader inspection, toggling, importing, or removal.
+`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
 
 ## Share the Open Design plugin through Git
 
@@ -208,7 +210,7 @@ Gutterpress detects when an opened book sits inside an enclosing repository. It 
 Commit everything required to reproduce the publication and continue design work:
 
 - manifests and manuscript Markdown;
-- shared and local themes, styles, fonts, and images;
+- shared and local looks (extension folders), styles, fonts, and images;
 - authored Gutterpress plugins and shared profiles;
 - Gutterpress-managed `plugins/npm/` dependency trees and receipts;
 - repository and book design guidance;

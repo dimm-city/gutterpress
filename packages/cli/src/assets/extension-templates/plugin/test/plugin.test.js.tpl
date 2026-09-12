@@ -121,7 +121,6 @@ describe("loader contract", () => {
     const declared = [
       pkg.markdown,
       ...(pkg.styles ?? []),
-      ...(pkg.engineStyles?.native ?? []),
       pkg.components,
       pkg.snippets,
       pkg.tokensFile,

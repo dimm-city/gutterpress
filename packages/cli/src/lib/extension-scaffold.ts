@@ -15,11 +15,11 @@
  * WHAT THE TWO KINDS ARE
  *
  *   plugin — markdown behaviour + component CSS + snippets + a runnable test
- *            harness. Loaded by a book through `plugins: - path: <folder>`.
+ *            harness. Loaded by a book through `extensions: - ./<folder>`.
  *   theme  — the layered CSS architecture from #233 (tokens / base /
  *            components / page-templates / page-rules / book), each file
  *            carrying its OWNS / MUST NOT CONTAIN contract header. Loaded by
- *            a book through `gutterpress theme import` + `apply`.
+ *            a book through `gutterpress ext add <folder>`.
  *
  * Both emit a `gutterpress.json` in #241's format and nothing more: this
  * module CONSUMES that format, it does not extend it. There is no `kind:`

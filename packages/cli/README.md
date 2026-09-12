@@ -108,7 +108,7 @@ See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/gut
 
 ## Manifest
 
-`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. It is the only recognized project manifest filename. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/gutterpress/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
+`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, extensions (looks and plugins), validation rules, PDF/X configuration. It is the only recognized project manifest filename. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/gutterpress/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
 
 Minimal example:
 
@@ -133,10 +133,10 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
-Gutterpress has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
+Gutterpress has 10 subcommands. `new`, `preview`, `build`, and `publish` are the
 primary author commands; `lint`, `validate`, `audit`, and `preflight` are
-CI / advanced checks; and `doctor` reports system readiness. `plugin` manages
-project plugins and `theme` manages project themes. Every
+CI / advanced checks; `doctor` reports system readiness; and `ext` manages the
+project's extensions (plugins, looks, component libraries). Every
 command also accepts `--help` for the authoritative, always-current flag list
 (`gutterpress <command> --help`) — this section is regenerated from the same
 source.
@@ -198,7 +198,6 @@ gutterpress preview [input-dir] [options]
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
   --allow-shrink          Build anyway when content is wider than the page content box (pdf|pdfx only)
-  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; applies to the live preview AND --format pdf|pdfx]
 ```
 
 ### `gutterpress build`
@@ -219,7 +218,6 @@ gutterpress build [input-dir] [options]
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
   --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
-  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
 ```
 
 ### `gutterpress publish`
@@ -271,9 +269,11 @@ gutterpress lint [files] [options]
 
 Common findings include remote `url(...)` references, effects that rasterize
 print text, and declarations on core page wrappers that could clip or trap
-out-of-flow art. The source-level containment check is an early signal; the
-build-time `engine.layer.trapped` diagnostic inspects the authoritative live
-ancestor chain.
+out-of-flow art. Each finding is listed with its file and `line:col`, so you
+can see exactly which selectors rasterize text; a property at its initial value
+(`filter: none`, `will-change: auto`) is not a finding. The source-level
+containment check is an early signal; the build-time `engine.layer.trapped`
+diagnostic inspects the authoritative live ancestor chain.
 
 ### `gutterpress validate`
 
@@ -334,94 +334,96 @@ Report the Gutterpress version, platform and config paths, and whether each exte
 gutterpress doctor
 ```
 
-### `gutterpress plugin`
+### `gutterpress ext`
 
-Manage project markdown-it plugins.
+List, add, remove, enable, or disable the project's extensions. Markdown-it
+plugins, looks (stylesheets) and component libraries are all extensions — one
+`extensions:` list in `manifest.yaml`, in load order (see
+[Extensions](#extensions) below). These are the same shared-lib functions the
+desktop app's Look and Features views call, so an extension added from the
+terminal is the same entry the GUI shows.
 
 ```sh
-gutterpress plugin
+gutterpress ext
 
-  --help    Show plugin subcommands
+  --help    Show ext subcommands (list, add, remove, enable, disable)
 ```
 
-#### `gutterpress plugin add`
+Every subcommand takes the project directory as an optional trailing
+positional (default: the current directory).
 
-Download a markdown-it package and its runtime dependencies directly from npm,
-verify their registry hashes, vendor the complete graph into the project, and
-pin the exact root version. This does not invoke npm, Bun, Node.js tooling, or
-package install scripts.
+#### `gutterpress ext list`
+
+List the project's extensions in load (= cascade) order: each specifier as
+written, whether it is bundled, a path, or an npm package, what it carries
+(markdown, styles, snippets, components), and any warning — not installed,
+not found, not pinned.
 
 ```sh
-gutterpress plugin add markdown-it-highlightjs ./my-book
-gutterpress plugin add markdown-it-highlightjs@4.3.0 ./my-book
-gutterpress plugin add markdown-it-emoji@3.0.0 ./my-book --export full
+gutterpress ext list ./my-book
 ```
 
-### `gutterpress theme`
+#### `gutterpress ext add`
 
-List, apply, import, revert, or remove project themes — the same
-`applyTheme`/`importThemeFrom*`/`revertTheme`/`removeProjectTheme` functions
-the desktop app's Theme panel calls, so a theme applied from the terminal is
-just as switchable/revertible as one applied from the GUI.
+Add an extension. What `SOURCE` is decides what happens:
+
+- an **npm package** (`name` or `name@version`) is downloaded straight from
+  the registry along with its runtime dependencies, hash-verified, vendored
+  into the project under `plugins/npm/` with a receipt, load-tested, and
+  written back pinned as `name@<exact version>`. This does not invoke npm,
+  Bun, Node.js tooling, or package install scripts;
+- a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
+  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
+  listed — nothing to install, works offline;
+- a **folder or plugin-file path** is load-tested and listed as a
+  manifest-relative path, referenced in place — never copied;
+- a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
+  declared sheet must exist and parse; print-safety findings are warnings)
+  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`;
+- with `--look`, `SOURCE` is a built-in look id, copied into
+  `extensions/<id>/` as the author's own editable files and listed.
+
+Adding something already listed re-pins or updates that entry instead of
+adding a second one.
 
 ```sh
-gutterpress theme
+gutterpress ext add <source> [dir] [options]
 
-  --help    Show theme subcommands
+  --export <name>    Named module export to use as the plugin function (npm and path extensions only)
+  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it
 ```
 
-#### `gutterpress theme list`
-
-List the built-in themes, the themes already vendored into this project
-(`themes/<id>/`), and which one (if any) is active.
-
 ```sh
-gutterpress theme list ./my-book
+gutterpress ext add markdown-it-highlightjs ./my-book
+gutterpress ext add markdown-it-highlightjs@4.3.0 ./my-book
+gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
+gutterpress ext add markdown-it-mark ./my-book
+gutterpress ext add ./plugins/field-notes ./my-book
+gutterpress ext add zine ./my-book --look
+gutterpress ext add ./parchment.zip ./my-book
+gutterpress ext add https://example.com/looks/cool/ ./my-book
 ```
 
-#### `gutterpress theme apply`
+#### `gutterpress ext remove`
 
-Apply a theme: a built-in id (`clean-book`, `zine`, `technical-doc`) is copied
-into `themes/<id>/` the first time, and the manifest's `styles:` entry is
-wired so its `theme.css` is the active stylesheet, keeping its cascade
-position. Re-running `apply` with an id that is already a project theme makes
-it active again without forking a second copy — the same non-destructive
-re-apply guarantee the desktop's Theme panel relies on.
+Remove an extension from the manifest, by the specifier as written there (for
+an npm package the bare name is enough). An npm extension's vendored copy
+under `plugins/npm/` is deleted too; a path extension's folder is yours and is
+never touched.
 
 ```sh
-gutterpress theme apply clean-book ./my-book
-gutterpress theme apply zine ./my-book
+gutterpress ext remove markdown-it-highlightjs ./my-book
+gutterpress ext remove ./extensions/zine ./my-book
 ```
 
-#### `gutterpress theme import`
+#### `gutterpress ext enable` / `gutterpress ext disable`
 
-Import a theme from a local folder, a `.zip` package, a `.css` file, or an
-`http(s)` URL. Importing vendors the theme under `themes/<id>/` but does not
-apply it — follow up with `gutterpress theme apply <id>`.
-
-```sh
-gutterpress theme import ./my-theme-folder ./my-book
-gutterpress theme import ./my-theme.zip ./my-book
-gutterpress theme import ./my-theme.css ./my-book
-gutterpress theme import https://example.com/themes/cool/ ./my-book
-```
-
-#### `gutterpress theme revert`
-
-Re-apply the theme that was active immediately before the current one.
-Reverting twice toggles back — it is a swap, not a history stack.
+Turn a configured extension off without removing it (`disable` writes
+`enabled: false` on the entry, so the toggle is reversible), or back on.
 
 ```sh
-gutterpress theme revert ./my-book
-```
-
-#### `gutterpress theme remove`
-
-Remove a project theme (never a built-in). If it was the active theme, its
-manifest `styles:` entry is dropped too, leaving no theme active.
-
-```sh
-gutterpress theme remove zine ./my-book
+gutterpress ext disable markdown-it-mark ./my-book
+gutterpress ext enable markdown-it-mark ./my-book
 ```
 
 ## Exit codes
@@ -435,44 +437,45 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
 
-This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `plugin`, `theme`, `new`, and `doctor`.
+This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `publish`, `ext`, `new`, and `doctor`.
 
-## Plugins
+## Extensions
 
-Gutterpress uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so pure-JavaScript plugins that follow the `(md, options) => void` signature work without a Gutterpress-specific API. Load them in `manifest.yaml`:
+Gutterpress uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so pure-JavaScript plugins that follow the `(md, options) => void` signature work without a Gutterpress-specific API. Plugins, looks (stylesheets) and component libraries are all **extensions**: one `extensions:` list in `manifest.yaml`, in load order. Every entry is a bare specifier, and its form says what it is:
 
 ```yaml
-plugins:
-  # npm package installed by `gutterpress plugin add markdown-it-highlightjs`
-  - name: markdown-it-highlightjs
-    version: 4.3.0
-  # package whose plugin function is a named export
-  - name: markdown-it-emoji
-    version: 3.0.0
-    export: full
-  # local file
+extensions:
+  # a feature bundled with Gutterpress — nothing to install, works offline
+  - markdown-it-mark
+  # a folder or plugin file, relative to manifest.yaml — referenced in place
+  - ./extensions/clean-book
   - ./plugins/my-custom-plugin.js
-  # with options
-  - name: markdown-it-footnote
+  # an npm package, pinned to the exact version `gutterpress ext add` installed
+  - markdown-it-highlightjs@4.3.0
+  # the object form, only when an entry needs more than its specifier
+  - use: markdown-it-emoji@3.0.0
+    export: full                 # the plugin function is a named export
+  - use: markdown-it-anchor@9.2.0
     options:
-      includeSubsections: false
-  # explicit priority (lower runs first)
-  - name: markdown-it-anchor
-    priority: 10
+      level: 2
+  - use: ./plugins/drafts.js
+    enabled: false               # keep the entry, skip loading it
 ```
+
+Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties; the project's own `styles:` always load after every extension. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
 Pinned npm packages and their runtime dependencies live under `plugins/npm/`,
 with a receipt that records the exact graph and hashes the complete tree. They
 travel with the project and builds never fetch from the registry. Install/build
 scripts, native addon compilation, bundled `node_modules`, and non-registry
 dependency selectors are intentionally unsupported. Only install packages you
-trust: plugins run unsandboxed with the process's full filesystem and network
+trust: extensions run unsandboxed with the process's full filesystem and network
 privileges.
 
-Use the manifest `export` field, or `plugin add --export <name>`, for packages
+Use the entry's `export` field, or `ext add --export <name>`, for packages
 that expose a named plugin function instead of a default export.
 
-See [User Guide: Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md) for authoring custom plugins.
+See [User Guide: Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md) for the full list contract and for authoring custom plugins, and [Chapter 4 — Styling & Theming](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/04-styling-theming.md) for looks.
 
 ## CI / scripting
 

@@ -1,32 +1,32 @@
 /**
- * Pure Look-grid helpers for LookSection.svelte (UX review M6).
+ * Pure built-in-look grid helper for LookSection.svelte.
  *
- * Extracted so the dedupe rule is unit-testable without a Svelte component
- * test harness (none exists in this repo — see CLAUDE.md test conventions).
- * `import type` only from `$lib/api`, so this stays PWA-clean (§8).
+ * Extracted so the "already added" rule is unit-testable without a Svelte
+ * component test harness (none exists in this repo — see CLAUDE.md test
+ * conventions). `import type` only, so this stays PWA-clean (§8).
  */
-import type { ThemeInfo } from "$lib/api";
+import type { ProjectExtensionEntry } from "$lib/platform/dtos";
 
 /**
- * The Appearance grid used to render BOTH the built-in card and the
- * project's own copy of the same theme (created by a prior Apply/import).
- * Applying the built-in twin then re-copied its pristine files over the
- * project copy — silently discarding any Design-panel customizations
- * (UX review M6). Fix: once a project theme with a given id exists, hide the
- * built-in card for that id — the project copy (and its "Remove" control) is
- * the one true entry for that theme from then on. Removing the project copy
- * makes the pristine built-in card reappear.
- *
- * This alone closes the destructive path from the grid: the only route to
- * `applyTheme({ kind: "builtin" })` is a built-in card's Apply button, and
- * that card is never shown once a same-id project copy exists. (The
- * theme-manager API also refuses to clobber an existing project copy on its
- * own, as a defense-in-depth backstop for callers outside this grid.)
+ * The ids of the built-in looks already in the project's list: a path entry
+ * at `./extensions/<id>`, the folder `addBuiltInStyleSet` copies a built-in
+ * into (#265). The grid shows such a look as added instead of offering "Use"
+ * again — a second Use is a no-op by lib contract (the folder is kept, only
+ * re-referenced), but offering it would still suggest the author's edited
+ * copy might be replaced. Removing the entry makes "Use" reappear, and since
+ * the folder stays on disk, Use then re-references the author's own edited
+ * copy rather than a fresh one.
  */
-export function visibleBuiltInThemes(
-  builtIns: ThemeInfo[],
-  projectThemes: ThemeInfo[],
-): ThemeInfo[] {
-  const projectIds = new Set(projectThemes.map((t) => t.id));
-  return builtIns.filter((t) => !projectIds.has(t.id));
+export function addedBuiltInIds(entries: ProjectExtensionEntry[]): Set<string> {
+  const ids = new Set<string>();
+  for (const e of entries) {
+    if (e.kind !== "path") continue;
+    const m = e.use
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .match(/^\.\/extensions\/([^/]+)$/);
+    if (m) ids.add(m[1]!);
+  }
+  return ids;
 }

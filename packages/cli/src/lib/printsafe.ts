@@ -155,30 +155,71 @@ function targetsPageWrapper(selector: string): boolean {
   return !/\bgp-(bleed|pin)\b/.test(selector);
 }
 
+// A property at its initial value — or at a CSS-wide reset keyword — does
+// nothing, so neither the rasterization warning, the margin-box "silently
+// ignored" warning nor the stacking-context check may fire on it. `filter:
+// none` is exactly how a book suppresses an earlier `filter`, and such a book
+// must be able to reach zero findings. ONE table for every value-aware check
+// in this file. The match is textual: `filter: var(--x)` is still reported
+// even when `--x` resolves to `none`, because this is a source-only check
+// with no cascade to consult.
+const cssWideResetKeywords = new Set(["initial", "unset", "revert", "revert-layer"]);
+
+const inertValues: Record<string, ReadonlySet<string>> = {
+  "z-index": new Set(["auto"]),
+  opacity: new Set(["1", "100%"]),
+  "mix-blend-mode": new Set(["normal"]),
+  "background-blend-mode": new Set(["normal"]),
+  filter: new Set(["none"]),
+  "backdrop-filter": new Set(["none"]),
+  transform: new Set(["none"]),
+  rotate: new Set(["none"]),
+  translate: new Set(["none"]),
+  scale: new Set(["none"]),
+  perspective: new Set(["none"]),
+  "box-shadow": new Set(["none"]),
+  outline: new Set(["none"]),
+  "outline-style": new Set(["none"]),
+  // `none` is not a valid will-change value, so Chromium drops the
+  // declaration: nothing happens either way.
+  "will-change": new Set(["auto", "none"]),
+  "clip-path": new Set(["none"]),
+  transition: new Set(["none"]),
+  animation: new Set(["none"]),
+  "animation-name": new Set(["none"]),
+  overflow: new Set(["visible"]),
+  "overflow-x": new Set(["visible"]),
+  "overflow-y": new Set(["visible"]),
+};
+
+function isInertValue(prop: string, value: string): boolean {
+  const v = value.trim().toLowerCase();
+  return cssWideResetKeywords.has(v) || (inertValues[prop]?.has(v) ?? false);
+}
+
 /** Properties that make an element a stacking context, trapping a
  * `.gp-behind` descendant inside it instead of letting it paint under the
- * page's text. `z-index` only counts when it is not `auto`; `opacity`/
- * `filter`/`transform`/`mix-blend-mode` count at any non-initial value. */
+ * page's text. Any value in `inertValues` is the property doing nothing;
+ * everything else counts, except `isolation` (only `isolate`) and `contain`
+ * (only the paint/layout-containing values). */
 function createsStackingContext(decl: postcss.Declaration): boolean {
   const p = decl.prop.toLowerCase();
   const v = decl.value.trim().toLowerCase();
+  if (isInertValue(p, v)) return false;
   switch (p) {
-    case "z-index":
-      return v !== "auto" && v !== "initial" && v !== "unset";
     case "isolation":
       return v === "isolate";
+    case "contain":
+      return /\b(paint|layout|strict|content)\b/.test(v);
+    case "z-index":
     case "opacity":
-      return v !== "1" && v !== "100%" && v !== "initial" && v !== "unset";
     case "mix-blend-mode":
-      return v !== "normal" && v !== "initial" && v !== "unset";
     case "filter":
     case "backdrop-filter":
     case "transform":
     case "perspective":
     case "will-change":
-      return v !== "none" && v !== "initial" && v !== "unset";
-    case "contain":
-      return /\b(paint|layout|strict|content)\b/.test(v);
+      return true;
     default:
       return false;
   }
@@ -190,7 +231,7 @@ function clipsDescendants(decl: postcss.Declaration): boolean {
   const p = decl.prop.toLowerCase();
   if (p !== "overflow" && p !== "overflow-x" && p !== "overflow-y") return false;
   const v = decl.value.trim().toLowerCase();
-  return v !== "" && !/^(visible|initial|unset|revert)$/.test(v);
+  return v !== "" && !isInertValue(p, v);
 }
 
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
@@ -240,6 +281,7 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
 
   root.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
+    if (isInertValue(prop, decl.value)) return; // see inertValues
     // The margin-box drop comes first: `filter`, `mix-blend-mode`,
     // `clip-path` and `backdrop-filter` are all in `riskyProperties` too, and
     // there the generic "can force rasterization" text would be wrong —

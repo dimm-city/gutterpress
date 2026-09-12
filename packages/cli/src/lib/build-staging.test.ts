@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { stageBookAssets } from "./build-staging.ts";
+import { dropRelativeLinkHrefs, stageBookAssets } from "./build-staging.ts";
 
 /**
  * `stageBookAssets` is THE asset-staging step — the real build and the
@@ -109,4 +109,52 @@ test("onPlan sees unresolved refs and can abort before anything is copied", asyn
   expect(seen?.unresolved).toHaveLength(1);
   expect(seen!.unresolved[0]).toContain("/etc/passwd");
   expect(existsSync(join(outDir, "images/here.png"))).toBe(false);
+});
+
+// #263: the staged book is printed from a file:// URL in a per-build temp dir,
+// and Chromium bakes the ABSOLUTE resolved URL of every relative href into the
+// PDF's link annotation. A PDF has no files beside it, so no relative target
+// is openable: the href goes, the link text stays.
+test("dropRelativeLinkHrefs keeps only #fragment and non-file scheme hrefs, and the element", () => {
+  const keep = [
+    `<a href="#intro" data-gp-source-token="[t](#intro)">t</a>`,
+    `<a href="https://example.com/page">t</a>`,
+    `<a href="mailto:reader@example.com">t</a>`,
+    `<a-badge href="x/y.md">not an anchor</a-badge>`,
+  ].join("\n");
+  // Empty, query-only and protocol-relative hrefs name no asset to copy, but
+  // Chromium still resolves them against the file:// base: the first two bake
+  // the random work dir, the third becomes file://cdn.example.com/x.
+  const drop = [
+    [`<a href="">t</a>`, `<a>t</a>`],
+    [`<a href="?print=1">t</a>`, `<a>t</a>`],
+    [`<a href="//cdn.example.com/x">t</a>`, `<a>t</a>`],
+    [`<a href="docs/constitution.md" data-gp-source-token="[t](docs/constitution.md)">t</a>`,
+     `<a data-gp-source-token="[t](docs/constitution.md)">t</a>`],
+    [`<a class="x" href='chapters/02-next.md'>t</a>`, `<a class="x">t</a>`],
+    [`<a href=images/cover.png>t</a>`, `<a>t</a>`],
+    [`<a href="file:///etc/hosts">t</a>`, `<a>t</a>`],
+    [`<a href="/abs/x.md">t</a>`, `<a>t</a>`],
+    [`<a href="a&amp;b.md">t</a>`, `<a>t</a>`],
+  ];
+  // Prose showing HTML is content, not a link.
+  const literal = `<pre><a href="docs/x.md">shown</a></pre><code>&lt;a href="docs/x.md"&gt;</code>`;
+  const comment = `<!-- <a href="docs/x.md"> -->`;
+
+  const input = [keep, ...drop.map(([before]) => before), literal, comment].join("\n");
+  const expected = [keep, ...drop.map(([, after]) => after), literal, comment].join("\n");
+  expect(dropRelativeLinkHrefs(input)).toBe(expected);
+});
+
+test("stageBookAssets drops relative link hrefs only when asked", async () => {
+  const html = `<html><body><a href="docs/x.md">x</a> <a href="#a">a</a></body></html>`;
+  const kept = await book(html);
+  await stageBookAssets({ ...kept, imageRefs: [], cssAssets: [] });
+  expect(await readFile(kept.htmlFile, "utf8")).toBe(html);
+
+  const dropped = await book(html);
+  await stageBookAssets({ ...dropped, imageRefs: [], cssAssets: [], dropRelativeLinks: true });
+  expect(await readFile(dropped.htmlFile, "utf8")).toBe(
+    `<html><body><a>x</a> <a href="#a">a</a></body></html>`,
+  );
 });

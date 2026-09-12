@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
-import type { GutterpressManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
+import type { GutterpressManifest, ResolvedConfig, ExtensionConfig, ResolvedExtensionConfig } from "../schema/manifest.types";
+import { isPathSpecifier, parseExtensionSpecifier } from "./extension-specifier";
 import { resolvePreset, warnOnce, type VendorPreset } from "./presets";
 import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
@@ -100,63 +101,114 @@ export async function loadManifestWithPath(
   return { manifest: {}, manifestDir, manifestPath: null };
 }
 
+const EXTENSION_ENTRY_KEYS = new Set(["use", "export", "options", "enabled"]);
+
 /**
- * Check if a string looks like a file path (vs npm package name).
- * File paths start with './', '../', '/', or contain path separators with extensions.
+ * Normalize one `extensions:` entry (#265): a bare specifier string, or the
+ * object form `{ use, export?, options?, enabled? }`. The specifier's FORM
+ * says what it is (`extension-specifier.ts`); the resolved shape keeps
+ * `path`/`name`/`version` apart for the loader, plus `use` as written.
  */
-function isFilePath(str: string): boolean {
-  if (
-    str.startsWith('./') ||
-    str.startsWith('../') ||
-    str.startsWith('/') ||
-    // Windows absolute paths
-    /^[a-zA-Z]:[\\/]/.test(str)
-  ) {
-    return true;
+function normalizeExtensionEntry(
+  entry: string | ExtensionConfig,
+  index: number
+): ResolvedExtensionConfig {
+  const where = `extensions[${index}]`;
+  let use: string;
+  let rest: ExtensionConfig | undefined;
+  if (typeof entry === "string") {
+    use = entry;
+  } else if (entry && typeof entry === "object") {
+    const obj = entry as unknown as Record<string, unknown>;
+    if ("priority" in obj) {
+      throw new UsageError(
+        `${where}: \`priority\` was removed — the \`extensions:\` list order is the load order. ` +
+          "An entry later in the list is registered later, sees earlier entries' output, and its " +
+          "CSS wins ties; move the entry instead."
+      );
+    }
+    if ("path" in obj || "name" in obj) {
+      throw new UsageError(
+        `${where}: an \`extensions\` entry carries its specifier in \`use:\` — write ` +
+          `\`use: ${String(obj.path ?? obj.name)}\` (or just the bare string).`
+      );
+    }
+    const unknown = Object.keys(obj).filter((k) => !EXTENSION_ENTRY_KEYS.has(k));
+    if (unknown.length > 0) {
+      throw new UsageError(
+        `${where}: unknown key(s) ${unknown.map((k) => `\`${k}\``).join(", ")} — an entry takes ` +
+          "`use`, `options`, `export`, `enabled`."
+      );
+    }
+    if (typeof obj.use !== "string" || !obj.use.trim()) {
+      throw new UsageError(`${where}: an object entry needs \`use: <specifier>\`.`);
+    }
+    use = obj.use;
+    rest = entry;
+  } else {
+    throw new UsageError(`${where}: expected a specifier string or an object with \`use:\`.`);
   }
-  // Bare relative path with no `./` prefix (e.g. `plugins/my-plugin.js`) — a
-  // very natural thing for a non-technical author to write. Per this
-  // function's own documented contract: a path SEPARATOR combined with a
-  // recognized JS module EXTENSION is a file path, never an npm package
-  // name. Without a JS extension it stays ambiguous with a legitimate scoped
-  // package name (`@org/name`), so only slash+extension triggers this (ARCH
-  // finding #57 — previously this fell through to npm resolution and
-  // produced an npm-package install dead-end that could never work).
-  return /[\\/].*\.(m?js|cjs)$/i.test(str);
+  let parsed;
+  try {
+    parsed = parseExtensionSpecifier(use);
+  } catch (error) {
+    throw new UsageError(`${where}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return {
+    use: use.trim(),
+    ...(parsed.kind === "path" ? { path: parsed.path } : { name: parsed.name }),
+    ...(parsed.kind === "npm" && parsed.version ? { version: parsed.version } : {}),
+    ...(rest?.export ? { export: rest.export } : {}),
+    options: rest?.options ?? {},
+  };
 }
 
 /**
- * Normalize a plugin configuration entry from manifest.
- * Accepts either a string path/name or a PluginConfig object.
- *
- * String detection:
- * - Starts with './', '../', '/' → treated as local file path
- * - Otherwise → treated as npm package name
+ * The rewrite for a manifest that still carries `plugins:` — the author's
+ * own entries, spelled the new way, in the order they used to load.
  */
-function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginConfig {
-  if (typeof plugin === 'string') {
-    if (isFilePath(plugin)) {
-      return {
-        path: plugin,
-        priority: 100,
-        options: {},
-      };
+function pluginsRemovedMessage(raw: unknown): string {
+  const specifierOf = (s: string): string =>
+    isPathSpecifier(s) || s.startsWith("@") || !/[\\/]/.test(s) ? s : `./${s}`;
+  const priorityOf = (e: unknown): number =>
+    e && typeof e === "object" && typeof (e as { priority?: unknown }).priority === "number"
+      ? (e as { priority: number }).priority
+      : 100;
+  const entries = Array.isArray(raw) ? [...raw] : [];
+  entries.sort((a, b) => priorityOf(b) - priorityOf(a));
+  const lines: string[] = [];
+  for (const e of entries) {
+    if (typeof e === "string") {
+      lines.push(`  - ${specifierOf(e)}`);
+      continue;
     }
-    // Treat as npm package name
-    return {
-      name: plugin,
-      priority: 100,
-      options: {},
-    };
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const spec =
+      typeof o.path === "string"
+        ? specifierOf(o.path)
+        : typeof o.name === "string"
+          ? `${o.name}${typeof o.version === "string" ? `@${o.version}` : ""}`
+          : "<specifier>";
+    const extra = ["export", "options", "enabled"].filter(
+      (k) => k in o && (k !== "enabled" || o[k] === false)
+    );
+    if (extra.length === 0) {
+      lines.push(`  - ${spec}`);
+      continue;
+    }
+    lines.push(`  - use: ${spec}`);
+    for (const k of extra) {
+      lines.push(`    ${k}: ${k === "options" ? JSON.stringify(o[k]) : String(o[k])}`);
+    }
   }
-  return {
-    path: plugin.path,
-    name: plugin.name,
-    ...(plugin.version ? { version: plugin.version } : {}),
-    ...(plugin.export ? { export: plugin.export } : {}),
-    priority: plugin.priority ?? 100,
-    options: plugin.options ?? {},
-  };
+  return (
+    "Manifest field `plugins` was replaced by `extensions` — one list of bare specifiers in " +
+    "load order (no `path:`/`name:` wrappers, no `priority`; a later entry loads later and " +
+    "its CSS wins ties). Rewrite it as:" + "\n" +
+    "extensions:" + "\n" +
+    (lines.length > 0 ? lines.join("\n") : "  - ./plugins/my-plugin.js")
+  );
 }
 
 type PlainObject = Record<string, unknown>;
@@ -323,64 +375,53 @@ function resolveWithPreset(
     );
   }
 
-  // Pagination engine: the native engine is the only engine. `engine:`/
-  // `--engine` still parse (so an old manifest/CLI invocation doesn't
-  // hard-fail) but are now a no-op: every build resolves to "native"
-  // regardless of the value requested, and an explicit "paged" gets a one-line
-  // warning instead of silently changing behavior.
-  const requestedEngine = c.engine ?? m.engine ?? "native";
-  if (requestedEngine !== "paged" && requestedEngine !== "native") {
-    throw new UsageError(`Unknown engine "${String(requestedEngine)}". Expected: paged | native`);
-  }
-  if (requestedEngine === "paged") {
-    warnOnce(
-      "engine-paged-removed",
-      "[gutterpress] The native engine is the only engine. " +
-        "\"engine: paged\" is ignored — building natively."
+  // `engine:` and `engineStyles:` are gone (#266). The Gutterpress engine is
+  // the only engine, so a switch had nothing to select; and `engineStyles.
+  // native` only ever appended to `styles:` — list position says the same
+  // thing. Each gets one actionable error, like `output` above, rather than
+  // a schema complaint about an unknown key.
+  const removed = m as { engine?: unknown; engineStyles?: unknown };
+  if (removed.engine !== undefined) {
+    throw new UsageError(
+      "Manifest field `engine` was removed — delete it. The Gutterpress engine " +
+        "(native Chromium pagination) is the only engine, so there is nothing to select."
     );
   }
-  // `engineStyles.paged` was removed from the manifest type and JSON schema
-  // (0.10.7, issue #234 — dual-engine naming for a single-engine product), but
-  // a manifest written during the dual-engine era may still carry it. Read it
-  // through a widened cast (matches the `legacy` pattern above) so the field
-  // keeps parsing and warns once instead of either silently vanishing or
-  // becoming a `GutterpressManifest` type error.
-  const legacyEngineStyles = m.engineStyles as { paged?: unknown[] } | undefined;
-  if ((legacyEngineStyles?.paged?.length ?? 0) > 0) {
-    warnOnce(
-      "engine-styles-paged-removed",
-      "[gutterpress] engineStyles.paged is ignored — the native engine is the only engine."
+  if (removed.engineStyles !== undefined) {
+    throw new UsageError(
+      "Manifest field `engineStyles` was removed — move its entries to the END of " +
+        "`styles:`. They were always loaded last; their place in that list is the " +
+        "only thing the field ever expressed."
     );
   }
-  const engine = "native" as const;
 
-  // Resolve plugins from CLI overrides or manifest. A plugin entry with
-  // `enabled: false` (#30 per-project toggle) stays in the manifest but is
-  // skipped here so it is never loaded at build/preview time.
-  const rawPlugins = c.plugins ?? m.plugins ?? [];
-  const plugins = rawPlugins
-    .filter((p) => typeof p === "string" || p.enabled !== false)
-    .map(normalizePluginConfig)
-    .sort((a, b) => b.priority - a.priority); // Higher priority loads first
+  // `plugins:` was replaced by `extensions:` (#265) — one actionable error
+  // carrying the author's own entries rewritten, not a schema complaint.
+  const legacyPlugins = (m as { plugins?: unknown }).plugins;
+  if (legacyPlugins !== undefined) {
+    throw new UsageError(pluginsRemovedMessage(legacyPlugins));
+  }
+  // Extensions, in manifest order — which IS the load order and the cascade
+  // order; nothing re-sorts them. An entry with `enabled: false` (#30) stays
+  // in the manifest but is skipped here so it is never loaded.
+  const rawExtensions = c.extensions ?? m.extensions ?? [];
+  if (!Array.isArray(rawExtensions)) {
+    throw new UsageError("Manifest field `extensions` must be a list of specifiers.");
+  }
+  const extensions = rawExtensions
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => typeof entry === "string" || (entry as ExtensionConfig)?.enabled !== false)
+    .map(({ entry, index }) => normalizeExtensionEntry(entry, index));
 
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
-    engine,
     // ARCH #2: no preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
     // defeated that documented fallback chain on every real render path.
-    // Engine-conditional stylesheets append AFTER the base list (see
-    // GutterpressManifest.engineStyles). Loaded last so furniture wins.
-    // `engineStyles.paged` is ignored (warned above) — only `.native` applies.
-    styles: (() => {
-      const base = c.styles ?? m.styles;
-      const extra = m.engineStyles?.native;
-      if (!extra || extra.length === 0) return base;
-      return [...(base ?? []), ...extra];
-    })(),
-    plugins,
+    styles: c.styles ?? m.styles,
+    extensions,
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),

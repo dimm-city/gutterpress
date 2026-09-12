@@ -14,7 +14,7 @@ import type { CreateProjectError } from "./project-scaffold.ts";
 import { detectProjectSource } from "./project-source.ts";
 import { providerFor } from "./source-provider.ts";
 import { loadManifest, resolveConfig } from "./manifest.ts";
-import { getActiveTheme, THEMES_DIR } from "./theme-manager.ts";
+import { describeExtension, listProjectExtensions, EXTENSIONS_DIR } from "./extension-manager.ts";
 import { resolveActiveStyles } from "./style-resolver.ts";
 
 async function tmpParent(): Promise<string> {
@@ -71,18 +71,20 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     // assets/ dir exists.
     expect((await stat(path.join(result.projectDir, "assets"))).isDirectory()).toBe(true);
 
-    // #236: the starter theme is APPLIED (tracked via themes/<id>/), not
-    // forked into styles/book.css. The real, editable stylesheet with
-    // custom properties now lives at themes/clean-book/theme.css.
+    // #236/#265: the starter look is COPIED into extensions/<id>/ and listed
+    // under `extensions:`, not forked into styles/book.css. The real,
+    // editable stylesheet with custom properties lives at
+    // extensions/clean-book/theme.css.
     const themeCss = await readFile(
-      path.join(result.projectDir, THEMES_DIR, "clean-book", "theme.css"),
+      path.join(result.projectDir, EXTENSIONS_DIR, "clean-book", "theme.css"),
       "utf8",
     );
     expect(themeCss).toContain(":root");
     expect(themeCss).toMatch(/--color-ink|--color-accent/);
-    expect(manifest).toContain(`${THEMES_DIR}/clean-book/theme.css`);
-    const active = await getActiveTheme(result.projectDir);
-    expect(active?.id).toBe("clean-book");
+    expect(manifest).toContain(`./${EXTENSIONS_DIR}/clean-book`);
+    const active = await describeExtension(result.projectDir, `./${EXTENSIONS_DIR}/clean-book`);
+    expect(active?.enabled).toBe(true);
+    expect(active?.carries.styles).toBe(true);
 
     // styles/book.css still exists (still referenced by the manifest, right
     // after the theme) but is now the project's OWN, empty override layer —
@@ -90,19 +92,10 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
     expect(bookCss).not.toContain("--color-ink");
     expect(bookCss).not.toContain("--color-accent");
-    // The theme comes BEFORE the project's own stylesheet in the cascade.
-    const themeAt = manifest.indexOf(`${THEMES_DIR}/clean-book/theme.css`);
-    const bookCssAt = manifest.indexOf("styles/book.css");
-    expect(themeAt).toBeGreaterThan(-1);
-    expect(bookCssAt).toBeGreaterThan(-1);
-    expect(themeAt).toBeLessThan(bookCssAt);
-
-    // The renderer's own stylesheet resolver sees the same active set the
-    // manifest declares — theme first, project overrides second.
-    expect(await resolveActiveStyles(result.projectDir)).toEqual([
-      `${THEMES_DIR}/clean-book/theme.css`,
-      "styles/book.css",
-    ]);
+    // The look is an extension, so it always precedes the project's own
+    // stylesheet in the cascade (assemble.ts) — `styles:` holds only the
+    // override layer, and the resolver agrees.
+    expect(await resolveActiveStyles(result.projectDir)).toEqual(["styles/book.css"]);
 
     // No git when versionHistory: "none".
     const source = await detectProjectSource(result.projectDir);
@@ -115,12 +108,12 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
 // ---------------------------------------------------------------------------
 // #236 — gutterpress new must APPLY its starter theme (tracked, switchable),
 // never fork its CSS into styles/book.css. A forked file is orphaned from its
-// theme id (getActiveTheme sees nothing) and silently shadows the next theme
+// theme id (listProjectExtensions sees nothing) and silently shadows the next theme
 // an author applies, since it keeps loading after whatever `styles:` puts
-// first. See theme-manager.ts's `applyTheme` for the tracked-theme contract.
+// first. See extension-manager.ts's `addBuiltInStyleSet` for the tracked-theme contract.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject applies each template's starter theme as a tracked, switchable theme", async () => {
+test("scaffoldProject copies each template's starter look into extensions/ and lists it", async () => {
   const parent = await tmpParent();
   try {
     const cases: Array<{ template: "book" | "zine" | "technical"; themeId: string }> = [
@@ -136,9 +129,9 @@ test("scaffoldProject applies each template's starter theme as a tracked, switch
         preset: "book",
         versionHistory: "none",
       });
-      const active = await getActiveTheme(result.projectDir);
-      expect(active?.id).toBe(themeId);
-      expect(existsSync(path.join(result.projectDir, THEMES_DIR, themeId, "theme.css"))).toBe(
+      const active = await describeExtension(result.projectDir, `./${EXTENSIONS_DIR}/${themeId}`);
+      expect(active?.enabled).toBe(true);
+      expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR, themeId, "theme.css"))).toBe(
         true,
       );
     }
@@ -157,7 +150,7 @@ test("scaffoldProject's styles/book.css is never byte-identical to the applied t
       versionHistory: "none",
     });
     const themeCss = await readFile(
-      path.join(result.projectDir, THEMES_DIR, "clean-book", "theme.css"),
+      path.join(result.projectDir, EXTENSIONS_DIR, "clean-book", "theme.css"),
       "utf8",
     );
     const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
@@ -186,8 +179,8 @@ test("scaffoldProject from a saved templateDir never applies a starter theme (th
       versionHistory: "none",
     });
 
-    expect(existsSync(path.join(result.projectDir, THEMES_DIR))).toBe(false);
-    expect(await getActiveTheme(result.projectDir)).toBeNull();
+    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
+    expect(await listProjectExtensions(result.projectDir)).toEqual([]);
   } finally {
     await rm(templateDir, { recursive: true, force: true });
     await rm(parent, { recursive: true, force: true });
@@ -575,15 +568,16 @@ test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place
   // No chapter-01.md scaffolded when the folder already has markdown.
   expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(false);
 
-  // #236: the starter theme is APPLIED (tracked), not forked into
-  // styles/book.css — the real, editable stylesheet is themes/clean-book/theme.css.
-  expect(manifest).toContain(`${THEMES_DIR}/clean-book/theme.css`);
+  // #236/#265: the starter look is COPIED into extensions/ and listed, not
+  // forked into styles/book.css — the editable stylesheet is
+  // extensions/clean-book/theme.css.
+  expect(manifest).toContain(`./${EXTENSIONS_DIR}/clean-book`);
   const themeCss = await readFile(
-    path.join(dir, THEMES_DIR, "clean-book", "theme.css"),
+    path.join(dir, EXTENSIONS_DIR, "clean-book", "theme.css"),
     "utf8",
   );
   expect(themeCss).toContain(":root");
-  expect((await getActiveTheme(dir))?.id).toBe("clean-book");
+  expect((await describeExtension(dir, `./${EXTENSIONS_DIR}/clean-book`))?.enabled).toBe(true);
 
   const bookCss = await readFile(path.join(dir, "styles", "book.css"), "utf8");
   expect(bookCss).not.toContain("--color-ink");
@@ -620,8 +614,8 @@ test("adoptFolder: never overwrites an existing styles/book.css", async () => {
   // unrequested built-in theme underneath hand-written CSS the author chose
   // to keep. No themes/ folder, no active theme, no new manifest styles entry
   // beyond the one already asserted above.
-  expect(existsSync(path.join(dir, THEMES_DIR))).toBe(false);
-  expect(await getActiveTheme(dir)).toBeNull();
+  expect(existsSync(path.join(dir, EXTENSIONS_DIR))).toBe(false);
+  expect(await listProjectExtensions(dir)).toEqual([]);
   await rm(dir, { recursive: true, force: true });
 });
 

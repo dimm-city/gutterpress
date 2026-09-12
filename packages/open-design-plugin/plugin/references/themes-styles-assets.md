@@ -1,42 +1,43 @@
 # Themes, styles, and assets
 
 How Gutterpress composes CSS and how files reach the finished book.
-Verified against the Gutterpress source that ships this package, 2026-07-28.
+Verified against the Gutterpress source that ships this package, 2026-09-08.
 
 ## Two CSS locations, different roles
 
-- **`themes/<id>/`** is a selectable theme *package*: `theme.css` (required),
-  optional `theme.json` metadata, and any fonts or images the theme owns.
+- **`extensions/<id>/`** is a look — an extension *package*: `theme.css` plus
+  a small `gutterpress.json` (or `theme.json`) naming what it carries, and any
+  fonts or images the look owns. It is listed under `extensions:` as
+  `./extensions/<id>`; a folder elsewhere (a shared `../../shared/house-style`)
+  is listed by its own path and read in place.
 - **`styles/`** is ordinary publication CSS — `book.css`, component sheets,
   page rules. No filename carries special meaning; `tokens.css` and
   `components.css` are conventions, not contracts.
 
-Applying a built-in theme or importing a local folder/zip copies the whole
-package into the book and wires `themes/<id>/theme.css` into `styles:`. A bare
-CSS or URL import creates only `theme.css` plus metadata; URL import does not
-fetch referenced fonts or images. Use a local folder/zip when the complete asset
-package must travel with the theme. Exactly one local theme entry is active at a
-time. The first application defaults to the front of the list; replacing an
-active theme preserves that entry's established cascade position. Do not reorder
-an established list merely to force a theme first. Put intentional extension or
-book-override styles after the theme when that is the project's chosen cascade.
+Adding a built-in look copies the whole package into `extensions/<id>/` so the
+book owns editable files; a `.zip`, bare CSS or URL import lands there too (a
+URL import fetches only the stylesheet and metadata, never referenced fonts or
+images — use a folder or `.zip` when the complete asset package must travel
+with the look). Any number of looks may be on at once; a later entry's CSS
+wins ties. Do not reorder an established list merely to force one entry first.
 
 ## The cascade
 
 What the built document contains, in order:
 
 ```text
-1. markers.js layout primitives
-2. Gutterpress plugin default CSS
+1. core layout primitives and author utilities (layered — they lose to everything below)
+2. extension stylesheets, in `extensions:` list order
 3. manifest `styles:` entries, in listed order
 ```
 
-Project CSS is last, so it wins at equal specificity. Within `styles:`, later
+Project CSS is last, so it wins at equal specificity. Within each list, later
 entries win. That is the entire precedence model.
 
 ```yaml
+extensions:
+  - ../../shared/house-style                     # shared look, read in place
 styles:
-  - ../../shared/themes/publisher/theme.css     # shared base
   - ../../shared/styles/publisher-components.css # shared components
   - styles/book.css                              # this book, final say
 ```
@@ -91,30 +92,32 @@ This is the one asymmetry worth remembering: **shared art referenced from
 shared CSS is fine; shared art referenced from prose must be copied into the
 book that uses it.**
 
-## Plugins and profiles are direct references
+## Extensions and profiles are direct references
 
 ```yaml
-plugins:
-  - path: ../../shared/plugins/publisher-components.js
-  - path: ./plugins/book-components.js
+extensions:
+  - ../../shared/plugins/publisher-components.js
+  - ./plugins/book-components.js
 
 pdfx:
   icc: ../../shared/profiles/CGATS21_CRPC1.icc
 ```
 
-Authored plugin paths resolve from the manifest directory and may point outside
-the book. `profiles/` is a team naming convention only — the manifest names the
-ICC file directly.
+An extension entry is a bare specifier: `./x` and `../x` are paths (a plugin
+file or an extension folder) that resolve from the manifest directory and may
+point outside the book; anything else is an npm package, `name@version` pinned.
+`profiles/` is a team naming convention only — the manifest names the ICC file
+directly.
 
-## Authored plugins vs. managed npm packages
+## Authored extensions vs. managed npm packages
 
-- **Authored** — an ordinary `.js` file the manifest names by `path`. Git-tracked
-  source; editable in `layout` or `content` scope when Markdown rendering
-  behavior genuinely must change.
-- **Managed** — installed by `gutterpress plugin add <pkg>@<version> <book>`, which
+- **Authored** — an ordinary `.js` file or extension folder the manifest lists
+  by path. Git-tracked source; editable in `layout` or `content` scope when
+  Markdown rendering behavior genuinely must change.
+- **Managed** — installed by `gutterpress ext add <pkg>@<version> <book>`, which
   verifies and vendors the exact dependency graph beneath the book's
-  `plugins/npm/` tree with integrity receipts, then pins the version in the
-  manifest.
+  `plugins/npm/` tree with integrity receipts, then pins `name@version` in the
+  manifest's `extensions:` list.
 
 `plugins/npm/**` is machine-owned. Never edit it, move it, or share it between
 books. Commit it — a team relying on reproducible offline builds needs it.

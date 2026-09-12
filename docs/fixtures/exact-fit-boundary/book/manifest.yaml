@@ -1,0 +1,17 @@
+title: "Exact-Fit Boundary"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - 01-boundary.md
+
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

@@ -1,20 +1,20 @@
 type CheckSeverity = "error" | "warning" | "info";
 
-export interface PluginConfig {
-  path?: string;
-  name?: string;
-  /** Exact project-local npm version. Legacy ranges remain informational. */
-  version?: string;
+/**
+ * The object form of an `extensions:` entry (#265) — only for an entry that
+ * has to say more than its specifier. The common case is the bare string;
+ * `use` carries the same specifier in both forms.
+ */
+export interface ExtensionConfig {
+  /**
+   * The specifier: a bundled feature name, a `./`/`../`/`/` path (relative
+   * to the manifest), or an npm package name, optionally pinned as
+   * `name@version`. See `lib/extension-specifier.ts` for the three rules.
+   */
+  use: string;
   /** Named module export to use when the package has no default plugin export. */
   export?: string;
-  /**
-   * Load order (default 100). Higher loads first; built-in plugins always
-   * load before any user plugin regardless of this value. Advanced/rarely
-   * needed: a plugin needs the LOWER of two priorities to see tokens the
-   * other one produces, since it must load (and run) after it — see
-   * examples/gutterpress-user-guide/05-plugins.md#plugin-load-order.
-   */
-  priority?: number;
+  /** Options passed straight through to the markdown-it plugin. */
   options?: Record<string, unknown>;
   /**
    * Per-project enable flag (#30). Absent or `true` = active; `false` = the
@@ -97,24 +97,6 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
-   * Pagination engine. The Gutterpress engine (`src/engine/`, native Chromium
-   * pagination) is the only engine. This field and `--engine` on the CLI are
-   * accepted-but-ignored for backward compatibility: an explicit "paged"
-   * produces a one-line warning and the build proceeds natively regardless.
-   */
-  engine?: "paged" | "native";
-  /**
-   * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
-   * only list this type declares; a manifest that still carries `.paged`
-   * (dual-engine era, pre-0.10.7) keeps parsing — `resolveConfig` reads it
-   * through a widened cast and warns once — but it is no longer part of the
-   * authored/autocompleted shape (see `manifest.schema.json`, which drops it
-   * too), since the native engine is the only engine.
-   */
-  engineStyles?: {
-    native?: string[];
-  };
-  /**
    * Where the book is published (ADR 0008): publish-target ids whose
    * validation policies this book is checked against. Absent = the preset's
    * defaults (`dtrpg` -> ["dtrpg"]; `book`/`custom` -> []). The registry in
@@ -122,7 +104,13 @@ export interface GutterpressManifest {
    */
   targets?: string[];
   styles?: string[];
-  plugins?: (string | PluginConfig)[];
+  /**
+   * Extensions, in load order (#265): markdown-it plugins, looks, component
+   * libraries — from npm, a folder, or the bundled set. A later entry loads
+   * later, sees earlier entries' markdown output, and its CSS wins ties; the
+   * project's own `styles` always load after every extension.
+   */
+  extensions?: (string | ExtensionConfig)[];
   source?: {
     files?: string[] | null;
   };
@@ -204,14 +192,17 @@ export interface GutterpressManifest {
   };
 }
 
-export interface ResolvedPluginConfig {
+export interface ResolvedExtensionConfig {
+  /** The specifier exactly as written (pin included) — for messages and manifest edits. */
+  use: string;
+  /** The path specifier, for a path entry; the loader resolves it against the manifest directory. */
   path?: string;
+  /** The package name, for a bundled or npm entry. */
   name?: string;
-  /** Exact version for a project-local vendored npm plugin. */
+  /** Exact version for a project-local vendored npm extension. */
   version?: string;
   /** Named module export selected as the plugin function. */
   export?: string;
-  priority: number;
   options: Record<string, unknown>;
 }
 
@@ -226,18 +217,11 @@ export interface ResolvedPluginConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
-  /**
-   * Resolved pagination engine. Always `"native"` — `manifest.ts` assigns the
-   * literal, warning and ignoring an author's `engine: paged`. Typed as the
-   * single value it can hold so no consumer can branch on an engine that
-   * cannot run. The INPUT union ({@link GutterpressManifest.engine}) keeps
-   * both spellings, because old manifests must go on parsing.
-   */
-  engine: "native";
   /** Validated publish-target ids for this book (may be empty). */
   targets: string[];
   styles?: string[];
-  plugins: ResolvedPluginConfig[];
+  /** Enabled extensions, in manifest (= load = cascade) order. */
+  extensions: ResolvedExtensionConfig[];
   source: {
     files: string[] | null;
   };

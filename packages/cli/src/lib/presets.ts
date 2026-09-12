@@ -10,7 +10,7 @@ import { UsageError } from "./cli-args";
  * Every preset value is overridable from the manifest, leaf by leaf
  * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page" | "engine"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page"> {
   /**
    * Base page geometry in points, or `null` for `custom` — the one preset
    * with no built-in trim, which therefore REQUIRES the manifest to supply
@@ -34,7 +34,7 @@ export const DTRPG_PRESET: VendorPreset = {
   // discovered `.css`, else `[]`. A preset default here defeated that
   // documented fallback chain and made every styles:-less project silently
   // link a phantom `css/print.css`, whether or not it existed on disk.
-  plugins: [],
+  extensions: [],
   // No `assets` list and no `output` block: assets are discovered from the
   // book's own references (lib/asset-inline.ts) and the output location is a
   // convention (lib/output-paths.ts), so neither is configuration any more.
@@ -137,7 +137,7 @@ export const BOOK_PRESET: VendorPreset = {
   // a destination's requirements should be validated.
   defaultTargets: [],
   // No default `styles:` — see the matching comment on DTRPG_PRESET (ARCH #2).
-  plugins: [],
+  extensions: [],
   // No `assets` list and no `output` block: assets are discovered from the
   // book's own references (lib/asset-inline.ts) and the output location is a
   // convention (lib/output-paths.ts), so neither is configuration any more.

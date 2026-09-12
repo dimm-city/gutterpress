@@ -12,8 +12,9 @@ primitives. No new dependency, no rasterization (CLAUDE.md §1/§3).
 - Pure logic: `packages/cli/src/lib/render-parity.ts` (`extractReport`,
   `compareReports`, `formatDiffs`, `serializeReport`).
 - CLI: `packages/cli/scripts/render-parity.ts`, a bun script beside
-  `scripts/native-parity-gate.ts` — **not** a published `gutterpress`
-  subcommand.
+  `scripts/native-parity-gate.ts` (the preview↔print gate, documented in
+  [native-parity-gate.md](./native-parity-gate.md)) — **not** a published
+  `gutterpress` subcommand.
 - CI wiring: the `render-parity` job in `.github/workflows/ci.yml`.
 
 ## Usage
@@ -135,10 +136,12 @@ declaration, and its message names this exact consequence ("text becomes
 unselectable, unsearchable, and inaccessible") and points back here. Run
 it — the CLI's pre-build lint gate and the desktop Problems panel both call
 `checkCss` — over any stylesheet you're about to trust render-parity to
-cover. **If a text-bearing element or one of its ancestors trips that
-`filter` warning, render-parity cannot see a text-only change confined to it
-— verify such a change by other means (a rendered preview, a visual diff, or
-careful review), not by a clean gate run.**
+cover; `gutterpress lint` lists each finding with its file and `line:col`,
+and `filter: none` (a suppressed filter) is not one. **If a text-bearing
+element or one of its ancestors trips that `filter` warning, render-parity
+cannot see a text-only change confined to it — verify such a change by other
+means (a rendered preview, a visual diff, or careful review), not by a clean
+gate run.**
 
 This does not weaken the gate for everything else on the same page: page
 geometry, image placement, and any text **outside** a filtered subtree are

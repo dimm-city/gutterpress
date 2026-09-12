@@ -11,7 +11,7 @@
  *  1. ProjectSettingsView.svelte exists and follows the SettingsView pattern:
  *     header + close button + a WAI-ARIA tab bar over cohesive sections.
  *  2. It is the composition root for the existing per-domain section
- *     components/controllers (Details, Look & style, Plugins) — one
+ *     components/controllers (Details, Look & style, Features) — one
  *     implementation, new frame.
  *  3. LeftPanel no longer has a Config tab (or any embedded config panel).
  *  4. +page.svelte mounts the view full-window like SettingsView, remounts it
@@ -87,9 +87,9 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
     expect(src).not.toContain("PluginsSectionController");
     expect(src).not.toContain("AppearanceSection.svelte");
     expect(src).not.toContain("PluginsSection.svelte");
-    // Cross-section refresh hooks survive the move (theme apply reloads
+    // Cross-section refresh hooks survive the move (a look change reloads
     // styles+design; style toggle reloads design).
-    expect(src).toContain("afterThemeChange");
+    expect(src).toContain("afterLookChange");
     expect(src).toContain("afterStyleChange");
   });
 

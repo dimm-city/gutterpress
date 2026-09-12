@@ -11,7 +11,7 @@ import {
   collectPluginStylePaths,
   __resetPathPluginCacheForTests,
 } from "./plugins";
-import type { ResolvedPluginConfig } from "../../schema/manifest.types";
+import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
 import { vendoredNpmPluginRoot, VENDOR_RECEIPT_FILE } from "../plugin-vendor";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `plugin-tests-${Date.now()}`);
@@ -33,8 +33,12 @@ function nestedFixture(relPath: string, contents: string): string {
   return path;
 }
 
-function cfg(overrides: Partial<ResolvedPluginConfig>): ResolvedPluginConfig {
-  return { priority: 100, options: {}, ...overrides };
+function cfg(overrides: Partial<ResolvedExtensionConfig>): ResolvedExtensionConfig {
+  return {
+    use: overrides.use ?? overrides.path ?? overrides.name ?? "(test)",
+    options: {},
+    ...overrides,
+  };
 }
 
 describe("plugin loader", () => {
@@ -335,6 +339,57 @@ describe("plugin loader", () => {
       expect(typeof loaded.plugin).toBe("function");
     });
 
+    // #265 — an npm package that ships a gutterpress.json is an extension like
+    // any folder: its declared styles ride along with its markdown-it entry,
+    // and its metadata backs a module that exports none of its own.
+    test("an npm package's gutterpress.json contributes its declared styles and metadata (#265)", async () => {
+      const name = "npm-extension-fixture";
+      const packageDir = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(join(packageDir, "css"), { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name, version: "1.0.0", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(
+        join(packageDir, "index.js"),
+        "export default function plugin(md) { md.__npmExtension = true; }\n",
+      );
+      writeFileSync(
+        join(packageDir, "gutterpress.json"),
+        JSON.stringify({
+          name: "House",
+          description: "A look and its markup, from npm",
+          markdown: "index.js",
+          styles: ["css/look.css"],
+        }),
+      );
+      writeFileSync(join(packageDir, "css", "look.css"), ".x { color: red; }\n");
+
+      const loaded = await loadPlugin(cfg({ name }), TMP_ROOT);
+      expect(loaded.styles).toEqual([join(packageDir, "css", "look.css")]);
+      expect(loaded.metadata?.name).toBe("House");
+      const md = { __npmExtension: false };
+      (loaded.plugin as (md: unknown) => void)(md);
+      expect(md.__npmExtension).toBe(true);
+    });
+
+    test("an npm package's gutterpress.json may not name a markdown entry other than the package entry (#265)", async () => {
+      const name = "npm-extension-mismatch-fixture";
+      const packageDir = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name, version: "1.0.0", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
+      writeFileSync(join(packageDir, "other.js"), "export default function plugin() {}\n");
+      writeFileSync(join(packageDir, "gutterpress.json"), JSON.stringify({ markdown: "other.js" }));
+
+      await expect(loadPlugin(cfg({ name }), TMP_ROOT)).rejects.toThrow(
+        /declares markdown "other\.js" but the package entry is "index\.js"/,
+      );
+    });
+
     test("does not fall back when a pinned vendor marker is present but invalid", async () => {
       const name = "invalid-receipt-plugin-fixture";
       const packageDir = join(TMP_ROOT, "node_modules", name);
@@ -365,7 +420,7 @@ describe("plugin loader", () => {
     test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
-      ).rejects.toThrow(/Project settings > Plugins > Install npm plugin/);
+      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz.*Project settings > Extensions/);
     });
 
     // ARCH finding #57 near-miss: a bare filename with a JS extension but no
@@ -382,7 +437,7 @@ describe("plugin loader", () => {
       } catch (e) {
         message = e instanceof Error ? e.message : String(e);
       }
-      expect(message).toContain("path: ./my-plugin.js");
+      expect(message).toContain("- ./my-plugin.js");
       expect(message).not.toContain("my-plugin.js.js");
     });
   });
@@ -475,18 +530,16 @@ describe("plugin loader", () => {
       ]);
     });
 
-    test("engineStyles.native is appended after styles, in the same resolved list", async () => {
+    test("an extension declaring the removed `engineStyles` field is rejected, naming the replacement (#266)", async () => {
       writeExtension(
         "engine-styles",
         { markdown: "plugin.js", styles: ["a.css"], engineStyles: { native: ["native.css"] } },
         { "plugin.js": "export default function (md) {}", "a.css": ".a {}", "native.css": "@page {}" },
       );
 
-      const loaded = await loadPlugin(cfg({ path: "engine-styles" }), TMP_ROOT);
-      expect(loaded.styles).toEqual([
-        join(TMP_ROOT, "engine-styles", "a.css"),
-        join(TMP_ROOT, "engine-styles", "native.css"),
-      ]);
+      await expect(loadPlugin(cfg({ path: "engine-styles" }), TMP_ROOT)).rejects.toThrow(
+        /`engineStyles`, which was removed — move its entries to the end of `styles`/,
+      );
     });
 
     test("a folder with NO markdown field is a styles-only extension: a no-op plugin function, styles still resolved", async () => {

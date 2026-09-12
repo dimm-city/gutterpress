@@ -82,7 +82,7 @@ packages/cli/src/
 │   ├── audit.ts            # Asset-only validation
 │   ├── preflight.ts        # Structured CI preflight payload
 │   ├── doctor.ts           # Check system tools used by Gutterpress
-│   └── plugin.ts           # Manage project markdown-it plugins
+│   └── ext.ts              # List/add/remove/enable/disable the project's extensions
 ├── checks/                 # Validation check system
 │   ├── types.ts            # Check interfaces
 │   ├── registry.ts         # Self-registration + getChecks()
@@ -96,6 +96,8 @@ packages/cli/src/
 ├── lib/                    # Core libraries
 │   ├── exec.ts             # Process execution
 │   ├── manifest.ts         # Manifest loading + config resolution
+│   ├── extension-manager.ts # The `extensions:` list: list/add/remove/toggle/reorder
+│   ├── extension-import.ts # .zip / .css / URL look import → extensions/<id>/
 │   ├── presets.ts          # Vendor presets (DTRPG)
 │   ├── pdf-parse.ts        # PDF parsing utilities
 │   ├── ghostscript.ts      # PDF/X CMYK conversion
@@ -265,25 +267,29 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (page/section/spread mechanics). Always present.
 2. **Core utilities** — `GUTTERPRESS_CSS`, exported by
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
-3. **Plugin CSS** - any loaded markdown-it plugin's `styles` files (paths
-   relative to the plugin module, resolved at load time and inlined through
-   the same `lib/asset-inline.ts` pass as project CSS), followed by its
-   `css` string export, in plugin order.
+3. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
+   a look's or component library's declared `styles` (from its
+   `gutterpress.json` / `theme.json`), or a plugin module's `styles` files
+   (paths relative to the module) followed by its `css` string export. All
+   are resolved at load time and inlined through the same
+   `lib/asset-inline.ts` pass as project CSS; a later entry's CSS wins ties.
 4. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
-   (so project rules win at equal specificity) by `lib/asset-inline.ts`: each
+   (so project rules win at equal specificity, over every extension) by
+   `lib/asset-inline.ts`: each
    file is *read*, not linked — local `@import`s are followed and inlined in
    place, and every CSS `url()` resolves relative to the stylesheet that
    references it. Fonts become `data:` URIs; small images inline; images too
    large to inline **and** outside the project are content-addressed under
    `assets/`. Because a stylesheet's own location no longer affects the
-   output, a `styles:` entry can point anywhere — a bundled theme
-   (`themes/<id>/theme.css`), a project stylesheet, or a shared design system
-   in a sibling directory (`../design-guide/styles/guide.css`) — with no
-   copying and no destination indirection.
+   output, a `styles:` entry can point anywhere — a project stylesheet, or a
+   shared design system in a sibling directory
+   (`../design-guide/styles/guide.css`) — with no copying and no destination
+   indirection. An `extensions:` path entry (`./extensions/<id>`,
+   `../../shared/house-style`) is read the same way.
 
 **Design Rationale**:
 - Self-contained HTML output (no external dependencies, no `<link>` that can 404)
-- Predictable cascade order: layout, then plugins, then the author's own styles
+- Predictable cascade order: layout, then extensions in list order, then the author's own styles
 - A missing stylesheet or font is a build error naming the file, instead of a
   silent 404 during pagination that would ship an unstyled artifact
 
@@ -401,7 +407,7 @@ Uses **Chokidar**, in TWO instances:
 2. **Declared external dependencies**, watched PER FILE (never per directory, so
    the set stays exact and cannot pull in a large sibling tree). This is what a
    multi-book repo needs: a book's `styles:` entry may point at
-   `../../shared/styles/components.css`, and an authored plugin `path:` at
+   `../../shared/styles/components.css`, and an `extensions:` entry at
    `../../shared/plugins/components.js`.
 
 The external set is the stylesheets' full DEPENDENCY CLOSURE, not just the
@@ -555,27 +561,59 @@ export function resolveConfig(
 
 ## Extension System
 
-### Plugin Loading
+### The `extensions:` list
 
-**Location**: `packages/cli/src/lib/markdown/plugins.ts`
+**Location**: `packages/cli/src/lib/extension-specifier.ts` (specifier
+parsing), `packages/cli/src/lib/extension-manager.ts` (list / add / remove /
+enable / reorder, built-in look copy), `packages/cli/src/lib/extension-import.ts`
+(`.zip` / `.css` / URL import), `packages/cli/src/lib/markdown/plugins.ts`
+(the loader).
 
-Plugins are declared in `manifest.yaml` as either local file paths or npm package names. The `loadPlugins()` function resolves and loads them, while `applyPlugins()` registers them with the MarkdownIt instance inside `createMarkdownRenderer()`:
+Everything a book loads beyond core — markdown-it plugins, looks
+(stylesheets), component libraries — is one entry in the manifest's
+`extensions:` list (#265). An entry is a bare specifier whose FORM says what
+it is; there is no `path:`/`name:` wrapper and no `priority`:
+
+1. a **bundled** name (`BUNDLED_EXTENSIONS`: `markdown-it-mark`, `-sub`,
+   `-sup`, `-abbr`, `gutterpress-gfm-alerts`) resolves to the copy compiled
+   into Gutterpress — no install, no network; bundled names shadow npm and
+   cannot be pinned;
+2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the
+   manifest — a folder with a `gutterpress.json` (or legacy
+   `theme.json`/`theme.css`) or a bare `.js` plugin file — referenced in
+   place, never copied;
+3. anything else is an **npm** specifier; `name@version` pins it, and
+   `gutterpress ext add` writes the pin.
+
+```yaml
+# manifest.yaml
+extensions:
+  - ./extensions/clean-book            # a look, copied in by `gutterpress new` / `ext add --look`
+  - ./plugins/my-custom-plugin.js      # a bare plugin file, referenced in place
+  - markdown-it-footnote@4.0.0         # npm, pinned by `ext add`
+  - use: markdown-it-anchor@9.2.0      # object form: only when an entry needs more
+    options:
+      level: 2
+    enabled: true
+```
+
+`resolveConfig` (`lib/manifest.ts`) normalizes each entry to a
+`ResolvedExtensionConfig` (`use` as written, plus `path` or `name`/`version`,
+`export`, `options`), drops `enabled: false` entries, and keeps the list in
+manifest order — nothing re-sorts it. That order is both the markdown
+registration order (`applyPlugins` calls `md.use` in sequence, so a later
+entry's rules see earlier entries' tokens) and the cascade order (extension
+CSS is inlined in the same order, before the project's `styles:`). A manifest
+still carrying `plugins:` (or `priority`, `path:`/`name:`) fails with a
+`UsageError` that prints its entries rewritten as `extensions:`; `engine:` /
+`engineStyles:` (#266) fail naming their replacement.
 
 ```typescript
-// manifest.yaml plugin declaration
-plugins:
-  - ./plugins/my-custom-plugin.js     # Local file path
-  - markdown-it-footnote               # npm package name
-  - name: my-scoped-plugin
-    path: ./plugins/scoped.js
-    priority: 200
-    options:
-      featureX: true
-
 // Plugin loading from packages/cli/src/lib/markdown/plugins.ts
 export async function loadPlugins(
-  configs: ResolvedPluginConfig[],
-  baseDir: string
+  configs: ResolvedExtensionConfig[],
+  baseDir: string,
+  onError?: (pluginRef: string, error: Error) => void  // live preview only: degrade-and-report
 ): Promise<LoadedPlugin[]>
 
 export function applyPlugins(md: MarkdownIt, plugins: LoadedPlugin[]): void {
@@ -606,19 +644,44 @@ export const css = '.my-plugin-class { color: red; }';
 export const styles = ['./styles/my-plugin.css'];
 ```
 
+### Extension folders
+
+A path entry that names a FOLDER is loaded through its metadata file
+(`lib/extension-manifest.ts`: `gutterpress.json`, falling back to
+`theme.json`): `name`, `author`, `description`, `preview`, `styles` (ordered
+sheets — a folder that declares none but holds a `theme.css` is a one-sheet
+look), `tokensFile`, `markdown` (a JS module loaded through the exact same
+plain-markdown-it contract as a bare file), `snippets`, `components`. A
+theme-era `theme.css` + `theme.json` folder is therefore a valid extension
+unchanged, and "look" and "plugin" are just what a folder happens to declare.
+The three built-in looks are the one thing the manager COPIES into a project
+(`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
+must be the author's own editable files, never a hidden dependency on the CSS
+embedded in whichever Gutterpress version is installed. `.zip` / `.css` / URL
+imports land the same way.
+
 ### Plugin Resolution
 
-Plugins are resolved in this order:
-1. **Receipt-verified project-local package graph** (`plugins/npm/`, selected by manifest `name` + exact `version`)
-2. **User's project** (`node_modules`, for legacy unpinned manifests)
-3. **Gutterpress's own dependencies** (bundled optional features and legacy entries)
-4. **Fail fast** — if a plugin can't be found, the build identifies the manifest entry and points to the explicit installer
+The specifier's form picks the branch:
+
+1. **Bundled** names → `BUILTIN_OPTIONAL_PLUGINS` (`markdown/renderer.ts`),
+   before any other lookup
+2. **Paths** → the file or folder, relative to the manifest
+3. **npm** → the receipt-verified project-local package graph
+   (`plugins/npm/`, selected by the pinned `name@version`); an unpinned name
+   falls back to the project's `node_modules`, then to Gutterpress's own
+   dependencies (legacy manifests only — `ext list` flags it as "Not pinned")
+4. **Fail fast** — anything else identifies the manifest entry and points to
+   `gutterpress ext add`
 
 The loader does **not** install or access the network. Installation is an
-explicit desktop action or `gutterpress plugin add` command. Registry metadata is
-resolved to an exact root and dependency graph, each tarball integrity is
-verified, and a bounded nested `node_modules` tree is safely vendored before an
-atomic manifest update. A schema-v2 receipt records provenance, dependency
+explicit shared-lib action — `addExtension` (`lib/extension-manager.ts`),
+called by the desktop's routes and by `gutterpress ext add`. Registry metadata
+is resolved to an exact root and dependency graph, each tarball integrity is
+verified, and a bounded nested `node_modules` tree is safely vendored before
+the pinned specifier `name@<exact version>` is written to the manifest (the
+vendor tree is rolled back if the load-test fails).
+A schema-v2 receipt records provenance, dependency
 edges, import/require entries, skipped optional dependencies, and a SHA-256
 whole-tree digest. Before loading, the loader snapshots the vendor tree and
 verifies that private copy, including each package's declared dependency edges
@@ -629,16 +692,16 @@ receipt and rewritten to those private copies; unresolved or nonliteral module
 requests fail closed instead of substituting project or ancestor packages.
 (Full rationale was ADR 0007, removed in the 2026-07-29 docs cleanup.)
 
-Plugin modules normally expose a default function. A manifest entry may set
-`export` to explicitly select a named function when a package exposes several
-plugin variants instead.
+Plugin modules normally expose a default function. An entry's `export`
+selects a named function when a package exposes several plugin variants
+instead.
 
 **Design Rationale**:
-- Manifest-driven plugin declaration keeps configuration explicit
+- One manifest list keeps configuration explicit; the specifier's form encodes its source, so no wrapper keys
 - Exact versions, complete project-local dependency trees, and receipts make installs reproducible
-- Priority sorting controls plugin load order
-- Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
-- CSS export support allows plugins to inject styles into rendered output
+- List order is load order and cascade order — reordering is the only ordering control
+- Fail-fast on missing extensions surfaces misconfiguration immediately rather than silently skipping
+- Extension stylesheets (`styles` in metadata; `styles`/`css` module exports) let a plugin or look inject styles into rendered output, always below the author's own `styles:`
 
 See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md) for the full authoring guide.
 

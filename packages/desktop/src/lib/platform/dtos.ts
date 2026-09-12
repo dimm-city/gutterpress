@@ -1,7 +1,7 @@
 /**
  * Desktop-facing DTOs (ARCH review #39) — plain data shapes returned by the
  * server routes under `src/routes/api/**`, plus a handful of app-local view
- * types (plugin manager, theme manager, style resolver, media panel, …).
+ * types (extension manager, style resolver, media panel, …).
  *
  * These are NOT part of the `HostServices`/`ElectronBridge`/`Platform` seam
  * (that lives in `./contract.ts`) — they are the request/response payload
@@ -117,112 +117,97 @@ export interface ProblemEntry {
   source: string;
 }
 
-// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+// ── Extension manager (#265) — the one rail ──────────────────────────────────
 //
-// Mirror the lib's plugin-manager types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
+// Mirror the lib's extension-manager / extension-import types — defined
+// locally so the SPA never value-imports the lib (§8 / ADR 0004). A look is
+// an extension that carries styles; a feature is one that carries markdown;
+// a component library carries both — ONE list, ONE entry shape.
 
-/** How a plugin entry is referenced in the manifest. */
-export type PluginKind = "local" | "npm";
+/** How an `extensions:` entry resolves — the form of its specifier decides. */
+export type ExtensionSourceKind = "bundled" | "path" | "npm";
 
-/** One configured plugin, as surfaced to the manager UI. */
-export interface ProjectPluginEntry {
-  /** Stable reference: the manifest `path` (local) or `name` (npm). */
-  ref: string;
-  /** `"local"` (file path) or `"npm"` (package name). */
-  kind: PluginKind;
-  /** Per-project enable flag (manifest `enabled: false` = disabled). */
-  enabled: boolean;
-  /** Exact project-local npm version; absent for local, built-in, and legacy entries. */
+/** What an extension declares it ships. */
+export interface ExtensionCarries {
+  markdown: boolean;
+  styles: boolean;
+  snippets: boolean;
+  components: boolean;
+}
+
+/** One configured extension, as listed for the desktop. */
+export interface ProjectExtensionEntry {
+  /** The specifier exactly as written in the manifest — the stable ref every
+   *  mutating call takes (`setEnabled`, `remove`, `reorder`, `readCss`). */
+  use: string;
+  kind: ExtensionSourceKind;
+  /** Package name (bundled, npm) or the path specifier (path). */
+  name: string;
+  /** Exact pinned version, from the specifier, for an npm entry. */
   version?: string;
   /** Named module export selected as the plugin function. */
   export?: string;
-  /** Non-fatal notices emitted while installing this plugin. */
+  /** Per-project enable flag (manifest `enabled: false` = off). */
+  enabled: boolean;
+  /** Display name: the metadata's `name`, else the package name / folder name. */
+  label: string;
+  description?: string;
+  author?: string;
+  /** Preview image path relative to the extension folder, when declared. */
+  preview?: string | null;
+  /** The sheet carrying the `:root` token surface (the Design panel's
+   *  target), relative to the folder, when declared. */
+  tokensFile?: string;
+  /** Declared stylesheets relative to the folder, in cascade order. Absent
+   *  when there is no folder. */
+  styles?: string[];
+  /** What it declares — a styles-carrier shows in the Look view, a
+   *  markdown-carrier in Features; one that carries both shows in both. */
+  carries: ExtensionCarries;
+  /** Absolute folder its metadata was read from. Absent for a bundled name,
+   *  a bare JS file, an uninstalled npm entry, or a missing path. */
+  dir?: string;
+  /** Non-fatal notices: "Not installed …", "Not pinned …", "Not found: …". */
   warnings?: string[];
 }
 
-/** Result of load-testing one configured plugin. */
-export interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
+/** Result of load-testing one configured extension. */
+export interface ExtensionValidationResult {
+  use: string;
+  kind: ExtensionSourceKind;
+  /** Mirrors the manifest enable flag. Disabled extensions are not load-tested. */
   enabled: boolean;
-  /** `true` when the plugin loaded OK (or is disabled and skipped). */
+  /** `true` when the extension loaded OK (or is disabled and skipped). */
   ok: boolean;
   /** The loader's fail-fast error message when `ok` is `false`. */
   error?: string;
 }
 
-/** A curated plugin recommendation bundled with Gutterpress. */
-export interface RecommendedPlugin {
-  name: string;
-  /** Short plain-language feature name (the row title; `name` is demoted). */
-  label?: string;
+/** A bundled markdown feature the author can turn on — "Add" writes `use`. */
+export interface RecommendedExtension {
+  use: string;
+  /** Short plain-language feature name (the row title). */
+  label: string;
   description: string;
-  /** Gutterpress ships this plugin — "Add" enables it instantly, no install. */
-  builtin?: boolean;
 }
 
-// ── Theme manager (#32) ───────────────────────────────────────────────────────
-//
-// Mirror the lib's theme-manager types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
-
-/** Author-friendly metadata for one theme (built-in or project). */
-export interface ThemeInfo {
-  /** Stable id (a built-in id, or a slug for imported/applied themes). */
+/** A built-in look (embedded assets); `id` is its folder name under `extensions/` once used. */
+export interface BuiltInStyleSet {
   id: string;
-  /** Display name. */
   name: string;
-  /** Theme author, when known. */
-  author?: string;
-  /** One-line description. */
   description: string;
-  /** `"builtin"` (embedded) or `"project"` (copied into the project). */
-  kind: "builtin" | "project";
-  /** Optional preview image path relative to the theme folder. */
-  preview?: string | null;
-  /** Stylesheets the theme declares, relative to its folder, in cascade order (#239). */
-  styles: string[];
-  /** The declared sheet whose `:root` is the Design panel's token surface (#239). */
-  tokensFile: string;
-  /**
-   * #241/#243 — declared-relative path to a markdown-it entry, when this
-   * theme's `gutterpress.json` names one. INFORMATIONAL ONLY: applying a
-   * theme never loads or wires this (see the lib's `ThemeInfo.markdown` doc
-   * comment) — a full extension's markdown half only activates via the
-   * plugin install flow (`api.plugin.addLocal`). Surfaced so the merged
-   * Extensions surface's Look tab can note "also adds markdown features"
-   * instead of silently hiding that the folder carries more than styles.
-   */
-  markdown?: string;
-  /** #241/#243 — declared-relative path to a component catalog file (#242),
-   *  informational only (same rationale as {@link markdown}). */
-  components?: string;
-  /** #241/#243 — declared-relative path to a snippets folder (#240),
-   *  informational only (same rationale as {@link markdown}). */
-  snippets?: string;
 }
 
-/** Which theme to apply: a built-in id, or a project theme already on disk. */
-export type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-
-// ── Theme package import (#106) ───────────────────────────────────────────────
-//
-// Mirror the lib's theme-import types locally so the SPA never value-imports the
-// lib (§8 / ADR 0004).
-
-/** A non-fatal issue surfaced after a successful `.zip`/`.css` theme import. */
-export interface ThemeImportWarning {
+/** A non-fatal issue surfaced after a successful `.zip`/`.css`/URL import (#106). */
+export interface ExtensionImportWarning {
   code: "print-safety" | "no-theme-json" | "unnamed-theme" | "extra-files";
   message: string;
 }
 
-/** Outcome of importing a theme from a `.zip` package or a bare `.css` file. */
-export interface ThemeImportResult {
-  theme: ThemeInfo;
-  warnings: ThemeImportWarning[];
+/** Outcome of importing a look from a `.zip` package, a bare `.css` file, or a URL. */
+export interface ExtensionImportResult {
+  entry: ProjectExtensionEntry;
+  warnings: ExtensionImportWarning[];
 }
 
 // ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
@@ -234,7 +219,7 @@ export interface ThemeImportResult {
 export interface ProjectStyle {
   /** Absolute path to the `.css` file (the editor's open key). */
   path: string;
-  /** Project-relative, "/"-separated display name (e.g. `themes/dark/theme.css`). */
+  /** Project-relative, "/"-separated display name (e.g. `styles/print.css`). */
   displayName: string;
   /** True when the stylesheet is in the manifest `styles:` list (the active set). */
   active: boolean;

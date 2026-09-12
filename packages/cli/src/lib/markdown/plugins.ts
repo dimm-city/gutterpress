@@ -8,7 +8,7 @@ import Module, { builtinModules, createRequire } from "node:module";
 import { parse as parseJavaScript } from "acorn";
 import { parse as parseModuleImports } from "es-module-lexer/js";
 import { imports as resolvePackageImports } from "resolve.exports";
-import type { ResolvedPluginConfig } from "../../schema/manifest.types";
+import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
 import {
   assertWindowsSafeRelativePath,
   isExactNpmVersion,
@@ -21,17 +21,19 @@ import {
   type VerifiedVendorPackage,
   type VerifiedVendorPlugin,
 } from "../plugin-vendor";
-// #239: the SAME declared-stylesheet resolver a theme's `styles`/
-// `engineStyles.native` resolve through (theme-manager.ts) — see
+// #239: the SAME declared-stylesheet resolver a theme's `styles` resolve
+// through (extension-manager.ts) — see
 // resolvePluginStyles's doc comment below for why this is the literal
 // convergence point, not a parallel re-implementation.
 import { resolveDeclaredStyles } from "../style-declarations";
-// #241 — a `plugins:` entry's `path` may now name an EXTENSION FOLDER (a
+// #241 — a path entry may name an EXTENSION FOLDER (a
 // gutterpress.json/theme.json package) instead of a bare JS file. See
 // loadExtensionFromDir below, the ONE new branch this issue adds to the
 // loader; everything else in this file is unchanged.
 import {
   type ExtensionMetadata,
+  EXTENSION_MANIFEST_FILENAME,
+  LEGACY_THEME_MANIFEST_FILENAME,
   readExtensionMeta,
   assertExtensionContained,
   resolveExtension,
@@ -706,6 +708,11 @@ export function clearVendoredPluginResolver(
 interface LoadedNpmPackage {
   module: unknown;
   moduleDir: string | null;
+  /** The package's root folder — where its `gutterpress.json` sits (#265).
+   *  `null` for a bare-specifier import, which retains no on-disk path. */
+  packageDir: string | null;
+  /** The entry module that was imported, when its path is known. */
+  entryPath: string | null;
 }
 
 /**
@@ -717,7 +724,7 @@ interface LoadedNpmPackage {
  *   3. gutterpress's own dependencies — for built-in/legacy plugins
  *
  * Loading never performs network access. Installation is an explicit
- * `addNpmPlugin` action which vendors first and records an exact version.
+ * `addExtension` action which vendors first and records an exact version.
  */
 async function loadNpmPackage(
   packageName: string,
@@ -742,10 +749,24 @@ async function loadNpmPackage(
         // plugin's own `./styles/*.css` sits right beside its entry file here
         // — moduleDir is real and stable for the isolated copy's lifetime.
         const moduleDir = dirname(verified.entryPath);
+        const packageDir =
+          verified.packages.find((pkg) => pkg.path === verified.receipt.root.packagePath)
+            ?.packageDir ?? null;
+        const entryPath = verified.entryPath;
         if (verified.format === "commonjs") {
-          return { module: createRequire(verified.entryPath)(verified.entryPath), moduleDir };
+          return {
+            module: createRequire(verified.entryPath)(verified.entryPath),
+            moduleDir,
+            packageDir,
+            entryPath,
+          };
         }
-        return { module: await import(pathToFileURL(verified.entryPath).href), moduleDir };
+        return {
+          module: await import(pathToFileURL(verified.entryPath).href),
+          moduleDir,
+          packageDir,
+          entryPath,
+        };
       } catch (error) {
         restoreRegistration();
         throw error;
@@ -757,7 +778,12 @@ async function loadNpmPackage(
   try {
     const packageDir = join(baseDir, "node_modules", ...packageName.split("/"));
     const packagePath = join(packageDir, ...(await resolvePackageEntry(packageDir)).split("/"));
-    return { module: await import(pathToFileURL(packagePath).href), moduleDir: dirname(packagePath) };
+    return {
+      module: await import(pathToFileURL(packagePath).href),
+      moduleDir: dirname(packagePath),
+      packageDir,
+      entryPath: packagePath,
+    };
   } catch {
     // Not in user's project — fall through
   }
@@ -765,15 +791,15 @@ async function loadNpmPackage(
   // gutterpress's own dependencies. No on-disk path is retained here (a bare
   // specifier import), so `moduleDir: null` — see LoadedNpmPackage's doc.
   try {
-    return { module: await import(packageName), moduleDir: null };
+    return { module: await import(packageName), moduleDir: null, packageDir: null, entryPath: null };
   } catch {
     // Not found — fall through to error
   }
 
-  // A bare filename that already ends in a JS extension but has no path
-  // separator (e.g. `my-plugin.js`) doesn't trip isFilePath's separator+
-  // extension heuristic (manifest.ts, ARCH finding #57) and so still reaches
-  // here as a "package name". Templating the generic `./plugins/<name>.js`
+  // A bare filename that already ends in a JS extension (e.g. `my-plugin.js`)
+  // is refused by the manifest parser (extension-specifier.ts) but can still
+  // reach here through a direct loader call as a "package name". Templating
+  // the generic `./plugins/<name>.js`
   // suggestion onto a name that ALREADY has an extension produces a mangled
   // `my-plugin.js.js` double-extension path that can never work — suggest
   // the working fix (just add `./`) instead.
@@ -783,11 +809,11 @@ async function loadNpmPackage(
     : `./plugins/${packageName}.js`;
 
   throw new Error(
-    `Plugin "${packageName}" not found. Install it from ` +
-      `Project settings > Plugins > Install npm plugin,\n` +
-      `or reference a local file:\n` +
-      `  plugins:\n` +
-      `    - path: ${suggestedPath}`
+    `Extension "${packageName}" not found. Install it with ` +
+      `\`gutterpress ext add ${packageName}\` (or Project settings > Extensions),\n` +
+      `or reference a local file under \`extensions:\`:\n` +
+      `  extensions:\n` +
+      `    - ${suggestedPath}`
   );
 }
 
@@ -1059,8 +1085,8 @@ async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> 
  * plugin-specific failure checked here; the existence check on each declared
  * file is NOT plugin-specific — that half is
  * {@link resolveDeclaredStyles} (`style-declarations.ts`), the SAME function
- * `theme-manager.ts`'s `applyTheme`/`importThemeFromFolder` resolve a
- * theme's `styles`/`engineStyles.native` through (#239). This is the literal
+ * `extension-manager.ts`'s `addExtension`/`readExtensionCss` resolve an
+ * theme's `styles` through (#239). This is the literal
  * code-sharing that makes a theme and a styles-carrying plugin resolve their
  * declared stylesheets identically, not through two parallel
  * implementations that could drift.
@@ -1079,12 +1105,12 @@ function resolvePluginStyles(
   return resolveDeclaredStyles(rawStyles, moduleDir, `Plugin "${pluginRef}"`);
 }
 
-/** A `plugins:` entry whose `path` names a directory rather than a bare JS
+/** A path entry that names a directory rather than a bare JS
  *  file loads no markdown-it function of its own — every author-visible
  *  effect of loading it is its declared styles (#241's "theme ≡ extension
- *  with only styles" realized through the `plugins:` array: a folder with
- *  NO `markdown` is functionally indistinguishable from a theme applied
- *  through `gutterpress theme apply`, right down to reusing the same
+ *  with only styles" realized through the `extensions:` list: a folder with
+ *  NO `markdown` is functionally indistinguishable from a look added
+ *  through `gutterpress ext add`, right down to reusing the same
  *  metadata reader). `md.use()` on a no-op is harmless — every consumer of
  *  `LoadedPlugin` (`applyPlugins`, `collectPluginCss`,
  *  `collectPluginStylePaths`) keeps working unmodified. */
@@ -1103,12 +1129,12 @@ function extensionMetadata(meta: ExtensionMetadata): GutterpressPluginMetadata |
 }
 
 /**
- * Load a `plugins:` entry whose `path` (#241) names a DIRECTORY instead of a
+ * Load a path entry (#241) that names a DIRECTORY instead of a
  * bare JS file — an extension package: a `gutterpress.json` (or a plain
  * `theme.json`, read through the exact same {@link readExtensionMeta}
  * declaring any mix of `markdown` (a markdown-it entry, loaded exactly like a
  * bare-file plugin — same cache, same export extraction, same `styles`
- * export handling) and `styles`/`engineStyles.native` (resolved through the
+ * export handling) and `styles` (resolved through the
  * SAME {@link resolveExtension} → `resolveDeclaredStyles` chain a theme's own
  * declared sheets and a plain plugin's `styles` export already go through).
  *
@@ -1130,13 +1156,13 @@ function extensionMetadata(meta: ExtensionMetadata): GutterpressPluginMetadata |
  */
 async function loadExtensionFromDir(
   extensionDir: string,
-  config: ResolvedPluginConfig,
+  config: ResolvedExtensionConfig,
   pluginRef: string,
 ): Promise<LoadedPlugin> {
   const meta = await readExtensionMeta(extensionDir);
   assertExtensionContained(meta);
   const resolved = resolveExtension(extensionDir, meta, `Plugin "${pluginRef}"`);
-  const extensionStyles = [...(resolved.styles ?? []), ...(resolved.engineStyles ?? [])];
+  const extensionStyles = resolved.styles ?? [];
   const name = config.name ?? meta.name ?? pluginRef;
 
   // A folder with NEITHER markdown NOR any styles declares nothing at all —
@@ -1147,10 +1173,10 @@ async function loadExtensionFromDir(
   // this loader's fail-fast doctrine everywhere else (CLAUDE.md §5).
   if (!resolved.markdown && extensionStyles.length === 0) {
     throw new Error(
-      `Extension folder "${pluginRef}" declares neither \`markdown\` nor \`styles\`/` +
-        "`engineStyles` (in its gutterpress.json or theme.json) — there is nothing to " +
-        "load. Point `path` at a JS file directly for a plain plugin, or add a metadata " +
-        "file declaring at least one.",
+      `Extension folder "${pluginRef}" declares neither \`markdown\` nor \`styles\` ` +
+        "(in its gutterpress.json or theme.json) — there is nothing to load. Point " +
+        "`path` at a JS file directly for a plain plugin, or add a metadata file " +
+        "declaring at least one.",
     );
   }
 
@@ -1198,14 +1224,17 @@ async function loadExtensionFromDir(
 }
 
 export async function loadPlugin(
-  config: ResolvedPluginConfig,
+  config: ResolvedExtensionConfig,
   baseDir: string,
 ): Promise<LoadedPlugin> {
-  const pluginRef = config.path ?? config.name ?? "(unspecified)";
+  const pluginRef = config.use;
   let pluginModule: unknown;
   let pluginName: string;
   /** Directory `styles` (#238) resolves relative to — see resolvePluginStyles. */
   let moduleDir: string | null = null;
+  /** An npm package's own `gutterpress.json` (#265), when it ships one. */
+  let packageMeta: ExtensionMetadata | undefined;
+  let packageStyles: string[] = [];
 
   if (!config.path && !config.name) {
     throw new Error(
@@ -1280,6 +1309,35 @@ export async function loadPlugin(
       pluginModule = loaded.module;
       moduleDir = loaded.moduleDir;
       pluginName = config.name!;
+      // #265 — an npm package that ships a gutterpress.json is an extension
+      // like any folder: its declared styles are included (validated and
+      // contained through the same resolveExtension chain a folder's go
+      // through) and its name/description/author back the module's own
+      // metadata; its snippets reach the picker through listProjectExtensions.
+      // Its markdown-it plugin is the package entry — npm's own convention —
+      // so a `markdown` field is accepted only when it names that same file.
+      if (
+        loaded.packageDir &&
+        (existsSync(join(loaded.packageDir, EXTENSION_MANIFEST_FILENAME)) ||
+          existsSync(join(loaded.packageDir, LEGACY_THEME_MANIFEST_FILENAME)))
+      ) {
+        const meta = await readExtensionMeta(loaded.packageDir);
+        assertExtensionContained(meta);
+        const resolved = resolveExtension(loaded.packageDir, meta, `Plugin "${pluginRef}"`);
+        if (
+          resolved.markdown &&
+          loaded.entryPath &&
+          resolve(resolved.markdown) !== resolve(loaded.entryPath)
+        ) {
+          throw new Error(
+            `its gutterpress.json declares markdown "${meta.markdown}" but the package entry is ` +
+              `"${relative(loaded.packageDir, loaded.entryPath)}" — an npm extension's markdown-it ` +
+              "plugin is its package entry, so declare that file or drop the field.",
+          );
+        }
+        packageMeta = meta;
+        packageStyles = resolved.styles ?? [];
+      }
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1291,12 +1349,16 @@ export async function loadPlugin(
     pluginRef,
     config.export,
   );
-  const styles = resolvePluginStyles(rawStyles, moduleDir, pluginRef);
+  const ownStyles = resolvePluginStyles(rawStyles, moduleDir, pluginRef);
+  const styles =
+    packageStyles.length > 0 ? [...packageStyles, ...(ownStyles ?? [])] : ownStyles;
 
   return {
     name: pluginName,
     plugin,
-    metadata,
+    // As in loadExtensionFromDir: the module's own `metadata` export wins,
+    // the package's gutterpress.json is the fallback.
+    metadata: metadata ?? (packageMeta ? extensionMetadata(packageMeta) : undefined),
     css,
     styles,
     markers,
@@ -1327,7 +1389,7 @@ export async function loadPlugin(
  * the long-lived Electron host.
  */
 export async function loadPlugins(
-  configs: ResolvedPluginConfig[],
+  configs: ResolvedExtensionConfig[],
   baseDir: string,
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPlugin[]> {
@@ -1341,7 +1403,7 @@ export async function loadPlugins(
       plugins.push(await loadPlugin(config, baseDir));
     } catch (error) {
       onError(
-        config.path ?? config.name ?? "(unspecified)",
+        config.use,
         error instanceof Error ? error : new Error(String(error))
       );
     }
@@ -1382,7 +1444,7 @@ export interface LoadedPluginsWithCss {
  * declares no plugins.
  */
 export async function loadPluginsWithCss(
-  configs: ResolvedPluginConfig[] | undefined | null,
+  configs: ResolvedExtensionConfig[] | undefined | null,
   baseDir: string,
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPluginsWithCss> {

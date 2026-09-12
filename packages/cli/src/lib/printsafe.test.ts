@@ -239,3 +239,84 @@ test("removing isolation from riskyProps keeps the page-containment signal intac
   expect(containment).toHaveLength(1);
   expect(containment[0]!.message).toContain("stacking context");
 });
+
+// #259. The filter branch fired on the property name alone and the generic
+// risky branch never consulted the value, so `filter: none` — the way a book
+// suppresses an earlier filter — was reported as a rasterization risk. A
+// property at its initial value (or a CSS-wide reset keyword) does nothing.
+test("inert values are never a rasterization risk (#259)", () => {
+  for (const d of [
+    "filter: none",
+    "filter: NONE",
+    "filter:  none ",
+    "filter: initial",
+    "filter: unset",
+    "filter: revert",
+    "filter: revert-layer",
+    "backdrop-filter: none",
+    "clip-path: none",
+    "transition: none",
+    "animation: none",
+    "animation-name: none",
+    "will-change: auto",
+    "mix-blend-mode: normal",
+    "background-blend-mode: normal",
+  ]) {
+    expect(checkCss(`.x { ${d}; }`).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+  }
+  for (const d of [
+    "filter: blur(1px)",
+    "clip-path: inset(0)",
+    "will-change: transform",
+    "mix-blend-mode: multiply",
+  ]) {
+    expect(checkCss(`.x { ${d}; }`).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(1);
+  }
+});
+
+test("a book that suppresses a filter with filter: none reaches zero findings for that rule", () => {
+  const css = `.section { filter: drop-shadow(0 0 4px #000); }\n.section.plain { filter: none; }`;
+  const w = checkCss(css).filter((x) => x.rule === ruleRiskyProps);
+  expect(w).toHaveLength(1);
+  expect(w[0]!.line).toBe(1);
+  expect(w[0]!.message).toContain("300 DPI bitmap");
+});
+
+// A no-op value cannot be "dropped": nothing was going to paint anyway. Every
+// keyword reset of a MARGIN_BOX_IGNORED_PROPERTIES entry is covered, not only
+// the rasterizing ones.
+test("an inert value inside an @page margin box is not reported as a dropped declaration", () => {
+  const inert = `@page { @top-left { content: "x"; filter: none; opacity: 1; transform: none; box-shadow: none; outline: none; outline-style: none; rotate: none; translate: none; scale: none; perspective: none; } }`;
+  expect(checkCss(inert).filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
+  const live = `@page { @top-left { content: "x"; filter: blur(2px); } }`;
+  const w = checkCss(live).filter((x) => x.rule === ruleRiskyProps);
+  expect(w).toHaveLength(1);
+  expect(w[0]!.message).toContain("silently ignored");
+});
+
+// `auto` is will-change's initial value; the old per-property table only
+// knew `none` for it, so `.page { will-change: auto }` was reported as a
+// stacking context. The one shared table fixes both consumers at once.
+test("will-change: auto on a page wrapper is not a stacking context; will-change: transform still is", () => {
+  const inert = checkCss(`.page { will-change: auto; }`);
+  expect(inert.filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+  expect(inert.filter((x) => x.rule === ruleRiskyProps)).toHaveLength(0);
+  // `none` is invalid for will-change, so Chromium drops it: no stacking
+  // context and nothing rasterized. It must not be reported by either rule.
+  expect(checkCss(`.page { will-change: none; }`)).toHaveLength(0);
+  const live = checkCss(`.page { will-change: transform; }`);
+  const containment = live.filter((x) => x.rule === rulePageContainment);
+  expect(containment).toHaveLength(1);
+  expect(containment[0]!.message).toContain("stacking context");
+});
+
+// `overflow` consults the same inert-value table as everything else, so the
+// CSS-wide reset keywords (including `revert-layer`) are inert here too.
+test("overflow at visible or a CSS-wide reset keyword does not clip; any other value does", () => {
+  for (const v of ["visible", "initial", "unset", "revert", "revert-layer"]) {
+    expect(checkCss(`.page { overflow: ${v}; }`).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+  }
+  const clipped = checkCss(`.page { overflow: hidden; }`).filter((x) => x.rule === rulePageContainment);
+  expect(clipped).toHaveLength(1);
+  expect(clipped[0]!.message).toContain("overflow");
+});

@@ -82,13 +82,6 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * CLI `--engine` override. The native engine is the only engine, so this is
-   * a deprecated no-op accepted for backward compatibility only: `"paged"`
-   * triggers a one-line warning (`manifest.ts`'s resolution) and the build
-   * proceeds natively regardless.
-   */
-  engine?: "paged" | "native";
-  /**
    * Optional injected engine-Chromium factory for native builds
    * (`engine.ts`'s `buildNativePdf`). When omitted (the CLI's default), the
    * native engine attaches to `browser-pool.ts`'s pooled external Chromium,
@@ -288,7 +281,6 @@ export async function resolveBuildContext(
     {
       title: opts.title,
       pdfx: pdfxConfigOverride,
-      engine: opts.engine,
     },
     manifest
   );
@@ -369,10 +361,10 @@ export async function resolveBuildContext(
 export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPluginsWithCss> {
   if (ctx.plugins) return ctx.plugins;
   const { config, renderDir } = ctx;
-  if (config.plugins.length > 0) {
-    log.info(`Loading ${config.plugins.length} plugin(s)...`);
+  if (config.extensions.length > 0) {
+    log.info(`Loading ${config.extensions.length} plugin(s)...`);
   }
-  const loaded = await loadPluginsWithCss(config.plugins, renderDir);
+  const loaded = await loadPluginsWithCss(config.extensions, renderDir);
   if (loaded.plugins && loaded.plugins.length > 0) {
     log.success(`Loaded ${loaded.plugins.length} plugin(s)`);
   }
@@ -457,7 +449,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
-  const { config, gates, renderDir, workDir, opts } = ctx;
+  const { config, gates, renderDir, workDir, opts, format } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
@@ -513,6 +505,11 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     htmlFile,
     imageRefs,
     cssAssets,
+    // HTML output keeps every href: its images ship beside book.html and the
+    // documented publishing pattern links a sibling file the build never
+    // copies (`[Download PDF](x.pdf){.download}`). A PDF can open no relative
+    // target at all, so print drops them — see dropRelativeLinkHrefs (#263).
+    dropRelativeLinks: format !== "html",
     onPlan: ({ unresolved, copyCount }) => {
       if (unresolved.length > 0) {
         throw new BuildError(

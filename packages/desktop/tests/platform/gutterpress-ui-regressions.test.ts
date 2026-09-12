@@ -12,7 +12,8 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
   // Plugins panel merged into one Extensions surface (#243).
   const src = read("src/lib/components/config/LookSection.svelte");
   expect(src).toContain("theme-fallback-title");
-  expect(src).toContain("Theme preview loading");
+  expect(src).toContain("thumb-placeholder");
+  expect(src).toContain("Sample preview for");
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");
 });
 

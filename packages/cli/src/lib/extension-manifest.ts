@@ -12,12 +12,12 @@
  * resolves its declared paths to absolute, existence-checked filesystem paths
  * (`resolveExtension`) — built entirely on {@link resolveDeclaredStyles}
  * (`style-declarations.ts`), the ONE shared declared-path resolver a plugin's
- * `styles` export (#238) and a theme's `styles`/`engineStyles.native` (#239)
- * already both go through. No parallel resolver is introduced here.
+ * `styles` export (#238) and a theme's `styles` (#239) already both go
+ * through. No parallel resolver is introduced here.
  *
- * `theme-manager.ts` re-exports the theme-specific names this module
+ * `extension-manager.ts` builds on the names this module
  * generalizes (`ThemeMetadata` = {@link ExtensionMetadata},
- * `themeStyleList`/`themeEngineStyleList`/`assertThemeSheetsContained` are thin
+ * `themeStyleList`/`assertThemeSheetsContained` are thin
  * wrappers or straight aliases) — see that file's imports for the rename this
  * issue makes: the theme-specific reader/checker are now specializations of
  * the extension-generic ones defined here, not a second implementation.
@@ -53,8 +53,8 @@ export const LEGACY_THEME_MANIFEST_FILENAME = "theme.json";
 /**
  * Parsed extension metadata — a superset of the pre-#241 theme metadata
  * shape. Every field is optional, and a folder declaring only the theme-era
- * fields (`name`/`author`/`description`/`preview`/`styles`/`engineStyles`/
- * `tokensFile`) IS a valid extension: "theme ≡ extension with only styles."
+ * fields (`name`/`author`/`description`/`preview`/`styles`/`tokensFile`) IS
+ * a valid extension: "theme ≡ extension with only styles."
  * Symmetrically, a bare `.js` plugin file (no metadata file at all) never
  * constructs one of these — "plugin ≡ extension with only markdown" needs no
  * metadata file until it wants more than a function (see `plugins.ts`'s
@@ -70,14 +70,11 @@ export interface ExtensionMetadata {
   /**
    * Ordered stylesheets, relative to the extension folder. Absent/empty means
    * "no styles declared" here — {@link extensionStyleList} does NOT default
-   * to `["theme.css"]`; that default is theme-manager.ts's OWN, layered on
+   * to `["theme.css"]`; that default is {@link extensionStyleListWithDefault}'s, layered on
    * top for its theme-shaped callers (a plain markdown-only extension folder
    * has no reason to require a `theme.css` it never declared).
    */
   styles?: string[];
-  /** Engine-conditional sheets, relative to the extension folder, appended
-   *  after `styles` (mirrors the manifest's own `engineStyles.native`). */
-  engineStyles?: { native?: string[] };
   /** Which declared sheet (a path from `styles`) carries the author-facing
    *  `:root` token surface for the Design panel's guided editor. Purely
    *  advisory — nothing in this module enforces or existence-checks it,
@@ -141,8 +138,7 @@ export async function readExtensionMeta(dir: string): Promise<ExtensionMetadata>
   return readJsonMetaFile(path.join(dir, LEGACY_THEME_MANIFEST_FILENAME));
 }
 
-/** Non-empty declared-string-list normalizer shared by every list field this
- *  metadata carries (`styles`, `engineStyles.native`) — tolerates a
+/** Non-empty declared-string-list normalizer for `styles` — tolerates a
  *  hand-edited file where the field exists but isn't a clean string array. */
 function declaredList(value: unknown): string[] {
   return Array.isArray(value)
@@ -152,7 +148,7 @@ function declaredList(value: unknown): string[] {
 
 /**
  * An extension's declared stylesheets, relative to its folder, in cascade
- * order. UNLIKE `theme-manager.ts`'s `themeStyleList` (which layers a
+ * order. UNLIKE {@link extensionStyleListWithDefault} (which layers a
  * `["theme.css"]` default on top of this for its theme-shaped callers), an
  * absent/empty `styles` here means exactly "none declared" — a markdown-only
  * extension folder must not be forced to carry a `theme.css` it never wanted.
@@ -161,9 +157,32 @@ export function extensionStyleList(meta: ExtensionMetadata): string[] {
   return declaredList(meta.styles);
 }
 
-/** An extension's declared engine-conditional sheets, relative to its folder. */
-export function extensionEngineStyleList(meta: ExtensionMetadata): string[] {
-  return declaredList(meta.engineStyles?.native);
+/**
+ * `styles`, with the theme-era default (#265): a folder that declares none
+ * but holds a `theme.css` IS a one-sheet look — every theme published before
+ * `styles` existed. A folder with neither still declares nothing.
+ */
+export function extensionStyleListWithDefault(meta: ExtensionMetadata, dir: string): string[] {
+  const declared = extensionStyleList(meta);
+  if (declared.length > 0) return declared;
+  return existsSync(path.join(dir, "theme.css")) ? ["theme.css"] : [];
+}
+
+/** What an extension declares, by field — the desktop's one-list filter. */
+export interface ExtensionCarries {
+  markdown: boolean;
+  styles: boolean;
+  snippets: boolean;
+  components: boolean;
+}
+
+export function extensionCarries(meta: ExtensionMetadata, dir: string): ExtensionCarries {
+  return {
+    markdown: !!meta.markdown?.trim(),
+    styles: extensionStyleListWithDefault(meta, dir).length > 0,
+    snippets: !!meta.snippets?.trim(),
+    components: !!meta.components?.trim(),
+  };
 }
 
 /**
@@ -192,22 +211,30 @@ export function pathEscapesFolder(rel: string): boolean {
  * absolute entry would make apply/load read a file from anywhere on disk.
  *
  * Generalizes the pre-#241 theme-only `assertThemeSheetsContained` (still
- * exported under that name from `theme-manager.ts`, now a re-export of this
+ * once exported under that name from the theme manager, now this
  * function) to the three new fields: a `gutterpress.json`-formatted theme
  * folder can declare `markdown`/`components`/`snippets` too, so the SAME
- * write-boundary guard must cover them, not just `styles`/`engineStyles`.
+ * write-boundary guard must cover them, not just `styles`.
  * `tokensFile` is included even though it is advisory/unenforced elsewhere —
  * defense in depth against a future consumer reading it unchecked.
  *
  * A WRITE-BOUNDARY guard, not a read-path check (mirrors the theme-only
  * predecessor): callers invoke this before copying anything or wiring a
  * manifest, never from a plain listing/read path, so one hand-edited
- * metadata file cannot take down listing every extension.
+ * metadata file cannot take down listing every extension. The removed
+ * `engineStyles` field (#266) is rejected here for the same reason: the
+ * error names the replacement, and it fires only where something would be
+ * copied or wired, never while listing.
  */
 export function assertExtensionContained(meta: ExtensionMetadata): void {
+  if ((meta as { engineStyles?: unknown }).engineStyles !== undefined) {
+    throw new Error(
+      "The extension's metadata declares `engineStyles`, which was removed — " +
+        "move its entries to the end of `styles`.",
+    );
+  }
   const declared = [
     ...extensionStyleList(meta),
-    ...extensionEngineStyleList(meta),
     ...(meta.markdown ? [meta.markdown] : []),
     ...(meta.components ? [meta.components] : []),
     ...(meta.snippets ? [meta.snippets] : []),
@@ -226,7 +253,7 @@ export function assertExtensionContained(meta: ExtensionMetadata): void {
  * An extension's declared paths, resolved to absolute, existence-checked
  * filesystem paths — every list/single-path field goes through the SAME
  * {@link resolveDeclaredStyles} a plugin's `styles` export and a theme's
- * `styles`/`engineStyles.native` already resolve through, so a broken
+ * `styles` already resolve through, so a broken
  * declaration (a missing file) throws HERE, at load/apply time, instead of
  * failing silently deep in the render pipeline (or never, for `components`/
  * `snippets`, which nothing yet reads — #240/#242).
@@ -240,8 +267,6 @@ export interface ResolvedExtension {
   markdown?: string;
   /** Absolute paths, in cascade order, when any are declared. */
   styles?: string[];
-  /** Absolute paths, in cascade order, when any are declared. */
-  engineStyles?: string[];
   /** Declared-relative path of the `:root` token surface — advisory. */
   tokensFile?: string;
   /** Absolute path to the component catalog file, when declared (#242). */
@@ -265,8 +290,7 @@ export function resolveExtension(
   meta: ExtensionMetadata,
   subject: string,
 ): ResolvedExtension {
-  const styles = resolveDeclaredStyles(extensionStyleList(meta), dir, subject);
-  const engineStyles = resolveDeclaredStyles(extensionEngineStyleList(meta), dir, subject);
+  const styles = resolveDeclaredStyles(extensionStyleListWithDefault(meta, dir), dir, subject);
   const [markdown] =
     resolveDeclaredStyles(meta.markdown ? [meta.markdown] : undefined, dir, subject) ?? [];
   const [components] =
@@ -277,7 +301,6 @@ export function resolveExtension(
   return {
     ...(markdown ? { markdown } : {}),
     ...(styles ? { styles } : {}),
-    ...(engineStyles ? { engineStyles } : {}),
     ...(meta.tokensFile?.trim() ? { tokensFile: meta.tokensFile.trim() } : {}),
     ...(components ? { components } : {}),
     ...(snippets ? { snippets } : {}),

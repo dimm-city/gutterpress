@@ -18,7 +18,7 @@ import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
-import type { ResolvedPluginConfig } from '../schema/manifest.types';
+import type { ResolvedExtensionConfig } from '../schema/manifest.types';
 
 /**
  * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
@@ -65,7 +65,7 @@ export function incrementalPreviewEnabled(): boolean {
  */
 async function renderPreviewBook(
   inputPath: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
+  config: { title?: string; styles?: string[]; extensions?: ResolvedExtensionConfig[] },
   opts: {
     files: string[] | null;
     wrapChapters: boolean;
@@ -78,7 +78,7 @@ async function renderPreviewBook(
   }
 ): Promise<string> {
   const { plugins, pluginCss, pluginStylePaths } = await loadPluginsWithCss(
-    config.plugins,
+    config.extensions,
     inputPath,
     (ref, err) => warn(`Skipping plugin "${ref}" in preview — ${err.message}`)
   );
@@ -157,7 +157,7 @@ export function injectPreviewScripts(
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] },
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; extensions?: ResolvedExtensionConfig[] },
   cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {
@@ -193,7 +193,7 @@ export async function generateAndWriteHtml(
 export async function renderChapterPreviewHtml(
   inputPath: string,
   file: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
+  config: { title?: string; styles?: string[]; extensions?: ResolvedExtensionConfig[] }
 ): Promise<string> {
   const html = await renderPreviewBook(inputPath, config, {
     files: [canonicalChapterId(file)],
@@ -417,7 +417,7 @@ export async function externalWatchRoots(targets: Iterable<string>): Promise<str
  */
 export async function externalWatchTargets(
   projectDir: string,
-  config: { styles?: string[]; plugins?: ResolvedPluginConfig[] }
+  config: { styles?: string[]; extensions?: ResolvedExtensionConfig[] }
 ): Promise<string[]> {
   const root = path.resolve(projectDir);
   let canonicalRoot = root;
@@ -430,7 +430,7 @@ export async function externalWatchTargets(
   const styles = await resolveActiveStyles(root, config.styles);
   const candidates = [
     ...(await collectStyleDependencies(root, styles)),
-    ...(config.plugins ?? [])
+    ...(config.extensions ?? [])
       .map((p) => p.path)
       .filter((p): p is string => !!p)
       .map((p) => path.resolve(root, p)),
@@ -725,7 +725,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // styles until some later markdown edit happened to force one.
         const manifest = await loadManifest(inputResolved);
         if (closed) return;
-        const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
+        const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         // Subscribe from the new manifest BEFORE rendering it. A newly declared
         // shared file may not exist yet, which correctly makes this render fail;

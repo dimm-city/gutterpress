@@ -17,30 +17,27 @@
    * after mutations, mirroring SettingsView/History):
    *   1. Details     — title, authors, output filename, source files
    *                    (`api.manifest.{read,setFields}`).
-   *   2. Look        — extensions with a look (`LookSection`, ex-AppearanceSection)
+   *   2. Look        — the extensions that carry styles (`LookSection`)
    *                    → design tokens (`DesignSection`) → the raw stylesheet
    *                    list (`StylesSection`) behind an "Advanced" disclosure
    *                    (UX review M35's writer-shaped merge, unchanged). The
    *                    heading stays "Look & style" — it still covers all
    *                    three subsections — while the tab button itself is
    *                    shortened to "Look" to pair with "Features" (#243).
-   *   3. Features    — configured list + toggle + validate + recommended
-   *                    built-ins (`FeaturesSection`, ex-PluginsSection,
-   *                    `api.plugin.*`).
+   *   3. Features    — the extensions that carry markdown: toggle, remove,
+   *                    validate, the recommended bundled features, npm /
+   *                    local add (`FeaturesSection`).
    *   4. Connections — this project's sync surface (remote diagnosis +
    *                    Test Remote Access; `ProjectConnectionsSection`,
    *                    self-loading — no controller).
    *
-   * #243 — "Merge the Theme grid and Plugins panel into one Extensions
-   * surface": Look and Features are now ONE `ExtensionsSectionController`
-   * instance (`extensions` below), not two collaborating controllers — see
-   * that class's header comment for why the two tabs still keep their own
-   * verbs (apply/remove/import/revert vs enable/disable/add) rather than
-   * collapsing into one shared action. `afterThemeChange` (Look changed →
-   * reload Styles + Design) and `afterStyleChange` (a stylesheet was
-   * toggled → reload Design) are unchanged cross-section refresh hooks;
-   * every other refresh is a section reloading its own state after its own
-   * mutation.
+   * #243/#265 — Look and Features are two VIEWS over ONE `extensions:` list
+   * and one verb set, owned by the single `ExtensionsSectionController`
+   * instance (`extensions` below; `api.extension.*`). `afterLookChange`
+   * (a styles-carrying extension was added/removed/toggled/moved → reload
+   * Styles + Design) and `afterStyleChange` (a stylesheet was toggled →
+   * reload Design) are the cross-section refresh hooks; every other refresh
+   * is a section reloading its own state after its own mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`$lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -69,7 +66,6 @@
     projectDir,
     repoRoot = null,
     toast = null,
-    onThemeApplied,
     onEditRawCss,
     onClose,
     onOpenAccounts,
@@ -78,8 +74,6 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     toast?: ToastController | null;
-    /** Fire after a theme apply so the parent can surface the right toast. */
-    onThemeApplied?: (themeId: string) => void;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
     onEditRawCss?: (cssPath: string) => void;
@@ -104,7 +98,7 @@
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    activeTheme: (dir) => api.theme.getActive(dir),
+    listExtensions: (dir) => api.extension.list(dir),
     readFile: (path) => api.fs.readFile(path),
     writeFile: (path, content) => api.fs.writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
@@ -146,34 +140,29 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
-  // ── Extensions — Look (refreshes Styles + Design after apply/remove) and
-  //    Features share ONE controller (#243). ─────────────────────────────
+  // ── Extensions — ONE list, two views (#243/#265). A change to a look
+  //    refreshes Styles + Design. ─────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
-    listBuiltIn: () => api.theme.listBuiltIn(),
-    listProject: (dir) => api.theme.listProject(dir),
-    getActive: (dir) => api.theme.getActive(dir),
-    getPrevious: (dir) => api.theme.getPrevious(dir),
-    apply: (dir, target) => api.theme.apply(dir, target),
-    revert: (dir) => api.theme.revert(dir),
-    remove: (dir, id) => api.theme.remove(dir, id),
-    importFromFolder: (dir) => api.theme.importFromFolder(dir),
-    importFromFile: (dir) => api.theme.importFromFile(dir),
-    importFromUrl: (dir, url) => api.theme.importFromUrl(dir, url),
-    readCss: (dir, source) => api.theme.readCss(dir, source),
-    onApplied: (themeId) => {
-      onThemeApplied?.(themeId);
-      toast?.success?.("Look applied — close Project settings to see it in the preview. Use Design to fine-tune.");
+    list: (dir) => api.extension.list(dir),
+    recommended: () => api.extension.recommended(),
+    listBuiltIn: () => api.extension.listBuiltIn(),
+    validate: (dir) => api.extension.validate(dir),
+    add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
+    addLocal: (dir) => api.extension.addLocal(dir),
+    addBuiltIn: (dir, id) => api.extension.addBuiltIn(dir, id),
+    remove: (dir, use) => api.extension.remove(dir, use),
+    setEnabled: (dir, use, enabled) => api.extension.setEnabled(dir, use, enabled),
+    reorder: (dir, order) => api.extension.reorder(dir, order),
+    readCss: (dir, use) => api.extension.readCss(dir, use),
+    importFromFile: (dir) => api.extension.importFromFile(dir),
+    importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
+    onLookAdded: (label) => {
+      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
     },
-    afterThemeChange: async () => {
+    afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
     },
-    listPlugins: (dir) => api.plugin.list(dir),
-    recommended: () => api.plugin.recommended(),
-    validate: (dir) => api.plugin.validate(dir),
-    setEnabled: (dir, ref, enabled) => api.plugin.setEnabled(dir, ref, enabled),
-    addNpm: (dir, name, exportName) => api.plugin.addNpm(dir, name, exportName),
-    addLocal: (dir) => api.plugin.addLocal(dir),
   });
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
@@ -204,14 +193,11 @@
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
   //
-  // #243: "Look" and "Features" replace "Look & style"/"Plugins" as the two
-  // author-facing tabs the issue asks for, both now reading the ONE
-  // `extensions` controller above. They stay separate TAB BUTTONS rather
-  // than nesting a second tab bar inside a single "Extensions" entry -
-  // the issue's own suggested shape names them as "two author-facing tabs",
-  // and this tab bar already gives them exactly that with no new navigation
-  // component. See `docs/ux-design-contract.md` sections 9 and 11 for the UX-contract
-  // update this rename carries.
+  // #243/#265: "Look" and "Features" are the two author-facing views over
+  // the ONE `extensions` controller above. They stay separate TAB BUTTONS
+  // rather than nesting a second tab bar inside a single "Extensions" entry —
+  // this tab bar already gives them exactly that with no new navigation
+  // component. See `docs/ux-design-contract.md` sections 9 and 11.
   type ProjectSettingsTab = "details" | "look" | "features" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },

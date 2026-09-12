@@ -29,22 +29,6 @@
       "enum": ["dtrpg", "book", "custom"],
       "examples": ["dtrpg", "book", "custom"]
     },
-    "engine": {
-      "type": "string",
-      "description": "Pagination engine. The Gutterpress engine (native Chromium pagination) is the only engine, and \"native\" is the only meaningful value. \"paged\" is accepted for backward-compatible manifest parsing only: it produces a one-line warning and the build proceeds natively regardless. `--engine` on the CLI is likewise an accepted-but-ignored no-op.",
-      "enum": ["paged", "native"],
-      "default": "native",
-      "examples": ["native"]
-    },
-    "engineStyles": {
-      "type": "object",
-      "description": "Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the only list — the native engine is the only engine, so there is nothing else to condition on. A manifest from the dual-engine era may still carry `.paged`; it keeps loading (with a one-line warning) but is no longer part of this schema.",
-      "properties": {
-        "native": { "type": "array", "items": { "type": "string" } }
-      },
-      "additionalProperties": false,
-      "examples": [{ "native": ["css/native-furniture.css"] }]
-    },
     "targets": {
       "type": "array",
       "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",
@@ -65,42 +49,34 @@
         ["themes/parchment.css", "styles/override.css"]
       ]
     },
-    "plugins": {
+    "extensions": {
       "type": "array",
-      "description": "markdown-it plugins to load. Each entry is either a shorthand string or a configuration object. Entries are loaded highest-priority first.",
-      "default": [],
+      "description": "Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier: a bundled feature name (markdown-it-mark, markdown-it-sub, markdown-it-sup, markdown-it-abbr, gutterpress-gfm-alerts), a path starting with ./ or ../ (relative to this file), or an npm package name, optionally pinned as name@version. A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension.",
       "items": {
         "oneOf": [
           {
             "type": "string",
             "minLength": 1,
-            "description": "Shorthand. Treated as a local file path when it starts with ./, ../, / or a Windows drive letter, or when it contains a path separator and ends in .js/.mjs/.cjs. Otherwise treated as an npm package name.",
+            "description": "The specifier. Bundled names resolve to the copy compiled into Gutterpress; ./ and ../ are paths relative to this file; anything else is an npm package, name@version pins it.",
             "examples": [
-              "./plugins/my-plugin.js",
-              "plugins/my-plugin.js",
-              "gutterpress-plugin-callouts"
+              "markdown-it-footnote",
+              "@dimm-city/components@2.1.0",
+              "./extensions/house-style",
+              "../shared/dc-design-guide",
+              "markdown-it-mark"
             ]
           },
           {
             "type": "object",
-            "description": "Plugin configuration object. Supply either `path` (local file) or `name` (npm package).",
+            "description": "The object form, for an entry that needs more than its specifier. `use` carries the same specifier the bare form would.",
+            "required": ["use"],
+            "additionalProperties": false,
             "properties": {
-              "path": {
+              "use": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Path to a local plugin module OR an extension folder (a gutterpress.json package, optionally carrying styles/engineStyles alongside its markdown entry), relative to the manifest directory.",
-                "examples": ["plugins/dimm-city-plugin.js", "../shared/plugins/callouts.js", "./extensions/dc-components"]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "npm package name of the plugin.",
-                "examples": ["gutterpress-plugin-callouts"]
-              },
-              "version": {
-                "type": "string",
-                "description": "Exact npm version installed under plugins/npm by Gutterpress. Legacy non-exact values remain informational and use legacy node_modules resolution.",
-                "examples": ["1.2.3", "2.1.0-beta.1"]
+                "description": "The specifier — exactly what the bare string form would be.",
+                "examples": ["markdown-it-attrs", "./extensions/house-style"]
               },
               "export": {
                 "type": "string",
@@ -108,15 +84,9 @@
                 "description": "Named module export to use as the markdown-it plugin function when the package has no default export.",
                 "examples": ["full"]
               },
-              "priority": {
-                "type": "integer",
-                "description": "Advanced, rarely needed. Load order: higher loads first. If one of your plugins needs to see tokens another one of your plugins produces, give it the LOWER number of the two, so it loads (and runs) after.",
-                "default": 100,
-                "examples": [100, 200]
-              },
               "options": {
                 "type": "object",
-                "description": "Plugin-specific options, passed straight through to the plugin.",
+                "description": "Options passed straight through to the markdown-it plugin.",
                 "default": {},
                 "additionalProperties": true
               },
@@ -130,11 +100,11 @@
         ]
       },
       "examples": [
-        ["gutterpress-plugin-callouts", "./plugins/my-plugin.js"],
+        ["./extensions/house-style", "markdown-it-footnote"],
         [
           {
-            "path": "plugins/dimm-city-plugin.js",
-            "priority": 100
+            "use": "markdown-it-attrs",
+            "options": { "leftDelimiter": "[" }
           }
         ]
       ]
@@ -554,11 +524,6 @@
           }
         }
       }
-    },
-    "themePrevious": {
-      "type": "string",
-      "description": "Id of the theme active before the current one (the 'Revert to previous theme' target, #106). Managed automatically by Gutterpress; not authored by hand.",
-      "examples": ["clean-book", "zine"]
     }
   },
   "examples": [

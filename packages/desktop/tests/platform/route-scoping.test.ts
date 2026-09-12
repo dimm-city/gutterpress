@@ -3,8 +3,8 @@
  * never reached (2026-07-29 file-operations audit, Theme 1).
  *
  * `fs/*`, `media/*`, `log/read` and
- * `plugin/add-npm` confined their renderer-supplied path to the host-owned
- * `projectRoots()` allow-list; every OTHER route taking a `projectDir`
+ * the npm plugin installer confined their renderer-supplied path to the
+ * host-owned `projectRoots()` allow-list; every OTHER route taking a `projectDir`
  * validated it with `requireAbsolute` alone — a bare `isAbsolute` check. Any
  * code that can issue a same-origin fetch inside the renderer (a preview XSS,
  * a malicious plugin-injected script, a compromised dependency — the threat
@@ -15,10 +15,10 @@
  *     (`git.checkout({ force: true })`)
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
  *   - `publish/run` uploads a file to a configured provider
- *   - `theme/remove` `rm -rf`s a `themes/<slug>` subtree
- *   - `theme/apply` / `style/set-active` / `manifest/set-fields` /
- *     `plugin/set-enabled` rewrite any `manifest.yaml`
- *   - `plugin/validate` dynamic-`import()`s whatever JS the target
+ *   - `extension/remove` `rm -rf`s an npm entry's vendored subtree
+ *   - `extension/add-built-in` / `style/set-active` / `manifest/set-fields`
+ *     / `extension/set-enabled` rewrite any `manifest.yaml`
+ *   - `extension/validate` dynamic-`import()`s whatever JS the target
  *     directory's manifest names — an execute primitive
  *   - `tpl/save-as-template` recursively copies any folder into app storage
  *
@@ -52,24 +52,21 @@ import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
 import { POST as publishDestinationsList } from "../../src/routes/api/publish/destinations/list/+server";
 import { POST as publishDestinationsCreate } from "../../src/routes/api/publish/destinations/create/+server";
-import { POST as themeApply } from "../../src/routes/api/theme/apply/+server";
-import { POST as themeRemove } from "../../src/routes/api/theme/remove/+server";
-import { POST as themeReadCss } from "../../src/routes/api/theme/read-css/+server";
-import { POST as themeImportFromUrl } from "../../src/routes/api/theme/import-from-url/+server";
-import { POST as themeImportFromFile } from "../../src/routes/api/theme/import-from-file/+server";
-import { POST as themeImportFromFolder } from "../../src/routes/api/theme/import-from-folder/+server";
-import { POST as themeActive } from "../../src/routes/api/theme/active/+server";
-import { POST as themeProject } from "../../src/routes/api/theme/project/+server";
-import { POST as themePrevious } from "../../src/routes/api/theme/previous/+server";
-import { POST as themeRevert } from "../../src/routes/api/theme/revert/+server";
+import { POST as extensionList } from "../../src/routes/api/extension/list/+server";
+import { POST as extensionAdd } from "../../src/routes/api/extension/add/+server";
+import { POST as extensionAddLocal } from "../../src/routes/api/extension/add-local/+server";
+import { POST as extensionRemove } from "../../src/routes/api/extension/remove/+server";
+import { POST as extensionSetEnabled } from "../../src/routes/api/extension/set-enabled/+server";
+import { POST as extensionReorder } from "../../src/routes/api/extension/reorder/+server";
+import { POST as extensionValidate } from "../../src/routes/api/extension/validate/+server";
+import { POST as extensionAddBuiltIn } from "../../src/routes/api/extension/add-built-in/+server";
+import { POST as extensionReadCss } from "../../src/routes/api/extension/read-css/+server";
+import { POST as extensionImportFromFile } from "../../src/routes/api/extension/import-from-file/+server";
+import { POST as extensionImportFromUrl } from "../../src/routes/api/extension/import-from-url/+server";
 import { POST as styleSetActive } from "../../src/routes/api/style/set-active/+server";
 import { POST as projectListStyles } from "../../src/routes/api/project/list-styles/+server";
 import { POST as manifestRead } from "../../src/routes/api/manifest/read/+server";
 import { POST as manifestSetFields } from "../../src/routes/api/manifest/set-fields/+server";
-import { POST as pluginSetEnabled } from "../../src/routes/api/plugin/set-enabled/+server";
-import { POST as pluginList } from "../../src/routes/api/plugin/list/+server";
-import { POST as pluginAddLocal } from "../../src/routes/api/plugin/add-local/+server";
-import { POST as pluginValidate } from "../../src/routes/api/plugin/validate/+server";
 import { POST as snipSave } from "../../src/routes/api/snip/save/+server";
 import { POST as snipRead } from "../../src/routes/api/snip/read/+server";
 import { POST as snipDelete } from "../../src/routes/api/snip/delete/+server";
@@ -102,24 +99,21 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
   { name: "publish/destinations/list", handler: publishDestinationsList as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "publish/destinations/create", handler: publishDestinationsCreate as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive", name: "New folder" }) },
-  { name: "theme/apply", handler: themeApply as RouteHandler, body: (d) => ({ projectDir: d, target: { kind: "builtin", id: "classic" } }) },
-  { name: "theme/remove", handler: themeRemove as RouteHandler, body: (d) => ({ projectDir: d, id: "some-theme" }) },
-  { name: "theme/read-css", handler: themeReadCss as RouteHandler, body: (d) => ({ projectDir: d, source: { kind: "project", id: "some-theme" } }) },
-  { name: "theme/import-from-url", handler: themeImportFromUrl as RouteHandler, body: (d) => ({ projectDir: d, url: "https://example.test/theme.css" }) },
-  { name: "theme/import-from-file", handler: themeImportFromFile as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/import-from-folder", handler: themeImportFromFolder as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/active", handler: themeActive as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/project", handler: themeProject as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/previous", handler: themePrevious as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "theme/revert", handler: themeRevert as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/list", handler: extensionList as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/add", handler: extensionAdd as RouteHandler, body: (d) => ({ projectDir: d, specifier: "markdown-it-mark" }) },
+  { name: "extension/add-local", handler: extensionAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/remove", handler: extensionRemove as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
+  { name: "extension/set-enabled", handler: extensionSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension", enabled: true }) },
+  { name: "extension/reorder", handler: extensionReorder as RouteHandler, body: (d) => ({ projectDir: d, order: ["some-extension"] }) },
+  { name: "extension/validate", handler: extensionValidate as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/add-built-in", handler: extensionAddBuiltIn as RouteHandler, body: (d) => ({ projectDir: d, id: "clean-book" }) },
+  { name: "extension/read-css", handler: extensionReadCss as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
+  { name: "extension/import-from-file", handler: extensionImportFromFile as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/import-from-url", handler: extensionImportFromUrl as RouteHandler, body: (d) => ({ projectDir: d, url: "https://example.test/theme.css" }) },
   { name: "style/set-active", handler: styleSetActive as RouteHandler, body: (d) => ({ projectDir: d, paths: [] }) },
   { name: "project/list-styles", handler: projectListStyles as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "manifest/read", handler: manifestRead as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "manifest/set-fields", handler: manifestSetFields as RouteHandler, body: (d) => ({ projectDir: d, updates: { title: "pwned" } }) },
-  { name: "plugin/set-enabled", handler: pluginSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, ref: "some-plugin", enabled: true }) },
-  { name: "plugin/list", handler: pluginList as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "plugin/add-local", handler: pluginAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "plugin/validate", handler: pluginValidate as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "snip/save", handler: snipSave as RouteHandler, body: (d) => ({ projectDir: d, name: "snip", body: "text" }) },
   { name: "snip/read", handler: snipRead as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
   { name: "snip/delete", handler: snipDelete as RouteHandler, body: (d) => ({ projectDir: d, fileName: "snip.md" }) },
@@ -222,9 +216,9 @@ const SIBLING_CASES = [
   "vcs/restore-snapshot",
   "remote/sync",
   "publish/run",
-  "theme/remove",
+  "extension/remove",
   "manifest/set-fields",
-  "plugin/validate",
+  "extension/validate",
   "snip/save",
   "tpl/save-as-template",
 ];
@@ -275,8 +269,8 @@ test("with no project open every guarded route rejects, including its own book d
 test("the opened book dir passes the guard on every route", async () => {
   for (const route of ROUTES) {
     const status = await statusOf(route.handler({ request: request(route.body(bookDir)) }));
-    // A route may still fail for its own reasons (no such theme, no remote,
-    // unknown provider) — it must simply never be the guard that stops it.
+    // A route may still fail for its own reasons (no such extension, no
+    // remote, unknown provider) — it must simply never be the guard that stops it.
     expect(status).not.toBe(403);
   }
 });

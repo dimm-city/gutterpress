@@ -238,9 +238,9 @@ fixture — but only when the thing being kept-with can actually be placed:
 
 ## 9. Full-bleed art without shrinking the book
 
-- Use the manifest's **`engineStyles: { native: [...] }`** to load a stylesheet
-  **after** every other sheet. Keep engine workarounds in that one file, each
-  rule commented with the measured failure it fixes.
+- Put a stylesheet **last in the manifest's `styles:` list** to load it after
+  every other sheet. Keep engine workarounds in that one file, each rule
+  commented with the measured failure it fixes.
 - **`GUTTERPRESS_CSS`'s `.gp-bleed` reaches the sheet edge by assigning the
   element's page to a core-owned named page**, `@page gp-full-bleed {
   margin-left: 0; margin-right: 0; }`. That page's content box already IS the
@@ -349,10 +349,9 @@ the assembled `<style>` block:
 @layer gp.vocab  { /* GUTTERPRESS_CSS — the gp-* utility vocabulary */ }
 ```
 
-Everything else — user plugin CSS, every stylesheet the manifest's `styles:`
-list names (including an `engineStyles.native` sheet, which
-`resolveActiveStyles` folds into that same list before the book is
-assembled), and anything those sheets `@import` — stays UNLAYERED. Per the
+Everything else — extension CSS (looks and plugins, in `extensions:` list
+order), every stylesheet the manifest's `styles:` list names, and anything
+those sheets `@import` — stays UNLAYERED. Per the
 CSS Cascading and Layers spec, unlayered CSS always wins over layered CSS,
 regardless of selector specificity: a book rule as unspecific as a bare
 element selector (`section { columns: unset }`) now overrides a core

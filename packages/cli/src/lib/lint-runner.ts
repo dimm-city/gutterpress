@@ -34,12 +34,9 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest, {
     explicit: opts.manifest !== undefined,
   });
-  // Use the RESOLVED config, not the raw manifest: resolveWithPreset
-  // (manifest.ts) is the only place `engineStyles.native` is appended to the
-  // style list, and that sheet loads LAST at render time, so its rules win the
-  // cascade in the shipped PDF. Discarding this return linted 7 of the field
-  // guide's 8 sheets and hid its most severe finding — see the
-  // engineStyles.native test in lint-runner.test.ts.
+  // Use the RESOLVED config, not the raw manifest, so lint and the desktop
+  // Problems panel (validate) agree about which stylesheets a project uses —
+  // both read the list resolveConfig produces.
   const resolved = resolveConfig({}, manifest);
 
   let files: string[];
@@ -82,7 +79,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     let pluginStylePaths = opts.pluginStylePaths;
     if (pluginStylePaths === undefined) {
       ({ pluginStylePaths } = await loadPluginsWithCss(
-        resolved.plugins,
+        resolved.extensions,
         manifestDir,
         (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
       ));
@@ -127,7 +124,8 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     linted++;
     const warnings = checkCss(css, file);
     const errors = warnings.filter((w) => w.severity === "error");
-    riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
+    const risky = warnings.filter((w) => w.rule === ruleRiskyProps);
+    riskyCount += risky.length;
 
     if (errors.length > 0) {
       log.error(`  ${file}`);
@@ -135,6 +133,12 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
         log.error(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
       }
       errorCount += errors.length;
+    }
+    if (risky.length > 0) {
+      log.warn(`  ${file}`);
+      for (const w of risky) {
+        log.warn(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
+      }
     }
   }
 
@@ -146,9 +150,6 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   if (riskyCount > 0) {
     log.warn(
       `${riskyCount} risky print properties found (may cause rasterization)`
-    );
-    log.warn(
-      "The validator will check for actual rasterized pages after PDF generation."
     );
   } else {
     log.success("CSS lint passed");

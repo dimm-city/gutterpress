@@ -493,7 +493,7 @@ test("savePdf() a non-EXPORT_CANCELED failure toasts the friendly error and rese
 const overWideError = () =>
   Object.assign(
     new Error(
-      "Error invoking remote method 'api:build': Error: --engine native failed: " +
+      "Error invoking remote method 'api:build': Error: PDF build failed: " +
         "content wider than the page content box: Chromium print shrink-to-fit " +
         "scales the WHOLE document — every page, every measurement — to about " +
         "0.69x its declared size (12pt type prints at 8.3pt). The page size and " +

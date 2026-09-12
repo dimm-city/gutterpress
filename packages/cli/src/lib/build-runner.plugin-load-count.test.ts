@@ -42,7 +42,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync, strToU8 } from "fflate";
-import { addNpmPluginWithOptions } from "./plugin-manager";
+import { addExtension } from "./extension-manager";
 import * as pluginsMod from "./markdown/plugins";
 import * as pluginVendorMod from "./plugin-vendor";
 import { runBuild, type EngineBrowser } from "./build-runner";
@@ -155,14 +155,14 @@ async function makeVendoredPluginProject(label: string): Promise<{
     },
   ];
   const fixture = registryFixture(name, version, entries);
-  await addNpmPluginWithOptions(dir, name, { fetch: fixture.fetch });
+  await addExtension(dir, name, { fetch: fixture.fetch });
 
   await mkdir(join(dir, "styles"), { recursive: true });
   await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
   await writeFile(join(dir, "chapter-01.md"), "# Hello\n\n#262 fixture.\n", "utf8");
   await writeFile(
     join(dir, "manifest.yaml"),
-    `title: ${label}\nstyles:\n  - styles/book.css\nplugins:\n  - name: ${name}\n    version: ${version}\n`,
+    `title: ${label}\nstyles:\n  - styles/book.css\nextensions:\n  - ${name}@${version}\n`,
     "utf8",
   );
   return { dir, outDir, name, version };

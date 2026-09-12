@@ -28,7 +28,7 @@ BrowserWindow loads app://local/
      narrow adapter surface; only electron-adapter.ts touches window.electron.
 
 Host capabilities live in ~100 src/routes/api/**/+server.ts routes — status, fs,
-dialog, theme, plugin, remote/sync, vcs, recovery, lint, media, and more. These
+dialog, extension, remote/sync, vcs, recovery, lint, media, and more. These
 are host Node code (they may import gutterpress and node:*) that happens
 to sit under src/routes/; SvelteKit compiles them into build/server, never into
 the client bundle.

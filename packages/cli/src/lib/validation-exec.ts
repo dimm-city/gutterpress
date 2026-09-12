@@ -470,7 +470,7 @@ export async function executeValidation(
     let pluginStylePaths = args.pluginStylePaths;
     if (pluginStylePaths === undefined) {
       ({ pluginStylePaths } = await loadPluginsWithCss(
-        config.plugins,
+        config.extensions,
         manifestDir,
         (ref, err) => log.warn(`Skipping plugin "${ref}" for validation — ${err.message}`),
       ));

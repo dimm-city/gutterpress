@@ -24,7 +24,7 @@ import type {
   NativeThemeState,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
-  // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
+  // ProjectExtensionEntry, ExtensionValidationResult, RecommendedExtension, ProjectStyle — route DTOs in dtos.ts, not seam types (Phase 2E)
   FileStat,
   FileWriteResult,
   FolderChangedEvent,

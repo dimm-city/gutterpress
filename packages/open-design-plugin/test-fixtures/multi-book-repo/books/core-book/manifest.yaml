@@ -7,5 +7,5 @@ styles:
   - ../../shared/themes/publisher/theme.css
   - ../../shared/styles/components.css
   - styles/book.css
-plugins:
-  - path: ../../shared/plugins/publisher-components.js
+extensions:
+  - ../../shared/plugins/publisher-components.js

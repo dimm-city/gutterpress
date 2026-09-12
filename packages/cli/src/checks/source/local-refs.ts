@@ -1,16 +1,14 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { finding, inspectionFailed } from "../policy";
+import { finding } from "../policy";
 import {
   decodeRef,
   isNonFilesystemRef,
   proseImageRefError,
 } from "../../lib/asset-inline";
-import { loadPlugins } from "../../lib/markdown/plugins";
-import { createRenderedLocalRefCollector, type RenderedRefKind } from "./local-ref-parser";
+import { renderedLocalRefs, type RenderedRefKind } from "./local-ref-parser";
 
 const check: Check = {
   id: "source.links.local-refs",
@@ -19,75 +17,47 @@ const check: Check = {
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    const files = (ctx.markdownFiles ?? []).slice().sort();
-    if (files.length === 0) return [];
-
     const results: CheckResult[] = [];
-    // Match the authored book grammar. The loader's path-module cache avoids
-    // repeating module-level plugin side effects when another source check or
-    // the build already loaded the same unchanged plugin; application happens
-    // once to this check's parser and that parser is reused for every chapter.
-    const plugins = await loadPlugins(ctx.config.plugins, ctx.inputDir, (ref, error) => {
-      results.push(
-        inspectionFailed(
-          check.id,
-          `Plugin "${ref}" could not be loaded, so local references it defines were not checked: ${error.message}`,
-        ),
-      );
-    });
-    const collectRenderedLocalRefs = createRenderedLocalRefCollector(plugins);
+    for await (const { ref, kind, line, file } of renderedLocalRefs(ctx, check.id, results)) {
+      // The parser deliberately returns every rendered link/image. Only
+      // filesystem-backed destinations belong to this check: page-local
+      // fragments and URLs are resolved by the reader, not on disk.
+      if (isNonFilesystemRef(ref)) continue;
 
-    for (const file of files) {
-      try {
-        const content = await readFile(file, "utf8");
-        for (const { ref, kind, line } of collectRenderedLocalRefs(content)) {
-          // The parser deliberately returns every rendered link/image. Only
-          // filesystem-backed destinations belong to this check: page-local
-          // fragments and URLs are resolved by the reader, not on disk.
-          if (isNonFilesystemRef(ref)) continue;
-
-          // R5: a prose IMAGE must live inside the book. `proseImageRefError`
-          // is the SAME predicate the build's `planImageCopies` rejects with,
-          // so this pre-build check can't drift from what the build enforces
-          // — it used to green-light an escaping ref that happened to exist and
-          // let the build fail later instead.
-          const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
-          if (escape) {
-            results.push(
-              finding(check.id, {
-                severity: "error",
-                message: escape,
-                file,
-                line,
-              })
-            );
-            continue;
-          }
-          if (localRefExists(ref, kind, file, ctx.inputDir)) continue;
-          results.push(
-            finding(check.id, {
-              // Missing prose images are recoverable: the build's asset
-              // planner writes a loud magenta PNG and rewrites the rendered
-              // URL. Missing links have no such fallback and remain errors.
-              // Keep source file/line so the finding is directly fixable.
-              severity: kind === "image" ? "warning" : "error",
-              code: kind === "image" ? "missing-image-placeholder" : undefined,
-              message:
-                kind === "image"
-                  ? `Local image not found; build will substitute a magenta placeholder: ${ref}`
-                  : `Local reference not found: ${ref}`,
-              file,
-              line,
-            })
-          );
-        }
-      } catch {
+      // R5: a prose IMAGE must live inside the book. `proseImageRefError`
+      // is the SAME predicate the build's `planImageCopies` rejects with,
+      // so this pre-build check can't drift from what the build enforces
+      // — it used to green-light an escaping ref that happened to exist and
+      // let the build fail later instead.
+      const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
+      if (escape) {
         results.push(
-          inspectionFailed(check.id, `Could not read source file: ${file}`, {
+          finding(check.id, {
+            severity: "error",
+            message: escape,
             file,
+            line,
           })
         );
+        continue;
       }
+      if (localRefExists(ref, kind, file, ctx.inputDir)) continue;
+      results.push(
+        finding(check.id, {
+          // Missing prose images are recoverable: the build's asset
+          // planner writes a loud magenta PNG and rewrites the rendered
+          // URL. Missing links have no such fallback and remain errors.
+          // Keep source file/line so the finding is directly fixable.
+          severity: kind === "image" ? "warning" : "error",
+          code: kind === "image" ? "missing-image-placeholder" : undefined,
+          message:
+            kind === "image"
+              ? `Local image not found; build will substitute a magenta placeholder: ${ref}`
+              : `Local reference not found: ${ref}`,
+          file,
+          line,
+        })
+      );
     }
 
     return results;
@@ -100,9 +70,11 @@ const check: Check = {
  *   - `image`  — an inline `![alt](dest)` — the renderer records it verbatim
  *     and `planImageCopies` (lib/asset-inline.ts) resolves it against the
  *     PROJECT ROOT.
- *   - `link`   — an inline `[text](dest)` with no `!` — never touched by the
- *     renderer; it ships as a plain relative href a reader resolves relative
- *     to the LINKING file (e.g. a chapter linking to another chapter file).
+ *   - `link`   — an inline `[text](dest)` with no `!` — probed relative to the
+ *     LINKING file, the frame the author wrote it in. This only asks whether
+ *     the author's target exists on disk; whether the built book can open it
+ *     is `source.links.dangling`'s question (a PDF can open no relative
+ *     target, so print drops the href — see lib/build-staging.ts).
  * Reference definitions need no ambiguous third frame: the parser-aligned
  * collector sees their actual consumers as either rendered links or images.
  */
@@ -138,9 +110,11 @@ function filesystemRef(ref: string): string {
  *        `<chapterDir>/art/cover.png` instead, and a correct reference was
  *        reported as a build-failing error.
  *      - A non-image LINK (e.g. one chapter linking to another markdown file)
- *        is never touched by the renderer — it ships as an ordinary relative
- *        href that a reader's browser/PDF desktop resolves relative to the
- *        LINKING file, so that stays the frame this check uses too.
+ *        is probed relative to the LINKING file — an "author's intent exists
+ *        on disk" check. The build concatenates every chapter into one
+ *        book.html at the staging root and, for print, drops relative hrefs
+ *        outright (#263), so this frame says nothing about what the artifact
+ *        resolves; `source.links.dangling` covers that.
  *      - A reference-style consumer already has a concrete rendered kind, so
  *        it follows the same link/image frame without guessing from the
  *        definition in isolation.

@@ -30,7 +30,7 @@ import {
 } from "./extension-manifest.ts";
 import { loadPlugins } from "./markdown/plugins.ts";
 import { createMarkdownRenderer } from "./markdown/renderer.ts";
-import type { ResolvedPluginConfig } from "../schema/manifest.types.ts";
+import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
 async function tmpParent(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "gutterpress-extension-scaffold-"));
@@ -41,9 +41,9 @@ function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-/** A manifest `plugins:` entry with the defaults the loader expects. */
-function pluginCfg(path: string): ResolvedPluginConfig {
-  return { priority: 100, options: {}, path };
+/** A manifest `extensions:` path entry with the defaults the loader expects. */
+function pluginCfg(path: string): ResolvedExtensionConfig {
+  return { use: path, options: {}, path };
 }
 
 // ── Prefix — the convention the scaffolds exist to teach ────────────────────

@@ -256,14 +256,12 @@ describe("C7: every command rejects unknown flags", () => {
     ["audit", ["audit"]],
     ["preflight", ["preflight", "--pdf", "missing.pdf"]],
     ["doctor", ["doctor"]],
-    ["plugin parent", ["plugin"]],
-    ["plugin add", ["plugin", "add", "markdown-it-footnote"]],
-    ["theme parent", ["theme"]],
-    ["theme list", ["theme", "list"]],
-    ["theme apply", ["theme", "apply", "clean-book"]],
-    ["theme import", ["theme", "import", "some-source"]],
-    ["theme revert", ["theme", "revert"]],
-    ["theme remove", ["theme", "remove", "some-id"]],
+    ["ext parent", ["ext"]],
+    ["ext list", ["ext", "list"]],
+    ["ext add", ["ext", "add", "markdown-it-footnote"]],
+    ["ext remove", ["ext", "remove", "some-id"]],
+    ["ext enable", ["ext", "enable", "some-id"]],
+    ["ext disable", ["ext", "disable", "some-id"]],
   ];
 
   test.each(invocations)("%s rejects an unknown option with exit 2", (_name, args) => {
@@ -296,10 +294,10 @@ describe("C7: every command rejects unknown flags", () => {
     expect(stdout).toContain("doctor");
   });
 
-  test("root help registers the theme command", () => {
+  test("root help registers the ext command", () => {
     const { exitCode, stdout } = runCli(["--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("theme");
+    expect(stdout).toContain("ext");
   });
 });
 
@@ -343,9 +341,9 @@ describe("strict value-option handling", () => {
   });
 });
 
-describe("plugin add usage errors", () => {
+describe("ext add usage errors", () => {
   test("an invalid package spec exits 2 instead of reporting a pipeline failure", () => {
-    const { exitCode, stderr } = runCli(["plugin", "add", "markdown-it-highlightjs@"]);
+    const { exitCode, stderr } = runCli(["ext", "add", "markdown-it-highlightjs@"]);
 
     expect(exitCode).toBe(2);
     expect(stderr).toContain("missing a selector");
@@ -356,7 +354,7 @@ describe("plugin add usage errors", () => {
     const missing = path.join(parent, "typoed-project");
     try {
       const { exitCode, stderr } = runCli([
-        "plugin",
+        "ext",
         "add",
         "markdown-it-highlightjs@4.3.0",
         missing,
@@ -371,67 +369,61 @@ describe("plugin add usage errors", () => {
   });
 });
 
-// #235 — `gutterpress theme`, mirroring the "plugin add usage errors" block
+// #265 — `gutterpress ext`, mirroring the "ext add usage errors" block
 // above: bad input from the terminal is a clean usage error (exit 2), never a
 // raw parser dump or a pipeline failure.
-describe("theme usage errors", () => {
-  test("apply with an unknown theme id exits 2 naming the known built-ins", async () => {
-    const dir = await makeTempDir("gutterpress-cli-theme-apply-");
+describe("ext usage errors", () => {
+  test("remove with a specifier that is not in the manifest exits 2, not a pipeline failure", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-remove-");
     try {
-      const { exitCode, stderr } = runCli(["theme", "apply", "no-such-theme", dir]);
+      const { exitCode, stderr } = runCli(["ext", "remove", "ghost", dir]);
       expect(exitCode).toBe(2);
-      expect(stderr).toContain('unknown theme "no-such-theme"');
+      expect(stderr).toContain('"ghost" is not in the manifest');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("add from a path that does not exist exits 2 naming the resolved path", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-add-");
+    try {
+      const missing = path.join(dir, "does-not-exist");
+      const { exitCode, stderr } = runCli(["ext", "add", missing, dir]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("source not found");
+      expect(stderr).toContain(missing);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("add --look with an unknown id exits 2 naming the built-in looks", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-look-");
+    try {
+      const { exitCode, stderr } = runCli(["ext", "add", "no-such-look", dir, "--look"]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain('unknown built-in look "no-such-look"');
       expect(stderr).toContain("clean-book");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }, 30000);
 
-  test("remove with an id that is not a project theme exits 2, not a pipeline failure", async () => {
-    const dir = await makeTempDir("gutterpress-cli-theme-remove-");
+  test("add --look, list, disable: the look is one enabled extension, end to end", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-e2e-");
     try {
-      const { exitCode, stderr } = runCli(["theme", "remove", "ghost", dir]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain('"ghost" is not a theme in this project');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
+      const added = runCli(["ext", "add", "zine", dir, "--look"]);
+      expect(added.exitCode).toBe(0);
+      expect(added.stdout).toContain("Added ./extensions/zine");
+      expect(fs.existsSync(path.join(dir, "extensions", "zine", "theme.css"))).toBe(true);
 
-  test("revert with no previous theme exits 2 in a brand-new project directory", async () => {
-    const dir = await makeTempDir("gutterpress-cli-theme-revert-");
-    try {
-      const { exitCode, stderr } = runCli(["theme", "revert", dir]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain("no previous theme to revert to");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  test("import from a path that does not exist exits 2 naming the resolved path", async () => {
-    const dir = await makeTempDir("gutterpress-cli-theme-import-");
-    try {
-      const missing = path.join(dir, "does-not-exist");
-      const { exitCode, stderr } = runCli(["theme", "import", missing, dir]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain("source not found");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  test("apply then list shows the applied theme as active, end to end", async () => {
-    const dir = await makeTempDir("gutterpress-cli-theme-e2e-");
-    try {
-      const applied = runCli(["theme", "apply", "zine", dir]);
-      expect(applied.exitCode).toBe(0);
-      expect(applied.stdout).toContain("Applied theme: Zine (zine)");
-      expect(fs.existsSync(path.join(dir, "themes", "zine", "theme.css"))).toBe(true);
-
-      const listed = runCli(["theme", "list", dir]);
+      const listed = runCli(["ext", "list", dir]);
       expect(listed.exitCode).toBe(0);
-      expect(listed.stdout).toContain("Active theme: Zine (zine)");
+      expect(listed.stdout).toContain("./extensions/zine");
+      expect(listed.stdout).toContain("Zine");
+
+      expect(runCli(["ext", "disable", "./extensions/zine", dir]).exitCode).toBe(0);
+      expect(runCli(["ext", "list", dir]).stdout).toContain("(disabled)");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -439,29 +431,18 @@ describe("theme usage errors", () => {
 });
 
 describe("parse-time usage errors keep the documented exit code", () => {
-  test("bare plugin shows its subcommand help and exits successfully", () => {
-    const { exitCode, stdout, stderr } = runCli(["plugin"]);
+  test("bare ext shows its subcommand help and exits successfully", () => {
+    const { exitCode, stdout, stderr } = runCli(["ext"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Manage project markdown-it plugins");
+    expect(stdout).toContain("List, add, remove, enable, or disable the project's extensions");
     expect(stdout).toContain("add");
     expect(stderr).toBe("");
   });
 
-  test("bare theme shows its subcommand help and exits successfully", () => {
-    const { exitCode, stdout, stderr } = runCli(["theme"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("List, apply, import, revert, or remove project themes");
-    expect(stdout).toContain("apply");
-    expect(stderr).toBe("");
-  });
-
   test.each([
-    ["plugin --", ["plugin", "--"]],
-    ["plugin -- add", ["plugin", "--", "add"]],
-    ["plugin -", ["plugin", "-"]],
-    ["theme --", ["theme", "--"]],
-    ["theme -- apply", ["theme", "--", "apply"]],
-    ["theme -", ["theme", "-"]],
+    ["ext --", ["ext", "--"]],
+    ["ext -- add", ["ext", "--", "add"]],
+    ["ext -", ["ext", "-"]],
   ] as Array<[string, string[]]>)(
     "%s exits 2 instead of falling through to Citty exit 1",
     (_label, args) => {
@@ -499,14 +480,13 @@ describe("parse-time usage errors keep the documented exit code", () => {
   }, 30000);
 
   test.each([
-    ["unknown plugin subcommand", ["plugin", "unknown"], "unknown command"],
-    ["missing plugin package", ["plugin", "add", "--export", "named"], "PACKAGE"],
+    ["unknown ext subcommand", ["ext", "unknown"], "unknown command"],
+    ["missing ext add source", ["ext", "add", "--export", "named"], "SOURCE"],
     ["missing new project name", ["new", "--no-git"], "NAME"],
     ["missing preflight PDF", ["preflight", "."], "--pdf"],
-    ["unknown theme subcommand", ["theme", "unknown"], "unknown command"],
-    ["missing theme apply id", ["theme", "apply"], "ID"],
-    ["missing theme import source", ["theme", "import"], "SOURCE"],
-    ["missing theme remove id", ["theme", "remove"], "ID"],
+    ["missing ext remove specifier", ["ext", "remove"], "SPECIFIER"],
+    ["missing ext enable specifier", ["ext", "enable"], "SPECIFIER"],
+    ["missing ext disable specifier", ["ext", "disable"], "SPECIFIER"],
   ] as Array<[string, string[], string]>)(
     "%s exits 2 without a raw parser error",
     (_label, args, expected) => {

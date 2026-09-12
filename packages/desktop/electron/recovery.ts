@@ -154,7 +154,7 @@ export async function clearRecovery(
  *
  * The filter used to be `dirname(entry.filePath) !== projectDir` — immediate
  * children only (2026-07-29 audit). A crash draft for `styles/book.css`,
- * `themes/<id>/theme.css`, an explicitly-listed `chapters/ch01.md`, or an
+ * `extensions/<id>/theme.css`, an explicitly-listed `chapters/ch01.md`, or an
  * authorized repo-root shared file was written on every edit and then never
  * offered back after a crash — and, being unoffered, was swept as stale on the
  * next listing. Silent loss of exactly the files a multi-book project shares.

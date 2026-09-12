@@ -63,7 +63,7 @@ import type {
   AdoptFolderOptions,
   CreateProjectResult,
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
-  // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
+  // ProjectExtensionEntry, ExtensionValidationResult, RecommendedExtension, ProjectStyle — route DTOs in dtos.ts, not seam types (Phase 2E)
   SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,

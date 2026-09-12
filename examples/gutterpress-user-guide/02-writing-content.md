@@ -38,7 +38,7 @@ h1 { string-set: chapter-title content(); }        /* feeds the running header *
 h1::before { content: counter(chapter, decimal-leading-zero); /* ...the numeral... */ }
 ```
 
-A brand-new Gutterpress project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](./04-styling-theming.md)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
+A brand-new Gutterpress project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](#ch-styling)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
 
 ### Heading rules
 
@@ -125,7 +125,7 @@ Paragraph with custom styling. {.highlight}
 [Link text](page.html){.download}
 ```
 
-`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
+`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](#common-image-classes) for the full set.
 
 ### Cross-References
 

@@ -15,7 +15,6 @@ import {
   LEGACY_THEME_MANIFEST_FILENAME,
   readExtensionMeta,
   extensionStyleList,
-  extensionEngineStyleList,
   assertExtensionContained,
   resolveExtension,
 } from "./extension-manifest";
@@ -90,7 +89,7 @@ describe("extension-manifest", () => {
     });
   });
 
-  describe("extensionStyleList / extensionEngineStyleList", () => {
+  describe("extensionStyleList", () => {
     test("styles absent/empty means NO declared styles — no theme.css default", () => {
       // Unlike theme-manager.ts's themeStyleList, the generic extension list
       // does not default to ["theme.css"] — a markdown-only extension has no
@@ -99,14 +98,6 @@ describe("extension-manifest", () => {
       expect(extensionStyleList({ styles: [] })).toEqual([]);
       expect(extensionStyleList({ styles: ["a.css", "b.css"] })).toEqual(["a.css", "b.css"]);
     });
-
-    test("engineStyles.native absent/malformed normalizes to []", () => {
-      expect(extensionEngineStyleList({})).toEqual([]);
-      expect(extensionEngineStyleList({ engineStyles: {} })).toEqual([]);
-      expect(
-        extensionEngineStyleList({ engineStyles: { native: ["x.css"] } }),
-      ).toEqual(["x.css"]);
-    });
   });
 
   describe("assertExtensionContained", () => {
@@ -114,7 +105,6 @@ describe("extension-manifest", () => {
       expect(() =>
         assertExtensionContained({
           styles: ["css/tokens.css"],
-          engineStyles: { native: ["css/native.css"] },
           markdown: "plugin.js",
           components: "components.yaml",
           snippets: "snippets",
@@ -146,29 +136,36 @@ describe("extension-manifest", () => {
         /"\.\.\/evil\.js"/,
       );
     });
+
+    test("rejects the removed `engineStyles` field, naming the replacement (#266)", () => {
+      const stale = {
+        styles: ["css/a.css"],
+        engineStyles: { native: ["css/native.css"] },
+      } as Parameters<typeof assertExtensionContained>[0];
+      expect(() => assertExtensionContained(stale)).toThrow(
+        /`engineStyles`, which was removed — move its entries to the end of `styles`/,
+      );
+    });
   });
 
   describe("resolveExtension", () => {
-    test("resolves markdown, styles, and engineStyles to absolute existence-checked paths", () => {
+    test("resolves markdown and styles to absolute existence-checked paths", () => {
       const dir = extDir();
       writeFileSync(join(dir, "plugin.js"), "export default function () {}", "utf8");
       mkdirSync(join(dir, "css"), { recursive: true });
       writeFileSync(join(dir, "css", "a.css"), ".a {}", "utf8");
-      writeFileSync(join(dir, "css", "native.css"), "@page {}", "utf8");
 
       const resolved = resolveExtension(
         dir,
         {
           markdown: "plugin.js",
           styles: ["css/a.css"],
-          engineStyles: { native: ["css/native.css"] },
         },
         "Plugin \"demo\"",
       );
 
       expect(resolved.markdown).toBe(join(dir, "plugin.js"));
       expect(resolved.styles).toEqual([join(dir, "css", "a.css")]);
-      expect(resolved.engineStyles).toEqual([join(dir, "css", "native.css")]);
     });
 
     test("an extension declaring nothing resolves to an empty object", () => {

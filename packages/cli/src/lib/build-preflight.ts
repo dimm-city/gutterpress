@@ -135,7 +135,7 @@ export async function verifyNativeChromiumMilestone(): Promise<void> {
     version = await browser.version();
   } catch (err) {
     throw new BuildError(
-      `Could not launch a Chromium browser for --engine native: ` +
+      `Could not launch a Chromium browser for the PDF build: ` +
         `${err instanceof Error ? err.message : String(err)}`,
       2
     );
@@ -151,7 +151,7 @@ export async function verifyNativeChromiumMilestone(): Promise<void> {
         // `docs/adr/0002` is not published either, so either pointer would send
         // a user of the shipped binary to a file that does not exist.
         `Note: this applies to the CLI's own Chromium only — the desktop app ` +
-        `renders --engine native with its own bundled browser and needs no ` +
+        `renders PDFs with its own bundled browser and needs no ` +
         `separate install.`,
       2
     );
