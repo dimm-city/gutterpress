@@ -56,6 +56,19 @@ disagree, the preview is right.
 
 ### Changed
 
+- **Reconciled with 0.10.9's extension rail.** A book's `manifest.yaml`
+  lists its plugins and looks under `extensions:` now (0.10.9 replaced
+  `plugins:`, themes and `engineStyles`); the paged editor's host-side
+  projection and the VS Code extension load a project through that same
+  list. The desktop's Look and Features tabs, and extension-provided
+  snippets, run over typed IPC (`extension:*`, `snip:readExtension`) like
+  every other host capability - the `plugin:*`/`theme:*` channels they
+  replace are gone.
+- **A plugin's declared container (`markers` export, 0.10.7) edits on the
+  page.** The `@callout` line is a chip, its label shows with it, and the
+  element it declares wraps the blocks inside it in the editor exactly as
+  on the page - closing at `@end-callout` or the enclosing scope's boundary
+  - instead of the "unrecognized layout token" notice it used to raise.
 - **Breaking: the preview no longer edits your document.** Right-click →
   "Edit this block", the click-to-edit overlay, and the image/link
   properties dialogs reachable from the preview's context menu are gone —
@@ -86,6 +99,389 @@ disagree, the preview is right.
   web version of Gutterpress, if built, will be its own package built
   against the same shared editor and rendering libraries this release
   introduces, not a mode hiding inside the desktop app.
+
+## [0.10.9] - 2026-09-12
+
+### Changed
+
+- **One extension rail: `extensions:` replaces `plugins:` and the theme
+  commands.** A markdown-it plugin, a look (stylesheets), and a component
+  library carrying both plus snippets and a catalog are all one thing — an
+  extension — listed as bare specifiers under the manifest's `extensions:`
+  key and added one way, `gutterpress ext add`. The form of a specifier says
+  what it is: the five bundled features (`markdown-it-mark`, `markdown-it-sub`,
+  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) resolve to
+  the copies compiled into Gutterpress; `./x` and `../x` are folders or plugin
+  files referenced in place, never copied; anything else is an npm package,
+  and `name@version` pins it — one that ships a `gutterpress.json` is read
+  exactly like a folder, stylesheets and snippets included. The list order
+  is the load order: a later entry's markdown runs after earlier ones and
+  its CSS wins ties, and the project's own `styles:` always load last —
+  reordering the list is how you adjust the cascade, so `priority` is gone. The object form (`use:` with
+  `options`, `export`, `enabled`) exists only for an entry that needs more
+  than its specifier. A manifest still carrying `plugins:` or `priority`
+  fails with its own entries rewritten the new way. (#265)
+- **Looks are extensions, not a separate rail.** `gutterpress theme apply`,
+  `import`, `revert`, `remove` and `gutterpress plugin add` are gone;
+  `gutterpress ext list`, `add`, `remove`, `enable`, `disable` is the one verb
+  set, and the desktop's Look and Features views are two views over that one
+  list. There is no "active theme": any number of looks can be on at once, in
+  list order. The three built-in looks are copied into `extensions/<id>/` on
+  use (`gutterpress ext add clean-book --look`, or the Look view) so a book's
+  look is its own editable files, never a hidden dependency on the installed
+  Gutterpress version; `gutterpress new` does the same for its starter look.
+  A `.zip`, `.css` or URL import lands in `extensions/<id>/` too. The
+  `themes/` folder convention retires with the rail. (#265)
+- **The preview/print parity gate measures an exact-fit boundary instead of
+  failing on its consequences.** When the viewer and the PDF disagree on a
+  heading's page, `scripts/native-parity-gate.ts` now finds the first page
+  whose last line they disagree on and measures that line's slack in both
+  fragmenters. Opposite fit outcomes within 1px of each other — print keeps
+  a line whose box ends at the column bottom, the preview lays it 0.4px lower
+  and pushes it, and `orphans`/`break-before: avoid` then walk the heading
+  onto the next page — are reported as an EXACT-FIT BOUNDARY with the
+  numbers, and the fixture passes with that outcome; the downstream
+  divergences are listed, not counted. Anything else fails as before, and
+  the allowlist stays empty. `docs/fixtures/exact-fit-boundary` pins the
+  #268 boundary; `docs/native-parity-gate.md` describes the three outcomes.
+  (#261, #268)
+
+### Removed
+
+- **`engine`, `--engine` and `engineStyles` are gone.** Gutterpress has one
+  pagination engine, so the switch selected nothing, and `engineStyles.native`
+  only ever appended to the end of `styles:` — list position says the same
+  thing. A `manifest.yaml`, `gutterpress.json` or `theme.json` that still
+  carries either field fails with a message naming the replacement: delete
+  `engine`; move the `engineStyles` entries to the end of `styles`. Nothing
+  about the built book changes for a manifest that makes that move — the
+  resolved stylesheet list is identical. (#266)
+
+### Fixed
+
+- **A relative link no longer bakes the build machine's temp path into the
+  PDF.** `[constitution](docs/constitution.md)` used to become a link
+  annotation to `file:///tmp/gutterpress-build-<random>/docs/constitution.md`
+  — dead for every reader, and different bytes on every build. A PDF has no
+  files beside it, so no relative target can be opened from one: `pdf` and
+  `pdfx` builds now drop the `href` of every relative link before print (the
+  link text stays; `#anchor`, `http(s)`, `mailto:` links are untouched; an
+  empty, `?query` or `//host` href resolves against the same temp path and is
+  dropped too; `--format html` output is unchanged). Two builds of the same sources now
+  differ only in their dates and trailer `/ID`. A link whose href is dropped
+  no longer matches `a[href]` / `:any-link` styling in the PDF. The new
+  pre-build check `source.links.dangling` warns, with file and line, about
+  each affected link — a link to another chapter file of the same book
+  included, since the renderer maps none to an in-document anchor. (#263)
+- **`gutterpress lint` names every risky print effect.** It printed only a
+  count ("35 risky print properties found"); now each finding is listed with
+  its file and `line:col`, the same way errors are, so an author can read
+  WHICH selectors rasterize text — and so sit outside the render-parity
+  gate's coverage. The line promising that "the validator will check for
+  actual rasterized pages after PDF generation" is gone: post-build
+  validation runs only for `--format pdfx`, and its rasterized-pages check
+  only catches fully flattened pages, never a filtered card on a normal
+  page. `filter: none`, `clip-path: none`, `transition: none`,
+  `animation: none`, `will-change: auto`, `mix-blend-mode: normal` and
+  `background-blend-mode: normal` are no longer reported — a property at its
+  initial value does nothing, and `filter: none` is exactly how a book
+  suppresses an earlier filter, so such a book can now reach zero findings.
+  The same table covers the `@page` margin-box check (`box-shadow: none`,
+  `outline: none`, `rotate: none` and the other keyword resets are no longer
+  reported as dropped declarations) and the page-containment check
+  (`will-change: auto` is no longer a stacking context; `overflow:
+  revert-layer` no longer clips). (#259)
+
+## [0.10.8] - 2026-09-03
+
+### Added
+
+- **A plugin and a theme are the same thing now: an extension.** Both are a
+  folder with a `gutterpress.json` that says what it carries — `styles` for
+  stylesheets, `markdown` for a markdown-it plugin, `tokensFile`, `snippets`,
+  a `preview` image, a name and description. Nothing about the old shapes
+  stopped working: a theme folder with `theme.json` is read exactly as before,
+  and a `plugins:` entry may now name a folder instead of a `.js` file. What
+  changes is that one package can finally carry both halves, which is what a
+  component library actually is. (#241)
+
+- **Plugins can declare their own markers.** A plugin exports
+  `markers: { sidebar: {...} }` and `@sidebar` becomes an author marker with
+  the same behaviour core's own markers have — attributes, nesting,
+  continuations, editor source mapping. Every component plugin used to
+  reimplement that parsing by hand. A declared marker that collides with a
+  core word fails the plugin load rather than silently shadowing it; an
+  unknown marker warns; one marked deprecated warns and is stripped. (#240)
+
+- **Extensions can ship snippets.** An installed extension's snippets appear
+  in the snippet picker beside your own, grouped under the extension's name
+  and read-only. Uninstall the extension or switch themes and they are gone
+  from the next listing — there is nothing to clean up. A snippet of your own
+  with the same name always wins. (#242)
+
+- **One Extensions surface: Look and Features.** The theme grid and the
+  plugins panel were two panels doing the same job — bring something into this
+  book — with no shared vocabulary. Project settings now has a **Look** tab
+  (cards with previews; applying one replaces the active look) and a
+  **Features** tab (enable toggles, validation, versions), over one controller
+  and one model. A look whose package also carries a markdown plugin shows a
+  "+ features" badge. (#243)
+
+- **`gutterpress new --kind plugin` scaffolds a runnable extension package.**
+  The on-ramp for an extension author used to be a five-line snippet and a
+  pointer to a 1,800-line plugin in another repository, immediately followed by
+  a warning not to copy it. `--kind plugin` now writes a complete package
+  instead: a `gutterpress.json`, a `plugin.js` carrying one DECLARATIVE
+  container (a `markers` table, #240) and one hand-written markdown-it rule so
+  the line between the two is visible, component CSS with its public tokens at
+  `:root`, an insertable snippet, and a `test/` folder whose `fixture.md` →
+  `expected.html` suite runs with `bun test` from the moment it is created.
+  The scaffolded README states which conventions are load-bearing and why —
+  the class prefix (the package claims its own; `gp-` belongs to core), why a
+  plugin may not `import` from `gutterpress` at runtime, and why its CSS
+  declares its own cascade layer. Its test suite enforces the prefix rules,
+  which nothing in Gutterpress checks for you. `--prefix` picks the prefix
+  (default: the package slug). (#245)
+
+- **`gutterpress new --kind theme` scaffolds the layered CSS architecture.**
+  Core's three built-in themes are ~60 lines each and style bare elements;
+  the first book that needs components outgrows one in a week and then
+  re-derives the same six-file arrangement from scratch. `--kind theme` writes
+  it: `tokens.css` / `base.css` / `components.css` / `page-templates.css` /
+  `page-rules.css` / `book.css`, each opening with its own **OWNS / MUST NOT
+  CONTAIN** contract header — the rules from
+  `docs/contextual-cascade-principle.md` moved INTO the files so they travel
+  with the code — plus `components.yaml` as the catalog stub. The
+  `@layer tokens, base, components, templates, pages, book;` order is declared
+  once, in the sheet that loads first, and one worked component (a callout)
+  demonstrates the token pattern end to end: a `:root` default, a component
+  consuming bare `var()`, and a chapter-scoped override that resets it. It is
+  a valid multi-sheet extension, so `gutterpress theme import` + `apply` wire
+  all six sheets in cascade order. (#233)
+
+  Both kinds share `new`'s existing `--dir`/`--folder`/`--author` handling.
+  Flags that describe a BOOK (`--preset`, `--targets`, `--template`, the
+  `--page-*` trim flags, `--git`) are REJECTED for an extension rather than
+  silently ignored, and `--prefix`/`--description` are likewise rejected for a
+  book; the check reads raw argv, so a flag's default never trips it.
+
+### Fixed
+
+- **A plugin loaded as an extension FOLDER kept its styles but lost its
+  markers.** `plugins: - path: <folder>` (#241) read the folder's
+  `gutterpress.json`, loaded its `markdown:` entry and resolved its
+  stylesheets — but dropped the module's `markers` export (#240) on the floor.
+  Every declared marker of such a plugin silently did nothing: `@callout`
+  parsed as an ordinary paragraph, with no warning, while the identical module
+  referenced as `path: <folder>/plugin.js` worked. The two load paths now
+  produce the same loaded plugin. (#240, #241)
+
+- **`gutterpress validate` now sees plugin CSS.** Since plugin stylesheets
+  became files, validate and the build's preflight gate had no idea they
+  existed — a print-safety problem in a plugin's CSS passed validation and
+  turned up in the PDF. Both now check plugin stylesheets along with your
+  own. (#262)
+
+- **A build loads each plugin once, not twice.** The lint gate and the render
+  each loaded and re-verified every plugin independently, so an npm-installed
+  plugin's whole vendored tree was read and hashed twice per build. (#262)
+
+## [0.10.7] - 2026-09-03
+
+### Added
+
+- **`> [!NOTE]` callouts are built in.** GitHub's alert syntax — `NOTE`, `TIP`,
+  `IMPORTANT`, `WARNING`, `CAUTION`, matched case-insensitively — ships as the
+  bundled **Callouts** feature. Turn it on from the recommended-features list
+  and each renders as an unbranded `.gp-alert` box with a labelled title and a
+  coloured rule, in core's own vocabulary so any theme can restyle it; the
+  colour per type is an author-overridable `--gp-alert-<type>-color`. It is
+  off by default, so a book that never asked for callouts keeps rendering
+  `> [!NOTE]` exactly as it always did. The marker goes alone on its line, as
+  on GitHub; anything that is not one of the five prints as an ordinary
+  blockquote. Previously the user guide had to explain that this syntax "lives
+  in a separate plugin" — it no longer does. (#237)
+
+- **Theme authors can curate the Design panel with three CSS comments.** The
+  desktop app's guided Design panel used to show every `:root` custom property
+  a theme declared, bucketed by a heuristic into Fonts / Colors / Sizes / Other
+  and labelled by de-hyphenating the name — so a theme with forty internal
+  tokens gave a non-technical author forty fields, several of which they
+  should never touch. A theme can now say what it means, in ordinary CSS
+  comments placed right above a declaration: `/* @group Chapter openers */`
+  puts the next token under that heading (named groups come first, in the
+  order they first appear), `/* @label Accent color */` replaces the
+  name-derived label, and `/* @internal */` hides the token from the panel
+  entirely. Each directive applies to the next declaration only; other
+  comments are ignored; the CSS itself is never changed. A theme with no
+  annotations renders in the panel exactly as before. (#244)
+
+- **Plugin CSS can be files, not just a string.** A plugin's `css` export
+  was an opaque string: `gutterpress lint` never saw it, a `url()` to a font
+  or image in it could not be embedded, and it could not `@import`. A plugin
+  can now export `styles: ["./styles/components.css"]` — paths relative to its
+  own file — and each file goes through exactly the pipeline your project's
+  stylesheets do: assets inlined, local imports followed, print-safety
+  checked. Same cascade position as before (after core, before your CSS). A
+  listed file that is missing stops the build with an error naming the plugin,
+  instead of silently rendering without it. `css` still works and now follows
+  the files. (#238)
+
+- **A theme can be more than one stylesheet.** A theme was defined as a
+  single `theme.css`, so a real design system — tokens, base, components,
+  page templates and engine furniture as separate sheets in a load-bearing
+  order — could not be a theme at all. It had to be hand-wired into the
+  manifest, where no theme UI could see, apply, preview, revert or switch it.
+  A `theme.json` may now declare `styles: [...]` (paths relative to the theme
+  folder, in cascade order), `engineStyles: { native: [...] }`, and
+  `tokensFile`, the sheet whose `:root` the desktop Design panel edits.
+  Applying wires the whole list as one block at the position the outgoing
+  theme held, switching or removing a theme removes its whole block, import
+  checks that every declared sheet exists and passes the print-safety rules,
+  and `gutterpress theme apply` lists every sheet it wired. A `theme.json`
+  without `styles` still means `["theme.css"]`, so every existing theme works
+  unchanged. A declared path must stay inside the theme folder. Zip import
+  still needs a `theme.css` to locate the package root; a folder import does
+  not. (#239)
+
+- **`gutterpress theme` — list, apply, import, revert, remove from the
+  terminal.** Themes could only be applied or imported from the desktop app's
+  Theme panel; a CI job, an agent, or anyone in a terminal had to hand-edit the
+  manifest and copy folders, getting the cascade position right by hand. The
+  five subcommands call exactly the code the desktop panel calls, so either
+  route produces the same tracked, switchable result. `import` takes a folder,
+  a `.zip`, a `.css` file, or an `http(s)` URL, and surfaces the same
+  print-safety warnings the desktop shows. (#235)
+- **A CSS ownership contract, checked by lint.** The rules about which
+  stylesheet owns which properties lived in comments and an honour system. A
+  project can now write them down in `.gutterpress/css-contract.yaml` (or
+  point `validate.checks.source.cssOwnership` at a file): which properties
+  and at-rules a sheet owns, which a sheet may not use, and which selectors
+  it may not use unscoped. The new `source.css-ownership` check reports a
+  `columns:` declared outside the sheet that owns it, a forbidden property,
+  or two sheets claiming the same property, as warnings in the build log,
+  `gutterpress lint`, and the editor's Problems panel. With no contract file
+  the check reports nothing. (#232)
+
+### Changed
+
+- **The `@page` background workaround now knows when it expires.** Chrome
+  152 paints an image referenced only from an `@page` rule; 151 and earlier
+  dropped it, which is what the build's `<link rel="preload">` works around.
+  The preload changes nothing on a fixed Chrome and still matters on the
+  versions the engine accepts (148 and up), so it stays; its removal is now
+  pinned to the engine's Chromium floor reaching 152, and the test that
+  enforces that also re-measures the outcome on whichever Chrome runs it.
+
+- **`engineStyles.paged` is gone from the manifest schema and types.** It was
+  accepted, warned about, and ignored, and editor autocomplete kept offering
+  it. A manifest that still carries it loads with the same one-line warning
+  as before. The four legacy `css/*.css` stylesheet fallbacks are now marked
+  as legacy in the source-files guide and the schema reference; their
+  behaviour is unchanged. (#234)
+
+- **Plugin `priority` is explained the way you will actually use it.** The
+  docs led with "higher loads first" and then told you to set a plugin's
+  priority *lower* to see another plugin's tokens, which everyone reads
+  backwards once. The semantics are unchanged; the user guide, the schema
+  reference and the manifest field docs now state the consequence first
+  (lower number = loads later = sees the other plugin's output), and say
+  plainly that most manifests never need to set it. (#247)
+
+- **`gutterpress new` applies your starter theme instead of forking it.** A
+  new project used to receive a *copy* of its template's theme as
+  `styles/book.css` — which then silently shadowed any theme you applied
+  later, because the fork loaded after it. The scaffold now applies the theme
+  the tracked way, and `styles/book.css` is your project's own override layer,
+  empty and yours. An existing project that carries one of those old forks is
+  not changed: `gutterpress theme list` tells you it is byte-identical to a
+  built-in theme and names the one command that adopts the tracked layout.
+  (#236)
+
+### Removed
+
+- **The `.col-split` column machinery.** An `@section .col-split` used to make
+  `@column-break` emit hard `<div class="col">` wrappers, a mechanism no book
+  used, no built-in theme styled, and the desktop's "Two columns" button was
+  the only thing still producing, so that button gave every stock project a
+  section with no layout at all. The button now inserts `@section
+  .gp-columns-2`, which core styles, and the renderer branch, its per-render
+  depth counter and the `.col-split` completion hint are gone. A `.col-split`
+  class in an existing manuscript is now just a class: the section renders as
+  an ordinary section with a `.gp-column-break` marker where the break was.
+  (#234)
+
+### Fixed
+
+- **The render-parity gate now says what it cannot see.** Text inside any
+  element carrying a CSS `filter` (a `drop-shadow()` on a shaped card, for
+  instance) is rasterized by Chromium into a bitmap before the PDF is written
+  — there are no text objects left for any extractor to compare, so a change
+  confined to that prose gates clean. That is a Chromium behaviour, not a bug
+  to fix in the tool, and this release documents it precisely instead of
+  pretending otherwise: `docs/render-parity-gate.md` explains the mechanism
+  and the evidence, and the existing `filter` print-safety warning now names
+  the consequence, so the one lint signal you already see is the detector. A
+  public fixture pins it. Page geometry, image placement, and text outside a
+  filtered subtree are compared exactly as before. (#259)
+
+## [0.10.6] - 2026-09-02
+
+### Added
+
+- **Five layout classes you no longer have to invent yourself.** A heading or
+  a preamble that should cross both columns of a two-column run had no class
+  in Gutterpress, so every book grew its own — and an author who guessed at a
+  name got a silent no-op instead of the layout they asked for. There are now
+  real ones: `.gp-columns-all` spans a column run, `.gp-no-break` keeps a
+  block from splitting across pages, `.gp-break-before` starts a new page, and
+  `.gp-columns-flow` / `.gp-columns-balanced` answer the one multi-column
+  question only you can answer — whether a run flows across several pages
+  (`flow`) or fits on one (`balanced`). Write them the way you write any other
+  class: `@section .gp-columns-2 .gp-columns-all`, or `{.gp-no-break}` on a
+  block. See [User Guide: Chapter 2](./examples/gutterpress-user-guide/02-writing-content.md).
+
+- **A misspelled `gp-` class now tells you, instead of doing nothing.** Typing
+  `.gp-column-2` where you meant `.gp-columns-2` used to render a perfectly
+  ordinary single-column section with no complaint anywhere — a real book
+  carried exactly that mistake through a full proof cycle. The build, the
+  editor's Problems panel and `gutterpress lint` now all say
+  `Unknown class "gp-column-2" on @section. Did you mean "gp-columns-2"?`.
+  Only `gp-` names are checked; your own classes are your business.
+
+### Changed
+
+- **Your CSS now beats Gutterpress's, always.** Core's own styles are wrapped
+  in cascade layers, and yours are not — which in CSS means yours win outright,
+  whatever selector you used. Before this, "the author wins" was true only
+  because of the order the stylesheets happened to be injected in, and a
+  plain-looking rule in a book's theme could silently shadow a core layout
+  primitive at equal specificity. One real book lost `columns: 2` off every
+  spanning section that way, for months, and it took a page-height measurement
+  to find. You do not need to change anything: books render exactly as before.
+
+- **The multi-column warning now names the class to add.** It used to hand you
+  raw CSS (`add column-fill: auto`); it now says to add `.gp-columns-flow` to
+  the marker, which is the thing you can actually type in your markdown.
+
+### Fixed
+
+- **A tall image no longer gets sliced across two pages.** A plain markdown
+  image taller than the page was cut in half by the paginator, stranding its
+  bottom on the next sheet. Oversized images are now fitted to the page and
+  letterboxed instead. A `<figure>` is likewise kept whole rather than split.
+  Both were fixes individual books had been carrying privately; they belong in
+  Gutterpress, and a new book with big art gets them without knowing they exist.
+
+- **`render-parity.ts extract` no longer hangs after it finishes.** On a large
+  book it wrote a correct report and then never exited, holding the terminal
+  (or a CI step) until something killed it — measured on a 131MB, 247-page
+  book whose report was complete after ten seconds while the process ran on
+  until SIGKILL. The runtime keeps a PDF.js worker alive that no library-level
+  teardown reaches, so `extract` now exits explicitly once its report is
+  written, exactly as `compare` always has. `compare` was never affected,
+  which is why every CI gate stayed green.
+
 
 ## [0.10.5] - 2026-09-02
 
@@ -1571,5 +1967,6 @@ full diff above for the exact changes.
   architecture with IPC instead of HTTP routes, and PDF export via Electron's
   bundled Chromium. See the v0.2.0 release notes for details.
 
+[0.10.6]: https://github.com/dimm-city/gutterpress/compare/v0.10.5...v0.10.6
 [0.2.1]: https://github.com/dimm-city/print-md/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dimm-city/print-md/compare/v0.1.13...v0.2.0

@@ -9,30 +9,36 @@
    * This is the COMPOSITION ROOT for the per-domain section controllers
    * (UX review M14): it instantiates one `*SectionController` per domain and
    * renders the presentational sections under `./config/`, passing each ITS
-   * controller as a single prop. The children carry no state and no `api`
-   * value import — all `api.*` calls live in the controllers under
-   * `$lib/routes/*-section-controller.svelte.ts`.
+   * controller as a single prop. The children carry no state and no host
+   * call of their own - every typed-IPC call is handed to the controllers
+   * under `$lib/routes/*-section-controller.svelte.ts`.
    *
-   * Four tabs, backed by FIVE controllers (no `$effect`: data loads on mount +
+   * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
-   *   1. Details       — title, authors, output filename, source files
-   *                      (`manifestRead`/`manifestSetFields`).
-   *   2. Look & style  — theme grid (`AppearanceSection`) → design tokens
-   *                      (`DesignSection`) → the raw stylesheet list
-   *                      (`StylesSection`) behind an "Advanced" disclosure
-   *                      (UX review M35's writer-shaped merge, unchanged).
-   *   3. Plugins       — configured list + toggle + validate + recommended
-   *                      built-ins (`$lib/project-config/
-   *                      project-config-capability`'s `plugin*` functions).
-   *   4. Connections   — this project's sync surface (remote diagnosis +
-   *                      Test Remote Access; `ProjectConnectionsSection`,
-   *                      self-loading — no controller).
+   *   1. Details     — title, authors, output filename, source files
+   *                    (`manifestRead`/`manifestSetFields`).
+   *   2. Look        — the extensions that carry styles (`LookSection`)
+   *                    → design tokens (`DesignSection`) → the raw stylesheet
+   *                    list (`StylesSection`) behind an "Advanced" disclosure
+   *                    (UX review M35's writer-shaped merge, unchanged). The
+   *                    heading stays "Look & style" — it still covers all
+   *                    three subsections — while the tab button itself is
+   *                    shortened to "Look" to pair with "Features" (#243).
+   *   3. Features    — the extensions that carry markdown: toggle, remove,
+   *                    validate, the recommended bundled features, npm /
+   *                    local add (`FeaturesSection`).
+   *   4. Connections — this project's sync surface (remote diagnosis +
+   *                    Test Remote Access; `ProjectConnectionsSection`,
+   *                    self-loading — no controller).
    *
-   * Cross-section refresh: applying/removing a theme changes the active
-   * stylesheet, so Appearance's controller reloads Styles + Design
-   * (`afterThemeChange`); toggling a stylesheet reloads Design
-   * (`afterStyleChange`). Every other refresh is a section reloading its own
-   * state after its own mutation.
+   * #243/#265 — Look and Features are two VIEWS over ONE `extensions:` list
+   * and one verb set, owned by the single `ExtensionsSectionController`
+   * instance (`extensions` below; the `extension*` functions of
+   * `$lib/project-config/project-config-capability`). `afterLookChange`
+   * (a styles-carrying extension was added/removed/toggled/moved → reload
+   * Styles + Design) and `afterStyleChange` (a stylesheet was toggled →
+   * reload Design) are the cross-section refresh hooks; every other refresh
+   * is a section reloading its own state after its own mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`$lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -51,36 +57,31 @@
     styleSetActive,
     manifestRead,
     manifestSetFields,
-    themeListBuiltIn,
-    themeListProject,
-    themeGetActive,
-    themeGetPrevious,
-    themeApply,
-    themeRevert,
-    themeRemove,
-    themeImportFromFolder,
-    themeImportFromFile,
-    themeImportFromUrl,
-    themeReadCss,
-    pluginList,
-    pluginRecommended,
-    pluginValidate,
-    pluginSetEnabled,
-    pluginAddNpm,
-    pluginAddLocal,
+    extensionList,
+    extensionRecommended,
+    extensionListBuiltIn,
+    extensionValidate,
+    extensionAdd,
+    extensionAddLocal,
+    extensionAddBuiltIn,
+    extensionRemove,
+    extensionSetEnabled,
+    extensionReorder,
+    extensionReadCss,
+    extensionImportFromFile,
+    extensionImportFromUrl,
   } from "$lib/project-config/project-config-capability";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
-  import { AppearanceSectionController } from "$lib/routes/appearance-section-controller.svelte";
+  import { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
   import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
-  import { PluginsSectionController } from "$lib/routes/plugins-section-controller.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
-  import AppearanceSection from "$lib/components/config/AppearanceSection.svelte";
+  import LookSection from "$lib/components/config/LookSection.svelte";
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
-  import PluginsSection from "$lib/components/config/PluginsSection.svelte";
+  import FeaturesSection from "$lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
   import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
@@ -88,7 +89,6 @@
     projectDir,
     repoRoot = null,
     toast = null,
-    onThemeApplied,
     onEditRawCss,
     onClose,
     onOpenAccounts,
@@ -97,8 +97,6 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     toast?: ToastController | null;
-    /** Fire after a theme apply so the parent can surface the right toast. */
-    onThemeApplied?: (themeId: string) => void;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
     onEditRawCss?: (cssPath: string) => void;
@@ -118,11 +116,12 @@
 
   const projectDirAccessor = () => projectDir;
 
-  // ── Design — depended on by Appearance's/Styles' cross-refresh hooks,
+  // ── Design — depended on by Extensions'/Styles' cross-refresh hooks,
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => projectListStyles(dir, repoRoot),
+    listExtensions: (dir) => extensionList(dir),
     readFile: (path) => readFile(path),
     writeFile: (path, content) => writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
@@ -162,38 +161,29 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
-  // ── Appearance — refreshes Styles + Design after apply/remove. ─────────
-  const appearance = new AppearanceSectionController({
+  // ── Extensions — ONE list, two views (#243/#265). A change to a look
+  //    refreshes Styles + Design. ─────────────────────────────────────────
+  const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
-    listBuiltIn: () => themeListBuiltIn(),
-    listProject: (dir) => themeListProject(dir),
-    getActive: (dir) => themeGetActive(dir),
-    getPrevious: (dir) => themeGetPrevious(dir),
-    apply: (dir, target) => themeApply(dir, target),
-    revert: (dir) => themeRevert(dir),
-    remove: (dir, id) => themeRemove(dir, id),
-    importFromFolder: (dir) => themeImportFromFolder(dir),
-    importFromFile: (dir) => themeImportFromFile(dir),
-    importFromUrl: (dir, url) => themeImportFromUrl(dir, url),
-    readCss: (dir, source) => themeReadCss(dir, source),
-    onApplied: (themeId) => {
-      onThemeApplied?.(themeId);
-      toast?.success?.("Theme applied — close Project settings to see it in the preview. Use Design to fine-tune.");
+    list: (dir) => extensionList(dir),
+    recommended: () => extensionRecommended(),
+    listBuiltIn: () => extensionListBuiltIn(),
+    validate: (dir) => extensionValidate(dir),
+    add: (dir, specifier, exportName) => extensionAdd(dir, specifier, exportName),
+    addLocal: (dir) => extensionAddLocal(dir),
+    addBuiltIn: (dir, id) => extensionAddBuiltIn(dir, id),
+    remove: (dir, use) => extensionRemove(dir, use),
+    setEnabled: (dir, use, enabled) => extensionSetEnabled(dir, use, enabled),
+    reorder: (dir, order) => extensionReorder(dir, order),
+    readCss: (dir, use) => extensionReadCss(dir, use),
+    importFromFile: (dir) => extensionImportFromFile(dir),
+    importFromUrl: (dir, url) => extensionImportFromUrl(dir, url),
+    onLookAdded: (label) => {
+      toast?.success?.(`${label} added — close Project settings to see it in the preview. Use Design to fine-tune.`);
     },
-    afterThemeChange: async () => {
+    afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
     },
-  });
-
-  // ── Plugins ─────────────────────────────────────────────────────────────
-  const plugins = new PluginsSectionController({
-    projectDir: projectDirAccessor,
-    list: (dir) => pluginList(dir),
-    recommended: () => pluginRecommended(),
-    validate: (dir) => pluginValidate(dir),
-    setEnabled: (dir, ref, enabled) => pluginSetEnabled(dir, ref, enabled),
-    addNpm: (dir, name, exportName) => pluginAddNpm(dir, name, exportName),
-    addLocal: (dir) => pluginAddLocal(dir),
   });
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
@@ -214,28 +204,33 @@
     // Sections load in parallel — none depend on another.
     await Promise.allSettled([
       details.loadDetails(),
-      appearance.loadThemes(),
+      extensions.loadExtensions(),
       styles.loadStyles(),
       design.loadDesign(),
-      plugins.loadPlugins(),
     ]);
   }
 
   const hasProject = $derived(!!projectDir);
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
-  type ProjectSettingsTab = "details" | "look" | "plugins" | "connections";
+  //
+  // #243/#265: "Look" and "Features" are the two author-facing views over
+  // the ONE `extensions` controller above. They stay separate TAB BUTTONS
+  // rather than nesting a second tab bar inside a single "Extensions" entry —
+  // this tab bar already gives them exactly that with no new navigation
+  // component. See `docs/ux-design-contract.md` sections 9 and 11.
+  type ProjectSettingsTab = "details" | "look" | "features" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },
-    { id: "look", label: "Look & style" },
-    { id: "plugins", label: "Plugins" },
+    { id: "look", label: "Look" },
+    { id: "features", label: "Features" },
     { id: "connections", label: "Connections" },
   ];
   let activeTab = $state<ProjectSettingsTab>("details");
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
-    plugins: undefined,
+    features: undefined,
     connections: undefined,
   });
 
@@ -298,13 +293,14 @@
       {/if}
 
       {#if activeTab === "look"}
-        <!-- UX review M35: theme grid → design tokens → stylesheet list,
-             merged under one writer-shaped "Look & style" heading. The
-             stylesheet list is a plain always-visible section — project
-             settings has no collapsible sections. -->
+        <!-- UX review M35: the Look grid → design tokens → stylesheet list,
+             merged under one writer-shaped "Look & style" heading (the tab
+             button itself is shortened to "Look", #243 — see the header
+             comment). The stylesheet list is a plain always-visible section
+             - project settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
-          <AppearanceSection controller={appearance} />
+          <LookSection controller={extensions} />
           <DesignSection controller={design} />
           <div class="advanced">
             <h4 class="advanced-heading">Stylesheets</h4>
@@ -315,8 +311,8 @@
         </section>
       {/if}
 
-      {#if activeTab === "plugins"}
-        <PluginsSection controller={plugins} />
+      {#if activeTab === "features"}
+        <FeaturesSection controller={extensions} />
       {/if}
 
       {#if activeTab === "connections"}

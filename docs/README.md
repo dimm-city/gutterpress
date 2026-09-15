@@ -73,6 +73,12 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **My CSS looks right but nothing painted in the PDF**
 → [Known limitations](./known-limitations.md) — the browser-level gaps that fail silently
 
+**Check whether a core change moved any rendered page**
+→ [Render-parity gate](./render-parity-gate.md) — usage, report/waiver format, CI wiring
+
+**Check that the preview paginates like the PDF**
+→ [Preview/print parity gate](./native-parity-gate.md) — outcomes: clean, exact-fit boundary, divergence
+
 ## Quick Reference
 
 ### Common Commands
@@ -108,13 +114,14 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 
 ### Common Callouts
 
-> **Plugin required:** `> [!note]`-style GitHub alert syntax is **not** part
-> of core Gutterpress — it lives in the separate, Dimm City plugin.
-> Without that plugin configured, these print as literal blockquote text
-> (`[!note] ...`). See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md)
-> to add it, or use `@section .callout-tip` … `@end-section` (a plain marker
-> core always renders — see [User Guide: Chapter 8 — Publishing](../examples/gutterpress-user-guide/08-publishing.md))
-> or a plain `>` blockquote for a core-only callout.
+> **Bundled, off by default:** `> [!NOTE]`-style GitHub alert syntax ships
+> with Gutterpress as the **Callouts** feature (`gutterpress-gfm-alerts`).
+> Enable it and the five GitHub types render as unbranded `.gp-alert` boxes
+> that any theme can restyle; leave it off and they print as literal
+> blockquote text, exactly as before. See
+> [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md),
+> or use `@section .callout-tip` … `@end-section` (a plain marker core always
+> renders — see [User Guide: Chapter 8 — Publishing](../examples/gutterpress-user-guide/08-publishing.md)).
 
 ```markdown
 > [!note]      Blue - General information
@@ -138,6 +145,8 @@ docs/
 ├── migrations/                            # Migration guides
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
+├── render-parity-gate.md                  # Render-parity CI gate: usage, report/waiver format
+├── native-parity-gate.md                  # Preview↔print parity gate: outcomes, exact-fit rule
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides

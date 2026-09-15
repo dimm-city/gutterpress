@@ -4,6 +4,13 @@
 
 The `source.files` property in `manifest.yaml` lets you specify exactly which markdown files to include in your document and in what order.
 
+> **Looking for how the *stylesheet* is chosen, not the markdown files?** That's
+> the separate `styles:` field, covered in the
+> [schema reference](./schema-autocomplete.md#styles-array-of-strings). Its
+> fallback (when `styles:` is omitted) checks `styles/book.css` first, then
+> four **legacy** `css/*.css` names kept only so pre-existing projects keep
+> resolving to the same file — new projects should not rely on them.
+
 ## Two Modes
 
 ### Mode 1: Explicit File List (Recommended for Print)

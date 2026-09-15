@@ -1,4 +1,4 @@
-import { test, expect, afterEach } from "bun:test";
+import { test, expect, afterEach, describe } from "bun:test";
 import { mkdtemp, writeFile, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,6 +109,103 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
   // The explicit list is what gets INLINED; the conventional fallback is not.
   expect(html).toContain("--from-custom");
   expect(html).not.toContain("--from-book-css");
+});
+
+// #238 — plugin `styles` files enter the SAME asset-inline pipeline a
+// manifest `styles:` entry does, not just string concatenation. These
+// characterize renderChapters's new `pluginStylePaths` option directly
+// (build-runner.ts / preview/file-watcher.ts are the only real callers, both
+// thin wrappers around this).
+describe("renderChapters plugin styles (#238)", () => {
+  test("a plugin stylesheet's url() font is embedded as a data: URI, exactly like a project stylesheet's", async () => {
+    const dir = await makeProject();
+    await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
+
+    const pluginDir = join(dir, "plugin");
+    await mkdir(join(pluginDir, "fonts"), { recursive: true });
+    // Real bytes don't matter — inlineStyles base64-encodes whatever is there.
+    await writeFile(join(pluginDir, "fonts", "custom.woff2"), Buffer.from("not-a-real-font"));
+    await writeFile(
+      join(pluginDir, "plugin.css"),
+      `@font-face { font-family: "Plugin Font"; src: url("fonts/custom.woff2") format("woff2"); }`,
+      "utf8",
+    );
+
+    const html = await renderChapters(dir, {
+      files: ["01.md"],
+      pluginStylePaths: [join(pluginDir, "plugin.css")],
+    });
+
+    // Resolved + embedded (asset-inline.ts), not left as a bare relative path
+    // an opaque string would have no way to resolve.
+    expect(html).toContain("data:font/woff2;base64,");
+    expect(html).not.toContain('url("fonts/custom.woff2")');
+  });
+
+  test("plugin file styles cascade BEFORE the project's own stylesheet, same slot the legacy css string held", async () => {
+    const dir = await makeProject();
+    await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
+    await mkdir(join(dir, "styles"), { recursive: true });
+    await writeFile(join(dir, "styles", "book.css"), ".from-project {}", "utf8");
+    const pluginDir = join(dir, "plugin");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.css"), ".from-plugin-file {}", "utf8");
+
+    const html = await renderChapters(dir, {
+      files: ["01.md"],
+      styles: ["styles/book.css"],
+      pluginCss: ".from-plugin-string {}",
+      pluginStylePaths: [join(pluginDir, "plugin.css")],
+    });
+
+    const fileIdx = html.indexOf(".from-plugin-file");
+    const stringIdx = html.indexOf(".from-plugin-string");
+    const projectIdx = html.indexOf(".from-project");
+    expect(fileIdx).toBeGreaterThan(-1);
+    expect(stringIdx).toBeGreaterThan(-1);
+    expect(projectIdx).toBeGreaterThan(-1);
+    expect(fileIdx).toBeLessThan(projectIdx);
+    expect(stringIdx).toBeLessThan(projectIdx);
+  });
+
+  test("omitting pluginStylePaths (every pre-existing caller) is a byte-identical no-op", async () => {
+    const dir = await makeProject();
+    await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
+
+    const withoutOption = await renderChapters(dir, {
+      files: ["01.md"],
+      pluginCss: ".legacy-string-plugin {}",
+    });
+    const withEmptyArray = await renderChapters(dir, {
+      files: ["01.md"],
+      pluginCss: ".legacy-string-plugin {}",
+      pluginStylePaths: [],
+    });
+
+    expect(withEmptyArray).toBe(withoutOption);
+    expect(withoutOption).toContain(".legacy-string-plugin {}");
+  });
+
+  test("onCssAssets and onStyleWarnings surface plugin-sourced entries too", async () => {
+    const dir = await makeProject();
+    await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
+    const pluginDir = join(dir, "plugin");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.css"),
+      `.remote { background: url("https://example.com/x.png"); }`,
+      "utf8",
+    );
+
+    const warnings: string[] = [];
+    await renderChapters(dir, {
+      files: ["01.md"],
+      pluginStylePaths: [join(pluginDir, "plugin.css")],
+      onStyleWarnings: (w) => warnings.push(...w),
+    });
+
+    expect(warnings.some((w) => w.includes("example.com/x.png"))).toBe(true);
+  });
 });
 
 /**

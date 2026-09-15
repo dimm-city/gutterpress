@@ -191,7 +191,7 @@ export async function buildHostEditorProjection(
   const config = resolveConfig({}, manifest);
 
   const pluginErrors: EditorProjectionPluginError[] = [];
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, manifestDir, (pluginRef, error) => {
+  const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, manifestDir, (pluginRef, error) => {
     pluginErrors.push({ pluginRef, message: error.message });
   });
 

@@ -28,11 +28,4 @@ export interface PreviewServerOptions {
   noWatch: boolean;
   /** Automatically open browser (default: true) */
   openBrowser: boolean;
-  /**
-   * CLI `--engine` override, fed into {@link resolveConfig} the same way
-   * `build`'s does — preview and PDF switch together, per project, behind
-   * one flag. `undefined` defers to the
-   * manifest's `engine:` field (or the "native" default).
-   */
-  engine?: "paged" | "native";
 }

@@ -8,10 +8,10 @@ import { gzipSync, strToU8 } from "fflate";
 
 import { loadManifest, resolveConfig } from "./manifest";
 import {
-  addNpmPluginWithOptions as addNpmPlugin,
-  listProjectPlugins,
-  validateProjectPlugins,
-} from "./plugin-manager";
+  addExtension as addNpmPlugin,
+  listProjectExtensions as listProjectPlugins,
+  validateProjectExtensions as validateProjectPlugins,
+} from "./extension-manager";
 import {
   finalizeNpmPluginInstall,
   installNpmPlugin,
@@ -243,7 +243,7 @@ async function loadedMarker(
   key: string,
 ): Promise<unknown> {
   const loaded = await loadPlugin(
-    { name, version, priority: 100, options: {} },
+    { use: `${name}@${version}`, name, version, options: {} },
     dir,
   );
   const md: Record<string, unknown> = {};
@@ -272,7 +272,7 @@ describe("npm plugin installation", () => {
 
     const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    expect(result).toEqual({ ref: name, kind: "npm", enabled: true, version });
+    expect(result).toMatchObject({ use: `${name}@${version}`, name, kind: "npm", enabled: true, version });
     expect(fixture.calls).toEqual([
       `https://registry.npmjs.org/${encodeURIComponent(name)}`,
       `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`,
@@ -284,11 +284,12 @@ describe("npm plugin installation", () => {
     expect(existsSync(path.join(dir, "INSTALL_SCRIPT_RAN"))).toBe(false);
 
     const listed = await listProjectPlugins(dir);
-    expect(listed).toEqual([{ ref: name, kind: "npm", enabled: true, version }]);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ use: `${name}@${version}`, kind: "npm", enabled: true, version });
     const resolved = resolveConfig({}, await loadManifest(dir));
-    expect(resolved.plugins[0]?.version).toBe(version);
+    expect(resolved.extensions[0]?.version).toBe(version);
     expect((await validateProjectPlugins(dir))[0]?.ok).toBe(true);
-    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain(`version: ${version}`);
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain(`${name}@${version}`);
   });
 
   test("rejects an integrity mismatch and leaves no partial install or manifest entry", async () => {
@@ -380,7 +381,7 @@ describe("npm plugin installation", () => {
       exportName: "full",
     });
 
-    expect(result).toMatchObject({ ref: name, version: "1.0.0", export: "full" });
+    expect(result).toMatchObject({ use: `${name}@1.0.0`, version: "1.0.0", export: "full" });
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain("export: full");
     expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
   });
@@ -541,7 +542,7 @@ describe("npm plugin installation", () => {
       );
 
       await expect(
-        loadPlugin({ name, version: "1.0.0", priority: 100, options: {} }, dir),
+        loadPlugin({ use: `${name}@1.0.0`, name, version: "1.0.0", options: {} }, dir),
       ).rejects.toThrow(/ambient|undeclared|Cannot find package/i);
     }
   });
@@ -1438,7 +1439,7 @@ describe("npm plugin installation", () => {
     releaseFirst();
     await Promise.all([firstInstall, secondInstall]);
 
-    expect((await listProjectPlugins(dir)).map((entry) => entry.ref)).toEqual([first, second]);
+    expect((await listProjectPlugins(dir)).map((entry) => entry.name)).toEqual([first, second]);
   });
 
   test("blocks /tmp/node_modules ESM and CommonJS substitution under Node and compiled Bun", async () => {

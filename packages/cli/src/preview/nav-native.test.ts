@@ -61,7 +61,6 @@ testIf(
     try {
       handle = await startPreviewServer({
         input: FIXTURE,
-        engine: "native",
         port: 0,
         host: "127.0.0.1",
         installSignalHandlers: false,

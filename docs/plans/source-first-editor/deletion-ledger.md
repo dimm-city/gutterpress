@@ -4345,3 +4345,28 @@ $ bun run typecheck
 was re-run at the HEAD SHA stated in this section's header and its output
 pasted verbatim above; none is summarized from memory or a prior lane's
 claim.
+
+## Reconciliation with main 0.10.9 - 2026-09-15 - extension rail over typed IPC
+
+Merged `main` (0.10.9, head `55d0eca9`) into the branch. Main's #265 replaced
+the plugin and theme managers with ONE `extensions:` rail, and its desktop
+still spoke to it over `src/routes/api/extension/**` + `snip/read-extension`
+HTTP routes - a route tree SFE-P5c/P5d had already deleted on this branch.
+The rail is ported onto the branch's own transport instead:
+
+| Deleted | Replaced by |
+| --- | --- |
+| `electron/api/plugin.ts` (`plugin:*`, 6 channels) | `electron/api/extension.ts` (`extension:*`, 13 channels) |
+| `electron/api/theme.ts` (`theme:*`, 11 channels) | same |
+| `src/routes/api/extension/**` (main's 13 routes) | same |
+| `src/routes/api/snip/read-extension` (main) | `snip:readExtension` in `electron/api/snip.ts`; `snip:list` now calls `listMergedSnippets` |
+| `tests/platform/plugin-ipc.test.ts`, main's `extension-add-route.test.ts` | `tests/platform/extension-ipc.test.ts` (same cases, over the handler) |
+| `project-config-capability.ts`'s `plugin*`/`theme*` functions (17) | `extension*` functions (13) + `snipReadExtension` |
+
+Net: 17 handler functions and 17 bridge methods deleted, 14 added; every
+`ProjectSettingsView` dependency is a named capability function, no `api.*`
+value import returned with the merge. The editor projection gained one
+token-kind row (`layout_component_open` -> `"plugin-marker"`) so main's
+declared containers (#240) project as a chip plus a mounted wrapper rather
+than a diagnostic; `markers.js` threads the closing line onto their close
+tokens the way the branch already did for core scopes.

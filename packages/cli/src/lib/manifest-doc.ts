@@ -4,7 +4,7 @@
  * named sequence node exists.
  *
  * One implementation, three historical call sites (DRY): the manifest-config,
- * plugin-manager, and theme-manager modules each carried a byte-identical
+ * and extension-manager modules each carried a byte-identical
  * `manifestPathFor` + `loadDoc`, and plugin/theme carried a copy of the
  * "ensure this seq exists" helper differing only by key.
  *
@@ -70,7 +70,7 @@ export async function writeManifestDoc(
   }
 }
 
-/** The named sequence node, creating (and attaching) an empty one if missing. */
+/** The named top-level sequence node, creating (and attaching) an empty one if missing. */
 export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
   let seq = doc.get(key, true);
   if (!isSeq(seq)) {
@@ -89,7 +89,7 @@ export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
  * array entry would be).
  *
  * ARCH finding #25: this was two near-duplicate helpers — `unwrapScalar`
- * (manifest-config.ts) and `styleHrefOf` (theme-manager.ts) — with the same
+ * (manifest-config.ts) and `styleHrefOf` (the theme manager, since retired) — with the same
  * shape-sniffing logic. One implementation here, consumed by both.
  */
 export function scalarString(item: unknown): string | null {

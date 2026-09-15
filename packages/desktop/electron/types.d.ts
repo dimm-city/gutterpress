@@ -67,12 +67,11 @@ import type {
   SavedTemplateInfo,
   SnippetEntry,
   ProjectConfigFields,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
@@ -201,6 +200,7 @@ declare global {
       snip: {
         list(projectDir: string): Promise<SnippetEntry[]>;
         read(projectDir: string, fileName: string): Promise<string>;
+        readExtension(projectDir: string, source: { kind: "extension"; ref: string }, fileName: string): Promise<string>;
         save(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
         delete(projectDir: string, fileName: string): Promise<{ ok: boolean }>;
       };
@@ -210,26 +210,20 @@ declare global {
         inspect(imagePath: string): Promise<MediaImageDetails | null>;
         importImage(projectDir: string, src: string): Promise<{ src: string; copied: boolean }>;
       };
-      plugin: {
-        list(projectDir: string): Promise<ProjectPluginEntry[]>;
-        setEnabled(projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }>;
-        addNpm(projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null>;
-        addLocal(projectDir: string): Promise<ProjectPluginEntry | null>;
-        validate(projectDir: string): Promise<PluginValidationResult[]>;
-        recommended(): Promise<RecommendedPlugin[]>;
-      };
-      theme: {
-        listBuiltIn(): Promise<ThemeInfo[]>;
-        listProject(projectDir: string): Promise<ThemeInfo[]>;
-        getActive(projectDir: string): Promise<ThemeInfo | null>;
-        apply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
-        importFromFolder(projectDir: string): Promise<ThemeInfo | null>;
-        importFromFile(projectDir: string): Promise<ThemeImportResult | null>;
-        importFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
-        readCss(projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string>;
-        remove(projectDir: string, id: string): Promise<{ ok: true }>;
-        getPrevious(projectDir: string): Promise<ThemeInfo | null>;
-        revert(projectDir: string): Promise<ThemeInfo>;
+      extension: {
+        list(projectDir: string): Promise<ProjectExtensionEntry[]>;
+        recommended(): Promise<RecommendedExtension[]>;
+        listBuiltIn(): Promise<BuiltInStyleSet[]>;
+        validate(projectDir: string): Promise<ExtensionValidationResult[]>;
+        add(projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null>;
+        addLocal(projectDir: string): Promise<ProjectExtensionEntry | null>;
+        addBuiltIn(projectDir: string, id: string): Promise<ProjectExtensionEntry>;
+        remove(projectDir: string, use: string): Promise<{ ok: true }>;
+        setEnabled(projectDir: string, use: string, enabled: boolean): Promise<{ ok: true }>;
+        reorder(projectDir: string, order: string[]): Promise<{ ok: true }>;
+        readCss(projectDir: string, use: string): Promise<string>;
+        importFromFile(projectDir: string): Promise<ExtensionImportResult | null>;
+        importFromUrl(projectDir: string, url: string): Promise<ExtensionImportResult>;
       };
       vcs: {
         enableVersionHistory(projectDir: string): Promise<unknown>;
@@ -318,7 +312,7 @@ declare global {
        * and returns an unsubscribe fn.
        */
       watchFolder(path: string, cb: () => void): () => void;
-      // tpl:*, snip:*, plugin:*, theme:*, project:listStyles, and local
+      // tpl:*, snip:*, extension:*, project:listStyles, and local
       // version history (#13 — enableVersionHistory, listSnapshotsPage,
       // restoreSnapshot, saveSnapshot) round-tripped through SvelteKit
       // server routes for a while (Phase 2D/2E) and are back on this bridge

@@ -19,9 +19,9 @@
  */
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
-import markerPlugin, { MARKER_CSS } from "./markers.js";
+import markerPlugin, { MARKER_CSS, buildDeclaredMarkerRegistry } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
-import { createMarkdownRenderer } from "./renderer";
+import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { assembleBookHtml } from "./assemble";
 
 interface LayoutWarning {
@@ -33,7 +33,6 @@ interface LayoutWarning {
 
 interface PagedEnv {
   layoutWarnings?: LayoutWarning[];
-  __colSplitDepth?: number;
   __layoutMarkersUsed?: boolean;
   [key: string]: unknown;
 }
@@ -134,10 +133,10 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     expect(t.map).toBeNull();
   });
 
-  test("layout_section_open carries the marker line alongside hasColumnBreak", () => {
+  test("layout_section_open carries the marker line", () => {
     const { tokens } = parsePaged("@page\n@section S\nHi\n");
     const t = findToken(tokens, "layout_section_open")!;
-    expect(t.meta).toEqual({ hasColumnBreak: false, line: 2 });
+    expect(t.meta).toEqual({ line: 2 });
     expect(t.map).toBeNull();
   });
 
@@ -150,7 +149,7 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
 
   test("layout_column_break carries the marker line", () => {
     const { tokens } = parsePaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2\nA\n@column-break\nB\n@end-section\n"
     );
     const t = findToken(tokens, "layout_column_break")!;
     expect(t.meta).toEqual({ line: 3 });
@@ -1020,211 +1019,20 @@ describe("@page-break / @column-break output", () => {
     );
   });
 
-  test("@column-break outside a .col-split section emits a fixed marker div", () => {
+  test("@column-break emits a fixed marker div", () => {
     const { html } = renderPaged("@section\nA\n@column-break\nB\n@end-section\n");
     expect(html).toContain(
       '<div class="gp-column-break" aria-hidden="true"></div>'
     );
   });
 
-  test("@column-break inside a .col-split section rewrites into sibling .col divs", () => {
+  test("@column-break inside a .gp-columns-2 section is the same marker div, never a wrapper", () => {
     const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2\nA\n@column-break\nB\n@end-section\n"
     );
     expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
-    );
-  });
-
-  test("@column-break with NO col-split class does not open .col wrappers even mid-section", () => {
-    const { html } = renderPaged(
-      "@section .two-column\nA\n@column-break\nB\n@end-section\n"
-    );
-    expect(html).not.toContain('class="col"');
-    expect(html).toContain(
-      '<div class="gp-column-break" aria-hidden="true"></div>'
-    );
-  });
-
-  test("a .col-split section with NO @column-break renders as a single ordinary section", () => {
-    const { html } = renderPaged("@section .col-split\nA\n@end-section\n");
-    expect(html).toBe('<div class="section col-split"><p>A</p>\n</div>');
-  });
-});
-
-describe("column-split depth isolation (env.__colSplitDepth, not module state)", () => {
-  test("depth is reset to 0 at the start of each render, even when no @page/@chapter marker appears", () => {
-    const { env } = renderPaged("@section\nA\n");
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("opening a @page unconditionally resets depth to 0 on env (defensive reset, not just lazy init)", () => {
-    const { env } = renderPaged("@page\nA\n");
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("a balanced .col-split render nets back to its starting depth (0 on a fresh env)", () => {
-    const { env } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("two independent renders on fresh envs (same md instance) never see each other's depth", () => {
-    const md = new MarkdownIt({ html: true });
-    md.use(markerPlugin);
-
-    const env1: PagedEnv = {};
-    const html1 = md.render(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      env1
-    );
-    expect(html1).toContain('<div class="col">');
-    expect(env1.__colSplitDepth).toBe(0);
-
-    const env2: PagedEnv = {};
-    const html2 = md.render("@page\nA\n", env2);
-    expect(html2).toBe('<div class="page"><p>A</p>\n</div>');
-    expect(env2.__colSplitDepth).toBe(0);
-  });
-
-  test("layout_page_open defensively resets a poisoned/leaked depth back to 0", () => {
-    // Simulate a caller reusing one `env` object across sequential render()
-    // calls and something having left a stale, nonzero depth on it. The
-    // layout_page_open renderer rule resets depth to 0 unconditionally, so a
-    // .col-split section starting fresh under a NEW @page renders with
-    // exactly one level of column wrapping, unaffected by the stale value.
-    const env: PagedEnv = { __colSplitDepth: 3 };
-    const { html } = renderPaged(
-      "@page\n@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toBe(
-      '<div class="page"><div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n</div>'
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("layout_chapter_open also defensively resets a poisoned depth back to 0", () => {
-    const env: PagedEnv = { __colSplitDepth: 5 };
-    const { html } = renderPaged(
-      "@chapter\n@page\n@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toContain('<div class="col">');
-    expect(env.__colSplitDepth).toBe(0);
-  });
-
-  test("a stale nonzero depth is cleared before a render whose first marker is a .col-split @section", () => {
-    const env: PagedEnv = { __colSplitDepth: 2 };
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n",
-      {},
-      env
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
-    );
-    expect(env.__colSplitDepth).toBe(0);
-  });
-});
-
-describe("col-split has-column-break detection (characterization for the transform-time precompute)", () => {
-  // These pin the exact rendered output of the O(n) forward scan currently
-  // done per-section inside the layout_section_open renderer rule
-  // (:615-622). A refactor that precomputes "does this section contain a
-  // column-break" once, during the layout_transform core pass, must produce
-  // byte-identical output for every case below — in particular the flag
-  // must be scoped to exactly one section's open/close pair and must never
-  // leak onto a sibling, a @continue continuation, or a later section.
-
-  test("a col-split section with TWO column-breaks (three columns) col-wraps every segment", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("two independent col-split sections, both with breaks, back to back: each gets its own column wrapping, depth resets between them", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@column-break\nD\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split"><div class="col">\n<p>C</p>\n</div>' +
-        '<div class="col">\n<p>D</p>\n</div></div>\n'
-    );
-  });
-
-  test("a col-split section WITHOUT a break followed by one WITH a break: the flag must not leak from the second section onto the first (or vice versa)", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@end-section\n" +
-        "@section .col-split\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split"><div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("a col-split section WITH a break followed by one WITHOUT: order reversed, still no leak", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split"><p>C</p>\n</div>'
-    );
-  });
-
-  test("@continue on a col-split section: the continuation section's own has-column-break is evaluated independently of the original section's", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@column-break\nB\n@continue\nC\n@end-section\n"
-    );
-    // First section had a break -> column-wrapped. The continuation section
-    // (no break inside it) does not -> plain renderToken output, even though
-    // it inherits the .col-split class from the section it continues.
-    expect(html).toBe(
-      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split gp-continued"><p>C</p>\n</div>'
-    );
-  });
-
-  test("@continue on a col-split section where only the CONTINUATION has a break", () => {
-    const { html } = renderPaged(
-      "@section .col-split\nA\n@continue\nB\n@column-break\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split gp-continued"><div class="col">\n<p>B</p>\n</div>' +
-        '<div class="col">\n<p>C</p>\n</div></div>\n'
-    );
-  });
-
-  test("a column-break outside of any col-split section (plain .section) never sets a stray flag that could leak forward", () => {
-    const { html } = renderPaged(
-      "@section\nA\n@column-break\nB\n@end-section\n" +
-        "@section .col-split\nC\n@end-section\n"
-    );
-    expect(html).toBe(
-      '<div class="section"><p>A</p>\n' +
-        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>' +
-        '<div class="section col-split"><p>C</p>\n</div>'
+      '<div class="section gp-columns-2"><p>A</p>\n' +
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
     );
   });
 });
@@ -1280,24 +1088,23 @@ describe("HTML escaping", () => {
     expect(attr(html, "data-note")).toBe("a&lt;b&amp;c");
   });
 
-  test("a quote/angle bracket smuggled into a .col-split section's class via a mismatched-quote class=value must be escaped in the rendered class attribute, not break out of it", () => {
+  test("a quote/angle bracket smuggled into a section's class via a mismatched-quote class=value must be escaped in the rendered class attribute, not break out of it", () => {
     // parseMarkerLine's tokenizer only treats a quote character as a
     // delimiter for ITS OWN quote type: while inside a `'...'` run, a literal
     // `"` character is copied straight into the token body (see the
     // single/double-quoted key=value tests above). That lets an author's
     // (or a template's) class value carry a real `"` plus `<`/`>` into
-    // `token.attrGet('class')`. The col-split renderer branch must escape
-    // that value with the file's own `escapeAttr` before interpolating it,
-    // the same as every other attribute this file emits — it must never
-    // reach the output raw and break out of the `class="..."` attribute.
+    // `token.attrGet('class')`. The section renders through markdown-it's own
+    // renderToken, whose attribute escaping must keep that value from
+    // reaching the output raw and breaking out of the `class="..."` attribute.
     const { html } = renderPaged(
-      "@section .col-split class='x\"><y'\nA\n@column-break\nB\n@end-section\n"
+      "@section .gp-columns-2 class='x\"><y'\nA\n@column-break\nB\n@end-section\n"
     );
     // The raw, unescaped characters must never appear as literal HTML.
     expect(html).not.toContain('x"><y');
     expect(html).toBe(
-      '<div class="section col-split x&quot;&gt;&lt;y"><div class="col">\n<p>A</p>\n</div>' +
-        '<div class="col">\n<p>B</p>\n</div></div>\n'
+      '<div class="section gp-columns-2 x&quot;&gt;&lt;y"><p>A</p>\n' +
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
     );
   });
 });
@@ -1710,6 +1517,80 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
   });
 });
 
+// unknown_gp_class (#226): a gp-* class that is not part of core's published
+// vocabulary previously rendered as a silent no-op — an author typed
+// `@section .gp-columns-all` before the class existed and nothing said why.
+// Same gp_pin_scope_check core rule as pin_outside_page, but unconditional
+// (checked everywhere, not gated by @page/@spread depth) and keyed on the
+// `gp-` prefix only: `.dc-*`, `.fg-*`, and unprefixed classes are never this
+// check's business.
+describe("unknown_gp_class warning (gp_pin_scope_check)", () => {
+  function gpClassWarnings(src: string): { all: LayoutWarning[]; unknown: LayoutWarning[] } {
+    const md = createMarkdownRenderer();
+    const env: PagedEnv = {};
+    md.render(src, env);
+    const all = env.layoutWarnings ?? [];
+    return { all, unknown: all.filter((w) => w.type === "unknown_gp_class") };
+  }
+
+  test("an unknown gp-* class warns, naming the element and a did-you-mean", () => {
+    const { unknown } = gpClassWarnings("@section .gp-column-2\n\ntext\n");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.message).toBe(
+      'Unknown class "gp-column-2" on @section. Did you mean "gp-columns-2"?'
+    );
+  });
+
+  test("a document with no markers still warns for a {.gp-typo} image", () => {
+    const { all, unknown } = gpClassWarnings("![w](w.png){.gp-typo}\n");
+    expect(all).toEqual(unknown); // fires even though no markers are used
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.message).toContain('Unknown class "gp-typo" on an image.');
+  });
+
+  test("known classes across both core CSS files never warn, including marker-only ones", () => {
+    const src = [
+      "@page",
+      "",
+      "@section {.gp-columns-2 .gp-grid-3}",
+      "",
+      "text",
+      "",
+      "@column-break",
+      "",
+      "more text",
+      "",
+      "@end-section",
+      "",
+      "@section Notes",
+      "",
+      "content",
+      "",
+      "@continue",
+      "",
+      "more content",
+      "",
+      "@end-section",
+      "",
+      "![a](a.png){.gp-left .gp-small .gp-tight .gp-shape}",
+      "",
+      "![b](b.png){.gp-pin .gp-top .gp-behind}",
+      "",
+      "![c](c.png){.gp-bleed .gp-flush}",
+      "",
+      "@page-break",
+      "",
+    ].join("\n");
+    const { unknown } = gpClassWarnings(src);
+    expect(unknown).toEqual([]);
+  });
+
+  test("a non-gp- class never warns, however unusual", () => {
+    const { unknown } = gpClassWarnings("![w](w.png){.dc-panel .fg-art-top .made-up-class}\n");
+    expect(unknown).toEqual([]);
+  });
+});
+
 /**
  * The markdown-it-attrs `{...}` spelling on core marker arguments.
  *
@@ -1959,5 +1840,528 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
     test("a document with no core markers at all is never scanned (deliberately conservative)", () => {
       expect(warnings("@secton .two-column\n\ntext\n")).toEqual([]);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #240 — declarative container components in core.
+//
+// Two layers, tested separately:
+//   - `buildDeclaredMarkerRegistry` (pure data validation: collisions,
+//     alias/preset/deprecated resolution) — unit-tested directly below.
+//   - the `layout_transform` dispatch it feeds (`renderPaged`/`parsePaged`
+//     with `{ declaredMarkers }`, exactly like `preferPagesInSpreads` above)
+//     — parsing/rendering behavior, tested in the second describe block.
+//
+// `data-source-range`/`data-chapter-src` threading (the issue's central
+// "hand-built wrappers silently drop them" complaint) is proven separately,
+// against the REAL pipeline, in source-range.test.ts — see the describe
+// block there titled "declared markers (#240)".
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildDeclaredMarkerRegistry (#240)", () => {
+  describe("collisions fail at load time, naming both sides (P2)", () => {
+    test("a declared name shadowing a core reserved name names the plugin and the core name", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([{ pluginName: "dc-plugin", markers: { section: { class: "x" } } }]);
+      expect(build).toThrow(/dc-plugin/);
+      expect(build).toThrow(/@section/);
+      expect(build).toThrow(/core Gutterpress marker name/);
+    });
+
+    test("every one of the eight core reserved names is rejected", () => {
+      // "end-section" hits the earlier, ALSO-correct "end- is reserved for
+      // an auto-derived closer" rejection first (validateDeclaredMarkerName
+      // runs before the KNOWN_KINDS check) — still a rejection, just a
+      // different true reason, so it gets its own assertion below.
+      const coreNames = ["chapter", "spread", "page", "section", "continue", "page-break", "column-break"];
+      for (const name of coreNames) {
+        expect(() =>
+          buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { [name]: {} } }])
+        ).toThrow(/core Gutterpress marker name/);
+      }
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "end-section": {} } }])
+      ).toThrow(/reserved/);
+    });
+
+    test("two different plugins declaring the same name names both plugins", () => {
+      const build = () =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "plugin-a", markers: { callout: { class: "a-alert" } } },
+          { pluginName: "plugin-b", markers: { callout: { class: "b-alert" } } },
+        ]);
+      expect(build).toThrow(/plugin-a/);
+      expect(build).toThrow(/plugin-b/);
+      expect(build).toThrow(/@callout/);
+    });
+
+    test("a name starting with `end-` is rejected — reserved for another marker's auto-derived closer", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "end-foo": { class: "x" } } }])
+      ).toThrow(/reserved/);
+    });
+
+    test("an invalid marker name (uppercase) is rejected before any collision check runs", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { Callout: { class: "x" } } }])
+      ).toThrow(/invalid name/);
+    });
+  });
+
+  describe("container shape validation", () => {
+    test("rejects a declaration that is not a plain object", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: "oops" } }])
+      ).toThrow(/is not a plain object/);
+    });
+
+    test("rejects an invalid `tag`", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { tag: "DIV" } } }])
+      ).toThrow(/invalid `tag`/);
+    });
+
+    test("rejects a `class` that is not a string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { class: 5 } } }])
+      ).toThrow(/`class`/);
+    });
+
+    test("rejects `variants` that is not a plain object", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { callout: { variants: ["x"] } } }])
+      ).toThrow(/`variants`/);
+    });
+
+    test("rejects a variant whose value is not a string", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { variants: { note: 5 } } } },
+        ])
+      ).toThrow(/variant "note"/);
+    });
+
+    test("rejects a `label` with no `class`", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { label: { from: "attr:label" } } } },
+        ])
+      ).toThrow(/label\.class/);
+    });
+
+    test('rejects a `label.from` that is not "attr:<name>"', () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { label: { class: "x", from: "name" } } } },
+        ])
+      ).toThrow(/label\.from/);
+    });
+
+    test("rejects an unsupported `autoCloseAt` value", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { autoCloseAt: ["page"] } } },
+        ])
+      ).toThrow(/unsupported `autoCloseAt` value/);
+    });
+
+    test("rejects `autoCloseAt` that is not an array", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          { pluginName: "p", markers: { callout: { autoCloseAt: "eof" } } },
+        ])
+      ).toThrow(/`autoCloseAt`/);
+    });
+  });
+
+  describe("alias resolution", () => {
+    test("aliasing an unknown marker throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([{ pluginName: "p", markers: { "dm-note": { alias: "collout" } } }])
+      ).toThrow(/unknown marker "@collout"/);
+    });
+
+    test("aliasing an alias (chained) throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          {
+            pluginName: "p",
+            markers: {
+              callout: { class: "dc-alert" },
+              "dm-note": { alias: "callout" },
+              "dm-note-2": { alias: "dm-note" },
+            },
+          },
+        ])
+      ).toThrow(/itself an alias/);
+    });
+
+    test("aliasing a deprecated marker throws", () => {
+      expect(() =>
+        buildDeclaredMarkerRegistry([
+          {
+            pluginName: "p",
+            markers: {
+              "roll-table": { deprecated: "gone" },
+              "dice-table": { alias: "roll-table" },
+            },
+          },
+        ])
+      ).toThrow(/deprecated/);
+    });
+
+    test("an alias may target a marker declared by a DIFFERENT plugin, regardless of load order", () => {
+      const registry = buildDeclaredMarkerRegistry([
+        { pluginName: "plugin-alias", markers: { "dm-note": { alias: "callout", preset: { variant: "dm" } } } },
+        { pluginName: "plugin-base", markers: { callout: { class: "dc-alert", variants: { dm: "dc-dm-note" } } } },
+      ]);
+      expect(registry.get("dm-note")).toMatchObject({ baseKind: "callout", presetVariant: "dm" });
+    });
+  });
+
+  describe("resolved shapes — the issue's own example table", () => {
+    const sources = [
+      {
+        pluginName: "dc-components",
+        markers: {
+          callout: {
+            tag: "div",
+            class: "dc-alert",
+            variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+            label: { class: "dc-alert-label", from: "attr:label" },
+            autoCloseAt: ["eof"],
+          },
+          sidebar: { tag: "aside", class: "dc-sidebar" },
+          lede: { class: "dc-intro" },
+          "dm-note": { alias: "callout", preset: { variant: "dm" } },
+          "roll-table": { deprecated: "Removed in 17.3.0 — use @outcome." },
+        },
+      },
+    ];
+
+    test("wrapper: resolves a full container declaration", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("callout")).toEqual({
+        name: "callout",
+        baseKind: "callout",
+        tag: "div",
+        classBase: "dc-alert",
+        variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+        label: { class: "dc-alert-label", attr: "label", tag: "div" },
+        autoCloseAtEof: true,
+      });
+    });
+
+    test("wrapper: resolves a minimal container declaration with tag/class defaults", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("sidebar")).toEqual({
+        name: "sidebar",
+        baseKind: "sidebar",
+        tag: "aside",
+        classBase: "dc-sidebar",
+        variants: undefined,
+        label: undefined,
+        autoCloseAtEof: false,
+      });
+      expect(registry.get("lede")).toEqual({
+        name: "lede",
+        baseKind: "lede",
+        tag: "div",
+        classBase: "dc-intro",
+        variants: undefined,
+        label: undefined,
+        autoCloseAtEof: false,
+      });
+    });
+
+    test("alias+preset: resolves to the target's shape plus baseKind/presetVariant", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("dm-note")).toEqual({
+        name: "dm-note",
+        baseKind: "callout",
+        presetVariant: "dm",
+        tag: "div",
+        classBase: "dc-alert",
+        variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+        label: { class: "dc-alert-label", attr: "label", tag: "div" },
+        autoCloseAtEof: true,
+      });
+    });
+
+    test("deprecated: resolves to just {name, deprecated} — every other field is discarded", () => {
+      const registry = buildDeclaredMarkerRegistry(sources);
+      expect(registry.get("roll-table")).toEqual({
+        name: "roll-table",
+        deprecated: "Removed in 17.3.0 — use @outcome.",
+      });
+    });
+
+    test("an empty sources list, or a plugin with an empty markers object, resolves to an empty registry", () => {
+      expect(buildDeclaredMarkerRegistry([]).size).toBe(0);
+      expect(buildDeclaredMarkerRegistry([{ pluginName: "p", markers: {} }]).size).toBe(0);
+    });
+  });
+});
+
+describe("declared markers — parsing & rendering (#240)", () => {
+  /** The issue's own example table, minus the deprecated/alias entries that
+   * get their own focused tests below. Shared (read-only) across this
+   * describe block, the same way other describes above share one `md`. */
+  const declaredMarkers = buildDeclaredMarkerRegistry([
+    {
+      pluginName: "dc-components",
+      markers: {
+        callout: {
+          tag: "div",
+          class: "dc-alert",
+          variants: { note: "dc-note", warning: "dc-note warning", dm: "dc-dm-note" },
+          label: { class: "dc-alert-label", from: "attr:label" },
+          autoCloseAt: ["eof"],
+        },
+        sidebar: { tag: "aside", class: "dc-sidebar" },
+        lede: { class: "dc-intro" },
+        "dm-note": { alias: "callout", preset: { variant: "dm" } },
+        "roll-table": { deprecated: "Removed in 17.3.0 — use @outcome." },
+      },
+    },
+  ]);
+
+  describe("wrapper", () => {
+    test("a bare declared marker renders as its declared tag + class, exactly like @section renders div+class", () => {
+      const { html } = renderPaged("@sidebar\nAside text.\n@end-sidebar\n", { declaredMarkers });
+      expect(html).toBe('<aside class="dc-sidebar"><p>Aside text.</p>\n</aside>');
+    });
+
+    test("both attr spellings — .class and {.class} — are equivalent, exactly like @section", () => {
+      const compact = renderPaged("@sidebar .extra\nText.\n@end-sidebar\n", { declaredMarkers });
+      const braced = renderPaged("@sidebar {.extra}\nText.\n@end-sidebar\n", { declaredMarkers });
+      expect(compact.html).toBe(braced.html);
+      expect(classList(compact.html)).toEqual(["dc-sidebar", "extra"]);
+    });
+
+    test("a marker with no declared `class` still wraps in its declared `tag`", () => {
+      const { html } = renderPaged("@lede\nOpening line.\n@end-lede\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-intro"><p>Opening line.</p>\n</div>');
+    });
+  });
+
+  describe("variants", () => {
+    test("the marker's bare name selects a variant, appended after the base class", () => {
+      const { html } = renderPaged("@callout warning\nWatch out.\n@end-callout\n", { declaredMarkers });
+      expect(html).toBe(
+        '<div class="dc-alert dc-note warning" data-callout="warning"><p>Watch out.</p>\n</div>'
+      );
+    });
+
+    test("a name with no matching variant still opens (base class only, no crash)", () => {
+      const { html } = renderPaged("@callout unknown-variant\nText.\n@end-callout\n", { declaredMarkers });
+      expect(html).toContain('class="dc-alert"');
+      expect(html).toContain('data-callout="unknown-variant"');
+    });
+  });
+
+  describe("label", () => {
+    test('`label.from: "attr:label"` injects a structural label element as the first child, from the marker\'s own attr', () => {
+      const { html } = renderPaged(
+        '@callout note label="Heads up"\nBody text.\n@end-callout\n',
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="dc-alert dc-note" data-callout="note" data-label="Heads up">' +
+          '<div class="dc-alert-label">Heads up</div>\n' +
+          "<p>Body text.</p>\n</div>"
+      );
+    });
+
+    test("with no matching attr on the line, no label element is injected", () => {
+      const { html } = renderPaged("@callout note\nBody text.\n@end-callout\n", { declaredMarkers });
+      expect(html).not.toContain("dc-alert-label");
+      expect(html).toBe('<div class="dc-alert dc-note" data-callout="note"><p>Body text.</p>\n</div>');
+    });
+
+    test("the label text is HTML-escaped", () => {
+      const { html } = renderPaged(
+        '@callout note label="<script>"\nText.\n@end-callout\n',
+        { declaredMarkers }
+      );
+      expect(html).toContain('<div class="dc-alert-label">&lt;script&gt;</div>');
+      expect(html).not.toContain("<script>");
+    });
+  });
+
+  describe("alias + preset", () => {
+    test("an alias with no args uses its preset variant", () => {
+      const { html } = renderPaged("@dm-note\nSomething.\n@end-callout\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-dm-note" data-callout="dm"><p>Something.</p>\n</div>');
+    });
+
+    test("the alias's OWN auto-derived closer (@end-dm-note) closes the same frame as @end-callout", () => {
+      const { html } = renderPaged("@dm-note\nSomething.\n@end-dm-note\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-dm-note" data-callout="dm"><p>Something.</p>\n</div>');
+    });
+
+    test("an explicit name on the alias line overrides the preset", () => {
+      const { html } = renderPaged("@dm-note warning\nText.\n@end-callout\n", { declaredMarkers });
+      expect(html).toContain('class="dc-alert dc-note warning"');
+      expect(html).toContain('data-callout="warning"');
+    });
+  });
+
+  describe("deprecated", () => {
+    test("a deprecated marker warns and strips — no wrapper is emitted at all", () => {
+      const { html, env } = renderPaged("@roll-table\nOld stuff.\n@end-roll-table\n", { declaredMarkers });
+      expect(html).toBe("<p>Old stuff.</p>\n");
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "deprecated_marker");
+      expect(w).toHaveLength(2);
+      expect(w[0]!.message).toContain("@roll-table");
+      expect(w[0]!.message).toContain("Removed in 17.3.0");
+      expect(w[1]!.message).toContain("@end-roll-table");
+    });
+  });
+
+  describe("nesting and auto-close (the same rules @section follows)", () => {
+    test("opening a new @page silently drains a still-open declared container (never straddles a page boundary)", () => {
+      const { html, env } = renderPaged(
+        "@page\n@sidebar\nInside.\n@page\nOutside.\n",
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="page"><aside class="dc-sidebar"><p>Inside.</p>\n</aside></div>' +
+          '<div class="page"><p>Outside.</p>\n</div>'
+      );
+      expect(env.layoutWarnings ?? []).toEqual([]);
+    });
+
+    test("re-entrant: opening a second instance of the SAME declared kind closes the first, exactly like @section", () => {
+      const { html } = renderPaged(
+        "@callout note\nFirst.\n@callout warning\nSecond.\n@end-callout\n",
+        { declaredMarkers }
+      );
+      expect(html).toBe(
+        '<div class="dc-alert dc-note" data-callout="note"><p>First.</p>\n</div>' +
+          '<div class="dc-alert dc-note warning" data-callout="warning"><p>Second.</p>\n</div>'
+      );
+    });
+
+    test("@end-<name> used with nothing open warns and is otherwise a no-op", () => {
+      const { html, env } = renderPaged("@end-sidebar\nText.\n", { declaredMarkers });
+      expect(html).toBe("<p>Text.</p>\n");
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_close_without_open");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain("@end-sidebar");
+      expect(w[0]!.message).toContain("@sidebar");
+    });
+
+    test("EOF: a marker with NO autoCloseAt still closes (valid HTML), but warns", () => {
+      const { html, env } = renderPaged("@sidebar\nUnclosed.\n", { declaredMarkers });
+      expect(html).toBe('<aside class="dc-sidebar"><p>Unclosed.</p>\n</aside>');
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_eof_close");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain("@sidebar");
+    });
+
+    test('EOF: a marker WITH autoCloseAt: ["eof"] closes silently — no warning', () => {
+      const { html, env } = renderPaged("@callout note\nRuns to EOF.\n", { declaredMarkers });
+      expect(html).toBe('<div class="dc-alert dc-note" data-callout="note"><p>Runs to EOF.</p>\n</div>');
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "declared_marker_eof_close")).toEqual([]);
+    });
+  });
+
+  describe("unknown marker (the marker twin of unknown_gp_class)", () => {
+    test("a typo close to a DECLARED name warns with a suggestion, in the concise unknown_gp_class shape", () => {
+      const { env } = renderPaged("@calout\nHi.\n", { declaredMarkers });
+      const w = (env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toBe('Unknown marker "@calout". Did you mean "@callout"?');
+    });
+
+    test("fires even in a document with NO OTHER marker at all — unlike the core-only heuristic", () => {
+      // scanForMistypedMarkers (core kinds only) is deliberately conservative
+      // here (see "a document with no core markers at all is never scanned"
+      // above) — the whole point of this diagnostic being modeled on
+      // unknown_gp_class instead is that a plugin's vocabulary does not get
+      // that same pass. This document uses no core marker whatsoever.
+      const { env } = renderPaged("@calout\n\ntext\n", { declaredMarkers });
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toHaveLength(1);
+    });
+
+    test("an exact declared name, or an exact core name, is never flagged", () => {
+      const { env: e1 } = renderPaged("@sidebar\nHi.\n@end-sidebar\n", { declaredMarkers });
+      const { env: e2 } = renderPaged("@page\nHi.\n", { declaredMarkers });
+      expect((e1.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+      expect((e2.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+    });
+
+    test("a word too far from any declared name stays silent", () => {
+      const { env } = renderPaged("@xyz\n\ntext\n", { declaredMarkers });
+      expect((env.layoutWarnings ?? []).filter((x) => x.type === "unknown_marker")).toEqual([]);
+    });
+
+    test("with no declared markers at all (the zero-#240 case), this check is a complete no-op", () => {
+      const { env } = renderPaged("@calout\n\ntext\n");
+      expect(env.layoutWarnings ?? []).toEqual([]);
+    });
+  });
+
+  test("token.meta.line threading matches every core layout_*_open token (source-range primitive)", () => {
+    const { tokens } = parsePaged("Intro\n\n@sidebar\nHi\n@end-sidebar\n", { declaredMarkers });
+    const t = findToken(tokens, "layout_component_open")!;
+    expect(t.meta).toEqual({ line: 3 });
+    // Do NOT set token.map — see openChapter's identical comment (ADR 0009).
+    // This is what lets the UNCHANGED, unconditional source_range core rule
+    // (source-range.ts) annotate a declared marker's wrapper with ZERO
+    // extra plumbing: it keys on token.nesting === 1, not on token TYPE. The
+    // full data-source-range/data-chapter-src proof, against the real
+    // pipeline, lives in source-range.test.ts.
+    expect(t.map).toBeNull();
+  });
+});
+
+describe("createMarkdownRenderer wiring (#240)", () => {
+  test("throws at renderer-creation time when two loaded plugins declare colliding marker names, naming both", () => {
+    const pluginA: LoadedPlugin = { name: "plugin-a", plugin: () => {}, options: {}, markers: { callout: { class: "a" } } };
+    const pluginB: LoadedPlugin = { name: "plugin-b", plugin: () => {}, options: {}, markers: { callout: { class: "b" } } };
+    expect(() => createMarkdownRenderer([pluginA, pluginB])).toThrow(/plugin-a/);
+    expect(() => createMarkdownRenderer([pluginA, pluginB])).toThrow(/plugin-b/);
+  });
+
+  test("throws when a loaded plugin's declared marker shadows a core reserved name", () => {
+    const plugin: LoadedPlugin = { name: "plugin-a", plugin: () => {}, options: {}, markers: { section: { class: "x" } } };
+    expect(() => createMarkdownRenderer([plugin])).toThrow(/core Gutterpress marker name/);
+  });
+
+  test("a loaded plugin with no `markers` export renders exactly as before #240 (zero behavior change)", () => {
+    const plugin: LoadedPlugin = { name: "plain-plugin", plugin: () => {}, options: {} };
+    const md = createMarkdownRenderer([plugin]);
+    const html = md.render("@page\nHi\n", {});
+    // createMarkdownRenderer's FULL pipeline also stamps data-source-range/
+    // data-source-line (unrelated to #240, unconditional on every render) —
+    // asserted on structure/content, not full equality, for that reason.
+    expect(html).toContain('<div class="page"');
+    expect(html).toContain(">Hi</p>");
+  });
+
+  test("declaring `markers` and a hand-written block rule on the SAME plugin are not mutually exclusive", () => {
+    // §5 doctrine check: a plugin may declare containers AND still register
+    // its own plain markdown-it rules for bespoke behavior the table can't
+    // express — the declarative path is an alternative, never a replacement.
+    const plugin: LoadedPlugin = {
+      name: "hybrid-plugin",
+      plugin: (md) => {
+        md.core.ruler.after("block", "hybrid_marker", (state) => {
+          for (const tok of state.tokens) {
+            if (tok.type === "inline") tok.content = tok.content.replace("WORLD", "GALAXY");
+          }
+        });
+      },
+      options: {},
+      markers: { sidebar: { tag: "aside", class: "dc-sidebar" } },
+    };
+    const md = createMarkdownRenderer([plugin]);
+    const html = md.render("@sidebar\nHELLO WORLD\n@end-sidebar\n", {});
+    expect(html).toContain('<aside class="dc-sidebar"');
+    expect(html).toContain(">HELLO GALAXY</p>");
+    expect(html).not.toContain("WORLD<");
   });
 });

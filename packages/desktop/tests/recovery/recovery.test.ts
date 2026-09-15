@@ -148,7 +148,7 @@ test("listRecovery prunes entries whose snapshot already matches disk", async ()
 // ── 2026-07-29 audit: crash drafts for NESTED files must be offered ──────────
 //
 // The filter was `path.dirname(entry.filePath) !== projectDir` — immediate
-// children only. So a crash draft for `styles/book.css`, `themes/<id>/theme.css`,
+// children only. So a crash draft for `styles/book.css`, `extensions/<id>/theme.css`,
 // an explicitly-listed `chapters/ch01.md`, or an authorized repo-root shared
 // file was WRITTEN on every edit and then never offered back after a crash —
 // and, being unoffered, was swept as stale on the next listing. Silent data loss

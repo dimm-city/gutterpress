@@ -44,7 +44,7 @@ my-book/
 ├── chapters/
 ├── design/
 │   └── DESIGN.md
-├── themes/
+├── extensions/
 ├── styles/
 ├── fonts/
 ├── images/
@@ -62,7 +62,7 @@ publication-project/
 ├── DESIGN.md
 ├── design/
 ├── shared/
-│   ├── themes/
+│   ├── extensions/
 │   ├── styles/
 │   ├── fonts/
 │   ├── images/
@@ -153,8 +153,9 @@ when they matter. If the agent still emits a clarification form, it stops
 without writing; answer from the project chat or start a follow-up run with the
 resolved brief.
 
-The plugin reads the book manifest, source list, active theme, ordered styles,
-plugins, print constraints, and tracked design guidance before changing files.
+The plugin reads the book manifest, source list, ordered extensions (the look
+and any plugins), ordered styles, print constraints, and tracked design
+guidance before changing files.
 
 ## Choose the edit scope
 
@@ -184,12 +185,12 @@ Open Design may also change:
 
 Open Design may edit prose and manuscript structure as well as design files. Use this only when content changes are intended.
 
-## Understand themes and styles
+## Understand extensions and styles
 
 Gutterpress keeps two different CSS locations:
 
-- `themes/<id>/` is a selectable theme package containing `theme.css`, optional `theme.json`, and optional theme-owned assets. Built-in, folder, and zip imports copy complete packages; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets.
-- `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules.
+- `extensions/<id>/` holds a look: an extension folder containing `theme.css` (or the sheets its `gutterpress.json` declares), optional metadata, and optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
+- `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules, listed under `styles:`.
 
 A small project may use only:
 
@@ -198,36 +199,38 @@ styles:
   - styles/book.css
 ```
 
-A larger project may use one active theme followed by stable shared and book styles:
+A larger project lists its look as an extension, followed by stable shared and book styles:
 
 ```yaml
+extensions:
+  - ./extensions/publisher
 styles:
-  - themes/publisher/theme.css
   - styles/publisher-components.css
   - styles/book.css
 ```
 
-Later manifest styles win at equal specificity. Open Design integrates accepted changes into the file that should own them permanently. It does not create `open-design.css`, a token JSON file, or another tool-specific layer.
+Extensions load in list order (a later entry's CSS wins ties), and every `styles:` entry loads after every extension, later entries winning at equal specificity. Open Design integrates accepted changes into the file that should own them permanently. It does not create `open-design.css`, a token JSON file, or another tool-specific layer.
 
 ## Compose shared and book-local design
 
-A `styles:` entry is a path Gutterpress **reads**, not a file it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
+An `extensions:` path entry and a `styles:` entry are both paths Gutterpress **reads**, not files it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
 
 ```yaml
 source:
   files:
     - chapters/01-introduction.md
     - chapters/02-rules.md
+extensions:
+  - ../../shared/extensions/publisher
 styles:
-  - ../../shared/themes/publisher/theme.css
   - ../../shared/styles/publisher-components.css
   - styles/book.css
 ```
 
-Gutterpress inlines those files in order into the built book. Each stylesheet's `url()` references resolve **relative to that stylesheet**, so a shared theme's own fonts and images come with it automatically:
+Gutterpress inlines the look's sheets, then those stylesheets, in that order into the built book. Each stylesheet's `url()` references resolve **relative to that stylesheet**, so a shared look's own fonts and images come with it automatically:
 
 ```text
-shared/themes/publisher/theme.css
+shared/extensions/publisher/theme.css
   └── url("../../fonts/Publisher.woff2")   → embedded in the book
 ```
 
@@ -247,7 +250,7 @@ There is no asset list, no flattening, and no collision rule. To shadow a shared
 Use shared files when a decision belongs to the product line:
 
 ```text
-shared/themes/publisher/theme.css
+shared/extensions/publisher/theme.css
 shared/styles/publisher-components.css
 shared/fonts/
 shared/images/
@@ -257,7 +260,7 @@ shared/plugins/
 Use the book folder when a decision belongs only to the current publication:
 
 ```text
-books/core-book/themes/
+books/core-book/extensions/
 books/core-book/styles/book.css
 books/core-book/fonts/
 books/core-book/images/
@@ -303,12 +306,12 @@ Never save generated `book.html` back as publication source.
 
 ### Authored local plugins
 
-Shared and book-local authored plugins use paths relative to the manifest:
+Shared and book-local authored plugins are `extensions:` entries — paths relative to the manifest, referenced in place:
 
 ```yaml
-plugins:
-  - path: ../../shared/plugins/publisher-components.js
-  - path: ./plugins/core-book-components.js
+extensions:
+  - ../../shared/plugins/publisher-components.js
+  - ./plugins/core-book-components.js
 ```
 
 Open Design changes these only in layout or content scope and only when Markdown rendering behavior must change.
@@ -318,18 +321,18 @@ Open Design changes these only in layout or content scope and only when Markdown
 Install npm plugins through Gutterpress:
 
 ```bash
-gutterpress plugin add markdown-it-highlightjs@4.3.0 ./books/core-book
+gutterpress ext add markdown-it-highlightjs@4.3.0 ./books/core-book
 ```
 
 For a package whose plugin function is a named export:
 
 ```bash
-gutterpress plugin add markdown-it-emoji@3.0.0 ./books/core-book --export full
+gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Gutterpress verifies and vendors the exact runtime graph beneath the book's `plugins/npm/` directory. Commit that managed tree and the manifest entry for reproducible offline team builds. Do not hand-edit it or move it into `shared/`.
+Gutterpress verifies and vendors the exact runtime graph beneath the book's `plugins/npm/` directory and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit that managed tree and the manifest entry for reproducible offline team builds. Do not hand-edit it or move it into `shared/`.
 
-Use the Gutterpress desktop plugin manager for broader inspection, enabling, disabling, importing, or removal. The public CLI currently exposes `plugin add`.
+`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
 
 ## Use the companion design guide
 
@@ -359,14 +362,14 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 
 - Open Design edits source files; Gutterpress renders them.
 - Open the repository root in Open Design and the target book in Gutterpress.
-- Keep theme packages in `themes/` and ordinary CSS in `styles/`.
+- Keep look packages in `extensions/` and ordinary CSS in `styles/`.
 - Keep design guidance nested when manuscript discovery is implicit.
 - Put cross-book work in `shared/`; put book-only work in the book folder.
 - Reference shared CSS directly from `styles:` — nothing needs copying.
 - Keep prose images inside the book that uses them.
-- Keep one active local theme. A first application defaults to the front;
-  replacement preserves its existing cascade position. Do not reorder a valid
-  stylesheet list merely to force the theme first.
+- List the look under `extensions:` (normally first) and let the book's
+  `styles:` load after it. The list order is the cascade, so move an entry
+  rather than adding an override merely to force a winner.
 - Let Gutterpress manage registry-installed packages under `plugins/npm/`.
 - Never edit generated `book.html` or build output.
 - Use the Gutterpress preview as the final authority for pagination.

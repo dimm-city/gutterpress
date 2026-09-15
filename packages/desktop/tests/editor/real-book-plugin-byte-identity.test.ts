@@ -93,11 +93,9 @@ describe("plugin-book corpus liveness (AP-21) — real, nonempty, plugin-configu
 
   test("the fixture's manifest.yaml genuinely configures a REAL local-file plugin, parsed by the REAL loadManifest (gutterpress)", async () => {
     const manifest = await loadManifest(PLUGIN_BOOK_MANIFEST_PATH);
-    expect(Array.isArray(manifest.plugins)).toBe(true);
-    expect(manifest.plugins!.length).toBeGreaterThan(0);
-    const first = manifest.plugins![0]!;
-    const ref = typeof first === "string" ? first : (first.path ?? first.name);
-    expect(ref).toBe("./plugins/callout.js");
+    expect(Array.isArray(manifest.extensions)).toBe(true);
+    expect(manifest.extensions!.length).toBeGreaterThan(0);
+    expect(manifest.extensions![0]).toBe("./plugins/callout.js");
   });
 
   test("every chapter this lane claims contains a plugin marker really contains one (source grep, independent of any parser)", () => {

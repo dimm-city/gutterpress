@@ -22,6 +22,7 @@ import { constants as FS, existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
+import { isPathSpecifier } from "./extension-specifier.ts";
 import type { Document } from "yaml";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
@@ -180,10 +181,11 @@ function collectEscaping(
   return out;
 }
 
-/** The file path of a plugins-list entry: `path:` for a map, the scalar otherwise
- * (npm `name:` entries have no resolvable file and yield `null`). */
-function pluginEntryPath(node: unknown): string | null {
-  return isMap(node) ? scalarString(node.get("path", true)) : scalarString(node);
+/** The path of an extensions-list entry: `use:` for a map, the scalar otherwise.
+ * Only a path specifier can escape the book; npm and bundled names yield `null`. */
+function extensionEntryPath(node: unknown): string | null {
+  const use = isMap(node) ? scalarString(node.get("use", true)) : scalarString(node);
+  return use !== null && isPathSpecifier(use) ? use : null;
 }
 
 /** Remove the escaping entries from `seq` in place, deleting an emptied key. */
@@ -199,9 +201,9 @@ function dropEscaping(
   if (seq.items.length === 0) doc.delete(key);
 }
 
-/** Point a styles/plugins entry at a new path (scalar `.value`, or a map's `path:`). */
+/** Point a styles/extensions entry at a new path (scalar `.value`, or a map's `use:`). */
 function rewriteEntry(node: unknown, newPath: string): void {
-  if (isMap(node)) node.set("path", newPath);
+  if (isMap(node)) node.set("use", newPath);
   else if (isScalar(node)) node.value = newPath;
 }
 
@@ -262,37 +264,37 @@ async function reconcileSharedRefs(
     escapesProjectRoot(sourceProjectDir, path.resolve(sourceProjectDir, p));
 
   // Manifest refs that point OUTSIDE the captured book. A `styles:` entry is a
-  // bare scalar; a plugin entry is a scalar OR a `{ path }` map (npm `name:`
-  // entries have no resolvable file, so `pluginEntryPath` yields `null`).
+  // bare scalar; an `extensions:` entry is a scalar OR a `{ use }` map, and
+  // only a path specifier can escape (npm and bundled names yield `null`).
   const stylesSeq = doc.get("styles", true);
-  const pluginsSeq = doc.get("plugins", true);
+  const extensionsSeq = doc.get("extensions", true);
   const escapingStyles = collectEscaping(isSeq(stylesSeq) ? stylesSeq.items : [], scalarString, escapes);
-  const escapingPlugins = collectEscaping(isSeq(pluginsSeq) ? pluginsSeq.items : [], pluginEntryPath, escapes);
+  const escapingExtensions = collectEscaping(isSeq(extensionsSeq) ? extensionsSeq.items : [], extensionEntryPath, escapes);
 
-  if (escapingStyles.length === 0 && escapingPlugins.length === 0) {
+  if (escapingStyles.length === 0 && escapingExtensions.length === 0) {
     return { vendoredRefs: [], excludedRefs: [] };
   }
 
   if (mode === "exclude") {
-    const excludedRefs = [...escapingStyles, ...escapingPlugins].map((e) => e.value);
+    const excludedRefs = [...escapingStyles, ...escapingExtensions].map((e) => e.value);
     dropEscaping(doc, stylesSeq, "styles", escapingStyles);
-    dropEscaping(doc, pluginsSeq, "plugins", escapingPlugins);
+    dropEscaping(doc, extensionsSeq, "extensions", escapingExtensions);
     await writeManifestDoc(file, doc);
     return { vendoredRefs: [], excludedRefs };
   }
 
   // vendor: copy each escaping ref's file(s) in and rewrite the entry.
-  // A stylesheet drags its whole `@import`/`url()` closure; a plugin is its one
-  // referenced file (best-effort — a plugin with its own relative imports would
-  // need those copied too, but authored plugins are single self-contained files
-  // per CLAUDE.md §5). Only files that live OUTSIDE the book are vendored; a
-  // closure entry already inside it is part of the tree copy already.
+  // A stylesheet drags its whole `@import`/`url()` closure; an extension is
+  // its referenced file or folder (copied whole — an extension folder is
+  // self-contained by contract, `extension-manifest.ts`). Only files that
+  // live OUTSIDE the book are vendored; a closure entry already inside it is
+  // part of the tree copy already.
   const styleClosure = await collectStyleDependencies(
     sourceProjectDir,
     escapingStyles.map((s) => s.value),
   );
-  const pluginFiles = escapingPlugins.map((p) => path.resolve(sourceProjectDir, p.value));
-  const externalFiles = [...new Set([...styleClosure, ...pluginFiles])].filter((f) =>
+  const extensionFiles = escapingExtensions.map((p) => path.resolve(sourceProjectDir, p.value));
+  const externalFiles = [...new Set([...styleClosure, ...extensionFiles])].filter((f) =>
     escapesProjectRoot(sourceProjectDir, f),
   );
 
@@ -307,18 +309,24 @@ async function reconcileSharedRefs(
       .map(async (abs) => {
         const dest = path.join(templateDir, vendorDir, path.relative(base, abs));
         await mkdir(path.dirname(dest), { recursive: true });
-        await cp(abs, dest);
+        await cp(abs, dest, { recursive: true });
       }),
   );
 
-  // Rewrite each escaping entry (style scalar or plugin scalar/`{path}`) to its
-  // new book-local path.
+  // Rewrite each escaping entry (style scalar, or extension scalar/`{use}`)
+  // to its new book-local path. An extension specifier must START with `./`
+  // to be a path at all (#265), so it gets the prefix a style entry does not.
   const bookLocal = (value: string): string =>
     toPosixPath(path.join(vendorDir, path.relative(base, path.resolve(sourceProjectDir, value))));
   const vendoredRefs: string[] = [];
-  for (const { node, value } of [...escapingStyles, ...escapingPlugins]) {
+  for (const { node, value } of escapingStyles) {
     const rewritten = bookLocal(value);
     rewriteEntry(node, rewritten);
+    vendoredRefs.push(rewritten);
+  }
+  for (const { node, value } of escapingExtensions) {
+    const rewritten = bookLocal(value);
+    rewriteEntry(node, `./${rewritten}`);
     vendoredRefs.push(rewritten);
   }
 

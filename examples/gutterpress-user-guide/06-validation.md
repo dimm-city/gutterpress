@@ -180,6 +180,10 @@ validate:
   checks:
     pdf.structure.qpdf: false
     source.accessibility.alt-text: false
+    # A PDF cannot open a relative link such as [spec](docs/spec.md) — the
+    # build drops its href before print and `source.links.dangling` warns
+    # about each one. Switch it off for a book published only as HTML.
+    source.links.dangling: false
 
   # Disable built-in source linting (markdown / HTML) if not needed
   source:

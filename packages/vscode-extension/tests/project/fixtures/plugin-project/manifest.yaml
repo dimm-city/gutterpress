@@ -11,5 +11,5 @@ preset: book
 # would (packages/cli/src/lib/manifest.ts's normalizePluginConfig treats a
 # "./"-prefixed string as a file path): no receipt, no vendoring, no
 # network.
-plugins:
+extensions:
   - ./plugins/highlight.js

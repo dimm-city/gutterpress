@@ -38,7 +38,7 @@ h1 { string-set: chapter-title content(); }        /* feeds the running header *
 h1::before { content: counter(chapter, decimal-leading-zero); /* ...the numeral... */ }
 ```
 
-A brand-new Gutterpress project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](./04-styling-theming.md)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
+A brand-new Gutterpress project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](#ch-styling)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
 
 ### Heading rules
 
@@ -125,7 +125,7 @@ Paragraph with custom styling. {.highlight}
 [Link text](page.html){.download}
 ```
 
-`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
+`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](#common-image-classes) for the full set.
 
 ### Cross-References
 
@@ -329,6 +329,14 @@ utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
 `@section`; an enclosing `@page` is not required. Themes may add decoration to
 an explicitly themed class, but should not redefine generic column vocabulary.
 
+Three more classes name decisions a column run otherwise needs raw CSS for:
+
+| Class | Meaning |
+|-------|---------|
+| `.gp-columns-all` | Spans a heading or block across every column in the run it sits inside. |
+| `.gp-columns-flow` | A run that FRAGMENTS across pages — every page's columns fill (`column-fill: auto`). |
+| `.gp-columns-balanced` | A run that fits on ONE page — its columns end up even (`column-fill: balance`). |
+
 ### Grids: .gp-grid-2 and .gp-grid-3
 
 Columns flow; grids place. A `.gp-columns-2` section pours one run of text
@@ -365,6 +373,15 @@ Two grid-specific notes:
   section: the break becomes a grid slot of its own and scrambles the
   layout (Gutterpress warns when this happens). Close the grid first with
   `@end-section`, then break.
+
+### Fragmentation: .gp-no-break and .gp-break-before
+
+Two more generic classes, useful with or without columns/grids:
+
+| Class | Meaning |
+|-------|---------|
+| `.gp-no-break` | Keeps the element from splitting across a page break (`break-inside: avoid`). |
+| `.gp-break-before` | Forces a fresh page before the element (`break-before: page`). |
 
 ## Writing Guidelines
 

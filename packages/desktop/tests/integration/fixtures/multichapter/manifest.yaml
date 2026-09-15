@@ -8,5 +8,5 @@ source:
     - 03-gamma.md
 styles:
   - themes/parchment/theme.css
-plugins:
-  - name: markdown-it-mark
+extensions:
+  - markdown-it-mark

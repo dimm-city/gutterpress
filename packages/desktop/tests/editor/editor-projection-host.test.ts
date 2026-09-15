@@ -163,8 +163,8 @@ describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
       path.join(dir, "manifest.yaml"),
       [
         'title: "Degradation fixture: uninstalled npm plugin"',
-        "plugins:",
-        "  - name: gutterpress-plugin-definitely-not-installed",
+        "extensions:",
+        "  - gutterpress-plugin-definitely-not-installed",
         "",
       ].join("\n"),
       "utf8",
@@ -187,11 +187,11 @@ describe("degradation (a): a manifest naming an UNINSTALLED npm plugin", () => {
     expect(pluginErrors[0]!.pluginRef).toBe("gutterpress-plugin-definitely-not-installed");
     expect(pluginErrors[0]!.message).toBe(
       'Failed to load plugin "gutterpress-plugin-definitely-not-installed": ' +
-        'Plugin "gutterpress-plugin-definitely-not-installed" not found. Install it from ' +
-        "Project settings > Plugins > Install npm plugin,\n" +
-        "or reference a local file:\n" +
-        "  plugins:\n" +
-        "    - path: ./plugins/gutterpress-plugin-definitely-not-installed.js",
+        'Extension "gutterpress-plugin-definitely-not-installed" not found. Install it with ' +
+        "`gutterpress ext add gutterpress-plugin-definitely-not-installed` (or Project settings > Extensions),\n" +
+        "or reference a local file under `extensions:`:\n" +
+        "  extensions:\n" +
+        "    - ./plugins/gutterpress-plugin-definitely-not-installed.js",
     );
 
     expect(projection.schemaVersion).toBe(1);
@@ -214,7 +214,7 @@ describe("degradation (b): a local plugin file that throws on load", () => {
     );
     writeFileSync(
       path.join(dir, "manifest.yaml"),
-      ['title: "Degradation fixture: broken local plugin"', "plugins:", "  - ./plugins/broken.js", ""].join("\n"),
+      ['title: "Degradation fixture: broken local plugin"', "extensions:", "  - ./plugins/broken.js", ""].join("\n"),
       "utf8",
     );
 
@@ -249,7 +249,7 @@ describe("degradation (b): a local plugin file that throws on load", () => {
     );
     writeFileSync(
       path.join(dir, "manifest.yaml"),
-      ['title: "Degradation fixture: positive control"', "plugins:", "  - ./plugins/fine.js", ""].join("\n"),
+      ['title: "Degradation fixture: positive control"', "extensions:", "  - ./plugins/fine.js", ""].join("\n"),
       "utf8",
     );
 

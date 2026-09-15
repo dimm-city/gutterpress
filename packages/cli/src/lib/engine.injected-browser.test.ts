@@ -42,5 +42,5 @@ test("buildNativePdf accepts a host-supplied browser AT REQUIRED_MILESTONE", asy
     buildNativePdf("/nonexistent.html", "/nonexistent.pdf", {}, async () =>
       fakeBrowser(REQUIRED_MILESTONE, () => {})
     )
-  ).rejects.toThrow(/should never be reached|ENOENT|--engine native failed/);
+  ).rejects.toThrow(/should never be reached|ENOENT|PDF build failed/);
 });

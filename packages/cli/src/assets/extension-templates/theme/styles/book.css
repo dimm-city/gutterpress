@@ -1,0 +1,58 @@
+/* ===========================================================================
+ * {{NAME}} — 6. BOOK
+ *
+ * OWNS
+ *   This one book's deviations from the theme, and nothing else. Loads last,
+ *   in the last layer, so anything here wins.
+ *
+ *   The rules that belong here have a shape: a NATURAL SELECTOR CHAIN built
+ *   from the document's own structure — a chapter id, a page template class,
+ *   a section component class — that RESETS a component's public token.
+ *
+ *       #ch-appendix { --{{PREFIX}}callout-accent: var(--{{PREFIX}}accent-warm); }
+ *
+ *   That is the whole vocabulary. No new classes to invent, none to retype in
+ *   the markdown, and the component's own rules stay untouched.
+ *
+ * MUST NOT CONTAIN
+ *   - New components. If a second book would want it, it is a component and
+ *     belongs in components.css.
+ *   - Raw values in a selector chain. Always set the component's token, never
+ *     `#ch-appendix .{{PREFIX}}callout { border-color: #7a1f1f; }`. The token
+ *     is the seam; writing past it re-couples this book to the component's
+ *     internals and the next change to the component breaks this book.
+ *   - Per-element classes in the markdown to make a rule here match. If a
+ *     rule cannot be reached from the document's own structure, the structure
+ *     is the thing to fix.
+ *
+ * WHERE THIS FILE SITS. When this theme is applied to a book, Gutterpress
+ * copies the whole folder to `themes/<id>/` and wires its sheets into the
+ * manifest. A project may ALSO have its own `styles/book.css`, which loads
+ * after the theme entirely. Both are override layers; the difference is
+ * whether the override travels with the theme (here) or stays with the book
+ * (there). Put it here while you are still designing the theme, and move it
+ * out when you are sure it is only ever true of one book.
+ * ======================================================================== */
+
+@layer book {
+  /* -------------------------------------------------------------------------
+   * A WORKED OVERRIDE — the third and last step of the token pattern.
+   *
+   *   1. tokens.css      declared --{{PREFIX}}accent-warm at :root
+   *   2. components.css  gave the callout --{{PREFIX}}callout-accent and
+   *                      consumed it bare
+   *   3. here            one chapter resets it
+   *
+   * Every callout in that chapter — including ones written next year — picks
+   * up the new accent. No markdown changes. No new class. One rule.
+   *
+   * `#ch-appendix` is the id from `@chapter #ch-appendix` in the markdown, so
+   * this matches nothing until a chapter claims that id. Delete it, or point
+   * it at a chapter you actually have.
+   * ---------------------------------------------------------------------- */
+  #ch-appendix {
+    --{{PREFIX}}callout-accent: var(--{{PREFIX}}accent-warm);
+  }
+
+  /* Your book's overrides go here. */
+}

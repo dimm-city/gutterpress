@@ -29,5 +29,5 @@ styles:
 # `real-book-plugin-*.test.ts` files could drive the desktop's real plugin-
 # loading pipeline end to end, not a hand-built `md` instance standing in
 # for it.
-plugins:
+extensions:
   - ./plugins/callout.js

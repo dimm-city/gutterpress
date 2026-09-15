@@ -190,7 +190,7 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
 
   test("degrade-and-report: an uninstalled npm plugin is skipped and named, never blanking the document", async () => {
     const dir = makeDisposableProjectDir(
-      'title: "temp"\nplugins:\n  - gutterpress-vscode-test-plugin-does-not-exist\n',
+      'title: "temp"\nextensions:\n  - gutterpress-vscode-test-plugin-does-not-exist\n',
     );
     const message = await resolveEditorProjectionPayload({ text: "hello world", version: 0 }, { projectDir: dir }, true);
     expect(message.pluginErrors).toHaveLength(1);
@@ -203,7 +203,7 @@ describe("resolveEditorProjectionPayload — the trust/project gate (deliverable
 
   test("degrade-and-report does not affect a DIFFERENT, loadable plugin in the same manifest", async () => {
     const dir = makeDisposableProjectDir(
-      "title: \"temp\"\nplugins:\n" +
+      "title: \"temp\"\nextensions:\n" +
         "  - ./plugins/highlight.js\n" +
         "  - gutterpress-vscode-test-plugin-does-not-exist\n",
     );
@@ -296,7 +296,7 @@ describe("repair round 1: manifest plugin paths are workspace-root-scoped (findi
       path.join(outsideDir, "evil.js"),
       `require("node:fs").writeFileSync(${JSON.stringify(evilMarkerPath)}, "true");\nmodule.exports = () => {};\n`,
     );
-    writeFileSync(path.join(projectDir, "manifest.yaml"), 'title: "traversal-test"\nplugins:\n  - ../outside/evil.js\n');
+    writeFileSync(path.join(projectDir, "manifest.yaml"), 'title: "traversal-test"\nextensions:\n  - ../outside/evil.js\n');
 
     const message = await resolveEditorProjectionPayload({ text: "hello", version: 0 }, { projectDir }, true);
 
@@ -324,7 +324,7 @@ describe("repair round 1: manifest plugin paths are workspace-root-scoped (findi
     const pluginsDir = path.join(parent, "plugins", "nested");
     mkdirSync(pluginsDir, { recursive: true });
     writeFileSync(path.join(pluginsDir, "safe.js"), "module.exports = () => {};\n");
-    writeFileSync(path.join(parent, "manifest.yaml"), 'title: "traversal-ok-test"\nplugins:\n  - ./plugins/nested/safe.js\n');
+    writeFileSync(path.join(parent, "manifest.yaml"), 'title: "traversal-ok-test"\nextensions:\n  - ./plugins/nested/safe.js\n');
 
     const message = await resolveEditorProjectionPayload({ text: "hello", version: 0 }, { projectDir: parent }, true);
 

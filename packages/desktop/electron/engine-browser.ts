@@ -1,5 +1,5 @@
 /**
- * Electron-native `Browser`/`Session` for `--engine native` PDF export.
+ * Electron-native `Browser`/`Session` for native PDF export.
  *
  * The native engine (`packages/cli/src/engine/`) is driven over the `Browser`/
  * `Session` interfaces in `engine/shared/cdp.ts` — a raw-CDP client written

@@ -304,7 +304,7 @@ async function collectZipEntries(
  * Package the HTML export directory into a single ZIP (D8: Drive is file
  * delivery, not web hosting — no N-file folder mirroring). Built via
  * `zipEntriesNonBlocking` (fflate is already a dependency, see
- * theme-import.ts for the sibling unzip-side usage) so building the archive
+ * extension-import.ts for the sibling unzip-side usage) so building the archive
  * doesn't block the event loop, then written to a temp file so the existing
  * file-based `resumableUpload` (google-drive.ts) can read it incrementally
  * like any other artifact. Note this is true only of the UPLOAD step — the

@@ -8,46 +8,51 @@ Callouts highlight critical information. Images bring pages to life. This chapte
 
 ## Callouts
 
-> **Plugin required:** The `> [!note]` GitHub-style callout syntax requires a callout plugin. See `examples/` for a reference implementation. The five callout types below are what such a plugin provides.
+Callouts draw attention to important information. Gutterpress ships GitHub's
+alert syntax as the bundled **Callouts** feature (`gutterpress-gfm-alerts`,
+issue #237) — turn it on from the recommended-features list. It is off by
+default, so a book that never asked for callouts keeps rendering `> [!NOTE]`
+exactly as it always did: a plain blockquote whose first line is the marker.
 
-Callouts draw attention to important information. Five standard types cover most needs:
+Five types, the GitHub set, matched case-insensitively:
 
 ```markdown
-> [!note]
+> [!NOTE]
 > General information, context, or explanations.
 
-> [!tip]
+> [!TIP]
 > Helpful advice, shortcuts, or best practices.
 
-> [!warning]
+> [!IMPORTANT]
+> Things the reader must not skip.
+
+> [!WARNING]
 > Cautions, important considerations, potential issues.
 
-> [!danger]
+> [!CAUTION]
 > Critical warnings — data loss, irreversible actions.
-
-> [!info]
-> Neutral references, definitions, supplementary details.
 ```
 
-### Custom titles
+The marker goes **alone on its own line**; the body follows on the next
+line(s). Each renders as unbranded structure in core's own vocabulary — a
+`.gp-alert` box carrying `.gp-alert-<type>`, with a `.gp-alert-title`
+paragraph holding the label — so any theme can restyle it, and an unthemed
+book still prints a legible rule and label.
 
-Add text after the type marker to override the default title:
+Anything that is not one of those five (`[!DANGER]`, `[!INFO]`, a typo) does
+not match and prints as an ordinary blockquote. Branded extras such as the
+Dimm City plugin's `[!DM]` / `[!VIBE]` / `[!ORIGIN]` come from that plugin,
+layered on top of `.gp-alert`, not from core.
+
+### Titles and multi-paragraph callouts
+
+The marker line carries **only** the marker — `> [!WARNING] Read this` is
+not recognised. Put a title in the body instead, and prefix every
+continuation line with `>`:
 
 ```markdown
-> [!warning] Browser Compatibility
-> Internet Explorer 11 does not support this feature.
-
-> [!tip] Performance Optimization
-> Cache frequently accessed data to improve response times.
-```
-
-### Multi-paragraph callouts
-
-Each continuation line must be prefixed with `>`:
-
-```markdown
-> [!warning] Read This Carefully
-> This callout spans multiple paragraphs.
+> [!WARNING]
+> **Read this carefully.** This callout spans multiple paragraphs.
 >
 > Each paragraph needs the `>` prefix.
 >
@@ -61,13 +66,16 @@ Each continuation line must be prefixed with `>`:
 
 Use at most 2–3 callouts per page — overuse reduces impact. Match the type to the severity:
 
-| Type | Color | Use for |
-|------|-------|---------|
-| Note | Blue | Context, background, explanations |
-| Tip | Green | Optional improvements, shortcuts |
-| Warning | Orange | Things that could go wrong |
-| Danger | Red | Critical issues, data loss |
-| Info | Gray | Definitions, neutral references |
+| Type | Use for |
+|------|---------|
+| Note | Context, background, explanations |
+| Tip | Optional improvements, shortcuts |
+| Important | Things the reader must not skip |
+| Warning | Things that could go wrong |
+| Caution | Critical issues, data loss, irreversible actions |
+
+Colours come from the theme: core sets one accent per type as an
+author-overridable `--gp-alert-<type>-color` custom property.
 
 @end-section
 

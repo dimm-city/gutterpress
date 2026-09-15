@@ -56,20 +56,22 @@ describe("listProjectStyles", () => {
     expect(styles[0]!.active).toBe(true);
   });
 
-  test("discovers root, styles/ and themes/*/theme.css CSS files", async () => {
+  test("discovers root and styles/ CSS files; an extension's sheets are not offered (#265)", async () => {
     const dir = projectDir();
     write(dir, "style.css", "");
     write(dir, "styles/print.css", "");
     write(dir, "styles/screen.css", "");
-    write(dir, "themes/dark/theme.css", "");
-    write(dir, "manifest.yaml", "styles:\n  - style.css\n");
+    // Loads through `extensions:` — listing it here would invite a duplicate
+    // `styles:` entry.
+    write(dir, "extensions/dark/theme.css", "");
+    write(dir, "manifest.yaml", "styles:\n  - style.css\nextensions:\n  - ./extensions/dark\n");
 
     const styles = await listProjectStyles(dir);
     const paths = styles.map((s) => s.path).sort();
     expect(paths).toContain(join(dir, "style.css"));
     expect(paths).toContain(join(dir, "styles/print.css"));
     expect(paths).toContain(join(dir, "styles/screen.css"));
-    expect(paths).toContain(join(dir, "themes/dark/theme.css"));
+    expect(paths).not.toContain(join(dir, "extensions/dark/theme.css"));
     // each entry has a displayName
     for (const s of styles) {
       expect(typeof s.displayName).toBe("string");
@@ -267,15 +269,15 @@ describe("listProjectStyles with a repo root (multi-book shared styles)", () => 
     expect(matches[0]!.active).toBe(true);
   });
 
-  test("a shared theme's theme.css is discovered", async () => {
+  test("a shared look's sheets are not offered either — they load through extensions: (#265)", async () => {
     const { repoRoot, book } = repoWithBook();
-    write(repoRoot, "shared/themes/publisher/theme.css", "/* theme */");
-    write(book, "manifest.yaml", "title: T\n");
+    write(repoRoot, "shared/extensions/publisher/theme.css", "/* theme */");
+    write(book, "manifest.yaml", "title: T\nextensions:\n  - ../../shared/extensions/publisher\n");
 
     const styles = await listProjectStyles(book, { repoRoot });
 
-    expect(styles.map((s) => s.displayName)).toContain(
-      "../../shared/themes/publisher/theme.css",
+    expect(styles.map((s) => s.displayName)).not.toContain(
+      "../../shared/extensions/publisher/theme.css",
     );
   });
 

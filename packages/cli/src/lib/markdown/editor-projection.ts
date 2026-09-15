@@ -55,10 +55,18 @@
  *   end-section       ->  (not a kind — closes a section, produces no token
  *                          of its own)
  *
+ *   layout_component_open (#240, a    ->  "plugin-marker" - the marker
+ *     plugin's declared container)          line's chip; the element it
+ *                                           opens is a `pluginContainers`
+ *                                           entry, mounted like a wrapper a
+ *                                           plugin builds by hand
+ *
  * Plus, outside markers.js's marker vocabulary:
  *   html_block token, with evidence      -> "raw-html"
  *   html_block token, matching the       -> GeneratedView (see below), not
  *     `.chapter-opener` generated shape     a block
+ *   html_block token right after a       -> GeneratedView (the container's
+ *     layout_component_open                 label, #240), not a block
  *   an unrecognized `layout_`-prefixed   -> diagnostic, no block (this
  *     token (Gutterpress's OWN reserved     branch is unconditional — see
  *     namespace)                            "AMBIGUITY" below)
@@ -354,6 +362,12 @@ export type ProjectedBlockKind =
   | "section"
   | "page-break"
   | "column-break"
+  /** A marker line core does not own - a plugin's declared container
+   *  (#240, `layout_component_open`), or one the editor classified from
+   *  text alone. A chip, never a structure of the editor's own: the element
+   *  a declared container opens is mounted from `pluginContainers`, exactly
+   *  like a wrapper a plugin builds by hand. */
+  | "plugin-marker"
   | "plugin-region"
   | "raw-html";
 
@@ -641,7 +655,8 @@ function collectPluginContainers(
     }
     pendingClose = [];
   };
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
     if (token.level === 0) {
       const lines = evidenceLines(token);
       if (lines) {
@@ -653,6 +668,23 @@ function collectPluginContainers(
         }
         closeAt(anchor);
         pendingOpen = [];
+        // #240: a declared container is a wrapper the pipeline opened at a
+        // marker line, closed by `@end-<name>` or the enclosing scope's
+        // boundary (its close token carries that line, like every core
+        // close). It is mounted the way a plugin's hand-built wrapper is:
+        // beginning WITH the marker's own block when the container has a
+        // label to show there (markers.js emits the label as the very next
+        // token), else at the first authored block inside it.
+        if (token.type === "layout_component_open") {
+          const c: Open = { tag: token.tag, attributes: authoredAttributes(token) ?? {}, seq: seq++, depth };
+          const next = tokens[i + 1];
+          if (next && next.type === "html_block" && !next.map) {
+            c.open = anchor;
+            stack.push(c);
+          } else {
+            pendingOpen.push(c);
+          }
+        }
         continue;
       }
       // A layout scope's closer (`@end-section`) is a block of the editor's
@@ -1024,6 +1056,10 @@ const OPEN_KIND_BY_TOKEN_TYPE: Readonly<Record<string, ProjectedBlockKind>> = {
   layout_spread_open: "spread",
   layout_page_open: "page",
   layout_section_open: "section",
+  // #240: a declared container's open token carries the same evidence every
+  // core open does (`openDeclaredMarker` threads `meta.line` the same way),
+  // so it projects through the same branch - as the marker line's chip.
+  layout_component_open: "plugin-marker",
 };
 
 const BREAK_KIND_BY_TOKEN_TYPE: Readonly<Record<string, ProjectedBlockKind>> = {
@@ -1636,6 +1672,18 @@ export function createEditorProjection(
           inactiveHtml: capHtmlPayload(token.content, diagnostics, htmlBudget),
         });
         lastBlockEnd = to;
+        continue;
+      }
+
+      // #240: a declared container's label - markers.js emits it as a
+      // mapless html_block right after the container's own open token
+      // (`openDeclaredMarker`), the same recipe as the chapter-opener below.
+      if (tokens[tokenIndex - 1]?.type === "layout_component_open") {
+        generated.push({
+          id: `generated:component-label:${lastBlockEnd}`,
+          anchor: lastBlockEnd,
+          html: capHtmlPayload(token.content, diagnostics, htmlBudget),
+        });
         continue;
       }
 

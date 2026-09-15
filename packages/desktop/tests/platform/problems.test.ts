@@ -30,6 +30,7 @@ test("problemCounts: badge = errors + warnings; infos listed separately", () => 
 
 test("friendlySource maps known check ids to plain language, passes unknown through", () => {
   expect(friendlySource("source.links.local-refs")).toBe("Broken link");
+  expect(friendlySource("source.links.dangling")).toBe("Unopenable link");
   expect(friendlySource("source.stylelint")).toBe("Print-safety (CSS)");
   expect(friendlySource("source.accessibility.alt-text")).toBe("Image description");
   expect(friendlySource("desktop.preview")).toBe("Preview");

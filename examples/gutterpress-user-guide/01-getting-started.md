@@ -8,7 +8,7 @@ Gutterpress converts markdown files into professional print PDFs. It is designed
 
 ## Installation
 
-Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](../../docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
+Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
 
 ```bash
 # Verify the install
@@ -24,9 +24,9 @@ bun packages/cli/src/cli.ts --version
 ## Create Your First Project
 
 The fastest way to start is the built-in scaffolder — it generates a working
-project (manifest, a starter chapter, a real editable stylesheet, and local
-version history) in one command, so you never have to hand-write a manifest
-just to get going:
+project (manifest, a starter chapter, a starter look, a real editable
+stylesheet, and local version history) in one command, so you never have to
+hand-write a manifest just to get going:
 
 ```bash
 gutterpress new "My Book" --preset dtrpg
@@ -53,10 +53,17 @@ This creates a `my-book/` folder in the current directory:
 my-book/
 ├── manifest.yaml       # Pre-filled with your title and author
 ├── chapter-01.md       # A starter chapter — replace with your content
+├── extensions/
+│   └── clean-book/     # The starter look (theme.css + theme.json) — yours to edit
 ├── styles/
-│   └── book.css        # A real starter stylesheet, ready to edit
-└── assets/              # Images, fonts, diagrams go here
+│   └── book.css        # Your own stylesheet — loads after the look, ready to edit
+└── assets/             # Images, fonts, diagrams go here
 ```
+
+The look is an *extension*: `extensions/clean-book` is listed under
+`extensions:` in the manifest, and `styles/book.css` is your own layer on top
+of it. Chapter 4 covers swapping looks; Chapter 5 covers the `extensions:`
+list itself.
 
 It also runs `git init` and records a "Created project" snapshot by default —
 local version history with no credentials and no remote required. Pass
@@ -110,6 +117,7 @@ my-book/
 ├── 03-chapter-three.md
 ├── assets/                # Images, fonts, diagrams
 │   └── cover.jpg
+├── extensions/            # Looks and plugins added with `gutterpress ext add` (Chapters 4–5)
 └── styles/                # Custom CSS (optional)
     └── custom.css
 ```
@@ -147,6 +155,11 @@ page:
   height: 648
   tolerance: 0.5
 
+# Extensions — a look, plugins — in load order. Your `styles:` always load
+# after every extension (Chapters 4 and 5).
+extensions:
+  - "./extensions/clean-book"
+
 # Stylesheets (applied in order, last wins on conflicts)
 styles:
   - "styles/custom.css"
@@ -158,7 +171,7 @@ source:
     - "02-chapter-two.md"
 ```
 
-Plugins are optional and most projects don't need any — see Chapter 5, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
+Plugins are optional and most projects don't need any — see Chapter 5, *Plugins*, for the `extensions:` manifest list (looks and plugins share it) and the bundled, no-install-required features.
 
 ### Page Size Reference
 
@@ -206,7 +219,7 @@ wherever makes sense for your project. An image referenced from markdown or
 HTML just needs to live somewhere inside the project folder; a font (or
 image) referenced from CSS resolves relative to that CSS file, wherever it
 lives, and Gutterpress embeds it into the book automatically. See
-[Chapter 4 — Font Loading](./04-styling-theming.md#font-loading).
+[Chapter 4 — Font Loading](#font-loading).
 
 ### Naming Conventions
 

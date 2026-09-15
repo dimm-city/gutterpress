@@ -1,0 +1,86 @@
+/* ===========================================================================
+ * {{NAME}} — 1. TOKENS
+ *
+ * OWNS
+ *   `:root` custom properties, and nothing else. The palette, the type scale,
+ *   the spacing scale, the measure. This is the file a non-technical author
+ *   edits to rebrand the whole book, and the file the desktop app's Design
+ *   panel reads (`gutterpress.json` points `tokensFile` here).
+ *
+ * MUST NOT CONTAIN
+ *   - Any selector other than `:root`. The moment a rule here targets `h1`,
+ *     "change the brand" and "change the look of a heading" stop being
+ *     separable, and the Design panel starts showing settings that do not
+ *     do what they say.
+ *   - `var()` references to component tokens. Tokens flow one way: brand →
+ *     component. A brand token that depends on a component token is a cycle
+ *     waiting to happen.
+ *   - Anything a specific book needs. Book-specific values go in book.css.
+ *
+ * LOADS FIRST, and therefore declares the layer order for the whole stack.
+ * ======================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * THE LAYER ORDER. Declared once, here, because this sheet loads first.
+ *
+ * Each file below puts everything it owns inside the matching layer, so the
+ * cascade is settled by THIS line rather than by which file `styles:` happens
+ * to list last. Split a file in two, reorder the manifest, add a sheet in the
+ * middle — who wins does not change.
+ *
+ * Two things worth knowing before you edit this:
+ *
+ *   - These layers are unlayered RELATIVE TO Gutterpress core (which puts its
+ *     own CSS in `gp.marker` and `gp.vocab`). So every rule here still beats
+ *     core, exactly as it did before layers existed. Declaring an order only
+ *     changes how YOUR OWN files settle ties with each other.
+ *
+ *   - A rule left OUTSIDE all of these layers is fully unlayered and beats
+ *     every layered rule here, at any specificity. That is the one real trap:
+ *     adopt the convention per whole sheet, never for a few rules inside an
+ *     otherwise plain file.
+ * ------------------------------------------------------------------------ */
+@layer tokens, base, components, templates, pages, book;
+
+@layer tokens {
+  :root {
+    /* -- Palette ------------------------------------------------------- */
+    --{{PREFIX}}ink: #1a1a1a;
+    --{{PREFIX}}ink-soft: #55575c;
+    --{{PREFIX}}paper: #ffffff;
+    --{{PREFIX}}rule: #d8d8d8;
+    --{{PREFIX}}accent: #2f5d8a;
+    --{{PREFIX}}accent-warm: #9a5b12;
+
+    /* -- Typefaces ----------------------------------------------------- */
+    /* Keep a real fallback stack: a print build that cannot find a face
+       silently substitutes, and the substitution is what gets printed. */
+    --{{PREFIX}}font-body: "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --{{PREFIX}}font-display: var(--{{PREFIX}}font-body);
+    --{{PREFIX}}font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    /* -- Type scale ---------------------------------------------------- */
+    /* Absolute units, because this is print: 1pt is a physical size on the
+       page, whereas `rem` is whatever the viewport decided. */
+    --{{PREFIX}}fs-body: 10.5pt;
+    --{{PREFIX}}fs-small: 9pt;
+    --{{PREFIX}}fs-h1: 24pt;
+    --{{PREFIX}}fs-h2: 16pt;
+    --{{PREFIX}}fs-h3: 12.5pt;
+    --{{PREFIX}}leading: 1.45;
+
+    /* -- Spacing scale ------------------------------------------------- */
+    --{{PREFIX}}space-1: 0.25em;
+    --{{PREFIX}}space-2: 0.5em;
+    --{{PREFIX}}space-3: 1em;
+    --{{PREFIX}}space-4: 1.75em;
+
+    /* -- Page geometry ------------------------------------------------- */
+    /* Consumed by page-rules.css. Kept here so trim size and margins are
+       editable next to the rest of the brand, not buried in an @page block. */
+    --{{PREFIX}}page-margin-top: 0.75in;
+    --{{PREFIX}}page-margin-outer: 0.75in;
+    --{{PREFIX}}page-margin-bottom: 0.85in;
+    --{{PREFIX}}page-margin-inner: 0.9in;
+  }
+}

@@ -155,7 +155,7 @@ function markerBlockOf(node: { readonly kind: string } | undefined, sourceText: 
     // it adds a line the printed page does not have. Only core kinds get
     // structure (containers, breaks) below; an unknown kind gets a chip and
     // nothing else, because core cannot know what the plugin did with it.
-    const parsed = parseMarkerLine(lines[i]!.trim(), { allowUnknownKinds: true }) as ParsedMarker | null;
+    const parsed = parseMarkerLine(lines[i]!.trim(), null, { allowUnknownKinds: true }) as ParsedMarker | null;
     if (!parsed) break;
     markers.push(parsed);
   }
@@ -236,7 +236,7 @@ export function createGutterpressBlockProvider(
       // author has just typed or edited — the case the projection cannot
       // describe because it predates the edit.
       const match = matchProjectedBlock(index, sourceText);
-      const kind = (marker.unknownKind ? "plugin-marker" : scopeKindOf(marker)) as ProjectedBlockKind;
+      const kind: ProjectedBlockKind = marker.unknownKind ? "plugin-marker" : (scopeKindOf(marker) as ProjectedBlockKind);
       const block: ProjectedBlock = match?.block ?? {
         id: `marker:${kind}`,
         kind,

@@ -131,13 +131,10 @@ export async function validateInputPath(inputPath: string): Promise<void> {
  * For empty input (no-input mode), skip manifest loading entirely and
  * return a default resolved config.
  */
-export async function initializeConfiguration(
-  inputPath: string,
-  engine?: "paged" | "native",
-): Promise<ResolvedConfig> {
-  if (!inputPath) return resolveConfig({ engine }, {});
+export async function initializeConfiguration(inputPath: string): Promise<ResolvedConfig> {
+  if (!inputPath) return resolveConfig({}, {});
   const manifest = await loadManifest(inputPath);
-  return resolveConfig({ engine }, manifest);
+  return resolveConfig({}, manifest);
 }
 
 /**
@@ -160,7 +157,7 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   state.currentInputPath = newInputPath;
 
   const manifest = await loadManifest(newInputPath);
-  state.config = resolveConfig({ engine: state.options.engine }, manifest);
+  state.config = resolveConfig({}, manifest);
 
   await generateAndWriteHtml(newInputPath, state.tempDir, state.config, state.cssAssets);
 

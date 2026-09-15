@@ -45,7 +45,7 @@ describe("manifest-config", () => {
           "preset: dtrpg",
           "styles:",
           "  - themes/zine/theme.css",
-          "plugins:",
+          "extensions:",
           "  - markdown-it-mark",
           "source:",
           "  files:",
@@ -147,7 +147,7 @@ describe("manifest-config", () => {
         "title: Original",
         "styles:",
         "  - styles/book.css",
-        "plugins:",
+        "extensions:",
         "  - markdown-it-footnote",
         "",
       ].join("\n");
@@ -159,7 +159,7 @@ describe("manifest-config", () => {
       expect(onDisk).toContain("title: Changed");
       expect(onDisk).toContain("styles:");
       expect(onDisk).toContain("- styles/book.css");
-      expect(onDisk).toContain("plugins:");
+      expect(onDisk).toContain("extensions:");
       expect(onDisk).toContain("- markdown-it-footnote");
     });
 

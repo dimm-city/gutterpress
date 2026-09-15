@@ -4,8 +4,10 @@ import fsp from "node:fs/promises";
 import { getAssetPath } from "./embedded-assets";
 import { inlineShapeUrls, planImageCopies, type AssetCopy } from "./asset-inline";
 import {
+  decodeHtmlAttribute,
   placeholderOutputPath,
   placeholderPng,
+  rewriteActiveHtml,
   rewriteMissingImageReferences,
 } from "./missing-asset-placeholder";
 import { BuildError } from "./build-error";
@@ -88,8 +90,16 @@ export async function stageBookAssets(options: {
   cssAssets: AssetCopy[];
   /** Called once with the copy plan; throw here to abort before copying. */
   onPlan?: (plan: StagingPlan) => void;
+  /**
+   * Strip every relative `<a href>` from the staged book — for print
+   * artifacts only, where no relative target can be opened (see
+   * {@link dropRelativeLinkHrefs}). Off by default: `--format html` ships its
+   * images beside `book.html` and keeps every href.
+   */
+  dropRelativeLinks?: boolean;
 }): Promise<StagedAssets> {
-  const { renderDir, outDir, htmlFile, imageRefs, cssAssets, onPlan } = options;
+  const { renderDir, outDir, htmlFile, imageRefs, cssAssets, onPlan, dropRelativeLinks } =
+    options;
   const { copies: imageCopies, errors, destinations } = await planImageCopies(
     renderDir,
     imageRefs,
@@ -106,7 +116,8 @@ export async function stageBookAssets(options: {
   // origins block its pixel reads; the http preview needs no such help) —
   // see inlineShapeUrls' doc comment. After the copy step so the staged
   // files are what get inlined.
-  let staged = await fsp.readFile(htmlFile, "utf8");
+  const rendered = await fsp.readFile(htmlFile, "utf8");
+  let staged = rendered;
   if (missingPlaceholders.size > 0) {
     // CSS assets already use their output-relative destination in the inlined
     // <style>; prose images may preserve an authored spelling such as
@@ -118,11 +129,10 @@ export async function stageBookAssets(options: {
       if (placeholder) rewrites.set(ref, placeholder);
     }
     staged = rewriteMissingImageReferences(staged, rewrites);
-    await fsp.writeFile(htmlFile, staged, "utf8");
   }
-  if (staged.includes("--gp-shape:")) {
-    await fsp.writeFile(htmlFile, await inlineShapeUrls(staged, outDir), "utf8");
-  }
+  if (dropRelativeLinks) staged = dropRelativeLinkHrefs(staged);
+  if (staged.includes("--gp-shape:")) staged = await inlineShapeUrls(staged, outDir);
+  if (staged !== rendered) await fsp.writeFile(htmlFile, staged, "utf8");
 
   return { missing: [...missingPlaceholders.keys()].sort() };
 }
@@ -172,6 +182,51 @@ async function copyReferencedAssets(
   );
 
   return missing;
+}
+
+/**
+ * Can a PDF reader follow this href? Only an in-document `#fragment` (a GoTo
+ * destination) or a URL with a scheme other than `file:`. Everything else —
+ * a relative or absolute path, `file:`, and the shapes that name no asset to
+ * copy (empty, `?query`, `//host`) — Chromium resolves against the staged
+ * document's `file://` base URL, which is dead for every reader.
+ */
+export function isPrintResolvableHref(href: string): boolean {
+  const value = href.trim();
+  if (value.startsWith("#")) return true;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+  return scheme !== undefined && scheme !== "file";
+}
+
+/**
+ * Remove the `href` of every `<a>` that {@link isPrintResolvableHref}
+ * rejects, keeping the element and its text. Print-production tooling
+ * (permanent, not a shim).
+ *
+ * The staged `book.html` is printed from a `file://` URL in a per-build temp
+ * dir (engine/compiler/build.ts navigates `pathToFileURL(input)`), and
+ * Chromium writes the ABSOLUTE resolved URL of every relative `href` into
+ * the PDF's link annotation: `file:///tmp/gutterpress-build-<random>/docs/
+ * constitution.md`. That leaks the build machine's layout, is dead for every
+ * reader, and makes two builds of the same sources differ in bytes (#263).
+ * A PDF has no files beside it, so NO relative target is openable from one —
+ * not a same-book chapter file, not even an image the build copied into the
+ * work dir. The href is therefore dropped rather than rewritten.
+ * `source.links.dangling` tells the author which links this affects before
+ * the build.
+ *
+ * Comments and raw-text / literal-content elements (a `<pre>` showing HTML)
+ * stay untouched — see {@link rewriteActiveHtml}.
+ */
+export function dropRelativeLinkHrefs(html: string): string {
+  const hrefAttr = /\s+href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+  return rewriteActiveHtml(html, (tag) => {
+    if (!/^<a(?=[\s/>])/i.test(tag)) return tag;
+    const m = hrefAttr.exec(tag);
+    if (!m) return tag;
+    const href = decodeHtmlAttribute(m[1] ?? m[2] ?? m[3] ?? "");
+    return isPrintResolvableHref(href) ? tag : tag.replace(hrefAttr, "");
+  });
 }
 
 /**

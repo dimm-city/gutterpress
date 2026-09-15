@@ -53,7 +53,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" \
 ```
 
 This is also the recommended way to run the full pipeline in CI. See the
-[Docker guide](../../docs/docker.md) for the convenience alias, output
+[Docker guide](https://github.com/dimm-city/gutterpress/blob/main/docs/docker.md) for the convenience alias, output
 ownership, and CI examples. The rest of this chapter covers installing the
 tools directly on your machine instead.
 

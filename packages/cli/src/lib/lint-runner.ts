@@ -4,10 +4,23 @@ import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "../utils/logger";
 import { checkCss, ruleRiskyProps } from "./printsafe";
 import { resolveActiveStyles } from "./style-resolver";
+import { loadPluginsWithCss } from "./markdown/plugins";
 
 export interface LintRunnerOptions {
   files?: string;
   manifest?: string;
+  /**
+   * Pre-loaded, absolute plugin `styles` file paths (#262) — supplied by the
+   * build pipeline (`build-runner.ts`'s `runQualityGates`, via
+   * `loadBuildPlugins`) so this call does not load plugins a second time in
+   * the same build. `undefined` (the default — every standalone
+   * `gutterpress lint` invocation) makes this function load plugins itself,
+   * exactly as before, with the same degrade-and-report (warn-and-skip)
+   * behavior for a plugin that fails to load. An explicit `[]` from a caller
+   * that already knows there is nothing to add is honored as-is, not treated
+   * as "unset".
+   */
+  pluginStylePaths?: string[];
 }
 
 export interface LintRunnerResult {
@@ -21,12 +34,9 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest, {
     explicit: opts.manifest !== undefined,
   });
-  // Use the RESOLVED config, not the raw manifest: resolveWithPreset
-  // (manifest.ts) is the only place `engineStyles.native` is appended to the
-  // style list, and that sheet loads LAST at render time, so its rules win the
-  // cascade in the shipped PDF. Discarding this return linted 7 of the field
-  // guide's 8 sheets and hid its most severe finding — see the
-  // engineStyles.native test in lint-runner.test.ts.
+  // Use the RESOLVED config, not the raw manifest, so lint and the desktop
+  // Problems panel (validate) agree about which stylesheets a project uses —
+  // both read the list resolveConfig produces.
   const resolved = resolveConfig({}, manifest);
 
   let files: string[];
@@ -50,9 +60,32 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     // (styles/book.css, else the first discovered project .css, else `[]`)
     // replaces all of that.
     const relStyles = await resolveActiveStyles(manifestDir, resolved.styles);
-    files = relStyles
-      .map((rel) => resolve(manifestDir, rel))
-      .filter((f) => !f.endsWith(".min.css"));
+    const projectFiles = relStyles.map((rel) => resolve(manifestDir, rel));
+
+    // #238: a plugin's file-based `styles` are a real, lintable CSS surface
+    // now too — no longer an opaque string printsafe never saw.
+    //
+    // #262: when the build's quality-gate stage already loaded plugins for
+    // this exact manifest (build-runner.ts's loadBuildPlugins), it passes the
+    // resolved paths in directly and this skips loading them a second time —
+    // an npm-vendored plugin's vendor-tree verification
+    // (plugin-vendor.ts's verifyVendoredPlugin/computeVendorTreeDigest) is
+    // not free. A standalone `gutterpress lint` run has no such preload, so
+    // it loads plugins itself here, same as always: degrade-and-report — a
+    // plugin that can't load is a WARNING here, not a reason to fail
+    // `gutterpress lint` outright (that fail-fast bar belongs to build/export,
+    // not this pre-flight check — see loadPlugins' doc comment on the two
+    // failure modes). Already-absolute paths pass through untouched below.
+    let pluginStylePaths = opts.pluginStylePaths;
+    if (pluginStylePaths === undefined) {
+      ({ pluginStylePaths } = await loadPluginsWithCss(
+        resolved.extensions,
+        manifestDir,
+        (ref, err) => log.warn(`Skipping plugin "${ref}" for lint — ${err.message}`),
+      ));
+    }
+
+    files = [...projectFiles, ...pluginStylePaths].filter((f) => !f.endsWith(".min.css"));
   }
 
   if (files.length === 0) {
@@ -91,7 +124,8 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     linted++;
     const warnings = checkCss(css, file);
     const errors = warnings.filter((w) => w.severity === "error");
-    riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
+    const risky = warnings.filter((w) => w.rule === ruleRiskyProps);
+    riskyCount += risky.length;
 
     if (errors.length > 0) {
       log.error(`  ${file}`);
@@ -99,6 +133,12 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
         log.error(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
       }
       errorCount += errors.length;
+    }
+    if (risky.length > 0) {
+      log.warn(`  ${file}`);
+      for (const w of risky) {
+        log.warn(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
+      }
     }
   }
 
@@ -110,9 +150,6 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   if (riskyCount > 0) {
     log.warn(
       `${riskyCount} risky print properties found (may cause rasterization)`
-    );
-    log.warn(
-      "The validator will check for actual rasterized pages after PDF generation."
     );
   } else {
     log.success("CSS lint passed");

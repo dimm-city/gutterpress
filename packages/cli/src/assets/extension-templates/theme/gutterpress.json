@@ -1,0 +1,17 @@
+{
+  "name": "{{NAME}}",
+  "author": "{{AUTHOR}}",
+  "description": "{{DESCRIPTION}}",
+  "preview": null,
+  "styles": [
+    "styles/tokens.css",
+    "styles/base.css",
+    "styles/components.css",
+    "styles/page-templates.css",
+    "styles/page-rules.css",
+    "styles/book.css"
+  ],
+  "tokensFile": "styles/tokens.css",
+  "components": "components.yaml",
+  "snippets": "snippets"
+}

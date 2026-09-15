@@ -1,15 +1,15 @@
 /**
  * Project-configuration capability (SFE-P5c2, D10's "project config" bounded
  * context). Replaces `api.project.*`/`api.manifest.*`/`api.tpl.*`/
- * `api.snip.*`/`api.media.*`/`api.plugin.*`/`api.theme.*`/`api.style.*`
- * (deleted `src/routes/api/{project,manifest,tpl,snip,media,plugin,theme,
+ * `api.snip.*`/`api.media.*`/`api.extension.*`/`api.style.*`
+ * (deleted `src/routes/api/{project,manifest,tpl,snip,media,extension,
  * style}/**` HTTP routes) with typed IPC through the one shared `bridge()`
  * accessor — the same shape every other capability module uses (SFE-P5b),
  * following `$lib/files/files-capability.ts`'s precedent (SFE-P5c1) for
  * grouping several related namespaces behind one bounded-context module.
  *
- * Eight namespaces share this one file because they share one bounded
- * context (project/manifest/tpl/snip/media/plugin/theme config surfaces all
+ * Seven namespaces share this one file because they share one bounded
+ * context (project/manifest/tpl/snip/media/extension config surfaces all
  * feed `ProjectSettingsView`/`MediaPanel`/`EditorToolbar`/`SnippetPicker`/
  * `NewProjectWizard`/`ExportDialog` — the Project Settings composition root
  * and its adjacent panels) and, per capability-map.md §6, `style` is
@@ -36,19 +36,19 @@
 import { bridge } from "../platform/bridge";
 import { hostCall } from "../errors";
 import type {
-  ApplyThemeTarget,
+  BuiltInStyleSet,
+  ExtensionImportResult,
+  ExtensionValidationResult,
   MediaImageDetails,
   MediaImageEntry,
-  PluginValidationResult,
   ProjectConfigFields,
-  ProjectPluginEntry,
+  ProjectExtensionEntry,
   ProjectStyle,
-  RecommendedPlugin,
+  RecommendedExtension,
   SavedTemplateInfo,
   SnippetEntry,
+  SnippetSource,
   TemplateInfo,
-  ThemeImportResult,
-  ThemeInfo,
 } from "../platform/dtos";
 
 // ── project ──────────────────────────────────────────────────────────────
@@ -109,14 +109,26 @@ export async function tplImportFromFolder(): Promise<TemplateInfo | null> {
 
 // ── snip ─────────────────────────────────────────────────────────────────
 
-/** List the open project's snippets. */
+/** List the open project's snippets, MERGED with every installed, active
+ *  extension's own `snippets` folder (#242) - each entry's `source` says which. */
 export async function snipList(projectDir: string): Promise<SnippetEntry[]> {
   return hostCall(bridge().snip.list(projectDir));
 }
 
-/** Read one snippet's raw body. */
+/** Read one PROJECT snippet's raw body (`source.kind === "project"` entries only). */
 export async function snipRead(projectDir: string, fileName: string): Promise<string> {
   return hostCall(bridge().snip.read(projectDir, fileName));
+}
+
+/** Read one EXTENSION-provided snippet's raw body (#242) - `source` is the
+ *  exact object the list handed back; the host re-derives the extension's
+ *  folder from `source.ref` itself rather than trusting a path from here. */
+export async function snipReadExtension(
+  projectDir: string,
+  source: Extract<SnippetSource, { kind: "extension" }>,
+  fileName: string,
+): Promise<string> {
+  return hostCall(bridge().snip.readExtension(projectDir, { kind: source.kind, ref: source.ref }, fileName));
 }
 
 /** Save a snippet body under the project's snippets/ folder. */
@@ -160,104 +172,88 @@ export async function mediaImportImage(
   return hostCall(bridge().media.importImage(projectDir, src));
 }
 
-// ── plugin ───────────────────────────────────────────────────────────────
+// ── extension ────────────────────────────────────────────────────────────
+//
+// The one `extensions:` rail (#265): the Look and Features tabs are two
+// views over this same list and verb set.
 
-/** List the open project's configured plugins. */
-export async function pluginList(projectDir: string): Promise<ProjectPluginEntry[]> {
-  return hostCall(bridge().plugin.list(projectDir));
+/** Every configured extension, in manifest (= cascade) order. */
+export async function extensionList(projectDir: string): Promise<ProjectExtensionEntry[]> {
+  return hostCall(bridge().extension.list(projectDir));
 }
 
-/** Enable or disable a configured plugin by ref. */
-export async function pluginSetEnabled(
-  projectDir: string,
-  ref: string,
-  enabled: boolean,
-): Promise<{ ok: boolean }> {
-  return hostCall(bridge().plugin.setEnabled(projectDir, ref, enabled));
+/** The bundled markdown features an author can turn on with no install (static). */
+export async function extensionRecommended(): Promise<RecommendedExtension[]> {
+  return hostCall(bridge().extension.recommended());
 }
 
-/** Download, verify, vendor, and pin an npm plugin (built-ins only need configuring). */
-export async function pluginAddNpm(
+/** The built-in looks (static metadata). */
+export async function extensionListBuiltIn(): Promise<BuiltInStyleSet[]> {
+  return hostCall(bridge().extension.listBuiltIn());
+}
+
+/** Load-test every configured extension; reports ok/error per entry (degrade-and-report). */
+export async function extensionValidate(projectDir: string): Promise<ExtensionValidationResult[]> {
+  return hostCall(bridge().extension.validate(projectDir));
+}
+
+/**
+ * Add by specifier: a bundled feature name (written as-is), an npm package
+ * `name`/`name@version` (downloaded, verified, vendored, pinned - behind the
+ * native trust gate; null when the author cancels it), or a project-relative
+ * `./path` (referenced in place). `exportName` selects a named plugin
+ * function for packages without a default export.
+ */
+export async function extensionAdd(
   projectDir: string,
-  packageName: string,
+  specifier: string,
   exportName?: string,
-): Promise<ProjectPluginEntry | null> {
-  return hostCall(bridge().plugin.addNpm(projectDir, packageName, exportName));
+): Promise<ProjectExtensionEntry | null> {
+  return hostCall(bridge().extension.add(projectDir, specifier, exportName));
 }
 
-/** Open a native file picker and import the chosen file/folder as a local plugin. Resolves null when cancelled. */
-export async function pluginAddLocal(projectDir: string): Promise<ProjectPluginEntry | null> {
-  return hostCall(bridge().plugin.addLocal(projectDir));
+/** Native picker for a folder or plugin file on disk, referenced in place (never copied). Null when cancelled. */
+export async function extensionAddLocal(projectDir: string): Promise<ProjectExtensionEntry | null> {
+  return hostCall(bridge().extension.addLocal(projectDir));
 }
 
-/** Load-test every configured plugin; reports ok/error per entry (degrade-and-report). */
-export async function pluginValidate(projectDir: string): Promise<PluginValidationResult[]> {
-  return hostCall(bridge().plugin.validate(projectDir));
+/** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
+export async function extensionAddBuiltIn(projectDir: string, id: string): Promise<ProjectExtensionEntry> {
+  return hostCall(bridge().extension.addBuiltIn(projectDir, id));
 }
 
-/** The curated list of recommended plugins (static, no projectDir needed). */
-export async function pluginRecommended(): Promise<RecommendedPlugin[]> {
-  return hostCall(bridge().plugin.recommended());
+/** Drop one entry. A path entry's folder is never touched; an npm entry's vendored copy is deleted. */
+export async function extensionRemove(projectDir: string, use: string): Promise<{ ok: true }> {
+  return hostCall(bridge().extension.remove(projectDir, use));
 }
 
-// ── theme ────────────────────────────────────────────────────────────────
-
-/** List all built-in themes (static metadata). */
-export async function themeListBuiltIn(): Promise<ThemeInfo[]> {
-  return hostCall(bridge().theme.listBuiltIn());
+/** Flip one entry's per-project `enabled` flag. */
+export async function extensionSetEnabled(
+  projectDir: string,
+  use: string,
+  enabled: boolean,
+): Promise<{ ok: true }> {
+  return hostCall(bridge().extension.setEnabled(projectDir, use, enabled));
 }
 
-/** List themes already imported into the project. */
-export async function themeListProject(projectDir: string): Promise<ThemeInfo[]> {
-  return hostCall(bridge().theme.listProject(projectDir));
+/** Rewrite the list order - the CSS cascade and markdown registration order. Must name every `use` exactly once. */
+export async function extensionReorder(projectDir: string, order: string[]): Promise<{ ok: true }> {
+  return hostCall(bridge().extension.reorder(projectDir, order));
 }
 
-/** The currently active theme for the project. Null when none applied. */
-export async function themeGetActive(projectDir: string): Promise<ThemeInfo | null> {
-  return hostCall(bridge().theme.getActive(projectDir));
+/** A configured extension's stylesheets, concatenated, for a sample thumbnail (entries with a folder only). */
+export async function extensionReadCss(projectDir: string, use: string): Promise<string> {
+  return hostCall(bridge().extension.readCss(projectDir, use));
 }
 
-/** Apply a built-in or project theme. Copies files and wires the manifest. */
-export async function themeApply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
-  return hostCall(bridge().theme.apply(projectDir, target));
+/** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */
+export async function extensionImportFromFile(projectDir: string): Promise<ExtensionImportResult | null> {
+  return hostCall(bridge().extension.importFromFile(projectDir));
 }
 
-/** Open a native folder picker and import the selected folder as a theme. Resolves null when cancelled. */
-export async function themeImportFromFolder(projectDir: string): Promise<ThemeInfo | null> {
-  return hostCall(bridge().theme.importFromFolder(projectDir));
-}
-
-/** Open a native file picker and import a `.zip` package or bare `.css` as a theme. Resolves null when cancelled. */
-export async function themeImportFromFile(projectDir: string): Promise<ThemeImportResult | null> {
-  return hostCall(bridge().theme.importFromFile(projectDir));
-}
-
-/** Import a theme from a remote URL (raw CSS or theme folder). */
-export async function themeImportFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
-  return hostCall(bridge().theme.importFromUrl(projectDir, url));
-}
-
-/** Read the raw CSS of a theme (built-in or project) for preview rendering. */
-export async function themeReadCss(
-  projectDir: string | null,
-  source: { kind: "builtin" | "project"; id: string },
-): Promise<string> {
-  return hostCall(bridge().theme.readCss(projectDir, source));
-}
-
-/** Remove a project-local theme by id. */
-export async function themeRemove(projectDir: string, id: string): Promise<{ ok: true }> {
-  return hostCall(bridge().theme.remove(projectDir, id));
-}
-
-/** The theme active before the current one — the "Revert" target — or null. */
-export async function themeGetPrevious(projectDir: string): Promise<ThemeInfo | null> {
-  return hostCall(bridge().theme.getPrevious(projectDir));
-}
-
-/** Re-apply the previously active theme. */
-export async function themeRevert(projectDir: string): Promise<ThemeInfo> {
-  return hostCall(bridge().theme.revert(projectDir));
+/** Import a look from an http(s) URL (raw CSS or a folder URL) into `extensions/<id>/`. */
+export async function extensionImportFromUrl(projectDir: string, url: string): Promise<ExtensionImportResult> {
+  return hostCall(bridge().extension.importFromUrl(projectDir, url));
 }
 
 // ── style ────────────────────────────────────────────────────────────────

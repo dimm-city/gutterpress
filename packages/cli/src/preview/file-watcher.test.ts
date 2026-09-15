@@ -355,10 +355,10 @@ describe('externalWatchTargets', () => {
 
       const targets = await externalWatchTargets(book, {
         styles: ['../../shared/styles/components.css', 'styles/book.css'],
-        plugins: [
-          { path: '../../shared/plugins/components.js', priority: 100, options: {} },
-          { path: './plugins/local.js', priority: 100, options: {} },
-          { name: 'markdown-it-emoji', priority: 100, options: {} },
+        extensions: [
+          { use: '../../shared/plugins/components.js', path: '../../shared/plugins/components.js', options: {} },
+          { use: './plugins/local.js', path: './plugins/local.js', options: {} },
+          { use: 'markdown-it-emoji', name: 'markdown-it-emoji', options: {} },
         ],
       });
 

@@ -319,6 +319,38 @@ describe("inlineStyles — @import correctness", () => {
   });
 });
 
+// #227: core wraps MARKER_CSS/GUTTERPRESS_CSS in `@layer gp.marker`/
+// `@layer gp.vocab`, and the styling guide's recommended book-side
+// convention is to declare an author layer order too
+// (`@layer tokens, base, components, ...;`). Neither of postcss's own
+// generic AST walkers (`walkAtRules("import", ...)` for imports,
+// `walkDecls` for url()s) special-cases `@layer` at all — they just see an
+// AtRule/Declaration node wherever it sits — so a project stylesheet's own
+// `@layer` usage should already pass straight through with no code change.
+// This locks that in as a regression guard for both shapes: the bare
+// ordering statement, and a real rule block with a url() inside one.
+describe("inlineStyles — @layer passthrough", () => {
+  test("a bare @layer order statement passes through untouched", async () => {
+    await put("styles/book.css", "@layer tokens, base, components;\nh1 { color: red; }");
+
+    const { css } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(css).toContain("@layer tokens, base, components;");
+  });
+
+  test("a url() inside an explicit @layer block still resolves", async () => {
+    await put("images/bg.png", Buffer.alloc(32, 2));
+    await put(
+      "styles/book.css",
+      '@layer base { body { background-image: url("../images/bg.png"); } }'
+    );
+
+    const { css, copies } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(copies).toHaveLength(1);
+    expect(css).toContain(`url("${copies[0]!.to}")`);
+    expect(css).toMatch(/@layer\s+base\s*\{/);
+  });
+});
+
 describe("inlineStyles — url() parsing", () => {
   // "Resolved" = the inliner found and READ the file, which is what a
   // content-addressed destination proves: the hash is of the file's bytes.

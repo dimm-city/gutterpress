@@ -612,12 +612,11 @@ function sectionBlockDescriptor(): LayoutInsertDescriptor {
   return { insert, selectFrom: prefix.length, selectTo: prefix.length };
 }
 
-/** A working two-column section. `.col-split` (not bare `.two-column`) is
- *  required because `@column-break` is structural within that authoring
- *  primitive; plain CSS multicol does not create the explicit left/right
- *  wrappers the fixed split needs. */
+/** A working two-column section: core's `.gp-columns-2` (styled by core, so
+ *  it lays out in every project), with `@column-break` as the forced break
+ *  between the two columns. */
 function twoColumnBlockDescriptor(): LayoutInsertDescriptor {
-  const prefix = "\n\n@section .col-split\n";
+  const prefix = "\n\n@section .gp-columns-2\n";
   const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
   return { insert, selectFrom: prefix.length, selectTo: prefix.length };
 }
@@ -700,7 +699,7 @@ export interface LayoutBlockItem {
 export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
   { kind: "chapter", label: "Chapter", detail: "@chapter — wraps content, auto chapter-opener" },
   { kind: "section", label: "Section", detail: "@section … @end-section — keeps content together" },
-  { kind: "two-column", label: "Two columns", detail: "@section .col-split … @column-break … @end-section" },
+  { kind: "two-column", label: "Two columns", detail: "@section .gp-columns-2 … @column-break … @end-section" },
   { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
   { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
 ] as const;

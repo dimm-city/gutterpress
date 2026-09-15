@@ -181,7 +181,7 @@ And the component picks it up the same way.
 The `.dc-citizen-file` section component in the DC design guide demonstrates a section that bundles styling for `h4`, `p`, `table`, `td`, `thead` — all elements inside it adapt:
 
 ```markdown
-@section .two-column .col-split .dc-citizen-file
+@section .gp-columns-2 .dc-citizen-file
 
 #### Name
 Choose a name.
@@ -207,13 +207,23 @@ In `dc-components.css`:
 /* ... etc */
 ```
 
-Authors write `@section .two-column .col-split .dc-citizen-file` once and **every element inside it** picks up form-styling. The same section component dropped into any other chapter/page/book produces the same character-sheet look — no setup required.
+Authors write `@section .gp-columns-2 .dc-citizen-file` once and **every element inside it** picks up form-styling. The same section component dropped into any other chapter/page/book produces the same character-sheet look — no setup required.
 
 See the [design-guide example](../examples/with-design-guide/design-guide/) for a worked implementation of components and their markdown usage.
 
 ---
 
 ## Adopting this pattern in your Gutterpress project
+
+**The fastest route is the scaffold**, which is this pattern already laid out:
+
+```sh
+gutterpress new "House Style" --kind theme
+```
+
+It writes the six-file layered stack — `tokens.css` / `base.css` / `components.css` / `page-templates.css` / `page-rules.css` / `book.css` — with each file's **OWNS / MUST NOT CONTAIN** contract written into its header, the `@layer tokens, base, components, templates, pages, book;` order declared once, and one worked component (a callout) demonstrating the token pattern end to end: a `:root` default, a component consuming bare `var()`, and a chapter-scoped override that resets it. Add it to a book with `gutterpress ext add ./house-style <book>` — the folder is listed under the book's `extensions:` and referenced in place, so keep editing it and the book follows.
+
+The steps below are the same rules, for adopting the pattern in a project that already exists.
 
 1. **Components live in one file**, conventionally `css/dc-components.css` (or `css/<your-brand>-components.css`). Each component is `.section.dc-X` plus its descendant rules.
 

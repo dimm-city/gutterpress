@@ -77,8 +77,9 @@ stylesheet itself and are embedded or copied automatically; only images an
 author references directly from *markdown* must live inside that project's
 own folder. Apply the same `styles:` path to the book's manifest.
 
-If the book uses plugins, list the same `plugins:` entries in both
-manifests so the guide demonstrates the real markdown extensions.
+If the book uses extensions (a look, plugins), list the same `extensions:`
+entries in both manifests so the guide demonstrates the real markdown
+extensions under the real look.
 
 ## Authoring loop
 

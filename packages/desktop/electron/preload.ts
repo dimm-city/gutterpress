@@ -38,12 +38,11 @@ import type {
   SavedTemplateInfo,
   SnippetEntry,
   ProjectConfigFields,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
@@ -118,7 +117,7 @@ const DESKTOP_API = 11;
 // to server routes (Phase 2B), leaving the local mirrors unreferenced; the
 // real shapes live in the lib's project-scaffold.ts.
 
-// plugin:*, theme:*, project:listStyles types were removed here when that
+// extension:*, project:listStyles types were removed here when that
 // surface migrated to server routes (Phase 2E) and are back as of SFE-P5c2
 // (imported from ./bridge-types at the top of this file, same as every
 // other IPC payload type). This block used to also declare module-local
@@ -314,6 +313,8 @@ contextBridge.exposeInMainWorld("electron", {
     list: (projectDir: string): Promise<SnippetEntry[]> => ipcRenderer.invoke("snip:list", projectDir),
     read: (projectDir: string, fileName: string): Promise<string> =>
       ipcRenderer.invoke("snip:read", projectDir, fileName),
+    readExtension: (projectDir: string, source: { kind: "extension"; ref: string }, fileName: string): Promise<string> =>
+      ipcRenderer.invoke("snip:readExtension", projectDir, source, fileName),
     save: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
       ipcRenderer.invoke("snip:save", projectDir, name, body),
     delete: (projectDir: string, fileName: string): Promise<{ ok: boolean }> =>
@@ -330,38 +331,30 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("media:importImage", projectDir, src),
   },
 
-  plugin: {
-    list: (projectDir: string): Promise<ProjectPluginEntry[]> => ipcRenderer.invoke("plugin:list", projectDir),
-    setEnabled: (projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("plugin:setEnabled", projectDir, ref, enabled),
-    addNpm: (projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null> =>
-      ipcRenderer.invoke("plugin:addNpm", projectDir, packageName, exportName),
-    addLocal: (projectDir: string): Promise<ProjectPluginEntry | null> =>
-      ipcRenderer.invoke("plugin:addLocal", projectDir),
-    validate: (projectDir: string): Promise<PluginValidationResult[]> =>
-      ipcRenderer.invoke("plugin:validate", projectDir),
-    recommended: (): Promise<RecommendedPlugin[]> => ipcRenderer.invoke("plugin:recommended"),
-  },
-
-  theme: {
-    listBuiltIn: (): Promise<ThemeInfo[]> => ipcRenderer.invoke("theme:listBuiltIn"),
-    listProject: (projectDir: string): Promise<ThemeInfo[]> => ipcRenderer.invoke("theme:listProject", projectDir),
-    getActive: (projectDir: string): Promise<ThemeInfo | null> => ipcRenderer.invoke("theme:getActive", projectDir),
-    apply: (projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> =>
-      ipcRenderer.invoke("theme:apply", projectDir, target),
-    importFromFolder: (projectDir: string): Promise<ThemeInfo | null> =>
-      ipcRenderer.invoke("theme:importFromFolder", projectDir),
-    importFromFile: (projectDir: string): Promise<ThemeImportResult | null> =>
-      ipcRenderer.invoke("theme:importFromFile", projectDir),
-    importFromUrl: (projectDir: string, url: string): Promise<ThemeInfo> =>
-      ipcRenderer.invoke("theme:importFromUrl", projectDir, url),
-    readCss: (projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string> =>
-      ipcRenderer.invoke("theme:readCss", projectDir, source),
-    remove: (projectDir: string, id: string): Promise<{ ok: true }> =>
-      ipcRenderer.invoke("theme:remove", projectDir, id),
-    getPrevious: (projectDir: string): Promise<ThemeInfo | null> =>
-      ipcRenderer.invoke("theme:getPrevious", projectDir),
-    revert: (projectDir: string): Promise<ThemeInfo> => ipcRenderer.invoke("theme:revert", projectDir),
+  extension: {
+    list: (projectDir: string): Promise<ProjectExtensionEntry[]> => ipcRenderer.invoke("extension:list", projectDir),
+    recommended: (): Promise<RecommendedExtension[]> => ipcRenderer.invoke("extension:recommended"),
+    listBuiltIn: (): Promise<BuiltInStyleSet[]> => ipcRenderer.invoke("extension:listBuiltIn"),
+    validate: (projectDir: string): Promise<ExtensionValidationResult[]> =>
+      ipcRenderer.invoke("extension:validate", projectDir),
+    add: (projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null> =>
+      ipcRenderer.invoke("extension:add", projectDir, specifier, exportName),
+    addLocal: (projectDir: string): Promise<ProjectExtensionEntry | null> =>
+      ipcRenderer.invoke("extension:addLocal", projectDir),
+    addBuiltIn: (projectDir: string, id: string): Promise<ProjectExtensionEntry> =>
+      ipcRenderer.invoke("extension:addBuiltIn", projectDir, id),
+    remove: (projectDir: string, use: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("extension:remove", projectDir, use),
+    setEnabled: (projectDir: string, use: string, enabled: boolean): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("extension:setEnabled", projectDir, use, enabled),
+    reorder: (projectDir: string, order: string[]): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("extension:reorder", projectDir, order),
+    readCss: (projectDir: string, use: string): Promise<string> =>
+      ipcRenderer.invoke("extension:readCss", projectDir, use),
+    importFromFile: (projectDir: string): Promise<ExtensionImportResult | null> =>
+      ipcRenderer.invoke("extension:importFromFile", projectDir),
+    importFromUrl: (projectDir: string, url: string): Promise<ExtensionImportResult> =>
+      ipcRenderer.invoke("extension:importFromUrl", projectDir, url),
   },
 
   vcs: {
@@ -518,7 +511,7 @@ contextBridge.exposeInMainWorld("electron", {
     return off;
   },
 
-  // tpl:*, snip:*, plugin:*, theme:*, project:listStyles, and local version
+  // tpl:*, snip:*, extension:*, project:listStyles, and local version
   // history (#13) round-tripped through SvelteKit server routes (Phase
   // 2D/2E) and are back on this bridge as of SFE-P5c2 — see the `project`/
   // `manifest`/`tpl`/`snip`/`media`/`plugin`/`theme`/`vcs`/`style` blocks

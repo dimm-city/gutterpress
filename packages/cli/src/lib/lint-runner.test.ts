@@ -11,7 +11,7 @@
  * glob is resolved at call-time.
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, spyOn } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -181,37 +181,209 @@ test("filesLinted counts what was actually inspected", async () => {
   }
 });
 
-test("engineStyles.native is linted too — the sheet that ships is the sheet that's checked", async () => {
-  // `gutterpress lint` and the desktop Problems panel (validate) must agree
-  // about which stylesheets a project uses. They did not: lint discarded
-  // resolveConfig()'s return and passed the RAW `manifest.styles` to
-  // resolveActiveStyles, while manifest.ts's resolveWithPreset is the only
-  // place `engineStyles.native` is appended to that list. So the native
-  // furniture sheet — loaded last at render time, and therefore the one whose
-  // rules WIN the cascade in the shipped PDF — was invisible to lint.
-  //
-  // Measured on the field guide before this fix: lint "Linting 7 CSS file(s)
-  // / 34 risky print properties", validate 8 files / 35 findings. The one
-  // hidden finding was native-furniture.css's `background-blend-mode` inside
-  // `@page` — the whole-sheet background, the single most severe
-  // rasterization risk in that book. A linter that reports a cleaner result
-  // than the panel beside it is worse than no linter.
-  const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-enginestyles-"));
-  try {
-    await mkdir(join(dir, "css"), { recursive: true });
-    await writeFile(join(dir, "css", "base.css"), "body { color: black; }\n", "utf8");
-    await writeFile(join(dir, "css", "furniture.css"), "@page { background-blend-mode: multiply; }\n", "utf8");
-    await writeFile(
-      join(dir, "manifest.yaml"),
-      "title: Engine Styles\nstyles:\n  - css/base.css\nengineStyles:\n  native:\n    - css/furniture.css\n",
-      "utf8",
-    );
+// #238 — a plugin's file-based `styles` are a real, lintable CSS surface now
+// too, not an opaque string printsafe never saw.
+describe("runLint includes plugin styles (#238)", () => {
+  test("a plugin's declared styles file is linted alongside the project's own", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-plugin-styles-"));
+    try {
+      const { mkdir: mkdirp } = await import("fs/promises");
+      await mkdirp(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await mkdirp(join(dir, "plugin"), { recursive: true });
+      await writeFile(join(dir, "plugin", "plugin.mjs"), "export default function () {};\nexport const styles = ['./plugin.css'];\n", "utf8");
+      await writeFile(
+        join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
+        "utf8",
+      );
 
-    const { runLint } = await import("./lint-runner");
-    const result = await runLint({ manifest: dir });
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
 
-    expect(result.filesLinted).toBe(2);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+      // Both the project stylesheet AND the plugin's declared stylesheet were
+      // linted — the plugin's risky `background-blend-mode` finding is the
+      // proof it was actually inspected, not just counted.
+      expect(result.filesLinted).toBe(2);
+      expect(result.riskyCount).toBeGreaterThan(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a plugin that fails to load is a WARNING, not a lint failure (pre-flight check, not build)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-bad-plugin-"));
+    try {
+      const { mkdir: mkdirp } = await import("fs/promises");
+      await mkdirp(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Bad Plugin\nstyles:\n  - styles/book.css\nextensions:\n  - ./does-not-exist.mjs\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+
+      // The project's own stylesheet still lints fine — one unresolvable
+      // plugin must not blank the whole lint run.
+      expect(result.ok).toBe(true);
+      expect(result.filesLinted).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// #262 — a caller that already loaded plugins for this same manifest (the
+// build pipeline's quality-gate stage) can hand the resolved style paths in
+// directly, so this function never loads plugins a second time.
+describe("runLint accepts a pre-loaded pluginStylePaths (#262)", () => {
+  test("a supplied pluginStylePaths is linted verbatim, with no extensions: entry and no plugin load at all", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-styles-"));
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      // A plugin CSS file that lives OUTSIDE the project the manifest never
+      // references — the only way it is lintable at all is via the supplied
+      // pluginStylePaths, exactly what a real vendored npm plugin's resolved
+      // style path looks like to this function.
+      const outside = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-plugin-"));
+      const pluginCssPath = join(outside, "plugin.css");
+      await writeFile(pluginCssPath, "@page { background-blend-mode: multiply; }\n", "utf8");
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Preloaded Plugin Styles\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir, pluginStylePaths: [pluginCssPath] });
+
+      expect(result.filesLinted).toBe(2);
+      expect(result.riskyCount).toBeGreaterThan(0);
+      await rm(outside, { recursive: true, force: true });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an explicit empty pluginStylePaths is honored as 'nothing to add', not as unset", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-preloaded-empty-"));
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+      await mkdir(join(dir, "plugin"), { recursive: true });
+      await writeFile(
+        join(dir, "plugin", "plugin.mjs"),
+        "export default function () {};\nexport const styles = ['./plugin.css'];\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "plugin", "plugin.css"),
+        "@page { background-blend-mode: multiply; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Plugin Styles\nstyles:\n  - styles/book.css\nextensions:\n  - ./plugin/plugin.mjs\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      // A real plugin declaring styles IS configured, but the caller passes
+      // an explicit `[]` (as the build would when a preloaded plugin genuinely
+      // declared none) — this must NOT fall back to loading the plugin
+      // itself; only the project's own stylesheet is linted.
+      const result = await runLint({ manifest: dir, pluginStylePaths: [] });
+
+      expect(result.filesLinted).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// #259 — the lint phase printed risky-property warnings only as a count, so
+// an author could not tell WHICH selectors rasterize (and so sit outside the
+// render-parity gate's coverage). Each finding is now printed the same way
+// the errors are: a file header, then `line:col  message  (rule)`.
+describe("gutterpress lint prints each risky finding (#259)", () => {
+  test("lists each risky property with file, line:col, message and rule", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-per-finding-"));
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      const cssPath = join(dir, "styles", "book.css");
+      await writeFile(
+        cssPath,
+        ".card {\n  filter: drop-shadow(0 0 4px #000);\n}\n.plain {\n  filter: none;\n}\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Per Finding\npreset: book\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+      const lines = (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
+
+      expect(result.ok).toBe(true);
+      expect(result.riskyCount).toBe(1);
+      expect(lines.some((l) => l.includes(cssPath))).toBe(true);
+      expect(
+        lines.some((l) =>
+          /2:3\s+Property is high-risk for print\/PDF: 'filter' rasterizes.*\(printsafe\/no-risky-print-effects\)/.test(l),
+        ),
+      ).toBe(true);
+      // `filter: none` at 5:3 is inert and must not be listed.
+      expect(lines.some((l) => l.includes("5:3"))).toBe(false);
+      // Post-build validation runs only for pdfx and only catches fully
+      // flattened pages, so this promise was false and is gone.
+      expect(lines.some((l) => l.includes("validator will check"))).toBe(false);
+      expect(lines.some((l) => l.includes("1 risky print properties found"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a stylesheet whose only risky-looking declarations are inert lints clean", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-inert-only-"));
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(dir, "styles"), { recursive: true });
+      const cssPath = join(dir, "styles", "book.css");
+      await writeFile(
+        cssPath,
+        ".plain { filter: none; clip-path: none; transition: none; will-change: auto; mix-blend-mode: normal; }\n",
+        "utf8",
+      );
+      await writeFile(
+        join(dir, "manifest.yaml"),
+        "title: Inert Only\npreset: book\nstyles:\n  - styles/book.css\n",
+        "utf8",
+      );
+
+      const { runLint } = await import("./lint-runner");
+      const result = await runLint({ manifest: dir });
+      const lines = (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
+
+      expect(result.ok).toBe(true);
+      expect(result.riskyCount).toBe(0);
+      expect(lines.some((l) => l.includes("risky print properties"))).toBe(false);
+      expect(lines.some((l) => l.includes(cssPath))).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

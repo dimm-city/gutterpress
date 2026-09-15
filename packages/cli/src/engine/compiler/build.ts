@@ -1377,7 +1377,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const d of multicol)
         diagnose(
           "engine.multicol.dead-column",
-          `${d} runs over more than one page in columns, and only the last page's columns get balanced — earlier pages are left with an empty column. Add column-fill: auto to ${d}.`,
+          `${d} runs over more than one page in columns, and only the last page's columns get balanced — earlier pages are left with an empty column. Add .gp-columns-flow to ${d} (column-fill: auto) so every page's columns fill.`,
         );
       if (multicol.length) log(`audit: ${multicol.length} fragmenting multicol warning(s)`);
     }

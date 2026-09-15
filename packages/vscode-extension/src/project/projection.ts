@@ -170,7 +170,7 @@ export async function buildProjectEditorProjection(
   // (npm-package-name plugins) are untouched — they resolve through the
   // vendored-tree/receipt mechanism, not a raw filesystem join, and are
   // outside this specific escape vector.
-  const scopedConfigs = config.plugins.filter((pluginConfig) => {
+  const scopedConfigs = config.extensions.filter((pluginConfig) => {
     if (pluginConfig.path === undefined) return true;
     const resolvedPath = resolve(manifestDir, pluginConfig.path);
     if (isPathInsideFolder(resolvedPath, manifestDir)) return true;

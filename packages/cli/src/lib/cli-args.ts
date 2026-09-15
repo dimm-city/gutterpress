@@ -8,6 +8,7 @@
  * messages. See {@link EXIT_CODES} (re-exported from `./build-error.ts`, the
  * one place the CLI's exit-code contract is defined) for the full contract.
  */
+import { resolve } from "node:path";
 import { NETWORK } from "../constants.ts";
 import type { BuildFormat, PdfxFlavor } from "./build-runner.ts";
 import { EXIT_CODES } from "./build-error.ts";
@@ -228,18 +229,6 @@ export function parsePdfxFlavor(
   );
 }
 
-/**
- * Parse `--engine`, shared by `build` and `preview`. The native engine is the
- * only engine, so this flag is an accepted-but-ignored no-op: `--engine paged`
- * produces a one-line warning (`manifest.ts`'s resolution) and the build
- * proceeds natively regardless. `undefined` means "not passed".
- */
-export function parseEngine(raw: unknown): "paged" | "native" | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === "paged" || raw === "native") return raw;
-  throw new UsageError(`Unknown --engine "${String(raw)}". Expected: paged | native`);
-}
-
 /** Parse `--port`, defaulting to {@link NETWORK.DEFAULT_PORT} (0 = OS-assigned). */
 export function resolvePort(raw: unknown): number {
   if (raw === undefined) return NETWORK.DEFAULT_PORT;
@@ -253,4 +242,23 @@ export function resolvePort(raw: unknown): number {
     );
   }
   return n;
+}
+
+/**
+ * THE command-boundary handler for a {@link UsageError}: print the message and
+ * exit with the error's own code. Every subcommand-dispatching command
+ * (`plugin`, `theme`) catches its parse errors here, so the usage-error→exit
+ * mapping has one definition rather than one per command.
+ */
+export function exitForUsage(error: unknown): never {
+  if (error instanceof UsageError) {
+    console.error(error.message);
+    process.exit(error.exitCode);
+  }
+  throw error;
+}
+
+/** Resolve a `--dir` argument to an absolute path, defaulting to the cwd. */
+export function resolveProjectDir(dir: unknown): string {
+  return resolve(typeof dir === "string" && dir ? dir : process.cwd());
 }

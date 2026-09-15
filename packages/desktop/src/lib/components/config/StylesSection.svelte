@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Stylesheet-list sub-section of the merged "Look & style" section (UX
-   * review M35 — see AppearanceSection's header comment for the merge
+   * review M35 — see LookSection's header comment for the merge
    * rationale). This is the THIRD pane ProjectConfigPanel composes under one
    * "Look & style" heading — the raw monospace-path checkbox list a writer
    * almost never needs, so the parent now nests it behind an "Advanced"
@@ -29,12 +29,12 @@
 </script>
 
 <div class="look-subsection styles-subsection">
-  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a theme manages its own stylesheets automatically.</p>
+  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a look manages its own stylesheets automatically.</p>
   {#if controller.stylesError}
     <p class="error" role="alert">{controller.stylesError}</p>
   {/if}
   {#if controller.styles.length === 0}
-    <p class="muted">No stylesheets found. Apply a theme to create one.</p>
+    <p class="muted">No stylesheets found. Use a look above to add one.</p>
   {:else}
     <ul class="style-list">
       {#each controller.styles as s (s.path)}

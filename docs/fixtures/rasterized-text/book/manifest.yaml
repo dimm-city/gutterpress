@@ -1,0 +1,21 @@
+title: "Rasterized Text"
+authors:
+  - "Gutterpress Fixture"
+
+# Reproduces the render-parity blind spot from issue #259 (`filter` rasterizes
+# its subtree, taking any text inside with it) without the private book the
+# issue was found in — see render-parity.rasterized-text.test.ts and
+# docs/render-parity-gate.md's "Known blind spot" section.
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - content.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  tolerance: 0.5

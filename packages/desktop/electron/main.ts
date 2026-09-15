@@ -73,8 +73,7 @@ import { registerManifestHandlers } from "./api/manifest";
 import { registerTplHandlers } from "./api/tpl";
 import { registerSnipHandlers } from "./api/snip";
 import { registerMediaHandlers } from "./api/media";
-import { registerPluginHandlers } from "./api/plugin";
-import { registerThemeHandlers } from "./api/theme";
+import { registerExtensionHandlers } from "./api/extension";
 import { registerVcsHandlers } from "./api/vcs";
 import { registerStyleHandlers } from "./api/style";
 // SFE-P5c3: remote/sync/publish moved from SvelteKit HTTP routes back to
@@ -148,18 +147,14 @@ import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
-  ApplyThemeTarget,
   CheckResult,
   CloneProgressEvent,
   CreateProjectOptions,
   CreateProjectResult,
-  PluginValidationResult,
   PrintSafeWarning,
   ProjectCapabilities,
-  ProjectPluginEntry,
   ProjectRemoteDiagnosis,
   ProjectStyle,
-  RecommendedPlugin,
   RemoteAccessResult,
   RemoteBranch,
   RemoteRepository,
@@ -167,7 +162,6 @@ import type {
   RestoreVersionResult,
   SourceProvider,
   SystemDiagnostics,
-  ThemeInfo,
   TokenStore as RecoveryTokenStore,
 } from "gutterpress";
 import {
@@ -1111,8 +1105,7 @@ registerManifestHandlers(secureHandle);
 registerTplHandlers(secureHandle);
 registerSnipHandlers(secureHandle);
 registerMediaHandlers(secureHandle);
-registerPluginHandlers(secureHandle);
-registerThemeHandlers(secureHandle);
+registerExtensionHandlers(secureHandle);
 registerVcsHandlers(secureHandle);
 registerStyleHandlers(secureHandle);
 

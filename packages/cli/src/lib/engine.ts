@@ -105,7 +105,7 @@ export async function buildNativePdf(
     }
   } catch (err) {
     throw new BuildError(
-      `--engine native failed: ${err instanceof Error ? err.message : String(err)}`
+      `PDF build failed: ${err instanceof Error ? err.message : String(err)}`
     );
   }
   await writeFile(outPdf, result.bytes);

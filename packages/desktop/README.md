@@ -33,7 +33,7 @@ BrowserWindow loads app://local/
      getPlatform() service locator it backed).
 
 Host capabilities are the 120 secureHandle(...) IPC channels in
-electron/api/*.ts — status, fs, dialog, theme, plugin, remote/sync, vcs,
+electron/api/*.ts - status, fs, dialog, extension, remote/sync, vcs,
 recovery, lint, media, and more. These run in the main process (they may
 import gutterpress and node:*) and are compiled into out/main/main.js, never
 into the client bundle.

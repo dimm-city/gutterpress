@@ -71,7 +71,9 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.markdownlint");
     expect(sourceIds).toContain("source.htmlhint");
     expect(sourceIds).toContain("source.stylelint");
+    expect(sourceIds).toContain("source.css-ownership");
     expect(sourceIds).toContain("source.links.local-refs");
+    expect(sourceIds).toContain("source.links.dangling");
     expect(sourceIds).toContain("source.accessibility.alt-text");
     expect(sourceIds).toContain("source.accessibility.heading-order");
     expect(sourceIds).toContain("source.markdown.layout-markers");
@@ -193,7 +195,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 8 source + 7 asset + 4 heuristic = 34
+    // 15 pdf + 9 source + 7 asset + 4 heuristic = 35
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -203,8 +205,12 @@ describe("Check Registry", () => {
     // CSS-text scan was both redundant with that and strictly worse: it
     // treated commented-out @font-face blocks as live, never percent-decoded
     // (so a correct url("Source%20Sans%20Pro.ttf") failed the build), and
-    // mis-diagnosed protocol-relative //host/f.woff2 refs.)
-    expect(all.length).toBe(34);
+    // mis-diagnosed protocol-relative //host/f.woff2 refs;
+    // source.css-ownership added 0.10.7 (#232) — optional CSS ownership
+    // contract, reports nothing without a project-supplied contract file;
+    // source.links.dangling added 0.10.9 (#263) — relative links a PDF cannot
+    // open, whose href the print build drops.)
+    expect(all.length).toBe(36);
   });
 });
 
@@ -810,7 +816,7 @@ describe("Local markdown refs check", () => {
       await writeFile(mainFile, "[not rendered](missing.pdf) ![also not rendered](missing.png)\n");
       const config = resolveConfig({}, {
         preset: "book",
-        plugins: [{ path: "./disable-refs.mjs" }],
+        extensions: ["./disable-refs.mjs"],
       });
 
       const check = getCheckById("source.links.local-refs")!;
@@ -848,7 +854,7 @@ describe("Local markdown refs check", () => {
       await writeFile(mainFile, "Plugin-authored block.\n");
       const config = resolveConfig({}, {
         preset: "book",
-        plugins: [{ path: "./add-refs.mjs" }],
+        extensions: ["./add-refs.mjs"],
       });
 
       const check = getCheckById("source.links.local-refs")!;
@@ -1378,8 +1384,9 @@ describe("Local markdown refs check", () => {
     expect(results).toHaveLength(0);
   });
 
-  // Counterpart: a non-image LINK (e.g. chapter-to-chapter) is never touched
-  // by the renderer, so it keeps resolving relative to the LINKING file.
+  // Counterpart: a non-image LINK (e.g. chapter-to-chapter) is probed relative
+  // to the LINKING file — the frame the author wrote it in. Whether the built
+  // book can open it is source.links.dangling's question, not this one.
   test("still resolves a non-image link relative to the linking chapter file", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     await mkdir(join(dir, "chapters"), { recursive: true });
@@ -1392,6 +1399,133 @@ describe("Local markdown refs check", () => {
     const results = await check.run(ctx);
 
     expect(results).toHaveLength(0);
+  });
+});
+
+describe("Dangling links check", () => {
+  const DANGLING = "source.links.dangling";
+
+  test("warns with file, line and target for every relative link", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-dangling-"));
+    try {
+      await mkdir(join(dir, "docs"));
+      await mkdir(join(dir, "images"));
+      await writeFile(join(dir, "ok.md"), "# ok\n");
+      await writeFile(join(dir, "docs", "c.md"), "# c\n");
+      await writeFile(join(dir, "images", "a.png"), "fake-bytes");
+      const mainFile = join(dir, "main.md");
+      const lines = [
+        "# Intro {#intro}",
+        "",
+        "[c](docs/c.md)",
+        "[ok](./ok.md)",
+        "[up](../NOTES.md)",
+        "[pdf](files/spec.pdf)",
+        "[abs](/tmp/x.md)",
+        "[p](//cdn/x)",
+        "[q](?print=1)",
+        "[e]()",
+        "[a](#intro)",
+        "[h](https://example.com)",
+        "[m](mailto:x@y)",
+        "![img](images/a.png)",
+        "https://example.com/bare",
+      ];
+      await writeFile(mainFile, lines.join("\n") + "\n");
+
+      const check = getCheckById(DANGLING)!;
+      const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+
+      // Existing on disk (docs/c.md, ./ok.md) or not: neither opens from a PDF.
+      // Protocol-relative, query-only and empty hrefs resolve against the
+      // staged file:// document too, so print drops them and they are named.
+      // (markdown-it refuses a `file:` link outright, so none can reach here.)
+      const expected = [
+        "docs/c.md",
+        "./ok.md",
+        "../NOTES.md",
+        "files/spec.pdf",
+        "/tmp/x.md",
+        "//cdn/x",
+        "?print=1",
+        "",
+      ];
+      expect(results.map((r) => r.data?.ref)).toEqual(expected);
+      for (const [i, r] of results.entries()) {
+        expect(r.severity).toBe("warning");
+        expect(r.code).toBe("dangling-link");
+        expect(r.file).toBe(mainFile);
+        expect(r.line).toBe(3 + i);
+        expect(r.message).toContain(`"${expected[i]}"`);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Pins the CURRENT behaviour: the renderer maps no same-book source link to
+  // an in-document anchor, so `./02.md` is baked as file:///<work dir>/02.md
+  // like any other relative target. Whether such links deserve a mapping is
+  // an open product decision (#263); until then they are reported.
+  test("a link to another source file of the same book is reported too", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-dangling-"));
+    try {
+      await mkdir(join(dir, "chapters"));
+      const first = join(dir, "chapters", "01.md");
+      const second = join(dir, "chapters", "02.md");
+      await writeFile(first, "[next](./02.md)\n");
+      await writeFile(second, "# Next\n");
+
+      const check = getCheckById(DANGLING)!;
+      const results = await check.run(
+        makeCtx({ inputDir: dir, markdownFiles: [first, second] }),
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]?.file).toBe(first);
+      expect(results[0]?.data?.ref).toBe("./02.md");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("manifest severity override flips the finding to an error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-dangling-"));
+    try {
+      const mainFile = join(dir, "main.md");
+      await writeFile(mainFile, "[c](docs/c.md)\n");
+      const config = resolveConfig({}, {
+        preset: "book",
+        validate: { checks: { [DANGLING]: { severity: "error" } } },
+      });
+      const report = await runChecks(
+        makeCtx({ config, inputDir: dir, markdownFiles: [mainFile] }),
+        { only: [DANGLING] },
+      );
+      expect(report.results).toHaveLength(1);
+      expect(report.results[0]?.severity).toBe("error");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a plugin that fails to load is reported and the file is still checked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-dangling-"));
+    try {
+      const mainFile = join(dir, "main.md");
+      await writeFile(mainFile, "[c](docs/c.md)\n");
+      const config = resolveConfig({}, {
+        preset: "book",
+        extensions: ["./does-not-exist.mjs"],
+      });
+
+      const check = getCheckById(DANGLING)!;
+      const results = await check.run(
+        makeCtx({ config, inputDir: dir, markdownFiles: [mainFile] }),
+      );
+      expect(results.map((r) => r.code)).toEqual(["inspect-failed", "dangling-link"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

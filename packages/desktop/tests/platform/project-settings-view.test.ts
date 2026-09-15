@@ -11,7 +11,7 @@
  *  1. ProjectSettingsView.svelte exists and follows the SettingsView pattern:
  *     header + close button + a WAI-ARIA tab bar over cohesive sections.
  *  2. It is the composition root for the existing per-domain section
- *     components/controllers (Details, Look & style, Plugins) — one
+ *     components/controllers (Details, Look & style, Features) — one
  *     implementation, new frame.
  *  3. LeftPanel no longer has a Config tab (or any embedded config panel).
  *  4. +page.svelte mounts the view full-window like SettingsView, remounts it
@@ -53,30 +53,43 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
     expect(src).toContain('role="tab"');
     expect(src).toContain('role="tabpanel"');
     expect(src).toMatch(/ArrowRight|ArrowLeft/);
-    // The writer-shaped sections, one tab each.
+    // The writer-shaped sections, one tab each. #243: "Look & style" and
+    // "Plugins" merged into the "Look" / "Features" tab pair over one
+    // ExtensionsSectionController (the Look tab's own section heading still
+    // reads "Look & style", since it also hosts Design tokens + Stylesheets).
     expect(src).toContain("Details");
+    expect(src).toContain('{ id: "look", label: "Look" }');
+    expect(src).toContain('{ id: "features", label: "Features" }');
     expect(src).toContain("Look &amp; style");
-    expect(src).toContain("Plugins");
+    expect(src).not.toContain('{ id: "plugins", label: "Plugins" }');
   });
 
-  test("composes the existing section components with their controllers", () => {
+  test("composes the existing section components with their controllers, merged Look+Features into one ExtensionsSectionController (#243)", () => {
     const src = view();
-    for (const section of ["DetailsSection", "AppearanceSection", "DesignSection", "StylesSection", "PluginsSection"]) {
+    for (const section of ["DetailsSection", "LookSection", "DesignSection", "StylesSection", "FeaturesSection"]) {
       expect(src).toContain(`<${section} `);
       expect(src).toMatch(new RegExp(`import ${section} from "\\$lib/components/config/${section}\\.svelte"`));
     }
     for (const controller of [
       "DetailsSectionController",
-      "AppearanceSectionController",
+      "ExtensionsSectionController",
       "StylesSectionController",
       "DesignSectionController",
-      "PluginsSectionController",
     ]) {
       expect(src).toContain(`new ${controller}(`);
     }
-    // Cross-section refresh hooks survive the move (theme apply reloads
+    // Look and Features both read the SAME controller instance - the literal
+    // "one controller and one model" shape #243 asks for.
+    expect(src).toContain("<LookSection controller={extensions} />");
+    expect(src).toContain("<FeaturesSection controller={extensions} />");
+    // The retired per-domain controllers/components are gone, not just unused.
+    expect(src).not.toContain("AppearanceSectionController");
+    expect(src).not.toContain("PluginsSectionController");
+    expect(src).not.toContain("AppearanceSection.svelte");
+    expect(src).not.toContain("PluginsSection.svelte");
+    // Cross-section refresh hooks survive the move (a look change reloads
     // styles+design; style toggle reloads design).
-    expect(src).toContain("afterThemeChange");
+    expect(src).toContain("afterLookChange");
     expect(src).toContain("afterStyleChange");
   });
 

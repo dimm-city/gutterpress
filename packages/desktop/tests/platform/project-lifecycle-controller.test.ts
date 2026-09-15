@@ -307,7 +307,6 @@ test("retryPreview repairs only the preview and preserves the open workspace", a
     previewStarted: true,
     url: "preview://repaired",
     title: "Repaired Book",
-    engine: "paged",
   };
 
   expect(await ctrl.retryPreview()).toBe(true);

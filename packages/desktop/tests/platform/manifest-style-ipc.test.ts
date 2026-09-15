@@ -84,10 +84,10 @@ test("manifest:setFields writes details and returns the updated fields", async (
 });
 
 test("style:setActive rewrites manifest styles", async () => {
-  const result = await styleSetActive(projectDir, ["styles/book.css", "themes/zine/theme.css"]);
-  expect(result).toEqual(["styles/book.css", "themes/zine/theme.css"]);
+  const result = await styleSetActive(projectDir, ["styles/book.css", "extensions/zine/theme.css"]);
+  expect(result).toEqual(["styles/book.css", "extensions/zine/theme.css"]);
   const yaml = await readFile(path.join(projectDir, "manifest.yaml"), "utf8");
   expect(yaml).toContain("styles:");
   expect(yaml).toContain("styles/book.css");
-  expect(yaml).toContain("themes/zine/theme.css");
+  expect(yaml).toContain("extensions/zine/theme.css");
 });

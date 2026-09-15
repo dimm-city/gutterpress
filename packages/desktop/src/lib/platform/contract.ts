@@ -80,7 +80,7 @@
  *   capability map for the per-type accounting.
  *
  * Plain request/response DTOs the seam does NOT reference — the ~30 shapes
- * the typed IPC capability modules return (plugin manager, theme manager,
+ * the typed IPC capability modules return (extension manager,
  * style resolver, media panel, problems panel, project classification, …) —
  * live in `./dtos.ts`
  * (untouched by this run; P5c's surface). IPC payload types shared with the
@@ -115,7 +115,7 @@ import type {
   AppImageIntegrationInstallResult,
   AppImageIntegrationRemoveResult,
   LogFileEntry,
-  // SFE-P5c2: project/manifest/tpl/snip/media/plugin/theme/style IPC payload
+  // SFE-P5c2: project/manifest/tpl/snip/media/extension/style IPC payload
   // DTOs. These ~13 shapes already lived in `./dtos` (the established home
   // for "plain data shapes the typed IPC capability modules return" — see
   // this file's own header) before this run; ElectronBridge just needs to
@@ -124,12 +124,11 @@ import type {
   SavedTemplateInfo,
   SnippetEntry,
   ProjectConfigFields,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ThemeImportResult,
+  ProjectExtensionEntry,
+  ExtensionValidationResult,
+  RecommendedExtension,
+  BuiltInStyleSet,
+  ExtensionImportResult,
   ProjectStyle,
   MediaImageEntry,
   MediaImageDetails,
@@ -694,10 +693,10 @@ export interface ElectronBridge {
     };
   };
 
-  // ── project / manifest / tpl / snip / media / plugin / theme / vcs /
+  // ── project / manifest / tpl / snip / media / extension / vcs /
   // style — typed IPC (SFE-P5c2) ────────────────────────────────────────
   // Replaces the deleted src/routes/api/{project,manifest,tpl,snip,media,
-  // plugin,theme,vcs,style}/** +server.ts routes and their api.ts client
+  // extension,vcs,style}/** +server.ts routes and their api.ts client
   // methods. checkCss / lintProject moved to typed IPC too, but in SFE-P5c4
   // — see the `lint` member further below.
 
@@ -724,6 +723,7 @@ export interface ElectronBridge {
   snip: {
     list(projectDir: string): Promise<SnippetEntry[]>;
     read(projectDir: string, fileName: string): Promise<string>;
+    readExtension(projectDir: string, source: { kind: "extension"; ref: string }, fileName: string): Promise<string>;
     save(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
     delete(projectDir: string, fileName: string): Promise<{ ok: boolean }>;
   };
@@ -735,27 +735,20 @@ export interface ElectronBridge {
     importImage(projectDir: string, src: string): Promise<{ src: string; copied: boolean }>;
   };
 
-  plugin: {
-    list(projectDir: string): Promise<ProjectPluginEntry[]>;
-    setEnabled(projectDir: string, ref: string, enabled: boolean): Promise<{ ok: boolean }>;
-    addNpm(projectDir: string, packageName: string, exportName?: string): Promise<ProjectPluginEntry | null>;
-    addLocal(projectDir: string): Promise<ProjectPluginEntry | null>;
-    validate(projectDir: string): Promise<PluginValidationResult[]>;
-    recommended(): Promise<RecommendedPlugin[]>;
-  };
-
-  theme: {
-    listBuiltIn(): Promise<ThemeInfo[]>;
-    listProject(projectDir: string): Promise<ThemeInfo[]>;
-    getActive(projectDir: string): Promise<ThemeInfo | null>;
-    apply(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
-    importFromFolder(projectDir: string): Promise<ThemeInfo | null>;
-    importFromFile(projectDir: string): Promise<ThemeImportResult | null>;
-    importFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
-    readCss(projectDir: string | null, source: { kind: "builtin" | "project"; id: string }): Promise<string>;
-    remove(projectDir: string, id: string): Promise<{ ok: true }>;
-    getPrevious(projectDir: string): Promise<ThemeInfo | null>;
-    revert(projectDir: string): Promise<ThemeInfo>;
+  extension: {
+    list(projectDir: string): Promise<ProjectExtensionEntry[]>;
+    recommended(): Promise<RecommendedExtension[]>;
+    listBuiltIn(): Promise<BuiltInStyleSet[]>;
+    validate(projectDir: string): Promise<ExtensionValidationResult[]>;
+    add(projectDir: string, specifier: string, exportName?: string): Promise<ProjectExtensionEntry | null>;
+    addLocal(projectDir: string): Promise<ProjectExtensionEntry | null>;
+    addBuiltIn(projectDir: string, id: string): Promise<ProjectExtensionEntry>;
+    remove(projectDir: string, use: string): Promise<{ ok: true }>;
+    setEnabled(projectDir: string, use: string, enabled: boolean): Promise<{ ok: true }>;
+    reorder(projectDir: string, order: string[]): Promise<{ ok: true }>;
+    readCss(projectDir: string, use: string): Promise<string>;
+    importFromFile(projectDir: string): Promise<ExtensionImportResult | null>;
+    importFromUrl(projectDir: string, url: string): Promise<ExtensionImportResult>;
   };
 
   vcs: {

@@ -5,7 +5,7 @@
  * `source.files`, plus a generic `setActiveStyles` to reorder/enable the
  * stylesheets list (the active set) without going through theme-apply.
  *
- * Storage model mirrors {@link plugin-manager.ts} / {@link theme-manager.ts}:
+ * Storage model mirrors {@link extension-manager.ts}:
  * the yaml `Document` API is used so existing comments + formatting round-trip
  * cleanly, and writes go to `manifest.yaml` — the ONE recognized filename
  * (`MANIFEST_FILENAMES`). This used to claim a `.yml` fallback; there is none.

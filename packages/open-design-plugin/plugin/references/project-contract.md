@@ -50,7 +50,7 @@ css/main.css
 ```
 
 then the first `.css` it discovers (project root, `styles/`, `css/`,
-`themes/<id>/theme.css`, alphabetically), then nothing at all. The same resolver
+alphabetically), then nothing at all. The same resolver
 serves the renderer, the linter, and the desktop CSS editor, so what is edited
 is always what is rendered.
 

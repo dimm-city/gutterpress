@@ -7,10 +7,13 @@
  * classes authors apply to content. Keeping the two core blocks separate makes
  * that ownership boundary explicit without implying an external plugin.
  *
- * Injected by assemble.ts immediately AFTER `MARKER_CSS` and BEFORE user plugin
- * and project CSS, so the cascade order is: marker layout primitives ->
- * Gutterpress vocabulary -> plugin CSS -> the author's stylesheets last. An
- * author overriding a `gp-*` class at equal specificity still wins.
+ * Injected by assemble.ts inside `@layer gp.vocab` (#227), immediately after
+ * MARKER_CSS's own `@layer gp.marker`, and before user plugin CSS and the
+ * author's project stylesheets — both of which stay UNLAYERED. Per the CSS
+ * Cascade Layers spec, unlayered CSS always beats layered CSS regardless of
+ * selector specificity, so a plugin or project rule targeting a `gp-*` class
+ * now wins UNCONDITIONALLY, not merely at equal specificity — see
+ * assemble.ts's cascade-order comment for the full layer list.
  *
  * Also ships the author-facing `gp-*` image/block vocabulary (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
@@ -206,6 +209,32 @@ export const GUTTERPRESS_CSS = `
 .gp-columns-2 { columns: 2; column-gap: var(--gp-column-gap, 1.5em); }
 .gp-columns-3 { columns: 3; column-gap: var(--gp-column-gap, 1.5em); }
 
+/* the per-shape decisions the paragraph above deliberately leaves to the
+   author, named instead of left as raw CSS every book was reinventing
+   (2026-09-01 CSS architecture review, findings C1/C7 — CLAUDE.md §0:
+   "behavior broadly useful to non-technical authors belongs in core").
+   Permanent vocabulary, standard properties verbatim — same rationale as
+   the column/grid runs above. One name each, no aliases:
+     .gp-columns-all       column-span: all      a heading or block that
+                                                  spans every column in the
+                                                  run it sits inside.
+     .gp-columns-flow      column-fill: auto     a run that FRAGMENTS across
+                                                  pages — every page's
+                                                  columns fill instead of
+                                                  only the last one
+                                                  balancing (the dead-column
+                                                  collapse the build's
+                                                  engine.multicol.dead-column
+                                                  warning names this fix
+                                                  for).
+     .gp-columns-balanced  column-fill: balance  a run that fits on ONE
+                                                  page (the CSS initial
+                                                  value — ragged columns
+                                                  would be wrong here). */
+.gp-columns-all { column-span: all; }
+.gp-columns-flow { column-fill: auto; }
+.gp-columns-balanced { column-fill: balance; }
+
 /* grid runs — the SLOTTED counterpart to the column runs above. Grid places
    each child into the next cell, across then down (deterministic slots: card
    layouts, stat blocks, image-plus-caption pairs); columns FLOW one text run
@@ -225,6 +254,15 @@ export const GUTTERPRESS_CSS = `
    --gp-grid-gap is author-settable. */
 .gp-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gp-grid-gap, 1.5em); }
 .gp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gp-grid-gap, 1.5em); }
+
+/* fragmentation controls — generic pagination utilities for any element,
+   independent of the column/grid vocabulary above (a book reached for
+   these just as often outside a multicol run: keeping a card whole,
+   forcing a section to start a fresh page). Standard properties only —
+   this project is Chromium-only (CLAUDE.md), so there are no legacy
+   page-break-* twins to also emit. One name each. */
+.gp-no-break { break-inside: avoid; }
+.gp-break-before { break-before: page; }
 
 /* shape wrap — text follows the image's alpha silhouette instead of its
    rectangular box. shape-outside only applies to floats, so this is inert
@@ -309,4 +347,101 @@ img.gp-shape {
 .gp-base   { z-index: var(--gp-z-base); }
 .gp-raised { z-index: var(--gp-z-raised); }
 .gp-front  { z-index: var(--gp-z-front); }
+
+/* GFM-style alert/callout boxes (#237) — the DOM gfm-alerts.ts emits from
+   "> [!TYPE]" blockquote syntax when a project opts into the bundled
+   gutterpress-gfm-alerts feature (BUILTIN_OPTIONAL_PLUGINS, renderer.ts).
+   The plugin is optional and inert by default; these rules are equally
+   inert wherever the classes never appear, exactly like every other
+   utility above, so shipping them costs nothing to a book that has not
+   turned the feature on.
+
+   This is authored-COMPONENT vocabulary, not the @marker structural family
+   (markers.js/MARKER_CSS) — CLAUDE.md §6 splits the two core CSS blocks by
+   ROLE, and an author-facing box an author invokes via inline syntax is the
+   same role as every other gp-* utility here, not page/chapter/section DOM.
+
+   Deliberately minimal (CLAUDE.md "thin over capable" / the issue's own
+   "a rule and a label"): a left border plus a bold label, :where()'d to
+   zero specificity so a theme's own (unlayered) rule for any of these
+   classes wins outright regardless of selector weight — see the
+   cascade-layers note atop this file. Five semantic accent colors (the same
+   NOTE/TIP/IMPORTANT/WARNING/CAUTION hues GitHub's own alerts use — a
+   long-established, non-proprietary convention, not DC branding) are
+   exposed as :root custom properties, the same author-settable-surface
+   pattern as the --gp-z-* ladder above: a book retints every alert of one
+   type by overriding a single property, no specificity fight required.
+   --gp-alert-color cascades from the type modifier down to .gp-alert-title
+   through ordinary CSS inheritance (the title is always a DOM descendant of
+   the box), so it is set in exactly five places, not ten. */
+:root {
+  --gp-alert-note-color: #0969da;
+  --gp-alert-tip-color: #1a7f37;
+  --gp-alert-important-color: #8250df;
+  --gp-alert-warning-color: #9a6700;
+  --gp-alert-caution-color: #cf222e;
+}
+:where(.gp-alert) {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 0.25em solid var(--gp-alert-color, currentColor);
+}
+:where(.gp-alert-title) {
+  margin: 0 0 0.5em;
+  font-weight: bold;
+  color: var(--gp-alert-color, inherit);
+}
+:where(.gp-alert-note)      { --gp-alert-color: var(--gp-alert-note-color); }
+:where(.gp-alert-tip)       { --gp-alert-color: var(--gp-alert-tip-color); }
+:where(.gp-alert-important) { --gp-alert-color: var(--gp-alert-important-color); }
+:where(.gp-alert-warning)   { --gp-alert-color: var(--gp-alert-warning-color); }
+:where(.gp-alert-caution)   { --gp-alert-color: var(--gp-alert-caution-color); }
 `;
+/**
+ * GP_CLASSES — every class an author may legitimately write with a `gp-`
+ * prefix: the `.gp-*` selectors in `GUTTERPRESS_CSS` above, the two
+ * structural classes `markers.js`'s `MARKER_CSS` styles (`gp-page-break`,
+ * `gp-column-break`), and two classes the marker plugin EMITS but that carry
+ * no CSS rule of their own — `gp-continued` (a `@continue`d section's marker,
+ * for author/theme styling — see markers.js's header) and `gp-flush` (a
+ * `.gp-pin` edge modifier implemented in the engine's layout code, not CSS —
+ * see the `.gp-flush` doctrine note above).
+ *
+ * This is the vocabulary `gp-pin-scope.js`'s `unknown_gp_class` diagnostic
+ * (#226) checks every author-facing class against: any `gp-`-prefixed class
+ * NOT in this set is either a typo or forgotten vocabulary, and is worth a
+ * warning either way — key on `gp-` only; `.dc-*`, `.fg-*`, and unprefixed
+ * classes are none of core's business.
+ *
+ * `gutterpress-css.test.ts` asserts this set and the `.gp-*` selectors
+ * textually present in `GUTTERPRESS_CSS` + `MARKER_CSS` agree (modulo the two
+ * marker-only exceptions above), so the two cannot silently drift apart —
+ * whoever adds a class to one CSS block and forgets this list finds out from
+ * a failing test, not from a future bug report.
+ */
+export const GP_CLASSES: ReadonlySet<string> = new Set([
+  // flow positions, sizes, spacing
+  "gp-left", "gp-right", "gp-center", "gp-full", "gp-bleed",
+  "gp-small", "gp-medium", "gp-large",
+  "gp-tight", "gp-loose",
+  // column runs + the column-fill/span vocabulary (#225/#228)
+  "gp-columns-2", "gp-columns-3",
+  "gp-columns-all", "gp-columns-flow", "gp-columns-balanced",
+  // fragmentation controls (#225/#228)
+  "gp-no-break", "gp-break-before",
+  // grid runs
+  "gp-grid-2", "gp-grid-3",
+  // shape wrap
+  "gp-shape",
+  // pin + edge modifiers
+  "gp-pin", "gp-top", "gp-bottom",
+  // depth ladder
+  "gp-behind", "gp-base", "gp-raised", "gp-front",
+  // GFM alert boxes (#237, gfm-alerts.ts) — base + the five GitHub types + label
+  "gp-alert", "gp-alert-title",
+  "gp-alert-note", "gp-alert-tip", "gp-alert-important", "gp-alert-warning", "gp-alert-caution",
+  // MARKER_CSS (markers.js) — structural break classes
+  "gp-page-break", "gp-column-break",
+  // marker-only, no CSS rule of their own (see the doc comment above)
+  "gp-continued", "gp-flush",
+]);

@@ -2,7 +2,7 @@
 
 Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
@@ -174,7 +174,6 @@ title: "My Book"
 # Type 'p' and you'll see:
 #   - page (object) - Expected page geometry, in points (validation bounds)
 #   - pdfx (object) - PDF/X conversion settings
-#   - plugins (array) - markdown-it plugins to load
 #   - preset (string) - Vendor preset supplying every other default
 #   - publish (object) - Publish provider settings
 ```
@@ -232,43 +231,33 @@ Vendor preset supplying the defaults for every other section — page geometry, 
 preset: book
 ```
 
-#### `engine` (string)
-Accepted-but-ignored. The Gutterpress engine (native Chromium pagination) is the only engine; an explicit `"paged"` produces a one-line warning and the build proceeds natively regardless. The field and the CLI `--engine` flag are retained only so existing manifests keep loading.
-
-```yaml
-engine: paged
-```
-
-#### `engineStyles` (object)
-Engine-conditional stylesheets, appended after `styles`. `.native` is the only list that still applies; `.paged` is accepted-but-ignored, like `engine` above. This was the per-book migration mechanism while both engines existed — a book whose chrome was coupled to one engine's DOM declared the other engine's replacement furniture here. Loaded last, so the furniture wins the cascade.
-
-```yaml
-engineStyles:
-  native:
-    - css/native-furniture.css
-```
-
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
 ```yaml
 styles:
   - "styles/book.css"
 ```
 
-#### `plugins` (array)
-markdown-it plugins to load, highest `priority` first. Each entry is either a shorthand string or an object.
+#### `extensions` (array)
+Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier string, and its form says what it is:
 
-A string is treated as a local file path when it starts with `./`, `../`, `/` or a Windows drive letter, or when it contains a path separator and ends in `.js`/`.mjs`/`.cjs`; otherwise it is an npm package name.
+- a **bundled feature name** — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts` — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
+- a **path** starting with `./` or `../` (or `/`, or a Windows drive letter), relative to this file — a folder holding a `gutterpress.json` (or a theme-era `theme.json`/`theme.css`), or a bare `.js` markdown-it plugin file — referenced in place, never copied;
+- anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors a receipt-backed runtime dependency tree under `plugins/npm/` and writes the exact pin back; builds verify and resolve pinned entries there without network access.
 
-An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it). The explicit npm installer records an exact `version` and vendors a receipt-backed runtime dependency tree under `plugins/npm/`; builds verify and resolve pinned entries there without network access.
+A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension. There is no `priority` (reorder the list instead) and no `path`/`name` wrapper keys — a manifest that still carries `plugins:` fails with a message that prints its entries rewritten as `extensions:`.
+
+The object form is for an entry that needs more than its specifier. `use` carries the same specifier the bare form would, plus optional `export` (named module export to use as the plugin function when the package has no default export), `options` (passed straight through to the markdown-it plugin; default `{}`), and `enabled` (default `true`; `false` keeps the entry in the manifest but skips loading it at build and preview time).
 
 ```yaml
-plugins:
-  - name: "gutterpress-plugin-callouts"
-    version: "1.2.3"
-  - path: "plugins/dimm-city-plugin.js"
-    priority: 100
+extensions:
+  - "./extensions/house-style"
+  - "markdown-it-footnote"
+  - "@dimm-city/components@2.1.0"
+  - use: "markdown-it-attrs"
+    options:
+      leftDelimiter: "["
 ```
 
 #### `source` (object)
@@ -335,7 +324,7 @@ Preflight configuration.
 
 - `enabled` (boolean) - Default `true`.
 - `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
+- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `cssOwnership`: a path to a CSS ownership contract, or `false` to disable `source.css-ownership`; absent means no contract, so the check reports nothing by default (see [CSS ownership contract](./css-ownership-contract.md)). `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
 - `assets` (object) - `maxImageSize`, `minImageDpi`, `allowedColorSpaces`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
 - `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
 - `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.
@@ -355,9 +344,6 @@ validate:
 #### `publish` (object)
 Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
 
-#### `themePrevious` (string)
-Managed automatically by Gutterpress's Theme Manager (the "revert to previous theme" target). Not authored by hand.
-
 ---
 
 ## Complete Example
@@ -370,9 +356,9 @@ authors:
   - "Technical Writing Team"
 preset: book
 
-plugins:
-  - path: "plugins/callouts.js"
-    priority: 100
+extensions:
+  - "./extensions/clean-book"
+  - "./plugins/callouts.js"
 
 styles:
   - "styles/book.css"

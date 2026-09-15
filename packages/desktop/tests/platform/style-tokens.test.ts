@@ -133,3 +133,92 @@ test("updateRootToken appends a :root block when the stylesheet has none", () =>
   // The new token must be discoverable by the parser round-trip.
   expect(parseStyleTokens(out).some((t) => t.name === "--a" && t.value === "#abcdef")).toBe(true);
 });
+
+// ── Token annotations (issue #244) ──────────────────────────────────────────
+//
+// Theme authors curate what the guided Design panel shows with `@group` /
+// `@label` / `@internal` comments scanned out of the same `:root` block.
+
+test("a stylesheet with no annotation comments parses exactly as before (no regression)", () => {
+  // The literal backward-compat requirement from issue #244: an unannotated
+  // theme's tokens must carry no `group`, and none are dropped.
+  const css = `:root {\n  --heading-color: #cc0000;\n  --body-size: 1rem;\n}\n`;
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => t.name)).toEqual(["--heading-color", "--body-size"]);
+  expect(tokens.every((t) => t.group === undefined)).toBe(true);
+});
+
+test("@label overrides the name-derived label for the declaration right after it", () => {
+  const css = `:root {\n  /* @label Accent color */\n  --color-accent: #2b4c7e;\n  --untouched: 1rem;\n}\n`;
+  const tokens = parseStyleTokens(css);
+  expect(tokens.find((t) => t.name === "--color-accent")!.label).toBe("Accent color");
+  // One-shot: the annotation must not leak onto the next declaration.
+  expect(tokens.find((t) => t.name === "--untouched")!.label).toBe("Untouched");
+});
+
+test("@group assigns the token's display group; tokens without it are ungrouped", () => {
+  const css = `:root {\n  /* @group Colors */\n  --color-accent: #2b4c7e;\n  --plain: 1rem;\n}\n`;
+  const tokens = parseStyleTokens(css);
+  expect(tokens.find((t) => t.name === "--color-accent")!.group).toBe("Colors");
+  expect(tokens.find((t) => t.name === "--plain")!.group).toBeUndefined();
+});
+
+test("@internal omits the token from the parsed list entirely", () => {
+  const css = [
+    ":root {",
+    "  --color-accent: #2b4c7e;",
+    "  /* @internal */",
+    "  --dc-skill-tab-shape: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);",
+    "}",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => t.name)).toEqual(["--color-accent"]);
+});
+
+test("stacked annotation comments (the issue's illustrative form) both apply to the same declaration", () => {
+  const css = [
+    ":root {",
+    "  /* @group Colors */",
+    "  /* @label Accent color */",
+    "  --color-accent: #2b4c7e;",
+    "}",
+  ].join("\n");
+  const t = parseStyleTokens(css)[0]!;
+  expect(t.group).toBe("Colors");
+  expect(t.label).toBe("Accent color");
+});
+
+test("directives combined in one comment do not bleed into each other's value", () => {
+  // Without excluding "@" from the value capture, @label would greedily eat
+  // " Accent color @group Colors" whole.
+  const css = `:root {\n  /* @label Accent color @group Colors */\n  --color-accent: #2b4c7e;\n}\n`;
+  const t = parseStyleTokens(css)[0]!;
+  expect(t.label).toBe("Accent color");
+  expect(t.group).toBe("Colors");
+});
+
+test("a plain, non-directive comment is inert — no crash, no leaked label", () => {
+  const css = [
+    ":root {",
+    "  /* just a note about spacing, nothing special */",
+    "  --gap: 1rem;",
+    "}",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => t.name)).toEqual(["--gap"]);
+  expect(tokens[0]!.label).toBe("Gap");
+  expect(tokens[0]!.group).toBeUndefined();
+});
+
+test("annotations only affect the declaration immediately following them, not the whole file", () => {
+  const css = [
+    ":root {",
+    "  /* @group Colors */",
+    "  --color-accent: #2b4c7e;",
+    "  --color-secondary: #112233;", // no annotation of its own
+    "}",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.find((t) => t.name === "--color-accent")!.group).toBe("Colors");
+  expect(tokens.find((t) => t.name === "--color-secondary")!.group).toBeUndefined();
+});

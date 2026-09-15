@@ -156,7 +156,7 @@ export const markerCompletions: readonly MarkerCompletion[] = [
   },
   {
     label: "@column-break",
-    detail: "Force a column break inside a .col-split @section",
+    detail: "Force a column break inside a multi-column @section",
     apply: "@column-break",
   },
   {

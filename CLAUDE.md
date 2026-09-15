@@ -134,7 +134,10 @@ Two constraints survive the relaxation, and they are what keep it honest:
    author's pages; it may not re-decide them. Where the viewer derives
    pagination by any means other than the print fragmenter, the preview↔print
    parity gate (`scripts/native-parity-gate.ts`) is what proves it still
-   agrees with the PDF — and it must stay green with an empty allowlist.
+   agrees with the PDF — and it must stay green with an empty allowlist. A
+   sub-pixel exact-fit boundary the gate has measured in both fragmenters
+   (see `docs/native-parity-gate.md`) is a distinct passing outcome, not an
+   allowlist entry.
 
 **Boundary rulings** (ratified by the product owner, 2026-08-08 — these
 resolve the categorization questions future work will hit):
@@ -321,13 +324,14 @@ Reasons:
 
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
-(`addNpmPlugin`, used by the desktop route and `gutterpress plugin add`) that resolves
+(`addExtension` in `extension-manager.ts`, used by the desktop routes and
+`gutterpress ext add`) that resolves
 the public npm registry to an exact version graph, verifies every tarball,
 safely vendors a complete nested dependency tree under the project, writes a
 whole-tree schema-v2 receipt, load-tests it, and only then atomically records
-`{ name, version, export? }` in the manifest (`export` explicitly selects a
-named plugin function for packages without a default export). Reinstall always
-fetches fresh bytes.
+the pinned specifier `name@<exact version>` in the manifest's `extensions:`
+list (the object form's `export:` explicitly selects a named plugin function
+for packages without a default export). Reinstall always fetches fresh bytes.
 Package scripts, bundled `node_modules`, native build steps, and non-registry
 dependency selectors are intentionally unsupported. Receipt-backed loads verify
 the full tree from a private snapshot, then rewrite reachable literal ESM and
@@ -342,7 +346,7 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     A final artifact must never silently omit author-configured formatting.
   - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
     whose vendored copy is missing or cannot load is skipped, `onError` fires
-    (the preview `warn`s; the desktop Plugins panel shows "Needs install" or the
+    (the preview `warn`s; the desktop Features tab shows "Needs install" or the
     load error with fix instructions), and the rest of the document still
     renders. This is NOT the silent-skip that the loader deliberately removed —
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
@@ -364,8 +368,9 @@ as an inlined copy of the standalone `markdown-it-paged` package and was
 absorbed at 0.10.0: the copy had grown to 812 lines against upstream's 433,
 was never consumed from npm, and carried four Gutterpress-only feature
 clusters (`data-source-range` editor threading per ADR 0009,
-`data-chapter-label`/`.chapter-opener`, `env.__colSplitDepth`, and the
-emitted-class contract the viewer depends on). The third-party label had
+`data-chapter-label`/`.chapter-opener`, a hard column-split mechanism since
+removed in 0.10.7, and the emitted-class contract the viewer depends on). The
+third-party label had
 stopped describing the file, and it was actively costing us — it argued
 against cleaning comments that describe a removed engine, and it blurred the
 ownership boundary for the `gp-*` vocabulary.
@@ -380,8 +385,6 @@ prefixed. The split between the two modules is by ROLE, not owner:
 - `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
   `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
   `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
-  Per-render state lives on `env.__colSplitDepth`, not a module-level
-  closure, so a thrown render can't leak depth state into the next chapter.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
   `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth

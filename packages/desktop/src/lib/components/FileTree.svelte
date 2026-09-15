@@ -4,7 +4,7 @@
    *
    * Browsable project tree: lists folders AND editable files, and lets the
    * author expand any subfolder to reach files nested anywhere in the project
-   * (e.g. `themes/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
+   * (e.g. `extensions/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
    * children are loaded via `$lib/files/files-capability`'s `listDir` (typed IPC).
    * There is no `isDesktop()` gate on the root load; the parent only mounts
    * this when a folder project is open (`sourceMode === "folder"`).
@@ -37,7 +37,7 @@
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
    * Delete. Delete uses the same two-step inline "armed" confirm as
-   * AppearanceSection's theme Remove (W4/M7). Create/rename use a small
+   * LookSection's theme Remove (W4/M7). Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
@@ -47,7 +47,7 @@
    * authored inside a subfolder would silently never render. Offering "New
    * chapter" inside a folder would set non-technical authors up to write a
    * chapter that never appears in their book. "New folder" has no such trap
-   * (folders are purely organizational — themes/styles/assets already live
+   * (folders are purely organizational — extensions/styles/assets already live
    * in subfolders), so it's offered at both levels.
    *
    * Reorder: chapters are ordered by filename (see the readdir+sort fallback
@@ -356,7 +356,7 @@
     }
   }
 
-  // ── Delete (two-step inline confirm — same pattern as AppearanceSection's
+  // ── Delete (two-step inline confirm — same pattern as LookSection's
   // theme Remove, W4/M7) ─────────────────────────────────────────────────────
   let deleteArmedPath = $state<string | null>(null);
   let deleteBusy = $state<string | null>(null);
@@ -825,7 +825,7 @@
     outline-offset: 1px;
   }
 
-  /* ── Inline delete confirm (mirrors AppearanceSection's theme Remove) ─── */
+  /* ── Inline delete confirm (mirrors LookSection's theme Remove) ─── */
   .row-confirm-msg {
     flex: 1 1 auto;
     min-width: 0;

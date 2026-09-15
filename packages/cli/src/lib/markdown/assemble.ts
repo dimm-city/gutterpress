@@ -33,7 +33,21 @@ export type ReadText = (relPath: string) => Promise<string>;
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
  * `extra_bare_marker_token`, `unknown_marker`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `pin_outside_page`).
+ * `page_outside_spread`, `pin_outside_page`, `unknown_gp_class` — the last
+ * emitted by `gp-pin-scope.js`'s `gp_pin_scope_check`, same as
+ * `pin_outside_page`, see #226).
+ *
+ * #240 (declarative container components) adds three more, all emitted by
+ * `markers.js`'s `layout_transform`/`scanForUnknownDeclaredMarkers` for a
+ * plugin-DECLARED marker: `deprecated_marker` (a `{ deprecated: "…" }`
+ * marker, or its `@end-` form, was used), `declared_marker_close_without_open`
+ * (an `@end-<name>` with nothing of that kind open — the declared-marker
+ * twin of `continue_without_section`), and `declared_marker_eof_close` (an
+ * open declared container reached EOF without `autoCloseAt: ["eof"]` — the
+ * declared-marker twin of `spread_eof_close`). `unknown_marker` above is
+ * reused, not duplicated: a typo close to a DECLARED name warns through the
+ * same type, via a second, unconditional check modeled on `unknown_gp_class`
+ * rather than the core-only `scanForMistypedMarkers`.
  *
  * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
  * @section with no open @page is valid authoring (audited, 17/17 false
@@ -46,6 +60,17 @@ export interface LayoutWarning {
   message: string;
   marker?: unknown;
 }
+
+/**
+ * The Chromium milestone that paints a `@page { background: url() }` image
+ * with no other reference to it (spec gap #152). Measured 2026-09-03: Chrome
+ * for Testing 152.0.7977.54 and the CI runner's Chrome stable both paint it;
+ * Chrome 151.0.7922.75 dropped it (docs/known-limitations.md §3). The
+ * `preloadImages` shim below expires when the engine's floor
+ * (`REQUIRED_MILESTONE`, engine/shared/cdp.ts) reaches this — the canary in
+ * engine/compiler/page-background-chromium-bug.canary.test.ts enforces that.
+ */
+export const PAGE_BACKGROUND_FIXED_MILESTONE = 152;
 
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
@@ -66,9 +91,10 @@ export interface AssembleBookHtmlOptions {
    */
   projectCss?: string;
   /**
-   * SHIM — spec gap #152. Output-relative hrefs of the images the project's
-   * stylesheets staged (`inlineStyles`'s copy plan, verbatim), each emitted as
-   * one `<link rel="preload" as="image">`.
+   * SHIM — spec gap #152, fixed upstream in Chromium
+   * {@link PAGE_BACKGROUND_FIXED_MILESTONE}. Output-relative hrefs of the
+   * images the project's stylesheets staged (`inlineStyles`'s copy plan,
+   * verbatim), each emitted as one `<link rel="preload" as="image">`.
    *
    * Chromium reaches an `@page`-only `url()` lazily, during the print, and the
    * print path CDP drives never waits for a pending resource — so the sheet
@@ -88,10 +114,16 @@ export interface AssembleBookHtmlOptions {
    * either document order) — which is why `asset-inline.ts` content-addresses
    * every CSS image so no element can name one.
    *
-   * WHAT PROVES IT IS STILL NEEDED: the expiry canary,
-   * `engine/compiler/page-background-chromium-bug.canary.test.ts`. The day it
-   * goes red, Chromium has fixed the bug — delete this option, the `.map()`
-   * that feeds it in `markdown/index.ts`, and the canary.
+   * WHEN IT GOES: Chromium fixed the bug in milestone
+   * {@link PAGE_BACKGROUND_FIXED_MILESTONE} (measured 2026-09-03: Chrome 152
+   * paints the sole-referenced image, 151 dropped it). The preload changes
+   * nothing on a fixed Chromium, and it still protects every Chromium the
+   * engine accepts below that (`REQUIRED_MILESTONE` in `engine/shared/cdp.ts`,
+   * 148 — what Electron 42 ships), so it stays until the floor reaches the
+   * fix. The expiry canary,
+   * `engine/compiler/page-background-chromium-bug.canary.test.ts`, goes red
+   * the day the floor is raised that far — delete this option, the `.map()`
+   * that feeds it in `markdown/index.ts`, the constant, and the canary.
    *
    * The copy plan is the source, NOT a scan of the assembled CSS: `pluginCss`
    * never passes through `inlineStyles`, so a `url()` inside it is never
@@ -210,15 +242,27 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   }
 
   // Inject built-in + user-plugin CSS as a single <style> block.
-  // Cascade order: Gutterpress's marker layout primitives, then its `gp-*`
-  // vocabulary, then user plugin CSS, then the author's own
-  // stylesheets last so project rules win at equal specificity.
+  //
+  // Cascade order (#227): core's two blocks are wrapped in cascade layers —
+  // `@layer gp.marker, gp.vocab;` declares the order, then each block gets
+  // its own named layer. Per the CSS Cascade Layers spec, unlayered CSS
+  // ALWAYS wins over layered CSS regardless of selector specificity, so
+  // user plugin CSS and the author's own project stylesheets — both left
+  // UNLAYERED below — win over core's two layers "by construction" rather
+  // than by outrunning them on specificity or injection order. This
+  // replaces source-order + `:where()` as the mechanism that makes "author
+  // wins" true; `:where()` stays inside MARKER_CSS's own break/orphan rules
+  // because those still need to lose to an author's UNLAYERED rule at ANY
+  // specificity too (an author-declared layer is a separate concern — see
+  // the styling guide's cascade-layers section for the recommended book
+  // convention).
   // The two core blocks stay separate by ownership: MARKER_CSS supports the
   // marker-generated DOM, while gutterpress-css.ts owns the broader `gp-*`
   // author vocabulary.
   const inlineCss = [
-    `/* gutterpress markers */\n${MARKER_CSS.trim()}`,
-    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
+    "@layer gp.marker, gp.vocab;",
+    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n}`,
+    `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");

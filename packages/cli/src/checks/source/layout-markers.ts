@@ -33,7 +33,7 @@ const check: Check = {
   id: "source.markdown.layout-markers",
   name: "Layout Markers",
   description:
-    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand",
+    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand, plus any unknown gp-* class",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
@@ -46,7 +46,7 @@ const check: Check = {
     // (see loadPlugins' doc comment). A project whose plugin isn't installed
     // must still get marker diagnostics for the rest of its document — but the
     // missing plugin is itself reported, never swallowed.
-    const plugins = await loadPlugins(ctx.config.plugins, ctx.inputDir, (ref, error) => {
+    const plugins = await loadPlugins(ctx.config.extensions, ctx.inputDir, (ref, error) => {
       results.push(
         inspectionFailed(
           check.id,

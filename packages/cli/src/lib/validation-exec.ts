@@ -7,6 +7,7 @@ import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
+import { loadPluginsWithCss } from "./markdown/plugins";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
 import { canonicalChapterId } from "./markdown/chapter-id";
@@ -41,6 +42,18 @@ export interface ValidationExecutionArgs {
   phase?: string;
   /** Publish-target ids (CSV) to validate against, overriding the manifest's `targets:` for this run. */
   target?: string;
+  /**
+   * Pre-loaded, absolute plugin `styles` file paths (#262) — supplied by the
+   * build pipeline's preValidate gate (`build-runner.ts`'s
+   * `runQualityGates`, via `loadBuildPlugins`) so this run does not load
+   * plugins itself when the build already has. `undefined` (the default —
+   * every standalone `validate`/`preflight`/`audit` invocation, and the
+   * desktop Problems panel) makes {@link executeValidation} load plugins
+   * itself, degrade-and-report, exactly like `gutterpress lint`
+   * (lint-runner.ts). An explicit `[]` is honored as-is, not treated as
+   * "unset".
+   */
+  pluginStylePaths?: string[];
 }
 
 export interface ValidationExecutionResult {
@@ -435,13 +448,36 @@ export async function executeValidation(
     const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.source.files);
     markdownFiles = relMarkdown.map((f) => join(manifestDir, canonicalChapterId(f)));
 
-    // stylelint (source.stylelint) skips minified CSS — same as lint-runner.ts
-    // — since line/column findings on a minified file are meaningless; it
-    // still ships via resolveActiveStyles/inlineStyles regardless.
+    // stylelint (source.stylelint) skips minified CSS, since line/column
+    // findings on a minified file are meaningless; it still ships via
+    // resolveActiveStyles/inlineStyles regardless.
+    //
+    // #262: NOW the same list lint-runner.ts builds — since #238 a plugin's
+    // file-based `styles` are a real, lintable/ownership-checked CSS surface,
+    // and it was folded into `gutterpress lint` there but not here, so a
+    // plugin's CSS was print-safety and ownership checked by `gutterpress
+    // lint` and never by `validate`/`preflight` or the desktop Problems
+    // panel — the three surfaces most people actually use. `pluginStylePaths`
+    // is either the build's preValidate gate handing in its own
+    // already-loaded plugins (build-runner.ts's loadBuildPlugins — this run
+    // is then free: no plugin load happens here at all), or, for a standalone
+    // `validate`/`preflight`/`audit` run with no such preload, loaded here
+    // degrade-and-report, same failure mode as lint-runner.ts: one broken
+    // plugin must not blank print-safety checking for the rest of the
+    // project's CSS.
     const relStyles = await resolveActiveStyles(manifestDir, config.styles);
-    cssFiles = relStyles
-      .map((rel) => resolve(manifestDir, rel))
-      .filter((f) => !f.endsWith(".min.css"));
+    const projectCssFiles = relStyles.map((rel) => resolve(manifestDir, rel));
+    let pluginStylePaths = args.pluginStylePaths;
+    if (pluginStylePaths === undefined) {
+      ({ pluginStylePaths } = await loadPluginsWithCss(
+        config.extensions,
+        manifestDir,
+        (ref, err) => log.warn(`Skipping plugin "${ref}" for validation — ${err.message}`),
+      ));
+    }
+    cssFiles = [...projectCssFiles, ...pluginStylePaths].filter(
+      (f) => !f.endsWith(".min.css"),
+    );
 
     // The project root, wholesale. Excluding node_modules/.git/dist happens at
     // the GLOB level (ASSET_SCAN_IGNORE_GLOBS, checks/asset/extensions.ts), not

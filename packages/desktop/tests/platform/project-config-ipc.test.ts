@@ -1,7 +1,7 @@
 /**
  * Project-scoping guard coverage for the `project`/`manifest`/`tpl`/`snip`/
- * `plugin`/`theme`/`style` IPC handlers (SFE-P5c2 — migrated off
- * `src/routes/api/{project,manifest,tpl,snip,plugin,theme,style}/**`,
+ * `extension`/`style` IPC handlers (SFE-P5c2 - migrated off
+ * `src/routes/api/{project,manifest,tpl,snip,extension,style}/**`,
  * all deleted). Ports the corresponding rows of the deleted
  * `route-scoping.test.ts`'s `ROUTES` table (2026-07-29 file-operations
  * audit, Theme 1) to call the `electron/api/*.ts` handler functions
@@ -10,9 +10,9 @@
  * shared string prefix → rejected, no project open → rejected, and the
  * enclosing REPO ROOT passes (multi-project sessions).
  *
- * `plugin:addNpm`'s own scoping + trust-confirmation coverage lives in
- * `plugin-ipc.test.ts` (SPECIAL WEIGHT per the run's dispatch note); this
- * file covers the rest of `plugin`. `vcs`'s scoping coverage lives in
+ * `extension:add`'s own scoping + trust-confirmation coverage lives in
+ * `extension-ipc.test.ts` (SPECIAL WEIGHT per the run's dispatch note); this
+ * file covers the rest of `extension`. `vcs`'s scoping coverage lives in
  * `vcs-ipc.test.ts`. `manifest:read`/`manifest:setFields`/`style:setActive`'s
  * real positive round-trips (an actual manifest.yaml on disk) live in
  * `manifest-style-ipc.test.ts` — this file only re-covers `manifest:
@@ -34,20 +34,19 @@ import { makeHostServices } from "../support/host-services-fake";
 import { projectListStyles } from "../../electron/api/project";
 import { manifestRead, manifestSetFields } from "../../electron/api/manifest";
 import { tplSaveAsTemplate } from "../../electron/api/tpl";
-import { snipList, snipRead, snipSave, snipDelete } from "../../electron/api/snip";
-import { pluginList, pluginSetEnabled, pluginAddLocal, pluginValidate } from "../../electron/api/plugin";
+import { snipList, snipRead, snipReadExtension, snipSave, snipDelete } from "../../electron/api/snip";
 import {
-  themeListProject,
-  themeGetActive,
-  themeApply,
-  themeImportFromFolder,
-  themeImportFromFile,
-  themeImportFromUrl,
-  themeReadCss,
-  themeRemove,
-  themeGetPrevious,
-  themeRevert,
-} from "../../electron/api/theme";
+  extensionList,
+  extensionValidate,
+  extensionAddLocal,
+  extensionAddBuiltIn,
+  extensionRemove,
+  extensionSetEnabled,
+  extensionReorder,
+  extensionReadCss,
+  extensionImportFromFile,
+  extensionImportFromUrl,
+} from "../../electron/api/extension";
 import { styleSetActive } from "../../electron/api/style";
 
 /**
@@ -63,22 +62,19 @@ const ROUTES: Array<{ name: string; call: (dir: string) => Promise<unknown> }> =
   { name: "tpl:saveAsTemplate", call: (d) => tplSaveAsTemplate(d, "tpl") },
   { name: "snip:list", call: (d) => snipList(d) },
   { name: "snip:read", call: (d) => snipRead(d, "snip.md") },
+  { name: "snip:readExtension", call: (d) => snipReadExtension(d, { kind: "extension", ref: "./extensions/x" }, "snip.md") },
   { name: "snip:save", call: (d) => snipSave(d, "snip", "text") },
   { name: "snip:delete", call: (d) => snipDelete(d, "snip.md") },
-  { name: "plugin:list", call: (d) => pluginList(d) },
-  { name: "plugin:setEnabled", call: (d) => pluginSetEnabled(d, "some-plugin", true) },
-  { name: "plugin:addLocal", call: (d) => pluginAddLocal(d) },
-  { name: "plugin:validate", call: (d) => pluginValidate(d) },
-  { name: "theme:apply", call: (d) => themeApply(d, { kind: "builtin", id: "classic" }) },
-  { name: "theme:remove", call: (d) => themeRemove(d, "some-theme") },
-  { name: "theme:readCss", call: (d) => themeReadCss(d, { kind: "project", id: "some-theme" }) },
-  { name: "theme:importFromUrl", call: (d) => themeImportFromUrl(d, "https://example.test/theme.css") },
-  { name: "theme:importFromFile", call: (d) => themeImportFromFile(d) },
-  { name: "theme:importFromFolder", call: (d) => themeImportFromFolder(d) },
-  { name: "theme:getActive", call: (d) => themeGetActive(d) },
-  { name: "theme:listProject", call: (d) => themeListProject(d) },
-  { name: "theme:getPrevious", call: (d) => themeGetPrevious(d) },
-  { name: "theme:revert", call: (d) => themeRevert(d) },
+  { name: "extension:list", call: (d) => extensionList(d) },
+  { name: "extension:validate", call: (d) => extensionValidate(d) },
+  { name: "extension:addLocal", call: (d) => extensionAddLocal(d) },
+  { name: "extension:addBuiltIn", call: (d) => extensionAddBuiltIn(d, "classic") },
+  { name: "extension:remove", call: (d) => extensionRemove(d, "some-extension") },
+  { name: "extension:setEnabled", call: (d) => extensionSetEnabled(d, "some-extension", true) },
+  { name: "extension:reorder", call: (d) => extensionReorder(d, ["some-extension"]) },
+  { name: "extension:readCss", call: (d) => extensionReadCss(d, "some-extension") },
+  { name: "extension:importFromFile", call: (d) => extensionImportFromFile(d) },
+  { name: "extension:importFromUrl", call: (d) => extensionImportFromUrl(d, "https://example.test/theme.css") },
   { name: "style:setActive", call: (d) => styleSetActive(d, []) },
 ];
 
@@ -175,7 +171,7 @@ for (const route of ROUTES) {
 // family (the whole set shares one guard, so this pins the guard's separator
 // handling without re-running every near-identical case).
 
-const SIBLING_CASES = ["theme:remove", "manifest:setFields", "plugin:validate", "snip:save", "tpl:saveAsTemplate"];
+const SIBLING_CASES = ["extension:remove", "manifest:setFields", "extension:validate", "snip:save", "tpl:saveAsTemplate"];
 
 for (const name of SIBLING_CASES) {
   test(`${name}: a sibling REPO with a shared string prefix is rejected`, async () => {

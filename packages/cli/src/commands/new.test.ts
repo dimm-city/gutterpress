@@ -10,6 +10,11 @@ import { runCommand } from "citty";
 import path from "node:path";
 import * as scaffoldMod from "../lib/project-scaffold.ts";
 import type { CreateProjectOptions, CreateProjectError } from "../lib/project-scaffold.ts";
+import * as extensionMod from "../lib/extension-scaffold.ts";
+import type {
+  ScaffoldExtensionOptions,
+  ScaffoldExtensionResult,
+} from "../lib/extension-scaffold.ts";
 import newCommand from "./new.ts";
 import { EXIT_CODES } from "../lib/cli-args.ts";
 import { stubProcessExit } from "../test-helpers/testkit.ts";
@@ -336,5 +341,177 @@ describe("new command — validation and exit codes", () => {
     await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
 
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── `--kind` dispatch (#245 / #233) ─────────────────────────────────────────
+//
+// `new` now fronts TWO scaffolders. These pin the dispatch and the
+// flag-applicability guard; `lib/extension-scaffold.test.ts` covers what the
+// extension scaffolder actually writes.
+
+let extensionSpy: ReturnType<typeof spyOn> | undefined;
+
+function stubExtensionScaffold(
+  impl: (opts: ScaffoldExtensionOptions) => Promise<ScaffoldExtensionResult>
+): void {
+  extensionSpy = spyOn(extensionMod, "scaffoldExtension").mockImplementation(
+    impl as unknown as typeof extensionMod.scaffoldExtension
+  );
+}
+
+function fakeExtensionResult(
+  overrides: Partial<ScaffoldExtensionResult> = {}
+): ScaffoldExtensionResult {
+  return {
+    extensionDir: "/tmp/parent/my-plugin",
+    manifestPath: "/tmp/parent/my-plugin/gutterpress.json",
+    kind: "plugin",
+    slug: "my-plugin",
+    prefix: "my-plugin-",
+    openFile: "/tmp/parent/my-plugin/plugin.js",
+    files: ["gutterpress.json", "plugin.js"],
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  extensionSpy?.mockRestore();
+  extensionSpy = undefined;
+});
+
+describe("new command — --kind dispatch", () => {
+  test.each(["plugin", "theme"] as const)(
+    "--kind %s calls scaffoldExtension, not scaffoldProject, and needs no --preset",
+    async (kind) => {
+      consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+      stubScaffold(async () => fakeResult());
+      let captured: ScaffoldExtensionOptions | undefined;
+      stubExtensionScaffold(async (opts) => {
+        captured = opts;
+        return fakeExtensionResult({ kind });
+      });
+
+      await runCommand(newCommand, {
+        rawArgs: [
+          "My Plugin", "--kind", kind,
+          "--author", "Jane", "--prefix", "mp-",
+          "--description", "Does a thing.", "--dir", path.join("/tmp", "parent"),
+          "--folder", "custom-folder",
+        ],
+      });
+
+      // The book scaffolder must not run — and crucially, ADR 0008's
+      // "--preset is required" gate must not fire for an extension.
+      expect(scaffoldSpy).not.toHaveBeenCalled();
+      expect(captured).toEqual({
+        name: "My Plugin",
+        kind,
+        parentDir: path.join("/tmp", "parent"),
+        folderName: "custom-folder",
+        prefix: "mp-",
+        author: "Jane",
+        description: "Does a thing.",
+      });
+    }
+  );
+
+  test("no --kind still scaffolds a book", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    stubExtensionScaffold(async () => fakeExtensionResult());
+    stubScaffold(async () => fakeResult());
+
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
+
+    expect(scaffoldSpy).toHaveBeenCalled();
+    expect(extensionSpy).not.toHaveBeenCalled();
+  });
+
+  test("an unknown --kind errors (exit 2) naming the choices", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+    stubExtensionScaffold(async () => fakeExtensionResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "widget"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("book, plugin, theme");
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+    expect(extensionSpy).not.toHaveBeenCalled();
+  });
+
+  test.each(["--preset", "--template", "--page-width", "--targets"] as const)(
+    "%s is REJECTED for an extension rather than silently ignored",
+    async (flag) => {
+      stubExit();
+      consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+      stubExtensionScaffold(async () => fakeExtensionResult());
+
+      await expect(
+        runCommand(newCommand, { rawArgs: ["X", "--kind", "plugin", flag, "book"] })
+      ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+      expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain(flag);
+      expect(extensionSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  test("--no-git is rejected for an extension too (it creates no repo)", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubExtensionScaffold(async () => fakeExtensionResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "plugin", "--no-git"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("--git");
+    expect(extensionSpy).not.toHaveBeenCalled();
+  });
+
+  test("--prefix is rejected for a book (the mirror-image guard)", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book", "--prefix", "mb-"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("--prefix");
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+  });
+
+  test("a flag's DEFAULT value alone never trips the guard", async () => {
+    // The guard reads raw argv precisely so a default (`git: true`) is not
+    // mistaken for a flag the author typed.
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    stubExtensionScaffold(async () => fakeExtensionResult());
+
+    await runCommand(newCommand, { rawArgs: ["My Plugin", "--kind", "plugin"] });
+
+    expect(extensionSpy).toHaveBeenCalled();
+  });
+
+  test("a scaffoldExtension precondition error is a usage error (2)", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubExtensionScaffold(async () => {
+      throw makeCreateProjectError("target-exists", "already there");
+    });
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+  });
+
+  test("a scaffold-io error is a PIPELINE failure (3), matching the book path", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubExtensionScaffold(async () => {
+      throw makeCreateProjectError("scaffold-io", "disk went away");
+    });
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`));
   });
 });

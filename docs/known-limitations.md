@@ -98,7 +98,12 @@ produces a non-zero diff against the same page without it.
 ## 3. An `@page` image is dropped unless referenced elsewhere
 
 **Tracking:** [#152](https://github.com/dimm-city/gutterpress/issues/152) ·
-found during the 0.10.0 migration · **re-diagnosed 2026-08-24**
+found during the 0.10.0 migration · **re-diagnosed 2026-08-24** ·
+**fixed upstream in Chrome 152** (measured 2026-09-03: Chrome for Testing
+152.0.7977.54 and the CI runner's Chrome stable both paint the sole-referenced
+image; 151.0.7922.75 dropped it). Everything below describes Chromium 151 and
+earlier, which the engine still accepts (`REQUIRED_MILESTONE` is 148), so the
+build's workaround stays until that floor reaches 152.
 
 A `url()` image referenced only from inside an `@page` rule is not painted.
 The page shows the background *colour* alone (the colour paints at full
@@ -162,11 +167,15 @@ reports: a remote `url(https://…)` in `@page` (never staged, so never
 preloaded) and an image that reaches the document from CSS your stylesheets do
 not contain.
 
-**Removal trigger:** Chromium paints a `@page { background: url() }` image
-with no other reference to it. Test with the `@page` rule as the **only**
-reference. This is executable and it runs in the suite —
+**Removal trigger:** the engine's Chromium floor (`REQUIRED_MILESTONE`,
+`packages/cli/src/engine/shared/cdp.ts`) reaches 152, the milestone that
+paints the image (`PAGE_BACKGROUND_FIXED_MILESTONE`,
+`packages/cli/src/lib/markdown/assemble.ts`). This is executable and it runs
+in the suite —
 `packages/cli/src/engine/compiler/page-background-chromium-bug.canary.test.ts`
-asserts the bug is still present, and goes red the day it is fixed.
+goes red the day the floor gets there, and its behavioural half re-measures
+the drop-or-paint outcome on whichever Chromium runs it, so the recorded
+milestone can never silently drift from reality.
 
 > **Testing note that cost us a full book build, and then a wrong diagnosis:**
 > this entry previously said the trigger was the image's pixel dimensions
