@@ -100,6 +100,15 @@ disagree, the preview is right.
   against the same shared editor and rendering libraries this release
   introduces, not a mode hiding inside the desktop app.
 
+### Fixed
+
+- **A `@page`, `@section`, `@spread` or `@chapter` opened inside a plugin's
+  own wrapper (a `@specialty-intro`, say) now ends where that wrapper ends
+  in the paged editor.** It used to run on to the next marker of its kind,
+  a range crossing the wrapper's that the editor could not nest and dropped
+  whole - so the page break went with it and the chapter paginated a page
+  short of the book.
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed

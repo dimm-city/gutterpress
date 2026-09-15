@@ -522,6 +522,27 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     ]);
   });
 
+  test("a scope opened inside a plugin's wrapper ends where the wrapper does, never crossing it", () => {
+    // A @page inside a plugin's @specialty-intro wrapper: on the page the
+    // wrapper's closing tag closes the page div, so the page runs to the
+    // wrapper's end. A page group running to the next @page would cross the
+    // wrapper's range, which the fork cannot nest - it drops the group, and
+    // the page break with it.
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        { tag: "div", attributes: { class: "dc-specialty-intro" }, open: { text: "## Intro", offset: 0 }, close: { text: "After.", offset: 400 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["## Intro\n", "@page\n", "Text.\n", "More.\n", "After.\n", "@page\n", "Last.\n"]))!;
+    expect(groups.map((g) => [g.className, g.start, g.end])).toEqual([
+      ["page", 2, 4],
+      ["page", 6, 7],
+      ["dc-specialty-intro", 0, 4],
+    ]);
+  });
+
   test("a plugin wrapper whose anchor block is not in this render is left out, and identical anchor text resolves by nearest offset", () => {
     const projection: GutterpressProjection = {
       ...buildFixtureProjection(),

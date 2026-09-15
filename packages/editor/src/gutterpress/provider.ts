@@ -301,6 +301,44 @@ export function createGutterpressBlockProvider(
     const closesAt = (i: number, closers: ReadonlySet<string>): boolean =>
       markers[i]!.some((m) => !m.unknownKind && closers.has(scopeKindOf(m)));
     const groups: BlockGroupSpec[] = [];
+    /** The wrappers the project's plugins opened, computed first: a scope opened inside one ends where it does. */
+    const pluginGroups: BlockGroupSpec[] = [];
+    /**
+     * The block whose text is the anchor's, breaking a tie by nearest
+     * offset: the text is what survives an edit elsewhere, the offset is
+     * what tells two identical blocks apart.
+     */
+    const locate = (anchor: { readonly text: string; readonly offset: number }): number => {
+      let best = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      blocks.forEach((candidate, i) => {
+        if (candidate.sourceText.trimEnd() !== anchor.text) return;
+        const distance = Math.abs(candidate.absoluteStart - anchor.offset);
+        if (distance < bestDistance) {
+          best = i;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    };
+    // The wrappers the project's plugins opened, exactly where the pipeline
+    // put them: from the first authored block inside each to the first one
+    // after it. A plugin that opens its card at every heading is reproduced
+    // as faithfully as one that opens a panel at a marker line, because
+    // neither the marker nor the plugin is consulted -  only the blocks.
+    // Already in nesting order (outer first), which is the order the fork
+    // nests equal ranges in. A wrapper whose anchor is not in this render
+    // (its block was just edited) is left out until the projection catches
+    // up, never guessed.
+    (current.pluginContainers ?? []).forEach((container, i) => {
+      const start = locate(container.open);
+      if (start < 0) return;
+      const end = container.close ? locate(container.close) : blocks.length;
+      if (end < 0 || end <= start) return;
+      const { class: className, ...attributes } = { ...container.attributes };
+      pluginGroups.push({ start, end, key: `plugin:${i}`, tagName: container.tag, className, attributes });
+    });
+
     // The two context-dependent attribute rules markers.js applies while
     // walking (see `markerElementAttributes`'s doc): pages inherit the open
     // chapter's `.chapter-N`, and `@continue` inherits the previous section.
@@ -339,6 +377,15 @@ export function createGutterpressBlockProvider(
       // A marker block that carries the paragraph under its marker is the
       // first block INSIDE the container, as that paragraph is on the page.
       const start = markerBlocks[i]!.trailing !== null ? i : i + 1;
+      // A scope opened inside a plugin's wrapper ends where the wrapper
+      // does, at the latest. On the page the wrapper's closing tag closes
+      // the scope's div (the pipeline leaves the pair unbalanced and the
+      // HTML parser resolves it that way), and a group that crossed the
+      // wrapper's range is one the fork cannot nest and drops whole - page
+      // break and all (a @page inside a @specialty-intro lost its break).
+      for (const wrapper of pluginGroups) {
+        if (wrapper.start <= start && start < wrapper.end && end > wrapper.end) end = wrapper.end;
+      }
       // The key carries the KIND as well as the block: one block can open
       // two scopes (`@page` and `@section` on consecutive lines), and two
       // groups sharing a key would be one wrapper reused for both.
@@ -348,41 +395,7 @@ export function createGutterpressBlockProvider(
       }
     });
 
-    /**
-     * The block whose text is the anchor's, breaking a tie by nearest
-     * offset: the text is what survives an edit elsewhere, the offset is
-     * what tells two identical blocks apart.
-     */
-    const locate = (anchor: { readonly text: string; readonly offset: number }): number => {
-      let best = -1;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      blocks.forEach((candidate, i) => {
-        if (candidate.sourceText.trimEnd() !== anchor.text) return;
-        const distance = Math.abs(candidate.absoluteStart - anchor.offset);
-        if (distance < bestDistance) {
-          best = i;
-          bestDistance = distance;
-        }
-      });
-      return best;
-    };
-    // The wrappers the project's plugins opened, exactly where the pipeline
-    // put them: from the first authored block inside each to the first one
-    // after it. A plugin that opens its card at every heading is reproduced
-    // as faithfully as one that opens a panel at a marker line, because
-    // neither the marker nor the plugin is consulted -  only the blocks.
-    // Already in nesting order (outer first), which is the order the fork
-    // nests equal ranges in. A wrapper whose anchor is not in this render
-    // (its block was just edited) is left out until the projection catches
-    // up, never guessed.
-    (current.pluginContainers ?? []).forEach((container, i) => {
-      const start = locate(container.open);
-      if (start < 0) return;
-      const end = container.close ? locate(container.close) : blocks.length;
-      if (end < 0 || end <= start) return;
-      const { class: className, ...attributes } = { ...container.attributes };
-      groups.push({ start, end, key: `plugin:${i}`, tagName: container.tag, className, attributes });
-    });
+    groups.push(...pluginGroups);
 
     blocks.forEach((candidate, i) => {
       const { opened } = rawHtmlNesting(candidate);
