@@ -102,6 +102,13 @@ disagree, the preview is right.
 
 ### Fixed
 
+- **A marker's chip no longer stands between the block above it and the
+  scope it opens.** The page has no element for a marker line, so a book's
+  `h2 + .section` rule matched there and not in the paged editor, where the
+  `@section` chip sat between the heading and the section; the section lost
+  its top margin and chapter-01 of the field guide paginated a page short.
+  The chip now mounts after the group it opened (where the closer's chip
+  already stood), and its margin tag still hangs beside that group.
 - **A `@page`, `@section`, `@spread` or `@chapter` opened inside a plugin's
   own wrapper (a `@specialty-intro`, say) now ends where that wrapper ends
   in the paged editor.** It used to run on to the next marker of its kind,

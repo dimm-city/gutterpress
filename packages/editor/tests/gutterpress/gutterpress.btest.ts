@@ -227,6 +227,38 @@ describe("mounted structure", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Chip placement (fork Patch 9): the chip that opened a group follows it
+// ---------------------------------------------------------------------------
+
+describe("chip placement", () => {
+  test("a scope's chip mounts after the wrapper it opened, so the block above the marker is the wrapper's adjacent sibling", async () => {
+    await mount("## Heading\n\n@section .lede\n\nBody.\n\n@end-section\n\nAfter.\n");
+    const order = await harness.page.evaluate(() => {
+      const wrapper = document.querySelector(".md-block-group.section");
+      if (!wrapper) return null;
+      const describe = (el: Element | null) =>
+        el ? el.tagName.toLowerCase() + (el.classList.contains("gp-block-chip") ? `[chip ${(el as HTMLElement).dataset["gpBlockKind"]}${el.hasAttribute("data-gp-after-group") ? " after-group" : ""}]` : "") : null;
+      return {
+        before: describe(wrapper.previousElementSibling),
+        after: describe(wrapper.nextElementSibling),
+        afterThat: describe(wrapper.nextElementSibling?.nextElementSibling ?? null),
+        inside: Array.from(wrapper.children).map(describe),
+      };
+    });
+    // The page renders `<h2>` then `<div class="section lede">`: the h2 is
+    // the section's previous sibling here too (a book's `h2 + .section`
+    // rule applies), the @section chip follows the wrapper, and the
+    // @end-section chip keeps its place after that.
+    expect(order).toEqual({
+      before: "h2",
+      after: "div[chip section after-group]",
+      afterThat: "div[chip end-section]",
+      inside: ["p"],
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Ambiguous-collision refusals (SFE-P2b repair round 2) -- a container-nested
 // duplicate of a real marker line must never steal, or share, the real
 // block's chip. `match.ts`'s header documents why the correct outcome is

@@ -34,6 +34,10 @@ points at 0.0.2-0; the pin follows the `next` line:
 8. **`columns`** (Hunks 27-29, "## Patch 8") - a click resolves among the
    lines of the block under the pointer, so a multi-column page's second
    column takes its own clicks. Marked `/* gp-fork: columns */`.
+9. **`chips`** (inside Hunks 12 and 13, "## Patch 9") - the marker block
+   that opened a group mounts after the group's wrapper, so the wrapper
+   keeps the block above the marker as its adjacent sibling. Marked
+   `/* gp-fork: chips */`.
 
 Every hunk in every patch is additive (no reformatting, no renaming, no
 unrelated edits). Only two files are touched: `dist/index.js` and
@@ -99,7 +103,7 @@ with:
 | 3 groupBlocks | 11 | `gp-fork: groupBlocks` | `gpCandidates`, `gpGroupSpecs` in `sn.create` |
 | 4 decorateInactiveBlock | 14 | `gp-fork: decorateInactiveBlock` | `t?.decorateInactiveBlock?.(_.element, f.ast, Es(f.ast), e.children[m].absoluteStart)` |
 | 3 groupBlocks + 5 afterDocumentMount | 11, 16 | `gp-fork: groupBlocks`, `gp-fork: afterDocumentMount` | `gpMountGroups(i, u, gpGroupSpecs)` then `t?.afterDocumentMount?.(i)` |
-| 3 groupBlocks | 12 | `gp-fork: groupBlocks` | `function gpMountGroups(` |
+| 3 groupBlocks + 9 chips | 12 | `gp-fork: groupBlocks`, `gp-fork: chips` | `function gpMountGroups(`; the `deferred` map and `mountDeferred` inside it |
 | 1 renderCustomBlock | 1 | `gp-fork: renderCustomBlock` | `Xr` (ParagraphViewData) `constructor(e, t, s)` with `showMarkup` |
 | 1 renderCustomBlock | 2 | `gp-fork: renderCustomBlock` | `new Xr(i, e.showMarkup, F(i.children, ee(e), t))` |
 | 2 measurement | 10 | `gp-fork: measurement` | `this._publishMeasurements(p, !0)` |
@@ -110,7 +114,7 @@ with:
 | Patch | Hunk | Anchor |
 |---|---|---|
 | 1, 3, 4, 5 | 5, 13, 15, 17 | the `renderCustomBlock`, `groupBlocks`, `decorateInactiveBlock`, `afterDocumentMount` members of `BlockViewOptions` |
-| 1, 3 | 6, 13 | `CustomBlockRendering`, `SourceSegment`, `BlockGroupCandidate`, `BlockGroupSpec` |
+| 1, 3, 9 | 6, 13 | `CustomBlockRendering`, `SourceSegment`, `BlockGroupCandidate`, `BlockGroupSpec` (Patch 9 adds its `marker` member) |
 | 1 | 7 | `ParagraphViewData` documentation and `constructor(ast, showMarkup, content)` |
 
 Patch 4's hook signature grew a fourth argument, `absoluteStart` (the
@@ -1404,3 +1408,43 @@ behaviour (a click right of a short line stays on that line).
 
 **Removal trigger.** Upstream resolving a point against the block under
 it (or shipping multi-column layout of its own).
+
+## Patch 9 - `chips`: the chip that opened a group mounts after it
+
+Marked `/* gp-fork: chips */`. Lives inside Hunk 12 (`gpMountGroups`,
+`dist/index.js`) and Hunk 13 (`BlockGroupSpec`, `dist/index.d.ts`); no new
+hunk, since both sites are wholly fork-added code already.
+
+**Why.** The page has no element for a marker line: `@section` produces
+the `div.section` and nothing else, so a book writes `h2 + .section { ... }`
+and it matches. The editor renders the marker line as a block of its own
+(a hidden chip, Patch 1), and with Patch 3 that chip sat between the
+heading and the wrapper: an element the adjacent-sibling combinator sees,
+`display: none` or not. The rule never matched in the editor, the section
+lost its top margin, and a chapter of the field guide paginated a page
+short of the book.
+
+**What.** `BlockGroupSpec.marker` names the candidate index of the block
+that opened the group. `gpMountGroups` defers such a block - when nothing
+but other groups' markers separates it from its group's start - and mounts
+its view right after the group's wrapper instead of before it, carrying
+`data-gp-after-group` while deferred (cleared again when it is not). A
+deferred block whose wrapper is not built (a range the fork cannot nest)
+mounts in place, so every block view is mounted exactly once. Trailing
+chips are where a scope's closer already stood, so the placement breaks
+strictly fewer sibling relations than before, never more. The host
+(`packages/editor`'s provider) decides which chips move: a run of marker
+chips right before a start belongs to the groups opening there, nearest
+chip to innermost group, each to a group of its own kind; breaks and
+closers are never markers.
+
+**Proof.** `packages/editor/tests/gutterpress/gutterpress.btest.ts` ("chip
+placement") mounts `## Heading` / `@section .lede` / `Body.` /
+`@end-section` and reads the DOM: the h2 is the wrapper's previous
+sibling, the section chip follows the wrapper with the attribute, the
+closer keeps its place. `tests/gutterpress/provider.test.ts` pins the
+marker assignment rules.
+
+**Removal trigger.** Upstream mounting a block view somewhere other than
+its document position, or gutterpress rendering marker lines without a
+block of their own.

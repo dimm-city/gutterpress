@@ -397,6 +397,38 @@ export function createGutterpressBlockProvider(
 
     groups.push(...pluginGroups);
 
+    // The chip that opened each group mounts AFTER the group (fork Patch 9),
+    // so the wrapper keeps the block above the marker as its adjacent
+    // sibling: the page has no element for a marker line, and a book's
+    // `h2 + .section` rule must match here as it does there. A run of
+    // marker chips right before a start belongs to the groups opening
+    // there, nearest chip to innermost group, each chip to a group of its
+    // own kind (a core chip to its scope, a plugin's marker to a plugin's
+    // wrapper). A break keeps its place in the flow and a closer stands
+    // after what it closes, so neither ends up in a run.
+    const chipKind = (i: number): string | null => {
+      const block = markerBlocks[i];
+      if (!block || block.trailing !== null || block.markers.length !== 1) return null;
+      const marker = block.markers[0]!;
+      if (marker.unknownKind) return "plugin";
+      const kind = scopeKindOf(marker);
+      return CONTAINER_KINDS.has(kind) ? kind : null;
+    };
+    const groupKind = (g: BlockGroupSpec): string =>
+      g.key.startsWith("plugin:") ? "plugin" : g.key.slice(0, g.key.indexOf(":"));
+    const byStart = new Map<number, BlockGroupSpec[]>();
+    groups.forEach((g) => byStart.set(g.start, [...(byStart.get(g.start) ?? []), g]));
+    for (const [start, specs] of byStart) {
+      // Innermost first: the fork nests a shorter range inside a longer one.
+      const inward = [...specs].sort((a, b) => a.end - b.end);
+      for (let chip = start - 1, kind = chipKind(chip); kind !== null; chip--, kind = chipKind(chip)) {
+        const at = inward.findIndex((g) => groupKind(g) === kind);
+        if (at < 0) break;
+        const spec = inward.splice(at, 1)[0]!;
+        groups[groups.indexOf(spec)] = { ...spec, marker: chip };
+      }
+    }
+
     blocks.forEach((candidate, i) => {
       const { opened } = rawHtmlNesting(candidate);
       if (!opened.length) return;

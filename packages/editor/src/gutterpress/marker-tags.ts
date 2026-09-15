@@ -216,6 +216,12 @@ export function installMarkerTags(documentElement: HTMLElement, options: MarkerT
  * boxed sibling at all is anchored to its parent.
  */
 function anchorFor(chip: HTMLElement, closing: boolean): Element | null {
+  // An opener the fork mounted after the group it opened (Patch 9) stands
+  // next to that group: the wrapper right before it.
+  if (!closing && chip.hasAttribute("data-gp-after-group")) {
+    const wrapper = chip.previousElementSibling;
+    if (wrapper && hasBox(wrapper)) return wrapper;
+  }
   const step = closing ? "previousElementSibling" : "nextElementSibling";
   for (let el = chip[step]; el; el = el[step]) {
     if (hasBox(el)) return el;

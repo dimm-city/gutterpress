@@ -167,18 +167,37 @@ function blockElements(): HTMLElement[] {
   // longer "direct child of `.md-document`" — but it is still not "any
   // descendant", which would also pick up the blocks a blockquote or a list
   // item nests inside itself. Only container wrappers may sit in between.
-  return Array.from(doc.querySelectorAll<HTMLElement>(".md-block")).filter((block) => {
+  const inDomOrder = Array.from(doc.querySelectorAll<HTMLElement>(".md-block")).filter((block) => {
     for (let el = block.parentElement; el && el !== doc; el = el.parentElement) {
       if (!el.classList.contains("md-block-group")) return false;
     }
     return true;
   });
+  // Source order, not DOM order: the fork mounts the chip that opened a
+  // group AFTER that group (Patch 9). Put each such chip back before the
+  // first block inside the wrapper it follows, so an index here is still
+  // the block's place in the document.
+  const ordered = [...inDomOrder];
+  for (const chip of inDomOrder.filter((block) => block.hasAttribute("data-gp-after-group"))) {
+    const wrapper = chip.previousElementSibling;
+    const first = wrapper ? ordered.find((block) => wrapper.contains(block)) : undefined;
+    if (!first) continue;
+    ordered.splice(ordered.indexOf(chip), 1);
+    ordered.splice(ordered.indexOf(first), 0, chip);
+  }
+  return ordered;
 }
 
 function chipElements(): HTMLElement[] {
   const root = document.getElementById(CONTAINER_ID);
   if (!root) return [];
-  return Array.from(root.querySelectorAll<HTMLElement>(".gp-block-chip"));
+  // Source order, not DOM order: the fork mounts the chip that opened a
+  // group AFTER that group (Patch 9), so a chip's place in the DOM is no
+  // longer its place in the document. `data-gp-caret` is the chip's own
+  // source offset; a chip without one keeps its DOM position.
+  const chips = Array.from(root.querySelectorAll<HTMLElement>(".gp-block-chip"));
+  if (!chips.every((chip) => chip.hasAttribute("data-gp-caret"))) return chips;
+  return chips.sort((a, b) => Number(a.getAttribute("data-gp-caret")) - Number(b.getAttribute("data-gp-caret")));
 }
 
 function requireChip(index: number): HTMLElement {

@@ -543,6 +543,41 @@ describe("createGutterpressBlockProvider — marker scopes from text", () => {
     ]);
   });
 
+  test("the chip that opened a group is named as its marker, nearest chip to innermost group, each to a group of its own kind", () => {
+    // `@page` then `@section` on consecutive lines open two nested groups
+    // at the same block: the section (inner) takes the nearer chip, the
+    // page the one before it. A break chip is never a marker (it keeps its
+    // place in the flow), nor is a marker that carries its own paragraph
+    // (that block is the first one inside the group, not a chip before it).
+    const provider = createGutterpressBlockProvider(buildFixtureProjection(), { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(
+      candidates(["@page one\n", "@section a\n", "Text.\n", "@end-section\n", "@page-break\n", "@section b\n", "More.\n", "@page two\ntext under it\n", "Last.\n"]),
+    )!;
+    // The page holds the section's chip as its first block (a marker line
+    // is a block of the editor's), so it starts at 1; the section at 2.
+    expect(groups.map((g) => [g.className, g.start, g.end, g.marker])).toEqual([
+      ["page", 1, 7, 0],
+      ["section", 2, 3, 1],
+      ["section", 6, 7, 5],
+      ["page", 7, 9, undefined],
+    ]);
+  });
+
+  test("a plugin's marker chip is named as the marker of the plugin wrapper it opened, never of a core scope", () => {
+    const projection: GutterpressProjection = {
+      ...buildFixtureProjection(),
+      pluginContainers: [
+        { tag: "div", attributes: { class: "dc-specialty-intro" }, open: { text: "## Intro", offset: 200 }, close: { text: "After.", offset: 400 } },
+      ],
+    };
+    const provider = createGutterpressBlockProvider(projection, { source: FIXTURE_SOURCE, ownerDocument: UNUSED_DOCUMENT });
+    const groups = provider.groupBlocks(candidates(["@section\n", "@specialty-intro\n", "## Intro\n", "Text.\n", "After.\n"]))!;
+    expect(groups.map((g) => [g.className, g.start, g.end, g.marker])).toEqual([
+      ["section", 1, 5, 0],
+      ["dc-specialty-intro", 2, 4, 1],
+    ]);
+  });
+
   test("a plugin wrapper whose anchor block is not in this render is left out, and identical anchor text resolves by nearest offset", () => {
     const projection: GutterpressProjection = {
       ...buildFixtureProjection(),

@@ -349,6 +349,15 @@ export declare interface BlockGroupSpec {
     readonly className?: string;
     /** Extra attributes set on the wrapper (`class` is ignored here; use `className`). */
     readonly attributes?: Readonly<Record<string, string>>;
+    /**
+     * gp-fork: chips. Index, in the candidates list, of the marker block that
+     * opens this group. When that block sits right before the group (with
+     * nothing but other groups' markers between), its view mounts AFTER the
+     * wrapper instead of before it, so the wrapper keeps the block above the
+     * marker as its adjacent sibling; the deferred view carries
+     * `data-gp-after-group`. See PATCHES.md Patch 9.
+     */
+    readonly marker?: number;
 }
 
 export declare interface CustomBlockRendering {

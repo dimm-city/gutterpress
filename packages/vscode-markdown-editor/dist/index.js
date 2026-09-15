@@ -4926,10 +4926,33 @@ class sn extends oe {
 function gpMountGroups(u, candidates, groups, prevWrappers) {
   const wrappers = /* @__PURE__ */ new Map(), ranges = [];
   for (const g of groups) {
-    const first = candidates[g.start], last = candidates[g.end - 1];
-    !first || !last || g.end <= g.start || ranges.push({ spec: g, uStart: first.index, uEnd: last.index + 1 });
+    const first = candidates[g.start], last = candidates[g.end - 1], marker = g.marker === void 0 ? void 0 : candidates[g.marker];
+    !first || !last || g.end <= g.start || ranges.push({ spec: g, uStart: first.index, uEnd: last.index + 1, marker: marker ? marker.index : -1 });
   }
   ranges.sort((a, b) => a.uStart - b.uStart || b.uEnd - a.uEnd);
+  /* gp-fork: chips - a group's opening marker block mounts AFTER the group's
+   * wrapper rather than before it, so the wrapper stays the adjacent
+   * sibling of the block above the marker (a book's `h2 + .section` rule
+   * matches in the editor as it does on the page). A marker is deferred
+   * only when nothing but other deferred markers separates it from its
+   * group; a deferred block is mounted exactly once, after its wrapper, or
+   * in place when that wrapper is not built. It carries
+   * `data-gp-after-group` while deferred. See PATCHES.md Patch 9. */
+  const deferred = /* @__PURE__ */ new Map();
+  for (const r of ranges)
+    r.marker >= 0 && r.marker < r.uStart && !deferred.has(r.marker) && deferred.set(r.marker, r);
+  for (const [m, r] of Array.from(deferred))
+    for (let k = m + 1; k < r.uStart; k++)
+      if (!deferred.has(k)) {
+        deferred.delete(m);
+        break;
+      }
+  const mountDeferred = (r) => {
+    if (deferred.get(r.marker) !== r) return null;
+    deferred.delete(r.marker);
+    const node = u[r.marker].mountNode;
+    return node.setAttribute?.("data-gp-after-group", ""), node;
+  };
   let next = 0;
   const build = (from, to) => {
     const nodes = [];
@@ -4947,10 +4970,16 @@ function gpMountGroups(u, candidates, groups, prevWrappers) {
         for (const [k, v] of Object.entries(r.spec.attributes ?? {}))
           k !== "class" && el.setAttribute(k, v);
         el.classList.add("md-block-group"), wrappers.set(r.spec.key, el), Q(el, build(m, r.uEnd)), nodes.push(el), m = r.uEnd;
-      } else if (r && r.uStart === m)
+        const chip = mountDeferred(r);
+        chip && nodes.push(chip);
+      } else if (r && r.uStart === m) {
         next++;
+        const chip = mountDeferred(r);
+        chip && nodes.push(chip);
+      } else if (deferred.has(m))
+        m++;
       else
-        nodes.push(u[m].mountNode), m++;
+        u[m].mountNode.removeAttribute?.("data-gp-after-group"), nodes.push(u[m].mountNode), m++;
     }
     return nodes;
   };
