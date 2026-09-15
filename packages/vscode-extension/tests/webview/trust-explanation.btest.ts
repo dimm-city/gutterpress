@@ -223,15 +223,15 @@ describe("D9 untrusted workspace: standard rich editing keeps working while the 
     const helloOffset = text.indexOf("Hello world.");
     const withinBlock = "Hello world.".length; // caret lands at the end of the paragraph
 
-    // The paragraph block is the SECOND rendered block (the "@page splash"
-    // marker/chip is the first) -- same nth-child convention every other
-    // btest.ts file in this workspace uses. `#gp-editor-root` is this
-    // package's fixed container id (`support/entry.ts`'s own
-    // `CONTAINER_ID`/`containerSelector`), not returned by
-    // `mountWithUntrustedNotice` (it resolves to the sent `Diagnostic`) --
-    // hardcoded the same way `edit-version-reconciliation.btest.ts` and
-    // `disposal.btest.ts` both assert it verbatim.
-    await harness.page.click("#gp-editor-root .md-document > .md-block:nth-child(2)");
+    // The paragraph is the one `<p>` block: the `@page splash` marker is a
+    // chip, and the page it opens is a wrapper the paragraph sits inside
+    // (fork Patch 3), so it is no longer the document's second child.
+    // `#gp-editor-root` is this package's fixed container id
+    // (`support/entry.ts`'s own `CONTAINER_ID`/`containerSelector`), not
+    // returned by `mountWithUntrustedNotice` (it resolves to the sent
+    // `Diagnostic`) -- hardcoded the same way `edit-version-reconciliation.btest.ts`
+    // and `disposal.btest.ts` both assert it verbatim.
+    await harness.page.click("#gp-editor-root .md-document p.md-block");
     await harness.page.keyboard.press("Home");
     for (let i = 0; i < withinBlock; i++) await harness.page.keyboard.press("ArrowRight");
     await harness.page.keyboard.type("!");
