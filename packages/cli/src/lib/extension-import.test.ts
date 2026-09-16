@@ -36,10 +36,10 @@ describe("theme-import pure helpers", () => {
 
   describe("locateThemeRoot", () => {
     test("finds theme.css at the archive root", () => {
-      expect(locateThemeRoot(["theme.css", "theme.json"])).toBe("");
+      expect(locateThemeRoot(["theme.css", "package.json"])).toBe("");
     });
     test("finds theme.css one folder down", () => {
-      expect(locateThemeRoot(["my-theme/theme.css", "my-theme/theme.json"])).toBe("my-theme");
+      expect(locateThemeRoot(["my-theme/theme.css", "my-theme/package.json"])).toBe("my-theme");
     });
     test("returns null when there is no theme.css", () => {
       expect(locateThemeRoot(["styles.css", "readme.md"])).toBeNull();
