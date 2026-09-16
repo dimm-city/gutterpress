@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **An extension discovery surface: a curated index, `gutterpress ext search`,
+  and a desktop "More extensions" list.** A new committed, curated JSON index
+  (`site/extensions.json`, published at
+  `https://dimm-city.github.io/gutterpress/extensions.json`) lists extensions
+  beyond the bundled/built-in set — curation is a PR to this repo, no
+  registry service, no accounts. `gutterpress ext search [query]` fetches it
+  on demand (never at build/preview time) and prints each match's `use`
+  specifier — exactly what `gutterpress ext add` takes — ready to install;
+  `GUTTERPRESS_EXTENSION_INDEX` overrides the index URL. The desktop's
+  Features view shows the same index as a "More extensions" list under the
+  bundled "Turn on" rows, loaded only once that view mounts; a fetch failure
+  is one quiet line, never a modal, and never blocks the local extension
+  list. The index's first (and so far only) entry is the Dimm City component
+  library (dc-op-manual#47). (#246)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed
