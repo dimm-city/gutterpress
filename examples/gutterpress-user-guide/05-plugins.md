@@ -298,10 +298,8 @@ only `gutterpress.styles` is a look; one whose `main` is a markdown-it plugin
 is a plugin; the format is the same. This is what `gutterpress new --kind
 plugin` scaffolds.
 
-Older packages carried a separate `gutterpress.json` (or a theme-era
-`theme.json`). Those files are no longer read: move their fields into
-`package.json` as above — Gutterpress says so, with the shape spelled out, if
-it finds a folder still carrying one.
+Older packages carried a separate `gutterpress.json` or `theme.json`. Neither
+is read any more: move their fields into `package.json` as above.
 
 ## Built-in Plugins
 
@@ -357,7 +355,7 @@ extensions:
   - gutterpress-gfm-alerts
 ```
 
-The desktop lists the same five as recommended features under **Project settings → Features** — turning one on writes exactly this entry.
+**Project settings → Features** in the desktop writes exactly this entry.
 
 > **Callouts are bundled:** `gutterpress-gfm-alerts` (the **Callouts** feature
 > in the desktop) renders each `> [!NOTE]`-style alert as a `.gp-alert` box
