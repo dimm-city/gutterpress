@@ -27,15 +27,16 @@
  *     files), then referenced as `./extensions/<id>`;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
  *     validates and lands in `extensions/<id>/` (#106);
- *   - `addDiscovered` — a curated index entry (#246), added by the exact
- *     same specifier path as `addRecommended` (the index's `use` field is
- *     already whatever `gutterpress ext add` expects).
+ *   - `addSearched` — an npm search result (#246), added by the exact same
+ *     specifier path as `addRecommended` (a package name is already what
+ *     `gutterpress ext add` expects).
  *
- * `discover` (#246) is a SEPARATE, quieter load than the three above: the
- * curated extension index at `site/extensions.json`, fetched over the
- * network only when the Features view mounts (never at project load). A
- * fetch/parse failure surfaces as `discover.message` — one line, never an
- * error toast — and never blocks `entries`/`recommended`/`builtIns`.
+ * `search` (#246) is a SEPARATE, quieter load than the three above: an npm
+ * registry search for packages tagged `gutterpress` or `markdown-it-plugin`,
+ * run over the network only when the Features view mounts (never at project
+ * load) and whenever the author types a query. A fetch/parse failure surfaces
+ * as `search.message` — one line, never an error toast — and never blocks
+ * `entries`/`recommended`/`builtIns`.
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
@@ -58,8 +59,8 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
-  ExtensionIndexEntry,
-  ExtensionDiscoverResult,
+  NpmExtensionMatch,
+  ExtensionSearchResult,
 } from "$lib/platform/dtos";
 import {
   orderAfterMove,
@@ -75,8 +76,8 @@ export interface ExtensionsSectionDeps {
   list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
   recommended: () => Promise<RecommendedExtension[]>;
   listBuiltIn: () => Promise<BuiltInStyleSet[]>;
-  /** The curated extension index (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
-  discover: () => Promise<ExtensionDiscoverResult>;
+  /** Search npm for extensions (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
+  search: (query: string) => Promise<ExtensionSearchResult>;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -117,16 +118,22 @@ export class ExtensionsSectionController {
   recommended = $state<RecommendedExtension[]>([]);
   builtIns = $state<BuiltInStyleSet[]>([]);
   /**
-   * The curated extension index (#246) — a "More extensions" list beyond the
-   * bundled/built-in set. Loaded ON DEMAND when the Features view mounts,
-   * never at project load; a fetch failure is one quiet `message`, never a
-   * modal, and never blocks the rest of the panel.
+   * npm search (#246) — the "Find more on npm" list beyond the bundled/
+   * built-in set. Run ON DEMAND when the Features view mounts and on every
+   * query the author submits, never at project load; a fetch failure is one
+   * quiet `message`, never a modal, and never blocks the rest of the panel.
    */
-  discover = $state<{
+  search = $state<{
     status: "idle" | "loading" | "ready" | "error";
-    entries: ExtensionIndexEntry[];
+    /** The query the current `matches` are for. */
+    query: string;
+    matches: NpmExtensionMatch[];
+    /** What npm said it had, for "showing N of M". */
+    total: number;
     message: string | null;
-  }>({ status: "idle", entries: [], message: null });
+  }>({ status: "idle", query: "", matches: [], total: 0, message: null });
+  /** The search box's draft text (bound by the Features view). */
+  searchQuery = $state("");
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
@@ -179,9 +186,13 @@ export class ExtensionsSectionController {
   get availableRecommended(): RecommendedExtension[] {
     return this.recommended.filter((r) => !this.entries.some((e) => e.use === r.use));
   }
-  /** Curated index entries not already in the list — the "More extensions" rows. */
-  get availableDiscover(): ExtensionIndexEntry[] {
-    return this.discover.entries.filter((d) => !this.entries.some((e) => e.use === d.use));
+  /** npm results not already in the list — the "Find more on npm" rows. An
+   *  installed npm entry's `use` is `name@version`, so the comparison is by
+   *  package NAME, not by the whole specifier. */
+  get availableSearch(): NpmExtensionMatch[] {
+    return this.search.matches.filter(
+      (m) => !this.entries.some((e) => e.kind === "npm" ? e.name === m.name : e.use === m.name),
+    );
   }
   /** True when the built-in look `id` is already in the list as `./extensions/<id>`. */
   isBuiltInAdded = (id: string): boolean => addedBuiltInIds(this.entries).has(id);
@@ -225,23 +236,33 @@ export class ExtensionsSectionController {
   };
 
   /**
-   * Fetch the curated extension index. Called when the Features view mounts
-   * (never at project load). Refuses to pile up a second in-flight fetch;
-   * a failure lands in `discover.message`, not `this.error` — it must never
-   * block or blank the rest of the panel.
+   * Search npm. Called with an empty query when the Features view mounts
+   * (never at project load) and with the author's query when they submit the
+   * box. Refuses to pile up a second in-flight search; a failure lands in
+   * `search.message`, not `this.error` — it must never block or blank the
+   * rest of the panel.
    */
-  loadDiscover = async (): Promise<void> => {
-    if (this.discover.status === "loading") return;
-    this.discover = { status: "loading", entries: this.discover.entries, message: null };
+  runSearch = async (query = this.searchQuery): Promise<void> => {
+    if (this.search.status === "loading") return;
+    const q = query.trim();
+    this.search = {
+      status: "loading",
+      query: q,
+      matches: this.search.matches,
+      total: this.search.total,
+      message: null,
+    };
     try {
-      const result = await this.deps.discover();
-      this.discover = result.ok
-        ? { status: "ready", entries: result.entries, message: null }
-        : { status: "error", entries: [], message: result.message };
+      const result = await this.deps.search(q);
+      this.search = result.ok
+        ? { status: "ready", query: q, matches: result.matches, total: result.total, message: null }
+        : { status: "error", query: q, matches: [], total: 0, message: result.message };
     } catch (e) {
-      this.discover = {
+      this.search = {
         status: "error",
-        entries: [],
+        query: q,
+        matches: [],
+        total: 0,
         message: e instanceof Error ? e.message : String(e),
       };
     }
@@ -348,13 +369,10 @@ export class ExtensionsSectionController {
     if (added) this.announceAdded(added);
   };
 
-  /** Add a curated index entry (#246) — reuses the same specifier add path as `addRecommended`. */
-  addDiscovered = async (entry: ExtensionIndexEntry): Promise<void> => {
-    const added = await this.mutate(
-      entry.use,
-      (dir) => this.deps.add(dir, entry.use),
-      () => entry.carries.includes("styles"),
-    );
+  /** Add an npm search result (#246) — reuses the same specifier add path as
+   *  `addRecommended`; the package name IS the specifier `ext add` takes. */
+  addSearched = async (match: NpmExtensionMatch): Promise<void> => {
+    const added = await this.mutate(match.name, (dir) => this.deps.add(dir, match.name), carriesStyles);
     if (added) this.announceAdded(added);
   };
 

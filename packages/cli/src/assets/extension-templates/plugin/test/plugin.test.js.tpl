@@ -16,7 +16,7 @@
  *    it — a diff somebody had to read is the point of the file.
  *
  * 2. CONTRACT. The exact export shape Gutterpress's loader requires, and the
- *    existence of every file `gutterpress.json` declares. These catch the
+ *    existence of every file `package.json` declares. These catch the
  *    failures that otherwise surface as a blank page in someone else's book.
  *
  * 3. CONVENTIONS. The prefix rules — every class this package emits is its
@@ -44,7 +44,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 const read = (rel) => readFileSync(path.join(root, rel), "utf8");
 
-const pkg = JSON.parse(read("gutterpress.json"));
+const pkg = JSON.parse(read("package.json"));
 const css = read("styles/plugin.css");
 /** The stylesheet's RULES — comments stripped, so a name assertion below
  *  tests what the sheet emits rather than what it talks about. */
@@ -117,13 +117,14 @@ describe("loader contract", () => {
     expect(metadata.name.length).toBeGreaterThan(0);
   });
 
-  test("every path gutterpress.json declares exists", () => {
+  test("every path package.json declares exists", () => {
+    const gp = pkg.gutterpress ?? {};
     const declared = [
-      pkg.markdown,
-      ...(pkg.styles ?? []),
-      pkg.components,
-      pkg.snippets,
-      pkg.tokensFile,
+      gp.markdown ?? pkg.main,
+      ...(gp.styles ?? []),
+      gp.components,
+      gp.snippets,
+      gp.tokensFile,
     ].filter(Boolean);
 
     expect(declared.length).toBeGreaterThan(0);

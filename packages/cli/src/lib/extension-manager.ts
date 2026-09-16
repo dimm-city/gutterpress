@@ -59,9 +59,8 @@ import {
 } from "./extension-specifier.ts";
 import {
   EXTENSION_MANIFEST_FILENAME,
-  LEGACY_THEME_MANIFEST_FILENAME,
   extensionCarries,
-  extensionStyleListWithDefault,
+  extensionStyleList,
   readExtensionMeta,
   resolveExtension,
   type ExtensionCarries,
@@ -101,10 +100,10 @@ export interface ProjectExtensionEntry {
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
   /** The sheet carrying the `:root` token surface, relative to the folder,
-   *  when declared (`gutterpress.json`'s `tokensFile`). */
+   *  when declared (package.json's `gutterpress.tokensFile`). */
   tokensFile?: string;
-  /** Declared stylesheets relative to the folder, in cascade order (`theme.css`
-   *  by default for a metadata-less look). Absent when there is no folder. */
+  /** Declared stylesheets relative to the folder, in cascade order
+   *  (`gutterpress.styles`). Absent when the folder declares none. */
   styles?: string[];
   /** What the extension declares — the desktop shows styles-carrying entries
    *  in its Look view and markdown-carrying ones in Features; one list. */
@@ -284,29 +283,33 @@ const NO_CARRIES: ExtensionCarries = {
   components: false,
 };
 
-function hasMetadataFile(dir: string): boolean {
-  return (
-    existsSync(path.join(dir, EXTENSION_MANIFEST_FILENAME)) ||
-    existsSync(path.join(dir, LEGACY_THEME_MANIFEST_FILENAME))
-  );
-}
-
+/**
+ * Describe one extension folder from its package.json.
+ *
+ * `labelFrom` turns the declared `name` into the author-facing label: a
+ * package.json `name` is an npm-style slug by convention, so a folder the
+ * author owns reads better prettified ("clean-book" → "Clean book"), matching
+ * the prettified folder-name fallback right beside it. An npm entry passes
+ * identity instead — its name IS the install specifier and must read back
+ * exactly as it was typed.
+ */
 async function describeFolder(
   dir: string,
   base: Omit<ProjectExtensionEntry, "label" | "carries">,
   fallbackLabel: string,
+  labelFrom: (name: string) => string = prettify,
 ): Promise<ProjectExtensionEntry> {
   const meta = await readExtensionMeta(dir);
-  const styles = extensionStyleListWithDefault(meta, dir);
+  const styles = extensionStyleList(meta);
   return {
     ...base,
-    label: meta.name?.trim() || fallbackLabel,
+    label: meta.name?.trim() ? labelFrom(meta.name.trim()) : fallbackLabel,
     ...(meta.description?.trim() ? { description: meta.description.trim() } : {}),
     ...(meta.author?.trim() ? { author: meta.author.trim() } : {}),
     ...(meta.preview !== undefined ? { preview: meta.preview } : {}),
     ...(meta.tokensFile?.trim() ? { tokensFile: meta.tokensFile.trim() } : {}),
     ...(styles.length > 0 ? { styles } : {}),
-    carries: extensionCarries(meta, dir),
+    carries: extensionCarries(meta),
     dir,
   };
 }
@@ -389,11 +392,19 @@ async function describeEntry(projectDir: string, raw: RawEntry): Promise<Project
     return withWarnings({ ...base, label: parsed.name, carries: { ...NO_CARRIES, markdown: true } });
   }
   const pkgDir = vendoredNpmPluginPackageDir(installRoot, parsed.name);
-  if (!hasMetadataFile(pkgDir)) {
-    // A package with no gutterpress.json is a plain markdown-it plugin.
+  if (!existsSync(path.join(pkgDir, EXTENSION_MANIFEST_FILENAME))) {
+    // No package.json at all (an unpacked tree that lost it): still a plain
+    // markdown-it plugin as far as the list is concerned.
     return withWarnings({ ...base, label: parsed.name, carries: { ...NO_CARRIES, markdown: true } });
   }
-  return withWarnings(await describeFolder(pkgDir, base, parsed.name));
+  // An npm package's markdown-it entry is the one the installer resolved with
+  // full `exports` semantics, not `main` — so `carries.markdown` is true for
+  // every npm entry regardless of what package.json's `main` says.
+  const described = await describeFolder(pkgDir, base, parsed.name, (name) => name);
+  return withWarnings({
+    ...described,
+    carries: { ...described.carries, markdown: true },
+  });
 }
 
 /**
@@ -700,7 +711,7 @@ export async function listBuiltInStyleSets(): Promise<BuiltInStyleSet[]> {
     const meta = await readExtensionMeta(path.join(assets, "themes", id));
     out.push({
       id,
-      name: meta.name?.trim() || prettify(id),
+      name: prettify(meta.name?.trim() || id),
       description: meta.description?.trim() || "",
     });
   }

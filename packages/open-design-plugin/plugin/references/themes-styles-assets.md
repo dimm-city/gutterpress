@@ -6,8 +6,8 @@ Verified against the Gutterpress source that ships this package, 2026-09-08.
 ## Two CSS locations, different roles
 
 - **`extensions/<id>/`** is a look — an extension *package*: `theme.css` plus
-  a small `gutterpress.json` (or `theme.json`) naming what it carries, and any
-  fonts or images the look owns. It is listed under `extensions:` as
+  a standard `package.json` whose `gutterpress` block names what it carries,
+  and any fonts or images the look owns. It is listed under `extensions:` as
   `./extensions/<id>`; a folder elsewhere (a shared `../../shared/house-style`)
   is listed by its own path and read in place.
 - **`styles/`** is ordinary publication CSS — `book.css`, component sheets,

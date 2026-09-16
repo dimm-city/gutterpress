@@ -5,6 +5,8 @@ import path from "node:path";
 import { exports as resolveExports } from "resolve.exports";
 import { satisfies, validRange } from "semver";
 
+import { npmRegistryUrl } from "./npm-registry.ts";
+
 /** Project-relative folder shared by local and vendored npm plugins. */
 export const PLUGINS_DIR = "plugins";
 export const VENDORED_NPM_DIR = "npm";
@@ -722,9 +724,13 @@ export async function verifyVendoredPlugin(
       ) {
         throw new Error(`Package receipt is missing provenance: ${pkg.name}@${pkg.version}`);
       }
+      // Same origin as the CONFIGURED registry (`GUTTERPRESS_NPM_REGISTRY`,
+      // else registry.npmjs.org) — the same rule npm-plugin-installer.ts
+      // applies when it first records the tarball, so a package vendored
+      // from a private mirror keeps verifying on every later load.
       const tarball = new URL(pkg.tarball);
       if (
-        tarball.origin !== "https://registry.npmjs.org" ||
+        tarball.origin !== new URL(npmRegistryUrl()).origin ||
         tarball.username ||
         tarball.password
       ) {

@@ -11,9 +11,10 @@
    * (referenced in place, never copied). `extensionStatus` /
    * `extensionSourceLabel` are pure helpers.
    *
-   * #246: a "More extensions" list — the curated index at
-   * `site/extensions.json` — sits below the bundled "Turn on" rows, fetched
-   * on this view's mount (see the `onMount` below), never at project load.
+   * #246: a "Find more on npm" box — the npm registry, filtered to packages
+   * tagged `gutterpress` or `markdown-it-plugin` — sits below the bundled
+   * "Turn on" rows, searched on this view's mount (see the `onMount` below),
+   * never at project load.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
@@ -23,11 +24,12 @@
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
-  // #246: the curated extension index is fetched ON DEMAND, only once this
-  // view actually mounts — never at project load (ProjectSettingsView's
-  // loadAll never touches it).
+  // #246: npm is searched ON DEMAND, only once this view actually mounts —
+  // never at project load (ProjectSettingsView's loadAll never touches it).
+  // The empty query is "what is out there", the same list `gutterpress ext
+  // search` prints with no argument.
   onMount(() => {
-    void controller.loadDiscover();
+    void controller.runSearch("");
   });
 </script>
 
@@ -100,27 +102,35 @@
     </ul>
   {/if}
 
-  <!-- #246: the curated extension index — beyond the bundled/built-in set.
-       Loading/error is one quiet line; it never blocks the sections above. -->
-  {#if controller.discover.status === "loading"}
-    <p class="muted discover-status">Looking for more extensions…</p>
-  {:else if controller.discover.status === "error"}
-    <p class="muted discover-status">Couldn't load more extensions: {controller.discover.message}</p>
-  {:else if controller.availableDiscover.length > 0}
-    <h4 class="subhead">More extensions</h4>
-    <p class="hint">A curated index of extensions beyond the bundled set.</p>
+  <!-- #246: npm search — beyond the bundled/built-in set. Loading/error is
+       one quiet line; it never blocks the sections above. -->
+  <h4 class="subhead">Find more on npm</h4>
+  <p class="hint">Packages tagged <code>gutterpress</code> or <code>markdown-it-plugin</code>. Only install packages you trust.</p>
+  <div class="add-row">
+    <input class="input" type="text" aria-label="search npm for extensions" placeholder="footnote, callout, table..." bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
+    <button class="ghost small" onclick={() => controller.runSearch()} disabled={controller.search.status === "loading"}>Search</button>
+  </div>
+  {#if controller.search.status === "loading"}
+    <p class="muted search-status">Searching npm…</p>
+  {:else if controller.search.status === "error"}
+    <p class="muted search-status">Couldn't search npm: {controller.search.message}</p>
+  {:else if controller.search.status === "ready" && controller.availableSearch.length === 0}
+    <p class="muted search-status">No extensions on npm match that.</p>
+  {:else if controller.availableSearch.length > 0}
+    <p class="muted search-status">Showing {controller.availableSearch.length} of {controller.search.total}.</p>
     <ul class="rec-list">
-      {#each controller.availableDiscover as entry (entry.id)}
+      {#each controller.availableSearch as match (match.name)}
         <li>
           <div class="rec-main">
-            <span class="rec-label">{entry.name}</span>
-            <p class="rec-desc">{entry.description}</p>
-            <span class="rec-pkg">{entry.use}</span>
-            {#if entry.homepage}
-              <button class="inline-link" onclick={() => entry.homepage && api.shell.openExternal(entry.homepage).catch(() => {})}>{entry.homepage}</button>
+            <span class="rec-label">{match.name}</span>
+            <p class="rec-desc">{match.description ?? ""}</p>
+            <span class="rec-pkg">{match.name}@{match.version}</span>
+            <span class="badge">{match.kind === "gutterpress" ? "gutterpress" : "markdown-it plugin"}</span>
+            {#if match.npmUrl}
+              <button class="inline-link" onclick={() => match.npmUrl && api.shell.openExternal(match.npmUrl).catch(() => {})}>{match.npmUrl}</button>
             {/if}
           </div>
-          <button class="primary small app-btn-primary" onclick={() => controller.addDiscovered(entry)} disabled={controller.busy !== null}>Add</button>
+          <button class="primary small app-btn-primary" onclick={() => controller.addSearched(match)} disabled={controller.busy !== null}>Add</button>
         </li>
       {/each}
     </ul>
@@ -154,7 +164,7 @@
   .plugin-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; flex-wrap: wrap; }
   .rec-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .rec-pkg { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
-  .discover-status { font-size: 12px; }
+  .search-status { font-size: 12px; }
   /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
      the Electron shell — see ConnectionsSettings.svelte for the pattern). */
   button.inline-link {

@@ -13,7 +13,7 @@
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
  * one that imports FROM this file, not the reverse).
  */
-import type { ProjectSource, ProjectCapabilities, ExtensionIndexEntry } from "gutterpress";
+import type { ProjectSource, ProjectCapabilities, NpmExtensionMatch } from "gutterpress";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -210,18 +210,19 @@ export interface ExtensionImportResult {
   warnings: ExtensionImportWarning[];
 }
 
-// ── Extension discovery index (#246) ──────────────────────────────────────────
-// One curated entry from `site/extensions.json`, re-exported (not
-// re-declared) so a discover-list consumer doesn't need a second import.
-export type { ExtensionIndexEntry };
+// ── Extension search (#246) — npm ────────────────────────────────────────────
+// One npm package the registry returned for the `gutterpress` /
+// `markdown-it-plugin` keywords, re-exported (not re-declared) so a
+// search-list consumer doesn't need a second import.
+export type { NpmExtensionMatch };
 
 /**
- * Result of fetching the curated extension index. A fetch/parse failure is
- * DATA (`ok: false`), never a thrown error or an HTTP 500 — the discover
- * route always resolves, and the panel shows `message` as one quiet line.
+ * Result of searching npm. A fetch/parse failure is DATA (`ok: false`), never
+ * a thrown error or an HTTP 500 — the search route always resolves, and the
+ * panel shows `message` as one quiet line beside the box.
  */
-export type ExtensionDiscoverResult =
-  | { ok: true; entries: ExtensionIndexEntry[] }
+export type ExtensionSearchResult =
+  | { ok: true; matches: NpmExtensionMatch[]; total: number }
   | { ok: false; message: string };
 
 // ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────

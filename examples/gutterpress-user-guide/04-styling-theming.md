@@ -57,7 +57,7 @@ gutterpress ext add zine ./my-book --look                     # another built-in
 gutterpress ext add ./house-style ./my-book                   # a folder you already have — referenced in place, never copied
 gutterpress ext add ./parchment.zip ./my-book                 # a packaged look → extensions/parchment/
 gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet → extensions/parchment/
-gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional theme.json) fetched → extensions/cool/
+gutterpress ext add https://example.com/looks/cool/ ./my-book # theme.css (+ optional package.json) fetched → extensions/cool/
 ```
 
 Zip, CSS and URL imports are checked before they land: every declared sheet
@@ -144,38 +144,47 @@ For one book, the fastest approach is three sections in `styles/book.css`:
 }
 ```
 
-To reuse a look across books, make it a folder. Any folder with a `theme.css`
-is already a valid one-sheet look, and `gutterpress new "House Style" --kind
-theme` scaffolds a layered six-sheet one with a `gutterpress.json`; either
-way `gutterpress ext add ./house-style <book>` lists it, referenced in place.
+To reuse a look across books, make it a folder: a `theme.css` plus a
+`package.json` declaring it, which is all a one-sheet look is. `gutterpress
+new "House Style" --kind theme` scaffolds a layered six-sheet one; either way
+`gutterpress ext add ./house-style <book>` lists it, referenced in place.
 
 ### Looks with more than one stylesheet
 
-A look folder is not limited to one `theme.css`. Its `gutterpress.json` (the
-older `theme.json` name is still read) can declare an ordered list of sheets
-and which sheet holds the tokens the Design panel edits:
+A look folder is not limited to one `theme.css`. Its `package.json` — the same
+standard file npm already wants — declares an ordered list of sheets and which
+sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
 
 ```json
 {
-  "name": "Dimm City",
-  "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
-  "tokensFile": "css/tokens.css"
+  "name": "dimm-city",
+  "description": "The house look",
+  "author": "Your Name",
+  "keywords": ["gutterpress", "gutterpress-look"],
+  "gutterpress": {
+    "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
+    "tokensFile": "css/tokens.css"
+  }
 }
 ```
 
 Paths are relative to the look's folder and must stay inside it. The sheets
 load in that order at the look's position in `extensions:` — one entry,
 however many files — and a sheet that must win over the others simply goes
-last in the list. Disabling or removing the entry removes them all. A
-metadata file without `styles` means `["theme.css"]`, so existing looks need
-no change, and `tokensFile` defaults to the first entry in `styles`. A folder
-that declares `styles` needs no `theme.css` at all; a `.zip` or URL import
-still needs one to find the package root.
+last in the list. Disabling or removing the entry removes them all. A look
+declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
+is the one field a look cannot leave out. `tokensFile` defaults to the first
+entry in `styles`. The file need not be called `theme.css` at all; a `.zip` or
+URL import still needs one to find the package root, and an import writes the
+package.json for you when the package has none.
 
-The other metadata fields are `author`, `description`, `preview` (an image,
-relative to the folder), and — for a look that is also a plugin or a component
-library — `markdown`, `snippets` and `components`. [Chapter 5](#ch-plugins)
-covers those.
+The other fields are npm's own `name`, `description` and `author`, plus
+`gutterpress.preview` (an image, relative to the folder) and — for a look that
+is also a plugin or a component library — `main`, `gutterpress.snippets` and
+`gutterpress.components`. [Chapter 5](#ch-plugins) covers those.
+
+A look still carrying the removed `gutterpress.json` or `theme.json` fails to
+load with a message showing the package.json that replaces it.
 
 ## Font Loading {#font-loading}
 

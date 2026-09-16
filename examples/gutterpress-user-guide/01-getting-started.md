@@ -54,7 +54,7 @@ my-book/
 ├── manifest.yaml       # Pre-filled with your title and author
 ├── chapter-01.md       # A starter chapter — replace with your content
 ├── extensions/
-│   └── clean-book/     # The starter look (theme.css + theme.json) — yours to edit
+│   └── clean-book/     # The starter look (theme.css + package.json) — yours to edit
 ├── styles/
 │   └── book.css        # Your own stylesheet — loads after the look, ready to edit
 └── assets/             # Images, fonts, diagrams go here
