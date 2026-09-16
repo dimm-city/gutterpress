@@ -369,11 +369,14 @@ the plan wins.**
     there is no engine without it to write a `visualViewport` fallback for
     (the iOS Safari branch was struck 2026-08-23 with the Chromium-only ruling).
   - `position: sticky` cannot pin above a keyboard; do not spec it.
-- **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
-  disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
-  snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
-  indicator is subtle (no modal) — see Anti-Patterns.
+- **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
+  debounced disk save 500ms after the last edit (`EditorBuffer`) and an
+  ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
+  `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274) — the
+  two Settings → Saving rows that used to expose them ("Save edits
+  automatically", "Recover edits after an unexpected close") were removed as
+  tuning knobs an author had no basis to set; the save indicator is subtle
+  (no modal) — see Anti-Patterns.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).
 - Offline: service worker app-shell precache is SHIPPED

@@ -24,7 +24,6 @@ interface Harness {
   ctrl: CrashRecoveryController;
   deps: {
     isDesktop: Spy<[]> & { value: boolean };
-    crashRecoveryEnabled: Spy<[]> & { value: boolean };
     listRecovery: Spy<[string]> & { impl: (dir: string) => Promise<CrashRecoveryEntry[]> };
     clearRecovery: Spy<[string]>;
     readRecoveryFile: Spy<[string]> & { impl: (path: string) => Promise<string> };
@@ -36,7 +35,6 @@ interface Harness {
 
 function make(): Harness {
   const isDesktop = Object.assign(spy<[]>(), { value: true });
-  const crashRecoveryEnabled = Object.assign(spy<[]>(), { value: true });
   const listRecovery = Object.assign(spy<[string]>(), {
     impl: async (): Promise<CrashRecoveryEntry[]> => [],
   });
@@ -54,10 +52,6 @@ function make(): Harness {
     isDesktop: () => {
       isDesktop();
       return isDesktop.value;
-    },
-    crashRecoveryEnabled: () => {
-      crashRecoveryEnabled();
-      return crashRecoveryEnabled.value;
     },
     listRecovery: (dir) => {
       listRecovery(dir);
@@ -84,7 +78,6 @@ function make(): Harness {
     ctrl: new CrashRecoveryController(deps),
     deps: {
       isDesktop,
-      crashRecoveryEnabled,
       listRecovery,
       clearRecovery,
       readRecoveryFile,
@@ -102,14 +95,6 @@ test("scan() no-ops on the web", async () => {
   deps.isDesktop.value = false;
   await ctrl.scan("/proj");
   expect(deps.listRecovery.calls.length).toBe(0);
-});
-
-test("scan() no-ops when crash recovery is disabled in settings (still marks the dir scanned)", async () => {
-  const { ctrl, deps } = make();
-  deps.crashRecoveryEnabled.value = false;
-  await ctrl.scan("/proj");
-  expect(deps.listRecovery.calls.length).toBe(0);
-  expect(ctrl.items).toEqual([]);
 });
 
 test("scan() guards against re-scanning the same folder twice", async () => {

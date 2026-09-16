@@ -13,19 +13,17 @@
     onClose,
     projectDir = null,
     initialTab = "app",
-    onCrashRecoveryChange,
     embedded = false,
     idPrefix = "settings",
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
-     *  against the platform, and some checks read the project's settings). */
+     *  against the platform, and some checks read the project's settings;
+     *  the Saving tab's online-backup switch uses it to check canSync). */
     projectDir?: string | null;
     /** The tab to land on when the view opens (e.g. "connections" from the
      *  reconnect / advanced-setup entry points). */
     initialTab?: SettingsTab;
-    /** Called immediately when the user toggles crash recovery. */
-    onCrashRecoveryChange?: (enabled: boolean) => void;
     /** Rendered INSIDE another surface (the start screen's Settings tab)
      *  rather than as the full-window sheet: drops the title bar and close
      *  button — that surface has its own — and stops owning a scroll region,
@@ -102,6 +100,34 @@
         // A host that doesn't expose the hooks is simply "not supported here" —
         // never surface a startup error for an optional desktop nicety.
         appImage = null;
+      });
+  });
+
+  // ── Saving tab — can this project sync? (#274) ────────────────────────────
+  // The online-backup switch only makes sense for a project that can sync;
+  // otherwise it is a control that would do nothing, per issue #274. Checked
+  // once on mount (no `$effect` in this repo — CLAUDE.md §8), same as
+  // ConnectionsSettings/ProjectConnectionsSection's own diagnoseProjectRemote
+  // load. `projectDir === null` (the start screen) is treated as "cannot
+  // sync" without a round-trip.
+  let canSyncLoading = $state(true);
+  let canSync = $state(false);
+
+  onMount(() => {
+    if (!isDesktop() || !projectDir) {
+      canSyncLoading = false;
+      return;
+    }
+    api.remote
+      .diagnoseProjectRemote(projectDir)
+      .then((diag) => {
+        canSync = diag.canSync;
+      })
+      .catch(() => {
+        canSync = false;
+      })
+      .finally(() => {
+        canSyncLoading = false;
       });
   });
 
@@ -426,41 +452,24 @@
       {/if}
 
       {#if activeTab === "saving"}
-      <!-- Saving & recovery (UX follow-up: writer-friendly protection model) -
-           The three protection layers a writer actually reasons about — saved
-           on this computer, previous versions, and the online copy — plus the
-           temporary emergency crash-draft, grouped together with plain labels.
-           None of the underlying machinery changes; the persisted keys
-           (editor.autoSaveDelay / editor.crashRecovery, versionHistory.
-           autoSnapshot / autoSnapshotMinutes / autoSync) are internal and
-           unchanged (the schema `editor` and `versionHistory` sections still
-           own them, so each section's Reset still restores its own keys). -->
+      <!-- Saving (#274 — two switches instead of five controls, three of which
+           did less than their labels said). Saving itself (500ms debounce)
+           and crash recovery (1s emergency draft) are no longer settings —
+           EditorBuffer runs both unconditionally with its own fixed defaults
+           — so this group is left with the two things a writer can actually
+           decide: whether to keep previous versions, and whether to keep an
+           online backup. Both persist under `versionHistory`, so this group's
+           Reset restores the whole group in one call. -->
       <section class="group">
         <div class="group-head">
           <h3>Saving &amp; recovery</h3>
-          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset previous-version and online-copy settings to defaults">Reset</button>
-        </div>
-        <!-- On this computer -->
-        <div class="row">
-          <div class="row-label">
-            <label for="set-autosave">Save edits automatically</label>
-            <span class="row-hint">Writes your current changes to this computer as you work (delay in seconds)</span>
-          </div>
-          <input
-            id="set-autosave"
-            type="number"
-            min="0"
-            max="10"
-            step="0.5"
-            value={s.editor.autoSaveDelay / 1000}
-            onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
-          />
+          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset saving settings to defaults">Reset</button>
         </div>
         <!-- Previous versions -->
         <div class="row row-toggle">
           <div class="row-label">
             <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the project. Turning this off does not affect saving on this computer.</span>
+            <span class="row-hint">Lets you return to earlier versions of the project.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -469,55 +478,45 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
-        <div class="row">
-          <label for="set-auto-snapshot-minutes">Create a version after I stop editing for (minutes)</label>
-          <input
-            id="set-auto-snapshot-minutes"
-            type="number"
-            min="5"
-            max="1440"
-            step="5"
-            value={s.versionHistory.autoSnapshotMinutes}
-            disabled={!s.versionHistory.autoSnapshot}
-            onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <!-- Online copy (transparent-sync plan §6 / §8 step 7). Default ON for
-             projects with a remote; local-only projects never sync regardless
-             of this toggle (the host enforces the canSync gate). -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-sync">Keep an online copy up to date</label>
-            <span class="row-hint">Available when this project is connected to an online service — changes are saved to it in the background. Turning this off does not affect saving on this computer or your previous versions.</span>
+        <!-- Online backup (transparent-sync plan §6 / §8 step 7). Shown only
+             for a project that can sync — canSyncLoading/canSync are read
+             once on mount from diagnoseProjectRemote (no live re-check while
+             this view stays open, matching ConnectionsSettings/
+             ProjectConnectionsSection); a local-only project or the start
+             screen (projectDir === null) gets one status line instead of a
+             switch that would do nothing. Disabled when previous versions is
+             off: a backup with nothing to push is not a backup. -->
+        {#if canSyncLoading}
+          <div class="row"><span class="row-hint">Checking this project's online status…</span></div>
+        {:else if canSync}
+          <div class="row row-toggle">
+            <div class="row-label">
+              <label for="set-auto-sync">Keep this project backed up online</label>
+              <span class="row-hint">
+                {#if s.versionHistory.autoSnapshot}
+                  Sends your previous versions to your connected online service in the background.
+                {:else}
+                  Needs "Keep previous versions" turned on — a backup is made of your versions.
+                {/if}
+              </span>
+            </div>
+            <input
+              id="set-auto-sync"
+              type="checkbox"
+              checked={s.versionHistory.autoSync}
+              disabled={!s.versionHistory.autoSnapshot}
+              onchange={(e) => {
+                const enabled = (e.currentTarget as HTMLInputElement).checked;
+                settings.set({ versionHistory: { autoSync: enabled } });
+                // Notify the host orchestrator immediately so the change takes effect
+                // without waiting for a settings reload cycle (§4.3).
+                if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+              }}
+            />
           </div>
-          <input
-            id="set-auto-sync"
-            type="checkbox"
-            checked={s.versionHistory.autoSync}
-            onchange={(e) => {
-              const enabled = (e.currentTarget as HTMLInputElement).checked;
-              settings.set({ versionHistory: { autoSync: enabled } });
-              // Notify the host orchestrator immediately so the change takes effect
-              // without waiting for a settings reload cycle (§4.3).
-              if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
-            }}
-          />
-        </div>
-        <!-- Emergency copy (crash-draft subsystem — kept distinct from previous
-             versions, per UX follow-up + review M38). The persisted key
-             `editor.crashRecovery` is internal/unchanged. -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-crash-recovery">Recover edits after an unexpected close</label>
-            <span class="row-hint">Keeps a temporary emergency copy of your unsaved edits until they are saved. This is separate from your previous versions.</span>
-          </div>
-          <input
-            id="set-crash-recovery"
-            type="checkbox"
-            checked={s.editor.crashRecovery}
-            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
-          />
-        </div>
+        {:else}
+          <div class="row"><span class="row-hint">This project isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+        {/if}
       </section>
 
       {/if}

@@ -85,7 +85,6 @@
     onUpdateDownload,
     onCheckForUpdates,
     onDismiss,
-    onCrashRecoveryChange,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -120,7 +119,6 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
-    onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
   // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
@@ -443,7 +441,6 @@
           idPrefix="landing-settings"
           initialTab={settingsTab}
           {projectDir}
-          {onCrashRecoveryChange}
         />
       </section>
       {:else if activeTab === "logs"}

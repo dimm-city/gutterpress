@@ -13,6 +13,14 @@
  *
  * Pure — no `node:*`/`fs`/`path`/`url`/`postcss` imports — so it stays
  * PWA-clean in the renderer bundle (CLAUDE.md §8).
+ *
+ * A patch section is filtered to `base`'s own keys before spreading (#274):
+ * a persisted settings file can still carry a key a later schema version
+ * removed (e.g. the deleted `editor.autoSaveDelay`), and without this filter
+ * that dead key would spread into the merged object, ride along on every
+ * subsequent settings write, and live forever. Filtering against `base[key]`
+ * — DEFAULT_SETTINGS at load time, the already-clean live state thereafter —
+ * drops it instead of merely hiding it behind the type system.
  */
 // Import from the shared-types leaf, NOT the ./platform value barrel: this pure
 // module is also consumed host-side (electron/settings-store.ts), and pulling
@@ -27,7 +35,11 @@ function mergeSettingsSection<K extends keyof AppSettings>(
   value: DeepPartial<AppSettings>[K],
 ): void {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
+    const known: Record<string, unknown> = {};
+    for (const k of Object.keys(value as object)) {
+      if (k in (base[key] as object)) known[k] = (value as Record<string, unknown>)[k];
+    }
+    target[key] = { ...base[key], ...known } as AppSettings[K];
   }
 }
 

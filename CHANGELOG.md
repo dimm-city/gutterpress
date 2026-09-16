@@ -5,6 +5,35 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop Settings → Saving is two switches, not five controls.** "Keep
+  previous versions" and "Keep this project backed up online" (renamed from
+  "Keep an online copy up to date") are what's left of a group where three of
+  the five old controls did less than their labels said: autosave delay could
+  not turn autosave off, the crash-recovery toggle removed a safety net for
+  nothing, and the quiet-period minutes field was dead on any project that
+  can sync (a sync commits every 2 minutes regardless). The online-backup
+  switch now shows only for a project that can actually sync — a local-only
+  project or the start screen gets one status line pointing at Accounts
+  instead of a switch that would do nothing — and is disabled with a hint
+  when previous versions is off, since a backup with nothing to push isn't
+  one. The group's Reset now resets the whole group in one call. (#274)
+
+### Removed
+
+- **Autosave delay and the crash-recovery toggle are no longer settings.**
+  `editor.autoSaveDelay`, `editor.crashRecovery`, and the quiet-period
+  `versionHistory.autoSnapshotMinutes` are deleted from the settings schema,
+  defaults, and the `Platform` contract — deleted, not deprecated, with no
+  compatibility shim. The editor's disk save stays a fixed 500ms after the
+  last edit and its crash-recovery draft a fixed 1000ms; both were already
+  effectively unconditional in practice (a 0s "delay" was never actually off,
+  and turning recovery off only removed a safety net). A settings file still
+  carrying the old keys loads cleanly — the generic settings merge now drops
+  patch keys the current schema doesn't declare, instead of carrying them
+  forward forever. (#274)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed
