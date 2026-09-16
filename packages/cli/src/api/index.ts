@@ -195,6 +195,19 @@ export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 export { importExtensionFromFile, importExtensionFromUrl } from "../lib/extension-import.ts";
 export type { ExtensionImportResult, ExtensionImportWarning } from "../lib/extension-import.ts";
 
+// ── Extension discovery index (#246) ──────────────────────────────────────────
+// A curated JSON index of extensions beyond the bundled/built-in set, fetched
+// ON DEMAND by `gutterpress ext search` and the desktop's discovery list —
+// never by the loader/build/preview/validate paths.
+export {
+  EXTENSION_INDEX_URL,
+  MAX_INDEX_BYTES,
+  fetchExtensionIndex,
+  parseExtensionIndex,
+  searchExtensionIndex,
+} from "../lib/extension-index.ts";
+export type { ExtensionIndexEntry, ExtensionIndexCarry } from "../lib/extension-index.ts";
+
 // ── Unified extension package format (#241) — gutterpress.json ───────────────
 // The metadata reader + resolver `extension-manager.ts` (a look is "styles
 // only") and `markdown/plugins.ts` (a plugin is "markdown only") both build

@@ -91,6 +91,8 @@ gutterpress ext remove markdown-it-highlightjs ./my-book
 
 `add` also takes a `.zip` or `.css` file, an `http(s)` URL, or — with `--look` — a built-in look id; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](#ch-styling)). `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
 
+Not sure what's out there? `gutterpress ext search [query]` looks up a curated, community-maintained index of extensions beyond the bundled set (not project-scoped — it takes no directory) and prints each match's `use` specifier, ready to hand straight to `ext add`.
+
 The desktop app shows the same list under **Project settings → Features** (the entries that carry markdown) and **Project settings → Look** (the entries that carry styles) — two views over one list, with the same add, enable/disable, reorder and remove actions.
 
 ## Installing npm Plugins

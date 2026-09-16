@@ -361,7 +361,7 @@ terminal is the same entry the GUI shows.
 ```sh
 gutterpress ext
 
-  --help    Show ext subcommands (list, add, remove, enable, disable)
+  --help    Show ext subcommands (list, add, remove, enable, disable, search)
 ```
 
 Every subcommand takes the project directory as an optional trailing
@@ -440,6 +440,29 @@ Turn a configured extension off without removing it (`disable` writes
 gutterpress ext disable markdown-it-mark ./my-book
 gutterpress ext enable markdown-it-mark ./my-book
 ```
+
+#### `gutterpress ext search`
+
+Search a curated, community-maintained index of extensions beyond the bundled
+set — the same discovery list the desktop app's Features view shows under
+"More extensions." Not project-scoped (no `dir` argument): it fetches
+[`extensions.json`](https://dimm-city.github.io/gutterpress/extensions.json)
+and prints each match's `use` specifier, name, what it carries, and its
+description, ending with the `ext add` command to install it.
+
+```sh
+gutterpress ext search [query]
+```
+
+```sh
+gutterpress ext search
+gutterpress ext search components
+```
+
+An empty or omitted `query` lists every entry; the match is a case-insensitive
+substring over id, name, description and author. Set `GUTTERPRESS_EXTENSION_INDEX`
+to point at a different index URL (http/https only) — useful for a private
+mirror, or for testing.
 
 ## Exit codes
 

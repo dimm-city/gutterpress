@@ -26,7 +26,16 @@
  *     `extensions/<id>/`, so the look becomes the author's own editable
  *     files), then referenced as `./extensions/<id>`;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
- *     validates and lands in `extensions/<id>/` (#106).
+ *     validates and lands in `extensions/<id>/` (#106);
+ *   - `addDiscovered` — a curated index entry (#246), added by the exact
+ *     same specifier path as `addRecommended` (the index's `use` field is
+ *     already whatever `gutterpress ext add` expects).
+ *
+ * `discover` (#246) is a SEPARATE, quieter load than the three above: the
+ * curated extension index at `site/extensions.json`, fetched over the
+ * network only when the Features view mounts (never at project load). A
+ * fetch/parse failure surfaces as `discover.message` — one line, never an
+ * error toast — and never blocks `entries`/`recommended`/`builtIns`.
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
@@ -49,6 +58,8 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionIndexEntry,
+  ExtensionDiscoverResult,
 } from "$lib/platform/dtos";
 import {
   orderAfterMove,
@@ -64,6 +75,8 @@ export interface ExtensionsSectionDeps {
   list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
   recommended: () => Promise<RecommendedExtension[]>;
   listBuiltIn: () => Promise<BuiltInStyleSet[]>;
+  /** The curated extension index (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
+  discover: () => Promise<ExtensionDiscoverResult>;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -103,6 +116,17 @@ export class ExtensionsSectionController {
   entries = $state<ProjectExtensionEntry[]>([]);
   recommended = $state<RecommendedExtension[]>([]);
   builtIns = $state<BuiltInStyleSet[]>([]);
+  /**
+   * The curated extension index (#246) — a "More extensions" list beyond the
+   * bundled/built-in set. Loaded ON DEMAND when the Features view mounts,
+   * never at project load; a fetch failure is one quiet `message`, never a
+   * modal, and never blocks the rest of the panel.
+   */
+  discover = $state<{
+    status: "idle" | "loading" | "ready" | "error";
+    entries: ExtensionIndexEntry[];
+    message: string | null;
+  }>({ status: "idle", entries: [], message: null });
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
@@ -155,6 +179,10 @@ export class ExtensionsSectionController {
   get availableRecommended(): RecommendedExtension[] {
     return this.recommended.filter((r) => !this.entries.some((e) => e.use === r.use));
   }
+  /** Curated index entries not already in the list — the "More extensions" rows. */
+  get availableDiscover(): ExtensionIndexEntry[] {
+    return this.discover.entries.filter((d) => !this.entries.some((e) => e.use === d.use));
+  }
   /** True when the built-in look `id` is already in the list as `./extensions/<id>`. */
   isBuiltInAdded = (id: string): boolean => addedBuiltInIds(this.entries).has(id);
 
@@ -193,6 +221,29 @@ export class ExtensionsSectionController {
       this.error = e instanceof Error ? e.message : String(e);
     } finally {
       this.validating = false;
+    }
+  };
+
+  /**
+   * Fetch the curated extension index. Called when the Features view mounts
+   * (never at project load). Refuses to pile up a second in-flight fetch;
+   * a failure lands in `discover.message`, not `this.error` — it must never
+   * block or blank the rest of the panel.
+   */
+  loadDiscover = async (): Promise<void> => {
+    if (this.discover.status === "loading") return;
+    this.discover = { status: "loading", entries: this.discover.entries, message: null };
+    try {
+      const result = await this.deps.discover();
+      this.discover = result.ok
+        ? { status: "ready", entries: result.entries, message: null }
+        : { status: "error", entries: [], message: result.message };
+    } catch (e) {
+      this.discover = {
+        status: "error",
+        entries: [],
+        message: e instanceof Error ? e.message : String(e),
+      };
     }
   };
 
@@ -294,6 +345,16 @@ export class ExtensionsSectionController {
   /** Turn on a bundled feature — writes its name, nothing to install. */
   addRecommended = async (rec: RecommendedExtension): Promise<void> => {
     const added = await this.mutate(rec.use, (dir) => this.deps.add(dir, rec.use), carriesStyles);
+    if (added) this.announceAdded(added);
+  };
+
+  /** Add a curated index entry (#246) — reuses the same specifier add path as `addRecommended`. */
+  addDiscovered = async (entry: ExtensionIndexEntry): Promise<void> => {
+    const added = await this.mutate(
+      entry.use,
+      (dir) => this.deps.add(dir, entry.use),
+      () => entry.carries.includes("styles"),
+    );
     if (added) this.announceAdded(added);
   };
 

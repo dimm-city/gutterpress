@@ -105,6 +105,8 @@ export type {
   BuiltInStyleSet,
   ExtensionImportResult,
   ExtensionImportWarning,
+  ExtensionIndexEntry,
+  ExtensionDiscoverResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -126,6 +128,7 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionDiscoverResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -539,6 +542,8 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled markdown features an author can turn on with no install (static). */
     recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
+    /** The curated extension index (#246), fetched on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
+    discover: () => get<ExtensionDiscoverResult>('/api/extension/discover'),
     /** The built-in looks (static metadata). */
     listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
     /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
