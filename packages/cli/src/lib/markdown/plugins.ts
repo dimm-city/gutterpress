@@ -31,7 +31,6 @@ import { resolveDeclaredStyles } from "../style-declarations";
 // everything else in this file is unchanged.
 import {
   type ExtensionMetadata,
-  extensionEntry,
   readExtensionMeta,
   assertExtensionContained,
   resolveExtension,
@@ -1156,7 +1155,7 @@ function staleManifestHint(dir: string): string {
 /**
  * Load a path entry (#241, #276) that names a DIRECTORY instead of a bare JS
  * file — an extension package described by its `package.json`: a markdown-it
- * entry ({@link extensionEntry}: `gutterpress.markdown`, else npm's own
+ * entry (`extensionEntry` in extension-manifest.ts: `gutterpress.markdown`, else npm's own
  * `main`) loaded exactly like a bare-file plugin (same cache, same export
  * extraction, same `styles` export handling), and `gutterpress.styles`
  * (resolved through the SAME {@link resolveExtension} →
