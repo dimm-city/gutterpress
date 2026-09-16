@@ -247,9 +247,13 @@ export const GUTTERPRESS_EDITOR_CSS = `
    inline puts the bullet back on the item's own first line and drops the
    paragraph's vertical margins, which is exactly how the book's bare list text
    behaves. Inactive blocks only: the fork measures an active item's caret
-   from that paragraph's own box. */
-.md-editor .md-list.gp-list-tight.md-markers-hidden li > .md-paragraph,
-.md-editor .md-markers-hidden .md-list.gp-list-tight li > .md-paragraph {
+   from that paragraph's own box. :where() keeps this at zero specificity:
+   it still beats the paragraph's user-agent default, but a book rule that
+   gives a tight item's paragraph a box of its own (a skill card's ability
+   row is one) wins here as it does on the page, where there is no paragraph
+   element to style at all. */
+:where(.md-editor .md-list.gp-list-tight.md-markers-hidden li > .md-paragraph),
+:where(.md-editor .md-markers-hidden .md-list.gp-list-tight li > .md-paragraph) {
   display: inline;
 }
 /* An inline HTML tag the book renders rather than prints (see inline-html.ts).

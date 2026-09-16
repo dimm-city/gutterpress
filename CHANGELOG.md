@@ -115,6 +115,14 @@ disagree, the preview is right.
   a range crossing the wrapper's that the editor could not nest and dropped
   whole - so the page break went with it and the chapter paginated a page
   short of the book.
+- **A book rule that gives a tight list item's paragraph a box of its own
+  now wins in the paged editor.** The editor renders a tight item's paragraph
+  inline (the page has no paragraph element there), and that rule outranked
+  every book rule on the paragraph; the design guide's ability rows, which
+  lay the item out as a chip beside its text, kept their inline shape in the
+  editor and two field guide chapters paginated a page off the book. The
+  emulation now sits at zero specificity, above the user-agent default and
+  below any book rule.
 
 ## [0.10.9] - 2026-09-12
 
