@@ -39,6 +39,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   including `printsafe/page-containment` ones it previously dropped despite
   the CLI README documenting `lint` as covering page-containment risk. (#272)
 
+- **Docs: the exact-fit boundary's engine question is answered — no CSS lever,
+  no fix.** #268 asked whether the viewer's Multicol fragmentainer could carry
+  print's sub-pixel tolerance so `docs/fixtures/exact-fit-boundary` reads
+  CLEAN instead of EXACT-FIT BOUNDARY. Re-tested at the most surgical layer
+  available (a `calc(var(--gp-content-h) + Xpx)` bump on `.gp-strip`'s actual
+  fragmentainer height, leaving the `--gp-content-h` custom property every
+  other consumer reads untouched): `X ≥ 0.36px` does flip the fixture clean
+  with every other registered gate fixture's page count unchanged, but it is
+  not shipped — it fails an existing invariant test (`zoom.test.ts`) the
+  moment `X > 0`, and this repo's registered fixtures are all US Letter, so a
+  clean run here cannot rule out the same failure this project already has on
+  record for a fixed epsilon: matching one page geometry, not generalizing to
+  another. `docs/engine/ENGINE.md` §4 records the full experiment table;
+  `docs/known-limitations.md` §4 and a draft upstream Chromium report
+  (`docs/engine/chromium-bug-drafts/exact-fit-multicol-vs-print.md`) record
+  the conclusion. The gate's EXACT-FIT BOUNDARY outcome (#261) stays the
+  accepted, permanent classification for this shape of divergence — no
+  allowlist entry, no shim. (#268)
+
 ## [0.10.9] - 2026-09-12
 
 ### Changed
