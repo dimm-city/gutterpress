@@ -195,18 +195,23 @@ export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 export { importExtensionFromFile, importExtensionFromUrl } from "../lib/extension-import.ts";
 export type { ExtensionImportResult, ExtensionImportWarning } from "../lib/extension-import.ts";
 
-// ── Extension discovery index (#246) ──────────────────────────────────────────
-// A curated JSON index of extensions beyond the bundled/built-in set, fetched
-// ON DEMAND by `gutterpress ext search` and the desktop's discovery list —
-// never by the loader/build/preview/validate paths.
+// ── Extension discovery (#246) — npm search ──────────────────────────────────
+// npm IS the registry: a Gutterpress extension tags itself `gutterpress`, a
+// plain markdown-it plugin is found by `markdown-it-plugin`. Fetched ON
+// DEMAND by `gutterpress ext search` and the desktop's "Find more on npm" box
+// — never by the loader/build/preview/validate paths.
 export {
-  EXTENSION_INDEX_URL,
-  MAX_INDEX_BYTES,
-  fetchExtensionIndex,
-  parseExtensionIndex,
-  searchExtensionIndex,
-} from "../lib/extension-index.ts";
-export type { ExtensionIndexEntry, ExtensionIndexCarry } from "../lib/extension-index.ts";
+  MAX_SEARCH_BYTES,
+  SEARCH_KEYWORDS,
+  searchNpmExtensions,
+} from "../lib/extension-search.ts";
+export type {
+  ExtensionSearchKind,
+  NpmExtensionMatch,
+  NpmExtensionSearchResult,
+  SearchNpmExtensionsOptions,
+} from "../lib/extension-search.ts";
+export { DEFAULT_NPM_REGISTRY, npmRegistryUrl } from "../lib/npm-registry.ts";
 
 // ── Unified extension package format (#241, #276) — package.json ─────────────
 // The metadata reader + resolver `extension-manager.ts` (a look is "styles

@@ -467,7 +467,7 @@ describe("parse-time usage errors keep the documented exit code", () => {
   test("bare ext shows its subcommand help and exits successfully", () => {
     const { exitCode, stdout, stderr } = runCli(["ext"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("List, add, remove, enable, disable, or search for the project's extensions");
+    expect(stdout).toContain("List, add, remove, enable, disable the project's extensions, or search npm");
     expect(stdout).toContain("add");
     expect(stderr).toBe("");
   });
@@ -652,7 +652,7 @@ describe("M48: unknown preset errors instead of silently falling back to dtrpg",
   }, 30000);
 });
 
-// ── #246: `gutterpress ext search` against the curated index ───────────────
+// ── #246: `gutterpress ext search` against the npm registry ────────────────
 
 describe("ext search (#246)", () => {
   let server: http.Server | undefined;
@@ -664,62 +664,100 @@ describe("ext search (#246)", () => {
     }
   });
 
-  async function serve(body: string, status = 200): Promise<string> {
-    server = http.createServer((_req, res) => {
-      res.writeHead(status, { "content-type": "application/json" });
-      res.end(body);
+  /** A package row in the registry's search shape. */
+  function object(name: string, keywords: string[], description = "d", searchScore = 1) {
+    return {
+      searchScore,
+      package: {
+        name,
+        version: "1.0.0",
+        description,
+        keywords,
+        links: { npm: `https://www.npmjs.com/package/${name}` },
+      },
+    };
+  }
+
+  /**
+   * Stand in for registry.npmjs.org at GUTTERPRESS_NPM_REGISTRY. `pages` is
+   * keyed by the keyword the CLI filters on, so one server answers BOTH
+   * requests `searchNpmExtensions` issues and the merge is exercised end to end.
+   */
+  async function serveRegistry(
+    pages: Record<string, { objects: unknown[]; total: number }>,
+  ): Promise<string> {
+    server = http.createServer((req, res) => {
+      const text = new URL(req.url ?? "/", "http://x").searchParams.get("text") ?? "";
+      const keyword = Object.keys(pages).find((k) => text.includes(`keywords:${k}`)) ?? "";
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(pages[keyword] ?? { objects: [], total: 0 }));
     });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const port = (server!.address() as net.AddressInfo).port;
-    return `http://127.0.0.1:${port}/extensions.json`;
+    return `http://127.0.0.1:${port}`;
   }
 
-  test("finds the committed index's Dimm City row and prints how to add it", async () => {
-    const body = await readFile(path.join(REPO_ROOT, "site", "extensions.json"), "utf8");
-    const url = await serve(body);
+  test("lists tagged packages, gutterpress first, and prints how to add one", async () => {
+    const registry = await serveRegistry({
+      gutterpress: {
+        objects: [object("dimm-city-components", ["gutterpress"], "A component library")],
+        total: 1,
+      },
+      "markdown-it-plugin": {
+        objects: [
+          object("markdown-it-footnote", ["markdown-it-plugin"], "Footnotes"),
+          // markdown-it itself carries the ecosystem keyword; it is not an
+          // extension and must never be offered.
+          object("markdown-it", ["markdown-it-plugin"], "The parser"),
+        ],
+        total: 12,
+      },
+    });
     const { exitCode, stdout, stderr } = await runCliAsync(["ext", "search"], {
-      GUTTERPRESS_EXTENSION_INDEX: url,
+      GUTTERPRESS_NPM_REGISTRY: registry,
     });
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(stdout).toContain("dimm-city-components");
-    expect(stdout).toContain("Dimm City Components");
-    expect(stdout).toContain("Add one with: gutterpress ext add <use>");
+    expect(stdout).toContain("Extensions on npm (showing 2 of 13):");
+    expect(stdout.indexOf("dimm-city-components@1.0.0")).toBeLessThan(
+      stdout.indexOf("markdown-it-footnote@1.0.0"),
+    );
+    expect(stdout).toContain("[gutterpress]");
+    expect(stdout).toContain("[markdown-it plugin]");
+    expect(stdout).not.toContain(" markdown-it@1.0.0");
+    expect(stdout).toContain("Add one with: gutterpress ext add <name>");
   }, 30000);
 
-  test("a query narrows the results by substring, case-insensitively", async () => {
-    const url = await serve(
-      JSON.stringify({
-        schema: 1,
-        extensions: [
-          { id: "a", name: "Alpha", description: "d", author: "x", use: "a", carries: ["markdown"] },
-          { id: "b", name: "Beta", description: "d", author: "x", use: "b", carries: ["markdown"] },
-        ],
-      }),
-    );
-    const { exitCode, stdout } = await runCliAsync(["ext", "search", "ALPHA"], {
-      GUTTERPRESS_EXTENSION_INDEX: url,
+  test("a query is passed to the registry and named in the header", async () => {
+    const registry = await serveRegistry({
+      "markdown-it-plugin": {
+        objects: [object("markdown-it-footnote", ["markdown-it-plugin"], "Footnotes")],
+        total: 3,
+      },
+    });
+    const { exitCode, stdout } = await runCliAsync(["ext", "search", "footnote"], {
+      GUTTERPRESS_NPM_REGISTRY: registry,
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Alpha");
-    expect(stdout).not.toContain("Beta");
+    expect(stdout).toContain('Extensions on npm matching "footnote" (showing 1 of 3):');
+    expect(stdout).toContain("markdown-it-footnote@1.0.0");
   }, 30000);
 
   test("no matches is a clean exit 0 with a one-line message", async () => {
-    const url = await serve(JSON.stringify({ schema: 1, extensions: [] }));
+    const registry = await serveRegistry({});
     const { exitCode, stdout } = await runCliAsync(["ext", "search", "nonexistent-xyz"], {
-      GUTTERPRESS_EXTENSION_INDEX: url,
+      GUTTERPRESS_NPM_REGISTRY: registry,
     });
     expect(exitCode).toBe(0);
-    expect(stdout.trim()).toBe('No extensions match "nonexistent-xyz".');
+    expect(stdout.trim()).toBe('No extensions on npm match "nonexistent-xyz".');
   }, 30000);
 
-  test("an unreachable index is a pipeline failure, not a crash", () => {
+  test("an unreachable registry is a pipeline failure, not a crash", () => {
     const { exitCode, stderr } = runCli(["ext", "search"], {
-      GUTTERPRESS_EXTENSION_INDEX: "http://127.0.0.1:1/extensions.json",
+      GUTTERPRESS_NPM_REGISTRY: "http://127.0.0.1:1",
     });
     expect(exitCode).toBe(3);
-    expect(stderr).toContain("Could not search the extension index");
+    expect(stderr).toContain("Could not search npm");
   }, 30000);
 
   test("ext search rejects unknown flags with exit 2, matching every other ext subcommand", () => {
