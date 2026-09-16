@@ -10,12 +10,25 @@
    * a bundled feature; install from npm; add a plugin file or folder on disk
    * (referenced in place, never copied). `extensionStatus` /
    * `extensionSourceLabel` are pure helpers.
+   *
+   * #246: a "More extensions" list — the curated index at
+   * `site/extensions.json` — sits below the bundled "Turn on" rows, fetched
+   * on this view's mount (see the `onMount` below), never at project load.
    */
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import { api } from "$lib/api";
   import { extensionStatus, extensionSourceLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "$lib/routes/extensions-section-controller.svelte";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
+
+  // #246: the curated extension index is fetched ON DEMAND, only once this
+  // view actually mounts — never at project load (ProjectSettingsView's
+  // loadAll never touches it).
+  onMount(() => {
+    void controller.loadDiscover();
+  });
 </script>
 
 <section class="block">
@@ -87,6 +100,32 @@
     </ul>
   {/if}
 
+  <!-- #246: the curated extension index — beyond the bundled/built-in set.
+       Loading/error is one quiet line; it never blocks the sections above. -->
+  {#if controller.discover.status === "loading"}
+    <p class="muted discover-status">Looking for more extensions…</p>
+  {:else if controller.discover.status === "error"}
+    <p class="muted discover-status">Couldn't load more extensions: {controller.discover.message}</p>
+  {:else if controller.availableDiscover.length > 0}
+    <h4 class="subhead">More extensions</h4>
+    <p class="hint">A curated index of extensions beyond the bundled set.</p>
+    <ul class="rec-list">
+      {#each controller.availableDiscover as entry (entry.id)}
+        <li>
+          <div class="rec-main">
+            <span class="rec-label">{entry.name}</span>
+            <p class="rec-desc">{entry.description}</p>
+            <span class="rec-pkg">{entry.use}</span>
+            {#if entry.homepage}
+              <button class="inline-link" onclick={() => entry.homepage && api.shell.openExternal(entry.homepage).catch(() => {})}>{entry.homepage}</button>
+            {/if}
+          </div>
+          <button class="primary small app-btn-primary" onclick={() => controller.addDiscovered(entry)} disabled={controller.busy !== null}>Add</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
   <!-- Always-visible section (project settings has no collapsible sections). -->
   <div class="advanced">
     <h4 class="subhead">Install from npm</h4>
@@ -115,6 +154,21 @@
   .plugin-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; flex-wrap: wrap; }
   .rec-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .rec-pkg { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
+  .discover-status { font-size: 12px; }
+  /* Opens via api.shell.openExternal (never a bare `<a target="_blank">` in
+     the Electron shell — see ConnectionsSettings.svelte for the pattern). */
+  button.inline-link {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--app-text-muted);
+    font-size: 10px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-all;
+    cursor: pointer;
+    text-align: left;
+  }
 
   .advanced { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
   .export-input { max-width: 130px; }

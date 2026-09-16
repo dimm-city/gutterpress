@@ -6,6 +6,8 @@ import type {
   RecommendedExtension,
   BuiltInStyleSet,
   ExtensionImportResult,
+  ExtensionIndexEntry,
+  ExtensionDiscoverResult,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
@@ -46,6 +48,24 @@ const REC_SUB: RecommendedExtension = { use: "markdown-it-sub", label: "Subscrip
 const BUILTIN_CLEAN: BuiltInStyleSet = { id: "clean-book", name: "Clean Book", description: "d" };
 const BUILTIN_ZINE: BuiltInStyleSet = { id: "zine", name: "Zine", description: "d" };
 
+const DISCOVER_DC: ExtensionIndexEntry = {
+  id: "dimm-city-components",
+  name: "Dimm City Components",
+  description: "d",
+  author: "Dimm City",
+  use: "dimm-city-components",
+  carries: ["markdown", "styles"],
+  homepage: "https://github.com/dimm-city/dc-op-manual",
+};
+const DISCOVER_OTHER: ExtensionIndexEntry = {
+  id: "other-thing",
+  name: "Other Thing",
+  description: "d",
+  author: "Someone",
+  use: "other-thing",
+  carries: ["markdown"],
+};
+
 interface Harness {
   ctrl: ExtensionsSectionController;
   projectDir: string | null;
@@ -63,6 +83,7 @@ interface Harness {
   importFileResult: ExtensionImportResult | null;
   onLookAdded: ReturnType<typeof spy>;
   afterLookChange: ReturnType<typeof spy>;
+  discoverResult: ExtensionDiscoverResult;
 }
 
 function make(
@@ -71,6 +92,7 @@ function make(
     entries: ProjectExtensionEntry[];
     recommended: RecommendedExtension[];
     builtIns: BuiltInStyleSet[];
+    discoverResult: ExtensionDiscoverResult;
   }> = {},
 ): Harness {
   const onLookAdded = spy();
@@ -90,6 +112,7 @@ function make(
     addWarnings: [],
     addLocalResult: null,
     importFileResult: null,
+    discoverResult: over.discoverResult ?? { ok: true, entries: [DISCOVER_DC, DISCOVER_OTHER] },
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -103,6 +126,10 @@ function make(
     },
     recommended: () => Promise.resolve(h.recommended),
     listBuiltIn: () => Promise.resolve(h.builtIns),
+    discover: () => {
+      record("discover");
+      return Promise.resolve(h.discoverResult);
+    },
     validate: () => {
       if (h.failValidate) return Promise.reject(new Error("validate failed"));
       return Promise.resolve(
@@ -196,6 +223,8 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.hoverPreview).toBeNull();
   expect(ctrl.looks).toEqual([]);
   expect(ctrl.features).toEqual([]);
+  expect(ctrl.discover).toEqual({ status: "idle", entries: [], message: null });
+  expect(ctrl.availableDiscover).toEqual([]);
 });
 
 test("loadExtensions populates the list, the recommended + built-in catalogs, and the validation map keyed by use", async () => {
@@ -254,6 +283,74 @@ test("isBuiltInAdded reflects a ./extensions/<id> entry", async () => {
   await h.ctrl.loadExtensions();
   expect(h.ctrl.isBuiltInAdded("clean-book")).toBe(true);
   expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
+});
+
+// ── Discover: the curated extension index (#246) ────────────────────────────
+
+test("loadExtensions never touches discover — it is fetched only on demand", async () => {
+  const h = make();
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.discover).toEqual({ status: "idle", entries: [], message: null });
+  expect(named(h, "discover")).toEqual([]);
+});
+
+test("loadDiscover populates discover.entries on success", async () => {
+  const h = make();
+  await h.ctrl.loadDiscover();
+  expect(h.ctrl.discover).toEqual({
+    status: "ready",
+    entries: [DISCOVER_DC, DISCOVER_OTHER],
+    message: null,
+  });
+});
+
+test("loadDiscover surfaces an `ok: false` result as discover.message, not ctrl.error", async () => {
+  const h = make({ discoverResult: { ok: false, message: "Couldn't reach the extension index." } });
+  await h.ctrl.loadDiscover();
+  expect(h.ctrl.discover).toEqual({
+    status: "error",
+    entries: [],
+    message: "Couldn't reach the extension index.",
+  });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("loadDiscover refuses a second concurrent call while one is loading", async () => {
+  const h = make();
+  const first = h.ctrl.loadDiscover();
+  expect(h.ctrl.discover.status).toBe("loading");
+  const second = h.ctrl.loadDiscover(); // issued while the first is still in flight
+  await Promise.all([first, second]);
+  expect(named(h, "discover").length).toBe(1);
+  expect(h.ctrl.discover.status).toBe("ready");
+});
+
+test("availableDiscover hides entries already configured in the manifest", async () => {
+  const h = make({ entries: [entry({ use: "dimm-city-components", carries: MARKDOWN })] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.loadDiscover();
+  expect(h.ctrl.availableDiscover).toEqual([DISCOVER_OTHER]);
+});
+
+test("addDiscovered adds by the entry's `use` specifier and reloads the list", async () => {
+  const h = make();
+  await h.ctrl.loadDiscover();
+  await h.ctrl.addDiscovered(DISCOVER_DC);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components", undefined]]);
+  expect(h.entries.some((e) => e.use === "dimm-city-components")).toBe(true);
+  expect(named(h, "list").length).toBeGreaterThan(0); // reloaded after the add
+});
+
+test("addDiscovered refreshes Styles+Design when the index entry declares styles, using its own carries (not the host's echo)", async () => {
+  const h = make();
+  await h.ctrl.addDiscovered(DISCOVER_DC); // index carries: ["markdown", "styles"]
+  expect(h.afterLookChange.calls.length).toBe(1);
+});
+
+test("addDiscovered does not touch Styles+Design for a markdown-only index entry", async () => {
+  const h = make();
+  await h.ctrl.addDiscovered(DISCOVER_OTHER); // index carries: ["markdown"]
+  expect(h.afterLookChange.calls.length).toBe(0);
 });
 
 // ── One verb set: toggle / remove / move ──────────────────────────────────────
